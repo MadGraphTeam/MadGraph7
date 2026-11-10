@@ -1,0 +1,224 @@
+{
+  "elapsed_seconds": 85.7332086157985,
+  "lock_wait_seconds": 1.4901161193847656e-06,
+  "request": {
+    "MLReductionLib": "6",
+    "argv": [
+      "taskset",
+      "-c",
+      "12",
+      "./check",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/qcd_n4_uux_zzgg/selected.dat",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/qcd_n4_uux_zzgg/candidate-6-auto/SubProcesses/P0_uux_zzgg/worker-protocol.fifo"
+    ],
+    "backend": 6,
+    "case": "qcd_n4_uux_zzgg",
+    "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/qcd_n4_uux_zzgg/candidate-6-auto/SubProcesses/P0_uux_zzgg",
+    "inclusive_worker_seconds": 380,
+    "label": "candidate-6-auto",
+    "points": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/qcd_n4_uux_zzgg/selected.dat",
+    "requires_common_numerical_lock": false,
+    "retry": false,
+    "source": "candidate",
+    "startup_seconds": 180,
+    "stdin_after_READY": "RUN 1 1\nSTOP 2 0\n",
+    "traversal_seconds": 180
+  },
+  "result": {
+    "actual_map_captures": [
+      {
+        "data_files": {
+          "/nix/store/ig5ylfz7qcgpmvzip4pxfkp2pfi76s2j-glibc-locales-2.44-25/lib/locale/locale-archive": {
+            "header64_hex": "090102de00000000380000004a030000570500004c4000003e220000ec37000038780000f60100003003000078d00100d5020000d30700000000000000000000",
+            "inode": 1966516,
+            "map_device": "00:21",
+            "permissions": "r--p",
+            "sha256": "53851ab7caa5a0f893056762a6abff4e383ea06c0e6b276ee16876499e712d27",
+            "size": 233352016
+          }
+        },
+        "elf_files": {
+          "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+          "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194",
+          "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-5/workers/qcd_n4_uux_zzgg/candidate-6-auto/SubProcesses/P0_uux_zzgg/check": "1a257b2de48885d24b4d95abb13df9feae50d2e40c0c3c8a049c1e2f22828d47",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "exact_expected": true,
+        "path": "maps-000.txt",
+        "sha256": "506a0b328ebbaed17a071043a0de00e1e8be0d377f6cb8f79c1c15601de1087c"
+      },
+      {
+        "data_files": {
+          "/nix/store/ig5ylfz7qcgpmvzip4pxfkp2pfi76s2j-glibc-locales-2.44-25/lib/locale/locale-archive": {
+            "header64_hex": "090102de00000000380000004a030000570500004c4000003e220000ec37000038780000f60100003003000078d00100d5020000d30700000000000000000000",
+            "inode": 1966516,
+            "map_device": "00:21",
+            "permissions": "r--p",
+            "sha256": "53851ab7caa5a0f893056762a6abff4e383ea06c0e6b276ee16876499e712d27",
+            "size": 233352016
+          }
+        },
+        "elf_files": {
+          "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+          "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194",
+          "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-5/workers/qcd_n4_uux_zzgg/candidate-6-auto/SubProcesses/P0_uux_zzgg/check": "1a257b2de48885d24b4d95abb13df9feae50d2e40c0c3c8a049c1e2f22828d47",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "exact_expected": true,
+        "path": "maps-001.txt",
+        "sha256": "506a0b328ebbaed17a071043a0de00e1e8be0d377f6cb8f79c1c15601de1087c"
+      },
+      {
+        "data_files": {},
+        "elf_files": {},
+        "exact_expected": false,
+        "path": "maps-002.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "analytic_EW_oracle": "not requalified: current repaired geometry not captured",
+    "complete_runtime_map": true,
+    "elapsed_seconds": 33.23624017927796,
+    "failure": null,
+    "incomplete_warnings": [],
+    "mapping_errors": [],
+    "numerically_qualified": true,
+    "observation": {
+      "answer_dimensions": {
+        "allocated": 1,
+        "born_orders": 1,
+        "loop_orders": 1
+      },
+      "backend_precision_counts": {
+        "6:DP": 2
+      },
+      "cold_seconds": 15.057343885,
+      "native_dp_only": true,
+      "rows": [
+        {
+          "accuracy": 2.577004544482547e-12,
+          "actual_backend": 6,
+          "coefficients": [
+            6.839478669884262e-10,
+            -3.8385559122182316e-10,
+            -4.2986292616931725e-10,
+            -1.1132103401559614e-10
+          ],
+          "order": 0,
+          "point": 1,
+          "precision": "DP",
+          "status": 216
+        },
+        {
+          "accuracy": 2.577004544482547e-12,
+          "actual_backend": 6,
+          "coefficients": [
+            6.839478669884262e-10,
+            -3.8385559122182316e-10,
+            -4.2986292616931725e-10,
+            -1.1132103401559614e-10
+          ],
+          "order": 1,
+          "point": 1,
+          "precision": "DP",
+          "status": 216
+        },
+        {
+          "accuracy": 9.79672292867948e-08,
+          "actual_backend": 6,
+          "coefficients": [
+            2.4595072688738738e-09,
+            -1.3367534132693382e-09,
+            -1.651460585432434e-09,
+            -4.003154455387083e-10
+          ],
+          "order": 0,
+          "point": 2,
+          "precision": "DP",
+          "status": 216
+        },
+        {
+          "accuracy": 9.79672292867948e-08,
+          "actual_backend": 6,
+          "coefficients": [
+            2.4595072688738738e-09,
+            -1.3367534132693382e-09,
+            -1.651460585432434e-09,
+            -4.003154455387083e-10
+          ],
+          "order": 1,
+          "point": 2,
+          "precision": "DP",
+          "status": 216
+        }
+      ],
+      "seconds": 9.924210129,
+      "seconds_per_point": 4.9621050645,
+      "status_counts": {
+        "216": 2
+      },
+      "timed_status_counts": {
+        "216": 2
+      }
+    },
+    "orchestration_complete": true,
+    "performance_eligible": false,
+    "phase_timeout_seconds": 180,
+    "raw_outputs_sha256": {
+      "dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "timed_status.dat": "a434d3104a7f5ac0f7be747ffb0479a6895ec03e8608025baae57249bc21e3b6",
+      "timing.dat": "875d4a929cfc078dd1078e8fcc7169bc424d0b5755a72689fe2e030c136d2faf",
+      "values.dat": "3f76cb1b0180db550f09a7ac0827f120d7e38db4652c7d6c19a0950c870d0289",
+      "warmup.dat": "99804099d73dc7e5dcaec0251e5cd0a67236973a25d161256a849f66e9249a7f"
+    },
+    "request": {
+      "MLReductionLib": "6",
+      "argv": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/qcd_n4_uux_zzgg/selected.dat",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/qcd_n4_uux_zzgg/candidate-6-auto/SubProcesses/P0_uux_zzgg/worker-protocol.fifo"
+      ],
+      "backend": 6,
+      "case": "qcd_n4_uux_zzgg",
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/qcd_n4_uux_zzgg/candidate-6-auto/SubProcesses/P0_uux_zzgg",
+      "inclusive_worker_seconds": 380,
+      "label": "candidate-6-auto",
+      "points": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/qcd_n4_uux_zzgg/selected.dat",
+      "requires_common_numerical_lock": false,
+      "retry": false,
+      "source": "candidate",
+      "startup_seconds": 180,
+      "stdin_after_READY": "RUN 1 1\nSTOP 2 0\n",
+      "traversal_seconds": 180
+    },
+    "runtime_identity_failure": false,
+    "schema_version": 1
+  }
+}

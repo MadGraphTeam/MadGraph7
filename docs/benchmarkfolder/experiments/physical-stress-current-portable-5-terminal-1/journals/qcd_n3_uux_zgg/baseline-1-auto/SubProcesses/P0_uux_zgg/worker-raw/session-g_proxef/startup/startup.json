@@ -1,0 +1,7 @@
+{
+  "error": {
+    "type": "MeasurementError",
+    "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/baseline-1-auto/stdout.txt"
+  },
+  "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/baseline-1-auto/stdout.txt"
+}

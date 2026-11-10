@@ -1,0 +1,41 @@
+{
+  "dependencies": {
+    "ancestor": {
+      "index_sha256": "6fc2035649ba0387f0d4457784ae883592f13bb7e3b6f9c33b99e038b81f7146",
+      "sibling": "physical-stress-current-portable-4-terminal-2"
+    },
+    "base": {
+      "index_sha256": "a520199cf577d7b35b26b054016607020ebe0a533e5afabb4c1a279812c64266",
+      "sibling": "physical-stress-current-portable-5-terminal-1",
+      "summary_sha256": "8e928de4a77a9ad146bc49fb7a8b82b899e820f79c703455b4e75e7bf3bd00c4",
+      "verifier_sha256": "f3eac67396fa8f96dda001902006e674cab4b20e24ef3478bdb2cb7776a3f8e0"
+    },
+    "preparation": {
+      "index_sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+      "sibling": "physical-stress-current-portable-4-preflight-1"
+    }
+  },
+  "files": {
+    "README.md": {
+      "kind": "file",
+      "sha256": "940f3324e388e40f29e433c3bdfe4d7af6dc9fad24cc7d756f76cefa28e0d610",
+      "size": 2335
+    },
+    "qualification-summary.json": {
+      "kind": "file",
+      "sha256": "877f89cb10c4814057defa9db63f9974318c39a3c109b6628fd685eab9b9d744",
+      "size": 42535
+    },
+    "test_diagnostics.py": {
+      "kind": "file",
+      "sha256": "84b03fa67f2787e4f3d939a55bfd682af451cc9b9f39fabd5e8e4d96638c69ef",
+      "size": 6292
+    },
+    "verify_evidence.py": {
+      "kind": "file",
+      "sha256": "86ea03fa3fdf66ba3ec9b74f90de1d71f8360e618989b7584d7d51f48748b231",
+      "size": 11443
+    }
+  },
+  "schema_version": 1
+}

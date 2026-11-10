@@ -1,0 +1,84 @@
+{
+  "elapsed_seconds": 56.34982044901699,
+  "lock_wait_seconds": 1.6600824892520905e-06,
+  "request": {
+    "MLReductionLib": "7",
+    "argv": [
+      "taskset",
+      "-c",
+      "12",
+      "./check",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/ew_n3_epem_ttxa/selected.dat",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/ew_n3_epem_ttxa/candidate-7-auto/SubProcesses/P0_epem_ttxa/worker-protocol.fifo"
+    ],
+    "backend": 7,
+    "case": "ew_n3_epem_ttxa",
+    "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/ew_n3_epem_ttxa/candidate-7-auto/SubProcesses/P0_epem_ttxa",
+    "inclusive_worker_seconds": 380,
+    "label": "candidate-7-auto",
+    "points": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/ew_n3_epem_ttxa/selected.dat",
+    "requires_common_numerical_lock": false,
+    "retry": false,
+    "source": "candidate",
+    "startup_seconds": 180,
+    "stdin_after_READY": "RUN 1 1\nSTOP 2 0\n",
+    "traversal_seconds": 180
+  },
+  "result": {
+    "actual_map_captures": [
+      {
+        "data_files": {},
+        "elf_files": {},
+        "exact_expected": false,
+        "path": "maps-000.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "analytic_EW_oracle": "not requalified: current repaired geometry not captured",
+    "complete_runtime_map": false,
+    "elapsed_seconds": 1.047466374002397,
+    "failure": {
+      "class": "MeasurementError",
+      "message": "Numerical warmup failure (warmup-status) at point 2, status 410; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/ew_n3_epem_ttxa/candidate-7-auto/stdout.txt"
+    },
+    "incomplete_warnings": [
+      " ##W03 WARNING An unstable PS point was detected.",
+      " ##W03 WARNING No quadruple precision will be used."
+    ],
+    "mapping_errors": [],
+    "numerically_qualified": false,
+    "observation": null,
+    "orchestration_complete": true,
+    "performance_eligible": false,
+    "phase_timeout_seconds": 180,
+    "raw_outputs_sha256": {
+      "dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "warmup.dat": "5a3498d6c451c6470a956e2877c479e6f8062481b1c6a9029065f3d0bd531d35"
+    },
+    "request": {
+      "MLReductionLib": "7",
+      "argv": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/ew_n3_epem_ttxa/selected.dat",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/ew_n3_epem_ttxa/candidate-7-auto/SubProcesses/P0_epem_ttxa/worker-protocol.fifo"
+      ],
+      "backend": 7,
+      "case": "ew_n3_epem_ttxa",
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/ew_n3_epem_ttxa/candidate-7-auto/SubProcesses/P0_epem_ttxa",
+      "inclusive_worker_seconds": 380,
+      "label": "candidate-7-auto",
+      "points": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/ew_n3_epem_ttxa/selected.dat",
+      "requires_common_numerical_lock": false,
+      "retry": false,
+      "source": "candidate",
+      "startup_seconds": 180,
+      "stdin_after_READY": "RUN 1 1\nSTOP 2 0\n",
+      "traversal_seconds": 180
+    },
+    "runtime_identity_failure": false,
+    "schema_version": 1
+  }
+}

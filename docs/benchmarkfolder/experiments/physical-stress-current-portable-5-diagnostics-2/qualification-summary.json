@@ -1,0 +1,1296 @@
+{
+  "aggregate_checked_streams": 12,
+  "aggregate_comparisons": 22,
+  "aggregate_failing_comparisons": 12,
+  "aggregate_state_counts": {
+    "controller_failed": 1,
+    "host_checked_complete": 12,
+    "physical_rejected": 11
+  },
+  "base_index_sha256": "a520199cf577d7b35b26b054016607020ebe0a533e5afabb4c1a279812c64266",
+  "continuation_complete_runtime_maps": 19,
+  "continuation_native_process_activity_observed": 20,
+  "continuation_state_counts": {
+    "controller_failed": 1,
+    "host_checked_complete": 8,
+    "physical_rejected": 11
+  },
+  "hardware_register_capture": false,
+  "performance_eligible": false,
+  "qcd_n4_tirust_timeout": {
+    "READY_observed": false,
+    "RUN_command_journal_count": 0,
+    "backend": 9,
+    "case": "qcd_n4_uux_zzgg",
+    "complete_runtime_map": true,
+    "completed_final_rows": 0,
+    "completed_warmup_rows": 0,
+    "group": "continuation",
+    "internal_in_progress_amplitude_calls_instrumented": false,
+    "lines": [],
+    "native_failure": {
+      "class": "ProtocolError",
+      "message": "Worker protocol timeout; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n4_uux_zzgg/candidate-9-auto/stdout.txt"
+    },
+    "native_phase_deadline_source": {
+      "line": 69,
+      "path": "source/native_job.py",
+      "sha256": "f28965de44a34ab76a94291b3d0b2f2da2909cead876025aeaf0cff97190e991",
+      "text": "        worker=Observed(spec['argv_without_fifo'],directory,evidence/'stdout.txt',env=os.environ.copy(),timeout=180.)"
+    },
+    "native_process_activity_observed": true,
+    "no_completed_rows_does_not_imply_no_in_progress_amplitude_calls": true,
+    "request_id": "qcd_n4_uux_zzgg/candidate-9-auto",
+    "runtime_map_field_scope": "Explicit admitted per-request summary field",
+    "runtime_reported_flags": [],
+    "state": "physical_rejected",
+    "stdout_present": true,
+    "stdout_sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315",
+    "warmup_calls_observed": 0,
+    "warmup_statuses_by_call": [],
+    "worker_timeout_source": {
+      "line": 171,
+      "path": "proposal/protocol/tirust_benchmark_worker.py",
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57",
+      "text": "                raise ProtocolError(f\"Worker protocol timeout; see {self.log}\")"
+    }
+  },
+  "request_rows": [
+    {
+      "READY_observed": null,
+      "RUN_command_journal_count": null,
+      "backend": 1,
+      "case": "qcd_n2_gg_ttx",
+      "complete_runtime_map": null,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "original",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n2_gg_ttx/baseline-1-auto",
+      "runtime_map_field_scope": "Ancestor summary omits this field; no map failure is inferred; ancestor binder remains independently verified",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "adaf54646af955e754ac39291a9aabdcc49d6243904fb5f17b1946c340ddbc5d",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        329
+      ]
+    },
+    {
+      "READY_observed": null,
+      "RUN_command_journal_count": null,
+      "backend": 1,
+      "case": "qcd_n2_gg_ttx",
+      "complete_runtime_map": null,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "original",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n2_gg_ttx/candidate-1-auto",
+      "runtime_map_field_scope": "Ancestor summary omits this field; no map failure is inferred; ancestor binder remains independently verified",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "ab36e4dbf1edff8997d57f715bb638077f69d97cd24ecf5ae8ba5316d3378685",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        329
+      ]
+    },
+    {
+      "READY_observed": null,
+      "RUN_command_journal_count": null,
+      "backend": 6,
+      "case": "qcd_n2_gg_ttx",
+      "complete_runtime_map": null,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "original",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n2_gg_ttx/candidate-6-auto",
+      "runtime_map_field_scope": "Ancestor summary omits this field; no map failure is inferred; ancestor binder remains independently verified",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "7c8614fc6887ac32904f09ded5559714f045d09aff996198421b83a188efd54b",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        216,
+        216,
+        216
+      ]
+    },
+    {
+      "READY_observed": null,
+      "RUN_command_journal_count": null,
+      "backend": 7,
+      "case": "qcd_n2_gg_ttx",
+      "complete_runtime_map": null,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "original",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n2_gg_ttx/candidate-7-auto",
+      "runtime_map_field_scope": "Ancestor summary omits this field; no map failure is inferred; ancestor binder remains independently verified",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "42138fa5a638b328b957bcdb0b9896b2e24a812b1ff4f3d6b41be5032117f1c8",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        217,
+        217,
+        217
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 8,
+      "case": "qcd_n2_gg_ttx",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n2_gg_ttx/candidate-8-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "eed2f2ac8156bde09266ea641825d73726f9c911048a1daab2b55fdd94f736b5",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        218,
+        218,
+        218
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 9,
+      "case": "qcd_n2_gg_ttx",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n2_gg_ttx/candidate-9-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        219,
+        219,
+        323
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 1,
+      "case": "qcd_n3_uux_zgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 82,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 96,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG IEEE_DIVIDE_BY_ZERO"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/baseline-1-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n3_uux_zgg/baseline-1-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_INVALID_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "8b366a1a3ee8c433824f17810a63a416c2036324300e9e0cda76e386142a2985",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        420
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 1,
+      "case": "qcd_n3_uux_zgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 86,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 100,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG IEEE_DIVIDE_BY_ZERO"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/candidate-1-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n3_uux_zgg/candidate-1-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_INVALID_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "9085fe5d0922bf6a1d55e03b539fdb70e98844e90a9a2cfccbc2826edaf01ba7",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        420
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 6,
+      "case": "qcd_n3_uux_zgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 125,
+          "text": " ERROR in OneLOop c0: all input equal zero, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 126,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 127,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 128,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 129,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 130,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 131,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 132,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 133,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 134,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 135,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 136,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 137,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 138,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 139,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 140,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 141,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 142,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 143,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 144,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 145,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 146,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 147,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 148,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 149,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 150,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 151,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 152,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 153,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 154,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 155,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 156,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 157,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 158,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 159,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 160,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 161,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 162,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 163,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 164,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 165,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 166,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 167,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 168,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 169,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 170,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 171,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 172,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 173,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 174,
+          "text": " WARNING from OneLOop d0: input does not seem to represent hard kinematics, trying to permutate"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 175,
+          "text": " WARNING from OneLOop d0: no permutation helps, errors might follow"
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 176,
+          "text": " ERROR in OneLOop log_r: xx = .0000000000000000000000000000000000000E+00, returning 0"
+        },
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 177,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 178,
+          "text": " ## The last QP reduction was deemed unstable because a floating point exception was encountered."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 192,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG IEEE_DIVIDE_BY_ZERO"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/candidate-6-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n3_uux_zgg/candidate-6-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_INVALID_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "2182456a1c709a48fc72e75412451e0f4d91446a138afe9134a1368a385644a6",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        216,
+        216,
+        420
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 7,
+      "case": "qcd_n3_uux_zgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 99,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 100,
+          "text": " ##W03 WARNING No quadruple precision will be used."
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 101,
+          "text": " ## The last DP reduction was deemed unstable because a floating point exception was encountered."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 113,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG IEEE_DIVIDE_BY_ZERO IEEE_UNDERFLOW_FLAG IEEE_DENORMAL"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 410; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/candidate-7-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n3_uux_zgg/candidate-7-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DENORMAL",
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_INVALID_FLAG",
+        "IEEE_UNDERFLOW_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "e213cc47b1b839c55e6578d68fd6622d632b0b947d166328dc367e0ab9dcdce1",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        217,
+        217,
+        410
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 8,
+      "case": "qcd_n3_uux_zgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 59,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 60,
+          "text": " ## The last QP reduction was deemed unstable because a floating point exception was encountered."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 74,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/candidate-8-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n3_uux_zgg/candidate-8-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_INVALID_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "281c1fbaf398859bdc6cc2a1a9b1bfc492388f493e4db490f34cb2f9a6ea4942",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        218,
+        218,
+        420
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 9,
+      "case": "qcd_n3_uux_zgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 59,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 60,
+          "text": " ## The last QP reduction was deemed unstable because a floating point exception was encountered."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 74,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG IEEE_DIVIDE_BY_ZERO"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n3_uux_zgg/candidate-9-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n3_uux_zgg/candidate-9-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_INVALID_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "06a2d3f5533e9b332e6401d6e111bafa86884e7a810ba59d6b975a2178e4a686",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        219,
+        219,
+        420
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 1,
+      "case": "qcd_n4_uux_zzgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n4_uux_zzgg/baseline-1-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "adaf54646af955e754ac39291a9aabdcc49d6243904fb5f17b1946c340ddbc5d",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        211
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 1,
+      "case": "qcd_n4_uux_zzgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n4_uux_zzgg/candidate-1-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "ab36e4dbf1edff8997d57f715bb638077f69d97cd24ecf5ae8ba5316d3378685",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        211
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 6,
+      "case": "qcd_n4_uux_zzgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n4_uux_zzgg/candidate-6-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "7c8614fc6887ac32904f09ded5559714f045d09aff996198421b83a188efd54b",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        216,
+        216,
+        216
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 7,
+      "case": "qcd_n4_uux_zzgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 99,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 100,
+          "text": " ##W03 WARNING No quadruple precision will be used."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 113,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG IEEE_DIVIDE_BY_ZERO"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 410; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n4_uux_zzgg/candidate-7-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n4_uux_zzgg/candidate-7-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_INVALID_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "1ab6962c9cbcdaae8fd407eb74c03c3cf00c25339f3fb135af2a15027d88b1bc",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        217,
+        217,
+        410
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 8,
+      "case": "qcd_n4_uux_zzgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n4_uux_zzgg/candidate-8-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "eed2f2ac8156bde09266ea641825d73726f9c911048a1daab2b55fdd94f736b5",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        218,
+        218,
+        218
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 9,
+      "case": "qcd_n4_uux_zzgg",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 0,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": {
+        "class": "ProtocolError",
+        "message": "Worker protocol timeout; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n4_uux_zzgg/candidate-9-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "qcd_n4_uux_zzgg/candidate-9-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315",
+      "warmup_calls_observed": 0,
+      "warmup_statuses_by_call": []
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 1,
+      "case": "ew_n3_epem_ttxa",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 82,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/ew_n3_epem_ttxa/baseline-1-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "ew_n3_epem_ttxa/baseline-1-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "deac498d318bf069316339bb8d8c6b89c14b72b21559554caa49e16b9dd57a38",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        420
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 1,
+      "case": "ew_n3_epem_ttxa",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 86,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/ew_n3_epem_ttxa/candidate-1-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "ew_n3_epem_ttxa/candidate-1-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "6a76ed52dd077b8ab3e409ac38acd09cfb5ebd3861f806c59357931ef2c6bb3b",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        211,
+        211,
+        420
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 6,
+      "case": "ew_n3_epem_ttxa",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "ew_n3_epem_ttxa/candidate-6-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "7c8614fc6887ac32904f09ded5559714f045d09aff996198421b83a188efd54b",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        216,
+        216,
+        328
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 7,
+      "case": "ew_n3_epem_ttxa",
+      "complete_runtime_map": false,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 99,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 100,
+          "text": " ##W03 WARNING No quadruple precision will be used."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 112,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG IEEE_DIVIDE_BY_ZERO IEEE_DENORMAL"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 410; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/ew_n3_epem_ttxa/candidate-7-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "ew_n3_epem_ttxa/candidate-7-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DENORMAL",
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_INVALID_FLAG"
+      ],
+      "state": "controller_failed",
+      "stdout_present": true,
+      "stdout_sha256": "ea250d8cf3eaccb928d5a0eda4553d067041b4864457c04d37c23124402df6d9",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        217,
+        217,
+        410
+      ]
+    },
+    {
+      "READY_observed": true,
+      "RUN_command_journal_count": 1,
+      "backend": 8,
+      "case": "ew_n3_epem_ttxa",
+      "complete_runtime_map": true,
+      "completed_final_rows": 4,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [],
+      "native_failure": null,
+      "native_process_activity_observed": true,
+      "request_id": "ew_n3_epem_ttxa/candidate-8-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [],
+      "state": "host_checked_complete",
+      "stdout_present": true,
+      "stdout_sha256": "eed2f2ac8156bde09266ea641825d73726f9c911048a1daab2b55fdd94f736b5",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        218,
+        218,
+        322
+      ]
+    },
+    {
+      "READY_observed": false,
+      "RUN_command_journal_count": 0,
+      "backend": 9,
+      "case": "ew_n3_epem_ttxa",
+      "complete_runtime_map": true,
+      "completed_final_rows": 0,
+      "completed_warmup_rows": 6,
+      "group": "continuation",
+      "lines": [
+        {
+          "kinds": [
+            "W03"
+          ],
+          "line": 59,
+          "text": " ##W03 WARNING An unstable PS point was detected."
+        },
+        {
+          "kinds": [
+            "reduction_exception_or_library_diagnostic"
+          ],
+          "line": 60,
+          "text": " ## The last QP reduction was deemed unstable because a floating point exception was encountered."
+        },
+        {
+          "kinds": [
+            "runtime_reported_IEEE_flags"
+          ],
+          "line": 74,
+          "text": "Note: The following floating-point exceptions are signalling: IEEE_DIVIDE_BY_ZERO IEEE_UNDERFLOW_FLAG IEEE_DENORMAL"
+        }
+      ],
+      "native_failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 2, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/ew_n3_epem_ttxa/candidate-9-auto/stdout.txt"
+      },
+      "native_process_activity_observed": true,
+      "request_id": "ew_n3_epem_ttxa/candidate-9-auto",
+      "runtime_map_field_scope": "Explicit admitted per-request summary field",
+      "runtime_reported_flags": [
+        "IEEE_DENORMAL",
+        "IEEE_DIVIDE_BY_ZERO",
+        "IEEE_UNDERFLOW_FLAG"
+      ],
+      "state": "physical_rejected",
+      "stdout_present": true,
+      "stdout_sha256": "fde1695d5b0eac75e894c9a87637fa91812da18aa0622c0e1aadd425bce61554",
+      "warmup_calls_observed": 3,
+      "warmup_statuses_by_call": [
+        219,
+        219,
+        420
+      ]
+    }
+  ],
+  "runtime_reported_flags_are_not_attributed_to_individual_amplitude_calls": true,
+  "scope": "Console diagnostics and observed native activity; no new numerical execution",
+  "streams_with_runtime_reported_flags": 9
+}

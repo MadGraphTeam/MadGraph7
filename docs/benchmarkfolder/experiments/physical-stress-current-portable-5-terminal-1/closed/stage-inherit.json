@@ -1,0 +1,11 @@
+{
+  "cap_seconds_excluding_lock_wait": 600,
+  "elapsed_seconds_including_wait": 77.65449504926801,
+  "exception": null,
+  "inherited_checkpoint_sha256": "0c4157c988bdd0371e9c0cfba54e784b3f7a730cf7a631b8aca5c27814636d5a",
+  "native_execution": false,
+  "performance_eligible": false,
+  "source_index_sha256": "5eded3d276bea030e9b8cce598f6422f10a789dc1eaa9ff6588275c2e594b931",
+  "stage": "inherit",
+  "status": "passed"
+}

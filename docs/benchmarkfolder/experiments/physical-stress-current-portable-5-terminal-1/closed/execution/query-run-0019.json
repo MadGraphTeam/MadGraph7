@@ -1,0 +1,53 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "12",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "--list",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-5/workers/ew_n3_epem_ttxa/candidate-8-auto/SubProcesses/P0_epem_ttxa/check"
+  ],
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 310,
+        "process_group": 310,
+        "session": 310,
+        "start_time_ticks": 235565651,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_exception": null,
+  "command_work_cap_seconds": 30,
+  "cpu": 12,
+  "cpu_exclusive": false,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "elapsed_seconds": 0.009283493738621473,
+  "environment": {
+    "CC": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/cc",
+    "CXX": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/c++",
+    "FC": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "MAKEFLAGS": "-j4 SHELL=/nix/store/1mv3qz005gkbalxfghk4y3s8ayv4d2dl-bash-interactive-5.3p15/bin/bash",
+    "MKL_NUM_THREADS": "1",
+    "MPLCONFIGDIR": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-5/matplotlib",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin",
+    "PWD": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "RAYON_NUM_THREADS": "1",
+    "XDG_CACHE_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-5/xdg/cache",
+    "XDG_CONFIG_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-5/xdg/config",
+    "XDG_STATE_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-5/xdg/state"
+  },
+  "exception": null,
+  "log_sha256": "7d4c38db27381768c878966aace1589b9504d9124044d2f42094bf6ef667da8b",
+  "returncode": 0,
+  "started_utc": "2026-11-10T14:45:55.393186+00:00"
+}

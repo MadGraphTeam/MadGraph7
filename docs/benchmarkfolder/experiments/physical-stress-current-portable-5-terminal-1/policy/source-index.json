@@ -1,0 +1,59 @@
+{
+  "capture_is_filesystem_only": true,
+  "files": {
+    "README-policy.md": {
+      "kind": "file",
+      "sha256": "1bdb186e7ecb80069883808b4168a531829757e189f7ba96038692a29349f43c",
+      "size": 5603
+    },
+    "README.md": {
+      "kind": "file",
+      "sha256": "bddcdb44c64ea128a6ae2aa45933ebeaac372856208e5f208bc1d8bdc301194e",
+      "size": 2924
+    },
+    "capture.py": {
+      "kind": "file",
+      "sha256": "bed8674f1b3ca9e590a2652d151bada5b3af1a98c4e058fdeb0354e668fcdd82",
+      "size": 25278
+    },
+    "derive.py": {
+      "kind": "file",
+      "sha256": "179dcf25f5cc35d23173912dd6d6122df63b6d2b29a97d2d2de1971588e414bd",
+      "size": 24684
+    },
+    "test-receipt.json": {
+      "kind": "file",
+      "sha256": "39d3c80857a0052d4ad61ed043341444c9ab3c17bdaaa068c65b60e43e24a54a",
+      "size": 986
+    },
+    "test_capture.py": {
+      "kind": "file",
+      "sha256": "86c87fba38f0e98ba1d2acc34067912b6047e97fa959901c7a5f8193c54b22cf",
+      "size": 15176
+    },
+    "test_derive.py": {
+      "kind": "file",
+      "sha256": "2cad87575fa07f864370f7a4264e3841817974bb0cae3b8d5d40bba58eb7c32d",
+      "size": 18152
+    },
+    "test_packet.py": {
+      "kind": "file",
+      "sha256": "29a60590407219996424d8f6789b4198549b6a2bf3ec274d42cf7de3cab806f0",
+      "size": 3809
+    },
+    "tests.log": {
+      "kind": "file",
+      "sha256": "a533407a887a609119381faa6a199a6c73b26018c4ebd1d2ce25a3fa3deb091c",
+      "size": 7216
+    },
+    "verify_evidence.py": {
+      "kind": "file",
+      "sha256": "f3eac67396fa8f96dda001902006e674cab4b20e24ef3478bdb2cb7776a3f8e0",
+      "size": 25621
+    }
+  },
+  "required_actual_terminal_session": 7248,
+  "schema_version": 1,
+  "source5_index_sha256": "5eded3d276bea030e9b8cce598f6422f10a789dc1eaa9ff6588275c2e594b931",
+  "source_only": true
+}

@@ -1,0 +1,49 @@
+{
+  "checks": [
+    {
+      "name": "offline_callback_with_native_entrypoints_blocked",
+      "passed": true
+    },
+    {
+      "name": "relocated_filesystem_with_external_reads_writes_and_native_calls_blocked",
+      "passed": true
+    },
+    {
+      "name": "missing_reader_paths_rejected_before_read",
+      "passed": true
+    },
+    {
+      "name": "extra_reader_path_rejected",
+      "passed": true
+    },
+    {
+      "name": "missing_declared_reader_path_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_retention_bytes_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_ancestor_index_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_preparation_index_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_compressed_text_rejected",
+      "passed": true
+    },
+    {
+      "name": "forged_saved_qualification_count_rejected_by_replay",
+      "passed": true
+    }
+  ],
+  "closure_physical_files": 3937,
+  "native_execution": false,
+  "passed": true,
+  "schema_version": 1,
+  "verified_index_sha256": "a520199cf577d7b35b26b054016607020ebe0a533e5afabb4c1a279812c64266"
+}

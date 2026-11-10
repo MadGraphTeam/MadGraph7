@@ -1,0 +1,15 @@
+{
+  "closure_physical_files": 3937,
+  "closure_stored_bytes": 40452371,
+  "exit_code": 0,
+  "external_filesystem_reads_blocked": true,
+  "index_sha256": "a520199cf577d7b35b26b054016607020ebe0a533e5afabb4c1a279812c64266",
+  "native_calls_blocked": true,
+  "reported_by": "/root/stress_unexecuted_continuation/continuation_review",
+  "result": "passed",
+  "schema_version": 1,
+  "session_id": 15924,
+  "summary_sha256": "8e928de4a77a9ad146bc49fb7a8b82b899e820f79c703455b4e75e7bf3bd00c4",
+  "unresolved_findings": [],
+  "verifier_sha256": "f3eac67396fa8f96dda001902006e674cab4b20e24ef3478bdb2cb7776a3f8e0"
+}

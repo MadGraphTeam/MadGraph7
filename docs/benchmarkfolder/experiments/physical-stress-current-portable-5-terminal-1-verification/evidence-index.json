@@ -1,0 +1,27 @@
+{
+  "files": {
+    "README.md": {
+      "kind": "file",
+      "sha256": "be5784f15a84e798657b1e3dd6ce81fed3ffa7d1f4bac693c6794757b0161995",
+      "size": 1713
+    },
+    "independent-review.json": {
+      "kind": "file",
+      "sha256": "b2e31f6487824263e74f2f2631056f100ee4aa72ecc0a020ec36298e11131230",
+      "size": 605
+    },
+    "qualify.py": {
+      "kind": "file",
+      "sha256": "b530780980743d4aea5aaf84d6746b7dd5d107d69612ecb0333ca4d20b4aefaf",
+      "size": 7074
+    },
+    "results.json": {
+      "kind": "file",
+      "sha256": "e5ee1becc42e0bf97ad813ccba61c2f2d53c41a096a08c9835cbeed7b6ba641c",
+      "size": 1144
+    }
+  },
+  "native_execution": false,
+  "schema_version": 1,
+  "verified_packet_index_sha256": "a520199cf577d7b35b26b054016607020ebe0a533e5afabb4c1a279812c64266"
+}
