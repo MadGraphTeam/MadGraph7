@@ -35,6 +35,13 @@ SRCDIR=src
 LIBDIR=lib
 LIBDIRARCH=lib/archive
 
+# Match -lpythia8: accept shared libraries as well as static archives.
+PYTHIA8_LIB = $(firstword $(wildcard \
+    $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.so \
+    $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.dylib \
+    $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a) \
+    $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a)
+
 # Libraries to include if GZIP support is enabled
 ifeq (x$(ENABLEGZIP),xyes)
 #LIBGZIP=-L$(BOOSTLIBLOCATION) -lboost_iostreams -L$(ZLIBLOCATION) -lz
@@ -67,13 +74,13 @@ Pythia8: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIRARCH)/libpythia8.a \
 	-L$(PYTHIA8LOCATION)/$(LIBDIRARCH) -lpythia8 $(LIBLHAPDF) $(LIBGZIP) \
 	-lpythia8tohepmc -L$(HEPMCLOCATION)/$(LIBDIR) -lHepMC -lHepMCfio $(LIBGFORTRAN) $(STDLIB) \
 
-Pythia82: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a
+Pythia82: $(FORFILE) $(PYTHIA8_LIB)
 	  $(CXX) $(CXXFLAGS) -I$(PYTHIA8LOCATION)/$(INCDIR) \
 	  -I$(TOPDIR)/$(INCDIR) $(INCLOPTION) $@.cc -o Pythia8.exe $(FORFILE) \
 	  -L$(PYTHIA8LOCATION)/$(LIBDIR) -lpythia8 $(LIBGZIP) \
 	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) $(STDLIB) \
 
-Pythia83: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a
+Pythia83: $(FORFILE) $(PYTHIA8_LIB)
 	  $(CXX) $(CXXFLAGS) -I$(PYTHIA8LOCATION)/$(INCDIR) \
 	  -I$(TOPDIR)/$(INCDIR) $(INCLOPTION) $@.cc -o Pythia8.exe $(FORFILE) \
 	  -L$(PYTHIA8LOCATION)/$(LIBDIR) -lpythia8 $(LIBGZIP) \

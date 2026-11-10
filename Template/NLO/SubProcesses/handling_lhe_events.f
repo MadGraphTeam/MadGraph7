@@ -136,7 +136,7 @@ c MonteCarlo Masses
 c     parameter to allow to include run_card.inc 
       include './run.inc'
       include './cuts.inc'
-      integer lhaid,pdfscheme
+      integer pdfscheme
       character*20 pdlabel
       logical pineappl
       character*7 event_norm
@@ -309,7 +309,6 @@ c Write here the reweight information if need be
          write(ifile,'(a)') '  </initrwgt>'
       endif
       write(ifile,'(a)') '  </header>'
- 250  format(1x,i8)
       return
  99   write (*,*) 'ERROR in write_lhef_header_banner: '/
      &     /' proc_card_mg5.dat not found   :',path(1:index(path," ")-1)
@@ -331,7 +330,7 @@ c Write here the reweight information if need be
       implicit none 
       include './run.inc'
       logical already_found
-      integer ifile,nevents,i,ii,ii2,iistr,itemp
+      integer ifile,nevents,i,ii,ii2,iistr
       double precision temp
       character*10 MonteCarlo
       character*180 string,string0
@@ -650,7 +649,6 @@ c if the file is a partial file the header is non-standard
       integer ifile,i,IDBMUP(2),PDFGUP(2),PDFSUP(2),IDWTUP,NPRUP
      $     ,LPRUP(100)
       double precision EBMUP(2),XSECUP(100),XERRUP(100),XMAXUP(100)
-      double precision XSECUP2(100),XERRUP2(100),XMAXUP2(100)
 c
       write(ifile,'(a)')
      # '  <init>'
@@ -703,7 +701,7 @@ c
       character*9 ch1
       integer isorh_lhe,ifks_lhe,jfks_lhe,fksfather_lhe,ipartner_lhe
       double precision scale1_lhe,scale2_lhe
-      integer ii,j,nps,nng,iFKS,idwgt
+      integer ii,j,idwgt
       double precision wgtcentral,wgtmumin,wgtmumax,wgtpdfmin,wgtpdfmax
       integer event_id
       common /c_event_id/ event_id
@@ -720,10 +718,10 @@ c
       PARAMETER (MAXFKSLOC=512)
       CHARACTER(LEN=2000) clusterstrings(0:MAXFKSLOC)
       common /c_clusterstrings/ clusterstrings
-      include 'unlops.inc'
-      include 'madfks_mcatnlo.inc'
+      INTEGER MAXNUP
+      PARAMETER (MAXNUP=500)
       DOUBLE PRECISION SCALUP_a(MAXNUP,MAXNUP)
-      logical are_col_conn(MAXNUP,MAXNUP)
+      logical are_col_conn
       integer n_orderstags
       integer orderstags_glob(maxorders)
       common /c_orderstags_glob/n_orderstags, orderstags_glob
@@ -832,17 +830,6 @@ c
                write (ifile,'(a)') trim(adjustl(n_ctr_str(i)))
             enddo
             write(ifile,'(a)')'  </mgrwgt>'
-         endif
-         if(jwgtinfo.eq.15) then
-            write(ifile,'(a)')'  <unlops>'
-            write(ifile,*)NUP_H
-            do i=1,NUP_H
-               write(ifile,504)IDUP_H(I),ISTUP_H(I),MOTHUP_H(1,I)
-     $              ,MOTHUP_H(2,I),ICOLUP_H(1,I),ICOLUP_H(2,I),PUP_H(1
-     $              ,I),PUP_H(2,I),PUP_H(3,I),PUP_H(4,I),PUP_H(5,I),
-     $              VTIMUP_H(I),SPINUP_H(I)
-            enddo
-            write(ifile,'(a)')'  </unlops>'
          endif
          if(abs(jwgtinfo).eq.9)then
             if (do_rwgt_scale .or. do_rwgt_pdf) then
@@ -987,27 +974,24 @@ c event_type and nFKS attributes are added when absent.
       endif
       if (mcatnlo_delta) then
 c Write the <scales> block only for scales related to valid colour lines
-         are_col_conn=.false.
-         scale_str="<scales muf='-.10000000E+01' mur='-.1000000E+01'"
+         scale_str="<scales muf='-.1E+01' mur='-.1E+01'"
          do i=1,NUP
             if (abs(ISTUP(i)).ne.1) cycle
             do j=1,NUP
                if (abs(ISTUP(j)).ne.1) cycle
                if(i.eq.j)cycle
-               are_col_conn(i,j)=
+               are_col_conn=
      &             (ICOLUP(1,i).ne.0.and.ICOLUP(1,i).eq.ICOLUP(1,j)).or.
      &             (ICOLUP(1,i).ne.0.and.ICOLUP(1,i).eq.ICOLUP(2,j)).or.
      &             (ICOLUP(2,i).ne.0.and.ICOLUP(2,i).eq.ICOLUP(1,j)).or.
      &             (ICOLUP(2,i).ne.0.and.ICOLUP(2,i).eq.ICOLUP(2,j))
-               if(are_col_conn(i,j) .and. SCALUP_a(i,j)
-     $              .lt.scaleMCcut)then
-                  write(*,*)'Colour error in write_lhef_event',i,j
-                  do ii=1,NUP
-                     write (*,*) scalup_a(ii,1:NUP)
-                  enddo
-                  stop
-               endif
-               if(are_col_conn(i,j))then
+               if(are_col_conn)then
+                  if (.not.(SCALUP_a(i,j).ge.0d0.and.
+     &                 SCALUP_a(i,j).le.huge(1d0))) then
+                     write(*,*) 'Invalid MC@NLO-Delta dipole scale',
+     &                    i,j,SCALUP_a(i,j)
+                     stop 1
+                  endif
                   write(str_tmp,701)
      &                 " scalup_",i,"_",j,"='",SCALUP_a(i,j),"'"
                   scale_str=trim(scale_str)//trim(str_tmp)
@@ -1021,14 +1005,6 @@ c Write the <scales> block only for scales related to valid colour lines
       do cid = 0, MAXFKSLOC
          clusterstrings(cid) = ''
       enddo
- 401  format(2(1x,e14.8))
- 402  format(8(1x,e14.8))
- 403  format(6(1x,e14.8))
- 404  format(3(1x,e14.8))
- 405  format(4(1x,e14.8))
- 406  format(2(1x,e14.8),2(1x,i3))
- 441  format(4(1x,e16.10))
- 442  format(1x,e16.10,2(1x,e14.8))
  503  format(1x,i2,1x,i6,4(1x,e14.8))
  504  format(1x,i8,1x,i2,4(1x,i4),5(1x,e24.17),2(1x,e10.4))
  601  format(a12,i4,a2,1x,e11.5,a7)
@@ -1078,12 +1054,10 @@ c blocks and from the separate EW Sudakov <clustering> history.
       integer ifile,i,kk,jj,oo
       character*1000 buff
       character*2000 string
-      character*12 dummy12
-      character*2 dummy2
       character*9 ch1
       integer isorh_lhe,ifks_lhe,jfks_lhe,fksfather_lhe,ipartner_lhe
       double precision scale1_lhe,scale2_lhe
-      integer ii,j,nps,nng,iFKS,idwgt
+      integer ii,j,idwgt
       double precision wgtcentral,wgtmumin,wgtmumax,wgtpdfmin,wgtpdfmax
       integer i_process
       common/c_i_process/i_process
@@ -1098,7 +1072,8 @@ c blocks and from the separate EW Sudakov <clustering> history.
       integer n_orderstags
       integer orderstags_glob(maxorders)
       common /c_orderstags_glob/n_orderstags, orderstags_glob
-      include 'unlops.inc'
+      INTEGER MAXNUP
+      PARAMETER (MAXNUP=500)
       include 'run.inc'
       DOUBLE PRECISION SCALUP_a(MAXNUP,MAXNUP)
       integer mg_rwgt_count
@@ -1162,17 +1137,6 @@ c
                read (ifile,'(a)') n_ctr_str(i)
             enddo
             read(ifile,'(a)')string
-         endif
-         if(jwgtinfo.eq.15) then
-            read(ifile,'(a)') string
-            read(ifile,*)NUP_H
-            do i=1,NUP_H
-               read(ifile,*) IDUP_H(I),ISTUP_H(I),MOTHUP_H(1,I)
-     $              ,MOTHUP_H(2,I),ICOLUP_H(1,I),ICOLUP_H(2,I),PUP_H(1
-     $              ,I),PUP_H(2,I),PUP_H(3,I),PUP_H(4,I),PUP_H(5,I),
-     $              VTIMUP_H(I),SPINUP_H(I)
-            enddo
-            read(ifile,'(a)') string
          endif
          if(abs(jwgtinfo).eq.9)then
             if (do_rwgt_scale .or. do_rwgt_pdf) then
@@ -1330,16 +1294,6 @@ c Read the <scales> block
          write (*,*) string
          stop 1
       endif
- 401  format(2(1x,e14.8))
- 402  format(8(1x,e14.8))
- 403  format(6(1x,e14.8))
- 404  format(3(1x,e14.8))
- 405  format(4(1x,e14.8))
- 406  format(2(1x,e14.8),2(1x,i3))
- 441  format(4(1x,e16.10))
- 442  format(1x,e16.10,2(1x,e14.8))
- 503  format(1x,i2,1x,i6,4(1x,e14.8))
- 504  format(1x,i8,1x,i2,4(1x,i4),5(1x,e14.8),2(1x,e10.4))
 c
       return
       end
@@ -1357,12 +1311,10 @@ c Same as read_lhef_event, except for the end-of-file catch
       integer ifile,i,kk,jj,oo
       character*1000 buff
       character*2000 string
-      character*12 dummy12
-      character*2 dummy2
       character*9 ch1
       integer isorh_lhe,ifks_lhe,jfks_lhe,fksfather_lhe,ipartner_lhe
       double precision scale1_lhe,scale2_lhe
-      integer ii,j,nps,nng,iFKS,idwgt
+      integer ii,j,idwgt
       double precision wgtcentral,wgtmumin,wgtmumax,wgtpdfmin,wgtpdfmax
       integer i_process
       common/c_i_process/i_process
@@ -1371,7 +1323,8 @@ c Same as read_lhef_event, except for the end-of-file catch
       integer n_orderstags
       integer orderstags_glob(maxorders)
       common /c_orderstags_glob/n_orderstags, orderstags_glob
-      include 'unlops.inc'
+      INTEGER MAXNUP
+      PARAMETER (MAXNUP=500)
       include 'run.inc'
       DOUBLE PRECISION SCALUP_a(MAXNUP,MAXNUP)
       CHARACTER(LEN=1000) ptclusstring
@@ -1449,17 +1402,6 @@ c
                read (ifile,'(a)') n_ctr_str(i)
             enddo
             read(ifile,'(a)')string
-         endif
-         if(jwgtinfo.eq.15) then
-            read(ifile,'(a)') string
-            read(ifile,*)NUP_H
-            do i=1,NUP_H
-               read(ifile,*) IDUP_H(I),ISTUP_H(I),MOTHUP_H(1,I)
-     $              ,MOTHUP_H(2,I),ICOLUP_H(1,I),ICOLUP_H(2,I),PUP_H(1
-     $              ,I),PUP_H(2,I),PUP_H(3,I),PUP_H(4,I),PUP_H(5,I),
-     $              VTIMUP_H(I),SPINUP_H(I)
-            enddo
-            read(ifile,'(a)') string
          endif
          if(abs(jwgtinfo).eq.9)then
             if (do_rwgt_scale .or. do_rwgt_pdf) then
@@ -1592,16 +1534,6 @@ c Read the <scales> block
      $        /' handling_lhe_event.f'
          stop 1
       endif
- 401  format(2(1x,e14.8))
- 402  format(8(1x,e14.8))
- 403  format(6(1x,e14.8))
- 404  format(3(1x,e14.8))
- 405  format(4(1x,e14.8))
- 406  format(2(1x,e14.8),2(1x,i3))
- 441  format(4(1x,e16.10))
- 442  format(1x,e16.10,2(1x,e14.8))
- 503  format(1x,i2,1x,i6,4(1x,e14.8))
- 504  format(1x,i8,1x,i2,4(1x,i4),5(1x,e14.8),2(1x,e10.4))
 c
       return
       end

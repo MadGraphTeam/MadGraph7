@@ -1,4 +1,5 @@
       Program DRIVER
+      use fks_phase_space_data, only: p_born
 c**************************************************************************
 c     This is the driver for the whole calculation
 c**************************************************************************
@@ -21,16 +22,12 @@ C
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
       double precision p(0:3, nexternal), prambo(0:3,100)
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
       double precision pswgt
       double precision fks_double, fks_single
       double precision, allocatable :: virt_wgts(:,:)
       double precision double, single, finite
       double precision born, virt_wgt
       double precision totmass
-      logical calculatedborn
-      common/ccalculatedborn/calculatedborn
       logical fksprefact
       parameter (fksprefact=.true.)
       integer nfksprocess
@@ -132,11 +129,11 @@ c     not equal to it so as to be sensitive to all logs in the check.
       iconfigs(1)=iconfig
 c Find the nFKSprocess for which we compute the Born-like contributions,
 c ie. which is a Born+g real-emission process
-      do nFKSprocess=1,fks_configs
+      do nFKSprocess=1,fks_integrated
          call fks_inc_chooser()
          if (is_aorg(i_fks)) exit
       enddo
-      if (nFKSprocess.gt.fks_configs) then
+      if (nFKSprocess.gt.fks_integrated) then
 c If there is no fks_configuration that has a gluon or photon as i_fks
 c (this might happen in case of initial state leptons with
 c include_lepton_initiated_processes=False) the Born and virtuals do not
@@ -161,7 +158,6 @@ c initialization
           finite=0d0
           single=0d0
           double=0d0
-          calculatedborn = .false.
           if (nincoming.eq.1) then
               call rambo(0, nexternal-nincoming-1, pmass(1), 
      1         pmass_rambo, prambo)

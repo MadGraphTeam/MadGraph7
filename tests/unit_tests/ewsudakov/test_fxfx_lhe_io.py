@@ -50,9 +50,7 @@ class TestFxFxLheIO(unittest.TestCase):
                           source.index('      subroutine copy_header(')]
         selected += fortran_routine(source, 'read_rwgt_line')
         (cls.path / 'event_io.f').write_text(selected)
-        for name, directory in (('run.inc', 'Source'), ('extra_weights.f', 'Source'),
-                                ('unlops.inc', 'SubProcesses'),
-                                ('madfks_mcatnlo.inc', 'SubProcesses')):
+        for name, directory in (('run.inc', 'Source'), ('extra_weights.f', 'Source')):
             shutil.copyfile(template / directory / name, cls.path / name)
         (cls.path / 'driver.f').write_text(DRIVER)
         result = subprocess.run(
@@ -223,7 +221,8 @@ DRIVER = '''\
       use extra_weights
       implicit none
       include 'run.inc'
-      include 'unlops.inc'
+      integer MAXNUP
+      parameter (MAXNUP=500)
       integer nup,idprup,idup(MAXNUP),istup(MAXNUP)
       integer mothup(2,MAXNUP),icolup(2,MAXNUP)
       double precision xwgtup,scalup,aqedup,aqcdup

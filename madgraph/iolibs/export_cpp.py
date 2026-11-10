@@ -3873,6 +3873,15 @@ class ProcessExporterMG7(ProcessExporterCPP):
                                 for pid in pc['pdg_initial1'] + pc['pdg_initial2'])
             pc['has_fsr'] = any(abs(fid) in colored
                                 for p in procs for fid in p.get_final_ids())
+            # the max_jet_flavor the MLM clustering needs (enforced at launch,
+            # RunCardMG7.check_mlm_max_jet_flavor): the same value as the
+            # run_card default, unknown (0) for a model with no flavour scheme
+            beam_ids = set(pc['pdg_initial1'] + pc['pdg_initial2'])
+            nflav = model.get_flavour_scheme()
+            hadronic = set([1, 2, 3, 4, 5, 21, 22, 81])
+            if nflav and set(abs(i) for i in beam_ids) & hadronic:
+                pc['max_jet_flavor'] = banner_mod.default_max_jet_flavor(
+                    nflav, beam_ids)
 
         pc.write(pjoin(self.dir_path, 'SubProcesses', 'proc_characteristics'))
 

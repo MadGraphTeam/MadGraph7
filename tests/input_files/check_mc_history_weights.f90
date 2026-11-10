@@ -1,0 +1,319 @@
+module history_test_state
+  use fks_phase_space_data,only: p1_cnt,jac_cnt,p_born,p_ev,ybst_til_tolab, &
+       ybst_til_tocm,sqrtshat,shat,xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt,xi_i_fks_cnt,xiimax_cnt, &
+       xi_i_hat_ev,xi_i_hat_cnt
+  implicit none
+  include 'nexternal.inc'
+  include 'orders.inc'
+  include 'coupl.inc'
+  include 'run.inc'
+  include 'q_es.inc'
+  double precision :: xiScut_used,xiBSVcut_used
+  common/cxiScut_used/xiScut_used,xiBSVcut_used
+  integer :: i_fks,j_fks,nFKSprocess,fold,ifold_counter
+  common/fks_indices/i_fks,j_fks
+  common/c_nFKSprocess/nFKSprocess
+  common/cfl/fold,ifold_counter
+  character*4 :: abrv
+  common/to_abrv/abrv
+  double precision :: f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
+  common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
+  double precision :: f_s_MC_S,f_s_MC_H,f_c_MC_S,f_c_MC_H,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
+  common/factor_n1body_NLOPS/f_s_MC_S,f_s_MC_H,f_c_MC_S,f_c_MC_H,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
+  double precision :: f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+  common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+  double precision :: deg_xi(3),deg_lxi(3),deg_muF(3),dis_p(3),dis_l(3),dis_d(3)
+  common/to_amp_split_deg/deg_xi,deg_lxi,deg_muF
+  common/to_amp_split_dis/dis_p,dis_l,dis_d
+  double precision :: test_p,test_gsoft,test_gcoll
+  integer :: real_calls,degenerate_calls
+end module
+
+program check_mc_history_weights
+  use, intrinsic :: ieee_arithmetic
+  use history_test_state
+  use FKSParams, only: VetoedContributionTypes
+  use weight_lines
+  implicit none
+  double precision :: baseline(3,15,3),specialized(3,15,3),probne
+  double precision :: probabilities(3),gvalues(3),bad(3),bad_values(3)
+  double precision :: expected_momenta(0:3,nexternal)
+  integer,parameter :: record_types(3)=[1,5,12]
+  integer missing,selected
+  integer :: j,k,old_icontr
+  integer :: imass,ip,igs,igc,icuts,mode,i,cases,baseline_reals
+  logical :: cuts_born,cuts_real
+  character(8) :: matching
+  call allocate_weight_lines(nexternal)
+  probabilities=[0d0,0.37d0,1d0]
+  gvalues=[0d0,0.6d0,1d0]
+  p_ev=0d0
+  p_ev(0,:)=[100d0,100d0,80d0,60d0,60d0]
+  p_born=p_ev(:,1:nexternal-1)
+  do i=-2,2
+    p1_cnt(:,:,i)=p_ev
+  enddo
+  xi_i_fks_ev=0.2d0
+  y_ij_fks_ev=0.8d0
+  xi_i_fks_cnt=0.3d0
+  xiimax_cnt=1d0
+  xi_i_hat_ev=0.2d0
+  xiScut_used=0.5d0
+  i_fks=5
+  j_fks=3
+  nFKSprocess=1
+  fold=0
+  ifold_counter=1
+  abrv='all '
+  ickkw=0
+  call get_command_argument(1,matching)
+  if(trim(matching).eq.'fxfx')ickkw=3
+  lpp=1
+  xbk=0.1d0
+  scale=100d0
+  q2fact=scale**2
+  QES2=scale**2
+  g=1.3d0
+  ybst_til_tolab=0d0
+  ybst_til_tocm=0d0
+  shat=40000d0
+  sqrtshat=200d0
+  f_r=1.1d0
+  f_s=1.2d0
+  f_c=1.3d0
+  f_dc=1.4d0
+  f_sc=1.5d0
+  f_dsc=[1.6d0,1.7d0,1.8d0,1.9d0]
+  f_s_MC_S=2.1d0
+  f_s_MC_H=2.2d0
+  f_c_MC_S=2.3d0
+  f_c_MC_H=2.4d0
+  f_sc_MC_S=2.5d0
+  f_sc_MC_H=2.6d0
+  f_MC_S=2.7d0
+  f_MC_H=2.8d0
+  f_pdfsch_d=3.1d0
+  f_pdfsch_p=3.2d0
+  f_pdfsch_l=3.3d0
+  cases=0
+  do imass=0,1
+    test_mass=173d0*imass
+    do ip=1,3
+      test_p=probabilities(ip)
+      do igs=1,3
+        test_gsoft=gvalues(igs)
+        do igc=1,3
+          test_gcoll=gvalues(igc)
+          do icuts=0,3
+            cuts_born=btest(icuts,0)
+            cuts_real=btest(icuts,1)
+            do mode=0,2
+              mc_H_only=mode.eq.1
+              mc_S_only=mode.eq.2
+              icontr=0
+              real_calls=0
+              degenerate_calls=0
+              ! Poison remnants: the H-only path must not read stale S data.
+              deg_xi=1d30
+              deg_lxi=-1d30
+              deg_muF=2d30
+              dis_p=3d30
+              dis_l=-3d30
+              dis_d=4d30
+              call compute_native_NLOPS_weights(p_ev,p_ev,cuts_born,cuts_real,probne)
+              specialized=0d0
+              do i=1,icontr
+                specialized(:,itype(i),amppos(i))=specialized(:,itype(i),amppos(i))+wgt(:,i)
+                if (mode.eq.1.and..not.H_event(i)) error stop 'S record in H-only evaluation'
+                if (mode.eq.2.and.H_event(i)) error stop 'H record in S-only evaluation'
+              enddo
+              if (mode.eq.0) then
+                baseline=specialized
+                baseline_reals=real_calls
+              else
+                do i=1,15
+                  if ((i.eq.1.or.i.eq.13.or.(i.ge.8.and.i.le.10)).eqv.(mode.eq.1)) then
+                    if (maxval(abs(specialized(:,i,:)-baseline(:,i,:))).gt.1d-12) &
+                      error stop 'specialized native weights differ'
+                  endif
+                enddo
+                if (real_calls.gt.baseline_reals) error stop 'extra real evaluations'
+              endif
+              if (mode.eq.1) then
+                if (degenerate_calls.ne.0) error stop 'H-only degenerate remnant evaluation'
+                if (cuts_born.and.test_p.eq.0d0.and.real_calls.ne.0) &
+                  error stop 'zero P evaluated H matrix elements'
+                if (test_gsoft.eq.1d0.and.real_calls.gt.1) &
+                  error stop 'zero G evaluated H counterterms'
+              elseif(mode.eq.2.and.cuts_born.and.cuts_real)then
+                if(test_p.lt.1d0.and.maxval(abs(specialized(:,11,:))).eq.0d0) &
+                  error stop 'S-only evaluation lost the real S contribution'
+                if(test_p.eq.1d0.and.real_calls.ge.baseline_reals) &
+                  error stop 'S-only evaluation computed the pure H real term'
+              endif
+            enddo
+            cases=cases+1
+          enddo
+        enddo
+      enddo
+    enddo
+  enddo
+  mc_H_only=.false.
+  mc_S_only=.false.
+  old_icontr=icontr
+  bad_values=[ieee_value(0d0,ieee_quiet_nan),ieee_value(0d0,ieee_positive_inf), &
+              ieee_value(0d0,ieee_negative_inf)]
+  do j=1,3
+    do k=1,3
+      bad=0d0
+      bad(k)=bad_values(j)
+      nonfinite_contribution=.false.
+      call add_wgt(8,[2,0],bad(1),bad(2),bad(3))
+      if(.not.nonfinite_contribution.or.icontr.ne.old_icontr) &
+        error stop 'nonfinite weight accepted or not reported'
+      if(nonfinite_type.ne.8.or.nonfinite_sector.ne.nFKSprocess) &
+        error stop 'lost nonfinite weight source'
+    enddo
+  enddo
+  ! Suppressed S/H records are not part of this history's contribution.
+  nonfinite_contribution=.false.
+  mc_S_only=.true.
+  call add_wgt(8,[2,0],bad_values(1),0d0,0d0)
+  if(nonfinite_contribution)error stop 'rejected suppressed H record'
+  mc_S_only=.false.
+  VetoedContributionTypes=[1,8]
+  call add_wgt(8,[2,0],bad_values(1),0d0,0d0)
+  if(nonfinite_contribution)error stop 'rejected intentionally vetoed record'
+  VetoedContributionTypes=0
+  call add_wgt(8,[2,0],1d0,0d0,0d0)
+  if(nonfinite_contribution.or.icontr.ne.old_icontr+1)error stop 'valid weight did not recover'
+  ! Distinct endpoint momenta expose priority and fallback mistakes in
+  ! record storage. Collinear weights must skip slot zero even if valid.
+  do missing=0,3
+    do k=0,2
+      p1_cnt(:,:,k)=p_ev+10d0*(k+1)
+      if(k.lt.missing)p1_cnt(0,1,k)=-99d0
+    enddo
+    do j=1,size(record_types)
+      if(missing.lt.3)then
+        selected=missing
+        if(record_types(j).eq.5)selected=max(1,selected)
+        expected_momenta=p1_cnt(:,:,selected)
+      else
+        expected_momenta(:,1:nexternal-1)=p_born
+        expected_momenta(:,nexternal)=0d0
+      endif
+      call add_wgt(record_types(j),[2,0],1d0,2d0,3d0)
+      if(any(momenta_m(:,:,1,icontr).ne.expected_momenta).or. &
+           any(momenta_m(:,:,2,icontr).ne.p_ev))error stop 'recorded subtraction momenta differ'
+      if(record_types(j).eq.1)expected_momenta=p_ev
+      if(any(momenta(:,:,icontr).ne.expected_momenta))error stop 'recorded event momenta differ'
+    enddo
+  enddo
+  write(*,*) 'PASS native H and S weights' ,cases,' cases'
+end program
+
+subroutine compute_MC_subt_term(p,p_cms,probne)
+  use history_test_state
+  use extra_weights
+  use mc_counterterms, only: gfactsf,gfactcl
+  implicit none
+  double precision :: p(0:3,5),p_cms(0:3,5),probne
+  integer :: i,orders(2)
+  probne=test_p
+  gfactsf=test_gsoft
+  gfactcl=test_gcoll
+  do i=1,3
+    call amp_split_pos_to_orders(i,orders)
+    QCD_power=orders(1)
+    wgtcpower=0d0
+    orders_tag=i
+    amp_pos=i
+    call add_wgt(12,orders,11d0*i*probne,0d0,0d0)
+    call add_wgt(13,orders,-13d0*i*probne,0d0,0d0)
+  enddo
+end subroutine
+
+subroutine sreal(p,xi,y,ans)
+  use history_test_state
+  implicit none
+  double precision :: p(0:3,5),xi,y,ans
+  real_calls=real_calls+1
+  amp_split=[2d0+xi+3d0*y,4d0+2d0*xi+y,0d0]
+  ans=sum(amp_split)
+end subroutine
+
+subroutine sreal_deg(p,xi,ans1,ans2)
+  use history_test_state
+  implicit none
+  double precision :: p(0:3,5),xi,y,ans1,ans2
+  degenerate_calls=degenerate_calls+1
+  deg_xi=[3d0,5d0,7d0]
+  deg_lxi=[4d0,6d0,8d0]
+  deg_muF=[5d0,7d0,9d0]
+  dis_p=[6d0,8d0,10d0]
+  dis_l=[7d0,9d0,11d0]
+  dis_d=[8d0,10d0,12d0]
+  amp_split=-1d30
+  ans1=1d0
+  ans2=2d0
+end subroutine
+
+double precision function fks_Sij(p,i,j,xi,y)
+  implicit none
+  double precision :: p(0:3,5),xi,y
+  integer :: i,j
+  fks_Sij=0.7d0+0.1d0*xi+0.05d0*y
+end function
+
+subroutine amp_split_pos_to_orders(i,orders)
+  implicit none
+  integer :: i,orders(2)
+  if (i.eq.1) then
+    orders=[4,0]
+  elseif (i.eq.2) then
+    orders=[0,4]
+  else
+    orders=[2,2]
+  endif
+end subroutine
+
+integer function get_orders_tag(orders)
+  implicit none
+  integer :: orders(2)
+  get_orders_tag=10*orders(1)+orders(2)
+end function
+
+integer function get_n_tagged_photons()
+  get_n_tagged_photons=0
+end function
+
+double precision function get_rescale_alpha_factor(n,order)
+  integer :: n,order
+  get_rescale_alpha_factor=1d0
+end function
+
+subroutine set_pdg(ict,sector)
+  use weight_lines
+  implicit none
+  integer :: ict,sector
+  pdg(:,ict)=[21,21,6,-6,21]
+  pdg_uborn(:,ict)=pdg(:,ict)
+end subroutine
+
+subroutine set_cms_stuff(i)
+  integer :: i
+end subroutine
+
+subroutine set_alphaS(p)
+  double precision :: p(0:3,5)
+end subroutine
+
+subroutine set_FxFx_scale(i,p)
+  integer :: i
+  double precision :: p(0:3,5)
+end subroutine
+
+subroutine include_multichannel_enhance(i)
+  integer :: i
+end subroutine
