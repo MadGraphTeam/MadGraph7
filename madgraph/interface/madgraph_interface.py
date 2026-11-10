@@ -14292,7 +14292,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         # optional generation choices: gauge, polarization, TauDecay
         gauge = str(self.options.get('gauge', 'unitary'))
-        if 'FD' in self.gauges_in_use():
+        if hasattr(self, 'gauges_in_use') and 'FD' in self.gauges_in_use():
             gauge = 'FD'    # some processes in the FD gauge (--gauge=FD)
         pairs += citation.optional_generation_pairs(
             gauge=gauge,
