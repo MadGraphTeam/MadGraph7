@@ -1344,12 +1344,11 @@ pub fn notes(records: &[Record], carrier: &str, precision: u32) -> Vec<String> {
         "kinematics-improvement: {carrier} at precision {precision} ({}): {summary}",
         first.requested.name()
     )];
-    lines.extend(
-        records
-            .iter()
-            .enumerate()
-            .filter_map(|(index, record)| record.warning().map(|text| format!("point {index}: {text}"))),
-    );
+    lines.extend(records.iter().enumerate().filter_map(|(index, record)| {
+        record
+            .warning()
+            .map(|text| format!("point {index}: {text}"))
+    }));
     lines
 }
 
@@ -1410,9 +1409,13 @@ pub mod binary64 {
         });
         shells
             && (0..4).all(|mu| {
-                exact_sum_is_zero(legs.iter().enumerate().map(|(k, leg)| {
-                    if k < n_initial { leg[mu] } else { -leg[mu] }
-                }))
+                exact_sum_is_zero(
+                    legs.iter().enumerate().map(
+                        |(k, leg)| {
+                            if k < n_initial { leg[mu] } else { -leg[mu] }
+                        },
+                    ),
+                )
             })
     }
 

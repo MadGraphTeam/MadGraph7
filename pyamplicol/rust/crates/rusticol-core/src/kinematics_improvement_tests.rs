@@ -207,8 +207,16 @@ fn the_binary64_entry_of_the_tree_runtimes() {
         [10.0, 0.0, 0.0, 8.0],
         [10.0, 0.0, 0.0, -8.0],
     ];
-    assert!(binary64::exactly_physical(&massive, 2, &[0.0, 0.0, 6.0, 6.0]));
-    assert!(!binary64::exactly_physical(&massive, 2, &[0.0, 0.0, 6.0, 5.0]));
+    assert!(binary64::exactly_physical(
+        &massive,
+        2,
+        &[0.0, 0.0, 6.0, 6.0]
+    ));
+    assert!(!binary64::exactly_physical(
+        &massive,
+        2,
+        &[0.0, 0.0, 6.0, 5.0]
+    ));
     // One ulp off conservation is not exact.
     let mut off = exact.clone();
     off[2][1] = f64::from_bits(300.0f64.to_bits() + 1);
@@ -218,8 +226,17 @@ fn the_binary64_entry_of_the_tree_runtimes() {
     let masses: Vec<f64> = m2.iter().map(|m2| m2.sqrt()).collect();
     assert!(!binary64::exactly_physical(&legs, 2, &masses));
     let out = binary64::improve_point(&legs, 2, &masses, Variant::ZShift, true, &tolerances);
-    assert_eq!(out.record.produced, Some(Variant::ZShift), "{:?}", out.record);
-    assert!(out.record.exactness.as_ref().unwrap().exact, "{:?}", out.record);
+    assert_eq!(
+        out.record.produced,
+        Some(Variant::ZShift),
+        "{:?}",
+        out.record
+    );
+    assert!(
+        out.record.exactness.as_ref().unwrap().exact,
+        "{:?}",
+        out.record
+    );
     // The same as `improve` on the rounded squares (one source of targets).
     let squares: Vec<f64> = masses.iter().map(|m| m * m).collect();
     let direct = improve(&legs, 2, &squares, Variant::ZShift, true, &tolerances);
@@ -235,7 +252,10 @@ fn the_binary64_entry_of_the_tree_runtimes() {
         "kinematics-improvement: double at precision 16 (z-shift): not-improved 1, z-shift 1"
     );
     assert_eq!(lines.len(), 2);
-    assert!(lines[1].starts_with("point 1: kinematics-not-improved: "), "{lines:?}");
+    assert!(
+        lines[1].starts_with("point 1: kinematics-not-improved: "),
+        "{lines:?}"
+    );
     assert!(notes(&[], "double", 16).is_empty());
 }
 

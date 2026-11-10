@@ -1159,9 +1159,26 @@ z-shift's slow-particle move above), the remedy for the near-forward
 amplification. Surfaces: the run card above, the CLI (`--kinematics-
 improvement`, `--[no-]kinematics-improvement-binary64` on `evaluate` and
 `profile`), Python (`Runtime.load(..., kinematics_improvement=,
-kinematics_improvement_binary64=)` and per evaluation), and the native loop
+kinematics_improvement_binary64=)` and per evaluation), the native loop
 SDKs (`rusticol_virtual_set_kinematics_improvement`,
-`rusticol_virtual_set_kinematics_improvement_binary64` and their wrappers).
+`rusticol_virtual_set_kinematics_improvement_binary64` and their wrappers)
+and the native tree SDK (`rusticol_runtime_set_kinematics_improvement`,
+`rusticol_runtime_set_kinematics_improvement_binary64` and their wrappers;
+its calls are binary64, so it acts only with the switch on).
+
+Tree evaluations are values only: a tree runtime's record is the warnings
+channel. The C ABI's `rusticol_runtime_take_warnings_json` and the Python
+tree runtime's `Runtime.take_warnings()` return the record of the most recent
+improved call (a summary line naming the carrier, the precision, the
+requested setting and the count per producing variant or status, then every
+typed warning with its point index), replaced by the next improved call and
+not kept while the warnings are muted; in Python the typed warnings are also
+issued as Python warnings. The tree higher-precision modes (Python
+`precision` above 16 and the correlated calls' double-double / arbitrary
+carriers, the default `"arbitrary"` at 16 digits included) improve toward
+the exact executors' external masses at that precision; binary64 (the
+switch) toward the binary64 masses of the native runtime's external
+wavefunctions, the same code as the C ABI's.
 
 #### Leading-colour helicity and colour-flow selection
 

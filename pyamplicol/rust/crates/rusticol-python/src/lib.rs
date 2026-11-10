@@ -473,6 +473,10 @@ impl ResolvedEvaluation {
     }
 }
 
+/// The binary64 kinematics improvement's improved points (`[point][leg]`)
+/// and one JSON record per point (`Runtime.improve_f64`).
+type ImprovedF64Points = (Vec<Vec<[f64; 4]>>, Vec<String>);
+
 #[pyclass(module = "pyamplicol._rusticol", unsendable)]
 struct Runtime {
     runtime: NativeRuntime,
@@ -1066,7 +1070,7 @@ impl Runtime {
         &self,
         momenta: &Bound<'_, PyAny>,
         variant: &str,
-    ) -> PyResult<(Vec<Vec<[f64; 4]>>, Vec<String>)> {
+    ) -> PyResult<ImprovedF64Points> {
         let variant = rusticol_core::kinematics_improvement::setting(variant)
             .map_err(PyValueError::new_err)?
             .ok_or_else(|| PyValueError::new_err("the binary64 improvement needs a variant"))?;

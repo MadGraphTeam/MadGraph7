@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: 0BSD
 
+use rusticol_core::kinematics_improvement::{self, Variant};
 use rusticol_core::{
     NativeCorrelatedRequest, NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind,
     NativeOnTheFlyWarmUpResult, NativeOnTheFlyWarmUpStage, NativeRuntime,
     NativeSpinCorrelationVectors, RusticolError, RusticolErrorKind, supported_runtime_capabilities,
 };
-use rusticol_core::kinematics_improvement::{self, Variant};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -122,7 +122,11 @@ impl RusticolRuntimeHandle {
     /// implementation), their record the call's kinematics notes (read with
     /// the warnings, `rusticol_runtime_take_warnings_json`; none while the
     /// warnings are muted).
-    fn improved<'a>(&mut self, momenta: &'a [f64], point_count: usize) -> AbiResult<Cow<'a, [f64]>> {
+    fn improved<'a>(
+        &mut self,
+        momenta: &'a [f64],
+        point_count: usize,
+    ) -> AbiResult<Cow<'a, [f64]>> {
         let Some(variant) =
             kinematics_improvement::applies(self.kinematics, self.kinematics_binary64, true)
         else {
