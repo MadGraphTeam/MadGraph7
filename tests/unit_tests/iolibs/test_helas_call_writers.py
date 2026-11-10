@@ -1387,9 +1387,10 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                              expected, process)
 
     def test_reference_massive_fermions_single_vector(self):
-        """With a single massless vector the spin axis does not pay for the
-        costlier wavefunctions (u u~ > t t~ g: 1.20 against 1.19 us): the top
-        quarks keep the helicity basis"""
+        """With a single massless vector no reference is shared by two of
+        them, and the spin axis does not pay for the costlier wavefunctions
+        (u u~ > t t~ g: 1.20 against 1.19 us): the top quarks keep the
+        helicity basis"""
 
         for process, expected in (('u u~ > t t~ g', {5: 1}),
                                   ('u g > t t~ u', {2: 1})):
@@ -1402,13 +1403,15 @@ class AxialGaugeReferenceTest(unittest.TestCase):
         keeps the beam reference it has without the top quarks (never the
         momentum of a top quark: another gauge, which a fixed top width
         breaks), and the top quarks keep the helicity basis. With two gluons
-        they reference each other, and the top quarks take the first one"""
+        they reference each other: no reference is shared by two vectors,
+        and the top quarks keep the helicity basis as well (no further
+        vanishing amplitude, measured)"""
 
         me = self.matrix_element('e+ e- > t t~ g')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me), {5: 1})
         me = self.matrix_element('e+ e- > t t~ g g')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
-                         {5: 6, 6: 5, 3: 5, 4: 5})
+                         {5: 6, 6: 5})
 
     def test_reference_massive_fermions_photon(self):
         """a a > t t~ g and g g > t t~ a: the vectors keep the references
@@ -1424,7 +1427,7 @@ class AxialGaugeReferenceTest(unittest.TestCase):
     def test_two_vectors_to_two_massive_fermions(self):
         """g g > t t~ and a a > t t~ keep the helicity basis, which has its
         own vanishing helicity configurations there (and as many as any
-        other spin axis)"""
+        other spin axis): the two beam vectors reference each other"""
 
         for process in ('g g > t t~', 'a a > t t~'):
             me = self.matrix_element(process)

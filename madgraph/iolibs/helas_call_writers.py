@@ -118,7 +118,7 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
     lightlike r, IXXXXXR/OXXXXXR build the two spin states from the
     massless spinors of pflat = p - m^2/(2 p.r) r and of r, one per
     chirality (arXiv:2011.10075). Taking for r the reference R that most of
-    the vectors it couples to share (the gluons first), one state of the
+    the vectors it couples to share, one state of the
     fermion has the massless spinor of R in the chirality a vector of a given
     helicity contracts with R: a chain of same-helicity vectors then vanishes
     between two such fermions, as it does on a massless fermion line carrying
@@ -128,12 +128,14 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
     helicity basis, 8784 with the references of the vectors only, 7868 with
     those of the top quarks; 1024 and 922 for u g > t t~ u g.
 
-    The new wavefunctions cost about twice IXXXXX/OXXXXX, and the spin axis
-    pays only with at least two massless vectors coupled to the fermion in a
-    process of five legs or more: g g > t t~ (4 of its 16 helicity
+    The mechanism needs a chain of vectors sharing R, and the new
+    wavefunctions cost about twice IXXXXX/OXXXXX: a fermion gets a spin axis
+    only when at least two of the massless vectors it couples to share R.
+    g g > t t~ (the beam gluons reference each other; 4 of its 16 helicity
     configurations already vanish in the helicity basis, another axis has 4
-    others), u u~ > t t~ g (1.19 against 1.20 us, measured) and the processes
-    without any vector keep the helicity basis. The references of the vectors
+    others), u u~ > t t~ g (1.20 against 1.19 us, measured), e+ e- > t t~ g g
+    (the gluons reference each other: no further zero, 1.5 % slower,
+    measured) and the processes without any vector keep the helicity basis. The references of the vectors
     never depend on the fermions: a vector in the gauge of a massive momentum
     is another gauge, which with a fixed top-quark width (not gauge
     invariant) moved the madevent cross section of g g > t t~ g g by +0.4 to
@@ -189,7 +191,7 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
         order = sorted(candidates, key=preference)
         refs[vector] = order[1] if vector == order[0] else order[0]
 
-    if not massive_fermions or len(externals) < 5 or \
+    if not massive_fermions or \
             any(wf.get('polarization') for wf in externals.values()):
         return refs
     for fermion in sorted(externals):
@@ -198,15 +200,14 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
                 not wf.get('leg_state') or wf.get('offshell') or \
                 wf.get('onium') or wf.get('is_loop'):
             continue
-        coupled = [v for v in vectors if couples_to(v)(fermion)]
-        gluons = [v for v in coupled if colored(v)]
-        if len(coupled) < 2:
+        # the reference most of the vectors it couples to share, a tie going
+        # to the preferred leg; none unless two vectors at least share it
+        shared = [refs[v] for v in vectors if couples_to(v)(fermion)]
+        if not shared:
             continue
-        # the reference most of its vectors share, the gluons first; a tie
-        # goes to the preferred leg
-        shared = [refs[v] for v in (gluons or coupled)]
-        refs[fermion] = min(set(shared), key=lambda r: (-shared.count(r),
-                                                        preference(r)))
+        best = min(set(shared), key=lambda r: (-shared.count(r), preference(r)))
+        if shared.count(best) >= 2:
+            refs[fermion] = best
     return refs
 
 
