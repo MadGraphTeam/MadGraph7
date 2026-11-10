@@ -1,0 +1,18 @@
+{
+  "authorization_scope": "Owner/root confirmed this exact case CLOSED; read-only preflight only. No private compiler/native stage admitted.",
+  "case": "qcd_n3_uux_zgg",
+  "checkpoint": {
+    "path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/qcd_n3_uux_zgg/checkpoint.json",
+    "sha256": "5da76edf538e19fb894bf1f4ba212bf0c0fd984f6e9e4db330035de0d5efdc4d"
+  },
+  "compilation.json_sha256": "1471dc0eb10a4dba5a95c2926a0c37e647755918954adb0d0b51076303b103c7",
+  "executable_sha256": "1cd6782a00d6733259587d96688548c3a8636f7e5105050067d5d42ddcb52597",
+  "export": ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/qcd_n3_uux_zgg",
+  "generation.json_sha256": "9e3916b695c86d826f9b3be8c24e6fd13b0d86acec2e9b85e741bb3ef228e7cb",
+  "numerical_inputs": {
+    "path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/candidate-9/candidate-inputs.json",
+    "sha256": "a816acb86d7876b9aca16ba2a6dcd47b168cd4433b7b63394ea31c5ecaf5092d"
+  },
+  "schema": "madloop-current-source-qcd3-closed-binding-v1",
+  "state": "closed"
+}

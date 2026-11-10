@@ -1,0 +1,49 @@
+{
+  "closed_execution": {
+    "actual_exit_code": 0,
+    "dryrun_sha256": "5bac8cc40c16eda6504764bbcb0a7675cd1fe6a819019bcb95843a595c4b50a5",
+    "prepare_sha256": "9c1b45cdbf2783d2da63df8c55a744c2cb976fe4316ed715973dfbdae0e34d85",
+    "run_terminal_sha256": "4e6cc378cf14b9f9bab387efb02c63307a3f1d6dc2a1cbff03f4905a4d022fac",
+    "session_id": 29683
+  },
+  "files": {
+    "README.md": {
+      "bytes": 3650,
+      "sha256": "ba323aca29fabaf1cf859dbdfe60202fad3b1186fa0fde6c3e495f4c18e684d1"
+    },
+    "capture.py": {
+      "bytes": 13495,
+      "sha256": "43206b1c99dc903628d98c9c228dc234fe2a5a9ccdde8fe87d83d64e7f49cd54"
+    },
+    "journal_codec.py": {
+      "bytes": 9971,
+      "sha256": "33505d7db5186df76c974cf419b2333a8efbc1ce90ecee67a19c9edfd9de7a7a"
+    },
+    "test_capture.py": {
+      "bytes": 3262,
+      "sha256": "b84357dc741b6c49a5a0f0873643d6dc2bdc7d253a4ae9d4b2abf5c1aa158983"
+    },
+    "test_verify.py": {
+      "bytes": 10789,
+      "sha256": "e8ef764cd50b461132f764ba0ccf9762c5af1767ef0cbe4449e3a3238399310f"
+    },
+    "verify.py": {
+      "bytes": 28374,
+      "sha256": "3acab391e5849b500dc1e2fc1e0de022a0f50c6ea5c5abe255851e0ee52f1218"
+    }
+  },
+  "inputs": {
+    "docs/benchmarkfolder/stability_appendix_c/current-source-classifier-proposal-1/source-index.json": "7bc7a08c2a96483100ea47c2d652694a34a4f426af2b5ba9a8317798d6003032",
+    "docs/benchmarkfolder/stability_appendix_c/current-source-pilot-proposal-1/source-index.json": "c071ec1c87ce6d5034e8a2daf07f093e1c71581ba79bcaa1c9176ca0c79e05ef",
+    "docs/benchmarkfolder/stability_appendix_c/retention-source-1/journal_codec.py": "33505d7db5186df76c974cf419b2333a8efbc1ce90ecee67a19c9edfd9de7a7a",
+    "docs/benchmarkfolder/stability_appendix_c/source5/source-index.json": "ffbc57948b062e6380f71e22c9f303b0e652bcd4060952b7bc0a4fe216191271",
+    "tools/tirust_benchmark_points.py": "9f95a9a3475a18597ca182f7d42d7e021933bc01458fcbf3484ad63b5655e46c"
+  },
+  "schema": "madloop-current-source-pilot-retention-source-v1",
+  "status": "source-reviewed; capture not executed",
+  "validation": {
+    "independent_source_review": "passed",
+    "native_or_capture_invocations": 0,
+    "pure_mock_tests": 17
+  }
+}

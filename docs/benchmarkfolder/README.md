@@ -338,6 +338,16 @@ remain unknown bounds, not measured failure fractions. Nineteen completed reques
 are not nineteen accuracy passes. The preceding [25-page retrospective report](https://github.com/MadGraphTeam/MadGraph7/blob/ba047d9165/docs/benchmarkfolder/benchmark.pdf)
 remains available at its recorded commit.
 
+The separate [current-source QCD Zgg stability study](stability_appendix_c/current-source-qcd3-raw-delivery-2/README.md)
+adds a [reproducible comparison plot](stability_appendix_c/current-source-qcd3-raw-figure-1/current-source-qcd-n3-raw-dp-stability.pdf)
+for the successor Fortran source. CutTools, Ninja, COLLIER and NinjaRS each have
+100 available diagnostics; TIRust has 95. Its five unavailable points remain in
+the denominator and give unknown-tail bounds, including [0, 0.05] at 1e-3.
+These three-probe, host forced-DP/card-selected diagnostics measure internal
+consistency; they establish neither true error nor observed internal precision.
+The exact data, failures and independent replay are retained separately. This
+study is not part of the immutable 33-page report's progress-1 selection.
+
 The [first-failure capture and standalone replay](experiments/tirust-first-failure-capture/closed-2/COMPACT_README.md)
 retains six exact Zgg tensor inputs. All six reproduce their reported
 Gram-conditioning rejection in fresh and repeated contexts; failed tensor

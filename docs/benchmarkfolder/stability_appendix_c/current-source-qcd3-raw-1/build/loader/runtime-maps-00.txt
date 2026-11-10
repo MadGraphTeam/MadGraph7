@@ -1,0 +1,19 @@
+63ef39996000-63ef39997000 r--p 00000000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+63ef39997000-63ef39998000 r-xp 00001000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+63ef39998000-63ef39999000 r--p 00002000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+63ef39999000-63ef3999b000 rw-p 00002000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+75aeca351000-75aeca379000 r--p 00000000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+75aeca379000-75aeca4fa000 r-xp 00028000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+75aeca4fa000-75aeca549000 r--p 001a9000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+75aeca549000-75aeca54f000 rw-p 001f7000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+75aeca54f000-75aeca55e000 rw-p 00000000 00:00 0 
+75aeca55e000-75aeca562000 r--p 00000000 00:00 0                          [vvar]
+75aeca562000-75aeca564000 r--p 00000000 00:00 0                          [vvar_vclock]
+75aeca564000-75aeca566000 r-xp 00000000 00:00 0                          [vdso]
+75aeca566000-75aeca567000 r--p 00000000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+75aeca567000-75aeca592000 r-xp 00001000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+75aeca592000-75aeca59d000 r--p 0002c000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+75aeca59d000-75aeca5a0000 rw-p 00037000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+75aeca5a0000-75aeca5a1000 rw-p 00000000 00:00 0 
+7ffc2118c000-7ffc211af000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

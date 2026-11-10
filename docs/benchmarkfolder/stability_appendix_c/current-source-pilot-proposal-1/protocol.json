@@ -1,0 +1,149 @@
+{
+  "schema": "madloop-current-source-qcd-n3-raw-stability-proposal-v1",
+  "status": "source-only proposal; the canonical QCD n3 case is closed, but no private diagnostic driver has been built or raw worker qualified",
+  "working_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "campaign": "entry-latch-cache-guard-1",
+  "campaign_manifest_sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+  "case": "qcd_n3_uux_zgg",
+  "model": "loop_sm",
+  "process": "u u~ > z g g [virt=QCD]",
+  "cases": [
+    {
+      "id": "qcd_n3_uux_zgg",
+      "model": "loop_sm",
+      "process": "u u~ > z g g [virt=QCD]"
+    }
+  ],
+  "backends": [1, 6, 7, 8, 9],
+  "request_schedule": "fixed backend order 1, 6, 7, 8, 9; each attempted at most once",
+  "point_count_per_process": 100,
+  "primary_calls_expected": 1500,
+  "points": {
+    "path": "docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.dat",
+    "sha256": "b46ce200bb330826d2a4cff69f61f828d3105c0566444fa548b1de75622ee8dd",
+    "metadata_path": "docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.json",
+    "metadata_sha256": "e4a262966bc0de149e3b16a56f85058c56ba068ead2b73f3586101ff38c320e4",
+    "source": "complete previously frozen cut-qualified physical input stream; byte-for-byte reuse across all five workers",
+    "count": 100,
+    "center_of_mass_energy_GeV": 1000.0,
+    "incoming_masses_GeV": [0.0, 0.0],
+    "final_state_masses_GeV": [91.188, 0.0, 0.0],
+    "physical_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+    "new_point_generation": false,
+    "post_evaluation_point_replacement": false
+  },
+  "sampling": {
+    "final_state_pt_min_GeV": 50.0,
+    "final_state_pair_delta_R_min": 0.5,
+    "boundary_rule": "strictly greater than both cuts",
+    "common_point_stream_across_backends": true,
+    "helicities": "summed",
+    "colors": "summed with the unchanged generated normalization",
+    "renormalization_scale": "MU_R equals the incoming invariant mass; 1000 GeV for the saved stream"
+  },
+  "methods": [
+    {"id": "original", "CTModeRun": 1, "rotation": "identity"},
+    {"id": "reversed", "CTModeRun": 2, "rotation": "identity"},
+    {"id": "rotated", "CTModeRun": 1, "rotation": "E'=E, px'=-py, py'=px, pz'=pz"}
+  ],
+  "policy": {
+    "precision": "host forced-DP diagnostics using the exact sealed source5 worker",
+    "backend_observation": "effective singleton card selection; unchecked return code 110 does not identify the internal reducer or its precision",
+    "automatic_rescue": false,
+    "force_stability_check": false,
+    "CTModeInit": 1,
+    "MLReductionLib": "exactly the selected backend followed by the zero sentinel",
+    "LoopPoleMode": -1,
+    "TIRustComputeFinite": true,
+    "UseQPIntegrandForTIRust": true,
+    "TIRustGlobalCache": 0,
+    "COLLIERComputeUVpoles": true,
+    "COLLIERComputeIRpoles": true,
+    "COLLIERGlobalCache": 0,
+    "COLLIERUseInternalStabilityTest": false,
+    "COLLIERRequiredAccuracy": 1e-13,
+    "numerator_model_and_reducers": "reuse the newly closed canonical export and its qualified numerical objects; change only the private diagnostic driver and explicit numerical cards",
+    "classification": "the sealed current-source classifier may remove only the incoming-latch reason for an authenticated generated worker whose two outgoing software latches are clear; all group, nonfinite, coverage, status, warning, bootstrap, split-order and completeness gates remain",
+    "hardware_ieee_state_observed": false,
+    "stdout_and_stderr": "retain the complete merged console and every failure; no diagnostic suppression",
+    "historical_reclassification": false,
+    "automatic_retry": false
+  },
+  "admission": {
+    "closed_input_binding": "closed-input.json is a separate source payload, authenticated by the reviewed source seal; it pins the exact owner checkpoint, generation/compilation receipts and canonical export identity",
+    "closure_gate": "authenticate the sealed closed-input.json and exact checkpoint SHA256, and require status closed before opening any export path",
+    "owner_checkpoint": "the benchmark owner has now closed the QCD n3 checkpoint and root has permitted read-only admission; a successful build alone would not permit reading an active export",
+    "required_joins": [
+      "exact current campaign manifest, complete exporter and numerical source inventories",
+      "generation case and campaign binding, full numerical rebuild receipt, compiled source hashes and executable identity",
+      "actual generated loop matrix, qualified public-entry reset and wrapper, process prefix, dimensions and initialized coefficient layout",
+      "exact rendered source5 worker, private build receipt, private executable and admitted runtime mappings",
+      "private tree and finite external link closure, preserved canonical donor tree and production sources",
+      "full physical-card search and all resources, current physical card and mass probe matching the complete frozen point stream"
+    ],
+    "execution_gate": "root still reviews the exact source seal and closed-case binding before compiler, loader or amplitude execution; current read-only permission grants no compiler or native execution"
+  },
+  "limits": {
+    "cpu": 13,
+    "cpu_is_reserved": false,
+    "memory_bytes": 4294967296,
+    "request_wall_seconds": 180,
+    "prepare_wall_seconds": 120,
+    "loader_wall_seconds": 30,
+    "wall_caps_include_cleanup": true,
+    "request_count": 5,
+    "primary_calls_per_worker": 300,
+    "primary_calls_total": 1500,
+    "bootstrap_max_calls_per_worker": 16,
+    "bootstrap_max_calls_total": 80,
+    "public_calls_maximum": 1580,
+    "common_lock": ".tirust-build/numerical-tests.lock",
+    "lock_backends": [8, 9],
+    "lock_wait_seconds": 1800,
+    "lock_wait_is_outside_execution_cap": true,
+    "automatic_retry": false
+  },
+  "preparation": {
+    "private_check_sa_only_make_invocations": 1,
+    "driver_compiler_commands_maximum": 2,
+    "exact_PT_INTERP_loader_list_queries": 1,
+    "full_numerical_or_library_rebuilds": 0,
+    "amplitude_evaluations": 0,
+    "dryrun": "make five separate private worker copies, exercise card writes/readback, physical-card lookup and read-only guards; launch no child",
+    "native_search_environment": "clean compiler and launcher environment; apply the exact admitted LD_LIBRARY_PATH only at target execve"
+  },
+  "cli": {
+    "default": "controller.py plan",
+    "readonly": "controller.py readonly",
+    "prepare": "controller.py prepare --execute",
+    "dryrun": "controller.py dryrun",
+    "run": "controller.py run --execute",
+    "scope": "commands are a proposed interface; this protocol records no command execution or source admission"
+  },
+  "statistics": {
+    "observable": "finite coefficient divided by Born; raw Born, finite and Laurent coefficients are retained",
+    "metric": "relative spread of the three forced-DP observables, using the unchanged sealed metric implementation",
+    "population": "100 fixed points per backend, including rejected and unexecuted points",
+    "unavailable": "retain reasons and fixed-population lower/upper tail bounds; never replace a failed point",
+    "interpretation": "internal consistency diagnostic, without independent true-error, hardware IEEE exception, runtime acceptance or observed internal precision claims"
+  },
+  "delivery": {
+    "new_evidence": "a separate additive source-bound dataset and any later explicitly reviewed figures",
+    "historical_data_and_figures": "unchanged",
+    "canonical_report_promotion": "separate root review; not authorized by this source-only proposal",
+    "precise_performance_timings": "Hua-Sheng's local-machine TODO"
+  },
+  "inputs": {
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+    "docs/benchmarkfolder/stability_appendix_c/current-source-classifier-proposal-1/source-index.json": "7bc7a08c2a96483100ea47c2d652694a34a4f426af2b5ba9a8317798d6003032",
+    "docs/benchmarkfolder/stability_appendix_c/source5/source-index.json": "ffbc57948b062e6380f71e22c9f303b0e652bcd4060952b7bc0a4fe216191271",
+    "docs/benchmarkfolder/stability_appendix_c/source5/pilot.py": "22b06cda2303d9d2fd42aed418aa4518db0d9e834678862330ffa0d6600e9eef",
+    "docs/benchmarkfolder/stability_appendix_c/source5/stability_worker.f": "371f8ccb72a5ee3dc1bad628cc855e239c7d0c26d5f30b5ff652f15afc564cc9",
+    "docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.dat": "b46ce200bb330826d2a4cff69f61f828d3105c0566444fa548b1de75622ee8dd",
+    "docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.json": "e4a262966bc0de149e3b16a56f85058c56ba068ead2b73f3586101ff38c320e4",
+    "docs/benchmarkfolder/experiments/current-cms-replay-supervisor-2/link_closure.py": "e6ac52e09b699e8929a567a9c963e7f8e52da6e18b0220f8ef8b1ec5a5ac92a7",
+    "docs/benchmarkfolder/experiments/current-cms-replay-supervisor-1/ownership/process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ece7c4e855b50f13822f441d7be227631293acbc9ed345a2f1a154f0329757a2"
+  }
+}

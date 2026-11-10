@@ -1,0 +1,46 @@
+{
+  "preparation_sha256": "9c1b45cdbf2783d2da63df8c55a744c2cb976fe4316ed715973dfbdae0e34d85",
+  "requests": [
+    {
+      "backend": 1,
+      "bootstrap_calls_maximum": 16,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend1",
+      "lock_required": false,
+      "primary_calls_expected": 300
+    },
+    {
+      "backend": 6,
+      "bootstrap_calls_maximum": 16,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend6",
+      "lock_required": false,
+      "primary_calls_expected": 300
+    },
+    {
+      "backend": 7,
+      "bootstrap_calls_maximum": 16,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend7",
+      "lock_required": false,
+      "primary_calls_expected": 300
+    },
+    {
+      "backend": 8,
+      "bootstrap_calls_maximum": 16,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend8",
+      "lock_required": true,
+      "primary_calls_expected": 300
+    },
+    {
+      "backend": 9,
+      "bootstrap_calls_maximum": 16,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend9",
+      "lock_required": true,
+      "primary_calls_expected": 300
+    }
+  ],
+  "source_index_sha256": "c071ec1c87ce6d5034e8a2daf07f093e1c71581ba79bcaa1c9176ca0c79e05ef"
+}

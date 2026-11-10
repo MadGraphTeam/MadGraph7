@@ -1,0 +1,39 @@
+{
+  "actual_capture_session": {
+    "exit_code": 0,
+    "id": 10449
+  },
+  "actual_native_session": {
+    "exit_code": 0,
+    "id": 29683
+  },
+  "actual_render_session": {
+    "exit_code": 0,
+    "id": 39740
+  },
+  "files": {
+    "README.md": {
+      "bytes": 3902,
+      "sha256": "87e28333f027832dca64822ff68dd55d815fa0ca59ba554c51f7a0fefbcfb6f6"
+    },
+    "figure-verification.json": {
+      "bytes": 509,
+      "sha256": "44ebaf7b00504c1f4fc44050bc3a8c93522fa41c60a03fb09534248c11c7adb5"
+    },
+    "verify_figure.py": {
+      "bytes": 3466,
+      "sha256": "a4651be69e588ee710bca3706d5f1d5e1395f43be636d5568a2695ad91c1ae85"
+    }
+  },
+  "historical_reclassification": false,
+  "inputs": {
+    "data_index_sha256": "b2589cfcd71f9940a6dea98376be16b93e2b056aae4596d86a6fd6d5747dce30",
+    "figure_index_sha256": "cac6a230d034e5ac039232ae8f78fc8b4e2673e97c9abf0f8af0bc2b7bdddcb7",
+    "figure_source_index_sha256": "0679b40df647985d5cd6084948bddba791950725f666d87779b39134df0f8a90",
+    "retention_source_index_sha256": "cff6f1858787fc7ac2719b0a24463e74fe2aa4494a3a9368b850f668c04d0b92",
+    "verification_index_sha256": "3a89ab3de84f1a4c65ae80ebe41c4e31add0601fcf6e0443960d2198f37f9d88"
+  },
+  "numerical_acceptance_claimed": false,
+  "performance_acceptance_claimed": false,
+  "schema": "madloop-current-source-qcd3-raw-delivery-v1"
+}

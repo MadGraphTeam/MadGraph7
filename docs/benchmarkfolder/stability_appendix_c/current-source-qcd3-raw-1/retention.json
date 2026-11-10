@@ -1,0 +1,426 @@
+{
+  "dryrun_sha256": "5bac8cc40c16eda6504764bbcb0a7675cd1fe6a819019bcb95843a595c4b50a5",
+  "host_precision_caption": "host forced-DP/card-selected backend; reducer-internal precision and actual backend unobserved",
+  "original_allowlist": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/qcd_n3_uux_zgg/compilation.json": {
+      "bytes": 169918,
+      "logical_payload": "qualification/compilation.json",
+      "sha256": "1471dc0eb10a4dba5a95c2926a0c37e647755918954adb0d0b51076303b103c7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/qcd_n3_uux_zgg/generation.json": {
+      "bytes": 318669,
+      "logical_payload": "qualification/generation.json",
+      "sha256": "9e3916b695c86d826f9b3be8c24e6fd13b0d86acec2e9b85e741bb3ef228e7cb"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/dryrun-started.json": {
+      "bytes": 1241,
+      "logical_payload": "receipts/dryrun-started.json",
+      "sha256": "c95c0e944b0a52f1754446cefa81dc3109142c9139c27978dcb06412e6144b8b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/dryrun-terminal.json": {
+      "bytes": 29628,
+      "logical_payload": "receipts/dryrun-terminal.json",
+      "sha256": "5bac8cc40c16eda6504764bbcb0a7675cd1fe6a819019bcb95843a595c4b50a5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/loader/command.json": {
+      "bytes": 4410,
+      "logical_payload": "build/loader/command.json",
+      "sha256": "cb8d71a74fb072fe5d22835e46317368610306a831681dc17b21295d4cda8caa"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/loader/runtime-maps-00.txt": {
+      "bytes": 2322,
+      "logical_payload": "build/loader/runtime-maps-00.txt",
+      "sha256": "6be0e12eed13fa091f8427a9f9af63a75d79c9fdcb90cc0394c4114a7dc49857"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/loader/stdout.txt": {
+      "bytes": 1841,
+      "logical_payload": "build/loader/stdout.txt",
+      "sha256": "822b4acc9b2568ce3f9b024c40df6d756d0730b55c63b2cfd9b7c278c48227f3"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/point-metrics.json": {
+      "bytes": 22083,
+      "logical_payload": "point-metrics.json",
+      "sha256": "f16806af788775fc42d5104092799d7d1d5879a5785c2b2f4760d5e4c3a6ddff"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/prepare-inputs.json": {
+      "bytes": 795866,
+      "logical_payload": "receipts/prepare-inputs.json",
+      "sha256": "19b111da6a03400b13dae2db1a2f6f16c43e2157fbde24d2284f7876d629790e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/prepare-started.json": {
+      "bytes": 126,
+      "logical_payload": "receipts/prepare-started.json",
+      "sha256": "e396e64b80e7d7e78dcee736a0e4e75edec48cab790ecc2a978459d5499fa2e3"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/prepare-terminal.json": {
+      "bytes": 1248126,
+      "logical_payload": "receipts/prepare-terminal.json",
+      "sha256": "9c1b45cdbf2783d2da63df8c55a744c2cb976fe4316ed715973dfbdae0e34d85"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/prepare/command.json": {
+      "bytes": 4871,
+      "logical_payload": "build/prepare/command.json",
+      "sha256": "f4c1a76e34eae76dbc19ec0f55cb7ff11e676af2dff20d684136ac45f36e1a0f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/prepare/runtime-maps-00.txt": {
+      "bytes": 165,
+      "logical_payload": "build/prepare/runtime-maps-00.txt",
+      "sha256": "de225b82bb1a7e8212fc3681d9d00040e1f364ab80e83e401a77110186f6c179"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/prepare/runtime-maps-01.txt": {
+      "bytes": 2893,
+      "logical_payload": "build/prepare/runtime-maps-01.txt",
+      "sha256": "f504c179bbb43d49dd8dab706281dfc48cc6578b38e564189aec6128c0cef3c9"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/prepare/stdout.txt": {
+      "bytes": 2490,
+      "logical_payload": "build/prepare/stdout.txt",
+      "sha256": "223fc6e6177cbfebd08be38378c9e19b92d8fa943a1a6cda648e42bea042dcef"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run-started.json": {
+      "bytes": 1241,
+      "logical_payload": "receipts/run-started.json",
+      "sha256": "c95c0e944b0a52f1754446cefa81dc3109142c9139c27978dcb06412e6144b8b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run-terminal.json": {
+      "bytes": 3936091,
+      "logical_payload": "receipts/run-terminal.json",
+      "sha256": "4e6cc378cf14b9f9bab387efb02c63307a3f1d6dc2a1cbff03f4905a4d022fac"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend1/command.json": {
+      "bytes": 4713,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/command.json",
+      "sha256": "3ce670fa0e8119df288726e457220cea69dee836741d153b401640d96d6db5c6"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend1/runtime-maps-00.txt": {
+      "bytes": 2899,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/runtime-maps-00.txt",
+      "sha256": "d4c3011e874d69f38eba3a0f5fa5997e4f9c5999326c8aa0aa0aa101438fa6aa"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend1/runtime-maps-01.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/runtime-maps-01.txt",
+      "sha256": "0efd2552dd065cf565b23feef921514266e83568af8f41a2ebc144bc9388f422"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend1/stdout.txt": {
+      "bytes": 58956,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/stdout.txt",
+      "sha256": "4cb3c5bfe1c9f9f6c9615ef36c6299825c0ec1363c4f1f330167596e80c8eaad"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend6/command.json": {
+      "bytes": 4713,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/command.json",
+      "sha256": "579de7dc15588410e3323c43fb082da1534f3c3eeee26cc3641562609d6bdf24"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend6/runtime-maps-00.txt": {
+      "bytes": 1693,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/runtime-maps-00.txt",
+      "sha256": "59d90b48d99ce055de9ebd38838164fc95169c8460c934a01c7f4dff82b9999d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend6/runtime-maps-01.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/runtime-maps-01.txt",
+      "sha256": "d927911e4fc9abcafbe16dd9650330535ed2c2e7c1302f5c0deacaf431d1fd4f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend6/stdout.txt": {
+      "bytes": 61511,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/stdout.txt",
+      "sha256": "d76a22061fe6544db96d0aef1bdcfdcd0695157f70c9a1d010fd3d750a94ea5b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend7/command.json": {
+      "bytes": 4980,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/command.json",
+      "sha256": "b1d3fbb7f3c30cff1e1b20dd8e329b284e03ad9ae5a7d3cc20b0bbd5633cbd03"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend7/runtime-maps-00.txt": {
+      "bytes": 2899,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/runtime-maps-00.txt",
+      "sha256": "24724c206f860a49c68b31c1e4a59d2645720d729d2a4f5d5be770f111b3b8de"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend7/runtime-maps-01.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/runtime-maps-01.txt",
+      "sha256": "84d2cd6a2797b6ac7f3bd7c40349e89a0aad744b87e99a5c18f877bb3574c25d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend7/runtime-maps-02.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/runtime-maps-02.txt",
+      "sha256": "48529c0b165e538b54bcbfb8317760759acfffa57b5f1b0932ab0d6df4700b27"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend7/runtime-maps-03.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/runtime-maps-03.txt",
+      "sha256": "1123f954137de808d9dad8a7e808c1dbf8f83504293b0c70a13679c9d9e8e2bc"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend7/stdout.txt": {
+      "bytes": 59749,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/stdout.txt",
+      "sha256": "eeb808ed12822db189490388d48f8b5668ebd64ee2aa7a968aabd5e9fd24ce3f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend8/command.json": {
+      "bytes": 4713,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/command.json",
+      "sha256": "7840e2bb58535cc4c9e06473bd0ab4f1f2fce7c6e7b764a132821be83e978d35"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend8/runtime-maps-00.txt": {
+      "bytes": 1693,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/runtime-maps-00.txt",
+      "sha256": "c5117d2ac53a5f7515b241d430e954e7ea10d017417062f1bfac7db3e4f9a17d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend8/runtime-maps-01.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/runtime-maps-01.txt",
+      "sha256": "e632c8a02ad9a7647e8833d9d326a8a9a1349e652834544785ee2f993391fe7c"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend8/stdout.txt": {
+      "bytes": 57124,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/stdout.txt",
+      "sha256": "be3665f56831c87ef7fa80cf4c91ab217688235f7eba8f079bfcd6d81b471543"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/command.json": {
+      "bytes": 6576,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/command.json",
+      "sha256": "ae11395d95de2267df74f88016c19eeb6771e7adbb35da2252da89d568d89278"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-00.txt": {
+      "bytes": 165,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-00.txt",
+      "sha256": "5fe343d6e737bc49a9b69fc71e508b91c1147a47b8570e61ef06aa12ae495f6f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-01.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-01.txt",
+      "sha256": "b6441e0f7b24b1dfd932572e499708410b6b6f67e4fa594bd2f2fc9ef09639b7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-02.txt": {
+      "bytes": 13903,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-02.txt",
+      "sha256": "a385dd69a36993eb6e987dd6365e79713a20cbe510ddfcb014e12cdb82daa5da"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-03.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-03.txt",
+      "sha256": "a9329495a83ff115d38d1fb0bb9c5ab56bc06b65d719196739b0cb322ebdede1"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-04.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-04.txt",
+      "sha256": "c5a8fccf8c4eedb9efbd5b006e96b8337c963f92183b4d31420e9c1a42acebd8"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-05.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-05.txt",
+      "sha256": "164de888e44c16589e87bbb16d70570efc0623f5f2904669a710050d6778dc72"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-06.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-06.txt",
+      "sha256": "675ca74fa8b72a01531f6b5c3df1387c72de7d39bbdb328393286f8bd31f2022"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-07.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-07.txt",
+      "sha256": "87cc2a5debb2d92118ffb1c3788ea6260098fd6fd253b3fb45dc7b01fb24aaa5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-08.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-08.txt",
+      "sha256": "aa5d95e416350abc2050dee0eff28fdb6266a0cb49735e020f6891db3f7d2f2c"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-09.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-09.txt",
+      "sha256": "b2f60962ca055bc181bcee23b354b340ed332da6f1b6043aa4a7a128cc16e74e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-10.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-10.txt",
+      "sha256": "9ed5b851fb62d01b1135c2ff60425033baaa45a68e8db834eef6861aa4b386e8"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-11.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-11.txt",
+      "sha256": "b6a3c0116227e31b6fef2f0d4dd9c87cba15d4566431b00a79ddddc8875c7a79"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-12.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-12.txt",
+      "sha256": "40ae3917c9aaca58c0b251983eaa60665aea446e94a40b8c8d730088fe71182a"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-13.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-13.txt",
+      "sha256": "776c92613cd59968da62860a0f26b17bd18686415f4dea0606ddc1aaa801c76f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-14.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-14.txt",
+      "sha256": "046905adeed6ee1f06cc2ad0876622b035fc88ce8808e8e277a471c358b537bd"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/runtime-maps-15.txt": {
+      "bytes": 13952,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/runtime-maps-15.txt",
+      "sha256": "3327bd32010c873789948b5d5de8ab313da2ecbeaedb07e4c9e70090b5f1b548"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/evidence/run/qcd_n3_uux_zgg-backend9/stdout.txt": {
+      "bytes": 58609,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/stdout.txt",
+      "sha256": "12b8a539c07c9dbeffd3425a2899ae27d8f8c94af290c08184dd47371b0c66df"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/master/Cards/param_card.dat": {
+      "bytes": 2472,
+      "logical_payload": "cards/param_card.dat",
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/master/SubProcesses/P0_uux_zgg/check_sa.f": {
+      "bytes": 12961,
+      "logical_payload": "qualification/worker_driver.f",
+      "sha256": "6334a6aa1ad30a4e7cfdda5f9d2e594c0acb76cfebfffe1145cfdca506d740b3"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/master/SubProcesses/P0_uux_zgg/loop_matrix.f": {
+      "bytes": 100892,
+      "logical_payload": "qualification/loop_matrix.f",
+      "sha256": "b37926358e421ba1de350eb0a6cb0ce9eab5127b171365eeb682439e0b6c9c5f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend1/Cards/MadLoopParams.dat": {
+      "bytes": 14622,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/MadLoopParams.dat",
+      "sha256": "dfd5903a176dd24c3c20a0bcb70f543c0a552557da855285ef673dbf9ffe01d4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend1/SubProcesses/P0_uux_zgg/stability-dimensions.dat": {
+      "bytes": 61,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/stability-dimensions.dat",
+      "sha256": "5c6d7a7a95ac377f5d23cfa16b0389613b33a4a15656535f9759627e267e6945"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend1/SubProcesses/P0_uux_zgg/stability-groups.dat": {
+      "bytes": 9616430,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/stability-groups.dat",
+      "sha256": "c57a78e082f35c3efb472b96de0929e83d17b4b3e87d2a63c8fb1df9947ab260"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend1/SubProcesses/P0_uux_zgg/stability-values.dat": {
+      "bytes": 123974,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend1/stability-values.dat",
+      "sha256": "c2b7456c8734daf416e218cc856ede577a25e28117da3ed592d64a416a583169"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend6/Cards/MadLoopParams.dat": {
+      "bytes": 14622,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/MadLoopParams.dat",
+      "sha256": "9dad1a28aacb2deeb85a6e861484cbb2fdefdb620250efa851e58e8de83a89d3"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend6/SubProcesses/P0_uux_zgg/stability-dimensions.dat": {
+      "bytes": 61,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/stability-dimensions.dat",
+      "sha256": "5c6d7a7a95ac377f5d23cfa16b0389613b33a4a15656535f9759627e267e6945"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend6/SubProcesses/P0_uux_zgg/stability-groups.dat": {
+      "bytes": 9616430,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/stability-groups.dat",
+      "sha256": "3483033812d06392058717e0313e37105708e8133222c0376ebd613542059c1e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend6/SubProcesses/P0_uux_zgg/stability-values.dat": {
+      "bytes": 123974,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend6/stability-values.dat",
+      "sha256": "780ba3990319525c02c06b39e664123d235db49226bb697ac4218898465d5bc3"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend7/Cards/MadLoopParams.dat": {
+      "bytes": 14622,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/MadLoopParams.dat",
+      "sha256": "557514d0589d656e79f6b4c2536b2dea1912defb93f705e32a1cf091b3ad01a5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend7/SubProcesses/P0_uux_zgg/stability-dimensions.dat": {
+      "bytes": 61,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/stability-dimensions.dat",
+      "sha256": "5c6d7a7a95ac377f5d23cfa16b0389613b33a4a15656535f9759627e267e6945"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend7/SubProcesses/P0_uux_zgg/stability-groups.dat": {
+      "bytes": 9616430,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/stability-groups.dat",
+      "sha256": "08ce019e8570ebf91cff5040af201d3b1d22f060e6ff888109454a83cf9d8f54"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend7/SubProcesses/P0_uux_zgg/stability-values.dat": {
+      "bytes": 123974,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend7/stability-values.dat",
+      "sha256": "bdbf8c85240888cdb85568e958e8ce95a554922c2f44d481ac3691bbe42cfc6b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend8/Cards/MadLoopParams.dat": {
+      "bytes": 14622,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/MadLoopParams.dat",
+      "sha256": "3c5aa853ae4a8ef487cdf02df6651cb00ca43d4c9fc91aa1a49bcd51e22a4dd7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend8/SubProcesses/P0_uux_zgg/stability-dimensions.dat": {
+      "bytes": 61,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/stability-dimensions.dat",
+      "sha256": "5c6d7a7a95ac377f5d23cfa16b0389613b33a4a15656535f9759627e267e6945"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend8/SubProcesses/P0_uux_zgg/stability-groups.dat": {
+      "bytes": 9616430,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/stability-groups.dat",
+      "sha256": "8396fde55be5897eb7d694f0ab61e5f612a4e38a56626a1edfe35acc3701faf4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend8/SubProcesses/P0_uux_zgg/stability-values.dat": {
+      "bytes": 123974,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend8/stability-values.dat",
+      "sha256": "c6e303743a18713f797c0e5cb9509c293b1719be2e7f81b09960d3f3e09cf297"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend9/Cards/MadLoopParams.dat": {
+      "bytes": 14622,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/MadLoopParams.dat",
+      "sha256": "322aab7a61aaaa17bb6043bd25f8fc984cbd4489c95be93e93e0ec950abd0dda"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend9/SubProcesses/P0_uux_zgg/stability-dimensions.dat": {
+      "bytes": 61,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/stability-dimensions.dat",
+      "sha256": "5c6d7a7a95ac377f5d23cfa16b0389613b33a4a15656535f9759627e267e6945"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend9/SubProcesses/P0_uux_zgg/stability-groups.dat": {
+      "bytes": 9616430,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/stability-groups.dat",
+      "sha256": "a0b95d2ac43b0a8f808ec5170e62216db71653da57342236fbbe82a397eb0d34"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-qcd3-raw-pilot-1/run/qcd_n3_uux_zgg-backend9/SubProcesses/P0_uux_zgg/stability-values.dat": {
+      "bytes": 123974,
+      "logical_payload": "requests/qcd_n3_uux_zgg-backend9/stability-values.dat",
+      "sha256": "93cf643d7dab239485a5fab39cb399b3167cf8af2197163ac7ce7e08810e3051"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/candidate-9/candidate-inputs.json": {
+      "bytes": 510155,
+      "logical_payload": "qualification/numerical-inputs.json",
+      "sha256": "a816acb86d7876b9aca16ba2a6dcd47b168cd4433b7b63394ea31c5ecaf5092d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json": {
+      "bytes": 398114,
+      "logical_payload": "qualification/manifest.json",
+      "sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/qcd_n3_uux_zgg/checkpoint.json": {
+      "bytes": 36597,
+      "logical_payload": "qualification/case-checkpoint.json",
+      "sha256": "5da76edf538e19fb894bf1f4ba212bf0c0fd984f6e9e4db330035de0d5efdc4d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.dat": {
+      "bytes": 48542,
+      "logical_payload": "points/qcd_n3_uux_zgg.dat",
+      "sha256": "b46ce200bb330826d2a4cff69f61f828d3105c0566444fa548b1de75622ee8dd"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.json": {
+      "bytes": 87715,
+      "logical_payload": "points/qcd_n3_uux_zgg.json",
+      "sha256": "e4a262966bc0de149e3b16a56f85058c56ba068ead2b73f3586101ff38c320e4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "bytes": 103531,
+      "logical_payload": "qualification/entry-template.inc",
+      "sha256": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+    }
+  },
+  "original_hashes_rechecked_after_capture": true,
+  "preparation_sha256": "9c1b45cdbf2783d2da63df8c55a744c2cb976fe4316ed715973dfbdae0e34d85",
+  "root_reported_run_terminal": {
+    "exit_code": 0,
+    "session_id": 29683
+  },
+  "run_terminal_sha256": "4e6cc378cf14b9f9bab387efb02c63307a3f1d6dc2a1cbff03f4905a4d022fac",
+  "schema": "madloop-current-source-raw-stability-retention-v1",
+  "scope": "exact closed inputs only; no binary packaging or original tree walk; lossless bounded deterministic gzip",
+  "source_index_sha256": "c071ec1c87ce6d5034e8a2daf07f093e1c71581ba79bcaa1c9176ca0c79e05ef"
+}
