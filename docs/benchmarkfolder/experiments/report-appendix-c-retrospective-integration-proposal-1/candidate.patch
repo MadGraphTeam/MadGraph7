@@ -1,0 +1,222 @@
+--- a/docs/benchmarkfolder/campaign_report_refresh.py
++++ b/docs/benchmarkfolder/campaign_report_refresh.py
+@@ -1,5 +1,6 @@
+ """Explicit closed-evidence refresh; no active-run discovery or native execution."""
+ from pathlib import PurePosixPath
++import math
+ 
+ 
+ def require(condition, message):
+@@ -19,6 +20,130 @@
+         if isinstance(identity, dict) and "bytes" in identity:
+             require(len(raw) == identity["bytes"], "Closed evidence byte count differs")
+     return index
++
++
++RETROSPECTIVE_PIN = {
++    "index": "stability_appendix_c/retrospective-main-closed11-1/index.json",
++    "sha256": "1138e7f644aec5a0eda96959b47eb17694344a2ad92caa09b2abee6202e23dab"}
++RETROSPECTIVE_BINDINGS = {
++    "checkpoint": "8f5f7110cc101dc79e8fe75d5dd1ef342e1e72797986a5a5026680e28d4496be",
++    "figures": "e23178bdedbdb6ea9ac2d177eba9a6dcc83c9df121800eb1f7406e979686a49b",
++    "source": "74a71dc5c2a1d6568493c4fbf90f9fd6fe0b1804bd04bd32237f8d53d95616c7",
++    "portable_proof": "f1d086cf0bc559cb256359764ed58df0786faf1e405f8879868c109c81cfffa1",
++    "adapter": "ac51ba15844ffc4033e2597ea250e144bfde71c942fda6b7ee658afe2921b0cd",
++    "plotter": "fe16afaae081694af3eb3a7e7c8ec9b9d037933b1938e6afa6ba56522c507e41"}
++RETROSPECTIVE_CASES = ("qcd_n2_gg_ttx", "qcd_n3_uux_zgg", "ew_n2_epem_mupmum", "qcd_n4_uux_zzgg")
++RETROSPECTIVE_BACKENDS = (1, 6, 7, 8, 9)
++
++
++def require_retrospective_pin(pin):
++    require(pin == RETROSPECTIVE_PIN, "Retrospective figures need the exact admitted closed capsule")
++
++
++def retrospective_plots(evidence, pin, checkpoint_pin):
++    """Bind the delivered figures and closed proof; never execute their adapter."""
++    require_retrospective_pin(pin)
++    required = RETROSPECTIVE_BINDINGS
++    require(checkpoint_pin.get("sha256") == required["checkpoint"],
++            "Retrospective figures and selected main checkpoint differ")
++    index = bind_index(evidence, pin["index"], pin["sha256"])
++    require(index.get("schema") == "madloop-stability-retrospective-main-delivery-v1"
++            and len(index["files"]) == 43 and index.get("case_count") == 4 and index.get("figures") == 8
++            and index.get("physical_points_per_case") == 100 and index.get("new_native_evaluations") == 0
++            and index.get("performance_eligible") is False
++            and index.get("figures_index_sha256") == required["figures"]
++            and index.get("source_index_sha256") == required["source"]
++            and index.get("portable_proof_sha256") == required["portable_proof"],
++            "Retrospective figure delivery scope differs")
++    prefix = str(PurePosixPath(pin["index"]).parent)
++    def read(name, expected=None):
++        require(name in index["files"], "Unindexed retrospective figure input")
++        return evidence.json(prefix + "/" + name, expected)
++    proof = read("portable-proof.json", required["portable_proof"])
++    figures = read("figures/index.json", required["figures"])
++    comparison = read("comparison-summary.json")
++    outcomes = read("figures/accepted-outcomes.json")
++    require(proof.get("schema") == "madloop-stability-retrospective-main-portable-proof-v1"
++            and proof.get("passed") is True and proof.get("negative_controls_passed") == 5
++            and proof.get("unexpected_original_or_native_accesses") == 0
++            and proof.get("relocated_files_unchanged") is True and proof.get("new_native_evaluations") == 0
++            and proof.get("closed_capsule_index_sha256") == required["checkpoint"]
++            and proof.get("figures_index_sha256") == required["figures"]
++            and proof.get("adapter_sha256") == required["adapter"]
++            and proof.get("plotter_source_index_sha256") == required["plotter"]
++            and proof.get("verification", {}).get("verified") is True,
++            "Retrospective root portable proof differs")
++    require(figures.get("schema") == "madloop-stability-retrospective-main-closed11-figures-v1"
++            and figures.get("case_ids") == list(RETROSPECTIVE_CASES)
++            and figures.get("figures") == 8 and figures.get("new_native_evaluations") == 0
++            and figures.get("performance_eligible") is False
++            and figures.get("closed_capsule_index_sha256") == required["checkpoint"]
++            and figures.get("plotter_source_index_sha256") == required["plotter"]
++            and all(index["files"].get("figures/" + name) == value for name, value in figures["files"].items()),
++            "Retrospective figure inventory or source binding differs")
++    require(comparison.get("schema") == "madloop-stability-retrospective-main-comparison-summary-v1"
++            and comparison.get("closed_capsule_index_sha256") == required["checkpoint"]
++            and comparison.get("figures_index_sha256") == required["figures"]
++            and set(comparison.get("cases", {})) == set(RETROSPECTIVE_CASES)
++            and set(outcomes) == set(RETROSPECTIVE_CASES), "Retrospective case/status coverage differs")
++    aliases = {(2, 1): (1, "DP"), (3, 9): (1, "QP"), (2, 6): (6, "DP"), (3, 8): (6, "QP"),
++               (2, 7): (7, "DP"), (2, 8): (8, "DP"), (3, 2): (8, "QP"),
++               (2, 9): (9, "DP"), (3, 3): (9, "QP")}
++    cases = []
++    for case in RETROSPECTIVE_CASES:
++        value = outcomes[case]; accepted = value.get("accepted_outcomes", {})
++        require(value.get("case", {}).get("id") == case
++                and set(accepted) == {str(backend) for backend in RETROSPECTIVE_BACKENDS}
++                and set(comparison["cases"][case]) == set(accepted), "Retrospective backend coverage differs")
++        lanes = []
++        for backend in RETROSPECTIVE_BACKENDS:
++            lane = accepted[str(backend)]; rows = lane.get("accepted_rows", [])
++            require(len(rows) == 100 and all(isinstance(row, dict) and type(row.get("point")) is int
++                    and type(row.get("order")) is int for row in rows)
++                    and [(row.get("point"), row.get("order")) for row in rows]
++                    == [(point, 0) for point in range(1, 101)]
++                    and type(lane.get("unavailable_points")) is int and lane["unavailable_points"] == 0,
++                    "Retrospective accepted point/status coverage differs")
++            precision, statuses = {}, {}
++            for row in rows:
++                code = row.get("status")
++                require(type(code) is int and code // 10 % 10 in (1, 2)
++                        and aliases.get((code // 100, code % 10)) == (backend, row.get("precision"))
++                        and type(row.get("actual_backend")) is int and row["actual_backend"] == backend
++                        and type(row.get("accuracy")) in (int, float) and math.isfinite(row["accuracy"])
++                        and row["accuracy"] >= 0 and isinstance(row.get("coefficients"), list)
++                        and len(row["coefficients"]) == 4
++                        and all(type(number) in (int, float) and math.isfinite(number) for number in row["coefficients"]),
++                        "Retrospective accepted status/precision differs")
++                precision[row["precision"]] = precision.get(row["precision"], 0) + 1
++                statuses[str(code)] = statuses.get(str(code), 0) + 1
++            require(all(isinstance(lane.get(key), dict) and all(type(count) is int and count >= 0
++                    for count in lane[key].values()) for key in ("accepted_precision_counts", "accepted_status_counts"))
++                    and lane["accepted_precision_counts"] == precision and lane["accepted_status_counts"] == statuses
++                    and type(lane.get("exact_zero_internal_estimates")) is int
++                    and lane.get("exact_zero_internal_estimates") == sum(row["accuracy"] == 0 for row in rows),
++                    "Retrospective accepted diagnostic counts differ")
++            comp = comparison["cases"][case][str(backend)]
++            require(type(comp.get("n")) is int and comp["n"] == 100
++                    and all(type(comp.get(key)) is int and 0 <= comp[key] <= 100
++                    for key in ("exact_zero_metrics", "exceedances_1e8", "exceedances_3e6"))
++                    and comp["exceedances_3e6"] <= comp["exceedances_1e8"]
++                    and comp["exact_zero_metrics"] + comp["exceedances_1e8"] <= 100,
++                    "Retrospective reference-disagreement counts differ")
++            lanes.append({"backend": backend, "accepted_DP": precision.get("DP", 0), "accepted_QP": precision.get("QP", 0),
++                          "zero_estimates": lane["exact_zero_internal_estimates"], "unavailable": 0})
++        plots = []
++        for metric in ("accepted-internal-estimate", "finite-disagreement-current-cuttools"):
++            name = case + "-" + metric
++            require(all(name + suffix in figures["files"] for suffix in (".png", ".pdf", ".json", "-points.json")),
++                    "Retrospective delivery omits one of the eight figure sets")
++            stem = "figures/" + name
++            plots.append({"metric": metric, "figure_path": prefix + "/" + stem + ".png",
++                          "export_pdf_path": prefix + "/" + stem + ".pdf", "figure_data_path": prefix + "/" + stem + ".json"})
++        cases.append({"id": case, "process": value["case"].get("process", case), "lanes": lanes, "plots": plots})
++    return {"selection": pin, "cases": cases, "accepted_outcomes": outcomes, "comparison_summary": comparison,
++            "root_portable_proof": proof, "performance_eligible": False, "independent_truth_qualified": False,
++            "main_campaign_modified": False, "scope": "ordinary accepted-output retrospective; not raw DP or paper-cut-qualified fixtures"}
+ 
+ 
+ def selection(evidence, path, manifest, config):
+@@ -211,8 +336,13 @@
+     required = {"schema", "campaign", "numerical_checkpoint", "closed_cases", "documents", "packages",
+                 "implementation_packages", "historical_archive", "local_handoff_path", "snapshot_date",
+                 "performance_status", "final_performance_accepted", "current_lifecycle"}
+-    require(set(value) == required and value["campaign"] == manifest["id"],
++    require(required <= set(value) <= required | {"appendix_c_retrospective"}
++            and value["campaign"] == manifest["id"],
+             "Current selection requires explicit closed inputs and no old timing or next-campaign join")
++    if value.get("appendix_c_retrospective") is not None:
++        require_retrospective_pin(value["appendix_c_retrospective"])
++        require(value["numerical_checkpoint"].get("sha256") == RETROSPECTIVE_BINDINGS["checkpoint"],
++                "Retrospective figures and selected main checkpoint differ")
+     require(value["performance_status"] == "deferred to Hua-Sheng"
+             and value["final_performance_accepted"] is False,
+             "Shared-host diagnostics cannot establish local performance acceptance")
+@@ -289,4 +419,7 @@
+     refreshed["private_diagnostics"].append({"title": "Closed current QCD n3 target investigation",
+         "text": "The bounded offline investigation retains the same 1,200 rows and 4,800 coefficient values as the prior closed result, including the same 28 finite-only 1e-8 target-miss points. All Born and pole comparisons pass 1e-8. The largest CutTools/TIRust symmetric finite residual is approximately 2.806420647e-6 at point 93; the largest non-CutTools pair residual is approximately 8.595156396e-8 at point 39. Cross-reducer consistency supplies no independent truth claim. This seven-input investigation runs no new native or QP evaluation and cannot replace the main full11 checkpoint or change any qualification or performance gate.",
+         "evidence": N3_ANALYSIS})
++    if selected.get("appendix_c_retrospective") is not None:
++        refreshed["appendix_c_retrospective"] = retrospective_plots(
++            evidence, selected["appendix_c_retrospective"], selected["numerical_checkpoint"])
+     return refreshed
+--- a/docs/benchmarkfolder/campaign-report.typ
++++ b/docs/benchmarkfolder/campaign-report.typ
+@@ -51,6 +51,48 @@
+   if data.at("refresh", default: none) != none and data.refresh.at("provisional", default: none) != none {
+     import "campaign-provisional.typ" as appendix
+     appendix.show-provisional(data.refresh.provisional, cases, process-label)
++  }
++}
++
++#let show-retrospective-stability(plots, process-label) = {
++  for item in plots.cases {
++    for plot in item.plots {
++      pagebreak()
++      heading(level: 1)[Retrospective SM stability · #process-label(item)]
++      let internal = plot.metric == "accepted-internal-estimate"
++      text(9pt, fill: ink2)[#if internal {
++        [Accepted composite host diagnostic after rescue]
++      } else { [Finite disagreement with current candidate CutTools] }]
++      v(5pt)
++      figure(image("/" + plot.figure_path, width: 100%, height: 170mm, fit: "contain"),
++        caption: [#if internal {
++          [Recorded post-rescue MadLoop composite estimates include finite and
++          pole information. Estimator definitions differ, including COLLIER's;
++          these curves do not rank true numerical accuracy. Exact-zero estimates
++          are recorded zero diagnostics, not certified digits or infinite precision.
++          #if item.id == "qcd_n4_uux_zzgg" {
++            [TIRust has 86 zero estimates alongside 14 DP / 86 QP final acceptances;
++            most of these zeros are associated with accepted QP diagnostics.]
++          }
++          Accepted DP/QP counts describe final outcomes, not all internal attempts.
++          The 10#super("−3") line is a paper reference for a different diagnostic,
++          not an independently byte-bound host-policy marker.]
++        } else {
++          [The finite metric is #raw("abs(a-b)/abs(a+b)") against current candidate
++          CutTools. That reference is not independently known truth; its 100
++          self-comparisons are exactly zero. The 3e-6 regression reference and
++          stricter 1e-8 target remain distinct, and retained target misses are
++          not discarded. Agreement with this reference does not rank true accuracy.]
++        }
++        Each curve uses the same 100 ordinary saved points, with 1% empirical
++        tail resolution. These are post-rescue accepted-output diagnostics,
++        not raw-DP probes or asserted paper-cut-qualified fixtures. Zero tails
++        are omitted on the log axis; ratios over Ninja are masked for a zero
++        denominator, without a floor or pseudocount. No rarer population-tail,
++        independent-truth or performance acceptance follows.])
++      v(4pt)
++      text(6.2pt, fill: ink2)[Indexed PDF export: #raw(plot.export_pdf_path)]
++    }
+   }
+ }
+ 
+@@ -289,4 +331,7 @@
+         adaptive-library physical accuracy or final runtime acceptance.]
+     }
+   }
++  if data.at("refresh", default: none) != none and data.refresh.at("appendix_c_retrospective", default: none) != none {
++    show-retrospective-stability(data.refresh.appendix_c_retrospective, process-label)
++  }
+ }

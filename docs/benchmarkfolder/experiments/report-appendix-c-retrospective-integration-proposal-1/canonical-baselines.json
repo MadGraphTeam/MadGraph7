@@ -1,0 +1,38 @@
+{
+  "README.md": {
+    "bytes": 27479,
+    "sha256": "083b65520f67b0b8cb6b7be83ca522dec99e442538ee0bb65c58f3704f71c334"
+  },
+  "benchmark.pdf": {
+    "bytes": 386420,
+    "sha256": "00682c959edf69dc9e6e1543b0d2e326540a28809675fcbbf749a7eea0258a5e"
+  },
+  "benchmark.typ": {
+    "bytes": 27236,
+    "sha256": "f4c00908f0d398990b12669c593d9763f59878f43b4c138d14cfbf7ec6610b35"
+  },
+  "build_report.py": {
+    "bytes": 22166,
+    "sha256": "0e034e80d688ea8cb2927aafe5040d62808777db10fc41be478ff6f15007c9bd"
+  },
+  "campaign-report.typ": {
+    "bytes": 16844,
+    "sha256": "ca9ff6d7425c1685843ec9f0ac13c273c4b8e896bf3706dac96010635bef993e"
+  },
+  "campaign_report.py": {
+    "bytes": 16416,
+    "sha256": "d23a180ad058e226b25765920f07ccf200d5bc06eceaf06391089afa31ee9540"
+  },
+  "campaign_report_refresh.py": {
+    "bytes": 23580,
+    "sha256": "bbd5f40726f88a8d879e53624b45436d211f483fd412c823c48b174b881db065"
+  },
+  "report-build.json": {
+    "bytes": 2304916,
+    "sha256": "e6c4f31cd20b82ec67de7df9cbbb5d0181dc65329420ce81d53e4fa3ce8d86b2"
+  },
+  "style.typ": {
+    "bytes": 2962,
+    "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+  }
+}

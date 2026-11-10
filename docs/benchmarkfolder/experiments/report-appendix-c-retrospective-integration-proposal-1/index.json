@@ -1,0 +1,162 @@
+{
+  "README_patch": "README.patch",
+  "admitted_capsule": {
+    "index": "stability_appendix_c/retrospective-main-closed11-1/index.json",
+    "sha256": "1138e7f644aec5a0eda96959b47eb17694344a2ad92caa09b2abee6202e23dab"
+  },
+  "canonical_baselines": {
+    "README.md": {
+      "bytes": 27479,
+      "sha256": "083b65520f67b0b8cb6b7be83ca522dec99e442538ee0bb65c58f3704f71c334"
+    },
+    "benchmark.pdf": {
+      "bytes": 386420,
+      "sha256": "00682c959edf69dc9e6e1543b0d2e326540a28809675fcbbf749a7eea0258a5e"
+    },
+    "benchmark.typ": {
+      "bytes": 27236,
+      "sha256": "f4c00908f0d398990b12669c593d9763f59878f43b4c138d14cfbf7ec6610b35"
+    },
+    "build_report.py": {
+      "bytes": 22166,
+      "sha256": "0e034e80d688ea8cb2927aafe5040d62808777db10fc41be478ff6f15007c9bd"
+    },
+    "campaign-report.typ": {
+      "bytes": 16844,
+      "sha256": "ca9ff6d7425c1685843ec9f0ac13c273c4b8e896bf3706dac96010635bef993e"
+    },
+    "campaign_report.py": {
+      "bytes": 16416,
+      "sha256": "d23a180ad058e226b25765920f07ccf200d5bc06eceaf06391089afa31ee9540"
+    },
+    "campaign_report_refresh.py": {
+      "bytes": 23580,
+      "sha256": "bbd5f40726f88a8d879e53624b45436d211f483fd412c823c48b174b881db065"
+    },
+    "report-build.json": {
+      "bytes": 2304916,
+      "sha256": "e6c4f31cd20b82ec67de7df9cbbb5d0181dc65329420ce81d53e4fa3ce8d86b2"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "canonical_files_modified": false,
+  "core_patch": "candidate.patch",
+  "files": {
+    "README.md": {
+      "bytes": 8258,
+      "sha256": "87de53457528ceddb34c4fee51d225acd9a3be4307d5c301de9ba3de6e37b2cc"
+    },
+    "README.patch": {
+      "bytes": 6351,
+      "sha256": "9e6f7b7d212f5d9fff35cbce2908a89332abb4c1c8aeca189fc47107a198f5bf"
+    },
+    "README.proposed.md": {
+      "bytes": 27945,
+      "sha256": "f08486205b406dda5e88bc976439d110684c9ed2b517e7daa9b31da9703ff7a9"
+    },
+    "campaign-report.typ": {
+      "bytes": 19401,
+      "sha256": "e98debca951794ab221da6d47912fce73444edd93f9276cd69ba8cdefa0b6d53"
+    },
+    "campaign_report_refresh.py": {
+      "bytes": 33286,
+      "sha256": "f0ba2ba0360a8b8092e0d2130e8fc4443b939a8c670ba1d4972c67c8203b1998"
+    },
+    "candidate.patch": {
+      "bytes": 15062,
+      "sha256": "cb05cb9dc2002aebc067a8e51519c2cda9e2ee288414bdeb90782ea46703c416"
+    },
+    "canonical-baselines.json": {
+      "bytes": 1170,
+      "sha256": "43f71d404388d15d7e123cce41bd69e6d3b3dcee4eaceb80bfbe1ecb0a175f26"
+    },
+    "dossier.proposed.json": {
+      "bytes": 4814865,
+      "sha256": "d13c1bef33b87d03c642539c463d1753850a050c61b908c1a0a5a0c227a30a49"
+    },
+    "selection.proposed.json": {
+      "bytes": 7276,
+      "sha256": "afa84ff092e8b98d9b0071fe3c4d462523ef674e24cfdc5f934bcd0d05a8c15c"
+    },
+    "test_campaign_report_retrospective.py": {
+      "bytes": 22860,
+      "sha256": "37e7448c9ae997241b2269de23f3e5f223ea3fddac2a7fbbdbfaed37625bb964"
+    },
+    "validation.json": {
+      "bytes": 1869,
+      "sha256": "8e08ae56b299f0f64dacb8ce2cd27cc269df3c07329879e3571b2e77f0deeff6"
+    }
+  },
+  "no_change": [
+    "benchmark.typ",
+    "build_report.py",
+    "campaign_report.py",
+    "style.typ",
+    "published17pagePDF/ledger",
+    "allfrozenreportimplementationpackets",
+    "NinjaRSreport",
+    "production/native/numericalprotocols",
+    "unselectedrawpilotdraft"
+  ],
+  "promotion_paths": {
+    "README.md": "README.proposed.md",
+    "campaign-report.typ": "campaign-report.typ",
+    "campaign_report_refresh.py": "campaign_report_refresh.py"
+  },
+  "schema": "tirust-source-only-retrospective-stability-report-proposal-v1",
+  "source_only": true,
+  "validation": {
+    "accepted_rows": 2000,
+    "active_raw_pilot_or_stress_outputs_read": false,
+    "actual_inputs_scope": "only root-admitted immutable closed11/retrospective/lifecycle/stress2/CMS2 evidence",
+    "actual_private_collection": {
+      "bound_paths": 9854,
+      "dossier": {
+        "bytes": 4814865,
+        "path": "dossier.proposed.json",
+        "sha256": "d13c1bef33b87d03c642539c463d1753850a050c61b908c1a0a5a0c227a30a49"
+      },
+      "passed": true,
+      "process_DSO_loading_blocked": true,
+      "selection": {
+        "bytes": 7276,
+        "path": "selection.proposed.json",
+        "sha256": "afa84ff092e8b98d9b0071fe3c4d462523ef674e24cfdc5f934bcd0d05a8c15c"
+      }
+    },
+    "actual_private_exact_frozen_validate": {
+      "passed": true,
+      "process_DSO_loading_blocked": true,
+      "proposed_refresh_source_sha256": "f0ba2ba0360a8b8092e0d2130e8fc4443b939a8c670ba1d4972c67c8203b1998",
+      "validated_input_count": 9870
+    },
+    "canonical9baselines_unchanged": true,
+    "core_and_README_patch_apply_check": "PASS --whitespace=error",
+    "delivery_complete": false,
+    "existing_report_semantics_unchanged": true,
+    "figure_sets": 8,
+    "independent_private_selection_dossier_audit": "PASS; full prior semantics/common identities unchanged",
+    "independent_promotion_README_command_review": "PASS; pagination wording corrected to intended layout before render",
+    "independent_source_caption_status_review": "PASS",
+    "native_or_Typst_execution": false,
+    "pending_gates": [
+      "root source/pin review",
+      "canonical promotion/fresh dossier",
+      "admitted Typst render",
+      "all8pages visual legibility",
+      "matching verify-only"
+    ],
+    "performance_accepted": false,
+    "retrospective_paths_with_index": 44,
+    "retrospective_payloads_bound": 43,
+    "source_only": true,
+    "tests": {
+      "normal": "10testsPASS0.837s",
+      "optimized": "10testsPASS0.849s",
+      "synthetic_only": true
+    }
+  }
+}

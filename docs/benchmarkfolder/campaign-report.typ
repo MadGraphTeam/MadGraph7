@@ -54,6 +54,48 @@
   }
 }
 
+#let show-retrospective-stability(plots, process-label) = {
+  for item in plots.cases {
+    for plot in item.plots {
+      pagebreak()
+      heading(level: 1)[Retrospective SM stability · #process-label(item)]
+      let internal = plot.metric == "accepted-internal-estimate"
+      text(9pt, fill: ink2)[#if internal {
+        [Accepted composite host diagnostic after rescue]
+      } else { [Finite disagreement with current candidate CutTools] }]
+      v(5pt)
+      figure(image("/" + plot.figure_path, width: 100%, height: 170mm, fit: "contain"),
+        caption: [#if internal {
+          [Recorded post-rescue MadLoop composite estimates include finite and
+          pole information. Estimator definitions differ, including COLLIER's;
+          these curves do not rank true numerical accuracy. Exact-zero estimates
+          are recorded zero diagnostics, not certified digits or infinite precision.
+          #if item.id == "qcd_n4_uux_zzgg" {
+            [TIRust has 86 zero estimates alongside 14 DP / 86 QP final acceptances;
+            most of these zeros are associated with accepted QP diagnostics.]
+          }
+          Accepted DP/QP counts describe final outcomes, not all internal attempts.
+          The 10#super("−3") line is a paper reference for a different diagnostic,
+          not an independently byte-bound host-policy marker.]
+        } else {
+          [The finite metric is #raw("abs(a-b)/abs(a+b)") against current candidate
+          CutTools. That reference is not independently known truth; its 100
+          self-comparisons are exactly zero. The 3e-6 regression reference and
+          stricter 1e-8 target remain distinct, and retained target misses are
+          not discarded. Agreement with this reference does not rank true accuracy.]
+        }
+        Each curve uses the same 100 ordinary saved points, with 1% empirical
+        tail resolution. These are post-rescue accepted-output diagnostics,
+        not raw-DP probes or asserted paper-cut-qualified fixtures. Zero tails
+        are omitted on the log axis; ratios over Ninja are masked for a zero
+        denominator, without a floor or pseudocount. No rarer population-tail,
+        independent-truth or performance acceptance follows.])
+      v(4pt)
+      text(6.2pt, fill: ink2)[Indexed PDF export: #raw(plot.export_pdf_path)]
+    }
+  }
+}
+
 #let show-campaign-details(data, cases, process-label) = {
   show-campaign-provisional(data, cases, process-label)
   pagebreak()
@@ -288,5 +330,8 @@
         a separate all-512-bit experiment each have limited scope. None establishes
         adaptive-library physical accuracy or final runtime acceptance.]
     }
+  }
+  if data.at("refresh", default: none) != none and data.refresh.at("appendix_c_retrospective", default: none) != none {
+    show-retrospective-stability(data.refresh.appendix_c_retrospective, process-label)
   }
 }

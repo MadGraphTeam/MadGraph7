@@ -1,0 +1,99 @@
+--- a/docs/benchmarkfolder/README.md
++++ b/docs/benchmarkfolder/README.md
+@@ -282,22 +282,33 @@
+ Reconstruct its original renderer inputs from the pinned Git commit to
+ reproduce that historical PDF; current helpers do not replace those inputs.
+ 
+-A current-source render requires terminal full11 closure, a separately sealed
+-checkpoint, a new immutable selection/dossier, source promotion review and
+-rendering admission. With the actual admitted dossier path assigned explicitly:
++The current campaign has closed all eleven ordinary cases at `3e-6`. Its
++sealed checkpoint is `8f5f7110…`; performance acceptance remains deferred.
++The additive retrospective view binds all eight plots and all twenty accepted
++backend streams from the [closed four-case plot capsule](stability_appendix_c/retrospective-main-closed11-1/README.md),
++index `1138e7f644aec5a0eda96959b47eb17694344a2ad92caa09b2abee6202e23dab`.
++The post-rescue composite estimates and finite disagreement against current
++candidate CutTools use ordinary 100-point streams, not raw-DP probes or asserted
++paper-cut-qualified inputs. They establish neither true error nor performance.
++The preceding [17-page report milestone](https://github.com/MadGraphTeam/MadGraph7/blob/4d24cebce1/docs/benchmarkfolder/benchmark.pdf)
++remains available at its recorded commit.
++
++After source promotion and creation of the new immutable dossier below, build
++and verify the explicitly selected view:
+ 
+ ```sh
+ source tools/tirust_env.sh
+-current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-2.json
++current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-retrospective-1.json
+ python3 -B docs/benchmarkfolder/build_report.py --campaign invariant-symmetry-1 \
+   --campaign-report "$current_report_dossier"
+ python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign invariant-symmetry-1 \
+   --campaign-report "$current_report_dossier"
+ ```
+ 
+-The filename above is the planned selection workflow's output, not a claim
+-that an active numerical campaign has closed. Dossier creation and report
+-building never launch new numerical measurements.
++Dossier creation and report building never launch new numerical measurements.
++Each of the eight plots is assigned a separate page; final pagination is checked
++during render and visual review. The original numerical and delivery gates remain
++unchanged.
+ 
+ For a future refresh, close the selected runs, create a new selection and dossier
+ path, and preserve this report's ledger/PDF before rebuilding. Do not overwrite
+@@ -346,34 +357,34 @@
+ the registered exporter anchor and each observed revision are displayed
+ separately, with one exact exporter file inventory required throughout.
+ 
+-After current full11 closure and root's immutable checkpoint seal, prepare a
+-new explicit selection and dossier with the source-reviewed successor workflow.
+-For the documented full checkpoint destination and planned new filenames:
++For this retrospective view, use the exact admitted selection from the sealed
++[source proposal](experiments/report-appendix-c-retrospective-integration-proposal-1/README.md).
++Copy it to a fresh append-once path, then collect with the promoted canonical
++helpers; an existing path is never overwritten:
+ 
+ ```sh
+ source tools/tirust_env.sh
+-python3 -B docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-6/generate_selection.py \
+-  --root docs/benchmarkfolder \
+-  --checkpoint campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/index.json \
+-  --current-lifecycle-index experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json \
+-  --current-lifecycle-sha256 212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964 \
+-  --current-stress-index experiments/physical-stress-current-portable-4-terminal-2/evidence-index.json \
+-  --current-stress-sha256 6fc2035649ba0387f0d4457784ae883592f13bb7e3b6f9c33b99e038b81f7146 \
+-  --current-cms-index experiments/current-cms-replay-retention-2/evidence-index.json \
+-  --current-cms-sha256 aa39809c5d6cde25367454bb1fd9c3500b9aaa9b14b976fc1ff42bb0783714d3 \
+-  --output campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-selection-2.json
++python3 -B - <<'PY_COPY_SELECTION'
++from pathlib import Path
++import hashlib
++root = Path("docs/benchmarkfolder")
++raw = (root / "experiments/report-appendix-c-retrospective-integration-proposal-1/selection.proposed.json").read_bytes()
++if hashlib.sha256(raw).hexdigest() != "afa84ff092e8b98d9b0071fe3c4d462523ef674e24cfdc5f934bcd0d05a8c15c":
++    raise ValueError("Retrospective selection differs from its reviewed pin")
++with (root / "campaigns/invariant-symmetry-1/report-snapshots/closed11-retrospective-selection-1.json").open("xb") as stream:
++    stream.write(raw)
++PY_COPY_SELECTION
+ python3 -B docs/benchmarkfolder/campaign_report.py \
+   --campaign invariant-symmetry-1 \
+-  --selection campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-selection-2.json \
+-  --output campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-2.json
++  --selection campaigns/invariant-symmetry-1/report-snapshots/closed11-retrospective-selection-1.json \
++  --output campaigns/invariant-symmetry-1/report-snapshots/closed11-retrospective-1.json
+ ```
+ 
+-The canonical collector command above requires root's prior source promotion.
+-Before that promotion, the private successor collector accepts the same
+-arguments with `--root docs/benchmarkfolder` for staging. Both outputs are
+-append-once; use the actual sealed checkpoint path if root selects a different
+-retention destination. These preparation commands are not evidence that the
+-currently active campaign has closed. Rendering requires separate admission.
++The canonical collector command requires prior source promotion. The proposal's
++private dossier is a reviewed preview and is not substituted for this fresh
++collection. Both selections pin the same terminal full11 checkpoint, lifecycle,
++failed partial stress capsule and incomplete CMS capsule; adding plots changes
++none of those qualifications. Rendering and visual review remain separate steps.
+ 
+ Do not freeze a dossier while its included run directories are active:
+ `results.json` and worker logs may still grow. The collector ignores later new
