@@ -1,0 +1,14 @@
+{
+  "build_sha256": "c3d2d2568814b0f0efef8a8d465db561e129473eefe55e3fbaa4b785a1ded322",
+  "elapsed_seconds": 152.56272240309045,
+  "failure": {
+    "message": "malformed decimal transport",
+    "type": "ValueError"
+  },
+  "inherited_source2_index_sha256": "44039ba25e451910d1ab7c264ac1f397437ce41f965d8e381b539dd9baf44046",
+  "original_donor_runtime_preserved": true,
+  "passed": false,
+  "recompiled": false,
+  "source_index_sha256": "34b185b07b4518001deff43c534b48a1dbb958256721dfe746374fe582e52d2d",
+  "workers_completed": 9
+}

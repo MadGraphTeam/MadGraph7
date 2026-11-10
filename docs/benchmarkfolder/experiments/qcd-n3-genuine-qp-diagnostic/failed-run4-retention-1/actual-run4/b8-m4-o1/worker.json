@@ -1,0 +1,71 @@
+{
+  "argv": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit",
+    "--as=4294967296",
+    "--",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+    "-I",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal4/exec_target.py",
+    "run",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic",
+    "ed6a51fff0312b06a45cd97a409aafa7d2447eef5ae7800579b44c0c904b8474",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/run4/closed-runtime",
+    "8",
+    "4",
+    "1"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/run4/b8-m4-o1",
+  "environment": {
+    "LC_ALL": "C",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "exit_observed_unix": 1794325336.2609165,
+  "finished_unix": 1794325336.3776157,
+  "mapping_capture": {
+    "complete_snapshot_sha256": "c0a24fb59b68fc83fdefe8f69176d1561386b01fff0931b1252f49a2214dcdc3",
+    "last_incomplete_reason": {
+      "executable_present": true,
+      "missing_expected_paths": [
+        "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+        "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+        "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+      ],
+      "selected_bridge_present": false
+    },
+    "last_read_bytes": 13638,
+    "last_read_sha256": "c0a24fb59b68fc83fdefe8f69176d1561386b01fff0931b1252f49a2214dcdc3",
+    "last_read_unix": 1794325318.0778842,
+    "successful_reads": 15
+  },
+  "native": true,
+  "pid": 257,
+  "process_reaped": true,
+  "process_spawned": true,
+  "process_wall_seconds": 18.364380071870983,
+  "returncode": 0,
+  "seconds_cap": 180,
+  "spawn_unix": 1794325317.8976805,
+  "started_unix": 1794325317.8955398,
+  "target_loader_environment_at_execve": {
+    "LD_LIBRARY_PATH": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/run4/closed-runtime"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "argv": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit",
+    "--as=4294967296",
+    "--",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+    "-I",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal4/exec_target.py",
+    "trace",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic",
+    "ed6a51fff0312b06a45cd97a409aafa7d2447eef5ae7800579b44c0c904b8474",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/run4/closed-runtime"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/run4/b1-m4-o0",
+  "environment": {
+    "LC_ALL": "C",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "exit_observed_unix": 1794325187.2933328,
+  "finished_unix": 1794325187.2935205,
+  "native": false,
+  "pid": 14,
+  "process_reaped": true,
+  "process_spawned": true,
+  "process_wall_seconds": 0.17256006179377437,
+  "returncode": 0,
+  "seconds_cap": 30,
+  "spawn_unix": 1794325187.1219084,
+  "started_unix": 1794325187.1205158,
+  "target_loader_environment_at_execve": {
+    "LD_LIBRARY_PATH": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/run4/closed-runtime",
+    "LD_TRACE_LOADED_OBJECTS": "1"
+  }
+}
