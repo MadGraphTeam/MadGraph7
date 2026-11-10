@@ -3990,6 +3990,30 @@ def _seeded_rambo_rng(ij=1802, kl=9373):
         rambo.random_nb = old_random_nb
 
 
+def _check_sa_energy(proc, evaluator_obj, energy):
+    """The centre-of-mass energy the standalone 'check' drivers actually use.
+
+    For a 2 -> n process, the Fortran, C++ and madmatrix drivers raise an
+    energy at or below twice the sum of the external masses to that value
+    (t t~ > w+ w- asked at 1 TeV runs at 1013.676 GeV). get_momenta has its
+    own, different, threshold rule, so the Python point has to be generated at
+    this energy to be the same point.
+    """
+    legs = proc.get('legs')
+    if len([l for l in legs if not l.get('state')]) != 2:
+        return energy
+    model = evaluator_obj.full_model
+    total = 0.
+    for leg in legs:
+        pdg = leg.get('id')
+        if pdg in model.merged_particles:
+            pdg = model.merged_particles[pdg][0]
+        name = model.get_particle(pdg).get('mass')
+        if name.lower() != 'zero':
+            total += model.get('parameter_dict')[name].real  # signed, as PMASS
+    return max(energy, 2. * total)
+
+
 def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
     """Generate Python momenta with the same RAMBO RNG seed as check_sa.
 
@@ -4004,6 +4028,7 @@ def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
     if evaluator_obj is None:
         return None
     try:
+        energy_value = _check_sa_energy(proc, evaluator_obj, float(energy_value))
         with _seeded_rambo_rng(1802, 9373):
             seeded_options = {'energy': float(energy_value),
                               'events': None,

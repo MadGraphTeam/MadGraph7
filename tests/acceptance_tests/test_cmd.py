@@ -5449,6 +5449,33 @@ C
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
+    def test_check_language_massive_initial_state_and_fd(self):
+        """`check language` compares the backends at one phase-space point.
+
+        Two processes it got wrong:
+        - t t~ > w+ w- (unitary, 0.4%): the Fortran/C++ drivers raise the
+          energy to twice the sum of the external masses (1013.676 GeV), the
+          madmatrix matrix mode and the Python column did not, and madmatrix
+          evaluated a second RAMBO point instead of the one it printed;
+        - w+ w- > w+ w- in the FD gauge (5%): the C++ FD vxxxxx wrote the full
+          longitudinal polarisation and no goldstone component, which equals
+          the FD one only at zero width.
+        """
+        self.do('set auto_gauge False')
+        self.do('import model sm')
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check language t t~ > w+ w-')
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', '\n'.join(cm.output))
+
+        self.do('set gauge FD')
+        try:
+            self.do('import model sm')
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check language w+ w- > w+ w-')
+        finally:
+            self.do('set gauge unitary')
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', '\n'.join(cm.output))
+
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""
 
