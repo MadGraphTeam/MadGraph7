@@ -49,7 +49,10 @@
       final performance requirement.]
     v(5pt)
     text(7.3pt, fill: ink2)[User amendment: #raw(data.refresh.amendment_path).
-      #if data.refresh.local_handoff_path != none { [Local reproduction: #raw(data.refresh.local_handoff_path).] }]
+      #if data.refresh.local_handoff_path != none { [Runnable instructions:
+        #link("https://github.com/MadGraphTeam/MadGraph7/blob/madloop_tirust/docs/benchmarkfolder/" + data.refresh.local_handoff_path)[Hua-Sheng’s local precise timing handoff].
+        It covers fresh installation, local registration, full numerical replay,
+        paired timing and a separate local PDF; the handoff is not a measurement.] }]
     v(7pt)
   }
   [Formal main-process timing uses a 2 s calibration target and the frozen

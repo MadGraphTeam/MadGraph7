@@ -70,7 +70,7 @@
   v(4pt)
   note(fill: warm)[*Complete delivery qualification:
     #cell-status(if current-dossier != none and current-dossier.delivery_complete { "pass" } else { "incomplete" }).*
-    #if refresh != none { [#refresh.closed_cases of #refresh.expected_cases physical cases are closed: #refresh.closed_lanes lanes × 100 saved points pass 3e-6. EW n4 remains pending in this frozen snapshot.] }
+    #if refresh != none { [#refresh.closed_cases of #refresh.expected_cases physical cases are closed: #refresh.closed_lanes lanes × 100 saved points pass 3e-6. #if refresh.closed_cases < refresh.expected_cases { [Unclosed cases remain pending in this frozen snapshot.] } else { [The ordinary five-backend numerical matrix is complete.] }] }
     The eleven-process numerical matrix,
     controls, existing-backend regressions, precision cohorts, implementation checks and
     unresolved stress cases retain separate statuses.]

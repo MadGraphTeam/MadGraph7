@@ -101,18 +101,19 @@ do not supply the pending runtime-campaign measurements.
 The standalone pole diagnostic is described in `POLES.md`.
 
 The current PDF is a closed-evidence intermediate report for
-`split-dp-terminal-1`: ten of eleven processes, all six lanes per process,
-and 100 saved points per lane pass the `3e-6` criterion. The EW four-particle
-case is still active and is excluded entirely from this snapshot. The `1e-8`
-misses in QCD three- and four-particle cases remain visible; accepted precision
+`split-dp-terminal-1`: all eleven processes, all six lanes per process,
+and 100 saved points per lane pass the `3e-6` criterion. The complete matrix
+contains 66 lanes. The `1e-8` misses in QCD three- and four-particle cases
+and the EW four-particle case remain visible; accepted precision
 is reported separately from internal retries, which this dataset does not observe.
 
 Final precise timings are **deferred to Hua-Sheng on his local machine**, as
 recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). Shared-host timing
 is provisional and uses no CPU reservation. No new paired timings are included
-in this snapshot and no `≤1.05` performance claim is made. A portable local
-runner/handoff is still being prepared; the historical quiet-window controller
-must not be treated as a local reproduction command unchanged.
+in this snapshot and no `≤1.05` performance claim is made. The runnable [local timing handoff](campaigns/split-dp-terminal-1/timing-handoff-2/LOCAL_TIMING_TODO.md)
+covers fresh installation, local registration, numerical replay, timing and a
+separate local PDF. Its source/test qualification is not a local measurement.
+The historical quiet-window controller remains unrun.
 
 The experimental adaptive-precision bridge is an isolated development build,
 not a private repository or the installed backend used in this campaign. It
@@ -144,9 +145,9 @@ numerical directories before opening them. To reproduce or verify this snapshot:
 ```sh
 source tools/tirust_env.sh
 python3 -B docs/benchmarkfolder/build_report.py --campaign split-dp-terminal-1 \
-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed10-3.json
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-1.json
 python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign split-dp-terminal-1 \
-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed10-3.json
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-1.json
 PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider \
   tests/unit_tests/various/test_tirust_report.py \
   docs/benchmarkfolder/test_intermediate_report.py \
@@ -155,7 +156,10 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider \
 
 For a future refresh, close the selected runs, create a new selection and dossier
 path, and preserve this report's ledger/PDF before rebuilding. Do not overwrite
-a previous dossier or use current partial EW n4 rows as completed evidence.
+a previous dossier or use partial numerical rows as completed evidence. The
+closed10 PDF, ledger and Typst sources are preserved under
+`history/report-before-closed11/`; its immutable selections and dossier remain
+in the campaign report-snapshots directory.
 
 The report build does not run numerical measurements. It writes `benchmark.pdf`
 and `report-build.json`, which records input and PDF hashes, the exact Typst
