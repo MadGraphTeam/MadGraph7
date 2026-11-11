@@ -149,6 +149,8 @@ CASES = {
         orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
     ),
     "FKSCuts": dict(configurations=FKS_CONFIGURATIONS, ptj=10.0),
+    "FKSScale": dict(particle_count=5, dynamical_scale_choice=1),
+    "FKSLuminosity": dict(flavors=[[[2, -2], [4, -4]], [[21, -2]]]),
     "FKSCrossSection": dict(
         subtraction=ms.FKSSubtraction(
             FKS_CONFIGURATIONS, ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS)

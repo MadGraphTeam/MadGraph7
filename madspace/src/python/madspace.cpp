@@ -2586,9 +2586,51 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("options", &FKSCuts::options, pydoc::doc("FKSCuts::options"));
 
-    py::classh<FKSCrossSection, FunctionGenerator>(
+    py::classh<FKSScale, FunctionGenerator>(m, "FKSScale", pydoc::doc("FKSScale"))
+        .def(
+            py::init<
+                std::size_t,
+                int,
+                bool,
+                bool,
+                double,
+                double,
+                double,
+                double,
+                double,
+                double>(),
+            py::arg("particle_count"),
+            py::arg("dynamical_scale_choice") = -1,
+            py::arg("fixed_ren_scale") = false,
+            py::arg("fixed_fac_scale") = false,
+            py::arg("mur_ref_fixed") = 91.118,
+            py::arg("muf1_ref_fixed") = 91.118,
+            py::arg("muf2_ref_fixed") = 91.118,
+            py::arg("mur_over_ref") = 1.,
+            py::arg("muf1_over_ref") = 1.,
+            py::arg("muf2_over_ref") = 1.,
+            pydoc::doc("FKSScale::FKSScale")
+        )
+        .def_readonly_static(
+            "min_scale", &FKSScale::min_scale, pydoc::doc("FKSScale::min_scale")
+        )
+        .def(
+            "particle_count",
+            &FKSScale::particle_count,
+            pydoc::doc("FKSScale::particle_count")
+        )
+        .def("options", &FKSScale::options, pydoc::doc("FKSScale::options"))
+        .def(
+            "with_particle_count",
+            &FKSScale::with_particle_count,
+            py::arg("particle_count"),
+            pydoc::doc("FKSScale::with_particle_count")
+        );
+
+    py::classh<FKSCrossSection, FunctionGenerator> fks_cross_section(
         m, "FKSCrossSection", pydoc::doc("FKSCrossSection")
-    )
+    );
+    fks_cross_section
         .def(
             py::init<
                 const FKSSubtraction&,
@@ -2614,7 +2656,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "weights", &FKSCrossSection::weights, pydoc::doc("FKSCrossSection::weights")
         )
-        .def("cuts", &FKSCrossSection::cuts, pydoc::doc("FKSCrossSection::cuts"));
+        .def("cuts", &FKSCrossSection::cuts, pydoc::doc("FKSCrossSection::cuts"))
+        .def("scale", &FKSCrossSection::scale, pydoc::doc("FKSCrossSection::scale"));
 
     py::classh<EWSudakovAmplitude>(
         m, "EWSudakovAmplitude", pydoc::doc("EWSudakovAmplitude")
@@ -3679,6 +3722,67 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("grid"),
             py::arg("prefix") = "",
             pydoc::doc("RunningCoupling::RunningCoupling")
+        );
+
+    // the parts of the FKS integrand that take a PdfGrid or a RunningCoupling,
+    // after these for their names in the signatures
+    py::classh<FKSLuminosity, FunctionGenerator>(
+        m, "FKSLuminosity", pydoc::doc("FKSLuminosity")
+    )
+        .def(
+            py::init<
+                const nested_vector3<me_int_t>&,
+                const std::optional<PdfGrid>&,
+                const std::optional<PdfGrid>&,
+                const std::string&>(),
+            py::arg("flavors"),
+            py::arg("pdf_grid") = std::nullopt,
+            py::arg("pdf_grid2") = std::nullopt,
+            py::arg("pdf2_prefix") = "beam2",
+            pydoc::doc("FKSLuminosity::FKSLuminosity")
+        )
+        .def(
+            "configuration_count",
+            &FKSLuminosity::configuration_count,
+            pydoc::doc("FKSLuminosity::configuration_count")
+        )
+        .def("has_pdf", &FKSLuminosity::has_pdf, pydoc::doc("FKSLuminosity::has_pdf"));
+
+    fks_cross_section
+        .def(
+            py::init<
+                const FKSSubtraction&,
+                const FKSSoftVirtual&,
+                const FKSWeights&,
+                const std::optional<FKSCuts>&,
+                const FKSScale&,
+                const RunningCoupling&,
+                const FKSLuminosity&,
+                const FKSLuminosity&>(),
+            py::arg("subtraction"),
+            py::arg("soft_virtual"),
+            py::arg("weights"),
+            py::arg("cuts"),
+            py::arg("scale"),
+            py::arg("running_coupling"),
+            py::arg("luminosity"),
+            py::arg("born_luminosity"),
+            pydoc::doc("FKSCrossSection::FKSCrossSection#2")
+        )
+        .def(
+            "running_coupling",
+            &FKSCrossSection::running_coupling,
+            pydoc::doc("FKSCrossSection::running_coupling")
+        )
+        .def(
+            "luminosity",
+            &FKSCrossSection::luminosity,
+            pydoc::doc("FKSCrossSection::luminosity")
+        )
+        .def(
+            "born_luminosity",
+            &FKSCrossSection::born_luminosity,
+            pydoc::doc("FKSCrossSection::born_luminosity")
         );
 
     py::classh<EnergyScale, FunctionGenerator> scale(

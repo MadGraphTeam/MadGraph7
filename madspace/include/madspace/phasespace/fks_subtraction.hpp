@@ -5,6 +5,7 @@
 
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/fks_configuration.hpp"
+#include "madspace/phasespace/fks_couplings.hpp"
 #include "madspace/phasespace/fks_limits.hpp"
 #include "madspace/phasespace/fks_sector.hpp"
 #include "madspace/util.hpp"
@@ -652,6 +653,22 @@ private:
  * of its n-body configuration: for QCD they differ only in the flavor of the
  * soft parton, which the cuts never see.
  *
+ * With @ref FKSScale, a @ref RunningCoupling and the @ref FKSLuminosity of
+ * the real emission and of the Born, the integrand takes the scales, the
+ * couplings and the luminosities itself, as sigint: the scales of the Born
+ * for the n-body part and the soft and soft-collinear counterterms (MadFKS
+ * takes them at the soft counter-event, whose soft parton adds nothing),
+ * those of the collinear counter-event for the collinear counterterm and the
+ * collinear remnants, and those of the event for the real emission, with
+ * @f$\alpha_s@f$ at the renormalization scale and the luminosity at the
+ * momentum fractions and the factorization scales of each. Its arguments
+ * then have no scales, couplings and luminosities but the momentum fractions
+ * of the kinematics of @ref FKSKinematics in their place: `x1`, `x2`,
+ * `soft_x1`, `soft_x2`, `collinear_x1`, `collinear_x2`, `soft_collinear_x1`,
+ * `soft_collinear_x2`, `born_x1` and `born_x2`. The soft-collinear remnants
+ * take the factorization scales of the collinear counter-event, which equal
+ * those of the Born for the scale choices of @ref FKSScale.
+ *
  * **Returns**
  * - those of @ref FKSWeights.
  *
@@ -675,6 +692,34 @@ public:
         const FKSWeights& weights,
         const std::optional<FKSCuts>& cuts = std::nullopt
     );
+    /**
+     * With the scales, the couplings and the luminosities inside.
+     * @param subtraction       The real emission and its counterterms.
+     * @param soft_virtual      The n-body part without the Born and the
+     *                          virtual.
+     * @param weights           The weights of the contributions.
+     * @param cuts              The generation cuts, if any.
+     * @param scale             The scales of each kinematics, for any number
+     *                          of particles.
+     * @param running_coupling  @f$\alpha_s@f$ at the renormalization scale.
+     * @param luminosity        The luminosity of the real emission and its
+     *                          counter-events, per FKS configuration.
+     * @param born_luminosity   That of the n-body part, for one or each FKS
+     *                          configuration.
+     * @throws std::invalid_argument as the other constructor, or if the
+     *         luminosities do not have the FKS configurations of the
+     *         subtraction.
+     */
+    FKSCrossSection(
+        const FKSSubtraction& subtraction,
+        const FKSSoftVirtual& soft_virtual,
+        const FKSWeights& weights,
+        const std::optional<FKSCuts>& cuts,
+        const FKSScale& scale,
+        const RunningCoupling& running_coupling,
+        const FKSLuminosity& luminosity,
+        const FKSLuminosity& born_luminosity
+    );
     /// The real emission and its counterterms.
     const FKSSubtraction& subtraction() const { return _subtraction; }
     /// The n-body part without the Born and the virtual.
@@ -683,6 +728,18 @@ public:
     const FKSWeights& weights() const { return _weights; }
     /// The generation cuts, if any.
     const std::optional<FKSCuts>& cuts() const { return _cuts; }
+    /// The scales of the kinematics with n + 1 particles, if inside.
+    const std::optional<FKSScale>& scale() const { return _scale; }
+    /// @f$\alpha_s@f$, if inside.
+    const std::optional<RunningCoupling>& running_coupling() const {
+        return _running_coupling;
+    }
+    /// The luminosity of the real emission, if inside.
+    const std::optional<FKSLuminosity>& luminosity() const { return _luminosity; }
+    /// The luminosity of the n-body part, if inside.
+    const std::optional<FKSLuminosity>& born_luminosity() const {
+        return _born_luminosity;
+    }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -693,6 +750,9 @@ private:
     FKSSoftVirtual _soft_virtual;
     FKSWeights _weights;
     std::optional<FKSCuts> _cuts;
+    std::optional<FKSScale> _scale, _born_scale;
+    std::optional<RunningCoupling> _running_coupling;
+    std::optional<FKSLuminosity> _luminosity, _born_luminosity;
 };
 
 } // namespace madspace

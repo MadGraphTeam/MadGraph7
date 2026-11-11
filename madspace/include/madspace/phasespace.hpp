@@ -13,6 +13,7 @@
 #include "phasespace/discrete_sampler.hpp"
 #include "phasespace/ew_sudakov.hpp"
 #include "phasespace/fks_configuration.hpp"
+#include "phasespace/fks_couplings.hpp"
 #include "phasespace/fks_limits.hpp"
 #include "phasespace/fks_mapping.hpp"
 #include "phasespace/fks_radiation.hpp"

@@ -774,14 +774,21 @@ NamedVector<Value> FKSCuts::build_function_impl(
 
 namespace {
 
+// the momentum fractions of the kinematics that the luminosities take
+const std::vector<std::string> KINEMATICS = {
+    "", "soft_", "collinear_", "soft_collinear_", "born_"
+};
+
 // the arguments of FKSCrossSection: those of the subtraction without alpha_s
 // and with the factorization scales of the Born and of the remnants, then
 // those of the weights that the subtraction and the n-body part do not give,
-// fks_index last
+// fks_index last. With the couplings inside, the scales, the couplings and
+// the luminosities give way to the momentum fractions.
 NamedVector<Type> cross_section_args(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
-    const FKSWeights& weights
+    const FKSWeights& weights,
+    bool couplings = false
 ) {
     if (subtraction.particle_count() != weights.particle_count() ||
         soft_virtual.particle_count() + 1 != weights.particle_count() ||
@@ -795,7 +802,8 @@ NamedVector<Type> cross_section_args(
     NamedVector<Type> args;
     for (auto [type, name] :
          zip(subtraction.arg_types(), subtraction.arg_types().keys())) {
-        if (name == "alpha_s" || name == "fact_scale2" || name == "fks_index") {
+        if (name == "alpha_s" || name == "fact_scale2" || name == "fks_index" ||
+            (couplings && (name == "ren_scale" || name == "fact_scale1"))) {
             continue;
         }
         if (name == "fact_scale1") {
@@ -813,6 +821,16 @@ NamedVector<Type> cross_section_args(
     for (auto [type, name] : zip(weights.arg_types(), weights.arg_types().keys())) {
         if (name == "real" || name == "soft" || name == "collinear" ||
             name == "soft_collinear" || name == "soft_virtual" || name == "born") {
+            continue;
+        }
+        bool coupling = name.ends_with("_alpha_s") || name.ends_with("_luminosity");
+        if (couplings && name == "event_alpha_s") {
+            for (const auto& kinematics : KINEMATICS) {
+                args.push_back(kinematics + "x1", batch_float);
+                args.push_back(kinematics + "x2", batch_float);
+            }
+        }
+        if (couplings && coupling) {
             continue;
         }
         bool present = false;
@@ -851,11 +869,99 @@ FKSCrossSection::FKSCrossSection(
     }
 }
 
+FKSCrossSection::FKSCrossSection(
+    const FKSSubtraction& subtraction,
+    const FKSSoftVirtual& soft_virtual,
+    const FKSWeights& weights,
+    const std::optional<FKSCuts>& cuts,
+    const FKSScale& scale,
+    const RunningCoupling& running_coupling,
+    const FKSLuminosity& luminosity,
+    const FKSLuminosity& born_luminosity
+) :
+    FunctionGenerator(
+        "FKSCrossSection",
+        cross_section_args(subtraction, soft_virtual, weights, true),
+        weights.return_types()
+    ),
+    _subtraction(subtraction),
+    _soft_virtual(soft_virtual),
+    _weights(weights),
+    _cuts(cuts),
+    _scale(scale.with_particle_count(weights.particle_count())),
+    _born_scale(scale.with_particle_count(weights.particle_count() - 1)),
+    _running_coupling(running_coupling),
+    _luminosity(luminosity),
+    _born_luminosity(born_luminosity) {
+    if (_cuts && _cuts->particle_count() != weights.particle_count()) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the cuts need the particles of the weights"
+        );
+    }
+    std::size_t count = subtraction.configuration_count();
+    if (luminosity.configuration_count() != count ||
+        (born_luminosity.configuration_count() != count &&
+         born_luminosity.configuration_count() != 1)) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the luminosities need the FKS configurations of the "
+            "subtraction"
+        );
+    }
+}
+
 NamedVector<Value> FKSCrossSection::build_function_impl(
-    FunctionBuilder& fb, const NamedVector<Value>& args
+    FunctionBuilder& fb, const NamedVector<Value>& arguments
 ) const {
+    // the arguments, and with the couplings inside the scales, the couplings
+    // and the luminosities of each kinematics
+    std::map<std::string, Value> args;
+    for (auto [value, name] : zip(arguments, arguments.keys())) {
+        args[name] = value;
+    }
+    auto batch_size = fb.batch_size({args.at("born_weight")});
+    if (_scale) {
+        auto born = _born_scale->build_function(fb, {args.at("born_momenta")});
+        auto collinear = _scale->build_function(fb, {args.at("collinear_momenta")});
+        auto event = _scale->build_function(fb, {args.at("momenta")});
+        args["ren_scale"] = born.at("ren_scale");
+        args["fact_scale1"] = born.at("fact_scale1");
+        args["fact_scale2"] = born.at("fact_scale2");
+        args["collinear_fact_scale1"] = collinear.at("fact_scale1");
+        args["collinear_fact_scale2"] = collinear.at("fact_scale2");
+        auto coupling = [&](const NamedVector<Value>& scales) {
+            return _running_coupling->build_function(fb, {scales.at("ren_scale")})
+                .at(0);
+        };
+        args["event_alpha_s"] = coupling(event);
+        args["born_alpha_s"] = coupling(born);
+        args["collinear_alpha_s"] = coupling(collinear);
+        auto luminosity =
+            [&](const std::string& kinematics, const NamedVector<Value>& scales) {
+                bool nbody = kinematics == "born_";
+                const auto& function = nbody ? *_born_luminosity : *_luminosity;
+                Value index = args.at("fks_index");
+                if (function.configuration_count() == 1) {
+                    index = fb.full({static_cast<me_int_t>(0), batch_size});
+                }
+                return function
+                    .build_function(
+                        fb,
+                        {args.at(kinematics + "x1"),
+                         args.at(kinematics + "x2"),
+                         scales.at("fact_scale1"),
+                         scales.at("fact_scale2"),
+                         index}
+                    )
+                    .at(0);
+            };
+        args["event_luminosity"] = luminosity("", event);
+        args["soft_luminosity"] = luminosity("soft_", born);
+        args["soft_collinear_luminosity"] = luminosity("soft_collinear_", born);
+        args["collinear_luminosity"] = luminosity("collinear_", collinear);
+        args["born_luminosity"] = luminosity("born_", born);
+    }
     // the subtraction and the n-body part at g_s = 1
-    Value alpha_s = fb.full({1. / (4. * PI), fb.batch_size({args.at("born_weight")})});
+    Value alpha_s = fb.full({1. / (4. * PI), batch_size});
     ValueVec subtraction_args;
     for (const auto& name : _subtraction.arg_types().keys()) {
         if (name == "alpha_s") {

@@ -243,6 +243,7 @@ add_library(
     src/phasespace/color_ordered_mapping.cpp
     src/phasespace/fks_configuration.cpp
     src/phasespace/fks_limits.cpp
+    src/phasespace/fks_couplings.cpp
     src/phasespace/fks_mapping.cpp
     src/phasespace/fks_radiation.cpp
     src/phasespace/fks_sector.cpp

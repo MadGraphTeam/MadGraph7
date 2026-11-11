@@ -23,6 +23,10 @@ madgraph/iolibs/export_fks.py):
         fks_j_from_i: for each particle i of the real process, the particles
             j it forms an FKS pair with (1-based), the pairs whose sector
             functions partition the phase space of the real process
+    born_flavors: the flavors of the Born matrix element, the PDG codes of
+        each (the first is born_pdgs), absent from older exporters
+    real_flavors[]: those of each real matrix element (real_me = position +
+        1), over which its luminosity sums, absent from older exporters
     extra_counterterms[]: the Borns of the extra counterterms
         (born_cnt_<n>.f), for a quark pair that comes from a gluon or from a
         photon, absent from older exporters
@@ -71,8 +75,10 @@ Born and its correlated versions, fks_subtraction the real emission with
 its counterterms, fks_soft_virtual the n-body part of the subtraction
 without the virtual, fks_weights the weights of the integrand from them and
 the couplings and luminosities of each kinematics, fks_cuts the generation
-cuts of each kinematics, and fks_cross_section the integrand from the
-matrix-element blocks. ew_sudakov builds the EWSudakov of the
+cuts of each kinematics, fks_scale the scales of each kinematics,
+fks_luminosities the parton luminosities of the real emission and of the
+n-body part, and fks_cross_section the integrand from the matrix-element
+blocks, with the scales, couplings and luminosities inside or not. ew_sudakov builds the EWSudakov of the
 Sudakov approximation of the EW corrections from the ewsudakov entry.
 """
 
@@ -94,8 +100,10 @@ from ._madspace_py import (
     FKSCuts,
     FKSEikonals,
     FKSLimits,
+    FKSLuminosity,
     FKSMapping,
     FKSPrefactors,
+    FKSScale,
     FKSSectorFunction,
     FKSSoftVirtual,
     FKSSplittingKernels,
@@ -769,7 +777,116 @@ def fks_cuts(born, configurations, **cuts):
     return FKSCuts(fks_configurations(born, configurations), **cuts)
 
 
-def fks_cross_section(born, configurations, n_l=3.0, cuts=None, **parameters):
+# the names of the run card of MadFKS for the scales of FKSScale, with the
+# factorization scale of both beams under the names of the run card
+SCALE_NAMES = {
+    "dynamical_scale_choice": ["dynamical_scale_choice"],
+    "fixed_ren_scale": ["fixed_ren_scale"],
+    "fixed_fac_scale": ["fixed_fac_scale"],
+    "mur_ref_fixed": ["mur_ref_fixed"],
+    "muf_ref_fixed": ["muf1_ref_fixed", "muf2_ref_fixed"],
+    "muf1_ref_fixed": ["muf1_ref_fixed"],
+    "muf2_ref_fixed": ["muf2_ref_fixed"],
+    "mur_over_ref": ["mur_over_ref"],
+    "muf_over_ref": ["muf1_over_ref", "muf2_over_ref"],
+    "muf1_over_ref": ["muf1_over_ref"],
+    "muf2_over_ref": ["muf2_over_ref"],
+}
+
+
+def fks_scale(configurations, **scales):
+    """The FKSScale of the real processes of a Born, the scales of
+    setscales.f of MadFKS at one kinematics (FKSCrossSection takes it for the
+    real processes and the Born alike).
+
+    Args:
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        scales: the scales by their names in the run card of MadFKS
+            (dynamical_scale_choice, fixed_ren_scale, fixed_fac_scale,
+            mur_ref_fixed, muf_ref_fixed, mur_over_ref, muf_over_ref, the
+            last two of each also per beam as muf1_ and muf2_), the defaults
+            of the run card by default.
+
+    Raises:
+        TypeError: for a scale it does not know.
+    """
+    options = {}
+    for name, value in scales.items():
+        if name not in SCALE_NAMES:
+            raise TypeError(f"fks_scale: unknown scale parameter {name}")
+        for option in SCALE_NAMES[name]:
+            options[option] = value
+    return FKSScale(len(configurations["born_pdgs"]) + 1, **options)
+
+
+def _beam_flavors(flavors, beams):
+    """The PDG codes of the two incoming partons of each flavor, those of a
+    beam of antiprotons (-1) charge conjugated."""
+    result = []
+    for flavor in flavors:
+        pair = []
+        for pdg, beam in zip(flavor[:2], beams):
+            conjugate = beam == -1 and abs(pdg) not in (21, 22)
+            pair.append(-pdg if conjugate else pdg)
+        result.append(pair)
+    return result
+
+
+def fks_luminosities(configurations, pdf_grid=None, pdf_grid2=None, beams=(1, 1)):
+    """The FKSLuminosity of the real emission (per FKS configuration, over the
+    flavors of its real matrix element) and that of the n-body part (over the
+    flavors of the Born), as the parton_lum_*.f files of MadFKS.
+
+    Args:
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        pdf_grid: the PdfGrid of the beams, None for lepton beams.
+        pdf_grid2: the PdfGrid of the second beam where it differs.
+        beams: lpp1 and lpp2 of the run card, 1 for protons, -1 for
+            antiprotons and 0 for leptons without densities.
+
+    Raises:
+        ValueError: for a fks_configurations.json of an older exporter
+            without the flavors, for beams other than two hadrons or two
+            leptons, for hadrons without a grid or leptons with one.
+    """
+    if "born_flavors" not in configurations or "real_flavors" not in configurations:
+        raise ValueError(
+            "fks_configurations.json has no flavors, it comes from an older FKS "
+            "exporter"
+        )
+    beams = tuple(int(beam) for beam in beams)
+    hadrons = all(abs(beam) == 1 for beam in beams)
+    if not hadrons and beams != (0, 0):
+        raise ValueError(
+            f"fks_luminosities: beams {beams} are not two hadrons or two leptons"
+        )
+    if hadrons != (pdf_grid is not None):
+        raise ValueError(
+            "fks_luminosities: hadron beams need a PdfGrid and lepton beams none"
+        )
+    real = [
+        _beam_flavors(configurations["real_flavors"][c["real_me"] - 1], beams)
+        for c in configurations["configurations"]
+    ]
+    born = [_beam_flavors(configurations["born_flavors"], beams)]
+    grids = dict(pdf_grid=pdf_grid, pdf_grid2=pdf_grid2)
+    return FKSLuminosity(real, **grids), FKSLuminosity(born, **grids)
+
+
+def fks_cross_section(
+    born,
+    configurations,
+    n_l=3.0,
+    cuts=None,
+    scales=None,
+    running_coupling=None,
+    pdf_grid=None,
+    pdf_grid2=None,
+    beams=(1, 1),
+    **parameters,
+):
     """The FKSCrossSection of the FKS configurations of a Born, the FKS
     integrand from the kinematics of FKSKinematics and the matrix-element
     blocks without the strong coupling.
@@ -782,20 +899,40 @@ def fks_cross_section(born, configurations, n_l=3.0, cuts=None, **parameters):
         n_l: the number of massless leptons, for the n-body part.
         cuts: the generation cuts by their names in the run card (see
             fks_cuts), or None for none.
+        scales: the scales by their names in the run card (see fks_scale), or
+            None for the scales, couplings and luminosities as arguments. With
+            them, the integrand takes them itself from running_coupling,
+            pdf_grid, pdf_grid2 and beams (see fks_luminosities).
+        running_coupling: the RunningCoupling of alpha_s, with scales.
         parameters: those of fks_subtraction, of which xicut, delta_o and n_f
             also go to the n-body part.
 
     Raises:
-        ValueError: as fks_subtraction and fks_soft_virtual.
+        ValueError: as fks_subtraction, fks_soft_virtual and
+            fks_luminosities, or for scales without running_coupling.
     """
     shared = {
         key: parameters[key] for key in ("xicut", "delta_o", "n_f") if key in parameters
     }
-    return FKSCrossSection(
+    arguments = [
         fks_subtraction(born, configurations, **parameters),
         fks_soft_virtual(born, configurations, n_l=n_l, **shared),
         fks_weights(born, configurations),
         None if cuts is None else fks_cuts(born, configurations, **cuts),
+    ]
+    if scales is None:
+        return FKSCrossSection(*arguments)
+    if running_coupling is None:
+        raise ValueError("fks_cross_section: the scales need a running_coupling")
+    luminosity, born_luminosity = fks_luminosities(
+        configurations, pdf_grid, pdf_grid2, beams
+    )
+    return FKSCrossSection(
+        *arguments,
+        fks_scale(configurations, **scales),
+        running_coupling,
+        luminosity,
+        born_luminosity,
     )
 
 
