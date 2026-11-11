@@ -1,0 +1,13 @@
+--- original/Source/make_opts
++++ GEN3/Source/make_opts
+@@ -1,8 +1,8 @@
+-DEFAULT_CPP_COMPILER=g++
++DEFAULT_CPP_COMPILER=/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/g++
+ MACFLAG=
+ STDLIB=-lstdc++
+ STDLIB_FLAG=
+-DEFAULT_F_COMPILER=gfortran
++DEFAULT_F_COMPILER=/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran
+ DEFAULT_F2PY_COMPILER=f2py
+ MG5AMC_VERSION=SpecifiedByMG5aMCAtRunTime
+ PYTHIA8_PATH=NotInstalled

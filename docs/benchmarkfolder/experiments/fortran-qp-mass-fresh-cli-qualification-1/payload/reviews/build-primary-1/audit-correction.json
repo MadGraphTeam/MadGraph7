@@ -1,0 +1,7 @@
+{
+  "schema": "audit-only-count-correction-v1",
+  "initial_audit_source_sha256": "bed9be44b1a85452b2eb03c22e8f7f19f1141c8beab852c05735aa410a8f608d",
+  "initial_attempt": "exit1 at Source binding count after successful pure source/build/protected/flags/link replays",
+  "reason": "The frozen GEN3 Source family has112 .o files plus4 .mod bindings,116 Source entries. Initial audit conflated object-file count with all numerical object/module bindings. Qualification source/results unchanged; corrected audit explicitly checks both counts.",
+  "new_native_calls": 0
+}

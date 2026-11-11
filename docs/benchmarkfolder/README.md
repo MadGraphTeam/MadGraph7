@@ -210,6 +210,17 @@ remains unapplied, and the packet retains its failed inventory build and a
 separate fresh-CLI startup failure. Broader models, independent physical finite
 truth and performance remain unqualified.
 
+A later [fresh-CLI follow-up](experiments/fortran-qp-mass-fresh-cli-qualification-1/README.md)
+closes actual MG CLI generation, explicit source review, compilation and a fresh
+normal checked 100-point run for `loop_sm; u u~ > z g g [virt=QCD]`.
+All seven changed driver/numerical units compile with the original flags; all
+800 coefficient and 200 accuracy words agree with the corrected reference,
+including 87 DP and 13 automatically rescued QP points. The historical startup
+failure and generation's pending-review status remain unchanged; separate later
+reviews qualify this successful chain. This uses genuine QP integrands and
+cache disabled. The five-file patch remains unapplied; other models, backends,
+loop-induced processes and performance acceptance remain open.
+
 A [closed ordinary-QP transport profile](experiments/fortran-qp-transport-profile-qualification-1/README.md)
 retains three fresh workers, each with the unchanged 100-point learning traversal
 and the same DP and automatically rescued QP anchors. All coefficient, status,

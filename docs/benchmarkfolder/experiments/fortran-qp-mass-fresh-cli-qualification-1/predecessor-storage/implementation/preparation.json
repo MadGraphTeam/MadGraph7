@@ -1,0 +1,26 @@
+{
+  "base_files": 7,
+  "candidate_files": 9,
+  "compiler_calls": 0,
+  "guarded_writer_sha256": "5258886f41d50c960af1cc2416a5f42387a017d671320fc717ef448dc95b182d",
+  "guarded_writer_source": ".tirust-build/qp-mass-general-implementation/caller-guard-proposal/src/madgraph/iolibs/helas_call_writers.py",
+  "installed_native_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "legacy_public_abi_preserved": true,
+  "native_execution": false,
+  "new_backend_scope": [
+    9
+  ],
+  "original_files": {
+    "madgraph/iolibs/helas_call_writers.py": "7a267fa78b75fa5b8efc4fc2f595769f938ee59919f55c6fffc3ab86ec5707ea",
+    "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16",
+    "madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": "29dcb05866279d2039676a7fb369c068483fa556767254b15b399b736d289692",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ece7c4e855b50f13822f441d7be227631293acbc9ed345a2f1a154f0329757a2",
+    "madgraph/iolibs/template_files/loop_optimized/helas_calls_split.inc": "372448d005dd9a3269979d9ce8589d6e2de8ccacb9be930cd8e3e84f9b09c66c",
+    "madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc": "3c2925d00c555bba18e24ab6272037c18c29d54947b0ad46a8cb2629e4bd1692",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74"
+  },
+  "production_source_commit": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "production_writes": false,
+  "schema": "current-source-backend9-only-qp-mass-source-v1",
+  "source_only_no_scientific_qualification": true
+}

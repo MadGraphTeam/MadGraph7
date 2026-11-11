@@ -1,0 +1,7 @@
+{
+  "schema": "audit-only-name-correction-v1",
+  "initial_audit_source_sha256": "efd153daa238d62b5bbcd1e1213b986e380ecc0448c094d4aef9cae519367b4a",
+  "initial_attempt": "exit1 KeyError at module-source join; preceding source/build/reuse checks passed",
+  "reason": "Actual generated module is ml5_0_polynomial_constants.mod, with explicit polynomial.f recipe/source already present in frozen15-reuse manifest. Corrected audit filename only; qualification files unchanged.",
+  "new_native_calls": 0
+}

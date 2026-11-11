@@ -1,0 +1,10 @@
+{
+  "actual_sha256": "d494c68fc32d2d369e843760e2029c83abcfe2adeace22c519de1b9db775c210",
+  "all_other_bytes_exact": true,
+  "expanded_recipe_or_compiler_wrapper_execution_not_independently_recaptured": true,
+  "only_allowed_changes": [
+    "DEFAULT_CPP_COMPILER: exact pinned path",
+    "DEFAULT_F_COMPILER: exact pinned path"
+  ],
+  "original_sha256": "f54caf3102b510590020539e6efaf9b515b2eac42f406a1a02bd3c484ca85dbe"
+}

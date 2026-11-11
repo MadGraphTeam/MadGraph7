@@ -1,0 +1,33 @@
+    def generate_loop_amplitude_call(self, loopamp):
+        """Generate legacy DP and paired-mass QP calls behind a caller guard."""
+
+        name = "LOOP%(numLoopLines)s"
+        arguments = ""
+        if len(loopamp.get('pairing')) != len(loopamp.get('mothers')):
+            name += "%(numMotherWfs)s"
+            for i in range(len(loopamp.get('pairing'))):
+                arguments += "%(Pairing{0})d,".format(i)
+        for i in range(len(loopamp.get('mothers'))):
+            arguments += "%(MotherID{0})d,".format(i+1)
+
+        dp_call = name + "(" + arguments
+        qp_call = name + "_QPMASS(" + arguments
+        for i in range(len(loopamp.get('wavefunctions'))-2):
+            dp_call += "DCMPLX(%(LoopMass{0})s),".format(i+1)
+            qp_call += (
+                "DCMPLX(%(LoopMass{0})s),CMPLX({1}%(LoopMass{0})s,KIND=16),"
+                .format(i+1, self.mp_prefix))
+        suffix = "%(LoopRank)d,I_SO,%(loop_group_id)d)"
+        dp_call += suffix
+        qp_call += suffix
+
+        def call_function(amp):
+            arguments = amp.get_helas_call_dict(OptimizedOutput=True)
+            # Keep the complete block in one item: split_HELASCALLS chunks
+            # call-list items. DP must not evaluate any MP actual argument.
+            return ('IF(CTMODE.LT.4) THEN\nCALL %(proc_prefix)s' +
+                    dp_call % arguments + '\nELSE\nCALL %(proc_prefix)s' +
+                    qp_call % arguments + '\nENDIF')
+
+        self.add_amplitude(loopamp.get_call_key(), call_function)
+        return

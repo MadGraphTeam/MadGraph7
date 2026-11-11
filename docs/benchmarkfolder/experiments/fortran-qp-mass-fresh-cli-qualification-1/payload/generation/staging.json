@@ -1,0 +1,23 @@
+{
+  "additional_startup_only_bindings": 12,
+  "bootstrap_policy": {
+    "conservative_optional_frontend_python_files": 9,
+    "current_bytes_match_frozen_git_blobs": true,
+    "empty_plugin_namespace_files": 1,
+    "frozen_git_anchor": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+    "import_execution": false,
+    "mandatory_python_files": 2,
+    "new_scientific_source_bindings": 0,
+    "scope": "static source bootstrap overapproximation, not executed dynamic import completeness"
+  },
+  "no_Git_operations": true,
+  "overlay_counts": {
+    "changed_existing_payloads": 3,
+    "existing_payloads": 7,
+    "new_payloads": 2,
+    "unchanged_existing_payloads": 4
+  },
+  "private_dependency_copies": 123,
+  "source_inventory_entries": 2666,
+  "untracked_startup_configuration": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-work-3/mg-current-qpmass/input/mg7_configuration.txt"
+}

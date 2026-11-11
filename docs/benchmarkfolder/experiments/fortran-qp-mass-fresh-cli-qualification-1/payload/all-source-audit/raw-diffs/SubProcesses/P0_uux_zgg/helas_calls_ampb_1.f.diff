@@ -1,0 +1,12 @@
+--- original/SubProcesses/P0_uux_zgg/helas_calls_ampb_1.f
++++ GEN3/SubProcesses/P0_uux_zgg/helas_calls_ampb_1.f
+@@ -49,6 +49,9 @@
+ C     
+ 
+       INCLUDE 'coupl.inc'
++      REAL*8 LSCALE
++      INTEGER CTMODE
++      COMMON/ML5_0_CT/LSCALE,CTMODE
+       INCLUDE 'mp_coupl.inc'
+ 
+       INTEGER HELOFFSET

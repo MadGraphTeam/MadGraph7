@@ -1,0 +1,44 @@
+{
+  "checks": {
+    "BUILD_command_terminals": 70,
+    "GEN_BUILD_RUN_seals_and_independent_RUN_audit_join": true,
+    "RUN_full_raw_and_result_terminal_files": 22,
+    "bootstrap_source_bodies": 130,
+    "five_prospective_production_changes_not_applied": true,
+    "fresh_actual_source_card_bodies": 197,
+    "logical_UTF8_payloads_rehashed": 1058,
+    "native_binary_object_module_archive_payloads": 0,
+    "parent_full_replay_claim_false": true,
+    "parent_index_sha256": "893c51f75dedbb6bbb1a70f78bed84b00d97b958ac678c194dc28cbb3aaa6b0b",
+    "parent_replay_and_math_code_physical_identities_checked": true,
+    "parent_subset_files_both_stored_decoded_identity_checked": 394
+  },
+  "copy_map_sha256": "c7ee7626c226bc5ea9df47c7c173c7f773d47c3c7bdca2e169dcd9baac22d436",
+  "logical_manifest_sha256": "2839c6aebec20d654fe1ac7463d606093c550cf049342f30da60a211b145e050",
+  "not_yet_done": [
+    "Final index seal verification",
+    "Execution of new portable verifier or tests",
+    "Relocation and forbiddenAPI regression audit"
+  ],
+  "preseal_suggestions": [
+    "Hard-require parent whole_parent_numerical_replay_claimed=False and exact394selection count in the verifier, rather than rely on descriptive metadata alone.",
+    "Opening README should say production patch remains unapplied, since private overlaid candidate source necessarily ran."
+  ],
+  "review_scope": [
+    "Unapplied production patch; only private candidate source overlay was executed historically.",
+    "One real ordinary loop_sm n3 process, TRUE QP integrand/cache0, corrected baseline public coefficient parity; no new independent finite truth, native tensor observer or precise timing claim.",
+    "Authenticated subset of the1838-logical-file parent, not replay of its entire observer campaign. Parent historical freshCLI=False and failedGEN2 claims remain intact.",
+    "All195 source input derivations and two BUILD overrides are retained; recipes/actualLOAD/pathaliases/PT_INTERP assertions are historical text evidence, not a fresh binary replay.",
+    "No private/public core or Git change, deployment, new campaign registration or native execution follows retention."
+  ],
+  "schema": "fresh-cli-portable-draft-coverage-audit-v1",
+  "status": "draft_coverage_and_claims_clear_pending_final_seal_verifier_audit",
+  "this_audit": {
+    "Git_actions": 0,
+    "MG_imports": 0,
+    "native_calls": 0,
+    "native_queries": 0,
+    "public_writes": 0,
+    "retained_controller_execution": 0
+  }
+}

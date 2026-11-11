@@ -1,0 +1,9 @@
+Running MG7 in debug mode
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-work-2/mg-current-qpmass/./bin/madgraph", line 164, in <module>
+    import madgraph.interface.master_interface as interface
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-work-2/mg-current-qpmass/madgraph/interface/master_interface.py", line 44, in <module>
+    import madgraph.interface.madgraph_interface as MGcmd
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-work-2/mg-current-qpmass/madgraph/interface/madgraph_interface.py", line 114, in <module>
+    import mg5decay.decay_objects as decay_objects
+ModuleNotFoundError: No module named 'mg5decay'

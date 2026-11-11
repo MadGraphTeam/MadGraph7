@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "./bin/madgraph",
+    "--plain",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-proposal-3/generate.mg5"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-work-3/mg-current-qpmass",
+  "environment": {
+    "MAKEFLAGS": "-j1 SHELL=/nix/store/lw117lsr8d585xs63kx5k233impyrq7q-bash-5.3p3/bin/bash",
+    "OMP_NUM_THREADS": "1",
+    "PYTHONHASHSEED": "0",
+    "RAYON_NUM_THREADS": "1",
+    "XDG_CONFIG_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-work-3/xdg/config"
+  },
+  "expected_children": "compiler/version metadata queries; stock Source/MODEL+DHELAS compilation/archive",
+  "make_internal_children_individually_recorded": false
+}
