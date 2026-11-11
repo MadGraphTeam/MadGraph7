@@ -142,7 +142,9 @@ public:
      *                         acts like a cut on sqrt(s_hat) at that value:
      *                         it raises the lower end of the s_hat the
      *                         luminosity mapping samples and sets the weight
-     *                         of an event below it to zero.
+     *                         of an event below it to zero. The split of
+     *                         @p lepton_sampling_power does not take the
+     *                         floor, so there only the zero weight applies.
      * @param sqrt_s_hat_condition  Add the `sqrt_s_hat` condition, the
      *                         partonic energy of each event, for a leptonic
      *                         mapping (not in the chili mode). It takes the
@@ -224,7 +226,9 @@ public:
      *                         acts like a cut on sqrt(s_hat) at that value:
      *                         it raises the lower end of the s_hat the
      *                         luminosity mapping samples and sets the weight
-     *                         of an event below it to zero.
+     *                         of an event below it to zero. The split of
+     *                         @p lepton_sampling_power does not take the
+     *                         floor, so there only the zero weight applies.
      * @param sqrt_s_hat_condition  Add the `sqrt_s_hat` condition, the
      *                         partonic energy of each event, for a leptonic
      *                         mapping (not in the chili mode). It takes the

@@ -346,6 +346,12 @@ private:
  * also come as @f$1 - x_k@f$, exact up to the smallest normal double, for the
  * PDFs close to @f$x = 1@f$.
  *
+ * The fractions are those of @ref LeptonLuminosity, which the dressed-lepton
+ * beams use. This mapping differs in three ways. Its Jacobian keeps the
+ * factors @f$(1 - x_k)^\beta@f$ that LeptonLuminosity leaves to the reduced
+ * density, @f$\hat s_\min@f$ can come per event from a condition, and its
+ * outputs have other names and another order.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Inputs**
