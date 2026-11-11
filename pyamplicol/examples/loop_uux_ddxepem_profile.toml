@@ -15,8 +15,8 @@ momenta = "data/loop_uux_ddxepem_momenta.json"
 batch_size = 32
 warmup_runs = 1
 minimum_samples = 3
-# The flat points of --stability: few, so that it runs in seconds here (about
-# 4 s per point for both backends together (four squared-order sectors;
-# NinjaRS's double-double reference dominates)); raise with --stability-
-# points.
-stability_points = 3
+# The flat points of --stability: few, so that it runs in about ten seconds
+# here (about 5.5 s per point for both backends together: four squared-order
+# sectors, and NinjaRS's double-double reference dominates); raise with
+# --stability-points.
+stability_points = 2
