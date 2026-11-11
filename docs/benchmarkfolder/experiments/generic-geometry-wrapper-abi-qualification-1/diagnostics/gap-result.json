@@ -1,0 +1,151 @@
+{
+  "batch_only_window_complete": true,
+  "batch_only_window_with_parent_post_write_complete": true,
+  "batch_result": {
+    "complete": true,
+    "last_producer": {
+      "batch": "B2",
+      "file": "SubProcesses/P0/b2.f",
+      "line": 5,
+      "statement": "CALLMAKE(P,W(2))"
+    },
+    "later_writes": [],
+    "prefix": {
+      "complete": true,
+      "procedures": {
+        "B1": {
+          "edges": [
+            "MAKE"
+          ],
+          "file": "SubProcesses/P0/b1.f",
+          "intrinsics": [],
+          "kind": "subroutine",
+          "line": 1
+        },
+        "B2": {
+          "edges": [
+            "MAKE"
+          ],
+          "file": "SubProcesses/P0/b2.f",
+          "intrinsics": [],
+          "kind": "subroutine",
+          "line": 1
+        },
+        "MAKE": {
+          "edges": [],
+          "file": "Source/DHELAS/objects.f",
+          "intrinsics": [],
+          "kind": "subroutine",
+          "line": 6
+        }
+      },
+      "reference_complete": true,
+      "roots": [
+        "B1",
+        "B2"
+      ],
+      "runtime_limitations": [],
+      "schema": "generated-fortran-environment-closure-v2",
+      "scientific_admission": false,
+      "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+      "unknown": []
+    },
+    "reason": null,
+    "required_runtime_contract": [
+      "fresh token before all included batches; same control state at use",
+      "actual same-kind producer path completed, no skip/reuse/widening",
+      "bound source/ABI/compiler contract; no external hidden alias writes"
+    ],
+    "schema": "source-momentum-environment-window-v1",
+    "scientific_admission": false,
+    "suffix": {
+      "complete": true,
+      "procedures": {
+        "B2": {
+          "edges": [],
+          "file": "SubProcesses/P0/b2.f",
+          "intrinsics": [],
+          "kind": "subroutine",
+          "line": 1
+        }
+      },
+      "reference_complete": true,
+      "roots": [
+        "B2"
+      ],
+      "runtime_limitations": [],
+      "schema": "generated-fortran-environment-closure-v2",
+      "scientific_admission": false,
+      "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+      "unknown": []
+    }
+  },
+  "full_geometry_window_qualified": false,
+  "native_or_environment_setter_executions": 0,
+  "parent_producer_to_consumer_no_overwrite_qualified": false,
+  "parent_result": {
+    "complete": false,
+    "procedures": {
+      "B1": {
+        "edges": [
+          "MAKE"
+        ],
+        "file": "SubProcesses/P0/b1.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 1
+      },
+      "B2": {
+        "edges": [
+          "MAKE"
+        ],
+        "file": "SubProcesses/P0/b2.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 1
+      },
+      "MAKE": {
+        "edges": [],
+        "file": "Source/DHELAS/objects.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 6
+      },
+      "PARENT": {
+        "edges": [
+          "B1",
+          "B2",
+          "ROUND_AWAY",
+          "ROUND_BACK"
+        ],
+        "file": "SubProcesses/P0/parent.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 1
+      }
+    },
+    "reference_complete": false,
+    "roots": [
+      "PARENT"
+    ],
+    "runtime_limitations": [],
+    "schema": "generated-fortran-environment-closure-v2",
+    "scientific_admission": false,
+    "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+    "unknown": [
+      {
+        "procedure": "ROUND_AWAY",
+        "reason": "ROUND_AWAY:11: environment mutator statement"
+      },
+      {
+        "procedure": "ROUND_BACK",
+        "reason": "ROUND_BACK:14: environment mutator statement"
+      }
+    ]
+  },
+  "parent_root_complete": false,
+  "schema": "source-parent-interval-gap-diagnostic-v1",
+  "source2_index_sha256": "0e93995f751c7a0f3dfae1e39748714afe5a194ed6dbc1c9e873ca9d89117685",
+  "status": "pass: known scope gap reproduced",
+  "synthetic_parent_post_batch_statement": "W(1)%P(0)=99."
+}

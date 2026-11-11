@@ -1,0 +1,53 @@
+f951: Warning: Nonconforming tab character in column 1 of line 9 [-Wtabs]
+f951: Warning: Nonconforming tab character in column 1 of line 18 [-Wtabs]
+f951: Warning: Nonconforming tab character in column 1 of line 23 [-Wtabs]
+wrapper.f:37:15:
+
+   37 |       LOGICAL COMPLEX_MASS,DOING_QP
+      |               1~~~~~~~~~~~
+Warning: Unused variable 'complex_mass' declared at (1) [-Wunused-variable]
+wrapper.f:37:28:
+
+   37 |       LOGICAL COMPLEX_MASS,DOING_QP
+      |                            1~~~~~~~
+Warning: Unused variable 'doing_qp' declared at (1) [-Wunused-variable]
+wrapper.f:36:29:
+
+   36 |       INTEGER I, J, K, TEMP,I_LIB
+      |                             1~~~~
+Warning: Unused variable 'i_lib' declared at (1) [-Wunused-variable]
+wrapper.f:36:18:
+
+   36 |       INTEGER I, J, K, TEMP,I_LIB
+      |                  1
+Warning: Unused variable 'j' declared at (1) [-Wunused-variable]
+wrapper.f:36:21:
+
+   36 |       INTEGER I, J, K, TEMP,I_LIB
+      |                     1
+Warning: Unused variable 'k' declared at (1) [-Wunused-variable]
+wrapper.f:27:21:
+
+   27 |       INTEGER RANK, LSYMFACT
+      |                     1~~~~~~~
+Warning: Unused variable 'lsymfact' declared at (1) [-Wunused-variable]
+wrapper.f:34:18:
+
+   34 |       COMPLEX*16 M2L(NLOOPLINE)
+      |                  1~~~~~~~~~~~~~
+Warning: Unused variable 'm2l' declared at (1) [-Wunused-variable]
+wrapper.f:33:15:
+
+   33 |       REAL*16 MP_PL(0:3,NLOOPLINE)
+      |               1~~~~~~~~~~~~~~~~~~~
+Warning: Unused variable 'mp_pl' declared at (1) [-Wunused-variable]
+wrapper.f:32:14:
+
+   32 |       REAL*8 PL(0:3,NLOOPLINE)
+      |              1~~~~~~~~~~~~~~~~
+Warning: Unused variable 'pl' declared at (1) [-Wunused-variable]
+wrapper.f:36:24:
+
+   36 |       INTEGER I, J, K, TEMP,I_LIB
+      |                        1~~~
+Warning: Unused variable 'temp' declared at (1) [-Wunused-variable]

@@ -1,0 +1,750 @@
+
+Merging program properties
+
+Removed property 0xc0000002 to merge /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o (0x3) and environment_token.o (not found)
+Updated property 0xc0010001 (0x9) to merge /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o (0x1) and environment_token.o (0x9)
+Updated property 0xc0010001 (0x9) to merge /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o (0x9) and /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o (0x1)
+Updated property 0xc0010002 (0x1) to merge /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o (0x1) and /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o (0x0)
+Removed property 0xc0000002 to merge /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o (not found) and /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o (0x3)
+Updated property 0xc0010001 (0x9) to merge /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o (0x9) and /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o (0x1)
+Removed property 0xc0000002 to merge /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o (not found) and /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o (0x3)
+
+Allocating common symbols
+Common symbol       size              file
+
+ml5_0_i_lib_        0x4               wrapper.o
+ml5_0_w_            0x198             wrapper.o
+ml5_0_init_         0x8               wrapper.o
+ml5_0_ct_           0x10              wrapper.o
+madloop_            0xd0              wrapper.o
+ml5_0_mp_w_         0x330             wrapper.o
+ml5_0_loopres_      0x0               wrapper.o
+ml5_0_loop_         0xc               wrapper.o
+ml5_0_filters_      0x34              wrapper.o
+
+Discarded input sections
+
+ .note.gnu.property
+                0x0000000000000000       0x50 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+ .note.gnu.property
+                0x0000000000000000       0x50 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+ .note.gnu.property
+                0x0000000000000000       0x30 environment_token.o
+ .note.gnu.property
+                0x0000000000000000       0x30 aloha_object.o
+ .note.gnu.property
+                0x0000000000000000       0x30 invariant_bounds.o
+ .note.gnu.property
+                0x0000000000000000       0x30 recording.o
+ .note.gnu.property
+                0x0000000000000000       0x30 wrapper.o
+ .note.gnu.property
+                0x0000000000000000       0x30 driver.o
+ .note.gnu.property
+                0x0000000000000000       0x50 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+ .note.gnu.property
+                0x0000000000000000       0x50 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+LOAD /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+LOAD environment_token.o
+LOAD aloha_object.o
+LOAD invariant_bounds.o
+LOAD recording.o
+LOAD wrapper.o
+LOAD driver.o
+LOAD /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so
+START GROUP
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+END GROUP
+LOAD /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so
+START GROUP
+LOAD /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1
+LOAD /nix/store/qarrb8yfby1yyypm32vabzgxgq3w41ma-gcc-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a
+END GROUP
+LOAD /nix/store/qarrb8yfby1yyypm32vabzgxgq3w41ma-gcc-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a
+LOAD /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so
+START GROUP
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+END GROUP
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so
+START GROUP
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc_nonshared.a
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+END GROUP
+LOAD /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so
+START GROUP
+LOAD /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1
+LOAD /nix/store/qarrb8yfby1yyypm32vabzgxgq3w41ma-gcc-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a
+END GROUP
+LOAD /nix/store/qarrb8yfby1yyypm32vabzgxgq3w41ma-gcc-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a
+LOAD /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+LOAD /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+                [!provide]                        PROVIDE (__executable_start = SEGMENT_START ("text-segment", 0x0))
+                0x0000000000000318                . = (SEGMENT_START ("text-segment", 0x0) + SIZEOF_HEADERS)
+
+.note.gnu.build-id
+ *(.note.gnu.build-id)
+
+.interp         0x0000000000000318       0x53
+ *(.interp)
+ .interp        0x0000000000000318       0x53 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.hash           0x0000000000000370      0x150
+ *(.hash)
+ .hash          0x0000000000000370      0x150 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.gnu.hash       0x00000000000004c0       0x28
+ *(.gnu.hash)
+ .gnu.hash      0x00000000000004c0       0x28 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.dynsym         0x00000000000004e8      0x438
+ *(.dynsym)
+ .dynsym        0x00000000000004e8      0x438 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.dynstr         0x0000000000000920      0x5f2
+ *(.dynstr)
+ .dynstr        0x0000000000000920      0x5f2 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.gnu.version    0x0000000000000f12       0x5a
+ *(.gnu.version)
+ .gnu.version   0x0000000000000f12       0x5a /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.gnu.version_d  0x0000000000000f70        0x0
+ *(.gnu.version_d)
+ .gnu.version_d
+                0x0000000000000f70        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.gnu.version_r  0x0000000000000f70       0x60
+ *(.gnu.version_r)
+ .gnu.version_r
+                0x0000000000000f70       0x60 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.rela.dyn       0x0000000000000fd0      0x198
+ *(.rela.init)
+ *(.rela.text .rela.text.* .rela.gnu.linkonce.t.*)
+ .rela.text     0x0000000000000fd0        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.rela.fini)
+ *(.rela.rodata .rela.rodata.* .rela.gnu.linkonce.r.*)
+ *(.rela.data .rela.data.* .rela.gnu.linkonce.d.*)
+ .rela.data.rel.ro
+                0x0000000000000fd0       0x18 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ .rela.data.rel.local
+                0x0000000000000fe8       0xd8 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.rela.tdata .rela.tdata.* .rela.gnu.linkonce.td.*)
+ *(.rela.tbss .rela.tbss.* .rela.gnu.linkonce.tb.*)
+ *(.rela.ctors)
+ *(.rela.dtors)
+ *(.rela.got)
+ .rela.got      0x00000000000010c0       0x78 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.rela.bss .rela.bss.* .rela.gnu.linkonce.b.*)
+ .rela.bss      0x0000000000001138        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.rela.ldata .rela.ldata.* .rela.gnu.linkonce.l.*)
+ *(.rela.lbss .rela.lbss.* .rela.gnu.linkonce.lb.*)
+ *(.rela.lrodata .rela.lrodata.* .rela.gnu.linkonce.lr.*)
+ *(.rela.ifunc)
+ .rela.ifunc    0x0000000000001138        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ .rela.fini_array
+                0x0000000000001138       0x18 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ .rela.init_array
+                0x0000000000001150       0x18 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.rela.plt       0x0000000000001168      0x390
+ *(.rela.plt)
+ .rela.plt      0x0000000000001168      0x390 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.rela.iplt)
+
+.relr.dyn
+ *(.relr.dyn)
+                0x0000000000002000                . = ALIGN (CONSTANT (MAXPAGESIZE))
+
+.init           0x0000000000002000       0x1b
+ *(SORT_NONE(.init))
+ .init          0x0000000000002000       0x16 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+                0x0000000000002000                _init
+ .init          0x0000000000002016        0x5 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+
+.plt            0x0000000000002020      0x270
+ *(.plt)
+ .plt           0x0000000000002020      0x270 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x0000000000002030                __ieee_exceptions_MOD_ieee_set_halting_mode@@GFORTRAN_8
+                0x0000000000002040                __ieee_arithmetic_MOD_ieee_get_rounding_mode@@GFORTRAN_8
+                0x0000000000002050                memset@@GLIBC_2.2.5
+                0x0000000000002060                _gfortran_runtime_error_at@@GFORTRAN_8
+                0x0000000000002070                _gfortran_string_len_trim@@GFORTRAN_8
+                0x0000000000002080                _gfortran_st_read_done@@GFORTRAN_8
+                0x0000000000002090                __ieee_exceptions_MOD_ieee_set_status@@GFORTRAN_8
+                0x00000000000020a0                _gfortran_ieee_procedure_entry@@GFORTRAN_8
+                0x00000000000020b0                __ieee_exceptions_MOD_ieee_get_halting_mode@@GFORTRAN_8
+                0x00000000000020c0                _gfortran_st_close@@GFORTRAN_8
+                0x00000000000020d0                malloc@@GLIBC_2.2.5
+                0x00000000000020e0                _gfortran_ieee_procedure_exit@@GFORTRAN_8
+                0x00000000000020f0                _gfortran_transfer_character@@GFORTRAN_8
+                0x0000000000002100                _gfortran_transfer_integer_write@@GFORTRAN_8
+                0x0000000000002110                _gfortran_stop_numeric@@GFORTRAN_8
+                0x0000000000002120                __ieee_exceptions_MOD_ieee_get_status@@GFORTRAN_8
+                0x0000000000002130                free@@GLIBC_2.2.5
+                0x0000000000002140                _gfortran_transfer_integer@@GFORTRAN_8
+                0x0000000000002150                _gfortran_st_open@@GFORTRAN_8
+                0x0000000000002160                _gfortran_transfer_character_write@@GFORTRAN_8
+                0x0000000000002170                _gfortran_os_error_at@@GFORTRAN_10
+                0x0000000000002180                __ieee_arithmetic_MOD_ieee_set_rounding_mode@@GFORTRAN_8
+                0x0000000000002190                _gfortran_compare_string@@GFORTRAN_8
+                0x00000000000021a0                __ieee_arithmetic_MOD_ieee_support_rounding_16@@GFORTRAN_8
+                0x00000000000021b0                _gfortran_st_read@@GFORTRAN_8
+                0x00000000000021c0                __ieee_exceptions_MOD_ieee_set_flag@@GFORTRAN_8
+                0x00000000000021d0                _gfortran_st_flush@@GFORTRAN_8
+                0x00000000000021e0                _gfortran_st_write_done@@GFORTRAN_8
+                0x00000000000021f0                _gfortran_transfer_array_write@@GFORTRAN_8
+                0x0000000000002200                __ieee_exceptions_MOD_ieee_get_flag@@GFORTRAN_8
+                0x0000000000002210                _gfortran_set_options@@GFORTRAN_8
+                0x0000000000002220                __ieee_arithmetic_MOD_ieee_round_type_eq@@GFORTRAN_8
+                0x0000000000002230                _gfortran_get_command_argument_i4@@GFORTRAN_8
+                0x0000000000002240                _gfortran_set_args@@GFORTRAN_8
+                0x0000000000002250                __ieee_exceptions_MOD_ieee_support_halting@@GFORTRAN_8
+                0x0000000000002260                _gfortran_st_write@@GFORTRAN_8
+                0x0000000000002270                _gfortran_transfer_array@@GFORTRAN_8
+                0x0000000000002280                __ieee_exceptions_MOD_ieee_support_flag_16@@GFORTRAN_8
+ *(.iplt)
+
+.plt.got        0x0000000000002290        0x8
+ *(.plt.got)
+ .plt.got       0x0000000000002290        0x8 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x0000000000002290                __cxa_finalize@@GLIBC_2.2.5
+
+.plt.sec
+ *(.plt.sec)
+
+.text           0x00000000000022c0     0x41d4
+ *(.text.unlikely .text.*_unlikely .text.unlikely.*)
+ *(.text.exit .text.exit.*)
+ *(.text.startup .text.startup.*)
+ .text.startup  0x00000000000022c0       0x23 driver.o
+                0x00000000000022c0                main
+ *(.text.hot .text.hot.*)
+ *(SORT_BY_NAME(.text.sorted.*))
+ *(.text .stub .text.* .gnu.linkonce.t.*)
+ *fill*         0x00000000000022e3        0xd 
+ .text          0x00000000000022f0       0x26 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x00000000000022f0                _start
+ .text          0x0000000000002316        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+ *fill*         0x0000000000002316        0xa 
+ .text          0x0000000000002320       0xb9 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+ *fill*         0x00000000000023d9        0x7 
+ .text          0x00000000000023e0       0x33 environment_token.o
+                0x00000000000023e0                ML5_0_kinematic_environment_token
+ *fill*         0x0000000000002413        0xd 
+ .text          0x0000000000002420       0xb5 aloha_object.o
+                0x0000000000002420                __aloha_object_MOD___copy_aloha_object_Mp_aloha2d
+                0x0000000000002440                __aloha_object_MOD___copy_aloha_object_Mp_aloha
+                0x0000000000002460                __aloha_object_MOD___copy_aloha_object_Aloha2d
+                0x0000000000002480                __aloha_object_MOD___copy_aloha_object_Aloha
+ *fill*         0x00000000000024d5       0x2b 
+ .text          0x0000000000002500     0x1222 invariant_bounds.o
+                0x00000000000027a0                __ml5_0_invariant_bounds_MOD_finish_difference_bounds
+                0x0000000000002e50                __ml5_0_invariant_bounds_MOD_build_chord_bounds
+                0x00000000000033d0                __ml5_0_invariant_bounds_MOD_external_slots_for_route
+                0x00000000000034c0                __ml5_0_invariant_bounds_MOD_route_matches
+                0x0000000000003540                __ml5_0_invariant_bounds_MOD_environment_unchanged
+                0x0000000000003610                __ml5_0_invariant_bounds_MOD_environment_ok
+                0x0000000000003670                __ml5_0_invariant_bounds_MOD_producer_kind_ok
+                0x00000000000036d0                __ml5_0_invariant_bounds_MOD_geometry_window_source_ok
+ *fill*         0x0000000000003722        0xe 
+ .text          0x0000000000003730      0x255 recording.o
+                0x0000000000003730                __gp_recording_state_MOD_clear_recording
+                0x0000000000003820                ml5_0_loop_3_
+                0x00000000000038b0                ml5_0_loop_3_provenance_dispatch_
+ *fill*         0x0000000000003985        0xb 
+ .text          0x0000000000003990      0x506 wrapper.o
+                0x0000000000003990                ml5_0_loop_3_provenance_
+ *fill*         0x0000000000003e96       0x2a 
+ .text          0x0000000000003ec0     0x25d4 driver.o
+ .text          0x0000000000006494        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+ .text          0x0000000000006494        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+ *(.gnu.warning)
+
+.fini           0x0000000000006494        0xd
+ *(SORT_NONE(.fini))
+ .fini          0x0000000000006494        0x8 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+                0x0000000000006494                _fini
+ .fini          0x000000000000649c        0x5 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+                [!provide]                        PROVIDE (__etext = .)
+                [!provide]                        PROVIDE (_etext = .)
+                [!provide]                        PROVIDE (etext = .)
+                0x0000000000007000                . = ALIGN (CONSTANT (MAXPAGESIZE))
+                0x0000000000007000                . = SEGMENT_START ("rodata-segment", (ALIGN (CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 0x1))))
+
+.rodata         0x0000000000007000     0x147c
+ *(.rodata .rodata.* .gnu.linkonce.r.*)
+ .rodata.cst4   0x0000000000007000        0x4 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x0000000000007000                _IO_stdin_used
+ *fill*         0x0000000000007004        0x4 
+ .rodata.str1.8
+                0x0000000000007008      0xd66 invariant_bounds.o
+                                        0x660 (size before relaxing)
+ .rodata.str1.1
+                0x0000000000007d6e      0x384 invariant_bounds.o
+                                         0x34 (size before relaxing)
+ *fill*         0x00000000000080f2        0xe 
+ .rodata        0x0000000000008100      0x210 invariant_bounds.o
+                0x0000000000008118                __ml5_0_invariant_bounds_MOD_route_we
+                0x0000000000008130                __ml5_0_invariant_bounds_MOD_route_supported
+                0x0000000000008140                __ml5_0_invariant_bounds_MOD_route_pairing
+                0x0000000000008160                __ml5_0_invariant_bounds_MOD_route_ops
+                0x0000000000008190                __ml5_0_invariant_bounds_MOD_route_nw
+                0x0000000000008194                __ml5_0_invariant_bounds_MOD_route_n
+                0x00000000000081a0                __ml5_0_invariant_bounds_MOD_route_mult
+                0x0000000000008240                __ml5_0_invariant_bounds_MOD_route_external
+                0x0000000000008280                __ml5_0_invariant_bounds_MOD_route_class
+ .rodata.cst16  0x0000000000008310       0x80 invariant_bounds.o
+                                         0x40 (size before relaxing)
+ .rodata.cst8   0x0000000000008390       0x38 invariant_bounds.o
+                                         0x10 (size before relaxing)
+ .rodata.str1.8
+                0x00000000000083c8      0x139 recording.o
+ .rodata.cst8   0x00000000000083c8        0x8 recording.o
+ .rodata.str1.8
+                0x00000000000083c8      0x189 wrapper.o
+ .rodata.str1.1
+                0x00000000000083c8       0x73 wrapper.o
+ .rodata        0x00000000000083c8        0x4 wrapper.o
+ .rodata.cst8   0x00000000000083cc        0x8 wrapper.o
+ .rodata.str1.8
+                0x00000000000083cc      0x436 driver.o
+ .rodata.str1.1
+                0x00000000000083cc      0x33c driver.o
+ *fill*         0x00000000000083cc       0x14 
+ .rodata        0x00000000000083e0       0x9c driver.o
+ .rodata.cst8   0x000000000000847c       0x20 driver.o
+ .rodata.cst16  0x000000000000847c       0x70 driver.o
+
+.rodata1
+ *(.rodata1)
+
+.eh_frame_hdr   0x000000000000847c       0xe4
+ *(.eh_frame_hdr)
+ .eh_frame_hdr  0x000000000000847c       0xe4 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x000000000000847c                __GNU_EH_FRAME_HDR
+ *(.eh_frame_entry .eh_frame_entry.*)
+
+.eh_frame       0x0000000000008560      0x3b4
+ *(.eh_frame)
+ .eh_frame      0x0000000000008560       0x30 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                                         0x2c (size before relaxing)
+ *fill*         0x0000000000008590        0x0 
+ .eh_frame      0x0000000000008590       0x28 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                                         0x40 (size before relaxing)
+ .eh_frame      0x00000000000085b8       0x18 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                                         0x30 (size before relaxing)
+ .eh_frame      0x00000000000085d0       0x20 environment_token.o
+                                         0x38 (size before relaxing)
+ .eh_frame      0x00000000000085f0       0x50 aloha_object.o
+                                         0x68 (size before relaxing)
+ .eh_frame      0x0000000000008640      0x168 invariant_bounds.o
+                                        0x180 (size before relaxing)
+ .eh_frame      0x00000000000087a8       0x68 recording.o
+                                         0x80 (size before relaxing)
+ .eh_frame      0x0000000000008810       0x30 wrapper.o
+                                         0x48 (size before relaxing)
+ .eh_frame      0x0000000000008840       0xd0 driver.o
+                                         0xe8 (size before relaxing)
+ .eh_frame      0x0000000000008910        0x4 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+ *(.eh_frame.*)
+
+.sframe         0x0000000000008914        0x0
+ *(.sframe)
+ .sframe        0x0000000000008914        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ .sframe        0x0000000000008914        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.sframe.*)
+
+.gcc_except_table
+ *(.gcc_except_table .gcc_except_table.*)
+
+.gnu_extab
+ *(.gnu_extab*)
+
+.exception_ranges
+ *(.exception_ranges*)
+
+.note.build-id
+ *(.note.build-id)
+
+.note.GNU-stack
+                0x0000000000008914        0x0
+ *(.note.GNU-stack)
+ .note.GNU-stack
+                0x0000000000008914        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 environment_token.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 aloha_object.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 invariant_bounds.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 recording.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 wrapper.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 driver.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+ .note.GNU-stack
+                0x0000000000008914        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+
+.note.gnu-property
+ *(.note.gnu-property)
+
+.note.gnu.property
+                0x0000000000008918       0x40
+ .note.gnu.property
+                0x0000000000008918       0x40 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.note.ABI-tag   0x0000000000008958       0x20
+ *(.note.ABI-tag)
+ .note.ABI-tag  0x0000000000008958       0x20 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+
+.note.package
+ *(.note.package)
+
+.note.dlopen
+ *(.note.dlopen)
+
+.note.netbsd.ident
+ *(.note.netbsd.ident)
+
+.note.openbsd.ident
+ *(.note.openbsd.ident)
+                0x0000000000009d50                . = DATA_SEGMENT_ALIGN (CONSTANT (MAXPAGESIZE), CONSTANT (COMMONPAGESIZE))
+
+.eh_frame
+ *(.eh_frame)
+ *(.eh_frame.*)
+
+.sframe
+ *(.sframe)
+ *(.sframe.*)
+
+.gnu_extab
+ *(.gnu_extab)
+
+.gcc_except_table
+ *(.gcc_except_table .gcc_except_table.*)
+
+.exception_ranges
+ *(.exception_ranges*)
+
+.tdata          0x0000000000009d50        0x0
+                [!provide]                        PROVIDE (__tdata_start = .)
+ *(.tdata .tdata.* .gnu.linkonce.td.*)
+
+.tbss
+ *(.tbss .tbss.* .gnu.linkonce.tb.*)
+ *(.tcommon)
+
+.preinit_array  0x0000000000009d50        0x0
+                [!provide]                        PROVIDE (__preinit_array_start = .)
+ *(.preinit_array)
+                [!provide]                        PROVIDE (__preinit_array_end = .)
+
+.init_array     0x0000000000009d50        0x8
+                [!provide]                        PROVIDE (__init_array_start = .)
+ *(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*))
+ *(.init_array EXCLUDE_FILE(*crtend?.o *crtend.o *crtbegin?.o *crtbegin.o) .ctors)
+ .init_array    0x0000000000009d50        0x8 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+                [!provide]                        PROVIDE (__init_array_end = .)
+
+.fini_array     0x0000000000009d58        0x8
+                [!provide]                        PROVIDE (__fini_array_start = .)
+ *(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*))
+ *(.fini_array EXCLUDE_FILE(*crtend?.o *crtend.o *crtbegin?.o *crtbegin.o) .dtors)
+ .fini_array    0x0000000000009d58        0x8 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+                [!provide]                        PROVIDE (__fini_array_end = .)
+
+.ctors
+ *crtbegin.o(.ctors)
+ *crtbegin?.o(.ctors)
+ *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
+ *(SORT_BY_NAME(.ctors.*))
+ *(.ctors)
+
+.dtors
+ *crtbegin.o(.dtors)
+ *crtbegin?.o(.dtors)
+ *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
+ *(SORT_BY_NAME(.dtors.*))
+ *(.dtors)
+
+.jcr
+ *(.jcr)
+
+.data.rel.ro    0x0000000000009d60       0x14
+ *(.data.rel.ro.local* .gnu.linkonce.d.rel.ro.local.*)
+ *(.data.rel.ro .data.rel.ro.* .gnu.linkonce.d.rel.ro.*)
+ *fill*         0x0000000000009d60        0x0 
+ .data.rel.ro   0x0000000000009d60       0x14 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x0000000000009d60                __ieee_exceptions_MOD_ieee_all@@GFORTRAN_8
+
+.dynamic        0x0000000000009d78      0x230
+ *(.dynamic)
+ .dynamic       0x0000000000009d78      0x230 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x0000000000009d78                _DYNAMIC
+
+.got            0x0000000000009fa8       0x28
+ *(.got)
+ .got           0x0000000000009fa8       0x28 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.igot)
+                0x0000000000009fe8                . = DATA_SEGMENT_RELRO_END (., (SIZEOF (.got.plt) >= 0x18)?0x18:0x0)
+
+.got.plt        0x0000000000009fe8      0x148
+ *(.got.plt)
+ .got.plt       0x0000000000009fe8      0x148 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x0000000000009fe8                _GLOBAL_OFFSET_TABLE_
+ *(.igot.plt)
+
+.data           0x000000000000a140      0x118
+ *(.data .data.* .gnu.linkonce.d.*)
+ .data          0x000000000000a140        0x4 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                0x000000000000a140                data_start
+                0x000000000000a140                __data_start
+ .data          0x000000000000a144        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+ .data          0x000000000000a144        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+ *fill*         0x000000000000a144        0x4 
+ .data.rel.local
+                0x000000000000a148        0x8 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+                0x000000000000a148                __dso_handle
+ .data          0x000000000000a150        0x0 environment_token.o
+ .data          0x000000000000a150        0x0 aloha_object.o
+ *fill*         0x000000000000a150       0x10 
+ .data.rel.local
+                0x000000000000a160       0xf8 aloha_object.o
+                0x000000000000a160                __aloha_object_MOD___vtab_aloha_object_Mp_aloha2d
+                0x000000000000a1a0                __aloha_object_MOD___vtab_aloha_object_Mp_aloha
+                0x000000000000a1e0                __aloha_object_MOD___vtab_aloha_object_Aloha2d
+                0x000000000000a220                __aloha_object_MOD___vtab_aloha_object_Aloha
+ .data          0x000000000000a258        0x0 invariant_bounds.o
+ .data          0x000000000000a258        0x0 recording.o
+ .data          0x000000000000a258        0x0 wrapper.o
+ .data          0x000000000000a258        0x0 driver.o
+ .data          0x000000000000a258        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+ .data          0x000000000000a258        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+
+.tm_clone_table
+                0x000000000000a258        0x0
+ .tm_clone_table
+                0x000000000000a258        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+ .tm_clone_table
+                0x000000000000a258        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+
+.data1
+ *(.data1)
+                0x000000000000a258                _edata = .
+                [!provide]                        PROVIDE (edata = .)
+                0x000000000000a258                . = ALIGN (ALIGNOF (NEXT_SECTION))
+                0x000000000000a260                __bss_start = .
+
+.bss            0x000000000000a260      0xd58
+ *(.dynbss)
+ .dynbss        0x000000000000a260        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ *(.bss .bss.* .gnu.linkonce.b.*)
+ .bss           0x000000000000a260        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+ .bss           0x000000000000a260        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o
+ .bss           0x000000000000a260        0x1 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+ .bss           0x000000000000a261        0x0 environment_token.o
+ *fill*         0x000000000000a261       0x1f 
+ .bss           0x000000000000a280      0x5a8 aloha_object.o
+                0x000000000000a280                __aloha_object_MOD___def_init_aloha_object_Mp_aloha2d
+                0x000000000000a520                __aloha_object_MOD___def_init_aloha_object_Mp_aloha
+                0x000000000000a640                __aloha_object_MOD___def_init_aloha_object_Aloha2d
+                0x000000000000a7a0                __aloha_object_MOD___def_init_aloha_object_Aloha
+ .bss           0x000000000000a828       0x30 invariant_bounds.o
+ *fill*         0x000000000000a858        0x8 
+ .bss           0x000000000000a860      0x104 recording.o
+                0x000000000000a860                __gp_recording_state_MOD_recorded_we
+                0x000000000000a86c                __gp_recording_state_MOD_recorded_so
+                0x000000000000a870                __gp_recording_state_MOD_recorded_rank
+                0x000000000000a880                __gp_recording_state_MOD_recorded_mass_words
+                0x000000000000a8b0                __gp_recording_state_MOD_recorded_loop
+                0x000000000000a8b8                __gp_recording_state_MOD_recorded_have
+                0x000000000000a8c8                __gp_recording_state_MOD_recorded_environment
+                0x000000000000a8e0                __gp_recording_state_MOD_recorded_class
+                0x000000000000a920                __gp_recording_state_MOD_recorded_chord
+                0x000000000000a950                __gp_recording_state_MOD_provenance_calls
+                0x000000000000a954                __gp_recording_state_MOD_legacy_calls
+ .bss           0x000000000000a964        0x4 wrapper.o
+ .bss           0x000000000000a968       0x10 driver.o
+ .bss           0x000000000000a978        0x0 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+ .bss           0x000000000000a978        0x0 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o
+ *(COMMON)
+ *fill*         0x000000000000a978        0x8 
+ COMMON         0x000000000000a980      0x634 wrapper.o
+                0x000000000000a980                ml5_0_i_lib_
+                0x000000000000a9a0                ml5_0_w_
+                0x000000000000ab40                ml5_0_init_
+                0x000000000000ab50                ml5_0_ct_
+                0x000000000000ab60                madloop_
+                0x000000000000ac40                ml5_0_mp_w_
+                0x000000000000af70                ml5_0_loopres_
+                0x000000000000af70                ml5_0_loop_
+                0x000000000000af80                ml5_0_filters_
+                0x000000000000afb8                . = ALIGN ((. != 0x0)?0x8:0x1)
+ *fill*         0x000000000000afb4        0x4 
+
+.lbss
+ *(.dynlbss)
+ *(.lbss .lbss.* .gnu.linkonce.lb.*)
+ *(LARGE_COMMON)
+                0x000000000000afb8                . = ALIGN (0x8)
+                0x000000000000afb8                . = SEGMENT_START ("ldata-segment", .)
+
+.lrodata
+ *(.lrodata .lrodata.* .gnu.linkonce.lr.*)
+
+.ldata          0x000000000000cfb8        0x0
+ *(.ldata .ldata.* .gnu.linkonce.l.*)
+                0x000000000000cfb8                . = ALIGN ((. != 0x0)?0x8:0x1)
+                0x000000000000cfb8                . = ALIGN (0x8)
+                0x000000000000afb8                _end = .
+                [!provide]                        PROVIDE (end = .)
+                0x000000000000cfb8                . = DATA_SEGMENT_END (.)
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+
+.stab.excl
+ *(.stab.excl)
+
+.stab.exclstr
+ *(.stab.exclstr)
+
+.stab.index
+ *(.stab.index)
+
+.stab.indexstr
+ *(.stab.indexstr)
+
+.comment        0x0000000000000000       0x12
+ *(.comment)
+ .comment       0x0000000000000000       0x12 /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o
+                                         0x26 (size before relaxing)
+ .comment       0x0000000000000012       0x13 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o
+ .comment       0x0000000000000012       0x13 environment_token.o
+ .comment       0x0000000000000012       0x13 aloha_object.o
+ .comment       0x0000000000000012       0x13 invariant_bounds.o
+ .comment       0x0000000000000012       0x13 recording.o
+ .comment       0x0000000000000012       0x13 wrapper.o
+ .comment       0x0000000000000012       0x13 driver.o
+ .comment       0x0000000000000012       0x13 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o
+
+.gnu.build.attributes
+ *(.gnu.build.attributes .gnu.build.attributes.*)
+
+.debug
+ *(.debug)
+
+.line
+ *(.line)
+
+.debug_srcinfo
+ *(.debug_srcinfo)
+
+.debug_sfnames
+ *(.debug_sfnames)
+
+.debug_aranges
+ *(.debug_aranges)
+
+.debug_pubnames
+ *(.debug_pubnames)
+
+.debug_info
+ *(.debug_info .gnu.linkonce.wi.*)
+
+.debug_abbrev
+ *(.debug_abbrev)
+
+.debug_line
+ *(.debug_line .debug_line.* .debug_line_end)
+
+.debug_frame
+ *(.debug_frame)
+
+.debug_str
+ *(.debug_str)
+
+.debug_loc
+ *(.debug_loc)
+
+.debug_macinfo
+ *(.debug_macinfo)
+
+.debug_weaknames
+ *(.debug_weaknames)
+
+.debug_funcnames
+ *(.debug_funcnames)
+
+.debug_typenames
+ *(.debug_typenames)
+
+.debug_varnames
+ *(.debug_varnames)
+
+.debug_pubtypes
+ *(.debug_pubtypes)
+
+.debug_ranges
+ *(.debug_ranges)
+
+.debug_addr
+ *(.debug_addr)
+
+.debug_line_str
+ *(.debug_line_str)
+
+.debug_loclists
+ *(.debug_loclists)
+
+.debug_macro
+ *(.debug_macro)
+
+.debug_names
+ *(.debug_names)
+
+.debug_rnglists
+ *(.debug_rnglists)
+
+.debug_str_offsets
+ *(.debug_str_offsets)
+
+.debug_sup
+ *(.debug_sup)
+
+.gnu.attributes
+ *(.gnu.attributes)
+
+/DISCARD/
+ *(.note.GNU-stack)
+ *(.gnu_debuglink)
+ *(.gnu.lto_*)
+ *(.gnu_object_only)
+OUTPUT(probe elf64-x86-64)

@@ -1,0 +1,17 @@
+test_dp_qp_memory_word_mutations_rejected (test_protocol.Protocol.test_dp_qp_memory_word_mutations_rejected) ... ok
+test_flags_halting_rounding_mutation_rejected (test_protocol.Protocol.test_flags_halting_rounding_mutation_rejected) ... ok
+test_frozen_240_case_corpus (test_protocol.Protocol.test_frozen_240_case_corpus) ... ok
+test_legacy_forward_and_mass_transport_rejected (test_protocol.Protocol.test_legacy_forward_and_mass_transport_rejected) ... ok
+test_lost_or_changed_case_rejected (test_protocol.Protocol.test_lost_or_changed_case_rejected) ... ok
+test_missing_extra_duplicate_rows_rejected (test_protocol.Protocol.test_missing_extra_duplicate_rows_rejected) ... ok
+test_missing_precision_rejections_are_retained (test_protocol.Protocol.test_missing_precision_rejections_are_retained) ... ok
+test_pure_golden_pass_is_not_native_evidence (test_protocol.Protocol.test_pure_golden_pass_is_not_native_evidence) ... ok
+test_slots_bounds_class_rejected (test_protocol.Protocol.test_slots_bounds_class_rejected) ... ok
+test_token_and_environment_transport_rejected (test_protocol.Protocol.test_token_and_environment_transport_rejected) ... ok
+test_exact_generated_wrapper_and_aloha_spans (test_protocol.Source.test_exact_generated_wrapper_and_aloha_spans) ... ok
+test_fixture_scope_and_capture_order (test_protocol.Source.test_fixture_scope_and_capture_order) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.226s
+
+OK

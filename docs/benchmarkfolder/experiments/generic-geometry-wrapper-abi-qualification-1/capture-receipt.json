@@ -1,0 +1,565 @@
+{
+  "copied_closed_text_files": 78,
+  "copies": {
+    "build/01-c.log": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/01-c.log"
+    },
+    "build/02-aloha_object.log": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/02-aloha_object.log"
+    },
+    "build/03-invariant_bounds.log": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/03-invariant_bounds.log"
+    },
+    "build/04-recording.log": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/04-recording.log"
+    },
+    "build/05-wrapper.log": {
+      "identity": {
+        "bytes": 1881,
+        "sha256": "d990f21589af82e54c473fd70d0e3215ec7e7fbc08c869d7f574760564323d5b"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/05-wrapper.log"
+    },
+    "build/06-driver.log": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/06-driver.log"
+    },
+    "build/07-link.log": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/07-link.log"
+    },
+    "build/consumed/MadLoopParams.inc": {
+      "identity": {
+        "bytes": 1853,
+        "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/MadLoopParams.inc"
+    },
+    "build/consumed/aloha_object.f": {
+      "identity": {
+        "bytes": 738,
+        "sha256": "9c74dd911dc4a8a29fbdcaffee3b7abea980b5f6e7231849a36e024b7cf6968c"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/aloha_object.f"
+    },
+    "build/consumed/driver.f90": {
+      "identity": {
+        "bytes": 9593,
+        "sha256": "212cfbd6797145743f6245cb86c36eeaf3bf4c395549c28a374896073d51225d"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/driver.f90"
+    },
+    "build/consumed/environment_token.c": {
+      "identity": {
+        "bytes": 683,
+        "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/environment_token.c"
+    },
+    "build/consumed/invariant_bounds.f90": {
+      "identity": {
+        "bytes": 7762,
+        "sha256": "a2188ee42da4f71e563f5673db3b01f4ddfa510e24349e364230931d2be9961a"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/invariant_bounds.f90"
+    },
+    "build/consumed/invariant_bounds_data.inc": {
+      "identity": {
+        "bytes": 1304,
+        "sha256": "18adea9ad9c6f128911d6ce0adfa90ed67e5ddc6a1be098a77a30e2fd304a2f8"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/invariant_bounds_data.inc"
+    },
+    "build/consumed/recording.f90": {
+      "identity": {
+        "bytes": 2171,
+        "sha256": "d5905fce95e4b828f48ef4bc8ac89fb771458668be3a87b586b87f0670bbe19b"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/recording.f90"
+    },
+    "build/consumed/wrapper.f": {
+      "identity": {
+        "bytes": 3749,
+        "sha256": "f721fd9060a2bf11386918fa3065b7068b23944f17edd817523aa88d7450317a"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/wrapper.f"
+    },
+    "build/probe.map": {
+      "identity": {
+        "bytes": 37167,
+        "sha256": "df8346deb80959d1239c774f40821d2efd5215ee7799ba4d9d175550f0bc1a0a"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/probe.map"
+    },
+    "build/result.json": {
+      "identity": {
+        "bytes": 11696,
+        "sha256": "98a01b832cd5e26d4937a6d91f0b2e88f8298439ae1daa5c0464f1fc4d743cfe"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/build/result.json"
+    },
+    "closed-qualification.json": {
+      "identity": {
+        "bytes": 1137,
+        "sha256": "52a4b01ca99d5ad6132c1f9fa0ca9b50a471213aab542b34434e8fa48a94a92e"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/closed-qualification.json"
+    },
+    "execution/generic-geometry-wrapper-abi-build-1.stderr.txt": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-build-1.stderr.txt"
+    },
+    "execution/generic-geometry-wrapper-abi-build-1.stdout.json": {
+      "identity": {
+        "bytes": 9346,
+        "sha256": "927890b1d46c7468bd78b2e2adae9699ed971713c5c015d28aa9c6d0492338b0"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-build-1.stdout.json"
+    },
+    "execution/generic-geometry-wrapper-abi-run-1.stderr.txt": {
+      "identity": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-run-1.stderr.txt"
+    },
+    "execution/generic-geometry-wrapper-abi-run-1.stdout.json": {
+      "identity": {
+        "bytes": 66183,
+        "sha256": "97ffff8c209d448643a24016ed0661d03df537e597fb4750ec4036a7c6380847"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-run-1.stdout.json"
+    },
+    "independent-audit/receipt.json": {
+      "identity": {
+        "bytes": 2197,
+        "sha256": "a396a888a83ecce6bf143cf89c9901bf251d447692c327a7a0f8638a41ddb88d"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-independent-audit-1/receipt.json"
+    },
+    "independent-audit/review.py": {
+      "identity": {
+        "bytes": 9048,
+        "sha256": "ca242eb27085922232cf3189ba3fc29e2a5e1d293c1db47b19a3ea40ad9c0a4b"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-independent-audit-1/review.py"
+    },
+    "run/inputs.txt": {
+      "identity": {
+        "bytes": 293746,
+        "sha256": "f288b8be89b42b2b7901e50217f15b15f5ec69dbbf9fa99858e28bc9d49c6270"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/run/inputs.txt"
+    },
+    "run/native.log": {
+      "identity": {
+        "bytes": 474059,
+        "sha256": "6472be073e348b37d97affc731e10444a816832a4e7b5ae645200cd9a48e0832"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/run/native.log"
+    },
+    "run/result.json": {
+      "identity": {
+        "bytes": 87431,
+        "sha256": "ae31fcd44874b34053cb5174c680d3ec6e143cd6f30396c6067a39e67882de03"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/run/result.json"
+    },
+    "run/runtime-maps.txt": {
+      "identity": {
+        "bytes": 5449,
+        "sha256": "cf0b126b5da189f17c8282d803f7cdd3ebd1490e573a7bf9206742de84975256"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-qualification-1/run/runtime-maps.txt"
+    },
+    "source/MadLoopParams.inc": {
+      "identity": {
+        "bytes": 1853,
+        "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/MadLoopParams.inc"
+    },
+    "source/PHASE-B.md": {
+      "identity": {
+        "bytes": 4027,
+        "sha256": "ffd441cca411e642515ba83a085de767a4098e726a2daf5e9c47c120c7c166d5"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/PHASE-B.md"
+    },
+    "source/README.md": {
+      "identity": {
+        "bytes": 4053,
+        "sha256": "789567cb8132438ec9e895a843fa72bc22e74ef9303825f95f49301fe28aae43"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/README.md"
+    },
+    "source/aloha_object.f": {
+      "identity": {
+        "bytes": 738,
+        "sha256": "9c74dd911dc4a8a29fbdcaffee3b7abea980b5f6e7231849a36e024b7cf6968c"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/aloha_object.f"
+    },
+    "source/analyze.py": {
+      "identity": {
+        "bytes": 6489,
+        "sha256": "d09c5bc54c54f44318167bfef471965a4377c817f1bdef64df32f09a67d8aefc"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/analyze.py"
+    },
+    "source/cases.json": {
+      "identity": {
+        "bytes": 514379,
+        "sha256": "17d233b7c527cc0dbfb7fd61f5944cb628544d6fa1516c381e6d1f4def128bf4"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/cases.json"
+    },
+    "source/command-plan.json": {
+      "identity": {
+        "bytes": 4317,
+        "sha256": "f92b786344ca090acf765a5466c61faad2bcf1f3ecc20ba5b37f3b6e659c69df"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/command-plan.json"
+    },
+    "source/control.py": {
+      "identity": {
+        "bytes": 12983,
+        "sha256": "8fe488a8a8715d62960d13275ca4c39ea98a2fb6d1dbd5022223bd9715857d35"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/control.py"
+    },
+    "source/driver.f90": {
+      "identity": {
+        "bytes": 9593,
+        "sha256": "212cfbd6797145743f6245cb86c36eeaf3bf4c395549c28a374896073d51225d"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/driver.f90"
+    },
+    "source/environment_token.c": {
+      "identity": {
+        "bytes": 683,
+        "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/environment_token.c"
+    },
+    "source/expected.json": {
+      "identity": {
+        "bytes": 214477,
+        "sha256": "6b9520f229db67a773646fb00b0a19358bb1e5a9cff5c1a7005318365590a73a"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/expected.json"
+    },
+    "source/full-CT_interface.f": {
+      "identity": {
+        "bytes": 18141,
+        "sha256": "48a2c228e1c496288806c0f3db5dff4faf9be162aedb43ced52c9b0f6f689ba1"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/full-CT_interface.f"
+    },
+    "source/full-aloha_functions.f": {
+      "identity": {
+        "bytes": 87869,
+        "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/full-aloha_functions.f"
+    },
+    "source/geometry.json": {
+      "identity": {
+        "bytes": 66076,
+        "sha256": "b50b2bab10ad822525c75a7768ac1c0d015a1fd4bd7eb750cdcdc0db4b521296"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/geometry.json"
+    },
+    "source/index.json": {
+      "identity": {
+        "bytes": 5713,
+        "sha256": "35018c3a05f2e863be061c68bbba9fc64ccf15009c94f68ec3012f955601394d"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/index.json"
+    },
+    "source/inputs.txt": {
+      "identity": {
+        "bytes": 293746,
+        "sha256": "f288b8be89b42b2b7901e50217f15b15f5ec69dbbf9fa99858e28bc9d49c6270"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/inputs.txt"
+    },
+    "source/invariant_bounds.f90": {
+      "identity": {
+        "bytes": 7762,
+        "sha256": "a2188ee42da4f71e563f5673db3b01f4ddfa510e24349e364230931d2be9961a"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/invariant_bounds.f90"
+    },
+    "source/invariant_bounds_data.inc": {
+      "identity": {
+        "bytes": 1304,
+        "sha256": "18adea9ad9c6f128911d6ce0adfa90ed67e5ddc6a1be098a77a30e2fd304a2f8"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/invariant_bounds_data.inc"
+    },
+    "source/prepare.py": {
+      "identity": {
+        "bytes": 10976,
+        "sha256": "af6fe30ef9331fcf2757fc016fe243439d8b2c42177613ad3b3bb26fbf39b634"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/prepare.py"
+    },
+    "source/pure-test-receipt.json": {
+      "identity": {
+        "bytes": 1750,
+        "sha256": "0ae55b6c5b70f4835c96be8aae4f155b152f49258c9859c42a620db8e3c7998c"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/pure-test-receipt.json"
+    },
+    "source/pure-tests-normal-1.log": {
+      "identity": {
+        "bytes": 1469,
+        "sha256": "7126b0222c274f112b3f74dd565fd9b12b22fedaec5fa4c67f7ab216375155b5"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/pure-tests-normal-1.log"
+    },
+    "source/pure-tests-optimized-1.log": {
+      "identity": {
+        "bytes": 1469,
+        "sha256": "96e2023f2e9b84d3356b6b2c5da280db3cdf6d18fbf62f1e1015bc4bf22680ef"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/pure-tests-optimized-1.log"
+    },
+    "source/recording.f90": {
+      "identity": {
+        "bytes": 2171,
+        "sha256": "d5905fce95e4b828f48ef4bc8ac89fb771458668be3a87b586b87f0670bbe19b"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/recording.f90"
+    },
+    "source/reference.py": {
+      "identity": {
+        "bytes": 3436,
+        "sha256": "f9bd7237c0b1e8f95951ccda3f42d9252d4c610650ebdc124e4dcf2dfe77f149"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/reference.py"
+    },
+    "source/source-bindings.json": {
+      "identity": {
+        "bytes": 5142,
+        "sha256": "44d3be99edfe067388d1477b06fae55f148e5c66087f76d0a97788e36a3f4620"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/source-bindings.json"
+    },
+    "source/supervise.py": {
+      "identity": {
+        "bytes": 9125,
+        "sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/supervise.py"
+    },
+    "source/test_protocol.py": {
+      "identity": {
+        "bytes": 6178,
+        "sha256": "0fc740a36deda6971844fe5592f912361e13d99d5f7fd0c12b6b20f652b236be"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/test_protocol.py"
+    },
+    "source/verify.py": {
+      "identity": {
+        "bytes": 1998,
+        "sha256": "02c6a46b17e2b652c1898ef944d8c720a967623142358a8970cc3e601b68016c"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/verify.py"
+    },
+    "source/wrapper.f": {
+      "identity": {
+        "bytes": 3749,
+        "sha256": "f721fd9060a2bf11386918fa3065b7068b23944f17edd817523aa88d7450317a"
+      },
+      "original_workspace_path": ".tirust-build/generic-geometry-wrapper-abi-proposal-1/wrapper.f"
+    },
+    "source3/DESIGN.md": {
+      "identity": {
+        "bytes": 3959,
+        "sha256": "05d6c8d83ef107512750341dfad6782c7c2209e0ed1fe38fe4c39b3098c0454c"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/DESIGN.md"
+    },
+    "source3/README.md": {
+      "identity": {
+        "bytes": 3351,
+        "sha256": "b6ce501401e3f11a40921ee35453455c00ba14914d169c3f50777eaf6f47edfa"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/README.md"
+    },
+    "source3/bindings.py": {
+      "identity": {
+        "bytes": 1494,
+        "sha256": "ed96d11501538d1a43f839c5c6bdaac7208ce20de16046570e1827d645d32cf4"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/bindings.py"
+    },
+    "source3/generation-results.json": {
+      "identity": {
+        "bytes": 400944,
+        "sha256": "7d1084ead24c9441783dfc348a64f783070bb3db8b803a69b4edeb4b9d33a516"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/generation-results.json"
+    },
+    "source3/generation-tests-attempt-1.log": {
+      "identity": {
+        "bytes": 692,
+        "sha256": "c1fe7e0e50dffed98c51f00ad8be9229be2b633c2d7ab829063ee5e0da9f6af4"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/generation-tests-attempt-1.log"
+    },
+    "source3/independent-source-review.json": {
+      "identity": {
+        "bytes": 1533,
+        "sha256": "94cf6eafdffc20f53d2eb35618bdbb16333ab253858608112d574a5e315b5047"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/independent-source-review.json"
+    },
+    "source3/parent-pins.json": {
+      "identity": {
+        "bytes": 578,
+        "sha256": "5d8176b064e7f4131bc96555a2eb9cede2625534b8fab3ad3790dd071f9b9266"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/parent-pins.json"
+    },
+    "source3/source-index.json": {
+      "identity": {
+        "bytes": 4479,
+        "sha256": "c99ce0ffb80a1dabe90a109cc958305efabe1af7968b97ec0adc65a16b009dc2"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/source-index.json"
+    },
+    "source3/source3-geometry-window.patch": {
+      "identity": {
+        "bytes": 11762,
+        "sha256": "bb1e63e308e683344b51921e9b78c180c57471f2802f1ce79d66bb1f30e4be05"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/source3-geometry-window.patch"
+    },
+    "source3/src/madgraph/iolibs/template_files/loop_optimized/invariant_bounds.f90": {
+      "identity": {
+        "bytes": 7776,
+        "sha256": "3c724e166269c0fb4ac14df0466d5f652222830b13d7fc199d44b86447d3b871"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/src/madgraph/iolibs/template_files/loop_optimized/invariant_bounds.f90"
+    },
+    "source3/src/madgraph/iolibs/template_files/loop_optimized/invariant_environment.c": {
+      "identity": {
+        "bytes": 688,
+        "sha256": "5b82404bf31bb731e80d63c0187efe3cdc5e7a213373697124a7c888919f4196"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/src/madgraph/iolibs/template_files/loop_optimized/invariant_environment.c"
+    },
+    "source3/src/madgraph/loop/invariant_finalize.py": {
+      "identity": {
+        "bytes": 6441,
+        "sha256": "23dadca805682eb5fab0ba26484a238bf43050c5568b670c4b6fb299ed02a4a1"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/src/madgraph/loop/invariant_finalize.py"
+    },
+    "source3/src/madgraph/loop/invariant_geometry_window.py": {
+      "identity": {
+        "bytes": 6758,
+        "sha256": "58f51a827d50a15331d31af42c2ebe0cbca7e84aa802e1d21f505dcb84e0f7ea"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/src/madgraph/loop/invariant_geometry_window.py"
+    },
+    "source3/src/madgraph/loop/invariant_provenance.py": {
+      "identity": {
+        "bytes": 18755,
+        "sha256": "4e7330f34ae6582e40ac6d96c1aed972fea20d5dffd5a037552bc20208d19b52"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/src/madgraph/loop/invariant_provenance.py"
+    },
+    "source3/src/madgraph/loop/invariant_render.py": {
+      "identity": {
+        "bytes": 9070,
+        "sha256": "1ae1060e5fe2c82501ef78db1a2be9f86be5b8e2ec821f3d52480c6ac739456e"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/src/madgraph/loop/invariant_render.py"
+    },
+    "source3/test-receipt.json": {
+      "identity": {
+        "bytes": 3870,
+        "sha256": "9cf61dfa45764ed682f683a8f5725be65ad14fc76f7aecc54239b6f141176aef"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/test-receipt.json"
+    },
+    "source3/test_generation.py": {
+      "identity": {
+        "bytes": 11281,
+        "sha256": "6208e8fd43ba4ed502a9768644a320c43564c2ede45980d9fe5e0f5ce99c9e04"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/test_generation.py"
+    },
+    "source3/test_geometry_window.py": {
+      "identity": {
+        "bytes": 11249,
+        "sha256": "9ff43a96cdfe9d94c80adb7d588ffa54a24693968a4cd78bf5aba2bbfa8e89f1"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/test_geometry_window.py"
+    },
+    "source3/tests-normal-2.log": {
+      "identity": {
+        "bytes": 3167,
+        "sha256": "a9fb29fa10a78b41d6f98b274b6f2d552ef916871f88c624ef2bb5f60b8bd17a"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/tests-normal-2.log"
+    },
+    "source3/tests-optimized-2.log": {
+      "identity": {
+        "bytes": 3167,
+        "sha256": "5527ccbab3582a31b863d481ab1b4eeca9cb4348054579fc234df9eaab4b4f17"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/tests-optimized-2.log"
+    },
+    "source3/verify.py": {
+      "identity": {
+        "bytes": 3096,
+        "sha256": "c18a21632932031ad22a25bf7bd2ffca3bff72eb504d9663ccfdf4e3185db008"
+      },
+      "original_workspace_path": ".tirust-build/generic-invariant-provenance-proposal-3/verify.py"
+    }
+  },
+  "excluded_binaries_and_special_files": [
+    "build/probe",
+    "build/*.o",
+    "build/*.mod",
+    "run/start.fifo",
+    "build/tmp/",
+    "run/tmp/"
+  ],
+  "new_compiler_or_native_executions": 0,
+  "public_files_modified": false,
+  "recorded_workspace_paths_are_inert_on_portable_replay": true,
+  "schema": "generic-wrapper-abi-text-capture-v1",
+  "source_seals_unchanged": true,
+  "status": "pass"
+}

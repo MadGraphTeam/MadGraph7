@@ -1,0 +1,142 @@
+{
+  "MadLoopParams.inc": {
+    "origin": "Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc",
+    "origin_identity": {
+      "bytes": 1853,
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 1853,
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    }
+  },
+  "aloha_object.f": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/Source/DHELAS/aloha_functions.f",
+    "origin_identity": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    },
+    "selection": {
+      "end_line": 38,
+      "start_line": 13
+    },
+    "snapshot_identity": {
+      "bytes": 738,
+      "sha256": "9c74dd911dc4a8a29fbdcaffee3b7abea980b5f6e7231849a36e024b7cf6968c"
+    }
+  },
+  "environment_token.c": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/SubProcesses/P0/invariant_environment.c",
+    "origin_identity": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    }
+  },
+  "full-CT_interface.f": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/SubProcesses/P0/CT_interface.f",
+    "origin_identity": {
+      "bytes": 18141,
+      "sha256": "48a2c228e1c496288806c0f3db5dff4faf9be162aedb43ced52c9b0f6f689ba1"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 18141,
+      "sha256": "48a2c228e1c496288806c0f3db5dff4faf9be162aedb43ced52c9b0f6f689ba1"
+    }
+  },
+  "full-aloha_functions.f": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/Source/DHELAS/aloha_functions.f",
+    "origin_identity": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    }
+  },
+  "geometry.json": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/SubProcesses/P0/invariant_provenance.json",
+    "origin_identity": {
+      "bytes": 66076,
+      "sha256": "b50b2bab10ad822525c75a7768ac1c0d015a1fd4bd7eb750cdcdc0db4b521296"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 66076,
+      "sha256": "b50b2bab10ad822525c75a7768ac1c0d015a1fd4bd7eb750cdcdc0db4b521296"
+    }
+  },
+  "invariant_bounds.f90": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/SubProcesses/P0/invariant_bounds.f90",
+    "origin_identity": {
+      "bytes": 7762,
+      "sha256": "a2188ee42da4f71e563f5673db3b01f4ddfa510e24349e364230931d2be9961a"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 7762,
+      "sha256": "a2188ee42da4f71e563f5673db3b01f4ddfa510e24349e364230931d2be9961a"
+    }
+  },
+  "invariant_bounds_data.inc": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/SubProcesses/P0/invariant_bounds_data.inc",
+    "origin_identity": {
+      "bytes": 1304,
+      "sha256": "18adea9ad9c6f128911d6ce0adfa90ed67e5ddc6a1be098a77a30e2fd304a2f8"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 1304,
+      "sha256": "18adea9ad9c6f128911d6ce0adfa90ed67e5ddc6a1be098a77a30e2fd304a2f8"
+    }
+  },
+  "reference.py": {
+    "origin": ".tirust-build/kinematic-invariant-caller-metadata-1/runtime_reference.py",
+    "origin_identity": {
+      "bytes": 3414,
+      "sha256": "22d01423b966e204f813e0969beec6495f2ef56ad085b119cfdead597349d0f8"
+    },
+    "selection": {
+      "adaptation": "route count, external count and source1 chord field names only"
+    },
+    "snapshot_identity": {
+      "bytes": 3436,
+      "sha256": "f9bd7237c0b1e8f95951ccda3f42d9252d4c610650ebdc124e4dcf2dfe77f149"
+    }
+  },
+  "supervise.py": {
+    "origin": "docs/benchmarkfolder/experiments/caller-bound-native-qualification-1/proposal/supervise.py",
+    "origin_identity": {
+      "bytes": 9125,
+      "sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42"
+    },
+    "selection": null,
+    "snapshot_identity": {
+      "bytes": 9125,
+      "sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42"
+    }
+  },
+  "wrapper.f": {
+    "origin": ".tirust-build/generic-invariant-provenance-proposal-3/generation-work/born-grouped/SubProcesses/P0/CT_interface.f",
+    "origin_identity": {
+      "bytes": 18141,
+      "sha256": "48a2c228e1c496288806c0f3db5dff4faf9be162aedb43ced52c9b0f6f689ba1"
+    },
+    "selection": {
+      "end_line": 583,
+      "start_line": 469
+    },
+    "snapshot_identity": {
+      "bytes": 3749,
+      "sha256": "f721fd9060a2bf11386918fa3065b7068b23944f17edd817523aa88d7450317a"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+test_ambiguous_batch_rejected (test_geometry_window.GeometryWindow.test_ambiguous_batch_rejected) ... ok
+test_changed_batch_bytes_rejected (test_geometry_window.GeometryWindow.test_changed_batch_bytes_rejected) ... ok
+test_changed_producer_coordinate_rejected (test_geometry_window.GeometryWindow.test_changed_producer_coordinate_rejected) ... ok
+test_changed_source_receipt_rejected (test_geometry_window.GeometryWindow.test_changed_source_receipt_rejected) ... ok
+test_contract_mutation_falls_back (test_geometry_window.GeometryWindow.test_contract_mutation_falls_back) ... ok
+test_missing_contract_false (test_geometry_window.GeometryWindow.test_missing_contract_false) ... ok
+test_missing_precision_rejected (test_geometry_window.GeometryWindow.test_missing_precision_rejected) ... ok
+test_numeric_alias_overwrite_remains_rejected (test_geometry_window.GeometryWindow.test_numeric_alias_overwrite_remains_rejected) ... ok
+test_parser_subset_must_join_full_source_closure (test_geometry_window.GeometryWindow.test_parser_subset_must_join_full_source_closure) ... ok
+test_plain_source_window (test_geometry_window.GeometryWindow.test_plain_source_window) ... ok
+test_post_momentum_scalar_io_does_not_claim_whole_purity (test_geometry_window.GeometryWindow.test_post_momentum_scalar_io_does_not_claim_whole_purity) ... ok
+test_precision_admissions_are_independent (test_geometry_window.GeometryWindow.test_precision_admissions_are_independent) ... ok
+test_prefix_function_setter_remains_rejected (test_geometry_window.GeometryWindow.test_prefix_function_setter_remains_rejected) ... ok
+test_prefix_io_remains_rejected (test_geometry_window.GeometryWindow.test_prefix_io_remains_rejected) ... ok
+test_repeated_batch_rejected (test_geometry_window.GeometryWindow.test_repeated_batch_rejected) ... ok
+test_serialized_result_mutation_falls_back (test_geometry_window.GeometryWindow.test_serialized_result_mutation_falls_back) ... ok
+test_stale_window_receipt_rejected (test_geometry_window.GeometryWindow.test_stale_window_receipt_rejected) ... ok
+test_unknown_suffix_function_remains_rejected (test_geometry_window.GeometryWindow.test_unknown_suffix_function_remains_rejected) ... ok
+test_whole_object_overwrite_remains_rejected (test_geometry_window.GeometryWindow.test_whole_object_overwrite_remains_rejected) ... ok
+test_whole_source_inventory_can_include_unreachable_program (test_geometry_window.GeometryWindow.test_whole_source_inventory_can_include_unreachable_program) ... ok
+test_lifetime_transformations_unchanged (test_geometry_window.HookConfinement.test_lifetime_transformations_unchanged) ... ok
+test_main_entry_rotation_skip_narrowing_invalidation (test_geometry_window.HookConfinement.test_main_entry_rotation_skip_narrowing_invalidation) ... ok
+test_qp_capture_only_inside_genuine_producer_branch (test_geometry_window.HookConfinement.test_qp_capture_only_inside_genuine_producer_branch) ... ok
+test_window_mode_query_is_typed_and_no_global_gate_flip (test_geometry_window.HookConfinement.test_window_mode_query_is_typed_and_no_global_gate_flip) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 0.079s
+
+OK

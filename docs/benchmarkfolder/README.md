@@ -340,6 +340,17 @@ orientation match the reference, with unchanged observed flags and controls.
 This qualifies the standalone factory on the present GNU/Linux host. The full
 amplitude's entry-to-use environment and numerical results remain unqualified.
 
+The later [generated-wrapper/module ABI fixture](experiments/generic-geometry-wrapper-abi-qualification-1/README.md)
+passes all 240 direct calls: 180 available bounds and 60 conservative rejections.
+It checks exact source-bound slots and integer bounds, DP/QP storage words,
+mass arguments, legacy forwarding, tokens and observed IEEE state. Seven build
+commands and one fixture worker close successfully; portable raw replay and
+fourteen integrity/relocation tests pass. This uses a recording legacy target
+and supplied histories, without a physical amplitude. The included source
+counterexamples expose a remaining parent-caller interval gap between capture,
+producer batches and consumption. Full caller lifetime and scientific admission
+remain false until those parent effects and possible momentum writes are proved.
+
 The [private CMS amplitude trial](experiments/kinematic-invariant-amplitude-qualification-1/README.md)
 compiles the Fortran prototype and preserves the ordinary point's exact
 original/candidate observations. The first stress point retains failed DP

@@ -1,0 +1,62 @@
+{
+  "audit_harness_first_attempt": "Pure replay stopped at NameError: copy missing from injected preparation namespace; added stdlib copy only, no evidence or parser change.",
+  "available": 180,
+  "cases": 240,
+  "command_receipts_checked": 8,
+  "commands_recorded_closed_and_reaped": true,
+  "compiled_or_native_executions_by_audit": 0,
+  "corpus_and_integer_reference_rederived": true,
+  "direct_counts": {
+    "BOUNDS": 720,
+    "CASE": 240,
+    "CLASS": 2160,
+    "DONE": 1,
+    "DPMOM": 2880,
+    "ENDCASE": 240,
+    "FORWARD": 240,
+    "MASS": 720,
+    "POST": 240,
+    "PRE": 240,
+    "QPMOM": 2880,
+    "READY": 1,
+    "RECORDED_ENV": 240,
+    "SLOTS": 240,
+    "TOKEN": 240
+  },
+  "evidence_pins": {
+    "build/result.json": {
+      "bytes": 11696,
+      "sha256": "98a01b832cd5e26d4937a6d91f0b2e88f8298439ae1daa5c0464f1fc4d743cfe"
+    },
+    "run/native.log": {
+      "bytes": 474059,
+      "sha256": "6472be073e348b37d97affc731e10444a816832a4e7b5ae645200cd9a48e0832"
+    },
+    "run/result.json": {
+      "bytes": 87431,
+      "sha256": "ae31fcd44874b34053cb5174c680d3ec6e143cd6f30396c6067a39e67882de03"
+    },
+    "run/runtime-maps.txt": {
+      "bytes": 5449,
+      "sha256": "cf0b126b5da189f17c8282d803f7cdd3ebd1490e573a7bf9206742de84975256"
+    }
+  },
+  "full_sloop_lifetime_coverage": false,
+  "limitations": [
+    "Runtime identities are audited from retained records/maps; no new ELF/library rehash.",
+    "Direct emitted wrapper ABI only; source3 parent caller intervals and producer lifetimes are not qualified.",
+    "No tensor coefficient, physical amplitude, or performance qualification."
+  ],
+  "live_ELF_or_library_bytes_read": false,
+  "physical_amplitude_qualified": false,
+  "raw_protocol_replay_exact": true,
+  "rejected": 60,
+  "replay_forbidden_api_attempts": 0,
+  "review_source_sha256": "ca242eb27085922232cf3189ba3fc29e2a5e1d293c1db47b19a3ea40ad9c0a4b",
+  "runtime_text_paths_equal_recorded_6_ELFs": true,
+  "schema": "independent-generic-wrapper-abi-text-audit-v1",
+  "scientific_dispatch": "recording legacy stub only",
+  "source_index_sha256": "35018c3a05f2e863be061c68bbba9fc64ccf15009c94f68ec3012f955601394d",
+  "source_payloads": 28,
+  "status": "pass"
+}

@@ -1,0 +1,2390 @@
+{
+  "conservation": [
+    -1,
+    -1,
+    1
+  ],
+  "environment_contract": {
+    "complete": false,
+    "procedures": {
+      "FFV1L2P0_3": {
+        "edges": [],
+        "file": "Source/DHELAS/FFV1L2P0_3.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "FFV1L3_1": {
+        "edges": [],
+        "file": "Source/DHELAS/FFV1L3_1.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "FFV2_5L2_1": {
+        "edges": [],
+        "file": "Source/DHELAS/FFV2_5L2_1.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "FFV2_5_0": {
+        "edges": [],
+        "file": "Source/DHELAS/FFV2_5_0.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "IXXXXX": {
+        "edges": [],
+        "file": "Source/DHELAS/aloha_functions.f",
+        "intrinsics": [
+          "ABS",
+          "DBLE",
+          "DCMPLX",
+          "DSQRT",
+          "MAX",
+          "MIN",
+          "SIGN"
+        ],
+        "kind": "subroutine",
+        "line": 40
+      },
+      "ML5_0_COEF_CONSTRUCTION_1": {
+        "edges": [
+          "FFV1L2P0_3",
+          "FFV1L3_1",
+          "FFV2_5L2_1",
+          "ML5_0_CREATE_LOOP_COEFS",
+          "ML5_0_UPDATE_WL_0_0",
+          "ML5_0_UPDATE_WL_0_1",
+          "ML5_0_UPDATE_WL_1_1"
+        ],
+        "file": "SubProcesses/P0/coef_construction_1.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 1
+      },
+      "ML5_0_CREATE_LOOP_COEFS": {
+        "edges": [
+          "ML5_0_MERGE_WL",
+          "ML5_0_ML5SOINDEX_FOR_BORN_AMP",
+          "ML5_0_ML5SOINDEX_FOR_LOOP_AMP",
+          "ML5_0_ML5SQSOINDEX"
+        ],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "ABS",
+          "CMPLX",
+          "CONJG"
+        ],
+        "kind": "subroutine",
+        "line": 42
+      },
+      "ML5_0_HELAS_CALLS_AMPB_1": {
+        "edges": [
+          "FFV2_5_0",
+          "IXXXXX",
+          "OXXXXX",
+          "VXXXXX"
+        ],
+        "file": "SubProcesses/P0/helas_calls_ampb_1.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 1
+      },
+      "ML5_0_MERGE_WL": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 301
+      },
+      "ML5_0_ML5SOINDEX_FOR_BORN_AMP": {
+        "edges": [],
+        "file": "SubProcesses/P0/loop_matrix.f",
+        "intrinsics": [],
+        "kind": "function",
+        "line": 2220
+      },
+      "ML5_0_ML5SOINDEX_FOR_LOOP_AMP": {
+        "edges": [],
+        "file": "SubProcesses/P0/loop_matrix.f",
+        "intrinsics": [],
+        "kind": "function",
+        "line": 2249
+      },
+      "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS": {
+        "edges": [],
+        "file": "SubProcesses/P0/loop_matrix.f",
+        "intrinsics": [],
+        "kind": "function",
+        "line": 2138
+      },
+      "ML5_0_ML5SQSOINDEX": {
+        "edges": [
+          "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS"
+        ],
+        "file": "SubProcesses/P0/loop_matrix.f",
+        "intrinsics": [],
+        "kind": "function",
+        "line": 2279
+      },
+      "ML5_0_MP_COEF_CONSTRUCTION_1": {
+        "edges": [
+          "MP_FFV1L2P0_3",
+          "MP_FFV1L3_1",
+          "MP_FFV2_5L2_1",
+          "MP_ML5_0_CREATE_LOOP_COEFS",
+          "MP_ML5_0_TERMINAL_WL_1_1",
+          "MP_ML5_0_UPDATE_WL_0_0",
+          "MP_ML5_0_UPDATE_WL_0_1"
+        ],
+        "file": "SubProcesses/P0/mp_coef_construction_1.f",
+        "intrinsics": [
+          "CMPLX",
+          "IEEE_GET_FLAG"
+        ],
+        "kind": "subroutine",
+        "line": 1
+      },
+      "ML5_0_MP_HELAS_CALLS_AMPB_1": {
+        "edges": [
+          "MP_FFV2_5_0",
+          "MP_IXXXXX",
+          "MP_OXXXXX",
+          "MP_VXXXXX"
+        ],
+        "file": "SubProcesses/P0/mp_helas_calls_ampb_1.f",
+        "intrinsics": [
+          "CMPLX"
+        ],
+        "kind": "subroutine",
+        "line": 1
+      },
+      "ML5_0_UPDATE_WL_0_0": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 331
+      },
+      "ML5_0_UPDATE_WL_0_1": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 447
+      },
+      "ML5_0_UPDATE_WL_1_1": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 575
+      },
+      "MP_FFV1L2P0_3": {
+        "edges": [],
+        "file": "Source/DHELAS/MP_FFV1L2P0_3.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "MP_FFV1L3_1": {
+        "edges": [],
+        "file": "Source/DHELAS/MP_FFV1L3_1.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "MP_FFV2_5L2_1": {
+        "edges": [],
+        "file": "Source/DHELAS/MP_FFV2_5L2_1.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "MP_FFV2_5_0": {
+        "edges": [],
+        "file": "Source/DHELAS/MP_FFV2_5_0.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 5
+      },
+      "MP_IXXXXX": {
+        "edges": [],
+        "file": "Source/DHELAS/aloha_functions.f",
+        "intrinsics": [
+          "ABS",
+          "CMPLX",
+          "MAX",
+          "MIN",
+          "REAL",
+          "SIGN",
+          "SQRT"
+        ],
+        "kind": "subroutine",
+        "line": 358
+      },
+      "MP_ML5_0_CREATE_LOOP_COEFS": {
+        "edges": [
+          "ML5_0_ML5SOINDEX_FOR_BORN_AMP",
+          "ML5_0_ML5SOINDEX_FOR_LOOP_AMP",
+          "ML5_0_ML5SQSOINDEX",
+          "MP_ML5_0_MERGE_WL"
+        ],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "ABS",
+          "CMPLX",
+          "CONJG"
+        ],
+        "kind": "subroutine",
+        "line": 144
+      },
+      "MP_ML5_0_MERGE_WL": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [],
+        "kind": "subroutine",
+        "line": 316
+      },
+      "MP_ML5_0_TERMINAL_WL_1_1": {
+        "edges": [
+          "MP_ML5_0_TERMINAL_WL_1_1::WL_BOUNDED",
+          "MP_ML5_0_TERMINAL_WL_1_1::WL_IS_FINITE",
+          "MP_ML5_0_UPDATE_WL_1_1"
+        ],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "AIMAG",
+          "ALL",
+          "CMPLX",
+          "IEEE_GET_HALTING_MODE",
+          "IEEE_GET_ROUNDING_MODE",
+          "IEEE_SUPPORT_HALTING",
+          "REAL"
+        ],
+        "kind": "subroutine",
+        "line": 811
+      },
+      "MP_ML5_0_TERMINAL_WL_1_1::WL_BOUNDED": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "DIGITS",
+          "IBCLR",
+          "IBITS",
+          "ISHFT",
+          "MAXEXPONENT",
+          "MERGE",
+          "RADIX",
+          "STORAGE_SIZE",
+          "TRANSFER"
+        ],
+        "kind": "function",
+        "line": 898
+      },
+      "MP_ML5_0_TERMINAL_WL_1_1::WL_IS_FINITE": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "DIGITS",
+          "IBITS",
+          "ISHFT",
+          "MAXEXPONENT",
+          "MERGE",
+          "RADIX",
+          "STORAGE_SIZE",
+          "TRANSFER"
+        ],
+        "kind": "function",
+        "line": 885
+      },
+      "MP_ML5_0_UPDATE_WL_0_0": {
+        "edges": [
+          "MP_ML5_0_UPDATE_WL_0_0::WL_IS_FINITE",
+          "MP_ML5_0_UPDATE_WL_0_0_DENSE"
+        ],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "AIMAG",
+          "ALL",
+          "CMPLX",
+          "IEEE_GET_ROUNDING_MODE",
+          "REAL"
+        ],
+        "kind": "subroutine",
+        "line": 354
+      },
+      "MP_ML5_0_UPDATE_WL_0_0::WL_IS_FINITE": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "DIGITS",
+          "IBITS",
+          "ISHFT",
+          "MAXEXPONENT",
+          "MERGE",
+          "RADIX",
+          "STORAGE_SIZE",
+          "TRANSFER"
+        ],
+        "kind": "function",
+        "line": 408
+      },
+      "MP_ML5_0_UPDATE_WL_0_0_DENSE": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "CMPLX"
+        ],
+        "kind": "subroutine",
+        "line": 424
+      },
+      "MP_ML5_0_UPDATE_WL_0_1": {
+        "edges": [
+          "MP_ML5_0_UPDATE_WL_0_1::WL_IS_FINITE",
+          "MP_ML5_0_UPDATE_WL_0_1_DENSE"
+        ],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "AIMAG",
+          "ALL",
+          "CMPLX",
+          "IEEE_GET_ROUNDING_MODE",
+          "REAL"
+        ],
+        "kind": "subroutine",
+        "line": 474
+      },
+      "MP_ML5_0_UPDATE_WL_0_1::WL_IS_FINITE": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "DIGITS",
+          "IBITS",
+          "ISHFT",
+          "MAXEXPONENT",
+          "MERGE",
+          "RADIX",
+          "STORAGE_SIZE",
+          "TRANSFER"
+        ],
+        "kind": "function",
+        "line": 532
+      },
+      "MP_ML5_0_UPDATE_WL_0_1_DENSE": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "CMPLX"
+        ],
+        "kind": "subroutine",
+        "line": 548
+      },
+      "MP_ML5_0_UPDATE_WL_1_1": {
+        "edges": [
+          "MP_ML5_0_UPDATE_WL_1_1::WL_IS_FINITE",
+          "MP_ML5_0_UPDATE_WL_1_1_DENSE"
+        ],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "AIMAG",
+          "ALL",
+          "CMPLX",
+          "IEEE_GET_ROUNDING_MODE",
+          "REAL"
+        ],
+        "kind": "subroutine",
+        "line": 612
+      },
+      "MP_ML5_0_UPDATE_WL_1_1::WL_IS_FINITE": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "DIGITS",
+          "IBITS",
+          "ISHFT",
+          "MAXEXPONENT",
+          "MERGE",
+          "RADIX",
+          "STORAGE_SIZE",
+          "TRANSFER"
+        ],
+        "kind": "function",
+        "line": 680
+      },
+      "MP_ML5_0_UPDATE_WL_1_1_DENSE": {
+        "edges": [],
+        "file": "SubProcesses/P0/polynomial.f",
+        "intrinsics": [
+          "CMPLX"
+        ],
+        "kind": "subroutine",
+        "line": 696
+      },
+      "MP_OXXXXX": {
+        "edges": [],
+        "file": "Source/DHELAS/aloha_functions.f",
+        "intrinsics": [
+          "ABS",
+          "CMPLX",
+          "MAX",
+          "MIN",
+          "REAL",
+          "SIGN",
+          "SQRT"
+        ],
+        "kind": "subroutine",
+        "line": 754
+      },
+      "MP_VXXXXX": {
+        "edges": [],
+        "file": "Source/DHELAS/aloha_functions.f",
+        "intrinsics": [
+          "ABS",
+          "CMPLX",
+          "MIN",
+          "REAL",
+          "SIGN",
+          "SQRT"
+        ],
+        "kind": "subroutine",
+        "line": 1569
+      },
+      "OXXXXX": {
+        "edges": [],
+        "file": "Source/DHELAS/aloha_functions.f",
+        "intrinsics": [
+          "ABS",
+          "DBLE",
+          "DCMPLX",
+          "DSQRT",
+          "MAX",
+          "MIN",
+          "SIGN"
+        ],
+        "kind": "subroutine",
+        "line": 471
+      },
+      "VXXXXX": {
+        "edges": [],
+        "file": "Source/DHELAS/aloha_functions.f",
+        "intrinsics": [
+          "DABS",
+          "DBLE",
+          "DCMPLX",
+          "DSQRT",
+          "MIN",
+          "SIGN",
+          "SQRT"
+        ],
+        "kind": "subroutine",
+        "line": 1417
+      }
+    },
+    "reference_complete": true,
+    "roots": [
+      "ML5_0_COEF_CONSTRUCTION_1",
+      "ML5_0_HELAS_CALLS_AMPB_1",
+      "ML5_0_MP_COEF_CONSTRUCTION_1",
+      "ML5_0_MP_HELAS_CALLS_AMPB_1"
+    ],
+    "runtime_limitations": [
+      {
+        "procedure": "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS",
+        "reason": "unqualified Fortran STOP runtime"
+      },
+      {
+        "procedure": "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS",
+        "reason": "unqualified Fortran formatted I/O runtime"
+      },
+      {
+        "procedure": "ML5_0_ML5SOINDEX_FOR_LOOP_AMP",
+        "reason": "unqualified Fortran formatted I/O runtime"
+      },
+      {
+        "procedure": "ML5_0_ML5SOINDEX_FOR_BORN_AMP",
+        "reason": "unqualified Fortran formatted I/O runtime"
+      }
+    ],
+    "schema": "generated-fortran-environment-closure-v2",
+    "scientific_admission": false,
+    "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+    "unknown": []
+  },
+  "geometry_window_source_contract": {
+    "contract_sha256": "f72582fe1519ffdc91993b5efc193902882ea648e52dc66026b34cb6a1e567e4",
+    "parser_source_bindings": {
+      "Source/DHELAS/FFV1L2P0_3.f": {
+        "bytes": 1260,
+        "sha256": "0dfc6a925da76fb9809bdcde73233ed08f3952170cb87dfd1fe89435ca15e9fe"
+      },
+      "Source/DHELAS/FFV1L3_1.f": {
+        "bytes": 5026,
+        "sha256": "27de8a3e0bf6c64e7a91d7f6ef1b0005bab0aa8d6ccf7e7eae00e1190ed33f07"
+      },
+      "Source/DHELAS/FFV2L2_1.f": {
+        "bytes": 3883,
+        "sha256": "7da75bff6d32a2e3f11e5ceae92edb4fad92749ddb4dc0aff4046e56616d1fc7"
+      },
+      "Source/DHELAS/FFV2_0.f": {
+        "bytes": 879,
+        "sha256": "564cd70aa7b554332c17141bf85cce02952ab4db00005ed83ff3a1dbf780994d"
+      },
+      "Source/DHELAS/FFV2_5L2_1.f": {
+        "bytes": 7054,
+        "sha256": "7150040c765fceba63c983322251c043146226f8ec4c0082857ac7c7e24db657"
+      },
+      "Source/DHELAS/FFV2_5_0.f": {
+        "bytes": 1255,
+        "sha256": "d4500cc0e757a95070eb253f5a3acdffec4da564f5a1aa82cb0972083cc9324d"
+      },
+      "Source/DHELAS/FFV5L2_1.f": {
+        "bytes": 5296,
+        "sha256": "8c3deac4fd873ace601f8e20e1f7004eb19c4b3ad061428c42c4d5e03af4c4dc"
+      },
+      "Source/DHELAS/FFV5_0.f": {
+        "bytes": 1148,
+        "sha256": "ffd5fa63096752aa08e79431cd87ed4eba98330ecc45df4a97a0b0863b5fd722"
+      },
+      "Source/DHELAS/MP_FFV1L2P0_3.f": {
+        "bytes": 1268,
+        "sha256": "ca0d68fb143d8ea9377460a6a283f874c782f39436f21a49e1f00faa020e1bf3"
+      },
+      "Source/DHELAS/MP_FFV1L3_1.f": {
+        "bytes": 5034,
+        "sha256": "10f6ebcc5ccb057520210612c7e48324af2694031d25839e17584b3ca279e82d"
+      },
+      "Source/DHELAS/MP_FFV2L2_1.f": {
+        "bytes": 3891,
+        "sha256": "114336eb825c3df5d0e7b5c9ac210ab6c013fa497c0bf54b6edf7c942536fbad"
+      },
+      "Source/DHELAS/MP_FFV2_0.f": {
+        "bytes": 891,
+        "sha256": "3e9524a4f8a96245b02cc7c37cb2017cef1269fded1a42fa653442ba9d20e9d3"
+      },
+      "Source/DHELAS/MP_FFV2_5L2_1.f": {
+        "bytes": 7062,
+        "sha256": "3bf0804c10b5c06b1e8391ff87f5c06d8a93ef2ab9f9735feed7b0f4eb9c3df2"
+      },
+      "Source/DHELAS/MP_FFV2_5_0.f": {
+        "bytes": 1267,
+        "sha256": "2949a1f2baf6b89f53c0613d5ca1973154f86563eeb37057c1412bf959914d15"
+      },
+      "Source/DHELAS/MP_FFV5L2_1.f": {
+        "bytes": 5304,
+        "sha256": "25811df226f625f91bf40f0f758f6b4743e7a7184f2461f9a45c0eaae4d1a506"
+      },
+      "Source/DHELAS/MP_FFV5_0.f": {
+        "bytes": 1160,
+        "sha256": "a8498ee8b4c08892e712953870cd71831730a8ff40a63d279cead56a1fc3ab60"
+      },
+      "Source/DHELAS/aloha_functions.f": {
+        "bytes": 87869,
+        "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+      },
+      "Source/DHELAS/coef_specs.inc": {
+        "bytes": 120,
+        "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+      },
+      "Source/MODEL/actualize_mp_ext_params.inc": {
+        "bytes": 243,
+        "sha256": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac"
+      },
+      "Source/MODEL/coupl.inc": {
+        "bytes": 5162,
+        "sha256": "a553c83f3fd22f10d8d024499bf89b2815507e5da8279a43781bb1eb6bf289e1"
+      },
+      "Source/MODEL/coupl_write.inc": {
+        "bytes": 7633,
+        "sha256": "3b9cfc760e47be7e6a4ace5a86f6ec7e0acb1a9780d3f27a71858bb690e402f3"
+      },
+      "Source/MODEL/couplings.f": {
+        "bytes": 3517,
+        "sha256": "99c8840eb000613528a03a2a2117d1eff8e7ef004db020ec1062a1449ec09c70"
+      },
+      "Source/MODEL/couplings1.f": {
+        "bytes": 4213,
+        "sha256": "5523f01691bd7223e146d942b72699e097a0fd09578cbcb0feff30d98c51f394"
+      },
+      "Source/MODEL/couplings2.f": {
+        "bytes": 696,
+        "sha256": "87986caef1289c707f02da1bfed5b699a96af81234e7166b6d0adef91debc756"
+      },
+      "Source/MODEL/couplings3.f": {
+        "bytes": 464,
+        "sha256": "87601eb74fda3e6353e313fcd8495d97bc6d987ba592193420230d42389fd40f"
+      },
+      "Source/MODEL/couplings4.f": {
+        "bytes": 4769,
+        "sha256": "26beb707cb347417794d24e17934629938b39b3924a7504e4a644058e200e8cb"
+      },
+      "Source/MODEL/couplings5.f": {
+        "bytes": 5783,
+        "sha256": "cf54717b09f8e4985144d779de5c7a981e8337f413bafb3df45dc0d060091145"
+      },
+      "Source/MODEL/couplings6.f": {
+        "bytes": 1699,
+        "sha256": "dc097d4d15f9d0ecde6fb6f11e3b3ca241d3db4cbb360e022e0883f37c624f65"
+      },
+      "Source/MODEL/flavor_couplings.f": {
+        "bytes": 741,
+        "sha256": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7"
+      },
+      "Source/MODEL/formats.inc": {
+        "bytes": 958,
+        "sha256": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3"
+      },
+      "Source/MODEL/get_color.f": {
+        "bytes": 3048,
+        "sha256": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf"
+      },
+      "Source/MODEL/input.inc": {
+        "bytes": 3361,
+        "sha256": "51e2b83c1164d94c10dd428dbbb2f8f64dfaf271ff76a28b6c7f2f3e08d703bf"
+      },
+      "Source/MODEL/intparam_definition.inc": {
+        "bytes": 9063,
+        "sha256": "31b04d7232e5b965ea501cfa89bc73928d0fa7b720fb737b031408fabd3c9a92"
+      },
+      "Source/MODEL/lha_read.f": {
+        "bytes": 13600,
+        "sha256": "319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca"
+      },
+      "Source/MODEL/makeinc.inc": {
+        "bytes": 467,
+        "sha256": "55b1df39d7f274908246433f6f28381a76a0cee435a585f21595b6b2251f8ff8"
+      },
+      "Source/MODEL/model_functions.f": {
+        "bytes": 32184,
+        "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+      },
+      "Source/MODEL/model_functions.inc": {
+        "bytes": 883,
+        "sha256": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f"
+      },
+      "Source/MODEL/mp_coupl.inc": {
+        "bytes": 6177,
+        "sha256": "c7592c48d020aa559d80ea93948504971ee1aea70c6a4257f93fa707c3c73e15"
+      },
+      "Source/MODEL/mp_coupl_same_name.inc": {
+        "bytes": 4481,
+        "sha256": "b096da7321786b854fbaad09bf1ffd1fd33456b2d7eaea9834ed6879d2d548e9"
+      },
+      "Source/MODEL/mp_couplings1.f": {
+        "bytes": 5552,
+        "sha256": "30fe8e40f725f4ca373d847562809df4e2f6069ee130fc134f4fae1e01564b98"
+      },
+      "Source/MODEL/mp_couplings2.f": {
+        "bytes": 804,
+        "sha256": "789e2339f51d29690357950b6884f5f9eaf09b205b2820607a29f55d50db2f01"
+      },
+      "Source/MODEL/mp_couplings3.f": {
+        "bytes": 500,
+        "sha256": "c52fe148b83c48cd584dc0fd1e25665bb546b1a183e7e765354c66e6205203e7"
+      },
+      "Source/MODEL/mp_couplings4.f": {
+        "bytes": 6088,
+        "sha256": "c894c92eb68e20b8209c7a0cf4fe00b79b3347509d95217914451bc73d15af9b"
+      },
+      "Source/MODEL/mp_couplings5.f": {
+        "bytes": 7326,
+        "sha256": "c49cee9c2f868d3d3d6d8d326862d59936888178662e2a53a897cca9fdeea871"
+      },
+      "Source/MODEL/mp_couplings6.f": {
+        "bytes": 2135,
+        "sha256": "30f5968b05956e26a35916d055c6f9c5fe902a54acdc6c47e34df8c439134cbe"
+      },
+      "Source/MODEL/mp_input.inc": {
+        "bytes": 4268,
+        "sha256": "ce6a1872ff116f69abec16b606a2a2e42f007b3681b741ead3416a9eddbe9f0e"
+      },
+      "Source/MODEL/mp_intparam_definition.inc": {
+        "bytes": 11777,
+        "sha256": "99637f843f20a52544c9d3c66731a69dfc0818f5e8c1d53bfaa616803391c790"
+      },
+      "Source/MODEL/param_read.inc": {
+        "bytes": 2835,
+        "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22"
+      },
+      "Source/MODEL/param_write.inc": {
+        "bytes": 5946,
+        "sha256": "3bc37d8fe91985e370503aeeb105a88e0fe3c4b087440668eb76f511e94ad0e2"
+      },
+      "Source/MODEL/rw_para.f": {
+        "bytes": 2707,
+        "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c"
+      },
+      "SubProcesses/P0/coef_construction_1.f": {
+        "bytes": 3267,
+        "sha256": "4cc90164245d02e5d11bdd503078344156755361257a1a0b8c63d5efdb1977fc"
+      },
+      "SubProcesses/P0/helas_calls_ampb_1.f": {
+        "bytes": 3128,
+        "sha256": "3d1eb539a610d1a220fc7f1962da0e7b494c814937e7319d636af3cbf364b096"
+      },
+      "SubProcesses/P0/loop_matrix.f": {
+        "bytes": 90585,
+        "sha256": "6bf22fdcab0463593e78299232ac1343fbf6ffd5804dfc4aeff5d0fa3498b3c1"
+      },
+      "SubProcesses/P0/loop_max_coefs.inc": {
+        "bytes": 61,
+        "sha256": "8b3fa018f86835df977018e4edb50a5cbe7cbde15a07bcfb447201dfdb8adb00"
+      },
+      "SubProcesses/P0/mp_coef_construction_1.f": {
+        "bytes": 3159,
+        "sha256": "04b504de8fb5d346d64ccef141623de1687882fb82be935bc73f549c6396582e"
+      },
+      "SubProcesses/P0/mp_compute_loop_coefs.f": {
+        "bytes": 14274,
+        "sha256": "06b77538398635a6c90e6456486bab9385248f84a59b85e9950ec2951a49d5a0"
+      },
+      "SubProcesses/P0/mp_helas_calls_ampb_1.f": {
+        "bytes": 2852,
+        "sha256": "d3f4694b2725e364cd0f99caeb81b495033544659e72a081409e2cf8d7cb16d4"
+      },
+      "SubProcesses/P0/nsquaredSO.inc": {
+        "bytes": 56,
+        "sha256": "3a750fd0aa716aeaa90c7b3c8031aa28ea20b2359684eacd8c9f86e3d23d0bf4"
+      },
+      "SubProcesses/P0/pmass.inc": {
+        "bytes": 67,
+        "sha256": "0beacdaee18697d60521073d3a773ca4c3b0d29e30dd24980ca23d5b3b24882e"
+      },
+      "SubProcesses/P0/polynomial.f": {
+        "bytes": 32398,
+        "sha256": "271bee2678ac9c646fac1d738c7fe3f9a2bb5020073c2f90a1395a6727c5c6a4"
+      }
+    },
+    "runtime_abi_qualified": false,
+    "schema": "generated-geometry-window-source-contract-v1",
+    "scientific_dispatch_enabled": false,
+    "slots": {
+      "128": {
+        "batch_bindings": [
+          {
+            "bytes": 2852,
+            "file": "SubProcesses/P0/mp_helas_calls_ampb_1.f",
+            "sha256": "d3f4694b2725e364cd0f99caeb81b495033544659e72a081409e2cf8d7cb16d4"
+          },
+          {
+            "bytes": 3159,
+            "file": "SubProcesses/P0/mp_coef_construction_1.f",
+            "sha256": "04b504de8fb5d346d64ccef141623de1687882fb82be935bc73f549c6396582e"
+          }
+        ],
+        "reason": null,
+        "source_window_supported": true,
+        "window_sha256": "a4e2917700b71b499e0484a1c289c52885d65ef5c06e37fffeb7f9d7fb25d8b0"
+      },
+      "64": {
+        "batch_bindings": [
+          {
+            "bytes": 3128,
+            "file": "SubProcesses/P0/helas_calls_ampb_1.f",
+            "sha256": "3d1eb539a610d1a220fc7f1962da0e7b494c814937e7319d636af3cbf364b096"
+          },
+          {
+            "bytes": 3267,
+            "file": "SubProcesses/P0/coef_construction_1.f",
+            "sha256": "4cc90164245d02e5d11bdd503078344156755361257a1a0b8c63d5efdb1977fc"
+          }
+        ],
+        "reason": null,
+        "source_window_supported": true,
+        "window_sha256": "13272877a8001a33213ef0f50ead21a9929ae5c726229baaf512bb7f9059f2b9"
+      }
+    },
+    "source_input_sha256": "54a54b10f04b891045892bddb6b111a41dd4a2b4c2e2360d1f53021fd0917baa",
+    "source_scope": "momentum prefix and reference-complete nonwriting suffix only"
+  },
+  "graph": {
+    "conflicting_slots": [],
+    "has_born": true,
+    "leaves": {
+      "1": {
+        "is_part": true,
+        "leg": 1,
+        "mass": "ZERO",
+        "offshell": false,
+        "slot": 1,
+        "spin": 2,
+        "state": "incoming",
+        "state_id": 1
+      },
+      "2": {
+        "is_part": false,
+        "leg": 2,
+        "mass": "ZERO",
+        "offshell": false,
+        "slot": 2,
+        "spin": 2,
+        "state": "outgoing",
+        "state_id": -1
+      },
+      "3": {
+        "is_part": true,
+        "leg": 3,
+        "mass": "mdl_MZ",
+        "offshell": false,
+        "slot": 3,
+        "spin": 3,
+        "state": "final",
+        "state_id": 1
+      }
+    },
+    "legs": {
+      "1": {
+        "offshell": false,
+        "pdg": 2,
+        "state": false
+      },
+      "2": {
+        "offshell": false,
+        "pdg": -2,
+        "state": false
+      },
+      "3": {
+        "offshell": false,
+        "pdg": 23,
+        "state": true
+      }
+    },
+    "nexternal": 3,
+    "ninitial": 2,
+    "process": "u u~ > z",
+    "unsupported_source_features": []
+  },
+  "momentum_environment_contract": {
+    "128": {
+      "complete": true,
+      "last_producer": {
+        "batch": "ML5_0_MP_HELAS_CALLS_AMPB_1",
+        "file": "SubProcesses/P0/mp_helas_calls_ampb_1.f",
+        "line": 88,
+        "statement": "CALLMP_VXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(3))"
+      },
+      "later_writes": [],
+      "prefix": {
+        "complete": true,
+        "procedures": {
+          "ML5_0_MP_HELAS_CALLS_AMPB_1": {
+            "edges": [
+              "MP_IXXXXX",
+              "MP_OXXXXX",
+              "MP_VXXXXX"
+            ],
+            "file": "SubProcesses/P0/mp_helas_calls_ampb_1.f",
+            "intrinsics": [
+              "CMPLX"
+            ],
+            "kind": "subroutine",
+            "line": 1
+          },
+          "MP_IXXXXX": {
+            "edges": [],
+            "file": "Source/DHELAS/aloha_functions.f",
+            "intrinsics": [
+              "ABS",
+              "CMPLX",
+              "MAX",
+              "MIN",
+              "REAL",
+              "SIGN",
+              "SQRT"
+            ],
+            "kind": "subroutine",
+            "line": 358
+          },
+          "MP_OXXXXX": {
+            "edges": [],
+            "file": "Source/DHELAS/aloha_functions.f",
+            "intrinsics": [
+              "ABS",
+              "CMPLX",
+              "MAX",
+              "MIN",
+              "REAL",
+              "SIGN",
+              "SQRT"
+            ],
+            "kind": "subroutine",
+            "line": 754
+          },
+          "MP_VXXXXX": {
+            "edges": [],
+            "file": "Source/DHELAS/aloha_functions.f",
+            "intrinsics": [
+              "ABS",
+              "CMPLX",
+              "MIN",
+              "REAL",
+              "SIGN",
+              "SQRT"
+            ],
+            "kind": "subroutine",
+            "line": 1569
+          }
+        },
+        "reference_complete": true,
+        "roots": [
+          "ML5_0_MP_HELAS_CALLS_AMPB_1"
+        ],
+        "runtime_limitations": [],
+        "schema": "generated-fortran-environment-closure-v2",
+        "scientific_admission": false,
+        "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+        "unknown": []
+      },
+      "reason": null,
+      "required_runtime_contract": [
+        "fresh token before all included batches; same control state at use",
+        "actual same-kind producer path completed, no skip/reuse/widening",
+        "bound source/ABI/compiler contract; no external hidden alias writes"
+      ],
+      "schema": "source-momentum-environment-window-v1",
+      "scientific_admission": false,
+      "suffix": {
+        "complete": false,
+        "procedures": {
+          "ML5_0_ML5SOINDEX_FOR_BORN_AMP": {
+            "edges": [],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2220
+          },
+          "ML5_0_ML5SOINDEX_FOR_LOOP_AMP": {
+            "edges": [],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2249
+          },
+          "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS": {
+            "edges": [],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2138
+          },
+          "ML5_0_ML5SQSOINDEX": {
+            "edges": [
+              "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS"
+            ],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2279
+          },
+          "ML5_0_MP_COEF_CONSTRUCTION_1": {
+            "edges": [
+              "MP_FFV1L2P0_3",
+              "MP_FFV1L3_1",
+              "MP_FFV2_5L2_1",
+              "MP_ML5_0_CREATE_LOOP_COEFS",
+              "MP_ML5_0_TERMINAL_WL_1_1",
+              "MP_ML5_0_UPDATE_WL_0_0",
+              "MP_ML5_0_UPDATE_WL_0_1"
+            ],
+            "file": "SubProcesses/P0/mp_coef_construction_1.f",
+            "intrinsics": [
+              "CMPLX",
+              "IEEE_GET_FLAG"
+            ],
+            "kind": "subroutine",
+            "line": 1
+          },
+          "ML5_0_MP_HELAS_CALLS_AMPB_1": {
+            "edges": [
+              "MP_FFV2_5_0"
+            ],
+            "file": "SubProcesses/P0/mp_helas_calls_ampb_1.f",
+            "intrinsics": [
+              "CMPLX"
+            ],
+            "kind": "subroutine",
+            "line": 1
+          },
+          "MP_FFV1L2P0_3": {
+            "edges": [],
+            "file": "Source/DHELAS/MP_FFV1L2P0_3.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "MP_FFV1L3_1": {
+            "edges": [],
+            "file": "Source/DHELAS/MP_FFV1L3_1.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "MP_FFV2_5L2_1": {
+            "edges": [],
+            "file": "Source/DHELAS/MP_FFV2_5L2_1.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "MP_FFV2_5_0": {
+            "edges": [],
+            "file": "Source/DHELAS/MP_FFV2_5_0.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "MP_ML5_0_CREATE_LOOP_COEFS": {
+            "edges": [
+              "ML5_0_ML5SOINDEX_FOR_BORN_AMP",
+              "ML5_0_ML5SOINDEX_FOR_LOOP_AMP",
+              "ML5_0_ML5SQSOINDEX",
+              "MP_ML5_0_MERGE_WL"
+            ],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "ABS",
+              "CMPLX",
+              "CONJG"
+            ],
+            "kind": "subroutine",
+            "line": 144
+          },
+          "MP_ML5_0_MERGE_WL": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 316
+          },
+          "MP_ML5_0_TERMINAL_WL_1_1": {
+            "edges": [
+              "MP_ML5_0_TERMINAL_WL_1_1::WL_BOUNDED",
+              "MP_ML5_0_TERMINAL_WL_1_1::WL_IS_FINITE",
+              "MP_ML5_0_UPDATE_WL_1_1"
+            ],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "AIMAG",
+              "ALL",
+              "CMPLX",
+              "IEEE_GET_HALTING_MODE",
+              "IEEE_GET_ROUNDING_MODE",
+              "IEEE_SUPPORT_HALTING",
+              "REAL"
+            ],
+            "kind": "subroutine",
+            "line": 811
+          },
+          "MP_ML5_0_TERMINAL_WL_1_1::WL_BOUNDED": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "DIGITS",
+              "IBCLR",
+              "IBITS",
+              "ISHFT",
+              "MAXEXPONENT",
+              "MERGE",
+              "RADIX",
+              "STORAGE_SIZE",
+              "TRANSFER"
+            ],
+            "kind": "function",
+            "line": 898
+          },
+          "MP_ML5_0_TERMINAL_WL_1_1::WL_IS_FINITE": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "DIGITS",
+              "IBITS",
+              "ISHFT",
+              "MAXEXPONENT",
+              "MERGE",
+              "RADIX",
+              "STORAGE_SIZE",
+              "TRANSFER"
+            ],
+            "kind": "function",
+            "line": 885
+          },
+          "MP_ML5_0_UPDATE_WL_0_0": {
+            "edges": [
+              "MP_ML5_0_UPDATE_WL_0_0::WL_IS_FINITE",
+              "MP_ML5_0_UPDATE_WL_0_0_DENSE"
+            ],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "AIMAG",
+              "ALL",
+              "CMPLX",
+              "IEEE_GET_ROUNDING_MODE",
+              "REAL"
+            ],
+            "kind": "subroutine",
+            "line": 354
+          },
+          "MP_ML5_0_UPDATE_WL_0_0::WL_IS_FINITE": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "DIGITS",
+              "IBITS",
+              "ISHFT",
+              "MAXEXPONENT",
+              "MERGE",
+              "RADIX",
+              "STORAGE_SIZE",
+              "TRANSFER"
+            ],
+            "kind": "function",
+            "line": 408
+          },
+          "MP_ML5_0_UPDATE_WL_0_0_DENSE": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "CMPLX"
+            ],
+            "kind": "subroutine",
+            "line": 424
+          },
+          "MP_ML5_0_UPDATE_WL_0_1": {
+            "edges": [
+              "MP_ML5_0_UPDATE_WL_0_1::WL_IS_FINITE",
+              "MP_ML5_0_UPDATE_WL_0_1_DENSE"
+            ],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "AIMAG",
+              "ALL",
+              "CMPLX",
+              "IEEE_GET_ROUNDING_MODE",
+              "REAL"
+            ],
+            "kind": "subroutine",
+            "line": 474
+          },
+          "MP_ML5_0_UPDATE_WL_0_1::WL_IS_FINITE": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "DIGITS",
+              "IBITS",
+              "ISHFT",
+              "MAXEXPONENT",
+              "MERGE",
+              "RADIX",
+              "STORAGE_SIZE",
+              "TRANSFER"
+            ],
+            "kind": "function",
+            "line": 532
+          },
+          "MP_ML5_0_UPDATE_WL_0_1_DENSE": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "CMPLX"
+            ],
+            "kind": "subroutine",
+            "line": 548
+          },
+          "MP_ML5_0_UPDATE_WL_1_1": {
+            "edges": [
+              "MP_ML5_0_UPDATE_WL_1_1::WL_IS_FINITE",
+              "MP_ML5_0_UPDATE_WL_1_1_DENSE"
+            ],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "AIMAG",
+              "ALL",
+              "CMPLX",
+              "IEEE_GET_ROUNDING_MODE",
+              "REAL"
+            ],
+            "kind": "subroutine",
+            "line": 612
+          },
+          "MP_ML5_0_UPDATE_WL_1_1::WL_IS_FINITE": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "DIGITS",
+              "IBITS",
+              "ISHFT",
+              "MAXEXPONENT",
+              "MERGE",
+              "RADIX",
+              "STORAGE_SIZE",
+              "TRANSFER"
+            ],
+            "kind": "function",
+            "line": 680
+          },
+          "MP_ML5_0_UPDATE_WL_1_1_DENSE": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "CMPLX"
+            ],
+            "kind": "subroutine",
+            "line": 696
+          }
+        },
+        "reference_complete": true,
+        "roots": [
+          "ML5_0_MP_COEF_CONSTRUCTION_1",
+          "ML5_0_MP_HELAS_CALLS_AMPB_1"
+        ],
+        "runtime_limitations": [
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS",
+            "reason": "unqualified Fortran STOP runtime"
+          },
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS",
+            "reason": "unqualified Fortran formatted I/O runtime"
+          },
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_LOOP_AMP",
+            "reason": "unqualified Fortran formatted I/O runtime"
+          },
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_BORN_AMP",
+            "reason": "unqualified Fortran formatted I/O runtime"
+          }
+        ],
+        "schema": "generated-fortran-environment-closure-v2",
+        "scientific_admission": false,
+        "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+        "unknown": []
+      }
+    },
+    "64": {
+      "complete": true,
+      "last_producer": {
+        "batch": "ML5_0_HELAS_CALLS_AMPB_1",
+        "file": "SubProcesses/P0/helas_calls_ampb_1.f",
+        "line": 103,
+        "statement": "CALLVXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(3))"
+      },
+      "later_writes": [],
+      "prefix": {
+        "complete": true,
+        "procedures": {
+          "IXXXXX": {
+            "edges": [],
+            "file": "Source/DHELAS/aloha_functions.f",
+            "intrinsics": [
+              "ABS",
+              "DBLE",
+              "DCMPLX",
+              "DSQRT",
+              "MAX",
+              "MIN",
+              "SIGN"
+            ],
+            "kind": "subroutine",
+            "line": 40
+          },
+          "ML5_0_HELAS_CALLS_AMPB_1": {
+            "edges": [
+              "IXXXXX",
+              "OXXXXX",
+              "VXXXXX"
+            ],
+            "file": "SubProcesses/P0/helas_calls_ampb_1.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 1
+          },
+          "OXXXXX": {
+            "edges": [],
+            "file": "Source/DHELAS/aloha_functions.f",
+            "intrinsics": [
+              "ABS",
+              "DBLE",
+              "DCMPLX",
+              "DSQRT",
+              "MAX",
+              "MIN",
+              "SIGN"
+            ],
+            "kind": "subroutine",
+            "line": 471
+          },
+          "VXXXXX": {
+            "edges": [],
+            "file": "Source/DHELAS/aloha_functions.f",
+            "intrinsics": [
+              "DABS",
+              "DBLE",
+              "DCMPLX",
+              "DSQRT",
+              "MIN",
+              "SIGN",
+              "SQRT"
+            ],
+            "kind": "subroutine",
+            "line": 1417
+          }
+        },
+        "reference_complete": true,
+        "roots": [
+          "ML5_0_HELAS_CALLS_AMPB_1"
+        ],
+        "runtime_limitations": [],
+        "schema": "generated-fortran-environment-closure-v2",
+        "scientific_admission": false,
+        "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+        "unknown": []
+      },
+      "reason": null,
+      "required_runtime_contract": [
+        "fresh token before all included batches; same control state at use",
+        "actual same-kind producer path completed, no skip/reuse/widening",
+        "bound source/ABI/compiler contract; no external hidden alias writes"
+      ],
+      "schema": "source-momentum-environment-window-v1",
+      "scientific_admission": false,
+      "suffix": {
+        "complete": false,
+        "procedures": {
+          "FFV1L2P0_3": {
+            "edges": [],
+            "file": "Source/DHELAS/FFV1L2P0_3.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "FFV1L3_1": {
+            "edges": [],
+            "file": "Source/DHELAS/FFV1L3_1.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "FFV2_5L2_1": {
+            "edges": [],
+            "file": "Source/DHELAS/FFV2_5L2_1.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "FFV2_5_0": {
+            "edges": [],
+            "file": "Source/DHELAS/FFV2_5_0.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 5
+          },
+          "ML5_0_COEF_CONSTRUCTION_1": {
+            "edges": [
+              "FFV1L2P0_3",
+              "FFV1L3_1",
+              "FFV2_5L2_1",
+              "ML5_0_CREATE_LOOP_COEFS",
+              "ML5_0_UPDATE_WL_0_0",
+              "ML5_0_UPDATE_WL_0_1",
+              "ML5_0_UPDATE_WL_1_1"
+            ],
+            "file": "SubProcesses/P0/coef_construction_1.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 1
+          },
+          "ML5_0_CREATE_LOOP_COEFS": {
+            "edges": [
+              "ML5_0_MERGE_WL",
+              "ML5_0_ML5SOINDEX_FOR_BORN_AMP",
+              "ML5_0_ML5SOINDEX_FOR_LOOP_AMP",
+              "ML5_0_ML5SQSOINDEX"
+            ],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [
+              "ABS",
+              "CMPLX",
+              "CONJG"
+            ],
+            "kind": "subroutine",
+            "line": 42
+          },
+          "ML5_0_HELAS_CALLS_AMPB_1": {
+            "edges": [
+              "FFV2_5_0"
+            ],
+            "file": "SubProcesses/P0/helas_calls_ampb_1.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 1
+          },
+          "ML5_0_MERGE_WL": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 301
+          },
+          "ML5_0_ML5SOINDEX_FOR_BORN_AMP": {
+            "edges": [],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2220
+          },
+          "ML5_0_ML5SOINDEX_FOR_LOOP_AMP": {
+            "edges": [],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2249
+          },
+          "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS": {
+            "edges": [],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2138
+          },
+          "ML5_0_ML5SQSOINDEX": {
+            "edges": [
+              "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS"
+            ],
+            "file": "SubProcesses/P0/loop_matrix.f",
+            "intrinsics": [],
+            "kind": "function",
+            "line": 2279
+          },
+          "ML5_0_UPDATE_WL_0_0": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 331
+          },
+          "ML5_0_UPDATE_WL_0_1": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 447
+          },
+          "ML5_0_UPDATE_WL_1_1": {
+            "edges": [],
+            "file": "SubProcesses/P0/polynomial.f",
+            "intrinsics": [],
+            "kind": "subroutine",
+            "line": 575
+          }
+        },
+        "reference_complete": true,
+        "roots": [
+          "ML5_0_COEF_CONSTRUCTION_1",
+          "ML5_0_HELAS_CALLS_AMPB_1"
+        ],
+        "runtime_limitations": [
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS",
+            "reason": "unqualified Fortran STOP runtime"
+          },
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_SQUARED_ORDERS",
+            "reason": "unqualified Fortran formatted I/O runtime"
+          },
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_LOOP_AMP",
+            "reason": "unqualified Fortran formatted I/O runtime"
+          },
+          {
+            "procedure": "ML5_0_ML5SOINDEX_FOR_BORN_AMP",
+            "reason": "unqualified Fortran formatted I/O runtime"
+          }
+        ],
+        "schema": "generated-fortran-environment-closure-v2",
+        "scientific_admission": false,
+        "scope": "bound source CALL and expression FUNCTION graph only; ABI/compiler/runtime proof separate",
+        "unknown": []
+      }
+    }
+  },
+  "protected": [
+    true,
+    true,
+    true
+  ],
+  "routes": [
+    {
+      "amplitude": 1,
+      "call": "CALL %(proc_prefix)sLOOP_3(1,2,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),2,I_SO,1)",
+      "loopnum": 1,
+      "masses": [
+        "ZERO",
+        "ZERO",
+        "ZERO"
+      ],
+      "modes": {
+        "1": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "2": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "4": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "5": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        }
+      },
+      "n": 3,
+      "pairing": [
+        1,
+        1,
+        1
+      ],
+      "rank": 2,
+      "route": 1,
+      "we": [
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "routing_contract": {
+    "corner_helpers": [
+      "ML5_0_LOOP_3"
+    ],
+    "first_shift": "actual zero-seeded closure, not replaced by zero",
+    "modes": [
+      1,
+      2,
+      4,
+      5
+    ],
+    "scope": "TIRust routing only; other adapter arithmetic requires a separate join"
+  },
+  "schema": 1,
+  "source_bindings": {
+    "Source/DHELAS/FFV1L2P0_3.f": {
+      "bytes": 1260,
+      "sha256": "0dfc6a925da76fb9809bdcde73233ed08f3952170cb87dfd1fe89435ca15e9fe"
+    },
+    "Source/DHELAS/FFV1L3_1.f": {
+      "bytes": 5026,
+      "sha256": "27de8a3e0bf6c64e7a91d7f6ef1b0005bab0aa8d6ccf7e7eae00e1190ed33f07"
+    },
+    "Source/DHELAS/FFV2L2_1.f": {
+      "bytes": 3883,
+      "sha256": "7da75bff6d32a2e3f11e5ceae92edb4fad92749ddb4dc0aff4046e56616d1fc7"
+    },
+    "Source/DHELAS/FFV2_0.f": {
+      "bytes": 879,
+      "sha256": "564cd70aa7b554332c17141bf85cce02952ab4db00005ed83ff3a1dbf780994d"
+    },
+    "Source/DHELAS/FFV2_5L2_1.f": {
+      "bytes": 7054,
+      "sha256": "7150040c765fceba63c983322251c043146226f8ec4c0082857ac7c7e24db657"
+    },
+    "Source/DHELAS/FFV2_5_0.f": {
+      "bytes": 1255,
+      "sha256": "d4500cc0e757a95070eb253f5a3acdffec4da564f5a1aa82cb0972083cc9324d"
+    },
+    "Source/DHELAS/FFV5L2_1.f": {
+      "bytes": 5296,
+      "sha256": "8c3deac4fd873ace601f8e20e1f7004eb19c4b3ad061428c42c4d5e03af4c4dc"
+    },
+    "Source/DHELAS/FFV5_0.f": {
+      "bytes": 1148,
+      "sha256": "ffd5fa63096752aa08e79431cd87ed4eba98330ecc45df4a97a0b0863b5fd722"
+    },
+    "Source/DHELAS/MP_FFV1L2P0_3.f": {
+      "bytes": 1268,
+      "sha256": "ca0d68fb143d8ea9377460a6a283f874c782f39436f21a49e1f00faa020e1bf3"
+    },
+    "Source/DHELAS/MP_FFV1L3_1.f": {
+      "bytes": 5034,
+      "sha256": "10f6ebcc5ccb057520210612c7e48324af2694031d25839e17584b3ca279e82d"
+    },
+    "Source/DHELAS/MP_FFV2L2_1.f": {
+      "bytes": 3891,
+      "sha256": "114336eb825c3df5d0e7b5c9ac210ab6c013fa497c0bf54b6edf7c942536fbad"
+    },
+    "Source/DHELAS/MP_FFV2_0.f": {
+      "bytes": 891,
+      "sha256": "3e9524a4f8a96245b02cc7c37cb2017cef1269fded1a42fa653442ba9d20e9d3"
+    },
+    "Source/DHELAS/MP_FFV2_5L2_1.f": {
+      "bytes": 7062,
+      "sha256": "3bf0804c10b5c06b1e8391ff87f5c06d8a93ef2ab9f9735feed7b0f4eb9c3df2"
+    },
+    "Source/DHELAS/MP_FFV2_5_0.f": {
+      "bytes": 1267,
+      "sha256": "2949a1f2baf6b89f53c0613d5ca1973154f86563eeb37057c1412bf959914d15"
+    },
+    "Source/DHELAS/MP_FFV5L2_1.f": {
+      "bytes": 5304,
+      "sha256": "25811df226f625f91bf40f0f758f6b4743e7a7184f2461f9a45c0eaae4d1a506"
+    },
+    "Source/DHELAS/MP_FFV5_0.f": {
+      "bytes": 1160,
+      "sha256": "a8498ee8b4c08892e712953870cd71831730a8ff40a63d279cead56a1fc3ab60"
+    },
+    "Source/DHELAS/aloha_functions.f": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    },
+    "Source/DHELAS/coef_specs.inc": {
+      "bytes": 120,
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+    },
+    "Source/MODEL/actualize_mp_ext_params.inc": {
+      "bytes": 243,
+      "sha256": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac"
+    },
+    "Source/MODEL/coupl.inc": {
+      "bytes": 5162,
+      "sha256": "a553c83f3fd22f10d8d024499bf89b2815507e5da8279a43781bb1eb6bf289e1"
+    },
+    "Source/MODEL/coupl_write.inc": {
+      "bytes": 7633,
+      "sha256": "3b9cfc760e47be7e6a4ace5a86f6ec7e0acb1a9780d3f27a71858bb690e402f3"
+    },
+    "Source/MODEL/couplings.f": {
+      "bytes": 3517,
+      "sha256": "99c8840eb000613528a03a2a2117d1eff8e7ef004db020ec1062a1449ec09c70"
+    },
+    "Source/MODEL/couplings1.f": {
+      "bytes": 4213,
+      "sha256": "5523f01691bd7223e146d942b72699e097a0fd09578cbcb0feff30d98c51f394"
+    },
+    "Source/MODEL/couplings2.f": {
+      "bytes": 696,
+      "sha256": "87986caef1289c707f02da1bfed5b699a96af81234e7166b6d0adef91debc756"
+    },
+    "Source/MODEL/couplings3.f": {
+      "bytes": 464,
+      "sha256": "87601eb74fda3e6353e313fcd8495d97bc6d987ba592193420230d42389fd40f"
+    },
+    "Source/MODEL/couplings4.f": {
+      "bytes": 4769,
+      "sha256": "26beb707cb347417794d24e17934629938b39b3924a7504e4a644058e200e8cb"
+    },
+    "Source/MODEL/couplings5.f": {
+      "bytes": 5783,
+      "sha256": "cf54717b09f8e4985144d779de5c7a981e8337f413bafb3df45dc0d060091145"
+    },
+    "Source/MODEL/couplings6.f": {
+      "bytes": 1699,
+      "sha256": "dc097d4d15f9d0ecde6fb6f11e3b3ca241d3db4cbb360e022e0883f37c624f65"
+    },
+    "Source/MODEL/flavor_couplings.f": {
+      "bytes": 741,
+      "sha256": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7"
+    },
+    "Source/MODEL/formats.inc": {
+      "bytes": 958,
+      "sha256": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3"
+    },
+    "Source/MODEL/get_color.f": {
+      "bytes": 3048,
+      "sha256": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf"
+    },
+    "Source/MODEL/input.inc": {
+      "bytes": 3361,
+      "sha256": "51e2b83c1164d94c10dd428dbbb2f8f64dfaf271ff76a28b6c7f2f3e08d703bf"
+    },
+    "Source/MODEL/intparam_definition.inc": {
+      "bytes": 9063,
+      "sha256": "31b04d7232e5b965ea501cfa89bc73928d0fa7b720fb737b031408fabd3c9a92"
+    },
+    "Source/MODEL/lha_read.f": {
+      "bytes": 13600,
+      "sha256": "319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca"
+    },
+    "Source/MODEL/makeinc.inc": {
+      "bytes": 467,
+      "sha256": "55b1df39d7f274908246433f6f28381a76a0cee435a585f21595b6b2251f8ff8"
+    },
+    "Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "Source/MODEL/model_functions.inc": {
+      "bytes": 883,
+      "sha256": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f"
+    },
+    "Source/MODEL/mp_coupl.inc": {
+      "bytes": 6177,
+      "sha256": "c7592c48d020aa559d80ea93948504971ee1aea70c6a4257f93fa707c3c73e15"
+    },
+    "Source/MODEL/mp_coupl_same_name.inc": {
+      "bytes": 4481,
+      "sha256": "b096da7321786b854fbaad09bf1ffd1fd33456b2d7eaea9834ed6879d2d548e9"
+    },
+    "Source/MODEL/mp_couplings1.f": {
+      "bytes": 5552,
+      "sha256": "30fe8e40f725f4ca373d847562809df4e2f6069ee130fc134f4fae1e01564b98"
+    },
+    "Source/MODEL/mp_couplings2.f": {
+      "bytes": 804,
+      "sha256": "789e2339f51d29690357950b6884f5f9eaf09b205b2820607a29f55d50db2f01"
+    },
+    "Source/MODEL/mp_couplings3.f": {
+      "bytes": 500,
+      "sha256": "c52fe148b83c48cd584dc0fd1e25665bb546b1a183e7e765354c66e6205203e7"
+    },
+    "Source/MODEL/mp_couplings4.f": {
+      "bytes": 6088,
+      "sha256": "c894c92eb68e20b8209c7a0cf4fe00b79b3347509d95217914451bc73d15af9b"
+    },
+    "Source/MODEL/mp_couplings5.f": {
+      "bytes": 7326,
+      "sha256": "c49cee9c2f868d3d3d6d8d326862d59936888178662e2a53a897cca9fdeea871"
+    },
+    "Source/MODEL/mp_couplings6.f": {
+      "bytes": 2135,
+      "sha256": "30f5968b05956e26a35916d055c6f9c5fe902a54acdc6c47e34df8c439134cbe"
+    },
+    "Source/MODEL/mp_input.inc": {
+      "bytes": 4268,
+      "sha256": "ce6a1872ff116f69abec16b606a2a2e42f007b3681b741ead3416a9eddbe9f0e"
+    },
+    "Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 11777,
+      "sha256": "99637f843f20a52544c9d3c66731a69dfc0818f5e8c1d53bfaa616803391c790"
+    },
+    "Source/MODEL/param_read.inc": {
+      "bytes": 2835,
+      "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22"
+    },
+    "Source/MODEL/param_write.inc": {
+      "bytes": 5946,
+      "sha256": "3bc37d8fe91985e370503aeeb105a88e0fe3c4b087440668eb76f511e94ad0e2"
+    },
+    "Source/MODEL/printout.f": {
+      "bytes": 1841,
+      "sha256": "e4c1687b5b7938a0cf6119f897036208f945c4a8b8c71603f8d9d127c1ad7b40"
+    },
+    "Source/MODEL/rw_para.f": {
+      "bytes": 2707,
+      "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c"
+    },
+    "Source/MODEL/testprog.f": {
+      "bytes": 2387,
+      "sha256": "de3d3aaf629ce84a039d03daf2b747be690bf06a5ab3190a39cee04b8c1490bf"
+    },
+    "SubProcesses/P0/CT_interface.f": {
+      "bytes": 18141,
+      "sha256": "48a2c228e1c496288806c0f3db5dff4faf9be162aedb43ced52c9b0f6f689ba1"
+    },
+    "SubProcesses/P0/TIRUST_interface.f": {
+      "bytes": 14015,
+      "sha256": "2e70b84901e34028133739c2fbb792657ef11b0f05845f2b40ad3df1fe256cdd"
+    },
+    "SubProcesses/P0/TIR_interface.f": {
+      "bytes": 14884,
+      "sha256": "da4800ff7ff0e4825c2614b4f9f40b0f712d926fe03548a6aeac2391477084c3"
+    },
+    "SubProcesses/P0/coef_construction_1.f": {
+      "bytes": 3267,
+      "sha256": "4cc90164245d02e5d11bdd503078344156755361257a1a0b8c63d5efdb1977fc"
+    },
+    "SubProcesses/P0/helas_calls_ampb_1.f": {
+      "bytes": 3128,
+      "sha256": "3d1eb539a610d1a220fc7f1962da0e7b494c814937e7319d636af3cbf364b096"
+    },
+    "SubProcesses/P0/improve_ps.f": {
+      "bytes": 28307,
+      "sha256": "d511a2b32b286067c387fc2fc9b1e3d53600f8f7aaf107a53b98e18ec9a53260"
+    },
+    "SubProcesses/P0/loop_CT_calls_1.f": {
+      "bytes": 3024,
+      "sha256": "1c6815739aaf780ccf036f5d7541b892740742f76c34ec229b9799a4cb8ed8cd"
+    },
+    "SubProcesses/P0/loop_matrix.f": {
+      "bytes": 90585,
+      "sha256": "6bf22fdcab0463593e78299232ac1343fbf6ffd5804dfc4aeff5d0fa3498b3c1"
+    },
+    "SubProcesses/P0/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "8b3fa018f86835df977018e4edb50a5cbe7cbde15a07bcfb447201dfdb8adb00"
+    },
+    "SubProcesses/P0/mp_coef_construction_1.f": {
+      "bytes": 3159,
+      "sha256": "04b504de8fb5d346d64ccef141623de1687882fb82be935bc73f549c6396582e"
+    },
+    "SubProcesses/P0/mp_compute_loop_coefs.f": {
+      "bytes": 14274,
+      "sha256": "06b77538398635a6c90e6456486bab9385248f84a59b85e9950ec2951a49d5a0"
+    },
+    "SubProcesses/P0/mp_helas_calls_ampb_1.f": {
+      "bytes": 2852,
+      "sha256": "d3f4694b2725e364cd0f99caeb81b495033544659e72a081409e2cf8d7cb16d4"
+    },
+    "SubProcesses/P0/nsquaredSO.inc": {
+      "bytes": 56,
+      "sha256": "3a750fd0aa716aeaa90c7b3c8031aa28ea20b2359684eacd8c9f86e3d23d0bf4"
+    },
+    "SubProcesses/P0/pmass.inc": {
+      "bytes": 67,
+      "sha256": "0beacdaee18697d60521073d3a773ca4c3b0d29e30dd24980ca23d5b3b24882e"
+    },
+    "SubProcesses/P0/polynomial.f": {
+      "bytes": 32398,
+      "sha256": "271bee2678ac9c646fac1d738c7fe3f9a2bb5020073c2f90a1395a6727c5c6a4"
+    }
+  },
+  "source_proof": {
+    "128": {
+      "producers": [
+        {
+          "call": "CALLMP_IXXXXX(P(0,1),ZERO,NHEL(1),+1,FLAVOR(1),W(1))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              1,
+              0,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              -1,
+              0,
+              0
+            ]
+          },
+          "line": 86,
+          "slot": 1,
+          "width": 128
+        },
+        {
+          "call": "CALLMP_OXXXXX(P(0,2),ZERO,NHEL(2),-1,FLAVOR(2),W(2))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              1,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              -1,
+              0
+            ]
+          },
+          "line": 87,
+          "slot": 2,
+          "width": 128
+        },
+        {
+          "call": "CALLMP_VXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(3))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              0,
+              1
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              0,
+              1
+            ]
+          },
+          "line": 88,
+          "slot": 3,
+          "width": 128
+        }
+      ],
+      "unsupported": {}
+    },
+    "64": {
+      "producers": [
+        {
+          "call": "CALLIXXXXX(P(0,1),ZERO,NHEL(1),+1,FLAVOR(1),W(1))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              1,
+              0,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              -1,
+              0,
+              0
+            ]
+          },
+          "line": 101,
+          "slot": 1,
+          "width": 64
+        },
+        {
+          "call": "CALLOXXXXX(P(0,2),ZERO,NHEL(2),-1,FLAVOR(2),W(2))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              1,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              -1,
+              0
+            ]
+          },
+          "line": 102,
+          "slot": 2,
+          "width": 64
+        },
+        {
+          "call": "CALLVXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(3))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              0,
+              1
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              0,
+              1
+            ]
+          },
+          "line": 103,
+          "slot": 3,
+          "width": 64
+        }
+      ],
+      "unsupported": {}
+    }
+  }
+}

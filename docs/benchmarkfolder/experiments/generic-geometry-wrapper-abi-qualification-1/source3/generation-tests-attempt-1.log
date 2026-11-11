@@ -1,0 +1,12 @@
+test_born_grouped (__main__.ActualGeneration.test_born_grouped) ... ok
+test_born_internal_grouped (__main__.ActualGeneration.test_born_internal_grouped) ... ok
+test_born_internal_ungrouped (__main__.ActualGeneration.test_born_internal_ungrouped) ... ok
+test_born_ungrouped (__main__.ActualGeneration.test_born_ungrouped) ... ok
+test_external_slot_permutation (__main__.ActualGeneration.test_external_slot_permutation) ... ok
+test_loop_induced (__main__.ActualGeneration.test_loop_induced) ... ok
+test_loop_induced_group_prefix (__main__.ActualGeneration.test_loop_induced_group_prefix) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 16.911s
+
+OK

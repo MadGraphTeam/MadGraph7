@@ -1,0 +1,35 @@
+{
+  "checks": [
+    "new live source/parser/batch/DAG/route joins and stale fallback",
+    "narrow typed DP/QP gates remain conjunctive with freshness/route/kind/token",
+    "once/main_template/mp_template/batch_template source equals source1",
+    "global purity false and scientific dispatch remains pass-through",
+    "runtime ABI unqualified and loop-induced unknowns preserved"
+  ],
+  "communication": "Parent-team message received before sealing; no review script/test/native execution claimed.",
+  "reviewer": "/root/acceptance_audit",
+  "schema": "generic-geometry-window-source3-team-review-receipt-v1",
+  "source_files": {
+    "src/madgraph/iolibs/template_files/loop_optimized/invariant_bounds.f90": {
+      "bytes": 7776,
+      "sha256": "3c724e166269c0fb4ac14df0466d5f652222830b13d7fc199d44b86447d3b871"
+    },
+    "src/madgraph/loop/invariant_finalize.py": {
+      "bytes": 6441,
+      "sha256": "23dadca805682eb5fab0ba26484a238bf43050c5568b670c4b6fb299ed02a4a1"
+    },
+    "src/madgraph/loop/invariant_geometry_window.py": {
+      "bytes": 6758,
+      "sha256": "58f51a827d50a15331d31af42c2ebe0cbca7e84aa802e1d21f505dcb84e0f7ea"
+    },
+    "src/madgraph/loop/invariant_provenance.py": {
+      "bytes": 18755,
+      "sha256": "4e7330f34ae6582e40ac6d96c1aed972fea20d5dffd5a037552bc20208d19b52"
+    },
+    "src/madgraph/loop/invariant_render.py": {
+      "bytes": 9070,
+      "sha256": "1ae1060e5fe2c82501ef78db1a2be9f86be5b8e2ec821f3d52480c6ac739456e"
+    }
+  },
+  "status": "clear on the five supplied source hashes"
+}
