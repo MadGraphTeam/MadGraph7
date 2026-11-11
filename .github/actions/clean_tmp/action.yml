@@ -9,7 +9,8 @@ description: >
   Fails (before any test runs) when /tmp itself is missing or not writable:
   the tests cannot work then, and the machine needs fixing as root.
   It also points XDG_CONFIG_HOME at a per-job directory, so MadGraph7's
-  per-user configuration (~/.mg7) does not persist from one job to the next.
+  per-user configuration (~/.mg7) does not persist from one job to the next,
+  and makes sure numpy and scipy are importable (see below).
 runs:
   using: composite
   steps:
@@ -30,6 +31,14 @@ runs:
         # GitHub-hosted job starts without one. RUNNER_TEMP is emptied per job.
         mkdir -p "$RUNNER_TEMP/xdg-config"
         echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+        # cern1-5 have numpy and scipy in ~/.local, left there by earlier
+        # unittest jobs (`pip install --user`), and several jobs (unittest
+        # bundles, IOTests) import them without installing them. A new or
+        # reinstalled machine gets the same, once, instead of failing those
+        # jobs with "No module named 'numpy'".
+        python3 -c 'import numpy, scipy' 2> /dev/null \
+          || python3 -m pip install --user --quiet numpy scipy \
+          || echo "::warning::could not install numpy/scipy into ~/.local on $RUNNER_NAME"
         # Tests can leave read-only trees behind: make them writable first.
         find /tmp -mindepth 1 -maxdepth 1 -user "$(id -u)" \
           -exec chmod -R u+w {} + -exec rm -rf {} + 2>/dev/null || true
