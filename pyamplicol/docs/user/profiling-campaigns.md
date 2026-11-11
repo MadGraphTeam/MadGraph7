@@ -316,12 +316,8 @@ Section omission changes only the staged PDF. Measurements, JSON caches, table
 TeX, and source remain; the next plain refresh restores the complete report.
 `--quiet` suppresses scan progress and live LaTeX output.
 
-The repository retains only two rendered report snapshots:
-
-- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
-
-Raw campaign results are intentionally not published in the repository. A
+Rendered reports and raw campaign results are not published in the
+repository. A
 fresh copied campaign contains everything needed to reproduce the report
 format directly.
 

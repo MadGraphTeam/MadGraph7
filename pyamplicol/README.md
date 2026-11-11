@@ -361,18 +361,12 @@ Python version match the current workstation. Such plots carry an explicit
 provenance note; the strict terminal publication merger still requires the
 complete host identity produced by a fresh profiler run.
 
-The public performance index retains four selected rendered snapshots. Raw
-JSON, generated tables, attempts, and campaign workspaces stay untracked:
-
-- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
-- [FullColor FFT selected-helicity snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
-- [FullColor FFT helicity-sum snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
-
-These are manual measurement snapshots rather than release-CI results; raw
-campaign data remains local. The general host report format is reproducible
-from an installed package, while the FullColor FFT snapshots use the source-
-checkout orchestrator above.
+Rendered tree-level reports are measurement-host results, not release-CI
+results, and are not kept in the repository: raw JSON, generated tables,
+attempts, and campaign workspaces stay local. The general host report format
+is reproducible from an installed package, while the FullColor FFT reports use
+the source-checkout orchestrator above. The one-loop benchmark report is
+[docs/performance_reports/loop](docs/performance_reports/loop/README.md).
 
 ## Documentation
 
