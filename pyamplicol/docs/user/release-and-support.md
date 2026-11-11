@@ -45,10 +45,11 @@ backend's own acceptance checks, `"auto"`'s per-point fallback, the last
 rescue level) is evaluated again without the backends' own acceptance checks
 (the `reduction_unchecked` machinery) and, where that yields a finite value,
 returned with lane status `"best-effort"` (SDK `RUSTICOL_VIRTUAL_BEST_EFFORT`
-= 5): never a success, with its refusal and an uncertainty (the call's own
-stability estimate, else the recommended checks (a rotation and the rescaled
-reduction-direction check) on that point; if none can be
-formed the record says so). A point with no value at all is a failed lane.
+= 5): never a success, with its refusal and an uncertainty (the stability
+estimate of the call's checks together with the recommended checks, a
+rotation and the rescaled reduction-direction check, run on the refused
+points only: one rotation alone under-states the error of an unchecked TIRust
+value; if none can be formed the record says so). A point with no value at all is a failed lane.
 Nothing is printed, logged or raised for such points: the result carries it
 as data (`result.statuses`, `result.warnings`, `result.has_warnings`; the
 SDKs' statuses, `uncertainties` and the diagnostics' `"best_effort"` and

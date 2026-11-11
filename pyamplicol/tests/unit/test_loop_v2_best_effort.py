@@ -218,17 +218,76 @@ def test_refused_points_carry_the_unchecked_value_by_default(aag, capfd):
         runtime.evaluate(points, on_failure="raise", **options)
 
 
+def test_the_best_effort_checks_always_include_the_recommended_ones():
+    """m-lit ux-polish item 2: the call's checks together with the
+    recommended ones (guard rotation + rescaled reduction direction): one
+    run when they combine, two when the call runs the cached reduction
+    check, the call's own when they already include the recommended set."""
+
+    from pyamplicol.loops.v2.reduction import best_effort_checks, guard_rotation
+    from pyamplicol.loops.v2.stability import StabilityChecks, default_rotation
+
+    guard, other = guard_rotation(), default_rotation(3)
+    runs, source, names = best_effort_checks(None)
+    assert source == "recommended-checks" and names is None
+    assert runs == [StabilityChecks((guard,), True, True)]
+    runs, source, names = best_effort_checks(StabilityChecks((other,)))
+    assert source == "stability-and-recommended-checks"
+    assert runs == [StabilityChecks((other, guard), True, True)]
+    assert names == ("rotation-0",)
+    runs, source, names = best_effort_checks(
+        StabilityChecks((guard,), cross_backend=True)
+    )
+    assert runs == [StabilityChecks((guard,), True, True)]
+    assert names == ("rotation-0",)
+    runs, source, names = best_effort_checks(StabilityChecks((other,), True))
+    assert source == "stability-and-recommended-checks"
+    assert runs == [
+        StabilityChecks((other,), True),
+        StabilityChecks((guard,), True, True),
+    ]
+    assert names == ("rotation-0", "reduction-direction")
+    runs, source, names = best_effort_checks(
+        StabilityChecks((guard, other), True, True)
+    )
+    assert source == "stability-checks"
+    assert runs == [StabilityChecks((guard, other), True, True)]
+
+
 @pytest.mark.loop_physics
-def test_a_checked_call_gives_its_own_estimate_as_the_uncertainty(aag):
+@pytest.mark.parametrize(
+    ("checks", "source"),
+    [
+        ({"rotations": 1}, "stability-and-recommended-checks"),
+        (
+            {"rotations": 1, "reduction_direction": True},
+            "stability-and-recommended-checks",
+        ),
+        (
+            {"rotations": 1, "reduction_direction": True, "rescaled": True},
+            "stability-checks",
+        ),
+    ],
+)
+def test_a_checked_call_counts_the_recommended_checks_in_the_uncertainty(
+    aag, checks, source
+):
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
 
     artifact, points, scales = aag
-    checks = VirtualStabilityChecks(rotations=1)
+    checks = VirtualStabilityChecks(**checks)
     options = {"mu_r2": scales, "poles": "none", "reduction": "tirust"}
     runtime = Runtime.load(artifact, process="p")
     unchecked = runtime.evaluate(
         points, on_failure="return", reduction_unchecked=True, **options
+    )
+    plain = runtime.evaluate(
+        points,
+        stability_checks=checks,
+        on_failure="return",
+        reduction_unchecked=True,
+        **options,
     )
     found = runtime.evaluate(points, stability_checks=checks, **options)
     served = [p for p, s in enumerate(found.statuses) if s == "best-effort"]
@@ -236,8 +295,15 @@ def test_a_checked_call_gives_its_own_estimate_as_the_uncertainty(aag):
     for p in served:
         record = found.diagnostics[p].best_effort
         assert repr(found.values[p]) == repr(unchecked.values[p]), p
-        assert record.source == "stability-checks"
-        assert record.uncertainty == found.stability[p].relative
+        assert record.source == source
+        # The public estimate is the call's own checks' (as an unchecked
+        # call with those checks gives it); the uncertainty includes the
+        # recommended checks: at least as large.
+        assert found.stability[p].relative == plain.stability[p].relative
+        if source == "stability-checks":
+            assert record.uncertainty == found.stability[p].relative
+        else:
+            assert record.uncertainty >= found.stability[p].relative
 
 
 @pytest.mark.loop_physics

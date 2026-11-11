@@ -719,6 +719,7 @@ succeeds. What is measured:
 ```console
 pyamplicol profile artifacts/loop_gg_zgg                      # runtime, both backends
 pyamplicol profile --card loop_gg_zgg_profile.toml --stability
+pyamplicol loop_gg_zgg_profile.toml --stability               # the same (the card's action)
 pyamplicol loop_generate.toml profile --runtime --stability   # the master card
 pyamplicol profile artifacts/loop_uux_ttxgg --runtime --stability \
   --stability-points 200 --seed 7 --sqrt-s 2000 --loop-reduction tirust
@@ -805,7 +806,11 @@ best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true
 digits (min / median / max), the median digits of their uncertainty, the
 median |uncertainty - true| digits and how many uncertainties cover the
-true error (true relative error within the uncertainty). Digits are coloured red below the
+true error (true relative error within the uncertainty). The uncertainty is
+the best-effort record's (`VirtualBestEffort.uncertainty`: the card's checks
+together with the recommended checks, a rotation and the rescaled
+reduction-direction check), not the card's own estimate shown in the first
+table. Digits are coloured red below the
 target's digits (5 for 1e-5), yellow in the lower half of the margin between
 the target's digits and binary64's 15.95 (a display convention) and green
 above. The footnotes under the tables state these definitions; every table

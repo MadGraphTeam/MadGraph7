@@ -552,12 +552,12 @@ def _best_effort_table(served: Any, prettytable: Any, color: bool) -> str | None
     for row in rows:
         points = [item for item in row.per_point if item.status == "best-effort"]
         true = sorted(float(item.true_digits) for item in points)
-        estimated = [item.estimated_digits for item in points]
-        known = sorted(float(e) for e in estimated if e is not None)
+        stated = [item.uncertainty_digits for item in points]
+        known = sorted(float(e) for e in stated if e is not None)
         gaps = sorted(
-            abs(float(item.estimated_digits) - float(item.true_digits))
+            abs(float(item.uncertainty_digits) - float(item.true_digits))
             for item in points
-            if item.estimated_digits is not None
+            if item.uncertainty_digits is not None
         )
 
         def med(values: list[float]) -> float | None:
