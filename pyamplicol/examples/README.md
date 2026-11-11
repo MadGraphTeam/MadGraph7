@@ -402,6 +402,7 @@ pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 
 pyamplicol loop_generate.toml check    --output=./my_loop_output  # poles and Ward identities, regenerated in memory
 pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points: no momenta file needed
 pyamplicol loop_generate.toml profile  --output=./my_loop_output  # time per point and per stage
+pyamplicol loop_generate.toml profile  --output=./my_loop_output --runtime --stability  # and the stable digits
 ```
 
 What each action does:
@@ -472,11 +473,14 @@ The profile cards compare both reduction backends: `--runtime` (the default)
 times them in the default setup with the ratio between them, `--stability`
 measures over `[benchmark] stability_points` flat points the stable digits of
 pure binary64 against a double-double re-run, at the percentiles 1 per mil,
-1 %, 10 % and 50 %, and how well the default rotation estimate predicts them
+1 %, 10 % and 50 % (a point a backend fails in binary64 counts 0 digits), and
+how well the default rotation estimate predicts them
 ([the command-line guide](../docs/user/command-line-interface.md#profile)).
-Each card's point count is small so that `--stability` takes seconds; raise it
-with `--stability-points` for meaningful tails (a populated 1 per mil class
-needs 1000 points).
+Each card's point count is small so that `--stability` takes about ten seconds
+(about a minute for `loop_gg_zgg`, where NinjaRS's double-double reference
+costs about 30 s per point; the card says so); raise it with
+`--stability-points` for meaningful tails (a populated 1 per mil class needs
+1000 points).
 
 The walkthrough generates the artifact with the example's correlator
 declaration; `--regenerate` makes it do so even when the card's generation

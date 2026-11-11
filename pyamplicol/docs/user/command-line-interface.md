@@ -704,75 +704,106 @@ succeeds. What is measured:
 ```console
 pyamplicol profile artifacts/loop_gg_zgg                      # runtime, both backends
 pyamplicol profile --card loop_gg_zgg_profile.toml --stability
+pyamplicol loop_generate.toml profile --runtime --stability   # the master card
 pyamplicol profile artifacts/loop_uux_ttxgg --runtime --stability \
-  --stability-points 200 --stability-seed 7 --sqrt-s 2000 --loop-reduction tirust
+  --stability-points 200 --seed 7 --sqrt-s 2000 --loop-reduction tirust
 ```
 
+Both parts use the flat phase-space points of
+[`[evaluation.phase_space]`](#evaluate-without-a-momenta-file) (RAMBO, the
+product's flat generator: beams along +-z in the centre-of-mass frame, the
+external masses of the artifact's validation point; point i from seed + i;
+`--seed` and `--sqrt-s` set `evaluation.phase_space.seed` and `sqrt_s`)
+unless `--momenta` gives the timed points.
+
 **Runtime.** `--minimum-samples` calls of one batch of `--batch-size` points
-(the artifact's validation points repeated when `--momenta` is absent) are
-timed per backend after `--warmup-runs` warm-up calls in the default setup,
-which the table header names: binary64, finite part only, the checked
-reduction (the backends' own acceptance checks; `--reduction-unchecked`
-profiles the unchecked timing mode, no accuracy certificate), no stability
-checks and no rescue; the default backend runs as `auto` (its per-point
-NinjaRS fallback included, as a user gets it). The first table gives each
-backend's time per point (median call, fastest and slowest), the ratio to the
-fastest (highlighted), the lanes per effective backend and the failed points;
-the second the time per point in each stage group (trees: the native trees
-and counterterm kets; dressing: seeds, factors and dressing of a
+(the flat points repeated when `--momenta` is absent) are timed per backend
+after `--warmup-runs` warm-up calls in the default setup, which the table
+header names: binary64, finite part only, the checked reduction (the
+backends' own acceptance checks; `--reduction-unchecked` profiles the
+unchecked timing mode, no accuracy certificate), no stability checks and no
+rescue; the default backend runs as `auto` (its per-point NinjaRS fallback
+included, as a user gets it). The first table gives each backend's time per
+point (median call, fastest and slowest), the ratio to the fastest
+(highlighted; "only one served" when the other backend served no point), the
+timed points per effective backend ("lanes") and the failed points; a backend
+that failed every timed point shows its time as "failing" and is not
+compared, and the reasons of failed points are listed under the table. The
+second table gives the time per point in each stage group (trees: the native
+trees and counterterm kets; dressing: seeds, factors and dressing of a
 Born-interfered process, the dressing of a loop-induced one; scatter;
 reduction; rest: every other stage and the untimed remainder), read from the
 native executor's always-on stage reports of the same timed calls, with each
-backend's share and the ratio between the two backends. `--mu-r2` sets the
-scale (default: per point the squared invariant mass of its initial state).
+backend's share (and a bar per group) and the ratio between the two backends.
+`--mu-r2` sets the scale (default: per point the squared invariant mass of
+its initial state).
 
-**Stability.** Over N flat phase-space points (the product's RAMBO
-generator: beams along +-z in the centre-of-mass frame, the final state flat;
-`benchmark.stability_points` / `--stability-points`, first seed
-`benchmark.stability_seed` / `--stability-seed`, default
-`generation.validation.seed`, point k from seed + k; energy
-`benchmark.sqrt_s` / `--sqrt-s`, default the artifact's generation energy;
-the external masses are read from the artifact's validation point), each
-backend evaluates every point in pure binary64 with the default rotation test
-(one default rotation; `evaluation.stability_checks` replaces it when set) and
-again in double-double on the same backend, the reference. Following the
-measure of MadLoop (arXiv:1103.0621, sect. 3.4) and MadGraph5_aMC@NLO
-(arXiv:1405.0301, "Checks, stability, and recovery of numerically-unstable
-integral reductions"), the number of stable digits of a value v against a
-reference r is -log10(|v - r| / |r|), read on the finite part of the total
-(the sum over the squared-order sectors; the poles are not computed) and
-capped to binary64's range [0, 15.95]:
+**Stability.** Over N flat points (`benchmark.stability_points` /
+`--stability-points`, drawn with `evaluation.phase_space`'s seed and energy),
+each backend evaluates every point in pure binary64 with the default rotation
+test (one default rotation, what `evaluation.stability_checks` gives by
+default; `evaluation.stability_checks` replaces it when set; the rescue's own
+check set, a fixed Euler rotation plus the rescaled-reduction check, is
+stronger and is not what is measured here) and again in double-double on the
+same backend, the reference. Following the measure of MadLoop
+(arXiv:1103.0621, sect. 3.4) and MadGraph5_aMC@NLO (arXiv:1405.0301, "Checks,
+stability, and recovery of numerically-unstable integral reductions"), the
+number of stable digits of a value v against a reference r is
+-log10(|v - r| / |r|), read on the finite part of the total (the sum over the
+squared-order sectors; the poles are not computed) and capped to binary64's
+range [0, 15.95]:
 
 - **true digits**: the binary64 value against the double-double re-run;
 - **estimated digits**: the binary64 call's own stability estimate (its
   absolute finite-part errors summed over the sectors, over |total|).
 
-The points are sorted by true digits from worst to best. At the percentiles
-1 per mil, 1 %, 10 % and 50 % (the median) the table shows the true digits of
-the point of rank floor(p N), and over the class of points of rank
+**Failed points are part of the distribution.** A point the backend refuses
+or fails in binary64 has no value: it counts 0 true digits (the worst end of
+the ranking) and has no estimate. A point with a binary64 value whose
+double-double reference failed has an unknown truth and is left out (shown as
+"no ref."). The measured points (N in what follows) are all others.
+
+The measured points are sorted by true digits from worst to best. At the
+percentiles 1 per mil, 1 %, 10 % and 50 % the table shows the true digits of
+the point of rank floor(p N) (1-based; the 50 % row is the median, the lower
+middle point for an even N), and over the class of points of rank
 floor(p' N) < rank <= floor(p N) (p' the previous percentile, 0 for the
-first) the min, median and max of |estimated - true| and the signed median of
-estimated - true (positive: the estimate is optimistic). At small N a class
-can be empty (`-`; the table prints the N a populated class needs, 1000 for
-the 1 per mil class). A second table compares the default checks with the
-truth: the points they flag unstable (estimate above the default target
-1e-5, per sector, as the rescue reads it), how many of those are truly
-inaccurate (true relative error above the target) and the truly inaccurate
-points they do not flag, with the points each backend refused or failed in
-binary64 and in the reference. No rescue runs: the statistics are those of
-pure binary64; the double-double re-run is the reference only. Digits are
-coloured red below the target's digits, yellow below half of binary64's
-digits and green above.
+first) the point count (with its failed points), the min, median and max of
+|estimated - true| and the median of estimated - true (positive: the
+estimate is optimistic), both over the class's points with an estimate. At
+small N a class can be empty (`-`; the table prints the N a populated class
+needs: 1000 measured points for the 1 per mil class, 2 for the median).
+
+A second table compares the default checks with the truth, per backend: the
+measured points, those failed in binary64, the points flagged unstable
+(estimate above the default target 1e-5, per sector, the metric the rescue
+reads, or a binary64 failure, which the result reports and so detects), the
+flagged points that are truly inaccurate (true relative error above the
+target, or no binary64 value) and the truly inaccurate points not flagged
+("missed"). No rescue runs: the statistics are those of pure binary64; the
+double-double re-run is the reference only. Digits are coloured red below the
+target's digits (5 for 1e-5), yellow in the lower half of the margin between
+the target's digits and binary64's 15.95 (a display convention) and green
+above. The footnotes under the tables state these definitions; every table
+fits a 100-column terminal and the footnotes wrap to the terminal width.
 
 Colours follow `--color auto|always|never`; `--json` carries every number
 uncoloured (`loop_profile.LoopProfileReport`: `runtime` per backend with its
 `benchmarking.VirtualProfileResult` profile (`seconds_per_point`, `low`,
 `high`, `stages`, `reduction`, `unchecked`, `batch`, `samples`,
-`failed_points`), `ratio`, `requested` and `refusal`; `stability` per backend
-with the per-point `true_digits` and `estimated_digits`, the `percentiles`
-rows, the medians, the flag counts and the failures; `stability_setup`).
-`BenchmarkRunner` / `benchmark()` of the Python API keep profiling one backend
-(`VirtualProfileResult`).
+`failed_points`, `failure_reasons`), `ratio`, `requested` and `refusal`;
+`stability` per backend with the per-point `true_digits` and
+`estimated_digits` of the measured points, `per_point` (every flat point's
+`index`, `status` measured / binary64-failed / reference-failed, digits and
+failure `reason`), the `percentiles` rows, the flag counts and the failures;
+`stability_setup`).
+
+Changed since 1.0.3: `pyamplicol profile --json` of a loop artifact is a
+`LoopProfileReport` (one entry per backend under `runtime`), also with
+`--loop-reduction`; 1.0.3 printed one `VirtualProfileResult`, which is now
+`runtime[i].profile`. From Python, `pyamplicol.loop_profile.profile_loop(
+artifact, config)` returns the same report; `BenchmarkRunner` /
+`benchmark()` keep profiling one backend (`VirtualProfileResult`).
 
 ## Check
 
