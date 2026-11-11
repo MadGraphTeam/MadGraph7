@@ -32,6 +32,7 @@ pub use rusticol_loop_reduction::v2_stability::{
 };
 use serde::Serialize;
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     path::Path,
 };
@@ -706,13 +707,13 @@ impl Runtime {
     /// with no record (a binary64 call without the binary64 switch); the
     /// setting "off" records "off" where the settings reach. One branch per
     /// call when nothing applies.
-    pub(crate) fn improved_inputs(
+    pub(crate) fn improved_inputs<'a>(
         &mut self,
-        mut inputs: LoopInputs,
-    ) -> RusticolResult<(LoopInputs, Option<Vec<serde_json::Value>>)> {
+        inputs: &'a LoopInputs,
+    ) -> RusticolResult<(Cow<'a, LoopInputs>, Option<Vec<serde_json::Value>>)> {
         let double = self.arithmetic == Arithmetic::Double;
         if !kinematics_improvement::reaches(self.kinematics_binary64, double) {
-            return Ok((inputs, None));
+            return Ok((Cow::Borrowed(inputs), None));
         }
         let Some(variant) =
             kinematics_improvement::applies(self.kinematics, self.kinematics_binary64, double)
@@ -721,19 +722,27 @@ impl Runtime {
                 kinematics_improvement::off_record_json(self.kinematics_improvement());
                 inputs.point_ids.len()
             ];
-            return Ok((inputs, Some(off)));
+            return Ok((Cow::Borrowed(inputs), Some(off)));
         };
-        let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
+        let (momenta, scales) = exact_inputs(inputs, self.shape.external_count)?;
         let arithmetic = self.arithmetic.v2();
         let Engine::V4(native) = &mut self.engine;
         let (points, records) =
             native.improve_kinematics(&momenta, &scales, arithmetic, variant, true)?;
-        inputs.momenta = points
-            .iter()
-            .flat_map(|point| point.iter().map(ToString::to_string))
-            .collect();
+        // The improved points: a new batch (the caller's inputs stay as
+        // given, for the failure policy's re-evaluation of its points).
+        let improved = LoopInputs {
+            momenta: points
+                .iter()
+                .flat_map(|point| point.iter().map(ToString::to_string))
+                .collect(),
+            scales_squared: inputs.scales_squared.clone(),
+            model_values: inputs.model_values.clone(),
+            point_ids: inputs.point_ids.clone(),
+            spin_sources: inputs.spin_sources.clone(),
+        };
         Ok((
-            inputs,
+            Cow::Owned(improved),
             Some(records.iter().map(|record| record.to_json()).collect()),
         ))
     }
@@ -962,40 +971,20 @@ impl Runtime {
         resolved: bool,
         strategy: Option<&str>,
     ) -> RusticolResult<Evaluation> {
-        let base = self.evaluate_decimal_raw(
-            momenta.clone(),
-            point_ids.clone(),
-            scales.clone(),
-            resolved,
-            strategy,
-        )?;
-        let inputs = best_effort::CallInputs {
-            momenta: &momenta,
-            point_ids: &point_ids,
-            scales: &scales,
-            selection: None,
-            sources: None,
-        };
-        self.with_policy(base, inputs, |runtime, subset| {
-            runtime.evaluate_decimal_raw(
-                subset.momenta,
-                subset.point_ids,
-                subset.scales,
-                resolved,
-                strategy,
-            )
+        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        let base = self.evaluate_inputs(&inputs, resolved, strategy)?;
+        self.with_policy(base, &inputs, None, |runtime, subset, _| {
+            runtime.evaluate_inputs(&subset, resolved, strategy)
         })
     }
-    /// [`Runtime::evaluate_decimal`] without the failure policy.
-    fn evaluate_decimal_raw(
+    /// [`Runtime::evaluate_decimal`] of prepared inputs without the failure
+    /// policy.
+    fn evaluate_inputs(
         &mut self,
-        momenta: Vec<String>,
-        point_ids: Vec<u64>,
-        scales: Vec<String>,
+        inputs: &LoopInputs,
         resolved: bool,
         strategy: Option<&str>,
     ) -> RusticolResult<Evaluation> {
-        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         if let Some(strategy) = strategy {
             v4_r2_strategy(strategy)?;
         }
@@ -1010,7 +999,7 @@ impl Runtime {
             let Engine::V4(native) = &mut self.engine;
             let mut evaluation = Evaluation::resolved_v4(
                 native,
-                inputs,
+                &inputs,
                 shape,
                 poles,
                 arithmetic,
@@ -1041,7 +1030,7 @@ impl Runtime {
         let Engine::V4(native) = &mut self.engine;
         let mut evaluation = Evaluation::from_v4(
             native,
-            inputs,
+            &inputs,
             shape,
             poles,
             arithmetic,
@@ -1119,43 +1108,32 @@ impl Runtime {
         strategy: Option<&str>,
         selection: &Selection,
     ) -> RusticolResult<Evaluation> {
-        let base = self.evaluate_selected_decimal_raw(
-            momenta.clone(),
-            point_ids.clone(),
-            scales.clone(),
-            resolved,
-            strategy,
-            selection,
-        )?;
-        let inputs = best_effort::CallInputs {
-            momenta: &momenta,
-            point_ids: &point_ids,
-            scales: &scales,
-            selection: Some(selection),
-            sources: None,
-        };
-        self.with_policy(base, inputs, |runtime, subset| {
-            runtime.evaluate_selected_decimal_raw(
-                subset.momenta,
-                subset.point_ids,
-                subset.scales,
-                resolved,
-                strategy,
-                subset.selection.as_ref().expect("the call's selection"),
-            )
-        })
+        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        let base = self.evaluate_selected_inputs(&inputs, resolved, strategy, selection)?;
+        self.with_policy(
+            base,
+            &inputs,
+            Some(selection),
+            |runtime, subset, selected| {
+                runtime.evaluate_selected_inputs(
+                    &subset,
+                    resolved,
+                    strategy,
+                    selected.as_ref().unwrap_or(selection),
+                )
+            },
+        )
     }
-    /// [`Runtime::evaluate_selected_decimal`] without the failure policy.
-    fn evaluate_selected_decimal_raw(
+    /// [`Runtime::evaluate_selected_decimal`] of prepared inputs without the
+    /// failure policy.
+    fn evaluate_selected_inputs(
         &mut self,
-        momenta: Vec<String>,
-        point_ids: Vec<u64>,
-        scales: Vec<String>,
+        inputs: &LoopInputs,
         resolved: bool,
         strategy: Option<&str>,
         selection: &Selection,
     ) -> RusticolResult<Evaluation> {
-        let points = point_ids.len();
+        let points = inputs.point_ids.len();
         // The Python API's selector validation (`api.services._selector_ids`):
         // nonempty IDs, each once.
         for (name, kind, ids) in [
@@ -1208,10 +1186,9 @@ impl Runtime {
                 return Err(RusticolError::compatibility(BORN_RESOLUTION));
             }
             if selection.selects() {
-                return self
-                    .born_selected(momenta, point_ids, scales, resolved, strategy, selection);
+                return self.born_selected(inputs, resolved, strategy, selection);
             }
-            return self.evaluate_decimal_raw(momenta, point_ids, scales, resolved, strategy);
+            return self.evaluate_inputs(inputs, resolved, strategy);
         }
         // A loop-induced process: the Python API's order (the colour
         // resolution, then the colour flows, then the helicity IDs).
@@ -1260,9 +1237,8 @@ impl Runtime {
         {
             // Nothing selected: the ordinary or resolved call
             // (`rusticol_virtual_evaluate`), its records included.
-            return self.evaluate_decimal_raw(momenta, point_ids, scales, resolved, strategy);
+            return self.evaluate_inputs(inputs, resolved, strategy);
         }
-        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         if let Some(strategy) = strategy {
             v4_r2_strategy(strategy)?;
         }
@@ -1301,7 +1277,7 @@ impl Runtime {
                 rows: kept.is_some().then(|| kept_rows.clone()),
             };
             let mut evaluation = Evaluation::induced_resolved(
-                native, inputs, &call, &kept_rows, components, request,
+                native, &inputs, &call, &kept_rows, components, request,
             )?;
             with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
             return Ok(evaluation);
@@ -1311,7 +1287,7 @@ impl Runtime {
             (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
             (None, None) => unreachable!("an unselected ordinary evaluation returned above"),
         };
-        let mut evaluation = Evaluation::induced_selected(native, inputs, &by_point, request)?;
+        let mut evaluation = Evaluation::induced_selected(native, &inputs, &by_point, request)?;
         with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
         Ok(evaluation)
     }
@@ -1330,9 +1306,7 @@ impl Runtime {
     /// resolved evaluation, an unknown helicity ID or row index.
     fn born_selected(
         &mut self,
-        momenta: Vec<String>,
-        point_ids: Vec<u64>,
-        scales: Vec<String>,
+        inputs: &LoopInputs,
         resolved: bool,
         strategy: Option<&str>,
         selection: &Selection,
@@ -1373,7 +1347,6 @@ impl Runtime {
                  helicity row below {rows}"
             )));
         }
-        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         if let Some(strategy) = strategy {
             v4_r2_strategy(strategy)?;
         }
@@ -1402,14 +1375,14 @@ impl Runtime {
         };
         let mut evaluation = if resolved {
             let kept = kept.expect("a resolved selection names helicity ids");
-            Evaluation::born_resolved_selected(native, inputs, &axes, &kept, request)?
+            Evaluation::born_resolved_selected(native, &inputs, &axes, &kept, request)?
         } else {
             let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
                 (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
                 (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
                 (None, None) => unreachable!("an unselected evaluation returned before"),
             };
-            Evaluation::born_selected(native, inputs, &by_point, request)?
+            Evaluation::born_selected(native, &inputs, &by_point, request)?
         };
         with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
         Ok(evaluation)
@@ -1955,7 +1928,7 @@ impl Evaluation {
     /// points without rows.
     fn from_v4(
         native: &mut V2Runtime,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         shape: Shape,
         poles: Poles,
         arithmetic: Arithmetic,
@@ -2066,7 +2039,7 @@ impl Evaluation {
 
     #[allow(clippy::too_many_arguments)]
     fn ordinary<N: Output>(
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         shape: Shape,
         poles: Poles,
         arithmetic: Arithmetic,
@@ -2100,7 +2073,7 @@ impl Evaluation {
             stability,
         )?;
         Ok(Self {
-            requested_point_ids: inputs.point_ids,
+            requested_point_ids: inputs.point_ids.clone(),
             successful_point_ids,
             statuses,
             born: born.values.clone(),
@@ -2122,7 +2095,7 @@ impl Evaluation {
     #[allow(clippy::too_many_arguments)]
     fn resolved_v4(
         native: &mut V2Runtime,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         shape: Shape,
         poles: Poles,
         arithmetic: Arithmetic,
@@ -2194,7 +2167,7 @@ impl Evaluation {
 
     #[allow(clippy::too_many_arguments)]
     fn resolved<N: Output>(
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         shape: Shape,
         poles: Poles,
         arithmetic: Arithmetic,
@@ -2251,7 +2224,7 @@ impl Evaluation {
             stability,
         )?;
         Ok(Self {
-            requested_point_ids: inputs.point_ids,
+            requested_point_ids: inputs.point_ids.clone(),
             successful_point_ids,
             statuses,
             born: born.values.clone(),
@@ -2276,7 +2249,7 @@ impl Evaluation {
     /// no Born.
     fn induced_resolved(
         native: &mut V2Runtime,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         call: &InducedCall,
         rows: &[usize],
         components: Vec<String>,
@@ -2384,7 +2357,7 @@ impl Evaluation {
     /// fill run every lane alone), in their order.
     fn induced_selected(
         native: &mut V2Runtime,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         by_point: &[Vec<usize>],
         request: InducedRequest<'_>,
     ) -> RusticolResult<Self> {
@@ -2514,7 +2487,7 @@ impl Evaluation {
     /// in the diagnostics.
     fn born_selected(
         native: &mut V2Runtime,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         by_point: &[Vec<usize>],
         request: InducedRequest<'_>,
     ) -> RusticolResult<Self> {
@@ -2633,7 +2606,7 @@ impl Evaluation {
     /// colour/(epsilon) over the kept rows, with their helicity IDs.
     fn born_resolved_selected(
         native: &mut V2Runtime,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         axes: &Observables,
         kept: &[usize],
         request: InducedRequest<'_>,

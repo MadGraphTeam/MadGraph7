@@ -151,18 +151,10 @@ impl Runtime {
         scales: Vec<String>,
         strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
-        let inputs = self.prepare_inputs(momenta.clone(), point_ids.clone(), scales.clone())?;
-        let base = self.evaluate_correlated_inputs(inputs, strategy)?;
-        let call = crate::best_effort::CallInputs {
-            momenta: &momenta,
-            point_ids: &point_ids,
-            scales: &scales,
-            selection: None,
-            sources: None,
-        };
-        self.with_policy(base, call, |runtime, subset| {
-            let inputs = runtime.prepare_inputs(subset.momenta, subset.point_ids, subset.scales)?;
-            runtime.evaluate_correlated_inputs(inputs, strategy)
+        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        let base = self.evaluate_correlated_inputs(&inputs, strategy)?;
+        self.with_policy(base, &inputs, None, |runtime, subset, _| {
+            runtime.evaluate_correlated_inputs(&subset, strategy)
         })
     }
     /// Additive binary64 source ingress; the old method always uses ordinary states.
@@ -197,21 +189,11 @@ impl Runtime {
         sources: BTreeMap<usize, Vec<[String; 2]>>,
         strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
-        let mut inputs = self.prepare_inputs(momenta.clone(), point_ids.clone(), scales.clone())?;
-        inputs.spin_sources = sources.clone();
-        let base = self.evaluate_correlated_inputs(inputs, strategy)?;
-        let call = crate::best_effort::CallInputs {
-            momenta: &momenta,
-            point_ids: &point_ids,
-            scales: &scales,
-            selection: None,
-            sources: Some(&sources),
-        };
-        self.with_policy(base, call, |runtime, subset| {
-            let mut inputs =
-                runtime.prepare_inputs(subset.momenta, subset.point_ids, subset.scales)?;
-            inputs.spin_sources = subset.sources.unwrap_or_default();
-            runtime.evaluate_correlated_inputs(inputs, strategy)
+        let mut inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        inputs.spin_sources = sources;
+        let base = self.evaluate_correlated_inputs(&inputs, strategy)?;
+        self.with_policy(base, &inputs, None, |runtime, subset, _| {
+            runtime.evaluate_correlated_inputs(&subset, strategy)
         })
     }
     /// Every stored colour history (`born` first, the declared histories in
@@ -221,7 +203,7 @@ impl Runtime {
     /// spin vectors in each, in the runtime's arithmetic and pole selection.
     fn evaluate_correlated_inputs(
         &mut self,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         if let Some(strategy) = strategy {
@@ -265,7 +247,7 @@ impl Runtime {
                     },
                 )?;
                 CorrelatedEvaluation::from_columns(
-                    inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
+                    &inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
             }
             _ => {
@@ -297,7 +279,7 @@ impl Runtime {
                 )?;
                 let found = found.into_iter().map(|(point, _)| point).collect();
                 CorrelatedEvaluation::from_columns(
-                    inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
+                    &inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
             }
         };
@@ -399,7 +381,7 @@ impl Complexes {
 
 impl CorrelatedEvaluation {
     fn from_columns<N: Output>(
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         shape: CorrelatedShape,
         poles: Poles,
         arithmetic: Arithmetic,
@@ -450,7 +432,7 @@ impl CorrelatedEvaluation {
             virtual_values: virtual_values.literals.clone(),
         });
         Ok(Self {
-            requested_point_ids: inputs.point_ids,
+            requested_point_ids: inputs.point_ids.clone(),
             successful_point_ids,
             statuses,
             born: born.values,
