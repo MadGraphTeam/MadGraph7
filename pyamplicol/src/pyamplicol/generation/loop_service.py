@@ -1899,6 +1899,16 @@ def check_loop_requests(
     _raise_blocked(backend, processes)
     carriers = probe_carriers(precision)
     memo = PreparationMemo(store_for(backend._run_config.model))
+    # Each double-double / arbitrary-precision rung improves its lifted
+    # point as Runtime.evaluate does (m-lit lit-psimprove (G5)): the run
+    # card's [evaluation] kinematics settings, else the policy's defaults.
+    from pyamplicol import kinematics as _kinematics
+
+    evaluation = getattr(backend._run_config, "evaluation", None)
+    kinematics = _kinematics.resolve(
+        getattr(evaluation, "kinematics_improvement", None),
+        getattr(evaluation, "kinematics_improvement_binary64", None),
+    )
     checked = []
     with born_dag_scope():
         context = _prepare(
@@ -1934,6 +1944,7 @@ def check_loop_requests(
                     momenta,
                     carriers,
                     memo=memo,
+                    kinematics=kinematics,
                     arbitrary=precision is None,
                     digits=arbitrary_digits,
                 )

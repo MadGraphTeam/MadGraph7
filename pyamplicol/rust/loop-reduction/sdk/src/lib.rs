@@ -18,6 +18,7 @@ use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::induced_outputs::{
     AMPLITUDE_BASIS, CONTRACTED, InducedCall, Resolution, anchor_id,
 };
+use rusticol_loop_reduction::v2_runtime::kinematics_improvement;
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
@@ -401,6 +402,13 @@ pub struct Runtime {
     /// The stability checks of later binary64 evaluations (none by default:
     /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
     checks: StabilityChecks,
+    /// The kinematics improvement of later evaluations (m-lit
+    /// lit-psimprove; [`Runtime::set_kinematics_improvement`]): the variant
+    /// (None: "off"), MadLoop's default until set.
+    kinematics: Option<kinematics_improvement::Variant>,
+    /// Whether binary64 evaluations are improved too
+    /// ([`Runtime::set_kinematics_improvement_binary64`]; off by default).
+    kinematics_binary64: bool,
     color_components: Vec<String>,
     history_ids: Vec<String>,
     spin_classes: Vec<Vec<usize>>,
@@ -515,6 +523,8 @@ impl Runtime {
             target,
             unchecked: reduction_policy::DEFAULT_UNCHECKED,
             checks: StabilityChecks::default(),
+            kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
+            kinematics_binary64: kinematics_improvement::DEFAULT_BINARY64,
             history_ids,
             spin_classes,
             observables,
@@ -639,6 +649,77 @@ impl Runtime {
     /// The stability checks of later evaluations.
     pub fn stability_checks(&self) -> &StabilityChecks {
         &self.checks
+    }
+    /// The kinematics improvement of later evaluations (m-lit
+    /// lit-psimprove; the Python API's `kinematics_improvement=`):
+    /// `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to
+    /// 1, finished by the projection where MadLoop leaves the point inexact;
+    /// the default), `"rescaling"` (ImprovePSPoint 1, with the fallback to 2
+    /// and the same finish), `"projection"` (the frame-independent
+    /// minimal-norm projection) or `"off"`. Before anything is evaluated in a carrier above binary64
+    /// (double-double, arbitrary precision), each point's momenta are moved
+    /// onto exact energy-momentum conservation and the external shells in
+    /// that carrier's arithmetic, from the caller's exact inputs, in the
+    /// caller's leg order; the per-point fallback and the stability rotations
+    /// act on that point. Each result records it per point (its
+    /// "kinematics" diagnostics). Another value is refused typed with the
+    /// one refusal text (`kinematics_improvement::SETTING_REFUSAL`).
+    pub fn set_kinematics_improvement(&mut self, setting: &str) -> RusticolResult<()> {
+        self.kinematics = kinematics_improvement::setting(setting).map_err(invalid)?;
+        Ok(())
+    }
+    /// The kinematics improvement setting of later evaluations.
+    pub fn kinematics_improvement(&self) -> &'static str {
+        self.kinematics.map_or(
+            kinematics_improvement::OFF,
+            kinematics_improvement::Variant::name,
+        )
+    }
+    /// Whether binary64 evaluations are improved too (the Python API's
+    /// `kinematics_improvement_binary64=`; off by default: a binary64
+    /// evaluation is then bitwise as without the improvement).
+    pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) {
+        self.kinematics_binary64 = binary64;
+    }
+    /// The binary64 switch of later evaluations.
+    pub fn kinematics_improvement_binary64(&self) -> bool {
+        self.kinematics_binary64
+    }
+    /// The call's points improved in its carrier ([`V2Runtime::
+    /// improve_kinematics`]) and their records, or the inputs unchanged
+    /// with no record (a binary64 call without the binary64 switch); the
+    /// setting "off" records "off" where the settings reach. One branch per
+    /// call when nothing applies.
+    pub(crate) fn improved_inputs(
+        &mut self,
+        mut inputs: LoopInputs,
+    ) -> RusticolResult<(LoopInputs, Option<Vec<serde_json::Value>>)> {
+        let double = self.arithmetic == Arithmetic::Double;
+        if !kinematics_improvement::reaches(self.kinematics_binary64, double) {
+            return Ok((inputs, None));
+        }
+        let Some(variant) =
+            kinematics_improvement::applies(self.kinematics, self.kinematics_binary64, double)
+        else {
+            let off = vec![
+                kinematics_improvement::off_record_json(self.kinematics_improvement());
+                inputs.point_ids.len()
+            ];
+            return Ok((inputs, Some(off)));
+        };
+        let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
+        let arithmetic = self.arithmetic.v2();
+        let Engine::V4(native) = &mut self.engine;
+        let (points, records) =
+            native.improve_kinematics(&momenta, &scales, arithmetic, variant, true)?;
+        inputs.momenta = points
+            .iter()
+            .flat_map(|point| point.iter().map(ToString::to_string))
+            .collect();
+        Ok((
+            inputs,
+            Some(records.iter().map(|record| record.to_json()).collect()),
+        ))
     }
     /// The process type: "virtual" (Born-interfered) or "loop-induced".
     pub fn contribution(&self) -> &str {
@@ -876,8 +957,9 @@ impl Runtime {
             })?;
             let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
             let requested = self.checks.enabled();
+            let (inputs, kinematics) = self.improved_inputs(inputs)?;
             let Engine::V4(native) = &mut self.engine;
-            return Evaluation::resolved_v4(
+            let mut evaluation = Evaluation::resolved_v4(
                 native,
                 inputs,
                 shape,
@@ -889,7 +971,9 @@ impl Runtime {
                     checks: None,
                     requested,
                 },
-            );
+            )?;
+            with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+            return Ok(evaluation);
         }
         let reduction = self.reduce_on(reduction_policy::SUMMED)?;
         // The native monitoring runs in binary64 for the pole selections
@@ -903,8 +987,10 @@ impl Runtime {
             self.cross_available(&reduction)?;
         }
         let checks = monitored.then(|| self.checks.clone());
+        let requested = self.checks.enabled();
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let Engine::V4(native) = &mut self.engine;
-        Evaluation::from_v4(
+        let mut evaluation = Evaluation::from_v4(
             native,
             inputs,
             shape,
@@ -913,9 +999,11 @@ impl Runtime {
             &reduction,
             Monitoring {
                 checks: checks.as_ref(),
-                requested: self.checks.enabled(),
+                requested,
             },
-        )
+        )?;
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
     }
     /// Whether the process is loop-induced (|A_loop|^2, no Born).
     pub fn loop_induced(&self) -> bool {
@@ -1103,6 +1191,7 @@ impl Runtime {
             checks: None,
             requested: self.checks.enabled(),
         };
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let (shape, poles, arithmetic) = (self.shape, self.poles, self.arithmetic);
         let Engine::V4(native) = &mut self.engine;
         let request = InducedRequest {
@@ -1125,16 +1214,20 @@ impl Runtime {
                 resolution,
                 rows: kept.is_some().then(|| kept_rows.clone()),
             };
-            return Evaluation::induced_resolved(
+            let mut evaluation = Evaluation::induced_resolved(
                 native, inputs, &call, &kept_rows, components, request,
-            );
+            )?;
+            with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+            return Ok(evaluation);
         }
         let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
             (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
             (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
             (None, None) => unreachable!("an unselected ordinary evaluation returned above"),
         };
-        Evaluation::induced_selected(native, inputs, &by_point, request)
+        let mut evaluation = Evaluation::induced_selected(native, inputs, &by_point, request)?;
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
     }
 
     /// A Born-interfered process's helicity selection (lit-fc-hel; USER
@@ -1206,6 +1299,9 @@ impl Runtime {
             checks: None,
             requested: self.checks.enabled(),
         };
+        // The call's points improved in its carrier (m-lit lit-psimprove),
+        // as on every other route: before the selected rows are formed.
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let (shape, poles, arithmetic) = (self.shape, self.poles, self.arithmetic);
         let Engine::V4(native) = &mut self.engine;
         let request = InducedRequest {
@@ -1218,16 +1314,19 @@ impl Runtime {
             reduction: &reduction,
             stability: monitoring.not_selected(),
         };
-        if resolved {
+        let mut evaluation = if resolved {
             let kept = kept.expect("a resolved selection names helicity ids");
-            return Evaluation::born_resolved_selected(native, inputs, &axes, &kept, request);
-        }
-        let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
-            (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
-            (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
-            (None, None) => unreachable!("an unselected evaluation returned before"),
+            Evaluation::born_resolved_selected(native, inputs, &axes, &kept, request)?
+        } else {
+            let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
+                (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
+                (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
+                (None, None) => unreachable!("an unselected evaluation returned before"),
+            };
+            Evaluation::born_selected(native, inputs, &by_point, request)?
         };
-        Evaluation::born_selected(native, inputs, &by_point, request)
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
     }
 
     /// The cross-backend check's backend serves the call (the Python API's
@@ -1851,9 +1950,9 @@ impl Evaluation {
                     reduction,
                     momenta.len(),
                     arithmetic,
-                    // The fallback's points run with the guard's cached
-                    // check in the call's carrier (one evaluation per
-                    // served point, as the Python API's).
+                    // The fallback's points run with the guard's rotation
+                    // re-test in the call's carrier (the point and its
+                    // rotation, as the Python API's).
                     |native, indices| match indices {
                         None => Ok(native
                             .evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?
@@ -2510,6 +2609,23 @@ struct InducedRequest<'a> {
     arithmetic: Arithmetic,
     reduction: &'a Choice,
     stability: serde_json::Value,
+}
+
+/// The diagnostics record with each point's kinematics improvement record
+/// (m-lit lit-psimprove: `"kinematics"`, by point in input order, the
+/// Python API's `VirtualLaneDiagnostic.kinematics`; absent when no record
+/// applies, a binary64 call without the binary64 switch).
+pub(crate) fn with_kinematics(
+    diagnostics: &mut String,
+    records: Option<Vec<serde_json::Value>>,
+) -> RusticolResult<()> {
+    let Some(records) = records else {
+        return Ok(());
+    };
+    let mut record: serde_json::Value = serde_json::from_str(diagnostics).map_err(serialization)?;
+    record["kinematics"] = serde_json::Value::Array(records);
+    *diagnostics = serde_json::to_string(&record).map_err(serialization)?;
+    Ok(())
 }
 
 /// The diagnostics record with the selection's helicity IDs per point

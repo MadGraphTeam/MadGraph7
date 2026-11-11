@@ -452,7 +452,7 @@ a Born-interfered process, falling back to NinjaRS with the reason recorded
 where TIRust cannot serve the call; on TIRust a point it refuses or fails is
 evaluated again on NinjaRS (the per-point fallback, recorded in that point's
 lane diagnostic), and in double-double and arbitrary precision each point it
-serves is guarded by its reduction-direction check in the evaluation's
+serves is guarded by a rotation re-test in the evaluation's
 arithmetic: a point whose estimate exceeds the target (never below 1e-5)
 fails with the reason (the estimate is in the lane's `reduction` record,
 `guard_estimate`; [Python API](python-api.md), "Near-planar NinjaRS
@@ -464,6 +464,18 @@ conditioning bound, 71eddb15); an explicit backend that cannot serve the call is
 of each point's result, default 1e-5; it sets the calibrated acceptance of
 TIRust's checked method choice and, never below 1e-5, is the fallback
 guard's threshold).
+`--kinematics-improvement VARIANT` (`z-shift`, `rescaling`, `projection` or `off`; default
+`z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1, finished by
+the projection where MadLoop leaves the point inexact) and
+`--[no-]kinematics-improvement-binary64` (default off) set the improvement
+of the input points to exact conservation and on-shell externals before a
+double-double or arbitrary-precision evaluation (binary64 only with the
+switch); the JSON output's lane diagnostics carry the per-point record
+(`kinematics`; [Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Both are `evaluate`, `profile` and `check` flags (for `check`, below) and
+the run card's `[evaluation] kinematics_improvement` /
+`kinematics_improvement_binary64`; an unknown variant is refused with the
+native policy's one refusal text when the configuration resolves.
 `--reduction-unchecked` (default off) reduces without the backends' own
 acceptance and refusal checks: TIRust's gates and method choice select the
 method without re-checking its values, plain Passarino-Veltman at gate 0
@@ -674,7 +686,15 @@ double-double residual far above its own estimate stays a failure. A row
 still undecided there, or undecided at an explicit carrier, reads
 "undecided" with both carriers' numbers and counts as a failure (exit 1).
 The loop-induced probes' criterion is their own estimate, so they never
-take this rung. The Ward rows of a request whose loop corrections include an
+take this rung. Each double-double and arbitrary-precision rung (and the
+binary64 one under `--kinematics-improvement-binary64`) first improves its
+lifted point per `--kinematics-improvement` (`evaluation.
+kinematics_improvement`, default `z-shift`) in its own carrier, exactly as
+`evaluate` does; `check` lifts its points onto exact conservation along the
+beam axis at twice the rung's digits already, so this moves them by about
+the rung's rounding, and
+each row records it (`CheckRow.kinematics`: the producing variant, `exact` or
+`not-improved`). The Ward rows of a request whose loop corrections include an
 electroweak one (any correction other than the model's strong one) and with
 an on-shell zero-width external massive quark (a top or a massive b, quark or
 antiquark) read "not applicable" and are not evaluated: the Ward identity of

@@ -850,6 +850,7 @@ def _add_evaluation_options(
             "default off"
         ),
     )
+    _add_kinematics_options(parser)
     parser.add_argument(
         "--resolved",
         dest="evaluation.resolved",
@@ -891,6 +892,40 @@ def _add_evaluation_options(
     )
 
 
+def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
+    """The kinematics improvement options (m-lit lit-psimprove;
+    ``pyamplicol.kinematics``)."""
+
+    # No ``choices``: the value is validated by the native policy (its one
+    # refusal text, ``pyamplicol.kinematics.setting_value``) when the
+    # evaluation configuration is resolved, as on every other surface.
+    parser.add_argument(
+        "--kinematics-improvement",
+        dest="evaluation.kinematics_improvement",
+        metavar="VARIANT",
+        default=argparse.SUPPRESS,
+        help=(
+            "improve the input points to exact energy-momentum conservation "
+            "and exact on-shell externals in each carrier above binary64: "
+            "'z-shift' (MadLoop's ImprovePSPoint 2 with its fallback to 1, "
+            "finished by the projection where MadLoop leaves the point "
+            "inexact; the default), 'rescaling' (MadLoop's ImprovePSPoint 1), "
+            "'projection' (the frame-independent minimal-norm projection) or "
+            "'off'"
+        ),
+    )
+    parser.add_argument(
+        "--kinematics-improvement-binary64",
+        dest="evaluation.kinematics_improvement_binary64",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "also improve the points of binary64 (double-precision) "
+            "evaluations; default off"
+        ),
+    )
+
+
 def _add_profile_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("target", type=Path, nargs="?", default=None, metavar="OUTPUT")
     # Loop (v2 virtual) artifacts: the profiled calls' backend, setting and
@@ -912,6 +947,7 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
             "certificate); default off"
         ),
     )
+    _add_kinematics_options(parser)
     parser.add_argument(
         "--mu-r2",
         dest="evaluation.mu_r2",
@@ -1088,6 +1124,9 @@ def build_parser() -> argparse.ArgumentParser:
             "model or processes differ from the stored ones)"
         ),
     )
+    # The rungs' kinematics improvement (m-lit lit-psimprove (G5)): the
+    # evaluation keys, as Runtime.evaluate's.
+    _add_kinematics_options(check)
     check.add_argument(
         "--points",
         dest="check.points",

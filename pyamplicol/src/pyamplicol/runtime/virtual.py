@@ -14,7 +14,7 @@ from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from threading import RLock
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeVar, cast
 
 from pyamplicol.api.errors import (
     ArtifactError,
@@ -163,6 +163,18 @@ def _recording_executor(base: type) -> type:
     recording.__module__ = base.__module__
     _RECORDING[base] = recording
     return recording
+
+
+_EvaluationT = TypeVar("_EvaluationT")
+
+
+def with_kinematics(evaluation: _EvaluationT, records: Sequence[Any]) -> _EvaluationT:
+    """``kinematics.with_kinematics`` (each lane diagnostic's kinematics
+    record); the evaluation's type is kept (``dataclasses.replace``)."""
+
+    from pyamplicol.kinematics import with_kinematics as attach
+
+    return cast(_EvaluationT, attach(evaluation, records))
 
 
 def _number(value: object, description: str) -> str:
@@ -543,6 +555,11 @@ class V2ObservablesRuntime:
 
     contribution_kind: Literal["virtual", "loop-induced"] = "virtual"
     execution_mode = "loop_v2"
+    # The kinematics improvement's targets (m-lit lit-psimprove,
+    # ``kinematics.MassProvider``): the artifact runtime sets its executor's
+    # bound masses; None: the masses the slice's native column executors
+    # bind from their Python inputs (``assemble._leg_masses``).
+    kinematics_masses: Any = None
 
     def __init__(
         self,
@@ -794,6 +811,52 @@ class V2ObservablesRuntime:
                 out.append(None)
                 failures[index] = [str(error)]
         return out, failures, {}
+
+    def _improve(
+        self,
+        points: list[Any],
+        scales: list[str],
+        precision: Any,
+        setting: str | None,
+        binary64: bool | None,
+    ) -> tuple[list[Any], list[Any]]:
+        """One carrier's points of a call and their kinematics records
+        (m-lit lit-psimprove, ``kinematics.LevelImprover``): the caller's
+        exact inputs improved in the carrier of ``precision`` (the native
+        executor's; the Python reference executor, an oracle lane, is not
+        improved)."""
+
+        from pyamplicol.kinematics import LevelImprover, initial_count, resolve
+
+        if self._executor != "native":
+            return points, [None] * len(points)
+        settings = resolve(setting, binary64)
+        if settings.variant(precision.arithmetic) is None and not settings.records(
+            precision.arithmetic
+        ):
+            return points, [None] * len(points)
+        provider = self.kinematics_masses or self._slice_masses
+        legs = self._observables.slice.blocks.process.legs
+        improver = LevelImprover(settings, initial_count(legs), provider)
+        return improver.level(points, scales, precision)
+
+    def _slice_masses(
+        self, precision: Any, point: Any, scale: Any, count: int
+    ) -> list[Any]:
+        """The legs' squared masses the slice's native column executors
+        bind (their Python inputs, ``assemble._leg_masses``), on the caller's
+        legs."""
+
+        from pyamplicol.loops.v2.assemble import _fraction, _leg_masses
+
+        del point, count
+        slice_ = self._observables.slice
+        with self._lock:
+            parameters = dict(self._parameters)
+        values = slice_._point_parameters(parameters, _fraction(scale), precision)
+        masses = list(_leg_masses(slice_, values, precision.working_digits))
+        member = self._member
+        return masses if member is None else [masses[leg] for leg in member.legs]
 
     def _estimate(
         self,
@@ -1098,6 +1161,8 @@ class V2ObservablesRuntime:
         color_flows: Sequence[str] | None = None,
         stability: VirtualRescuePolicy | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """The virtual of every point; at leading colour ``helicities`` and
@@ -1107,8 +1172,13 @@ class V2ObservablesRuntime:
         rescue policy (``loops.v2.rescue``) over these evaluations.
         ``reductions`` (every call): the reduction backend per carrier that
         each lane diagnostic records (the artifact runtime's resolved
-        choices, ``V2VirtualRuntime._reduction_choices``)."""
+        choices, ``V2VirtualRuntime._reduction_choices``).
+        ``kinematics_improvement`` / ``kinematics_improvement_binary64``:
+        the kinematics improvement (``pyamplicol.kinematics``) of every
+        carrier's points."""
 
+        options["kinematics_improvement"] = kinematics_improvement
+        options["kinematics_improvement_binary64"] = kinematics_improvement_binary64
         if stability is not None:
             return self._rescued(
                 momenta,
@@ -1157,10 +1227,13 @@ class V2ObservablesRuntime:
         # Keyed by the call's carrier, or under a rescue policy by each
         # ``VirtualRescueLevel`` (``V2VirtualRuntime._reduction_choices``).
         reductions: Mapping[Any, VirtualReduction | None] | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """``evaluate`` under a rescue policy: each level one ``evaluate``
-        of the points it receives, from their original exact inputs."""
+        of the points it receives, from their original exact inputs (each
+        level improves them in its own carrier, m-lit lit-psimprove)."""
 
         from pyamplicol.loops.v2.rescue import rescue, rescue_policy
 
@@ -1219,6 +1292,8 @@ class V2ObservablesRuntime:
                 # The level's own backend (the artifact runtime resolves one
                 # per level, ``V2VirtualRuntime._reduction_choices``).
                 reductions=None if chosen is None else {rung.arithmetic: chosen},
+                kinematics_improvement=kinematics_improvement,
+                kinematics_improvement_binary64=kinematics_improvement_binary64,
                 **options,
             )
 
@@ -1306,6 +1381,8 @@ class V2ObservablesRuntime:
         arithmetic: str | None = None,
         on_failure: Literal["raise", "return"] = "raise",
         reductions: Mapping[str, VirtualReduction] | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """One selection column (``selection.column``) of every point."""
@@ -1320,6 +1397,13 @@ class V2ObservablesRuntime:
         column = lc.column(rows, basis)
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
+        points, kinematics = self._improve(
+            points,
+            scales,
+            carrier,
+            kinematics_improvement,
+            kinematics_improvement_binary64,
+        )
         with self._lock:
             parameters = dict(self._parameters)
         settings = {
@@ -1352,16 +1436,22 @@ class V2ObservablesRuntime:
             None if reductions is None else reductions[arithmetic],
         )
         self._failed(failures, on_failure)
-        return self._evaluation(
-            [None if result is None else result[column.key] for result in per_point],
-            failures,
-            arithmetic,
-            carrier,
-            False,
-            poles,
-            checks,
-            reductions,
-            served,
+        return with_kinematics(
+            self._evaluation(
+                [
+                    None if result is None else result[column.key]
+                    for result in per_point
+                ],
+                failures,
+                arithmetic,
+                carrier,
+                False,
+                poles,
+                checks,
+                reductions,
+                served,
+            ),
+            kinematics,
         )
 
     def evaluate_correlated(
@@ -1382,6 +1472,8 @@ class V2ObservablesRuntime:
         on_failure: Literal["raise", "return"] = "raise",
         _correlated: bool = True,
         reductions: Mapping[str, VirtualReduction] | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         **options: Any,
     ) -> dict[str, VirtualEvaluation]:
         """Every request on one batch; requests with equal spin sources share
@@ -1391,6 +1483,13 @@ class V2ObservablesRuntime:
         selection, checks = v2_options(on_failure=on_failure, **options)
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
+        points, kinematics = self._improve(
+            points,
+            scales,
+            carrier,
+            kinematics_improvement,
+            kinematics_improvement_binary64,
+        )
         groups, sources = self._spin_groups(requests, len(points))
         with self._lock:
             parameters = dict(self._parameters)
@@ -1416,19 +1515,22 @@ class V2ObservablesRuntime:
             )
             self._failed(failures, on_failure)
             for label, output in labels:
-                out[label] = self._evaluation(
-                    [
-                        None if results is None else results[output]
-                        for results in per_point
-                    ],
-                    failures,
-                    arithmetic,
-                    carrier,
-                    _correlated,
-                    selection,
-                    checks,
-                    reductions,
-                    served,
+                out[label] = with_kinematics(
+                    self._evaluation(
+                        [
+                            None if results is None else results[output]
+                            for results in per_point
+                        ],
+                        failures,
+                        arithmetic,
+                        carrier,
+                        _correlated,
+                        selection,
+                        checks,
+                        reductions,
+                        served,
+                    ),
+                    kinematics,
                 )
         return {label: out[label] for label in requests}
 
@@ -1523,6 +1625,8 @@ class V2ObservablesRuntime:
         color_flows: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
         color_resolution: str | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         **options: Any,
     ) -> ResolvedVirtualEvaluation:
         """Per Born helicity row and Born basis element (design §8.5); at
@@ -1538,6 +1642,13 @@ class V2ObservablesRuntime:
         observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
+        points, kinematics = self._improve(
+            points,
+            scales,
+            carrier,
+            kinematics_improvement,
+            kinematics_improvement_binary64,
+        )
         rows = observables.rows
         if self._member is not None:
             # The member's rows in its own catalogue order.
@@ -1692,7 +1803,7 @@ class V2ObservablesRuntime:
                     )
                 )
         born_ids, ids = self._colour_ids(components)
-        return ResolvedVirtualEvaluation(
+        resolved = ResolvedVirtualEvaluation(
             born_values=tuple(born_values),
             values=tuple(values),
             born_orders=born_orders,
@@ -1708,6 +1819,7 @@ class V2ObservablesRuntime:
             pole_parts=tuple(parts) if split else None,
             contribution=self.contribution_kind,
         )
+        return with_kinematics(resolved, kinematics)
 
 
 class V2InducedObservablesRuntime(V2ObservablesRuntime):

@@ -7,10 +7,15 @@ target precision to 1e-5 or so').
 
 NinjaRS (pin 5b6a8f57) returns finite, badly wrong values as success at
 near-planar 2 -> 3 points of rank-n pentagon families (g g > z z z stream
-points 44 and 57 in double-double: 1.3e7 and 0.48 off the truth). In the
+points 44 and 57 in double-double: 1.3e7 and 0.48 off the truth), and in
+the extended carriers it loses digits ~1/Gram at a nearly degenerate 2 -> 2
+(sub-)box (g g > z z at theta 1e-4: suppressed rows 5.5e4 off). In the
 extended carriers (double-double, arbitrary precision) every point the
-per-point fallback serves therefore runs the cached reduction-direction
-re-reduction at the call's carrier and fails typed when its relative
+per-point fallback serves therefore runs the guard's ROTATION RE-TEST (the
+recommended checks' rotation of the evaluated point, at the call's carrier;
+DECISIONS 2026-11-10 19:20 (c): it replaced the cached reduction-direction
+re-reduction, which missed those rows, with no false rejection on the
+regular double-double sets) and fails typed when its relative
 estimate exceeds the guard's limit, the call's target never below 1e-5
 (max(target, 1e-5)); the estimate is recorded in the point's record
 (``VirtualReduction.guard_estimate``), an accepted point keeps the
@@ -19,8 +24,9 @@ binary64 fallback point is served unguarded, as before the guard.
 
 * the guard's rule and reason (one definition in Rust ``reduction_policy``)
   and its logic in ``loops.v2.reduction.with_fallback`` with a scripted
-  batch runner (reuse of the call's cached check, the extra pass beside the
-  rescaled variant, the public estimate, the failure paths);
+  batch runner (reuse of the call's checks when their first rotation is the
+  guard's, the extra pass beside another rotation or the reduction checks
+  alone, the public estimate, the failure paths);
 * (a') ``"auto"`` double-double at the z z z points 44 and 57 never returns
   a value more than 1e-5 off the truth;
 * (b') explicit ``reduction="ninjars"`` binary64 with the recommended checks
@@ -123,7 +129,7 @@ def test_the_guard_has_one_rule_and_one_reason(loop_native):
     )
     assert reason == (
         "auto: TIRust refused or failed the point (TIRust refused the row); the "
-        "per-point NinjaRS fallback's value failed its reduction-direction check: "
+        "per-point NinjaRS fallback's value failed its rotation check: "
         "estimate 1.4e2 > 1e-5 = max(target 1e-5, 1e-5) (double-double)"
     )
     assert loop_native.reduction_text(
@@ -166,9 +172,11 @@ def _estimate(
 @dataclass
 class _Runner:
     """A batch runner: TIRust fails ``refused``; NinjaRS serves every point
-    with value 1 and per check its budget (``cached`` for the reduction
-    direction, ``rescaled``, ``rotation``) unless the point is in
-    ``ninja_fails``; ``guard_fails``: points the cached check fails."""
+    with value 1 and per check its budget (``cached``: the guard's rotation
+    re-test's, the first rotation when it is the guard's rotation; another
+    rotation 1e-14, the reduction checks 1e-12 / 1e-13) unless the point is
+    in ``ninja_fails``; ``guard_fails``: points whose rotated evaluation
+    under the guard's rotation fails."""
 
     refused: set[int]
     cached: dict[int, float]
@@ -177,7 +185,7 @@ class _Runner:
     calls: list[tuple[str, tuple[int, ...] | None, Any]] = field(default_factory=list)
 
     def __call__(self, indices, checks):
-        from pyamplicol.loops.v2.reduction import current
+        from pyamplicol.loops.v2.reduction import current, guard_rotation
         from pyamplicol.loops.v2.stability import REDUCTION, RESCALED, ROTATION
 
         backend = current()
@@ -200,19 +208,21 @@ class _Runner:
             enabled = checks is not None and (
                 checks.rotations or checks.reduction_direction
             )
+            guarded = enabled and checks.rotations[:1] == (guard_rotation(),)
+            if guarded and backend == "ninjars" and index in self.guard_fails:
+                results.append(None)
+                failures[local] = ["rotation-0: Unstable"]
+                continue
             if enabled and checks.rotations:
-                budgets[ROTATION.format(0)] = 1e-14
+                budgets[ROTATION.format(0)] = (
+                    self.cached.get(index, 1e-12)
+                    if guarded and backend == "ninjars"
+                    else 1e-14
+                )
             if enabled and checks.reduction_direction:
-                if checks.rescaled:
-                    budgets[RESCALED] = 1e-13
-                elif backend == "ninjars" and index in self.guard_fails:
-                    results.append(None)
-                    failures[local] = ["re-test of family 0: Unstable"]
-                    continue
-                else:
-                    budgets[REDUCTION] = (
-                        self.cached.get(index, 1e-12) if backend == "ninjars" else 1e-14
-                    )
+                budgets[RESCALED if checks.rescaled else REDUCTION] = (
+                    1e-13 if checks.rescaled else 1e-12
+                )
             results.append(
                 _Point(
                     1.0 + index,
@@ -233,18 +243,18 @@ def _choice(target: float | None = TARGET):
 
 
 @pytest.mark.loop_fast
-def test_a_served_point_is_guarded_by_the_cached_check_without_call_checks(
+def test_a_served_point_is_guarded_by_the_rotation_re_test_without_call_checks(
     loop_native,
 ):
     """In an extended carrier, without the call's checks the fallback's
-    evaluation runs the cached reduction-direction check (one pass, no
-    rescaled variant); an accepted point keeps the fallback's value with no
+    evaluation runs the guard's rotation re-test (one pass: the guard's
+    rotation alone); an accepted point keeps the fallback's value with no
     public estimate or finiteness (what an evaluation without checks
     returns) and its estimate recorded, a point above the limit fails typed
     with the one reason; TIRust's points run once, unguarded."""
 
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
-    from pyamplicol.loops.v2.reduction import text, with_fallback
+    from pyamplicol.loops.v2.reduction import guard_rotation, text, with_fallback
 
     runner = _Runner(refused={2, 5, 6}, cached={2: 3e-7, 5: 2.0}, ninja_fails={6})
     none = VirtualStabilityChecks()
@@ -258,8 +268,8 @@ def test_a_served_point_is_guarded_by_the_cached_check_without_call_checks(
     guard = runner.calls[1][2]
     assert isinstance(guard, VirtualStabilityChecks)
     assert (guard.rotations, guard.reduction_direction, guard.rescaled) == (
-        (),
-        True,
+        (guard_rotation(),),
+        False,
         False,
     )
     # Accepted: the fallback's value, no estimate (the call ran no checks).
@@ -284,10 +294,7 @@ def test_a_served_point_is_guarded_by_the_cached_check_without_call_checks(
             target=TARGET,
         )
     ]
-    assert (
-        "NinjaRS fallback's value failed its reduction-direction check"
-        in failures[5][0]
-    )
+    assert "NinjaRS fallback's value failed its rotation check" in failures[5][0]
     assert records[5].guard_estimate == pytest.approx(estimate, rel=1e-12)
     assert records[5].reason == failures[5][0]
     # The fallback fails too: both reasons, no estimate.
@@ -334,70 +341,80 @@ def test_a_binary64_fallback_point_is_served_unguarded(loop_native):
 
 
 @pytest.mark.loop_fast
-def test_the_calls_cached_check_is_reused_and_a_rescaled_one_is_not(loop_native):
-    """The call's own cached reduction check is reused (no second pass; the
-    estimate of that check alone, ``StabilityEstimate.subset``); beside the
-    rescaled variant (the recommended checks, every default rescue level)
-    the served points run the cached check once more, the decision is on
-    the cached estimate and the public estimate stays the call's (rescaled)
-    one; the cross-backend check is not run on fallback points (R6)."""
+def test_the_calls_guard_rotation_is_reused_and_another_check_is_not(loop_native):
+    """The call's own checks are reused when their first rotation is the
+    guard's (``RECOMMENDED_CHECKS``: no second rotated evaluation; the
+    estimate of that rotation alone, ``StabilityEstimate.subset``); beside
+    another rotation first (every default rescue level's
+    ``euler:0.1,0.2,0.3``) or the reduction checks alone, the served points
+    run the guard's rotation once more, the decision is on its estimate and
+    the public estimate stays the call's own; the cross-backend check is not
+    run on fallback points (R6)."""
 
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
-    from pyamplicol.loops.v2.reduction import with_fallback
-    from pyamplicol.loops.v2.stability import REDUCTION, RESCALED
+    from pyamplicol.loops.v2.reduction import guard_rotation, with_fallback
+    from pyamplicol.loops.v2.stability import RESCALED, RESCUE_ROTATION, ROTATION
 
-    # Reused: rotation + cached reduction check.
-    cached = VirtualStabilityChecks(1, True, cross_backend=True)
+    # Reused: the guard's rotation first (+ the rescaled reduction check).
+    recommended = VirtualStabilityChecks(1, True, rescaled=True, cross_backend=True)
+    assert recommended.rotations == (guard_rotation(),)
     runner = _Runner(refused={1, 3}, cached={1: 1e-9, 3: 1.0})
     results, failures, records = with_fallback(
-        runner, _choice(), 8, cached, "arbitrary"
+        runner, _choice(), 8, recommended, "arbitrary"
     )
     assert [call[:2] for call in runner.calls] == [
         ("tirust", None),
         ("ninjars", (1, 3)),
     ]
-    assert runner.calls[0][2] is cached
-    assert runner.calls[1][2] == replace(cached, cross_backend=False)
-    assert set(results[1].stability.budgets) == {"rotation-0", REDUCTION}
+    assert runner.calls[0][2] is recommended
+    assert runner.calls[1][2] == replace(recommended, cross_backend=False)
+    assert set(results[1].stability.budgets) == {ROTATION.format(0), RESCALED}
     assert records[1].guard_estimate == pytest.approx(
-        results[1].stability.subset([REDUCTION]).relative, rel=0, abs=0
+        results[1].stability.subset([ROTATION.format(0)]).relative, rel=0, abs=0
     )
     assert records[1].guard_estimate < TARGET and failures.get(1) is None
     assert 3 in failures and records[3].guard_estimate > TARGET
 
-    # Rescaled: one more pass of the served points with the cached check.
-    rescaled = VirtualStabilityChecks(1, True, rescaled=True)
+    # Another rotation first (a rescue level's): one more pass of the served
+    # points with the guard's rotation alone.
+    level = VirtualStabilityChecks((RESCUE_ROTATION,), True, rescaled=True)
     runner = _Runner(refused={1, 3, 4}, cached={1: 1e-9, 3: 1.0}, guard_fails={4})
     results, failures, records = with_fallback(
-        runner, _choice(), 8, rescaled, "double-double"
+        runner, _choice(), 8, level, "double-double"
     )
     assert [call[:2] for call in runner.calls] == [
         ("tirust", None),
         ("ninjars", (1, 3, 4)),
         ("ninjars", (1, 3, 4)),
     ]
-    assert runner.calls[1][2] is rescaled
+    assert runner.calls[1][2] is level
     guard = runner.calls[2][2]
     assert (guard.rotations, guard.reduction_direction, guard.rescaled) == (
-        (),
-        True,
+        (guard_rotation(),),
+        False,
         False,
     )
-    # The public estimate is the call's own (rescaled) one.
-    assert set(results[1].stability.budgets) == {"rotation-0", RESCALED}
+    # The public estimate is the call's own one (its own rotation).
+    assert set(results[1].stability.budgets) == {ROTATION.format(0), RESCALED}
     assert records[1].guard_estimate == pytest.approx(2 * 1e-9 / 2.0, rel=1e-12)
     assert failures[3][0].endswith("(double-double)") and len(failures[3]) == 1
     # The guard's check fails the point: the fallback failed it.
     assert results[4] is None
     assert failures[4] == [
         "TIRust refused point 4",
-        "NinjaRS fallback: re-test of family 0: Unstable",
+        "NinjaRS fallback: rotation-0: Unstable",
     ]
     assert records[4].guard_estimate is None
 
+    # The reduction check alone: the guard's rotation once more as well.
+    reduction = VirtualStabilityChecks(reduction_direction=True)
+    runner = _Runner(refused={1}, cached={1: 1e-9})
+    with_fallback(runner, _choice(), 8, reduction, "double-double")
+    assert [call[:2] for call in runner.calls][2:] == [("ninjars", (1,))]
+
     # No served point: no extra pass.
     runner = _Runner(refused={2}, cached={}, ninja_fails={2})
-    with_fallback(runner, _choice(), 8, rescaled, "double-double")
+    with_fallback(runner, _choice(), 8, level, "double-double")
     assert len(runner.calls) == 2
 
 
@@ -444,15 +461,16 @@ class _Outputs:
     """A batch runner of a call with several outputs per point (the
     resolved, correlated and selected routes: a mapping of outputs per
     point): TIRust refuses point 1; NinjaRS serves it with the outputs
-    ``outputs`` (key -> (value, cached budget, term scale))."""
+    ``outputs`` (key -> (value, the guard rotation's budget, term
+    scale))."""
 
     outputs: dict[str, tuple[float, float, float]]
     roundoff: float = 2.0**-104
     calls: list[tuple[str, Any]] = field(default_factory=list)
 
     def __call__(self, indices, checks):
-        from pyamplicol.loops.v2.reduction import current
-        from pyamplicol.loops.v2.stability import REDUCTION
+        from pyamplicol.loops.v2.reduction import current, guard_rotation
+        from pyamplicol.loops.v2.stability import ROTATION
 
         backend = current()
         self.calls.append((backend, checks))
@@ -464,12 +482,14 @@ class _Outputs:
                 results.append(None)
                 failures[local] = ["TIRust refused point 1"]
                 continue
-            checked = checks is not None and checks.reduction_direction
+            checked = checks is not None and checks.rotations[:1] == (guard_rotation(),)
             results.append(
                 {
                     key: _Point(
                         value,
-                        _estimate(value, {REDUCTION: budget}, scale, self.roundoff)
+                        _estimate(
+                            value, {ROTATION.format(0): budget}, scale, self.roundoff
+                        )
                         if checked
                         else None,
                         None,
@@ -486,14 +506,18 @@ def test_the_guard_decides_on_the_outputs_the_call_returns(loop_native):
     """DECISIONS 2026-11-09 14:30 (RULING Q7): on the resolved, correlated
     and selected routes the guard decides on the outputs the call returns,
     from the fallback's evaluation of those outputs alone: each output's
-    cached estimate against its own magnitude; an output that vanishes (its
+    rotation estimate against its own magnitude; an output that vanishes (its
     magnitude within the estimate's rounding floor, 16 u S) against the
     largest returned output of the point. The one rule is the native
     policy's (``reduction_policy::fallback_estimate``); for one output it is
     the "relative" metric of the output's own estimate."""
 
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
-    from pyamplicol.loops.v2.reduction import fallback_estimate, with_fallback
+    from pyamplicol.loops.v2.reduction import (
+        fallback_estimate,
+        guard_rotation,
+        with_fallback,
+    )
 
     u = 2.0**-104
     # One output: its own relative estimate (the summed route's metric).
@@ -505,10 +529,11 @@ def test_the_guard_decides_on_the_outputs_the_call_returns(loop_native):
     results, failures, records = with_fallback(
         runner, _choice(), 2, VirtualStabilityChecks(), "double-double"
     )
-    # One evaluation of the served point, carrying the cached check.
+    # One evaluation of the served point, carrying the guard's rotation.
     assert [call[0] for call in runner.calls] == ["tirust", "ninjars"]
-    assert runner.calls[1][1].reduction_direction and not runner.calls[1][1].rescaled
-    assert results[1] is None and "reduction-direction check" in failures[1][0]
+    assert runner.calls[1][1].rotations == (guard_rotation(),)
+    assert not runner.calls[1][1].reduction_direction
+    assert results[1] is None and "rotation check" in failures[1][0]
     assert records[1].guard_estimate == pytest.approx(1e-8 / 1e-6, rel=1e-12)
     # A vanishing output (a numerical zero: 1e-31 <= 16 u S): judged against
     # the largest returned output, accepted, its error 3e-30 of it.
@@ -561,7 +586,7 @@ def test_the_guard_stays_on_under_the_unchecked_setting(loop_native):
             ("ninjars", (1, 4)),
         ]
         assert results[1] is not None and results[4] is None
-        assert "reduction-direction check" in failures[4][0]
+        assert "rotation check" in failures[4][0]
         outcomes.append(
             (
                 results,
@@ -678,7 +703,7 @@ def _guarded_failure(lane, target: float = TARGET) -> None:
     if record.guard_estimate is not None:
         assert not record.guard_estimate <= _limit(target), record
         assert re.search(ESTIMATE, lane.detail), lane.detail
-        assert "fallback's value failed its reduction-direction check" in lane.detail
+        assert "fallback's value failed its rotation check" in lane.detail
 
 
 @pytest.mark.loop_physics
@@ -898,9 +923,7 @@ def test_the_default_rescue_stack_escalates_the_guarded_fallback(zzz, loop_nativ
         if reduction.guard_estimate is not None:
             # The fallback served the point: the guard's typed failure.
             assert not reduction.guard_estimate <= _limit(TARGET), reduction
-            assert "fallback's value failed its reduction-direction check" in (
-                attempt.failure
-            )
+            assert "fallback's value failed its rotation check" in attempt.failure
             assert attempt.failure.endswith("(double-double)"), attempt.failure
 
 
@@ -952,13 +975,23 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
     digits and the target 1e-6 (estimates 2.3e-6 and 1.9e-2 at pin
     5b6a8f57) the guard's limit is 1e-5, never stricter (USER 2026-11-09
     ~11:53): it accepts the point whose estimate lies between the target and
-    1e-5 and rejects the other typed, naming the arithmetic."""
+    1e-5 and rejects the other typed, naming the arithmetic.
+
+    These decisions were derived on the fixture's binary64 texts as given:
+    they are asserted with the kinematics improvement off (m-lit
+    lit-psimprove (G8), DECISIONS 2026-11-10 01:30 (F)); the improved points
+    are ``test_the_guard_on_improved_near_forward_points``'s."""
 
     from pyamplicol import Runtime
 
     artifact, points, scales = hh
     runtime = Runtime.load(artifact, process="p")
-    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    options = {
+        "mu_r2": scales,
+        "poles": "none",
+        "on_failure": "return",
+        "kinematics_improvement": "off",
+    }
     if not _tirust(loop_native):
         found = runtime.evaluate(points, arithmetic="double-double", **options)
         assert all(lane.reduction.fallback is None for lane in found.diagnostics)
@@ -982,6 +1015,155 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
             ), [lane.reduction for lane in found.diagnostics]
         for p in rejected:
             assert found.diagnostics[p].detail.endswith(f"({carrier})")
+
+
+@pytest.mark.loop_physics
+def test_the_guard_on_improved_near_forward_points(hh, loop_native):
+    """The g g > h h near-forward points with the kinematics improvement
+    (m-lit lit-psimprove (G8); DECISIONS 2026-11-10 01:30 (F), 01:56 (4),
+    19:20 (F1)). The fixture's frame has its beams off the z axis.
+
+    (i) ``kinematics_improvement="projection"`` and (ii) the DEFAULT chain:
+    MadLoop's dispatch (ORIG refuses the frame, code 200; PSMC produces a
+    point that keeps its (x^2 - x) p1 conservation residual) FINISHED by the
+    projection from PSMC's point (USER 2026-11-10 ~19:20 'Projection after
+    MadLoop'). Every point is exact (its record), and every value the
+    double-double / 20- / 32-digit ``"auto"`` call returns on the summed
+    route lies within max(target, 1e-5) of the consistent truth of the
+    improved point (TIRust at 80 digits, the improvement off, on that exact
+    point), or the point fails typed: no GUARD MISS. The resolved route (the
+    route of the DECISIONS 2026-11-10 01:08 misses, points 0 / 1 at 1.06e-4
+    / 2.13e4 off on these texts without the improvement) in double-double:
+    every returned row within that limit of the improved point's resolved
+    truth, or the point fails typed (measured with the projection: point 0
+    served 1.0e-12 off, points 1 / 2 rejected typed at estimates 2.7e-5 /
+    1.0). At 32 digits the resolved route with the recommended checks
+    (DECISIONS 2026-11-10 19:20 (F1): the fixture texts at 32 digits, where
+    MadLoop's chain alone left point 2's fallback rows 3.7e8 off at estimate
+    1.4e-9): every returned row within 1e-5 of its truth or flagged by its
+    estimate (above 1e-5): TIRust, the primary, serves suppressed rows of
+    points 0 / 1 badly off at 20 / 32 digits (0.26 .. 1.2; the precision
+    floor of rows 1e-13 .. 1e-21 of the ++ rows, DECISIONS 13:11 (c)), which
+    the checks flag. At 20 digits the resolved route is recorded, not
+    asserted (``tmp/lit-psimprove/fgh/xt-table.txt``): the fallback serves
+    point 2's suppressed rows 1.5e-3 off at estimate 1.6e-10 with the
+    projection (NinjaRS's rounding at 40 working digits, amplified ~1/Gram
+    on rows ~1e-21 of the largest; inside the guard's metric, which judges
+    such rows against the largest returned output: a precision-floor case,
+    DECISIONS 19:20 (c))."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import VirtualStabilityChecks
+
+    artifact, points, scales = hh
+    runtime = Runtime.load(artifact, process="p")
+    backend = runtime._backend
+    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    chains = {
+        "projection": (("projection", 0),),
+        None: (("z-shift", 200), ("rescaling", 0), ("projection", 0)),
+    }
+    for variant, attempts in chains.items():
+        chosen = {} if variant is None else {"kinematics_improvement": variant}
+        for carrier, digits in (
+            ("double-double", {}),
+            ("arbitrary", {"precision": 20}),
+            ("arbitrary", {"precision": 32}),
+        ):
+            call = {
+                **options,
+                "arithmetic": carrier,
+                **digits,
+                "reduction_target": TARGET,
+            }
+            improved, records = backend.improved_points(
+                points, variant=variant, mu_r2=scales, arithmetic=carrier, **digits
+            )
+            assert all(
+                r.produced == "projection" and r.exact and r.attempts == attempts
+                for r in records
+            ), (variant, records)
+            found = runtime.evaluate(points, **chosen, **call)
+            truth = None
+            if _tirust(loop_native):
+                truth = runtime.evaluate(
+                    improved,
+                    mu_r2=scales,
+                    poles="none",
+                    arithmetic="arbitrary",
+                    precision=80,
+                    reduction="tirust",
+                    kinematics_improvement="off",
+                )
+            for p, lane in enumerate(found.diagnostics):
+                assert lane.kinematics.produced == "projection", lane.kinematics
+                assert lane.kinematics.attempts == attempts, lane.kinematics
+                assert lane.kinematics.warning is None, lane.kinematics
+                if found.values[p] is None:
+                    assert lane.status == "failed" and lane.detail, lane
+                elif truth is not None:
+                    exact = str(truth.values[p][0].finite)
+                    value = ((found.values[p][0].finite,),)
+                    assert _error(value, exact) <= _limit(TARGET), (
+                        variant,
+                        carrier,
+                        digits,
+                        p,
+                        lane,
+                    )
+            if not _tirust(loop_native) or digits.get("precision") == 20:
+                continue
+            # The resolved route: in double-double every returned row within
+            # the guard's limit of the improved point's truth, or the point
+            # fails typed; at 32 digits with the recommended checks, every
+            # returned row within 1e-5 or flagged by its estimate.
+            checks = (
+                {"stability_checks": VirtualStabilityChecks(1, True, rescaled=True)}
+                if digits
+                else {}
+            )
+            resolved = runtime.evaluate_resolved(points, **chosen, **checks, **call)
+            rows_truth = runtime.evaluate_resolved(
+                improved,
+                mu_r2=scales,
+                poles="none",
+                arithmetic="arbitrary",
+                precision=80,
+                reduction="tirust",
+                kinematics_improvement="off",
+            )
+            for p, lane in enumerate(resolved.diagnostics):
+                assert lane.kinematics.produced == "projection", lane.kinematics
+                if resolved.values[p] is None:
+                    assert lane.status == "failed" and lane.detail, lane
+                    continue
+                for r, (row, exact) in enumerate(
+                    zip(resolved.values[p][0], rows_truth.values[p][0], strict=True)
+                ):
+                    value = ((row[0].finite,),)
+                    error = _error(value, str(exact[0].finite))
+                    if not checks:
+                        assert error <= _limit(TARGET), (variant, p, r, lane)
+                        continue
+                    estimate = _row_estimate(resolved.stability[p], r)
+                    assert error <= FLOOR or not estimate <= FLOOR, (
+                        variant,
+                        p,
+                        r,
+                        error,
+                        estimate,
+                        lane,
+                    )
+
+
+def _row_estimate(estimate, row: int) -> float:
+    """The relative estimate of resolved row ``row`` of one point (its
+    sectors' largest)."""
+
+    found = estimate[row]
+    if isinstance(found, (list, tuple)):
+        return max(sector.relative for sector in found)
+    return found.relative
 
 
 # ------------------------------------------------------------------ the SDKs
@@ -1461,9 +1643,13 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     guard's estimate of the call's outputs is the same (bitwise on record,
     ``ULPS`` allowed) and so is the decision. Double-double: the accepted
     outputs are the explicit NinjaRS call's bitwise (Python ``repr``, the C
-    ABI's decimal record); the resolved call rejects point 2 on its
-    suppressed +- rows' own estimates, and ``on_failure="raise"`` raises
-    ``EvaluationError`` with the guard's reason. (Accuracy is not this
+    ABI's decimal record), and the guard's rotation re-test (DECISIONS
+    2026-11-10 19:20 (c)) accepts every served point on every route (point
+    2's suppressed +- rows of the resolved call, 1.3e-21 of its ++ rows, at
+    4.2e-6 .. 4.8e-6 on their own magnitudes; the cached reduction-direction
+    check it replaced rejected them at 2.9e-5: with the improvement off these
+    texts keep their shell and conservation defect, which no rotation sees,
+    docs/user/python-api.md). (Accuracy is not this
     test's claim: on these binary64 texts NinjaRS's +- rows move 1.1e-4 ..
     9.3e11 from the exact point's in response to the texts' shell and
     momentum-conservation defect, while TIRust's at 80 digits stay within
@@ -1471,9 +1657,14 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     with TIRust at 80 digits; the cause is under investigation (F-GH),
     ``tmp/lit-fallback-guard/fix5/probe15.json``, report §0.) 16
     digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
-    and point 2 rejected typed on every route
-    (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at NinjaRS 5b6a8f57 and 71eddb15,
-    ``tmp/lit-fallback-guard/fix3/probe9.json``)."""
+    and point 2 rejected typed on every route (rotation estimates
+    1.6e-6 .. 2.3e-6 and 3.8e-3 .. 1.2e-2, ``tmp/lit-ninja-fwd/g/routes.json``),
+    and ``on_failure="raise"`` raises ``EvaluationError`` with the guard's
+    reason. These decisions were
+    derived on the texts as given: both APIs run with the kinematics
+    improvement off (m-lit lit-psimprove (G8), DECISIONS 2026-11-10 01:30
+    (F); the improved points are
+    ``test_the_guard_on_improved_near_forward_points``'s)."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.errors import EvaluationError
@@ -1519,6 +1710,7 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
             assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
             assert sdk.rusticol_virtual_set_reduction_target(handle, target) == 0
             assert sdk.rusticol_virtual_set_arithmetic(handle, arithmetic, digits) == 0
+            assert sdk.rusticol_virtual_set_kinematics_improvement(handle, b"off") == 0
             if reduction is not None:
                 assert sdk.rusticol_virtual_set_reduction(handle, reduction) == 0
             return {
@@ -1542,6 +1734,7 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         "arithmetic": "double-double",
         "poles": "none",
         "on_failure": "return",
+        "kinematics_improvement": "off",
     }
     found, explicit = python(options), python({**options, "reduction": "ninjars"})
     sdk_found = sdk_calls(b"double-double", 0, TARGET)
@@ -1551,13 +1744,11 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
             route, sdk_found[route], lanes_of(result), "double-double", TARGET
         )
         assert served, (route, lanes_of(result))
-        if route == "resolved":
-            # Point 2's suppressed +- rows (1.3e-21 of its ++ rows) have
-            # estimates 2.9e-5 / 2.9e-5 on their own magnitudes at the
-            # folded artifact (fix5/probe15.json; 3.2e-5 / 3.1e-5 before
-            # lit-fold, fix3/probe9.json; the summed estimate is 2.7e-11):
-            # rejected.
-            assert rejected == [2], lanes_of(result)
+        # The rotation re-test accepts every served point (the resolved
+        # call's point 2: its suppressed +- rows at 4.2e-6 .. 4.8e-6 on their
+        # own magnitudes, where the cached reduction-direction check said
+        # 2.9e-5; tmp/lit-ninja-fwd/g/routes.json).
+        assert rejected == [], (route, lanes_of(result))
         theirs = by_key(explicit[route])
         for key, evaluation in by_key(result).items():
             for p in served:
@@ -1571,9 +1762,6 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         for p in served:
             assert mine[p] is not None and mine[p] == plain[p], (route, p)
 
-    with pytest.raises(EvaluationError, match=ESTIMATE):
-        runtime.evaluate_resolved(same, **{**options, "on_failure": "raise"})
-
     # 16 digits at the target 1e-6: one point accepted, one rejected typed.
     options = {
         "mu_r2": same_scales,
@@ -1582,6 +1770,7 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         "reduction_target": 1e-6,
         "poles": "none",
         "on_failure": "return",
+        "kinematics_improvement": "off",
     }
     found, sdk_found = python(options), sdk_calls(b"arbitrary", 16, 1e-6)
     for route, result in found.items():
@@ -1589,3 +1778,5 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
             route, sdk_found[route], lanes_of(result), "arbitrary", 1e-6
         )
         assert decided == ([1], [2]), (route, lanes_of(result))
+    with pytest.raises(EvaluationError, match=ESTIMATE):
+        runtime.evaluate_resolved(same, **{**options, "on_failure": "raise"})

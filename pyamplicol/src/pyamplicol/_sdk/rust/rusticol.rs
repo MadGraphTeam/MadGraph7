@@ -280,6 +280,32 @@ pub mod virtual_amplitudes {
                 )
             })
         }
+        /// Kinematics improvement of later evaluations, the Python API's
+        /// `kinematics_improvement=`: `"z-shift"` (MadLoop's default),
+        /// `"rescaling"`, `"projection"` or `"off"`; recorded per point in
+        /// the diagnostics (`"kinematics"`). Another value is an
+        /// invalid-argument error.
+        pub fn set_kinematics_improvement(&mut self, setting: &str) -> Result<()> {
+            let setting = checked_cstring(setting, "kinematics improvement")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement(
+                    self.handle.as_ptr(),
+                    setting.as_ptr(),
+                )
+            })
+        }
+        /// Whether later binary64 evaluations are improved too, the Python
+        /// API's `kinematics_improvement_binary64=` (default false).
+        pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement_binary64(
+                    self.handle.as_ptr(),
+                    c_int::from(binary64),
+                )
+            })
+        }
         /// Stability checks of later evaluations, the Python API's
         /// `stability_checks=`: `rotation_count` default rotations, or (with
         /// a count of 0) the rotation specifications `rotations`, the
@@ -949,6 +975,14 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_reduction_unchecked(
                 handle: *mut c_void,
                 unchecked: c_int,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement(
+                handle: *mut c_void,
+                setting: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement_binary64(
+                handle: *mut c_void,
+                binary64: c_int,
             ) -> c_int;
             pub(super) fn rusticol_virtual_set_stability_checks(
                 handle: *mut c_void,
@@ -2204,6 +2238,33 @@ impl Runtime {
         })
     }
 
+    /// Kinematics improvement of later f64 evaluations (m-lit
+    /// lit-psimprove), the Python API's `kinematics_improvement=`:
+    /// `"z-shift"` (MadLoop's default), `"rescaling"`, `"projection"` or
+    /// `"off"`. Every evaluation of this runtime is binary64, so the variant
+    /// runs only with [`Self::set_kinematics_improvement_binary64`]`(true)`;
+    /// the records reach [`Self::take_warnings_json`]. Another value is an
+    /// invalid-argument error.
+    pub fn set_kinematics_improvement(&mut self, setting: &str) -> Result<()> {
+        let setting = checked_cstring(setting, "kinematics improvement")?;
+        // SAFETY: The CString and owning handle remain live for the call.
+        check(unsafe {
+            ffi::runtime_set_kinematics_improvement(self.handle.as_ptr(), setting.as_ptr())
+        })
+    }
+
+    /// Whether later f64 evaluations are improved (default false), the
+    /// Python API's `kinematics_improvement_binary64=`.
+    pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) -> Result<()> {
+        // SAFETY: The owning handle remains live and exclusively borrowed.
+        check(unsafe {
+            ffi::runtime_set_kinematics_improvement_binary64(
+                self.handle.as_ptr(),
+                c_int::from(binary64),
+            )
+        })
+    }
+
     pub fn set_warnings_muted(&mut self, muted: bool) -> Result<()> {
         // SAFETY: The owning handle remains live and exclusively borrowed.
         check(unsafe { ffi::runtime_mute_warnings(self.handle.as_ptr(), c_int::from(muted)) })
@@ -2923,6 +2984,14 @@ mod ffi {
             handle: *mut RuntimeHandle,
             path: *const c_char,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_set_kinematics_improvement(
+            handle: *mut RuntimeHandle,
+            setting: *const c_char,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_set_kinematics_improvement_binary64(
+            handle: *mut RuntimeHandle,
+            binary64: c_int,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_mute_warnings(
             handle: *mut RuntimeHandle,
             muted: c_int,
@@ -2968,6 +3037,8 @@ mod ffi {
     pub(super) use rusticol_runtime_representative_process_key as runtime_representative_process_key;
     pub(super) use rusticol_runtime_resolved_shape as runtime_resolved_shape;
     pub(super) use rusticol_runtime_save as runtime_save;
+    pub(super) use rusticol_runtime_set_kinematics_improvement as runtime_set_kinematics_improvement;
+    pub(super) use rusticol_runtime_set_kinematics_improvement_binary64 as runtime_set_kinematics_improvement_binary64;
     pub(super) use rusticol_runtime_set_model_parameter as runtime_set_model_parameter;
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;
     pub(super) use rusticol_runtime_set_model_parameters_json as runtime_set_model_parameters_json;

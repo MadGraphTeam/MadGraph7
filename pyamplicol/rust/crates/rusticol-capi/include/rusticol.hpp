@@ -660,6 +660,16 @@ public:
         check(rusticol_runtime_set_model_parameters_json(handle_, path.c_str()));
     }
 
+    // Kinematics improvement (m-lit lit-psimprove): "z-shift" (the default),
+    // "rescaling", "projection" or "off"; it runs in these binary64
+    // evaluations only with set_kinematics_improvement_binary64(true).
+    void set_kinematics_improvement(const std::string &setting) {
+        check(rusticol_runtime_set_kinematics_improvement(handle_, setting.c_str()));
+    }
+    void set_kinematics_improvement_binary64(bool binary64) {
+        check(rusticol_runtime_set_kinematics_improvement_binary64(handle_, binary64 ? 1 : 0));
+    }
+
     void mute_warnings() { check(rusticol_runtime_mute_warnings(handle_, 1)); }
     void unmute_warnings() { check(rusticol_runtime_mute_warnings(handle_, 0)); }
     std::string take_warnings_json() {

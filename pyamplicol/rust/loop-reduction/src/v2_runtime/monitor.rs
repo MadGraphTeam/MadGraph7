@@ -16,6 +16,7 @@ use super::induced_outputs::{
 };
 use super::*;
 use crate::reduction_policy;
+use crate::v2_decimal::DecimalContext;
 use crate::v2_stability::{
     self as stability, AmplitudeCells, Budget, CrossRun, ErrorCells, Estimate, Frame, InducedPoint,
     InducedShape, Keyed, LaneShape, PointLanes, StabilityChecks,
@@ -462,9 +463,11 @@ impl V2Runtime {
     /// `reduction_policy::FALLBACK_CHECK`; the Python API's
     /// `loops.v2.reduction.with_fallback`; the summed calls): per point its
     /// values, as `evaluate_extended` returns them (the same executor run and
-    /// assembly, with the reduction-direction re-test collected beside it:
-    /// the reversed frame, the coefficients and the cached masters reused),
-    /// and, for a successful point, the guard's estimate of its summed value
+    /// assembly, with the term scale collected beside it), the guard's
+    /// rotation re-test (the points rotated exactly by the guard's rotation
+    /// and evaluated again, [`V2Runtime::guard_rotated`]; a point whose
+    /// rotated evaluation fails is failed with its reasons), and, for a
+    /// successful point, the guard's estimate of its summed value
     /// (`reduction_policy::fallback_estimate` of the one output) in the
     /// extended carrier `precision` (the guard runs in double-double and
     /// arbitrary precision only, USER 2026-11-09 ~11:53; never escalated),
@@ -526,16 +529,18 @@ impl V2Runtime {
     /// fallback's GUARD (m-lit lit-fallback-guard, DECISIONS 2026-11-09 14:30
     /// RULING Q7; the resolved, correlated and selected calls): per point its
     /// outputs, as that call returns them (the same executor run of the
-    /// call's rows only, with the reduction-direction re-test and the term
-    /// scale collected beside it), and, for a successful point, the guard's
-    /// estimate of THOSE outputs (`reduction_policy::fallback_estimate`:
-    /// each output's reduction-direction estimate against its own
-    /// magnitude, a vanishing one against the largest returned output),
-    /// each read in binary64 as the Python API's `InducedColumns.evaluate`
-    /// estimates it with the reduction check alone (`point_estimate` for
-    /// the inclusive |A|^2 of every row without a spin assignment,
-    /// `PointOutputs.estimate` otherwise; [`call_guard_estimate`]), at the
-    /// carrier's unit roundoff.
+    /// call's rows only, with the term scale collected beside it), the call
+    /// again at the points and spin sources rotated exactly by the guard's
+    /// rotation (its check since DECISIONS 2026-11-10 19:20 (c); a point
+    /// whose rotated call fails is failed with its reasons), and, for a
+    /// successful point, the guard's estimate of THOSE outputs
+    /// (`reduction_policy::fallback_estimate`: each output's rotation
+    /// estimate against its own magnitude, a vanishing one against the
+    /// largest returned output), each read in binary64 as the Python API's
+    /// `InducedColumns.evaluate` estimates it with the guard's rotation alone
+    /// (`point_estimate` for the inclusive |A|^2 of every row without a spin
+    /// assignment, `PointOutputs.estimate` otherwise;
+    /// [`call_guard_estimate`]), at the carrier's unit roundoff.
     #[allow(clippy::type_complexity)]
     pub fn evaluate_induced_call_guarded(
         &mut self,
@@ -550,46 +555,101 @@ impl V2Runtime {
         self.check_batch(momenta, scales)?;
         self.check_poles(mode)?;
         let arith = DecimalArith::new(precision.working_digits());
+        // The guard's rotation re-test (`reduction_policy::FALLBACK_CHECK`):
+        // the call again at the points and spin sources rotated exactly.
+        let rotation = guard_rotation()?;
+        let moved = rotate(&rotation, momenta)?;
+        let turned_spins = rotate_spins(&rotation, spins)?;
         let mut sink = GuardSink::default();
-        let points = match precision {
-            V2Precision::DoubleDouble => self.induced_call_with(
-                call,
-                momenta,
-                scales,
-                spins,
-                mode,
-                precision,
-                &DoubleFloat::from(0.0),
-                &arith,
-                Some(&mut sink),
-            )?,
-            _ => self.induced_call_with(
-                call,
-                momenta,
-                scales,
-                spins,
-                mode,
-                precision,
-                &Float::with_val(precision.bits()?, 0),
-                &arith,
-                Some(&mut sink),
-            )?,
+        let mut turned_sink = GuardSink::default();
+        let (points, turned) = match precision {
+            V2Precision::DoubleDouble => {
+                let zero = DoubleFloat::from(0.0);
+                let points = self.induced_call_with(
+                    call,
+                    momenta,
+                    scales,
+                    spins,
+                    mode,
+                    precision,
+                    &zero,
+                    &arith,
+                    Some(&mut sink),
+                )?;
+                let turned = self.induced_call_with(
+                    call,
+                    &moved,
+                    scales,
+                    &turned_spins,
+                    mode,
+                    precision,
+                    &zero,
+                    &arith,
+                    Some(&mut turned_sink),
+                )?;
+                (points, turned)
+            }
+            _ => {
+                let zero = Float::with_val(precision.bits()?, 0);
+                let points = self.induced_call_with(
+                    call,
+                    momenta,
+                    scales,
+                    spins,
+                    mode,
+                    precision,
+                    &zero,
+                    &arith,
+                    Some(&mut sink),
+                )?;
+                let turned = self.induced_call_with(
+                    call,
+                    &moved,
+                    scales,
+                    &turned_spins,
+                    mode,
+                    precision,
+                    &zero,
+                    &arith,
+                    Some(&mut turned_sink),
+                )?;
+                (points, turned)
+            }
         };
         let average = self.record.average;
         let roundoff = precision.unit_roundoff();
         points
             .into_iter()
+            .zip(turned)
             .enumerate()
-            .map(|(index, point)| {
-                if point.is_err() {
-                    return Ok((point, None));
+            .map(|(index, (point, turned))| {
+                if let Err(mut reasons) = point {
+                    // A failed point keeps the fallback's own failures, then
+                    // its rotation's, as the Python API's guarded evaluation
+                    // reports them (the guard's check runs with it).
+                    if let Err(more) = &turned {
+                        reasons.extend(guard_rotation_failure(more));
+                    }
+                    return Ok((Err(reasons), None));
                 }
-                let found = sink
-                    .points
-                    .get(&index)
-                    .ok_or_else(|| invalid("a successful point without its guard's record"))?;
-                let estimate =
-                    call_guard_estimate(&induced, average, mode, roundoff, &sink.forms, found)?;
+                if let Err(reasons) = turned {
+                    // The guard's check fails the point: the fallback
+                    // failed it.
+                    return Ok((Err(guard_rotation_failure(&reasons)), None));
+                }
+                let missing = || invalid("a successful point without its guard's record");
+                let found = sink.points.get(&index).ok_or_else(missing)?;
+                let other = turned_sink.points.get(&index).ok_or_else(missing)?;
+                let estimate = call_guard_estimate(
+                    &induced,
+                    average,
+                    mode,
+                    roundoff,
+                    &arith.context,
+                    &sink.forms,
+                    found,
+                    other,
+                )?;
                 Ok((point, Some(estimate)))
             })
             .collect()
@@ -666,7 +726,7 @@ impl V2Runtime {
             zero,
             arith,
             Monitoring {
-                check: Some(ReductionCheck::REVERSED),
+                check: None,
                 term_scale: true,
                 collected: Some(&mut collected),
             },
@@ -675,6 +735,10 @@ impl V2Runtime {
                 induced.square_vectors(arith, vectors, &rows, &gram, width, average)
             },
         )?;
+        // The guard's rotation re-test (`reduction_policy::FALLBACK_CHECK`):
+        // the same points rotated exactly, evaluated again in the carrier.
+        let (turned, mut runs) =
+            self.guard_rotated(induced, momenta, scales, mode, precision, zero, arith)?;
         // The estimate reads binary64 (the Python assembly's floats): the
         // colour metric, the values and the collected vectors.
         let metric = induced.carrier(&Binary64, induced.metric())?;
@@ -690,27 +754,37 @@ impl V2Runtime {
         for (index, point) in points.into_iter().enumerate() {
             let squared = match point {
                 Ok(squared) => squared,
-                Err(reasons) => {
+                Err(mut reasons) => {
+                    // The fallback's own failures, then its rotation's (the
+                    // Python API's guarded evaluation).
+                    if let Some(more) = turned[index].as_ref().err() {
+                        reasons.extend(guard_rotation_failure(more));
+                    }
                     out.push((Err(reasons), None));
                     continue;
                 }
             };
-            let found = collected[index]
-                .as_ref()
-                .ok_or_else(|| invalid("a successful point without its collected vectors"))?;
+            if let Some(reasons) = turned[index].as_ref().err() {
+                // The guard's check fails the point: the fallback failed it.
+                out.push((Err(guard_rotation_failure(reasons)), None));
+                continue;
+            }
+            let missing = || invalid("a successful point without its collected vectors");
+            let found = collected[index].as_ref().ok_or_else(missing)?;
             let direct = induced_point_of(induced, &rows, &mut orders, found, Decimal::to_f64)?;
+            let turned = runs[index].take().ok_or_else(missing)?;
             let reference: Vec<Vec<f64>> = squared
                 .iter()
                 .map(|laurent| laurent.iter().map(Decimal::to_f64).collect())
                 .collect();
-            let estimate = stability::induced_estimate(
+            let estimate = guard_rotation_estimate(
                 &shape,
+                &arith.context,
                 precision.unit_roundoff(),
                 &reference,
-                &direct,
-                &[],
-                Some(stability::REDUCTION),
-                None,
+                (&rows, &mut orders),
+                (&direct, found),
+                &turned,
             )?;
             let values = sector_index.iter().map(|&s| squared[s].clone()).collect();
             let estimate = reduction_policy::fallback_estimate(
@@ -720,6 +794,51 @@ impl V2Runtime {
             out.push((Ok((Vec::new(), values)), Some(estimate)));
         }
         Ok(out)
+    }
+
+    /// The per-point fallback guard's rotated evaluation of a loop-induced
+    /// batch in an extended carrier (`reduction_policy::FALLBACK_CHECK`): the
+    /// points rotated exactly by the guard's rotation
+    /// ([`guard_rotation`]) and evaluated again on the current backend (the
+    /// fallback's), per point its outcome and its collected run (the Python
+    /// API's rotation check of `VirtualStabilityChecks(rotations=1)`).
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    fn guard_rotated<T: Native>(
+        &mut self,
+        induced: &Induced,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &DecimalArith,
+    ) -> RusticolResult<(
+        Vec<Result<(), Vec<String>>>,
+        Vec<Option<InducedCollected<Decimal>>>,
+    )>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let moved = rotate(&guard_rotation()?, momenta)?;
+        let mut runs = Vec::with_capacity(momenta.len());
+        let turned = self.induced_points_with(
+            induced,
+            &moved,
+            scales,
+            mode,
+            precision,
+            zero,
+            arith,
+            Monitoring {
+                check: None,
+                term_scale: false,
+                collected: Some(&mut runs),
+            },
+            None,
+            &mut |_, _, _| Ok(()),
+        )?;
+        Ok((turned, runs))
     }
 
     /// The lane shape of a Born-interfered monitored batch in the pole
@@ -784,6 +903,163 @@ fn rotate(
             Ok(rotation.apply(&legs)?.concat())
         })
         .collect()
+}
+
+/// The per-point fallback guard's rotation (`reduction_policy::
+/// FALLBACK_ROTATION` of `v2_stability::default_rotation`; the Python API's
+/// `loops.v2.reduction.guard_rotation`).
+fn guard_rotation() -> RusticolResult<stability::Rotation> {
+    stability::default_rotation(reduction_policy::FALLBACK_ROTATION)
+}
+
+/// The reasons of a point whose guard rotation failed (the rotation check's
+/// own failure text, `stability::rotation_name` 0: the Python API's).
+fn guard_rotation_failure(reasons: &[String]) -> Vec<String> {
+    reasons
+        .iter()
+        .map(|reason| format!("{}: {reason}", stability::rotation_name(0)))
+        .collect()
+}
+
+/// Every point's spin source vectors rotated exactly with its momenta
+/// (real and imaginary parts, `observables._rotated_spin`).
+#[allow(clippy::type_complexity)]
+fn rotate_spins(
+    rotation: &stability::Rotation,
+    spins: &[BTreeMap<usize, [(Rational, Rational); 4]>],
+) -> RusticolResult<Vec<BTreeMap<usize, [(Rational, Rational); 4]>>> {
+    spins
+        .iter()
+        .map(|spin| {
+            spin.iter()
+                .map(|(&leg, vector)| {
+                    let parts = rotation.apply(&[
+                        vector.iter().map(|(re, _)| re.clone()).collect(),
+                        vector.iter().map(|(_, im)| im.clone()).collect(),
+                    ])?;
+                    let rotated: [(Rational, Rational); 4] =
+                        std::array::from_fn(|mu| (parts[0][mu].clone(), parts[1][mu].clone()));
+                    Ok((leg, rotated))
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The guard's rotation estimate of a loop-induced point in an extended
+/// carrier (`induced.rotation_budget` as the Python API forms it there):
+/// the little-group phase per row (`induced._row_phases`: sum conj(a') a
+/// over the row's loop orders and t at k = 0, its modulus
+/// sqrt(re^2 + im^2) and 1 / modulus in the carrier's context `context`)
+/// and the deviations (`induced._rotation_deviations` of a native point:
+/// per key of the counterterm kets, then of the bare vectors, |y phase - x|
+/// formed in the context and read as `abs(complex(.))` in binary64), then
+/// `quadratic_budget` and the estimate of that one check on the binary64
+/// point `direct` (`v2_stability::induced_estimate` of a rotation, whose
+/// binary64 deviations would floor the estimate at the binary64 rounding
+/// of the vectors). `rows` / `orders` key the vectors as
+/// [`induced_point_of`] did for `direct`.
+#[allow(clippy::too_many_arguments)]
+fn guard_rotation_estimate(
+    shape: &InducedShape,
+    context: &DecimalContext,
+    roundoff: f64,
+    reference: &Budget,
+    (rows, orders): (&[induced::Row], &mut Vec<Orders>),
+    (direct, found): (&InducedPoint, &InducedCollected<Decimal>),
+    turned: &InducedCollected<Decimal>,
+) -> RusticolResult<Estimate> {
+    let row_of = |row: &induced::Row| -> RusticolResult<usize> {
+        rows.iter()
+            .position(|r| r == row)
+            .ok_or_else(|| invalid("a vector of a row outside the plan's rows"))
+    };
+    let negate = |x: &Decimal| context.plus(&x.negated());
+    let times = |(a, b): (&Decimal, &Decimal), (c, d): (&Decimal, &Decimal)| {
+        (
+            context.sub(&context.mul(a, c), &context.mul(b, d)),
+            context.add(&context.mul(a, d), &context.mul(b, c)),
+        )
+    };
+    let mut phases: Vec<(usize, (Decimal, Decimal))> = Vec::with_capacity(shape.rows.len());
+    for &r in &shape.rows {
+        let (mut re, mut im) = (Decimal::zero(), Decimal::zero());
+        for (key, vector) in found.parts.total.iter() {
+            if row_of(&key.1)? != r {
+                continue;
+            }
+            let Some(other) = turned.parts.total.get(key) else {
+                continue;
+            };
+            for t in 0..shape.size {
+                let (y, x) = (&other[t][0], &vector[t][0]);
+                let (pr, pi) = times((&y.re, &negate(&y.im)), (&x.re, &x.im));
+                re = context.add(&re, &pr);
+                im = context.add(&im, &pi);
+            }
+        }
+        let magnitude = context.sqrt(&context.add(&context.mul(&re, &re), &context.mul(&im, &im)));
+        let phase = if magnitude.is_zero() {
+            (Decimal::integer(1), Decimal::zero())
+        } else {
+            let inverse = context.div(&Decimal::integer(1), &magnitude);
+            (context.mul(&re, &inverse), context.mul(&im, &inverse))
+        };
+        phases.push((r, phase));
+    }
+    let mut errors: Keyed<ErrorCells> = Vec::new();
+    for (mine, theirs) in [
+        (&found.parts.kets, &turned.parts.kets),
+        (&found.parts.bare, &turned.parts.bare),
+    ] {
+        let mut keys: Vec<&(Orders, induced::Row)> = Vec::new();
+        for (key, _) in mine.iter().chain(theirs.iter()) {
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+        for key in keys {
+            let (a, b) = (mine.get(key), theirs.get(key));
+            let r = row_of(&key.1)?;
+            let (pr, pi) = &phases
+                .iter()
+                .find(|(row, _)| *row == r)
+                .ok_or_else(|| invalid("a vector of a row outside the plan's rows"))?
+                .1;
+            let o = match orders.iter().position(|o| *o == key.0) {
+                Some(o) => o,
+                None => {
+                    orders.push(key.0.clone());
+                    orders.len() - 1
+                }
+            };
+            let at = match errors.iter().position(|(k, _)| *k == (o, r)) {
+                Some(at) => at,
+                None => {
+                    errors.push(((o, r), vec![vec![0.0; shape.width]; shape.size]));
+                    errors.len() - 1
+                }
+            };
+            let zero = Decimal::zero();
+            for t in 0..shape.size {
+                for k in 0..shape.width {
+                    let (xr, xi) = a.map_or((&zero, &zero), |v| (&v[t][k].re, &v[t][k].im));
+                    let (yr, yi) = b.map_or((&zero, &zero), |v| (&v[t][k].re, &v[t][k].im));
+                    let (zr, zi) = times((yr, yi), (pr, pi));
+                    let (dr, di) = (context.sub(&zr, xr), context.sub(&zi, xi));
+                    errors[at].1[t][k] += stability::modulus(dr.to_f64(), di.to_f64());
+                }
+            }
+        }
+    }
+    let budget = shape.quadratic_budget(direct, &errors);
+    Estimate::from_checks(
+        reference,
+        vec![(stability::rotation_name(0), budget)],
+        shape.scale(direct)?,
+        roundoff,
+        Vec::new(),
+    )
 }
 
 /// A collected loop-induced run as the shared estimate reads it
@@ -888,28 +1164,31 @@ fn spin_moved(cells: RowCells, magnitudes: Option<&BTreeMap<usize, Vec<(i32, f64
 
 /// The per-point fallback guard's estimate of one point of a guarded
 /// loop-induced call ([`V2Runtime::evaluate_induced_call_guarded`]; m-lit
-/// lit-fallback-guard, DECISIONS 2026-11-09 14:30 Q7): per output the
-/// estimate of the reduction-direction re-test alone that the Python API's
-/// `InducedColumns.evaluate` forms (the inclusive |A|^2 of every row
-/// without a spin assignment: `point_estimate`, `v2_stability::
-/// induced_estimate`; any other output: `PointOutputs.estimate`, the |M|
-/// form of the re-test's absolute errors with the amplitudes, e^T|M||a| +
-/// |a|^T|M|e + e^T|M|e, over the scale |M| form of the term floors, the
-/// spin legs' coefficient magnitudes moving both), read in binary64 as the
-/// Python assembly reads the executor's values (`float(x)`), then
-/// `reduction_policy::fallback_estimate` of the outputs.
+/// lit-fallback-guard, DECISIONS 2026-11-09 14:30 Q7; its rotation re-test,
+/// DECISIONS 2026-11-10 19:20 (c)): per output the estimate of the guard's
+/// rotation alone that the Python API's `InducedColumns.evaluate` forms
+/// (the inclusive |A|^2 of every row without a spin assignment:
+/// `point_estimate`, `v2_stability::induced_estimate` of the rotated run;
+/// any other output: `PointOutputs.budgets`, |rotated output - output| per
+/// Laurent coefficient in the carrier's assembly arithmetic, over the scale
+/// |M| form of the term floors, the spin legs' coefficient magnitudes
+/// moving them), read in binary64 as the Python assembly reads the
+/// executor's values (`float(x)`), then `reduction_policy::
+/// fallback_estimate` of the outputs. `turned` is the point's guarded call
+/// at the rotated point (its outputs, in the call's order).
+#[allow(clippy::too_many_arguments)]
 fn call_guard_estimate(
     induced: &Induced,
     average: i64,
     mode: V2Poles,
     roundoff: f64,
+    context: &DecimalContext,
     forms: &[GuardForm],
     point: &GuardPoint<Decimal>,
+    turned: &GuardPoint<Decimal>,
 ) -> RusticolResult<f64> {
-    let found = point
-        .collected
-        .as_ref()
-        .ok_or_else(|| invalid("a successful point without its collected vectors"))?;
+    let missing = || invalid("a successful point without its collected vectors");
+    let found = point.collected.as_ref().ok_or_else(missing)?;
     let plan_rows = induced.plan_rows();
     let mut orders: Vec<Orders> = induced.slots().to_vec();
     let direct = induced_point_of(induced, &plan_rows, &mut orders, found, Decimal::to_f64)?;
@@ -947,34 +1226,11 @@ fn call_guard_estimate(
                 .map(|(&leg, values)| (leg, values.iter().map(|(h, c)| (*h, decimal(c))).collect()))
                 .collect()
         });
-    // The rows the outputs read and the amplitudes' magnitudes.
-    let (rows, amplitudes): (Vec<induced::Row>, RowCells) = match &point.moved {
-        None => (plan_rows.clone(), absolute(&direct.amplitudes)),
-        Some(moved) => (
-            rows_of(moved),
-            moved
-                .iter()
-                .map(|(key, vector)| {
-                    (
-                        key.clone(),
-                        vector
-                            .iter()
-                            .map(|cell| cell.iter().map(decimal).collect())
-                            .collect(),
-                    )
-                })
-                .collect(),
-        ),
+    // The rows the outputs read.
+    let rows: Vec<induced::Row> = match &point.moved {
+        None => plan_rows.clone(),
+        Some(moved) => rows_of(moved),
     };
-    let errors = spin_moved(
-        keyed(
-            direct
-                .budget
-                .as_ref()
-                .ok_or_else(|| invalid("the reduction check returned no amplitude budget"))?,
-        ),
-        magnitudes.as_ref(),
-    );
     // The term floors (`PointOutputs.scale`): per key of the term scale,
     // then of the kets, per t the term values plus the kets' magnitudes,
     // floored at the finite coefficient's.
@@ -1024,9 +1280,13 @@ fn call_guard_estimate(
             })
             .collect()
     };
-    let (amplitudes, errors, floors) = (ids(&amplitudes), ids(&errors), ids(&floors));
+    let floors = ids(&floors);
+    let rotation = stability::rotation_name(0);
+    if turned.outputs.len() != point.outputs.len() {
+        return Err(invalid("the rotated call returned other outputs"));
+    }
     let mut outputs = Vec::with_capacity(point.outputs.len());
-    for (output, form) in point.outputs.iter().zip(forms) {
+    for ((output, form), other) in point.outputs.iter().zip(forms).zip(&turned.outputs) {
         let reference: Vec<Vec<f64>> = match &output.imaginary {
             None => output
                 .real
@@ -1048,14 +1308,15 @@ fn call_guard_estimate(
         };
         let estimate = if form.inclusive && point.moved.is_none() {
             let shape = induced_shape(induced, gram.clone(), plan_rows.len(), mode, average);
-            stability::induced_estimate(
+            let other = turned.collected.as_ref().ok_or_else(missing)?;
+            guard_rotation_estimate(
                 &shape,
+                context,
                 roundoff,
                 &reference,
-                &direct,
-                &[],
-                Some(stability::REDUCTION),
-                None,
+                (&plan_rows, &mut orders),
+                (&direct, found),
+                other,
             )?
         } else {
             let shape = InducedShape {
@@ -1066,24 +1327,41 @@ fn call_guard_estimate(
                     .collect(),
                 ..induced_shape(induced, gram.clone(), 0, mode, average)
             };
-            let m = &form.magnitude;
-            let sum = |a: Budget, b: Budget| -> Budget {
-                a.iter()
-                    .zip(&b)
-                    .map(|(x, y)| x.iter().zip(y).map(|(x, y)| x + y).collect())
+            // |y - x| per Laurent coefficient in the assembly arithmetic
+            // (`float(abs(y - x))`; a complex output's modulus).
+            let deviation = |x: &[Vec<Decimal>], y: &[Vec<Decimal>]| -> Vec<Vec<Decimal>> {
+                x.iter()
+                    .zip(y)
+                    .map(|(x, y)| x.iter().zip(y).map(|(x, y)| context.sub(y, x)).collect())
                     .collect()
             };
-            let perturbed = sum(
-                sum(
-                    shape.magnitude_form(m, &errors, &amplitudes),
-                    shape.magnitude_form(m, &amplitudes, &errors),
-                ),
-                shape.magnitude_form(m, &errors, &errors),
-            );
-            let scale = shape.magnitude_form(m, &floors, &floors);
+            let real = deviation(&output.real, &other.real);
+            let budget: Budget = match (&output.imaginary, &other.imaginary) {
+                (Some(x), Some(y)) => {
+                    let imaginary = deviation(x, y);
+                    real.iter()
+                        .zip(&imaginary)
+                        .map(|(a, b)| {
+                            a.iter()
+                                .zip(b)
+                                .map(|(a, b)| {
+                                    let square =
+                                        context.add(&context.mul(a, a), &context.mul(b, b));
+                                    context.sqrt(&square).to_f64()
+                                })
+                                .collect()
+                        })
+                        .collect()
+                }
+                _ => real
+                    .iter()
+                    .map(|laurent| laurent.iter().map(|d| context.abs(d).to_f64()).collect())
+                    .collect(),
+            };
+            let scale = shape.magnitude_form(&form.magnitude, &floors, &floors);
             Estimate::from_checks(
                 &reference,
-                vec![(stability::REDUCTION.to_string(), perturbed)],
+                vec![(rotation.clone(), budget)],
                 scale,
                 roundoff,
                 Vec::new(),

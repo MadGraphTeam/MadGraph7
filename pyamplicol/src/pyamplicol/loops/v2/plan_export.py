@@ -2730,6 +2730,30 @@ class NativeExecutor:
             ]
         return plan, [Fraction(m) for m in legs]
 
+    def leg_masses(self, point, scale, parameters=None, precision=None, points=1):
+        """The legs' squared masses an evaluation of a batch of ``points``
+        points at ``scale`` binds (``V2Batch::leg_masses``, the on-shell
+        invariants, DESIGN §11.1), exact ``Fraction``s in leg order (None: a
+        leg without a bound mass): the targets of the kinematics improvement
+        (m-lit lit-psimprove, ``pyamplicol.kinematics``). With native inputs
+        the executor's own binding at the carrier (``TreeProgram::bind``, on
+        the executor a batch of ``points`` points runs); otherwise the masses
+        the Python inputs hand the executor (``_inputs``)."""
+
+        from .assemble import Precision, _fraction, _leg_masses
+
+        precision = precision or Precision.double()
+        if self.inputs != "native":
+            values = self.slice._point_parameters(
+                dict(parameters or {}), _fraction(scale), precision
+            )
+            return list(_leg_masses(self.slice, values, precision.working_digits))
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points([point], [scale], parameters, precision)
+        native = self.native(arithmetic, digits, points)
+        _, legs, _ = native.bound_masses(self._inputs(evaluations, arithmetic))
+        return [None if m is None else Fraction(m) for m in legs]
+
     def _native_points(self, points, scales, parameters, precision):
         from .assemble import _fraction, _NativePoint, _Numbers
 

@@ -338,18 +338,18 @@ forces NinjaRS for every point (for instance for a higher accuracy). A
 TIR-only artifact has no fallback (NinjaRS is refused typed there).
 
 In double-double and arbitrary precision every point the fallback serves
-is **guarded**: its NinjaRS value runs the reduction-direction check (every
-loop numerator reduced a second time in a reversed frame, its coefficients
-and the cached master integrals reused:
-`VirtualStabilityChecks(reduction_direction=True)` without `rescaled`) in
-the call's own arithmetic (never a higher one), and the point fails typed
+is **guarded**: its NinjaRS value runs a rotation re-test (the evaluated
+point, i.e. the given inputs improved in the call's arithmetic, rotated
+exactly by the recommended checks' rotation and evaluated again:
+`VirtualStabilityChecks(1)`'s check) in the call's own arithmetic (never a
+higher one), and the point fails typed
 when that check's relative estimate (each squared-order sector against its
 largest Laurent coefficient) exceeds the guard's limit: the call's target
 (`reduction_target`, below; a rescue level's own target on that level),
 never below 1e-5, i.e. max(target, 1e-5). The point's one reason names the
 fallback, TIRust's failure, the arithmetic, the estimate and the limit,
 e.g. `auto: TIRust refused or failed the point (...); the per-point NinjaRS
-fallback's value failed its reduction-direction check: estimate 1.4e2 >
+fallback's value failed its rotation check: estimate 1.4e2 >
 1e-5 = max(target 1e-5, 1e-5) (double-double)`; `on_failure="raise"`
 raises `EvaluationError` with it, `"return"` returns the point as a failed
 lane (and a rescue stack escalates it). The estimate is recorded in the
@@ -360,10 +360,13 @@ In binary64 the fallback's value is served unguarded, with no estimate
 recorded: there the protection is the conditioning bound in NinjaRS's own
 fast engine (NinjaRS 71eddb15, below), and stability checks or the rescue
 stack flag what it serves.
-When the call's checks run that cached check it is reused; beside other
-checks (rotations, or the rescaled variant of the recommended checks and of
-every default rescue level) the served points are evaluated once more with
-it. The guard decides on the outputs the call returns: the summed value,
+When the call's checks run that rotation first (the recommended checks) it
+is reused; beside other checks (another rotation first, e.g. every default
+rescue level's, or the reduction checks alone) the served points are
+evaluated once more with it. The rotation re-test replaced the cached
+reduction-direction check, which did not see the double-double
+near-forward losses of NinjaRS (below); no false rejection was found on the
+regular double-double points measured. The guard decides on the outputs the call returns: the summed value,
 or on the resolved, correlated and selected calls each output (a helicity
 row, a colour correlator, a helicity selection), from the fallback's
 evaluation of the call's own rows only (only the selected helicities are
@@ -1076,9 +1079,69 @@ Symbolica to attempt registration of the pyAmpliCol library key; synchronous
 registration failures retain the personal-license and restricted-mode paths.
 Other positive precision requests load retained exact evaluator state when
 the artifact supports it.
-Decimal input preserves the supplied decimal digits;
-binary64 input cannot gain information merely by requesting more arithmetic
-precision.
+Above binary64 the result is the value at the *improved* point of the given
+inputs (the kinematics improvement below: the point is first moved onto exact
+energy-momentum conservation and the exact external shells in the carrier);
+with `kinematics_improvement="off"` Decimal input is evaluated with the
+supplied decimal digits as given. Binary64 input cannot gain information
+merely by requesting more arithmetic precision: the improvement makes it
+consistent, not more accurate.
+
+**Kinematics improvement.** A one-loop or tree evaluation in
+double-double or arbitrary precision evaluates the value at the *improved*
+point of the given inputs: before anything is evaluated in that carrier,
+each point is moved onto exact energy-momentum conservation and the exact
+external shells in the carrier's arithmetic, by default with MadLoop's
+default (`kinematics_improvement="z-shift"`, MadLoop's `ImprovePSPoint = 2`
+with its own fallback to `ImprovePSPoint = 1`, `"rescaling"`), or with
+`"projection"` (frame-independent) or not at all (`"off"`); binary64
+evaluations only with `kinematics_improvement_binary64=True` (default
+False: binary64 values are unchanged). Both are `Runtime.load` defaults and
+per-call arguments of every `evaluate*` method; the variants, the chain, the
+bounds and the record are described in
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+Each lane diagnostic records it (`VirtualLaneDiagnostic.kinematics`, a
+`VirtualKinematics`; `None` for a binary64 evaluation without the switch), a
+rescue attempt per level (`VirtualRescueAttempt.kinematics`: each level
+improves the original inputs in its own carrier). Tree results are values
+only: a tree runtime's `take_warnings()` returns the record of the most
+recent improved call (a summary line, e.g. `"kinematics-improvement:
+arbitrary at precision 32 (z-shift): z-shift 4"`, and every typed warning
+with its point index; the lines of the C ABI's
+`rusticol_runtime_take_warnings_json`), replaced by the next improved call
+and not kept while the warnings are muted; the typed warnings are also
+issued as Python warnings. The tree binary64 switch runs the native tree
+runtime's binary64 code (the C ABI's: the same values bit for bit). Its typed warnings
+(`"kinematics-not-improved"`: evaluated as given; `"kinematics-inexact"`: the
+produced point misses exactness) are records, not failures. The default is
+exact in every frame: where the beams lie along the z axis it is MadLoop's
+z-shift bit for bit; in other frames MadLoop's chain produces the
+rescaling's point, which keeps a conservation residual of the input's own
+order, and the chain finishes it with the projection. Near forward, backward and thresholds that
+matters: NinjaRS amplifies an input's shell or conservation defect by about
+the inverse box Gram determinant, and no rotation check sees it (a rotation
+keeps the defect), which the improvement removes.
+
+**Near-forward accuracy.** At a nearly degenerate 2 -> 2 (sub-)box
+(forward, backward or threshold kinematics: a small transverse momentum or
+a pair near its threshold) a binary64 call WITHOUT stability checks can be
+far off with no estimate (NinjaRS's binary64 engine and oneloop's binary64
+box integral; g g > z z at sqrt(s) = 500 GeV and theta = 1e-4 is off by a
+factor 1e18), as in 1.0.2. Request the recommended checks
+(`stability_checks=VirtualStabilityChecks(1, True, rescaled=True)`) there,
+which flag such values, and the rescue (`stability=VirtualRescuePolicy()`),
+which evaluates them in double-double or arbitrary precision on the
+promoted, improved point (within 1e-5 on the points measured). An estimate
+is an estimate, not a bound: at W+ W- production at 1 TeV with pT = 4.9 GeV
+the binary64 estimate 9.2e-6 accepts a value 4.8e-5 off. Resolved outputs
+far below the point's largest (suppressed helicity rows of a boosted
+near-forward point, 1e-13 .. 1e-21 of the largest) need about
+log10(largest / output) + the conditioning + the target's digits of working
+precision: TIRust at 20-32 digits can serve them badly off, which the
+recommended checks flag; use 60 digits or more there. The per-point NinjaRS
+fallback's guard can miss them too (an estimate, not a bound): at g g > z z,
+theta = 1e-4 in a rotated frame, double-double rows 5e-11 of the largest are
+served 1e-2 off at a guard estimate of 1e-5.
 
 `evaluate_correlated` always uses retained Symbolica evaluator states through
 the separate Python exact executor, including at its default precision 16.

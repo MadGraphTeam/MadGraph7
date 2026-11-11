@@ -1431,6 +1431,20 @@ class EvaluationConfig:
     # lit-unchecked): true drops the reduction backends' own acceptance and
     # refusal checks; false, the default, keeps them.
     reduction_unchecked: bool = field(default=False, metadata=_setting("bool"))
+    # The kinematics improvement of the input points (m-lit lit-psimprove;
+    # ``pyamplicol.kinematics``): "z-shift" (MadLoop's ImprovePSPoint 2 with
+    # its fallback to 1, finished by the projection where MadLoop leaves the
+    # point inexact), "rescaling" (ImprovePSPoint 1), "projection" (the
+    # frame-independent minimal-norm projection) or "off"; None: the native
+    # default (MadLoop's, "z-shift"). It applies above binary64; binary64
+    # evaluations only with ``kinematics_improvement_binary64`` (None: the
+    # native default, off).
+    kinematics_improvement: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    kinematics_improvement_binary64: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
     stability_checks: EvaluationStabilityChecksConfig = field(
         default_factory=EvaluationStabilityChecksConfig, metadata=_section()
     )
@@ -1506,6 +1520,24 @@ class EvaluationConfig:
             reduction_unchecked(self.reduction_unchecked)
         except ValueError as exc:
             raise ConfigurationError(f"evaluation.reduction_unchecked: {exc}") from exc
+        if self.kinematics_improvement is not None:
+            from pyamplicol import kinematics
+
+            try:
+                kinematics.setting_value(self.kinematics_improvement)
+            except ValueError as exc:
+                raise ConfigurationError(
+                    f"evaluation.kinematics_improvement: {exc}"
+                ) from exc
+        if self.kinematics_improvement_binary64 is not None and not isinstance(
+            self.kinematics_improvement_binary64, bool
+        ):
+            from pyamplicol import kinematics
+
+            raise ConfigurationError(
+                "evaluation.kinematics_improvement_binary64: "
+                + kinematics.policy()["binary64_refusal"]
+            )
         if not isinstance(self.stability_checks, EvaluationStabilityChecksConfig):
             raise ConfigurationError(
                 "evaluation.stability_checks must be an EvaluationStabilityChecksConfig"
