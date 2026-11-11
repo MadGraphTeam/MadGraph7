@@ -319,13 +319,9 @@ See [Profiling Campaigns](profiling-campaigns.md) for continuation, selective
 retry, artifact retention, optional original-AmpliCol comparison, and PDF
 section controls.
 
-The repository publishes two rendered manual snapshots:
-
-- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
-
-They are measurement-host results, not release-CI benchmarks. Raw attempts and
-campaign workspaces remain local.
+Rendered reports are measurement-host results, not release-CI benchmarks,
+and are not kept in the repository. Raw attempts and campaign workspaces
+remain local.
 
 ## Comparing results responsibly
 

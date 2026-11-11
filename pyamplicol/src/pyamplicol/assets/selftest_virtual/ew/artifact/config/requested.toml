@@ -6,12 +6,14 @@ source = "loop_qcd_qed_sm"
 simplify = true
 cache = true
 cache_dir = "model-cache"
+loop_preparation_cache = true
 
 [process]
 entries = [{ expression = "e- e+ > e- e+", name = "selftest_virtual_ew" }]
 flavor_scheme = 5
 coupling_order_policy = "minimal"
 loop_coupling_orders = ["QED"]
+loop_induced = "auto"
 reference_color_order = []
 selected_color_sector_ids = []
 flavor_blind = false
@@ -27,6 +29,7 @@ analyze_process_groups = "none"
 
 [loop]
 r2_strategy = "model"
+reduction = "auto"
 external_photons = "final"
 alpha0_conversion_parameter = "eCoup_DGmua0_UV_EW"
 
@@ -64,6 +67,10 @@ workers = "auto"
 emit_api_bundle = false
 particle_veto = []
 allow_anomalous_veto = false
+loop_induced_probes = false
+allow_failed_probes = false
+helicity_filter_failure_probability = 1e-12
+loop_induced_folding = true
 
 [generation.validation]
 enabled = true
@@ -120,6 +127,7 @@ resolved = false
 orders = false
 on_failure = "raise"
 poles = "all"
+reduction_unchecked = false
 helicity_ids = []
 color_flow_ids = []
 
@@ -141,6 +149,10 @@ warmup_runs = 2
 minimum_samples = 5
 helicity_ids = []
 color_flow_ids = []
+
+[check]
+points = 3
+precision = "auto"
 
 [output]
 format = "human"

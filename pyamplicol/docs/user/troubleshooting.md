@@ -299,6 +299,26 @@ validate_payloads(manifest)
 
 Do not put this full rehash in every evaluation loop.
 
+## An artifact from an earlier version is refused
+
+Process artifacts load only in the pyAmpliCol version that wrote them:
+artifacts written by 1.0.2 or earlier are refused by 1.0.3 with the version
+named. Regenerate them with the installed version. Prepared
+`.pyamplicol-model` bundles written by 1.0.2 still load in 1.0.3 (the model
+compiler version is unchanged, 17).
+
+## Python-API results differ slightly between processes
+
+With Python Symbolica 3.0.3 from PyPI, results of the Python API can depend
+on what else was generated earlier in the same Python process: normally about
+1e-30 relative, but amplified at nearly degenerate 2 -> 2 kinematics (near
+forward or at a threshold). Generate each artifact in a fresh process (for
+example one `pyamplicol generate` per artifact) where that matters. A
+Symbolica Community build with
+[symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163),
+or a Symbolica release that contains it, is not affected. Evaluations of a
+stored artifact through the native SDKs do not use Symbolica.
+
 ## Generation appears to repeat expensive validation
 
 Generation-time validation remains enabled and checks construction as it is

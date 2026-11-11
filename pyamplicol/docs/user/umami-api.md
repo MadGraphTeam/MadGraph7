@@ -12,24 +12,13 @@ It lets a C/C++ executable or MadSpace evaluate a pyAmpliCol artifact through th
 same Rusticol runtime used by the other [native APIs](native-apis.md).
 The library needs no Python interpreter at evaluation time.
 
-This interface is being developed on the `umami` branch. Use that branch's
-matching generation code and installed native SDK; it is not present in an
-older released wheel.
-
-`git pull` updates the checkout, not a non-editable installed package. Check the
-Python interpreter and exporter actually being imported with:
+The UMAMI exporter ships with the package. `pip install` (or `just
+dev-install` in a checkout) updates the installed package, not `git pull`;
+check which interpreter and exporter are imported with:
 
 ```console
 python -c "import sys; import pyamplicol.artifacts.umami as umami; print(sys.executable); print(umami.__file__)"
 ```
-
-To rebuild and reinstall the current branch into `.venv`, run the repository's
-existing `just dev-install` workflow from a clean checkout. Python-only changes
-can instead use `env PYTHONPATH="$PWD/src" .venv/bin/python ...` from the repository
-root when a matching native runtime is already staged; they do not require a
-new Rusticol build. See the
-[example README](https://github.com/MadGraphTeam/pyamplicol/tree/umami/umami_example#updating-a-checkout-or-stale-environment)
-for complete commands.
 
 ## Generate and build
 
@@ -311,29 +300,18 @@ representative's runtime. Processes grouped numerically were generated and keep
 their ordinary export. [Process Grouping](process-grouping.md) defines the
 flavour classes, the recorded relations and their warnings.
 
-## MadSpace example
+## MadSpace
 
-The repository's
-[`umami_example`](https://github.com/MadGraphTeam/pyamplicol/tree/umami/umami_example)
-contains close adaptations of AmpliCol's loading and integration examples. They
-use the real MadSpace matrix-element loader, phase-space mappings and
-differential cross section, with VEGAS from MadNIS. The default is a bounded
-partonic `g g > g g g` run for LC and full colour, with no PDF downloads:
-
-```console
-python -m pip install -r umami_example/requirements.txt
-python umami_example/run.py
-```
-
-The orchestrator generates both artifacts, compiles the libraries and linked
-drivers, checks batched UMAMI/native numerical agreement, and writes integrated
-cross sections with statistical uncertainties. It disables numerical
-current-relation discovery during generation. Optional PDF and neural-flow
-workflows, provider selection, cuts and all commands are explained in the
-example README. Those dependencies are not part of pyAmpliCol's core install.
-The integration example uses MadSpace's massless two-beam scattering flux and
-rejects massive incoming legs; this is a limitation of that example, not of the
-UMAMI provider.
+MadSpace loads the generated `API/umami` library through its UMAMI
+matrix-element loader with the `metadata.json` written beside it (see
+[Generate and build](#generate-and-build) and
+[Providers and generated metadata](#providers-and-generated-metadata)). The
+library needs no Python interpreter; the generated `umami_driver.c` is a
+minimal C caller of the same entry points. MadSpace, MadNIS and PDF sets are
+not pyAmpliCol dependencies; install them separately. MadSpace's massless
+two-beam scattering flux rejects massive incoming legs; the UMAMI provider
+itself has no such restriction. The other native interfaces are described in
+[Native APIs](native-apis.md).
 
 ## Versioned virtual extension (source delivery)
 

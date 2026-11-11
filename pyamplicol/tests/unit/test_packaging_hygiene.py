@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "build_backend"))
 
 import package_version  # noqa: E402
 
-RELEASE_VERSION = "1.0.2"
+RELEASE_VERSION = "1.0.3"
 
 
 def _copy_version_contract(tmp_path: Path) -> Path:
@@ -113,8 +113,8 @@ def test_contributor_lock_has_no_local_symjit_source_or_patch_inventory() -> Non
         encoding="utf-8"
     )
 
-    assert "candidate_version = \"2.26.0\"" in contributor
-    assert "revision = \"530304a07d1be6d5abc80291aa5e92cf28ac5546\"" in contributor
+    assert 'candidate_version = "2.26.0"' in contributor
+    assert 'revision = "530304a07d1be6d5abc80291aa5e92cf28ac5546"' in contributor
     assert "\npatches =" not in contributor
     assert not tuple((ROOT / "dependencies/patches/symjit").rglob("*.patch"))
 

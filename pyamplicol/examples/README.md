@@ -392,7 +392,9 @@ example relies on an installation directory.
 Four one-loop walkthroughs, two Born-interfered virtuals and two loop-induced
 processes, each with one pure-QCD and one mixed QCD/electroweak case in the
 complex-mass scheme. Each has a generate, a check, an evaluate and a profile
-card, and `python/loop_walkthrough.py` runs every step from the generate card:
+card, and `python/loop_walkthrough.py` runs every step from the generate card (to run them
+from a wheel built from a checkout, in a fresh environment, see
+[Build a wheel from a checkout and run the loop examples](../docs/user/installation.md#build-a-wheel-from-a-checkout-and-run-the-loop-examples)):
 
 ```console
 pyamplicol loop_gg_zgg_generate.toml        # or: pyamplicol examples run loop_gg_zgg_generate
@@ -401,9 +403,17 @@ pyamplicol loop_gg_zgg_check.toml           # the same checks on the generated a
 pyamplicol loop_gg_zgg_evaluate.toml
 pyamplicol loop_gg_zgg_profile.toml
 pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --reduction-unchecked
-python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 \
+python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 --regenerate \
   --native-client native/loop_client
 ```
+
+The walkthrough generates the artifact with the example's correlator
+declaration; `--regenerate` makes it do so even when the card's generation
+above already wrote `artifacts/loop_gg_zgg` without the declaration (without
+`--regenerate` it reuses an existing artifact, whose correlated step then
+refuses the undeclared correlators: generate it with `pyamplicol generate
+--card loop_gg_zgg_generate.toml --correlators data/loop_gg_zgg_correlators.json`
+instead to reuse it).
 
 The walkthrough steps, in order:
 
@@ -510,9 +520,8 @@ largest at the first point) 64.0 ms against 108.2 ms summed per point, one
 pinned core, a batch of 8 (0.59; the reduction, 23 ms, is the summed call's).
 Generation threshold of this example: at most 10 minutes and 8 GiB.
 
-Measured (2026-11-09, after the loop-block colour fix lit-ew-blocks, on a
-shared host at load ~160-210): generation 223-232 s, peak 7.65-8.37 GiB
-(three runs; without the fix 7.91-8.38 GiB, the peak varies by run); `check` of the
+Measured (2026-11-09, on a shared host at load ~160-210): generation
+223-232 s, peak 7.65-8.37 GiB (three runs; the peak varies by run); `check` of the
 card 232 s, 7.64 GiB: every pole row of the four sectors passes in binary64
 at both points. Per point, one pinned core, a batch of 8: NinjaRS (`auto`)
 111-151 ms checked, 145-153 ms unchecked; TIRust 144-152 ms with 2 of 8
@@ -524,7 +533,9 @@ virtual equals Recola 2.3.0 (the smoke test reads the fixture
 finite parts within the two codes' complex-mass counterterm prescriptions
 (2e-6 to 5e-4 relative; the difference falls as the widths squared). The
 whole walkthrough at two points: 586 s (`check` 241 s, generation 315 s on
-the loaded host), peak 8.0 GiB.
+the loaded host), peak 8.0 GiB; from the 1.0.3 wheel (2026-11-11, the four
+examples side by side): 868 s (`check` 435 s, generation 360 s), peak 19.6 GiB
+in the walkthrough's own process, reached in its evaluation steps 5 to 8.
 
 ### `g g > z g g`, loop-induced (every quark loop)
 
@@ -552,16 +563,13 @@ H and top masses in the propagators and stable external leptons. Its two
 coloured partons make T_1.T_2 = -C_A |A|^2 trivial; it shows the spin vector
 on gluon 1. One squared order.
 
-Measured (2026-11-09), before lit-ewprep: generation 153 s, peak 4.30 GiB, of
-which 49 s is the electroweak request-model preparation (with the correlators
-147 s, 4.20 GiB); `check` of the card 149 s (preparation 50 s), 4.22 GiB.
-After lit-ewprep (cache cold): generation 129 s, peak 4.19 GiB, preparation
-20.0 s; `check` of the card 132 s (preparation 20.5 s), 4.23 GiB. Per
+Measured (2026-11-09, preparation cache cold): generation 129 s, peak
+4.19 GiB, of which 20.0 s is the electroweak request-model preparation;
+`check` of the card 132 s (preparation 20.5 s), 4.23 GiB. Per
 point, one pinned core, a batch of 8: TIRust (`auto`) 3.1 ms checked and
 unchecked; NinjaRS 4.6-4.7 ms; one helicity 1.8 ms against 3.1 ms summed
-(0.58). The whole walkthrough at two points: 301-367 s (two runs on a
-loaded host), peak 4.4 GiB in the generation's child process; at one point
-(the CI smoke test): 338 s. After lit-ewprep: 266 s at two points.
+(0.58). The whole walkthrough at two points: 266 s, peak 4.4 GiB in the
+generation's child process.
 
 ## Typed Python
 
