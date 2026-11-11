@@ -1,0 +1,187 @@
+{
+  "actual_tirust_calls": 0,
+  "branch_counts_for_completed_calls": {
+    "candidate": {
+      "binary128_word_records": 169080,
+      "bulk_calls": 0,
+      "forced_calls": 0,
+      "public_calls": 660,
+      "scalar_calls": 0
+    },
+    "forced": {
+      "binary128_word_records": 80,
+      "bulk_calls": 4,
+      "forced_calls": 4,
+      "public_calls": 10,
+      "scalar_calls": 6
+    },
+    "observer": {
+      "binary128_word_records": 169080,
+      "bulk_calls": 104,
+      "forced_calls": 0,
+      "public_calls": 660,
+      "scalar_calls": 551
+    },
+    "original": {
+      "binary128_word_records": 169080,
+      "bulk_calls": 0,
+      "forced_calls": 0,
+      "public_calls": 660,
+      "scalar_calls": 0
+    }
+  },
+  "cleanup_survivors": [],
+  "combined_qualified_cases": 135,
+  "lexical_only_cases": 14,
+  "new_commands_returncodes": {
+    "-8": 3,
+    "0": 134
+  },
+  "new_executed_cases": 47,
+  "new_native_invocations": 137,
+  "non_nearest_directional_diagnostics": [
+    {
+      "case": "ieee-round1-sticky0",
+      "differences": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky0",
+      "differences": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky0",
+      "differences": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky1",
+      "differences": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky1",
+      "differences": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky1",
+      "differences": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky2",
+      "differences": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky2",
+      "differences": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky2",
+      "differences": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky4",
+      "differences": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky4",
+      "differences": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky4",
+      "differences": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky8",
+      "differences": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky8",
+      "differences": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky8",
+      "differences": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky16",
+      "differences": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky16",
+      "differences": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky16",
+      "differences": 2,
+      "variant": "original"
+    }
+  ],
+  "observed_owned_processes": 6,
+  "old_failed_run_status": "failed",
+  "performance_acceptance": false,
+  "physical_amplitude_calls": 0,
+  "retained_native_invocations": 264,
+  "retained_replay": {
+    "bytes": 226531,
+    "sha256": "2a7feeb57696d8c49e7c30fa1ffbf3ef5f4ca2c0ca6b3c20b835f76bad906721"
+  },
+  "retained_replayed_cases": 88,
+  "run4_result": {
+    "bytes": 107963,
+    "sha256": "80a57d61a20db91fdcc5e27080ca0f1dd6e6fbc6b6d9b4e3810dd41cc15d2fa7"
+  },
+  "run4_terminal": {
+    "bytes": 2188,
+    "sha256": "272399199071f0ab510c32ff830a41f0e2db0a3a1e8c44cd5d464a67a8cc1de0"
+  },
+  "schema": "madloop-tirust-bulk-unit-combined-summary-v1",
+  "source4_sha256": "9d159331439f106df0a7571c69633c40b5900cb5c4162d6f9850521a3db8f219",
+  "status": "pass",
+  "total_native_invocations": 401,
+  "trap_cases": [
+    {
+      "case": "ieee-halt5-inexact",
+      "markers": {
+        "candidate": [
+          "ABI_ENTER",
+          "ABI_ENTER",
+          "ABI_ENTER"
+        ],
+        "observer": [
+          "ABI_ENTER",
+          "SCALAR_ENTER",
+          "ABI_ENTER",
+          "SCALAR_ENTER",
+          "ABI_ENTER",
+          "SCALAR_ENTER"
+        ],
+        "original": [
+          "ABI_ENTER",
+          "ABI_ENTER",
+          "ABI_ENTER"
+        ]
+      },
+      "output_phase": true,
+      "returns": {
+        "candidate": -8,
+        "observer": -8,
+        "original": -8
+      }
+    }
+  ]
+}

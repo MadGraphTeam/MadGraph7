@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "/nix/store/s2946bl9ciwzhafd66jhansrmxq9xhqm-binutils-2.46/bin/nm",
+    "--defined-only",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/candidate/check"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/candidate",
+  "finished_utc": "2026-11-11T11:13:49.877303+00:00",
+  "process_group": 3,
+  "returncode": 0,
+  "session": 3,
+  "started_utc": "2026-11-11T11:13:49.873863+00:00",
+  "stdout_sha256": "c318526e9c7f9a5275d7575fa5038bf78c8225544067a3a9db700ee5cddfd60c",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

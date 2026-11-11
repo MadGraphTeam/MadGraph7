@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/controller.py", line 320, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/controller.py", line 316, in main
+    if args.child:child(args.child);return
+                  ~~~~~^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/controller.py", line 213, in child
+    else:run_locked(directory)
+         ~~~~~~~~~~^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/controller.py", line 189, in run_locked
+    observation=analyzer.compare(case,pair)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/analyze.py", line 131, in compare
+    details={name:verify_complete(case,rows,name) for name,(rows,_) in parsed.items()}
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/analyze.py", line 67, in verify_complete
+    require(post[:3]==[call_id,status,mode] and post[8:]==halts,'Public status/round/halting mismatch')
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/analyze.py", line 12, in require
+    if not value:raise ValueError(message)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Public status/round/halting mismatch

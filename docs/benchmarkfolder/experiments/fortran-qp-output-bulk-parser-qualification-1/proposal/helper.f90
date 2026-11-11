@@ -1,0 +1,97 @@
+  ! SOURCE-ONLY proposal. Compiled equivalence and benefit are unqualified.
+  logical function bulk_decode_environment() result(eligible)
+    type(ieee_round_type) :: rounding
+    type(ieee_flag_type), parameter :: flags(5) = [ieee_invalid,ieee_overflow, &
+      ieee_divide_by_zero,ieee_underflow,ieee_inexact]
+    logical :: halting
+    integer :: i
+    eligible = .false.
+    call ieee_get_rounding_mode(rounding)
+    if (.not.(rounding == ieee_nearest)) return
+    do i=1,size(flags)
+      if (.not.ieee_support_halting(flags(i))) cycle
+      call ieee_get_halting_mode(flags(i),halting)
+      if (halting) return
+    enddo
+    eligible = .true.
+  end function
+
+  pure logical function canonical_bulk_record(text) result(valid)
+    character(len=record_size), intent(in) :: text
+    integer :: first,last,i,exponent,exponent_first
+    logical :: negative_exponent
+    valid = .false.
+    last = len_trim(text)
+    if (last == 0) return
+    first = 1
+    if (text(first:first) == '-') first = first+1
+    if (first > last) return
+    ! Rug/MPFR's zero spelling is exactly 0 or -0, then ASCII spaces.
+    if (last == first) then
+      valid = text(first:first) == '0'
+      return
+    endif
+    ! The pinned .39e formatter emits 39 significant digits: one before
+    ! the point, 38 after it, then lower-case e and an unpadded exponent.
+    if (last < first+41) return
+    if (text(first:first) < '1' .or. text(first:first) > '9') return
+    if (text(first+1:first+1) /= '.') return
+    do i=first+2,first+39
+      if (text(i:i) < '0' .or. text(i:i) > '9') return
+    enddo
+    if (text(first+40:first+40) /= 'e') return
+    exponent_first = first+41
+    negative_exponent = text(exponent_first:exponent_first) == '-'
+    if (negative_exponent) exponent_first = exponent_first+1
+    if (exponent_first > last) return
+    if (last-exponent_first+1 > 4) return
+    if (last > exponent_first .and. text(exponent_first:exponent_first) == '0') return
+    exponent = 0
+    do i=exponent_first,last
+      if (text(i:i) < '0' .or. text(i:i) > '9') return
+      exponent = exponent*10+iachar(text(i:i))-iachar('0')
+    enddo
+    if (negative_exponent .and. exponent == 0) return
+    ! Deliberately exclude overflow, underflow and normal/subnormal boundaries.
+    ! These records retain exactly the existing scalar parsing/error path.
+    if (exponent > 4900) return
+    valid = .true.
+  end function
+
+  subroutine unpack_outputs(records,values,full_both,io_status)
+    character(kind=c_char), intent(in) :: records(:,:)
+    real(KI_QTIR), intent(out) :: values(:)
+    logical, intent(in) :: full_both
+    integer, intent(out) :: io_status
+    character(len=record_size) :: text(size(values))
+    integer :: i,k
+    logical :: eligible
+    eligible = .false.
+    if (full_both) eligible = bulk_decode_environment()
+    if (eligible) then
+      do k=1,size(values)
+        do i=1,record_size
+          text(k)(i:i) = records(i,k)
+        enddo
+        if (.not.canonical_bulk_record(text(k))) then
+          eligible = .false.
+          exit
+        endif
+      enddo
+    endif
+    if (eligible) then
+      ! Every internal-file record has exactly one numeric token. No null,
+      ! repetition, delimiter, slash, NUL or continuation syntax is admitted.
+      read(text,*,iostat=io_status) values
+      if (io_status /= 0) return
+      if (.not.all(ieee_is_finite(values))) io_status = 1
+      ! An unexpected bulk failure takes the existing public error/cache-clear
+      ! path. Never reparse after a partial READ has affected IEEE state.
+      return
+    endif
+    do k=1,size(values)
+      call unpack(records(:,k),values(k),io_status)
+      if (io_status /= 0) return
+    enddo
+  end subroutine
+

@@ -1,0 +1,70 @@
+{
+  "actual_tirust_calls": 0,
+  "case": "ieee-halt1-exact",
+  "halting_output_phase_observed": true,
+  "markers": {
+    "candidate": [
+      "ABI_ENTER",
+      "ABI_ENTER",
+      "ABI_ENTER",
+      "ABI_ENTER",
+      "ABI_ENTER"
+    ],
+    "observer": [
+      "ABI_ENTER",
+      "SCALAR_ENTER",
+      "ABI_ENTER",
+      "SCALAR_ENTER",
+      "ABI_ENTER",
+      "SCALAR_ENTER",
+      "ABI_ENTER",
+      "SCALAR_ENTER",
+      "ABI_ENTER",
+      "SCALAR_ENTER"
+    ],
+    "original": [
+      "ABI_ENTER",
+      "ABI_ENTER",
+      "ABI_ENTER",
+      "ABI_ENTER",
+      "ABI_ENTER"
+    ]
+  },
+  "observations": {
+    "candidate": {
+      "binary128_word_records": 40,
+      "bulk_calls": 0,
+      "forced_calls": 0,
+      "non_nearest_directional_reference_differences": [],
+      "non_nearest_directional_reference_scope": "Diagnostic only; default internal-file READ ROUND= semantics unqualified",
+      "public_calls": 5,
+      "scalar_calls": 0
+    },
+    "observer": {
+      "binary128_word_records": 40,
+      "bulk_calls": 0,
+      "forced_calls": 0,
+      "non_nearest_directional_reference_differences": [],
+      "non_nearest_directional_reference_scope": "Diagnostic only; default internal-file READ ROUND= semantics unqualified",
+      "public_calls": 5,
+      "scalar_calls": 5
+    },
+    "original": {
+      "binary128_word_records": 40,
+      "bulk_calls": 0,
+      "forced_calls": 0,
+      "non_nearest_directional_reference_differences": [],
+      "non_nearest_directional_reference_scope": "Diagnostic only; default internal-file READ ROUND= semantics unqualified",
+      "public_calls": 5,
+      "scalar_calls": 0
+    }
+  },
+  "performance_acceptance": false,
+  "physical_amplitude_calls": 0,
+  "returncodes": {
+    "candidate": 0,
+    "observer": 0,
+    "original": 0
+  },
+  "status": "pass"
+}

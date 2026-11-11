@@ -1,0 +1,178 @@
+{
+  "cap_seconds": 600.0,
+  "child_pid": 3,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242941817,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 17,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242941876,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 24,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242941916,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 37,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242941957,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 42,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242941976,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 43,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242941992,
+        "state": "Z"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 57,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942038,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 61,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942055,
+        "state": "Z"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 64,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942077,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 76,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942116,
+        "state": "Z"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 82,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942138,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 97,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942200,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 129,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942340,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 161,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942400,
+        "state": "Z"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 173,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942441,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 183,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942498,
+        "state": "Z"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 186,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942520,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 191,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242942576,
+        "state": "Z"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/fortran-qp-output-bulk-unit-controller-3/controller.py",
+    "--child",
+    "run",
+    "--source",
+    "511225ea5bb4523cbf84012ea424a0710ef6f86b3ec6964ba8e8b41ea08a76d6",
+    "--reviewed-build",
+    "d4eb1386ce923a16d70666637ff3677091449b30a812b6ebcb90b421c0b3cf9f"
+  ],
+  "deadline_monotonic": 2430017.621274313,
+  "error": "ValueError('Unit stage failed')",
+  "finished_utc": "2026-11-11T11:15:25.521426+00:00",
+  "publication_scope": "Administrative failure closure, never a qualification pass",
+  "returncode": 1,
+  "stage": "run",
+  "started_utc": "2026-11-11T11:15:16.501510+00:00",
+  "status": "failed"
+}

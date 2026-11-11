@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/candidate/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/run/fallback-value-11/case.txt"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/run/fallback-value-11",
+  "finished_utc": "2026-11-11T11:15:25.186576+00:00",
+  "process_group": 3,
+  "returncode": 0,
+  "session": 3,
+  "started_utc": "2026-11-11T11:15:25.181972+00:00",
+  "stdout_sha256": "cf075f66c3df747f72126971de0e92b0e665c3e5525beb7a66db1df1d84f5f51",
+  "subprocess_new_session": false,
+  "timeout_seconds": 10.0
+}

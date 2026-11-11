@@ -209,6 +209,17 @@ establish neither a new optimization nor performance acceptance. The portable
 file-only verifier reproduces all three modes and preserves both preparation
 failures separately.
 
+The optional [Fortran QP bulk-decoder experiment](experiments/fortran-qp-output-bulk-parser-qualification-1/README.md)
+passes its compiled recording-provider unit gate: 135 executed cases and 14
+lexical-only controls, with all 401 executable invocations retained. It checks
+all 42 topology/rank shapes, exact binary128 words, malformed records, scalar
+fallback, status/error/cache behavior and observed IEEE state. The intentional
+inexact trap agrees across original, candidate and observer variants. Both the
+earlier runtime-binding failure and corrected native-error expectation remain
+recorded. Portable raw replay and twelve independent integrity/relocation tests
+pass. Production is unchanged: actual TIRust wire coverage, full physical
+amplitude parity and measured benefit remain required before promotion.
+
 The experimental adaptive-precision bridge is an isolated development build,
 not a private repository or the installed backend used in this campaign. It
 tries 256-bit MPFR first and retries an eligible conditioning refusal once at

@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/candidate/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-4/run/ieee-halt5-inexact/case.txt"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-4/run/ieee-halt5-inexact",
+  "finished_utc": "2026-11-11T11:30:55.752920+00:00",
+  "process_group": 3,
+  "returncode": -8,
+  "session": 3,
+  "started_utc": "2026-11-11T11:30:55.536126+00:00",
+  "stdout_sha256": "7743f14ab38be3f9cca95def4d4109324ac9906d8f2415eec0150c2c740fab07",
+  "subprocess_new_session": false,
+  "timeout_seconds": 10.0
+}

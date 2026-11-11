@@ -1,0 +1,10 @@
+{
+  "command": "source tools/tirust_env.sh; python3 -B -m pytest -q -p no:cacheprovider --tb=short .tirust-build/fortran-qp-output-bulk-proposal-1/test_source.py",
+  "compiler_executions": 0,
+  "native_executions": 0,
+  "pytest_seconds": 0.11,
+  "returncode": 0,
+  "schema": "madloop-tirust-source-only-checks-v1",
+  "scope": "Pure source derivation/confinement and Python lexical model only; Fortran parser, words, IEEE, failure/cache behavior and performance remain unqualified.",
+  "tests_passed": 39
+}

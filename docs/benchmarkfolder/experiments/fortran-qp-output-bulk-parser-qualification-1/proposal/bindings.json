@@ -1,0 +1,22 @@
+{
+  "compiler_executions": 0,
+  "installed_config": {
+    "path": ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json",
+    "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9"
+  },
+  "native_dso_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "native_executions": 0,
+  "performance_acceptance": false,
+  "production_revision": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "profile_analysis_sha256": "afd23f11701c5b5e514a4eeaccb0652b6356aaaa79d9ffe25c7668a4c039f34d",
+  "profile_index_sha256": "4abe6049fea625c567c37668956f3a8d1db71222eb2575bbf13fd32617e087d2",
+  "runtime_changes": false,
+  "schema": "madloop-tirust-output-bulk-source-proposal-v1",
+  "scientific_source_sha256": "3c13ad88b825d9d19b1030b62b317c0f31759e002d8dfdb9050142301a7cae24",
+  "source_original": {
+    "path": "vendor/tirust/mtirust.f90",
+    "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+  },
+  "source_preview_sha256": "256f0d877d0349c181278ac5222c4800cc216195e5d44d2e0740912950ad1de3",
+  "status": "source-only-uncompiled-unqualified"
+}

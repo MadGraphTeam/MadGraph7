@@ -1,0 +1,88 @@
+{
+  "cap_seconds": 180.0,
+  "child_pid": 3,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242870961,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 9,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242870993,
+        "state": "S"
+      },
+      {
+        "parent_pid": 9,
+        "pid": 10,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242870993,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 12,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242871050,
+        "state": "S"
+      },
+      {
+        "parent_pid": 12,
+        "pid": 14,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242871061,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 36,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242871101,
+        "state": "R"
+      },
+      {
+        "parent_pid": 36,
+        "pid": 38,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 242871102,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/fortran-qp-output-bulk-unit-controller-2/controller.py",
+    "--child",
+    "build",
+    "--source",
+    "ad63b2e1128c70085fb282b1a74e1b84aa282c7e5be95514a79a558845817fe4"
+  ],
+  "deadline_monotonic": 2428889.245522598,
+  "error": "ValueError('Unit stage failed')",
+  "finished_utc": "2026-11-11T11:03:30.215879+00:00",
+  "publication_scope": "Administrative failure closure, never a qualification pass",
+  "returncode": 1,
+  "stage": "build",
+  "started_utc": "2026-11-11T11:03:28.125771+00:00",
+  "status": "failed"
+}

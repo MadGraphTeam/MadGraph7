@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libgfortran.so"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/observer",
+  "finished_utc": "2026-11-11T11:13:50.848755+00:00",
+  "process_group": 3,
+  "returncode": 0,
+  "session": 3,
+  "started_utc": "2026-11-11T11:13:50.818068+00:00",
+  "stdout_sha256": "a2385ed5117bf0b396049d0f75f46c6206666257aff1fb7fc72e88c157e47001",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

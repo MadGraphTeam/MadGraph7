@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "--list",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/original/check"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/original",
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T11:13:48.380396+00:00",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

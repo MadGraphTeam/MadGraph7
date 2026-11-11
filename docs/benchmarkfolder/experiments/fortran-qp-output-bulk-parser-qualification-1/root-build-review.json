@@ -1,0 +1,11 @@
+{
+  "actual_runtime_providers_each": 5,
+  "build_result_sha256": "0c17495cf284ed775cb84807b711473fc804140225ee74a547d6791a91d11a8f",
+  "build_terminal_sha256": "d4eb1386ce923a16d70666637ff3677091449b30a812b6ebcb90b421c0b3cf9f",
+  "closed_commands_zero": 107,
+  "compiled_variants": 4,
+  "original_failed_build_preserved": true,
+  "source": "511225ea5bb4523cbf84012ea424a0710ef6f86b3ec6964ba8e8b41ea08a76d6",
+  "status": "pass",
+  "unit_mains": 0
+}

@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/candidate/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/run/invalid-r3-middle/case.txt"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/run/invalid-r3-middle",
+  "finished_utc": "2026-11-11T11:15:22.892958+00:00",
+  "process_group": 3,
+  "returncode": 0,
+  "session": 3,
+  "started_utc": "2026-11-11T11:15:22.884238+00:00",
+  "stdout_sha256": "1b7929e84045a37ca0f6b3ff4e824d0c22b62dde5cc3bb649c70c3e8bd74c031",
+  "subprocess_new_session": false,
+  "timeout_seconds": 10.0
+}

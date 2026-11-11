@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=Scrt1.o"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build/candidate",
+  "finished_utc": "2026-11-11T11:13:49.235668+00:00",
+  "process_group": 3,
+  "returncode": 0,
+  "session": 3,
+  "started_utc": "2026-11-11T11:13:49.227432+00:00",
+  "stdout_sha256": "cf52944f2944faeeb1fade9ad74f3de3d847022b1eaafd16d4c4e57404ad2596",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

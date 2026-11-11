@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc",
+    "-std=c99",
+    "-O0",
+    "-fPIC",
+    "-c",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-controller-3/provider.c",
+    "-o",
+    "provider.o"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-unit-work-3/build",
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T11:13:46.987774+00:00",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

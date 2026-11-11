@@ -1,0 +1,10 @@
+{
+  "compiler_executions": 0,
+  "errors": 0,
+  "failures": 0,
+  "native_executions": 0,
+  "output": "test_all_python_parses (bulk_source_receipt_tests.SourceTests.test_all_python_parses) ... ok\ntest_analyzer_hides_only_labeled_observer_counters (bulk_source_receipt_tests.SourceTests.test_analyzer_hides_only_labeled_observer_counters) ... ok\ntest_analyzer_rejects_missing_or_duplicate_meta (bulk_source_receipt_tests.SourceTests.test_analyzer_rejects_missing_or_duplicate_meta) ... ok\ntest_case_writer (bulk_source_receipt_tests.SourceTests.test_case_writer) ... ok\ntest_complete_analyzer_and_corrupted_word (bulk_source_receipt_tests.SourceTests.test_complete_analyzer_and_corrupted_word) ... ok\ntest_corpus_shapes_failures_and_width (bulk_source_receipt_tests.SourceTests.test_corpus_shapes_failures_and_width) ... ok\ntest_deadline_and_ownership_confinement (bulk_source_receipt_tests.SourceTests.test_deadline_and_ownership_confinement) ... ok\ntest_environment_strips_unpinned_loader_injection (bulk_source_receipt_tests.SourceTests.test_environment_strips_unpinned_loader_injection) ... ok\ntest_exact_binary128_oracle (bulk_source_receipt_tests.SourceTests.test_exact_binary128_oracle) ... ok\ntest_grammar (bulk_source_receipt_tests.SourceTests.test_grammar) ... ok\ntest_provider_scope (bulk_source_receipt_tests.SourceTests.test_provider_scope) ... ok\ntest_raw_cleanup_escalates_after_term_timeout (bulk_source_receipt_tests.SourceTests.test_raw_cleanup_escalates_after_term_timeout) ... ok\ntest_variant_scope (bulk_source_receipt_tests.SourceTests.test_variant_scope) ... ok\n\n----------------------------------------------------------------------\nRan 13 tests in 0.224s\n\nOK\n",
+  "schema": "madloop-tirust-bulk-unit-source-tests-v1",
+  "subprocess_apis_blocked": true,
+  "tests_run": 13
+}

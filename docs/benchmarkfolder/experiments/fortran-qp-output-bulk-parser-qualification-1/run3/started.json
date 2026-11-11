@@ -1,0 +1,23 @@
+{
+  "cap_seconds": 600.0,
+  "child_pid": 3,
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/fortran-qp-output-bulk-unit-controller-3/controller.py",
+    "--child",
+    "run",
+    "--source",
+    "511225ea5bb4523cbf84012ea424a0710ef6f86b3ec6964ba8e8b41ea08a76d6",
+    "--reviewed-build",
+    "d4eb1386ce923a16d70666637ff3677091449b30a812b6ebcb90b421c0b3cf9f"
+  ],
+  "deadline_monotonic": 2430017.621274313,
+  "stage": "run",
+  "started_utc": "2026-11-11T11:15:16.501510+00:00",
+  "status": "running"
+}
