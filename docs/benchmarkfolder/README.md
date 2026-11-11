@@ -286,6 +286,20 @@ orientation match the reference, with unchanged observed flags and controls.
 This qualifies the standalone factory on the present GNU/Linux host. The full
 amplitude's entry-to-use environment and numerical results remain unqualified.
 
+The [private CMS amplitude trial](experiments/kinematic-invariant-amplitude-qualification-1/README.md)
+compiles the Fortran prototype and preserves the ordinary point's exact
+original/candidate observations. The first stress point retains failed DP
+contributions and a QP disagreement with CutTools; the next CutTools DP
+measurement times out, leaving seven requests unrun. The failed comparison and
+incomplete stage remain explicit. The prototype is not promoted.
+
+A separate [universal QED double-pole audit](experiments/cms-universal-qed-pole-audit-1/README.md)
+reconstructs the existing model and supports the prototype's QP double pole
+at that stress point; CutTools returns approximately half the predicted value.
+This checks one coefficient under the documented reconstruction assumptions.
+Finite and single-pole truth require further adjudication, including the
+reducers' different kinematic and scalar-classification policies.
+
 The separate [original-input EW replay](experiments/ew-original-refusal-replay-1/README.md)
 reproduces both point-2, rank-three refusals and retains their complete original
 errors: ill-conditioned Gram subsets `[1,2,3]` in DP and `[0,1,2,3]` in QP.
