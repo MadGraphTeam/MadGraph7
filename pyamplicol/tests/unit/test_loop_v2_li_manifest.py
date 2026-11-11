@@ -24,7 +24,8 @@ def entries():
 
 def test_every_campaign_run_is_one_entry_of_its_rows(entries):
     """Every reference run of a §4.1 row (lit-ref's manifest) is run once,
-    with every row id, tier and check that lists it; the delegated rows (the
+    with every row id, tier and check that lists it (L2 where the run
+    designates the analytic oracle); the delegated rows (the
     TIR unit row, the Born-interfered backend row, the EFT and observable
     rows) are other packages'."""
 
@@ -40,7 +41,11 @@ def test_every_campaign_run_is_one_entry_of_its_rows(entries):
             listed.add(run["process"])
             assert set(lm._ids(row["row"])) <= set(entry["ids"])
             assert row["tier"] in entry["tiers"]
-            assert set(row["checks"]) <= set(entry["checks"])
+            # L2 (the analytic oracle) on the runs designating one only.
+            analytic = "analytic" in run.get("providers", [])
+            assert set(row["checks"]) - {"L2"} <= set(entry["checks"])
+            if "L2" in row["checks"]:
+                assert ("L2" in entry["checks"]) == analytic, run["process"]
             for provider in run.get("excluded", {}):
                 assert provider not in entry["providers"]
     # This package's additional fixtures (the P15 point of LI-41) run too.
@@ -291,6 +296,45 @@ def test_judge_records_partial_waits_and_passes(entries):
     zero = {e["fixture"]: e for e in entries}["li_gg_ha"]
     judged = lm.judge(_record("li_gg_ha"), zero)
     assert judged["L1"]["status"] == "recorded" and "L8" in judged
+
+
+def test_l1_judges_double_double_where_binary64_is_known_to_its_estimate(entries):
+    """L1 at a point where binary64 deviates from a provider beyond LAX:
+    covered by ten times binary64's own estimate (the E check's rule), the
+    double-double value is judged against the provider there (a pass when
+    it agrees, a fail when it does not) and the point is recorded; beyond
+    ten times the estimate, or without a served double-double value, the
+    binary64 deviation fails L1."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    v = lm.fixture("li_gg_hh")["rows"][1]["providers"]["madloop"]["value"]
+    noisy = v * (1 + 10 * lm.LAX)
+
+    def judged(error, dd_value=None, dd_served=True):
+        record = _record("li_gg_hh")
+        n64 = {"points": list(record["arms"]["ninjars/double/plain"]["points"])}
+        n64["points"][1] = _point(noisy, error)
+        record["arms"]["ninjars/double/plain"] = n64
+        record["arms"]["ninjars/double/checked"] = n64
+        dd = {"points": list(record["arms"]["ninjars/double-double/checked"]["points"])}
+        dd["points"][1] = (
+            _point(v if dd_value is None else dd_value, 1e-30 * v)
+            if dd_served
+            else _point(0, None, status="failed")
+        )
+        record["arms"]["ninjars/double-double/checked"] = dd
+        return lm.judge(record, entry)["L1"]
+
+    covered = judged(2 * lm.LAX * abs(v))
+    assert covered["status"] == "pass"
+    assert {c["point"] for c in covered["estimate_covered_points"]} == {1}
+    assert all(c["deviation"] > lm.LAX for c in covered["estimate_covered_points"])
+    assert max(covered["double_double_max_relative"].values()) <= lm.LAX
+    # The double-double value disagrees with the provider: L1 fails.
+    assert judged(2 * lm.LAX * abs(v), dd_value=noisy)["status"] == "fail"
+    # Beyond ten times the estimate, or no double-double value: binary64 judged.
+    assert judged(lm.LAX * abs(v) / 100)["status"] == "fail"
+    assert judged(2 * lm.LAX * abs(v), dd_served=False)["status"] == "fail"
 
 
 def test_arms_not_run_keep_their_reason(entries):
