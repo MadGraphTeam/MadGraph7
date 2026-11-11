@@ -1,0 +1,44 @@
+{
+  "amplitude_calls_during_original_preparation": 0,
+  "files": {
+    ".tirust-build/current-source-four-lepton-preparation-1/case-plan.json": "818bdee2aec6dc00a39e049526ace8ee396eb86a04d6f18e9b302d0811a742a3",
+    ".tirust-build/current-source-four-lepton-preparation-1/prepared.json": "1e53ca535492a65f002222c6fcbe0b2ea6dbee731ec70323e3754581974e9c82",
+    ".tirust-build/current-source-four-lepton-preparation-1/report/cases.json": "fda7852415d58c0f5d5cf4a31ef4746b5c742d767182cb5dda40643e89fd5a64",
+    ".tirust-build/current-source-four-lepton-preparation-1/report/commands/candidate-qcd_n4_uux_epem_mupmum.mg5": "b1ecb775d964cd8b1ffe30a15d29e29f9ad467663922b5378d1fc7486e82fd1e",
+    ".tirust-build/current-source-four-lepton-preparation-1/report/points/qcd_n4_uux_epem_mupmum.dat": "a5c2c8e47b17fa2ba495eff47e869d41cc04a5c68973b32df00fc2a781455f39",
+    ".tirust-build/current-source-four-lepton-preparation-1/report/points/qcd_n4_uux_epem_mupmum.json": "b59bc647e5e7aaebf3e28ac98d28b9840413508f27ef3e8f24d1c2e06727941f",
+    ".tirust-build/current-source-four-lepton-preparation-1/run.py": "b424cd69bc69afb85be1ce0b643b9b6881b32a29ea53058c1caff53ef3bc9747",
+    ".tirust-build/current-source-four-lepton-preparation-1/specification.json": "40bbd3d9f2908e856b1a91f7b25bf2b2bd988d915dbd865aa97bc47f127a7135",
+    ".tirust-build/current-source-four-lepton-preparation-1/status.json": "706dfd8d09517ebefc836814cad6ead5572dd95d6d203b7c9c7b8e36789f41ca",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/logs/compile-candidate-qcd_n4_uux_epem_mupmum-DHELAS.log": "f85316b4c71f2526f8d875bdc6017e1dbb97a71a9befad49c15f7e46cc64678e",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/logs/compile-candidate-qcd_n4_uux_epem_mupmum-MODEL.log": "b57b0b3778cea9d9c6632eef26ccab48591cf2a9b780b43f66034832b392989a",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/logs/compile-candidate-qcd_n4_uux_epem_mupmum.log": "3b7659b5503b0e55f29fee2cc975e33566da18186e1e69864a8fa425ad1408f0",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/logs/generate-candidate-qcd_n4_uux_epem_mupmum.log": "fc70ccabcdc0a3f1cec902720aa76ba4dd99d074b2776ed3e2753cb2d7cf25ee",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/logs/masses-candidate-qcd_n4_uux_epem_mupmum.log": "bf26fd3d9e8ab9eff3080c43c479e51ae9c65aed72163b0368b2ea2afaf063cc",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/outputs/candidate/qcd_n4_uux_epem_mupmum/SubProcesses/P0_uux_epemmupmum/loop_CT_calls_1.f": "b86bfe526475b014cc5c745668eb650cd81a48792067784876e1b2b745470c3d",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/outputs/candidate/qcd_n4_uux_epem_mupmum/SubProcesses/P0_uux_epemmupmum/loop_matrix.f": "36720bda136ac35706ad4acbf24b4e2cf1774ea041099403d1483ae651e41906",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/outputs/candidate/qcd_n4_uux_epem_mupmum/SubProcesses/global_specs.inc": "6c43e8f89a03fcce334df8f39171cd0f22fb1a1866809b7b888951bb22d4843b",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/outputs/candidate/qcd_n4_uux_epem_mupmum/compilation.json": "09c60658c5407177358c41fb886d5371e8fda2870c191d69508d7eedb7e0c0a5",
+    ".tirust-build/current-source-four-lepton-preparation-1/work/outputs/candidate/qcd_n4_uux_epem_mupmum/generation.json": "f24e0016e301498e3e4fdf74a3f6a2d1ad929fbfc80c1e817c41b8b1c5eb279c",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n1_uux_z-1/candidate-9/candidate-inputs.json": "9ae42c28fbe0fb74ec8f426f3b709ee9d3b22208646b20215d27436ca5574649",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n1_uux_z-1/candidate-9/inputs-after.json": "eaa76a366611072355204aacb3549efd14d503a16c1987a7ec1e2c39c5a42c89",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076"
+  },
+  "generated_sources": [
+    "SubProcesses/global_specs.inc",
+    "SubProcesses/P0_uux_epemmupmum/loop_CT_calls_1.f",
+    "SubProcesses/P0_uux_epemmupmum/loop_matrix.f"
+  ],
+  "native_executions": 0,
+  "source_output": ".tirust-build/current-source-four-lepton-preparation-1/work/outputs/candidate/qcd_n4_uux_epem_mupmum",
+  "topology": {
+    "denominator_call_counts": {
+      "2": 2,
+      "3": 8,
+      "4": 2
+    },
+    "loop_call_groups": 12,
+    "max_denominators": 4,
+    "overall_max_rank": 3
+  }
+}

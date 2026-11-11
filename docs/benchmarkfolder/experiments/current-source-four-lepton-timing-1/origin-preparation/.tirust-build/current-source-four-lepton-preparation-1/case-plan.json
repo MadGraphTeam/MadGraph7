@@ -1,0 +1,54 @@
+{
+  "amplitude_evaluations_authorized": false,
+  "base_seed": 20261109,
+  "canonical_campaign_changed": false,
+  "case": {
+    "id": "qcd_n4_uux_epem_mupmum",
+    "model": "loop_sm",
+    "nfinal": 4,
+    "process": "u u~ > e+ e- mu+ mu- [virt=QCD]",
+    "role": "diagnostic"
+  },
+  "case_index": 0,
+  "cleanup_reserve_seconds": 60.0,
+  "cleanup_source": "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py",
+  "configuration_files": {
+    "input/.mg7_configuration_default.txt": "b5f084ce213523b6664fa23c60713428bd0abaf02db86ef035ed2ded03f18693",
+    "input/mg7_configuration.txt": "568dd763e3410fff45ed10e0772193632d37f247b119aea233e47d548d3fb0fa"
+  },
+  "cpu": 12,
+  "deadline_source": "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/run.py",
+  "effective_seed": 20261109,
+  "files": {
+    ".tirust-build/current-source-four-lepton-preparation-1/README.md": "6ac7498f910610f0829ce159e1a0de135aee3ddf5b23dbd924a70085a74e8c0f",
+    ".tirust-build/current-source-four-lepton-preparation-1/run.py": "b424cd69bc69afb85be1ce0b643b9b6881b32a29ea53058c1caff53ef3bc9747",
+    ".tirust-build/current-source-four-lepton-preparation-1/test_run.py": "5aafc2f00da60ed3c5a631693434c98134a16210c47b6ff05b2e0d3b370da88f",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/cases.json": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/run.py": "726f629210a155b894f423ad76fa1de9d96b1f98270d4aceba2ba240250d6901",
+    "tools/tirust_benchmark.py": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "tools/tirust_benchmark_campaign.py": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+    "tools/tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tools/tirust_benchmark_points.py": "9f95a9a3475a18597ca182f7d42d7e021933bc01458fcbf3484ad63b5655e46c",
+    "tools/tirust_benchmark_worker.f": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9",
+    "tools/tirust_benchmark_worker.py": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+  },
+  "jobs": 1,
+  "library_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "manifest_path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json",
+  "native_work_admitted": false,
+  "numerical_identity_sha256": "3c13ad88b825d9d19b1030b62b317c0f31759e002d8dfdb9050142301a7cae24",
+  "ordinary_cases_added_to_registered_manifest": false,
+  "performance_acceptance_eligible": false,
+  "policy_path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/cases.json",
+  "schema": "madloop-current-source-four-lepton-preparation-v1",
+  "seed_method": "Unchanged freeze_points: config.seed + index of case in custom one-case config; no hash offset.",
+  "source_files_sha256": "afb6e0bea64ea0932751ff4869c206bcea9477d40a39a54bb99d0f06d85b75a6",
+  "source_revision": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "stage_caps_seconds": {
+    "build": 1200.0,
+    "generate": 900.0
+  },
+  "tirust_prefix": ".tirust-build/qp-transport-install/mg/HEPTools/tirust"
+}

@@ -1,0 +1,3868 @@
+{
+  "after": {
+    "cpus": {
+      "0": {
+        "idle_ticks": 136316830,
+        "iowait_ticks": 220210,
+        "total_ticks": 242179986
+      },
+      "1": {
+        "idle_ticks": 149120571,
+        "iowait_ticks": 419600,
+        "total_ticks": 242084922
+      },
+      "10": {
+        "idle_ticks": 135037505,
+        "iowait_ticks": 293608,
+        "total_ticks": 242004190
+      },
+      "100": {
+        "idle_ticks": 167549466,
+        "iowait_ticks": 306579,
+        "total_ticks": 241867778
+      },
+      "101": {
+        "idle_ticks": 166193255,
+        "iowait_ticks": 281850,
+        "total_ticks": 241878756
+      },
+      "102": {
+        "idle_ticks": 171105168,
+        "iowait_ticks": 264120,
+        "total_ticks": 241866439
+      },
+      "103": {
+        "idle_ticks": 167233009,
+        "iowait_ticks": 276183,
+        "total_ticks": 241870401
+      },
+      "104": {
+        "idle_ticks": 156023993,
+        "iowait_ticks": 306085,
+        "total_ticks": 241840606
+      },
+      "105": {
+        "idle_ticks": 154756885,
+        "iowait_ticks": 247695,
+        "total_ticks": 241438813
+      },
+      "106": {
+        "idle_ticks": 154989979,
+        "iowait_ticks": 264228,
+        "total_ticks": 241783513
+      },
+      "107": {
+        "idle_ticks": 152381662,
+        "iowait_ticks": 241442,
+        "total_ticks": 241724139
+      },
+      "108": {
+        "idle_ticks": 156968248,
+        "iowait_ticks": 241776,
+        "total_ticks": 241717377
+      },
+      "109": {
+        "idle_ticks": 160302424,
+        "iowait_ticks": 246101,
+        "total_ticks": 241722809
+      },
+      "11": {
+        "idle_ticks": 132201704,
+        "iowait_ticks": 277498,
+        "total_ticks": 242028526
+      },
+      "110": {
+        "idle_ticks": 157887054,
+        "iowait_ticks": 221237,
+        "total_ticks": 241737110
+      },
+      "111": {
+        "idle_ticks": 163992208,
+        "iowait_ticks": 235143,
+        "total_ticks": 241728949
+      },
+      "112": {
+        "idle_ticks": 143085898,
+        "iowait_ticks": 247787,
+        "total_ticks": 241811216
+      },
+      "113": {
+        "idle_ticks": 156984737,
+        "iowait_ticks": 275103,
+        "total_ticks": 241823179
+      },
+      "114": {
+        "idle_ticks": 154159395,
+        "iowait_ticks": 240483,
+        "total_ticks": 241847997
+      },
+      "115": {
+        "idle_ticks": 155540083,
+        "iowait_ticks": 232748,
+        "total_ticks": 241858892
+      },
+      "116": {
+        "idle_ticks": 161556372,
+        "iowait_ticks": 248696,
+        "total_ticks": 241845891
+      },
+      "117": {
+        "idle_ticks": 160904964,
+        "iowait_ticks": 280531,
+        "total_ticks": 241851921
+      },
+      "118": {
+        "idle_ticks": 165392330,
+        "iowait_ticks": 258672,
+        "total_ticks": 241846662
+      },
+      "119": {
+        "idle_ticks": 166728798,
+        "iowait_ticks": 292949,
+        "total_ticks": 241840592
+      },
+      "12": {
+        "idle_ticks": 132884532,
+        "iowait_ticks": 202386,
+        "total_ticks": 242033713
+      },
+      "120": {
+        "idle_ticks": 150328850,
+        "iowait_ticks": 248000,
+        "total_ticks": 241857800
+      },
+      "121": {
+        "idle_ticks": 168561150,
+        "iowait_ticks": 331175,
+        "total_ticks": 241829012
+      },
+      "122": {
+        "idle_ticks": 167350712,
+        "iowait_ticks": 295994,
+        "total_ticks": 241841591
+      },
+      "123": {
+        "idle_ticks": 172372769,
+        "iowait_ticks": 302170,
+        "total_ticks": 241832431
+      },
+      "124": {
+        "idle_ticks": 173128612,
+        "iowait_ticks": 357179,
+        "total_ticks": 241836445
+      },
+      "125": {
+        "idle_ticks": 166295329,
+        "iowait_ticks": 277660,
+        "total_ticks": 241864218
+      },
+      "126": {
+        "idle_ticks": 169673443,
+        "iowait_ticks": 320489,
+        "total_ticks": 241836926
+      },
+      "127": {
+        "idle_ticks": 167740602,
+        "iowait_ticks": 320239,
+        "total_ticks": 241832552
+      },
+      "128": {
+        "idle_ticks": 137285047,
+        "iowait_ticks": 392793,
+        "total_ticks": 241942235
+      },
+      "129": {
+        "idle_ticks": 152332643,
+        "iowait_ticks": 428430,
+        "total_ticks": 241913691
+      },
+      "13": {
+        "idle_ticks": 134447861,
+        "iowait_ticks": 196102,
+        "total_ticks": 242012985
+      },
+      "130": {
+        "idle_ticks": 155367379,
+        "iowait_ticks": 381023,
+        "total_ticks": 241943539
+      },
+      "131": {
+        "idle_ticks": 159341191,
+        "iowait_ticks": 305166,
+        "total_ticks": 241948551
+      },
+      "132": {
+        "idle_ticks": 156275382,
+        "iowait_ticks": 312216,
+        "total_ticks": 241968523
+      },
+      "133": {
+        "idle_ticks": 162392109,
+        "iowait_ticks": 313830,
+        "total_ticks": 241961039
+      },
+      "134": {
+        "idle_ticks": 154905654,
+        "iowait_ticks": 288556,
+        "total_ticks": 241980200
+      },
+      "135": {
+        "idle_ticks": 157087875,
+        "iowait_ticks": 263169,
+        "total_ticks": 241978956
+      },
+      "136": {
+        "idle_ticks": 143608363,
+        "iowait_ticks": 213836,
+        "total_ticks": 241978579
+      },
+      "137": {
+        "idle_ticks": 158424696,
+        "iowait_ticks": 250321,
+        "total_ticks": 241974878
+      },
+      "138": {
+        "idle_ticks": 159525974,
+        "iowait_ticks": 250814,
+        "total_ticks": 241985859
+      },
+      "139": {
+        "idle_ticks": 159837988,
+        "iowait_ticks": 184344,
+        "total_ticks": 241991494
+      },
+      "14": {
+        "idle_ticks": 133155710,
+        "iowait_ticks": 185574,
+        "total_ticks": 242030072
+      },
+      "140": {
+        "idle_ticks": 163787836,
+        "iowait_ticks": 186237,
+        "total_ticks": 241994334
+      },
+      "141": {
+        "idle_ticks": 162635814,
+        "iowait_ticks": 190853,
+        "total_ticks": 241995447
+      },
+      "142": {
+        "idle_ticks": 168059549,
+        "iowait_ticks": 181572,
+        "total_ticks": 241987082
+      },
+      "143": {
+        "idle_ticks": 164364907,
+        "iowait_ticks": 235628,
+        "total_ticks": 241995804
+      },
+      "144": {
+        "idle_ticks": 141041695,
+        "iowait_ticks": 171024,
+        "total_ticks": 241990741
+      },
+      "145": {
+        "idle_ticks": 150802638,
+        "iowait_ticks": 277664,
+        "total_ticks": 241989572
+      },
+      "146": {
+        "idle_ticks": 158221736,
+        "iowait_ticks": 228316,
+        "total_ticks": 241992327
+      },
+      "147": {
+        "idle_ticks": 167084834,
+        "iowait_ticks": 205857,
+        "total_ticks": 241991311
+      },
+      "148": {
+        "idle_ticks": 161350836,
+        "iowait_ticks": 203733,
+        "total_ticks": 242008224
+      },
+      "149": {
+        "idle_ticks": 165383843,
+        "iowait_ticks": 186351,
+        "total_ticks": 242001571
+      },
+      "15": {
+        "idle_ticks": 165359299,
+        "iowait_ticks": 247537,
+        "total_ticks": 241987483
+      },
+      "150": {
+        "idle_ticks": 161203717,
+        "iowait_ticks": 242818,
+        "total_ticks": 242013362
+      },
+      "151": {
+        "idle_ticks": 170532807,
+        "iowait_ticks": 204467,
+        "total_ticks": 241993107
+      },
+      "152": {
+        "idle_ticks": 137309202,
+        "iowait_ticks": 174570,
+        "total_ticks": 241997657
+      },
+      "153": {
+        "idle_ticks": 151837842,
+        "iowait_ticks": 214860,
+        "total_ticks": 241993390
+      },
+      "154": {
+        "idle_ticks": 159936016,
+        "iowait_ticks": 205274,
+        "total_ticks": 241998376
+      },
+      "155": {
+        "idle_ticks": 165945700,
+        "iowait_ticks": 206250,
+        "total_ticks": 241993799
+      },
+      "156": {
+        "idle_ticks": 171928338,
+        "iowait_ticks": 211246,
+        "total_ticks": 241990640
+      },
+      "157": {
+        "idle_ticks": 165126202,
+        "iowait_ticks": 182168,
+        "total_ticks": 242001549
+      },
+      "158": {
+        "idle_ticks": 171953740,
+        "iowait_ticks": 190065,
+        "total_ticks": 241989714
+      },
+      "159": {
+        "idle_ticks": 163654648,
+        "iowait_ticks": 227754,
+        "total_ticks": 242000411
+      },
+      "16": {
+        "idle_ticks": 125722592,
+        "iowait_ticks": 282621,
+        "total_ticks": 241962025
+      },
+      "160": {
+        "idle_ticks": 132936915,
+        "iowait_ticks": 347769,
+        "total_ticks": 241955093
+      },
+      "161": {
+        "idle_ticks": 135280881,
+        "iowait_ticks": 318068,
+        "total_ticks": 241970926
+      },
+      "162": {
+        "idle_ticks": 144792107,
+        "iowait_ticks": 295845,
+        "total_ticks": 241962054
+      },
+      "163": {
+        "idle_ticks": 151966704,
+        "iowait_ticks": 263440,
+        "total_ticks": 241963874
+      },
+      "164": {
+        "idle_ticks": 158301864,
+        "iowait_ticks": 264932,
+        "total_ticks": 241962544
+      },
+      "165": {
+        "idle_ticks": 155164156,
+        "iowait_ticks": 239665,
+        "total_ticks": 241979652
+      },
+      "166": {
+        "idle_ticks": 157913483,
+        "iowait_ticks": 246059,
+        "total_ticks": 241986488
+      },
+      "167": {
+        "idle_ticks": 158497932,
+        "iowait_ticks": 238135,
+        "total_ticks": 241979909
+      },
+      "168": {
+        "idle_ticks": 139394090,
+        "iowait_ticks": 211632,
+        "total_ticks": 241984733
+      },
+      "169": {
+        "idle_ticks": 151926616,
+        "iowait_ticks": 234043,
+        "total_ticks": 241973619
+      },
+      "17": {
+        "idle_ticks": 150389237,
+        "iowait_ticks": 280332,
+        "total_ticks": 241939876
+      },
+      "170": {
+        "idle_ticks": 159043036,
+        "iowait_ticks": 215536,
+        "total_ticks": 241980614
+      },
+      "171": {
+        "idle_ticks": 164668130,
+        "iowait_ticks": 202388,
+        "total_ticks": 241991305
+      },
+      "172": {
+        "idle_ticks": 165809934,
+        "iowait_ticks": 199036,
+        "total_ticks": 241987150
+      },
+      "173": {
+        "idle_ticks": 139452911,
+        "iowait_ticks": 152452,
+        "total_ticks": 242039424
+      },
+      "174": {
+        "idle_ticks": 163658276,
+        "iowait_ticks": 176208,
+        "total_ticks": 241997703
+      },
+      "175": {
+        "idle_ticks": 167871911,
+        "iowait_ticks": 212134,
+        "total_ticks": 241993602
+      },
+      "176": {
+        "idle_ticks": 140343761,
+        "iowait_ticks": 158616,
+        "total_ticks": 241994228
+      },
+      "177": {
+        "idle_ticks": 151211966,
+        "iowait_ticks": 175796,
+        "total_ticks": 241989779
+      },
+      "178": {
+        "idle_ticks": 160162855,
+        "iowait_ticks": 169747,
+        "total_ticks": 241993552
+      },
+      "179": {
+        "idle_ticks": 165187206,
+        "iowait_ticks": 175360,
+        "total_ticks": 241984744
+      },
+      "18": {
+        "idle_ticks": 132987479,
+        "iowait_ticks": 245896,
+        "total_ticks": 241982288
+      },
+      "180": {
+        "idle_ticks": 167210845,
+        "iowait_ticks": 188747,
+        "total_ticks": 241988432
+      },
+      "181": {
+        "idle_ticks": 169124669,
+        "iowait_ticks": 164426,
+        "total_ticks": 241995261
+      },
+      "182": {
+        "idle_ticks": 169564523,
+        "iowait_ticks": 223669,
+        "total_ticks": 242083330
+      },
+      "183": {
+        "idle_ticks": 173014908,
+        "iowait_ticks": 213262,
+        "total_ticks": 242075513
+      },
+      "184": {
+        "idle_ticks": 142160861,
+        "iowait_ticks": 177952,
+        "total_ticks": 242079032
+      },
+      "185": {
+        "idle_ticks": 155257919,
+        "iowait_ticks": 190158,
+        "total_ticks": 242074422
+      },
+      "186": {
+        "idle_ticks": 164985728,
+        "iowait_ticks": 190543,
+        "total_ticks": 242071194
+      },
+      "187": {
+        "idle_ticks": 172796804,
+        "iowait_ticks": 204634,
+        "total_ticks": 242070895
+      },
+      "188": {
+        "idle_ticks": 171446721,
+        "iowait_ticks": 205094,
+        "total_ticks": 242088722
+      },
+      "189": {
+        "idle_ticks": 153884909,
+        "iowait_ticks": 173714,
+        "total_ticks": 242104179
+      },
+      "19": {
+        "idle_ticks": 136363128,
+        "iowait_ticks": 218204,
+        "total_ticks": 241981326
+      },
+      "190": {
+        "idle_ticks": 168433016,
+        "iowait_ticks": 198746,
+        "total_ticks": 242076633
+      },
+      "191": {
+        "idle_ticks": 174748275,
+        "iowait_ticks": 193720,
+        "total_ticks": 242086197
+      },
+      "192": {
+        "idle_ticks": 125714090,
+        "iowait_ticks": 410874,
+        "total_ticks": 242000551
+      },
+      "193": {
+        "idle_ticks": 134699091,
+        "iowait_ticks": 410758,
+        "total_ticks": 242001254
+      },
+      "194": {
+        "idle_ticks": 138818872,
+        "iowait_ticks": 403362,
+        "total_ticks": 242005668
+      },
+      "195": {
+        "idle_ticks": 143823607,
+        "iowait_ticks": 371469,
+        "total_ticks": 242009740
+      },
+      "196": {
+        "idle_ticks": 146100035,
+        "iowait_ticks": 321332,
+        "total_ticks": 242014305
+      },
+      "197": {
+        "idle_ticks": 147816400,
+        "iowait_ticks": 328877,
+        "total_ticks": 242011185
+      },
+      "198": {
+        "idle_ticks": 155039735,
+        "iowait_ticks": 295002,
+        "total_ticks": 242015808
+      },
+      "199": {
+        "idle_ticks": 155903307,
+        "iowait_ticks": 284416,
+        "total_ticks": 242021572
+      },
+      "2": {
+        "idle_ticks": 158485365,
+        "iowait_ticks": 420404,
+        "total_ticks": 242011011
+      },
+      "20": {
+        "idle_ticks": 123109116,
+        "iowait_ticks": 191814,
+        "total_ticks": 242051609
+      },
+      "200": {
+        "idle_ticks": 129632348,
+        "iowait_ticks": 211035,
+        "total_ticks": 242045223
+      },
+      "201": {
+        "idle_ticks": 142313500,
+        "iowait_ticks": 219206,
+        "total_ticks": 242041395
+      },
+      "202": {
+        "idle_ticks": 151054103,
+        "iowait_ticks": 225671,
+        "total_ticks": 242045650
+      },
+      "203": {
+        "idle_ticks": 155201093,
+        "iowait_ticks": 265557,
+        "total_ticks": 242043977
+      },
+      "204": {
+        "idle_ticks": 156593722,
+        "iowait_ticks": 228272,
+        "total_ticks": 242054265
+      },
+      "205": {
+        "idle_ticks": 141158013,
+        "iowait_ticks": 158454,
+        "total_ticks": 242102723
+      },
+      "206": {
+        "idle_ticks": 157130744,
+        "iowait_ticks": 247234,
+        "total_ticks": 242056115
+      },
+      "207": {
+        "idle_ticks": 153420995,
+        "iowait_ticks": 232959,
+        "total_ticks": 242055363
+      },
+      "208": {
+        "idle_ticks": 131557923,
+        "iowait_ticks": 181227,
+        "total_ticks": 242060713
+      },
+      "209": {
+        "idle_ticks": 146431854,
+        "iowait_ticks": 326911,
+        "total_ticks": 242059863
+      },
+      "21": {
+        "idle_ticks": 139427258,
+        "iowait_ticks": 227574,
+        "total_ticks": 242013988
+      },
+      "210": {
+        "idle_ticks": 152931946,
+        "iowait_ticks": 314029,
+        "total_ticks": 242070902
+      },
+      "211": {
+        "idle_ticks": 162341411,
+        "iowait_ticks": 244473,
+        "total_ticks": 242067644
+      },
+      "212": {
+        "idle_ticks": 147640780,
+        "iowait_ticks": 176593,
+        "total_ticks": 242099152
+      },
+      "213": {
+        "idle_ticks": 163426704,
+        "iowait_ticks": 265954,
+        "total_ticks": 242070291
+      },
+      "214": {
+        "idle_ticks": 166251876,
+        "iowait_ticks": 216480,
+        "total_ticks": 242065702
+      },
+      "215": {
+        "idle_ticks": 163534430,
+        "iowait_ticks": 219480,
+        "total_ticks": 242066433
+      },
+      "216": {
+        "idle_ticks": 142218492,
+        "iowait_ticks": 176370,
+        "total_ticks": 242085010
+      },
+      "217": {
+        "idle_ticks": 154591001,
+        "iowait_ticks": 257743,
+        "total_ticks": 242081670
+      },
+      "218": {
+        "idle_ticks": 162678895,
+        "iowait_ticks": 207809,
+        "total_ticks": 242079752
+      },
+      "219": {
+        "idle_ticks": 150520779,
+        "iowait_ticks": 171107,
+        "total_ticks": 242108546
+      },
+      "22": {
+        "idle_ticks": 120217220,
+        "iowait_ticks": 182183,
+        "total_ticks": 242065948
+      },
+      "220": {
+        "idle_ticks": 171144785,
+        "iowait_ticks": 200970,
+        "total_ticks": 242079484
+      },
+      "221": {
+        "idle_ticks": 169299504,
+        "iowait_ticks": 195081,
+        "total_ticks": 242083246
+      },
+      "222": {
+        "idle_ticks": 169375169,
+        "iowait_ticks": 198242,
+        "total_ticks": 242081272
+      },
+      "223": {
+        "idle_ticks": 168761942,
+        "iowait_ticks": 196628,
+        "total_ticks": 242082924
+      },
+      "224": {
+        "idle_ticks": 130492463,
+        "iowait_ticks": 498430,
+        "total_ticks": 241982193
+      },
+      "225": {
+        "idle_ticks": 141509182,
+        "iowait_ticks": 524075,
+        "total_ticks": 241976223
+      },
+      "226": {
+        "idle_ticks": 148240358,
+        "iowait_ticks": 621963,
+        "total_ticks": 241980681
+      },
+      "227": {
+        "idle_ticks": 154298089,
+        "iowait_ticks": 448690,
+        "total_ticks": 241982494
+      },
+      "228": {
+        "idle_ticks": 157363666,
+        "iowait_ticks": 412549,
+        "total_ticks": 241984530
+      },
+      "229": {
+        "idle_ticks": 159548616,
+        "iowait_ticks": 361407,
+        "total_ticks": 241991003
+      },
+      "23": {
+        "idle_ticks": 154694962,
+        "iowait_ticks": 257189,
+        "total_ticks": 241986372
+      },
+      "230": {
+        "idle_ticks": 157803397,
+        "iowait_ticks": 338833,
+        "total_ticks": 241996062
+      },
+      "231": {
+        "idle_ticks": 160933739,
+        "iowait_ticks": 365388,
+        "total_ticks": 241992435
+      },
+      "232": {
+        "idle_ticks": 132012115,
+        "iowait_ticks": 182670,
+        "total_ticks": 242061426
+      },
+      "233": {
+        "idle_ticks": 147547839,
+        "iowait_ticks": 196715,
+        "total_ticks": 242058093
+      },
+      "234": {
+        "idle_ticks": 157893034,
+        "iowait_ticks": 202938,
+        "total_ticks": 242044209
+      },
+      "235": {
+        "idle_ticks": 163778166,
+        "iowait_ticks": 199906,
+        "total_ticks": 242041281
+      },
+      "236": {
+        "idle_ticks": 163609945,
+        "iowait_ticks": 204621,
+        "total_ticks": 242049522
+      },
+      "237": {
+        "idle_ticks": 164342979,
+        "iowait_ticks": 199664,
+        "total_ticks": 242048228
+      },
+      "238": {
+        "idle_ticks": 165072627,
+        "iowait_ticks": 229734,
+        "total_ticks": 242047779
+      },
+      "239": {
+        "idle_ticks": 165355158,
+        "iowait_ticks": 215605,
+        "total_ticks": 242047884
+      },
+      "24": {
+        "idle_ticks": 141873667,
+        "iowait_ticks": 263959,
+        "total_ticks": 241966182
+      },
+      "240": {
+        "idle_ticks": 133842174,
+        "iowait_ticks": 236025,
+        "total_ticks": 242062392
+      },
+      "241": {
+        "idle_ticks": 147533086,
+        "iowait_ticks": 221241,
+        "total_ticks": 242058419
+      },
+      "242": {
+        "idle_ticks": 159548426,
+        "iowait_ticks": 208815,
+        "total_ticks": 242052039
+      },
+      "243": {
+        "idle_ticks": 163536884,
+        "iowait_ticks": 207650,
+        "total_ticks": 242038961
+      },
+      "244": {
+        "idle_ticks": 166052166,
+        "iowait_ticks": 224387,
+        "total_ticks": 242053777
+      },
+      "245": {
+        "idle_ticks": 167015344,
+        "iowait_ticks": 235704,
+        "total_ticks": 242038107
+      },
+      "246": {
+        "idle_ticks": 165437501,
+        "iowait_ticks": 226764,
+        "total_ticks": 242041375
+      },
+      "247": {
+        "idle_ticks": 166921234,
+        "iowait_ticks": 227259,
+        "total_ticks": 242038349
+      },
+      "248": {
+        "idle_ticks": 137067038,
+        "iowait_ticks": 198643,
+        "total_ticks": 242061525
+      },
+      "249": {
+        "idle_ticks": 152805209,
+        "iowait_ticks": 375288,
+        "total_ticks": 242055964
+      },
+      "25": {
+        "idle_ticks": 150618402,
+        "iowait_ticks": 257763,
+        "total_ticks": 241964869
+      },
+      "250": {
+        "idle_ticks": 160093158,
+        "iowait_ticks": 210013,
+        "total_ticks": 242058835
+      },
+      "251": {
+        "idle_ticks": 164603202,
+        "iowait_ticks": 214182,
+        "total_ticks": 242057173
+      },
+      "252": {
+        "idle_ticks": 167638954,
+        "iowait_ticks": 205043,
+        "total_ticks": 242053708
+      },
+      "253": {
+        "idle_ticks": 168324910,
+        "iowait_ticks": 205145,
+        "total_ticks": 242053831
+      },
+      "254": {
+        "idle_ticks": 168049660,
+        "iowait_ticks": 197247,
+        "total_ticks": 242053956
+      },
+      "255": {
+        "idle_ticks": 169406216,
+        "iowait_ticks": 200954,
+        "total_ticks": 242049081
+      },
+      "256": {
+        "idle_ticks": 110397479,
+        "iowait_ticks": 178214,
+        "total_ticks": 242009211
+      },
+      "257": {
+        "idle_ticks": 172038128,
+        "iowait_ticks": 276473,
+        "total_ticks": 241923013
+      },
+      "258": {
+        "idle_ticks": 175519173,
+        "iowait_ticks": 275839,
+        "total_ticks": 241782315
+      },
+      "259": {
+        "idle_ticks": 182167018,
+        "iowait_ticks": 288609,
+        "total_ticks": 241986688
+      },
+      "26": {
+        "idle_ticks": 151550858,
+        "iowait_ticks": 257647,
+        "total_ticks": 241971173
+      },
+      "260": {
+        "idle_ticks": 172757169,
+        "iowait_ticks": 232528,
+        "total_ticks": 241816713
+      },
+      "261": {
+        "idle_ticks": 178349931,
+        "iowait_ticks": 264639,
+        "total_ticks": 241812761
+      },
+      "262": {
+        "idle_ticks": 175971105,
+        "iowait_ticks": 248172,
+        "total_ticks": 242013021
+      },
+      "263": {
+        "idle_ticks": 176316120,
+        "iowait_ticks": 228932,
+        "total_ticks": 242022329
+      },
+      "264": {
+        "idle_ticks": 193133587,
+        "iowait_ticks": 271362,
+        "total_ticks": 242023596
+      },
+      "265": {
+        "idle_ticks": 168584023,
+        "iowait_ticks": 251198,
+        "total_ticks": 242066450
+      },
+      "266": {
+        "idle_ticks": 179719341,
+        "iowait_ticks": 213377,
+        "total_ticks": 242050941
+      },
+      "267": {
+        "idle_ticks": 155581017,
+        "iowait_ticks": 209274,
+        "total_ticks": 242079571
+      },
+      "268": {
+        "idle_ticks": 147845109,
+        "iowait_ticks": 185044,
+        "total_ticks": 242099967
+      },
+      "269": {
+        "idle_ticks": 187572074,
+        "iowait_ticks": 241647,
+        "total_ticks": 242039904
+      },
+      "27": {
+        "idle_ticks": 136618144,
+        "iowait_ticks": 232121,
+        "total_ticks": 242006372
+      },
+      "270": {
+        "idle_ticks": 180074176,
+        "iowait_ticks": 214674,
+        "total_ticks": 242042465
+      },
+      "271": {
+        "idle_ticks": 185508569,
+        "iowait_ticks": 268164,
+        "total_ticks": 242013130
+      },
+      "272": {
+        "idle_ticks": 184708489,
+        "iowait_ticks": 298577,
+        "total_ticks": 242039522
+      },
+      "273": {
+        "idle_ticks": 187665469,
+        "iowait_ticks": 259687,
+        "total_ticks": 242033630
+      },
+      "274": {
+        "idle_ticks": 188123569,
+        "iowait_ticks": 249358,
+        "total_ticks": 242034045
+      },
+      "275": {
+        "idle_ticks": 192928046,
+        "iowait_ticks": 259096,
+        "total_ticks": 241999990
+      },
+      "276": {
+        "idle_ticks": 191103025,
+        "iowait_ticks": 243834,
+        "total_ticks": 241999320
+      },
+      "277": {
+        "idle_ticks": 189195275,
+        "iowait_ticks": 258572,
+        "total_ticks": 242003380
+      },
+      "278": {
+        "idle_ticks": 192086227,
+        "iowait_ticks": 233320,
+        "total_ticks": 242047711
+      },
+      "279": {
+        "idle_ticks": 190831415,
+        "iowait_ticks": 290004,
+        "total_ticks": 242017818
+      },
+      "28": {
+        "idle_ticks": 133133031,
+        "iowait_ticks": 240530,
+        "total_ticks": 242011611
+      },
+      "280": {
+        "idle_ticks": 188626635,
+        "iowait_ticks": 275805,
+        "total_ticks": 242009437
+      },
+      "281": {
+        "idle_ticks": 191176543,
+        "iowait_ticks": 284197,
+        "total_ticks": 242010800
+      },
+      "282": {
+        "idle_ticks": 189738081,
+        "iowait_ticks": 276409,
+        "total_ticks": 242009600
+      },
+      "283": {
+        "idle_ticks": 192467451,
+        "iowait_ticks": 255895,
+        "total_ticks": 242010376
+      },
+      "284": {
+        "idle_ticks": 192633030,
+        "iowait_ticks": 252067,
+        "total_ticks": 241980801
+      },
+      "285": {
+        "idle_ticks": 192873174,
+        "iowait_ticks": 253828,
+        "total_ticks": 241995327
+      },
+      "286": {
+        "idle_ticks": 191993773,
+        "iowait_ticks": 270035,
+        "total_ticks": 241977398
+      },
+      "287": {
+        "idle_ticks": 190843073,
+        "iowait_ticks": 279834,
+        "total_ticks": 241981519
+      },
+      "288": {
+        "idle_ticks": 181074010,
+        "iowait_ticks": 272711,
+        "total_ticks": 242054658
+      },
+      "289": {
+        "idle_ticks": 186369197,
+        "iowait_ticks": 301283,
+        "total_ticks": 242032128
+      },
+      "29": {
+        "idle_ticks": 126418073,
+        "iowait_ticks": 238525,
+        "total_ticks": 242032872
+      },
+      "290": {
+        "idle_ticks": 177956028,
+        "iowait_ticks": 244447,
+        "total_ticks": 242052372
+      },
+      "291": {
+        "idle_ticks": 184491225,
+        "iowait_ticks": 287737,
+        "total_ticks": 242038453
+      },
+      "292": {
+        "idle_ticks": 171874764,
+        "iowait_ticks": 262231,
+        "total_ticks": 242065823
+      },
+      "293": {
+        "idle_ticks": 194268340,
+        "iowait_ticks": 309208,
+        "total_ticks": 242022083
+      },
+      "294": {
+        "idle_ticks": 185973294,
+        "iowait_ticks": 279941,
+        "total_ticks": 242037896
+      },
+      "295": {
+        "idle_ticks": 182084187,
+        "iowait_ticks": 279882,
+        "total_ticks": 242041779
+      },
+      "296": {
+        "idle_ticks": 180770604,
+        "iowait_ticks": 252606,
+        "total_ticks": 241739475
+      },
+      "297": {
+        "idle_ticks": 176175608,
+        "iowait_ticks": 275255,
+        "total_ticks": 241767466
+      },
+      "298": {
+        "idle_ticks": 179761493,
+        "iowait_ticks": 244215,
+        "total_ticks": 241731371
+      },
+      "299": {
+        "idle_ticks": 169839093,
+        "iowait_ticks": 243279,
+        "total_ticks": 241762213
+      },
+      "3": {
+        "idle_ticks": 160447258,
+        "iowait_ticks": 467235,
+        "total_ticks": 241987351
+      },
+      "30": {
+        "idle_ticks": 149921134,
+        "iowait_ticks": 251215,
+        "total_ticks": 241972588
+      },
+      "300": {
+        "idle_ticks": 171084771,
+        "iowait_ticks": 257144,
+        "total_ticks": 241754640
+      },
+      "301": {
+        "idle_ticks": 178894412,
+        "iowait_ticks": 297786,
+        "total_ticks": 241742735
+      },
+      "302": {
+        "idle_ticks": 180447506,
+        "iowait_ticks": 281694,
+        "total_ticks": 241737675
+      },
+      "303": {
+        "idle_ticks": 170469160,
+        "iowait_ticks": 256485,
+        "total_ticks": 241739514
+      },
+      "304": {
+        "idle_ticks": 176106092,
+        "iowait_ticks": 259887,
+        "total_ticks": 241786211
+      },
+      "305": {
+        "idle_ticks": 183891407,
+        "iowait_ticks": 275580,
+        "total_ticks": 241759960
+      },
+      "306": {
+        "idle_ticks": 182916280,
+        "iowait_ticks": 318488,
+        "total_ticks": 241766020
+      },
+      "307": {
+        "idle_ticks": 184998593,
+        "iowait_ticks": 272770,
+        "total_ticks": 241752822
+      },
+      "308": {
+        "idle_ticks": 180233502,
+        "iowait_ticks": 275375,
+        "total_ticks": 241757342
+      },
+      "309": {
+        "idle_ticks": 182340226,
+        "iowait_ticks": 257951,
+        "total_ticks": 241764354
+      },
+      "31": {
+        "idle_ticks": 149534339,
+        "iowait_ticks": 247835,
+        "total_ticks": 241984397
+      },
+      "310": {
+        "idle_ticks": 180517656,
+        "iowait_ticks": 261821,
+        "total_ticks": 241765408
+      },
+      "311": {
+        "idle_ticks": 181218769,
+        "iowait_ticks": 282108,
+        "total_ticks": 241762377
+      },
+      "312": {
+        "idle_ticks": 174919343,
+        "iowait_ticks": 297980,
+        "total_ticks": 241785539
+      },
+      "313": {
+        "idle_ticks": 171496785,
+        "iowait_ticks": 269536,
+        "total_ticks": 241789530
+      },
+      "314": {
+        "idle_ticks": 170158583,
+        "iowait_ticks": 245356,
+        "total_ticks": 241801519
+      },
+      "315": {
+        "idle_ticks": 176374620,
+        "iowait_ticks": 309014,
+        "total_ticks": 241793327
+      },
+      "316": {
+        "idle_ticks": 173721998,
+        "iowait_ticks": 274836,
+        "total_ticks": 241790582
+      },
+      "317": {
+        "idle_ticks": 178964549,
+        "iowait_ticks": 311229,
+        "total_ticks": 241784340
+      },
+      "318": {
+        "idle_ticks": 157375830,
+        "iowait_ticks": 268826,
+        "total_ticks": 241810024
+      },
+      "319": {
+        "idle_ticks": 171871371,
+        "iowait_ticks": 422654,
+        "total_ticks": 241776140
+      },
+      "32": {
+        "idle_ticks": 108620342,
+        "iowait_ticks": 230313,
+        "total_ticks": 242062897
+      },
+      "320": {
+        "idle_ticks": 175311765,
+        "iowait_ticks": 305377,
+        "total_ticks": 241687333
+      },
+      "321": {
+        "idle_ticks": 170853382,
+        "iowait_ticks": 251886,
+        "total_ticks": 241695816
+      },
+      "322": {
+        "idle_ticks": 174482707,
+        "iowait_ticks": 278245,
+        "total_ticks": 241672998
+      },
+      "323": {
+        "idle_ticks": 174755182,
+        "iowait_ticks": 318999,
+        "total_ticks": 241667483
+      },
+      "324": {
+        "idle_ticks": 175091406,
+        "iowait_ticks": 334949,
+        "total_ticks": 241678133
+      },
+      "325": {
+        "idle_ticks": 175620634,
+        "iowait_ticks": 298397,
+        "total_ticks": 241684958
+      },
+      "326": {
+        "idle_ticks": 170334653,
+        "iowait_ticks": 275210,
+        "total_ticks": 241693240
+      },
+      "327": {
+        "idle_ticks": 163172143,
+        "iowait_ticks": 241586,
+        "total_ticks": 241702320
+      },
+      "328": {
+        "idle_ticks": 184645252,
+        "iowait_ticks": 309889,
+        "total_ticks": 241989122
+      },
+      "329": {
+        "idle_ticks": 182052448,
+        "iowait_ticks": 326781,
+        "total_ticks": 241989630
+      },
+      "33": {
+        "idle_ticks": 137207564,
+        "iowait_ticks": 283161,
+        "total_ticks": 242005181
+      },
+      "330": {
+        "idle_ticks": 187430361,
+        "iowait_ticks": 304722,
+        "total_ticks": 241981333
+      },
+      "331": {
+        "idle_ticks": 183931695,
+        "iowait_ticks": 302673,
+        "total_ticks": 241989934
+      },
+      "332": {
+        "idle_ticks": 184486358,
+        "iowait_ticks": 264249,
+        "total_ticks": 241991760
+      },
+      "333": {
+        "idle_ticks": 183220330,
+        "iowait_ticks": 276821,
+        "total_ticks": 241990100
+      },
+      "334": {
+        "idle_ticks": 183213590,
+        "iowait_ticks": 277503,
+        "total_ticks": 241993954
+      },
+      "335": {
+        "idle_ticks": 187901622,
+        "iowait_ticks": 324739,
+        "total_ticks": 241975836
+      },
+      "336": {
+        "idle_ticks": 192779279,
+        "iowait_ticks": 390642,
+        "total_ticks": 241926894
+      },
+      "337": {
+        "idle_ticks": 186260147,
+        "iowait_ticks": 322342,
+        "total_ticks": 241922248
+      },
+      "338": {
+        "idle_ticks": 193219302,
+        "iowait_ticks": 353918,
+        "total_ticks": 241903813
+      },
+      "339": {
+        "idle_ticks": 192973207,
+        "iowait_ticks": 345125,
+        "total_ticks": 241898781
+      },
+      "34": {
+        "idle_ticks": 124903571,
+        "iowait_ticks": 248026,
+        "total_ticks": 242052142
+      },
+      "340": {
+        "idle_ticks": 191170221,
+        "iowait_ticks": 294604,
+        "total_ticks": 241745447
+      },
+      "341": {
+        "idle_ticks": 194939036,
+        "iowait_ticks": 297607,
+        "total_ticks": 241755688
+      },
+      "342": {
+        "idle_ticks": 182873381,
+        "iowait_ticks": 266295,
+        "total_ticks": 241925104
+      },
+      "343": {
+        "idle_ticks": 189040119,
+        "iowait_ticks": 273098,
+        "total_ticks": 241975670
+      },
+      "344": {
+        "idle_ticks": 190620348,
+        "iowait_ticks": 316547,
+        "total_ticks": 241803904
+      },
+      "345": {
+        "idle_ticks": 189436261,
+        "iowait_ticks": 327964,
+        "total_ticks": 241826845
+      },
+      "346": {
+        "idle_ticks": 173836632,
+        "iowait_ticks": 258350,
+        "total_ticks": 241827675
+      },
+      "347": {
+        "idle_ticks": 183868826,
+        "iowait_ticks": 289042,
+        "total_ticks": 241965204
+      },
+      "348": {
+        "idle_ticks": 183186227,
+        "iowait_ticks": 292272,
+        "total_ticks": 241965391
+      },
+      "349": {
+        "idle_ticks": 184997279,
+        "iowait_ticks": 288403,
+        "total_ticks": 241964763
+      },
+      "35": {
+        "idle_ticks": 147269179,
+        "iowait_ticks": 290091,
+        "total_ticks": 242006382
+      },
+      "350": {
+        "idle_ticks": 181780107,
+        "iowait_ticks": 407812,
+        "total_ticks": 241973252
+      },
+      "351": {
+        "idle_ticks": 181978563,
+        "iowait_ticks": 281113,
+        "total_ticks": 241964876
+      },
+      "352": {
+        "idle_ticks": 167069937,
+        "iowait_ticks": 232734,
+        "total_ticks": 241904143
+      },
+      "353": {
+        "idle_ticks": 171619327,
+        "iowait_ticks": 255775,
+        "total_ticks": 241897413
+      },
+      "354": {
+        "idle_ticks": 177147622,
+        "iowait_ticks": 280509,
+        "total_ticks": 241791241
+      },
+      "355": {
+        "idle_ticks": 169152674,
+        "iowait_ticks": 261966,
+        "total_ticks": 241905543
+      },
+      "356": {
+        "idle_ticks": 177293578,
+        "iowait_ticks": 272036,
+        "total_ticks": 241803698
+      },
+      "357": {
+        "idle_ticks": 177772034,
+        "iowait_ticks": 278480,
+        "total_ticks": 241787962
+      },
+      "358": {
+        "idle_ticks": 174772080,
+        "iowait_ticks": 250496,
+        "total_ticks": 241866831
+      },
+      "359": {
+        "idle_ticks": 184453748,
+        "iowait_ticks": 294945,
+        "total_ticks": 241842902
+      },
+      "36": {
+        "idle_ticks": 135156636,
+        "iowait_ticks": 259233,
+        "total_ticks": 242047507
+      },
+      "360": {
+        "idle_ticks": 179688809,
+        "iowait_ticks": 325327,
+        "total_ticks": 241774194
+      },
+      "361": {
+        "idle_ticks": 179611863,
+        "iowait_ticks": 297417,
+        "total_ticks": 241859039
+      },
+      "362": {
+        "idle_ticks": 178364207,
+        "iowait_ticks": 300677,
+        "total_ticks": 241757883
+      },
+      "363": {
+        "idle_ticks": 177386796,
+        "iowait_ticks": 271624,
+        "total_ticks": 241865287
+      },
+      "364": {
+        "idle_ticks": 173997188,
+        "iowait_ticks": 264949,
+        "total_ticks": 241870349
+      },
+      "365": {
+        "idle_ticks": 184010132,
+        "iowait_ticks": 292835,
+        "total_ticks": 241762122
+      },
+      "366": {
+        "idle_ticks": 176239743,
+        "iowait_ticks": 248490,
+        "total_ticks": 241867208
+      },
+      "367": {
+        "idle_ticks": 173688672,
+        "iowait_ticks": 252380,
+        "total_ticks": 241787181
+      },
+      "368": {
+        "idle_ticks": 185726936,
+        "iowait_ticks": 301973,
+        "total_ticks": 241844438
+      },
+      "369": {
+        "idle_ticks": 182951205,
+        "iowait_ticks": 312300,
+        "total_ticks": 241847150
+      },
+      "37": {
+        "idle_ticks": 168797544,
+        "iowait_ticks": 293950,
+        "total_ticks": 241993497
+      },
+      "370": {
+        "idle_ticks": 178367713,
+        "iowait_ticks": 273094,
+        "total_ticks": 241861915
+      },
+      "371": {
+        "idle_ticks": 188039201,
+        "iowait_ticks": 303843,
+        "total_ticks": 241835999
+      },
+      "372": {
+        "idle_ticks": 187492396,
+        "iowait_ticks": 311392,
+        "total_ticks": 241781672
+      },
+      "373": {
+        "idle_ticks": 188406240,
+        "iowait_ticks": 302507,
+        "total_ticks": 241828375
+      },
+      "374": {
+        "idle_ticks": 188639111,
+        "iowait_ticks": 341008,
+        "total_ticks": 241820454
+      },
+      "375": {
+        "idle_ticks": 188111917,
+        "iowait_ticks": 308380,
+        "total_ticks": 241823174
+      },
+      "376": {
+        "idle_ticks": 179356027,
+        "iowait_ticks": 271468,
+        "total_ticks": 241879908
+      },
+      "377": {
+        "idle_ticks": 187515252,
+        "iowait_ticks": 307026,
+        "total_ticks": 241854613
+      },
+      "378": {
+        "idle_ticks": 188469224,
+        "iowait_ticks": 296767,
+        "total_ticks": 241863422
+      },
+      "379": {
+        "idle_ticks": 182130157,
+        "iowait_ticks": 305457,
+        "total_ticks": 241867446
+      },
+      "38": {
+        "idle_ticks": 145422492,
+        "iowait_ticks": 280510,
+        "total_ticks": 242014211
+      },
+      "380": {
+        "idle_ticks": 190898007,
+        "iowait_ticks": 316612,
+        "total_ticks": 241860117
+      },
+      "381": {
+        "idle_ticks": 187168805,
+        "iowait_ticks": 288747,
+        "total_ticks": 241854964
+      },
+      "382": {
+        "idle_ticks": 189821779,
+        "iowait_ticks": 297889,
+        "total_ticks": 241861721
+      },
+      "383": {
+        "idle_ticks": 192361632,
+        "iowait_ticks": 1028984,
+        "total_ticks": 241789108
+      },
+      "39": {
+        "idle_ticks": 149045248,
+        "iowait_ticks": 251758,
+        "total_ticks": 242012147
+      },
+      "4": {
+        "idle_ticks": 133497401,
+        "iowait_ticks": 346621,
+        "total_ticks": 242030985
+      },
+      "40": {
+        "idle_ticks": 140591014,
+        "iowait_ticks": 229739,
+        "total_ticks": 242005185
+      },
+      "41": {
+        "idle_ticks": 134313778,
+        "iowait_ticks": 204976,
+        "total_ticks": 241970507
+      },
+      "42": {
+        "idle_ticks": 136260485,
+        "iowait_ticks": 216729,
+        "total_ticks": 241986290
+      },
+      "43": {
+        "idle_ticks": 157716731,
+        "iowait_ticks": 231742,
+        "total_ticks": 241998241
+      },
+      "44": {
+        "idle_ticks": 164487106,
+        "iowait_ticks": 260324,
+        "total_ticks": 241983131
+      },
+      "45": {
+        "idle_ticks": 147967217,
+        "iowait_ticks": 234662,
+        "total_ticks": 242004008
+      },
+      "46": {
+        "idle_ticks": 160749949,
+        "iowait_ticks": 248396,
+        "total_ticks": 241993358
+      },
+      "47": {
+        "idle_ticks": 156066738,
+        "iowait_ticks": 241420,
+        "total_ticks": 241991794
+      },
+      "48": {
+        "idle_ticks": 134070038,
+        "iowait_ticks": 270308,
+        "total_ticks": 241996827
+      },
+      "49": {
+        "idle_ticks": 158206564,
+        "iowait_ticks": 303648,
+        "total_ticks": 241972897
+      },
+      "5": {
+        "idle_ticks": 148939879,
+        "iowait_ticks": 387592,
+        "total_ticks": 241991776
+      },
+      "50": {
+        "idle_ticks": 155803951,
+        "iowait_ticks": 312484,
+        "total_ticks": 241978573
+      },
+      "51": {
+        "idle_ticks": 142524524,
+        "iowait_ticks": 305595,
+        "total_ticks": 242013742
+      },
+      "52": {
+        "idle_ticks": 156388134,
+        "iowait_ticks": 332379,
+        "total_ticks": 241994443
+      },
+      "53": {
+        "idle_ticks": 138811148,
+        "iowait_ticks": 281732,
+        "total_ticks": 242026787
+      },
+      "54": {
+        "idle_ticks": 156527557,
+        "iowait_ticks": 319713,
+        "total_ticks": 241992379
+      },
+      "55": {
+        "idle_ticks": 158321190,
+        "iowait_ticks": 279602,
+        "total_ticks": 241988849
+      },
+      "56": {
+        "idle_ticks": 149760050,
+        "iowait_ticks": 262210,
+        "total_ticks": 241980047
+      },
+      "57": {
+        "idle_ticks": 173159855,
+        "iowait_ticks": 304124,
+        "total_ticks": 241969341
+      },
+      "58": {
+        "idle_ticks": 141361713,
+        "iowait_ticks": 254718,
+        "total_ticks": 242039644
+      },
+      "59": {
+        "idle_ticks": 161026372,
+        "iowait_ticks": 311634,
+        "total_ticks": 241990641
+      },
+      "6": {
+        "idle_ticks": 167276722,
+        "iowait_ticks": 404245,
+        "total_ticks": 241961938
+      },
+      "60": {
+        "idle_ticks": 175217581,
+        "iowait_ticks": 364457,
+        "total_ticks": 241973289
+      },
+      "61": {
+        "idle_ticks": 166294664,
+        "iowait_ticks": 365449,
+        "total_ticks": 241983237
+      },
+      "62": {
+        "idle_ticks": 152261870,
+        "iowait_ticks": 286824,
+        "total_ticks": 242018649
+      },
+      "63": {
+        "idle_ticks": 170241262,
+        "iowait_ticks": 295438,
+        "total_ticks": 241987951
+      },
+      "64": {
+        "idle_ticks": 144279675,
+        "iowait_ticks": 286521,
+        "total_ticks": 241992926
+      },
+      "65": {
+        "idle_ticks": 160108157,
+        "iowait_ticks": 346103,
+        "total_ticks": 241983350
+      },
+      "66": {
+        "idle_ticks": 165773185,
+        "iowait_ticks": 387149,
+        "total_ticks": 241979465
+      },
+      "67": {
+        "idle_ticks": 161778163,
+        "iowait_ticks": 306839,
+        "total_ticks": 241994813
+      },
+      "68": {
+        "idle_ticks": 163210213,
+        "iowait_ticks": 392552,
+        "total_ticks": 241995853
+      },
+      "69": {
+        "idle_ticks": 133382636,
+        "iowait_ticks": 258967,
+        "total_ticks": 242085951
+      },
+      "7": {
+        "idle_ticks": 136282047,
+        "iowait_ticks": 312234,
+        "total_ticks": 242020012
+      },
+      "70": {
+        "idle_ticks": 164140648,
+        "iowait_ticks": 312422,
+        "total_ticks": 242010185
+      },
+      "71": {
+        "idle_ticks": 159664137,
+        "iowait_ticks": 346282,
+        "total_ticks": 242019959
+      },
+      "72": {
+        "idle_ticks": 144407232,
+        "iowait_ticks": 296465,
+        "total_ticks": 241992932
+      },
+      "73": {
+        "idle_ticks": 156598502,
+        "iowait_ticks": 331794,
+        "total_ticks": 241988371
+      },
+      "74": {
+        "idle_ticks": 164927415,
+        "iowait_ticks": 357186,
+        "total_ticks": 241992123
+      },
+      "75": {
+        "idle_ticks": 160955254,
+        "iowait_ticks": 301887,
+        "total_ticks": 241992721
+      },
+      "76": {
+        "idle_ticks": 164197886,
+        "iowait_ticks": 301013,
+        "total_ticks": 242000327
+      },
+      "77": {
+        "idle_ticks": 167401923,
+        "iowait_ticks": 318172,
+        "total_ticks": 241990257
+      },
+      "78": {
+        "idle_ticks": 166663973,
+        "iowait_ticks": 326421,
+        "total_ticks": 241993885
+      },
+      "79": {
+        "idle_ticks": 149507492,
+        "iowait_ticks": 293057,
+        "total_ticks": 242047250
+      },
+      "8": {
+        "idle_ticks": 97879659,
+        "iowait_ticks": 246005,
+        "total_ticks": 242054538
+      },
+      "80": {
+        "idle_ticks": 153462314,
+        "iowait_ticks": 296754,
+        "total_ticks": 241989890
+      },
+      "81": {
+        "idle_ticks": 178516863,
+        "iowait_ticks": 351459,
+        "total_ticks": 241969477
+      },
+      "82": {
+        "idle_ticks": 178177692,
+        "iowait_ticks": 371723,
+        "total_ticks": 241968869
+      },
+      "83": {
+        "idle_ticks": 186448074,
+        "iowait_ticks": 383168,
+        "total_ticks": 241957103
+      },
+      "84": {
+        "idle_ticks": 156188961,
+        "iowait_ticks": 294170,
+        "total_ticks": 242018583
+      },
+      "85": {
+        "idle_ticks": 143084820,
+        "iowait_ticks": 263428,
+        "total_ticks": 242052168
+      },
+      "86": {
+        "idle_ticks": 153575227,
+        "iowait_ticks": 266653,
+        "total_ticks": 242031480
+      },
+      "87": {
+        "idle_ticks": 146938417,
+        "iowait_ticks": 236448,
+        "total_ticks": 242058610
+      },
+      "88": {
+        "idle_ticks": 150306014,
+        "iowait_ticks": 322951,
+        "total_ticks": 241981071
+      },
+      "89": {
+        "idle_ticks": 173520942,
+        "iowait_ticks": 318786,
+        "total_ticks": 241952270
+      },
+      "9": {
+        "idle_ticks": 161249255,
+        "iowait_ticks": 399606,
+        "total_ticks": 241976707
+      },
+      "90": {
+        "idle_ticks": 173869260,
+        "iowait_ticks": 293854,
+        "total_ticks": 241966084
+      },
+      "91": {
+        "idle_ticks": 173519955,
+        "iowait_ticks": 291007,
+        "total_ticks": 241967272
+      },
+      "92": {
+        "idle_ticks": 174008521,
+        "iowait_ticks": 299018,
+        "total_ticks": 241977879
+      },
+      "93": {
+        "idle_ticks": 171247268,
+        "iowait_ticks": 277891,
+        "total_ticks": 241977544
+      },
+      "94": {
+        "idle_ticks": 179038810,
+        "iowait_ticks": 294762,
+        "total_ticks": 241962576
+      },
+      "95": {
+        "idle_ticks": 178279240,
+        "iowait_ticks": 296427,
+        "total_ticks": 241964180
+      },
+      "96": {
+        "idle_ticks": 141291013,
+        "iowait_ticks": 249138,
+        "total_ticks": 241880963
+      },
+      "97": {
+        "idle_ticks": 161989692,
+        "iowait_ticks": 344735,
+        "total_ticks": 241859504
+      },
+      "98": {
+        "idle_ticks": 168277430,
+        "iowait_ticks": 380975,
+        "total_ticks": 241856826
+      },
+      "99": {
+        "idle_ticks": 178859162,
+        "iowait_ticks": 372269,
+        "total_ticks": 241823645
+      }
+    },
+    "load_averages": [
+      225.53,
+      222.59,
+      213.18
+    ],
+    "monotonic_seconds": 2422333.225868774,
+    "runnable_tasks": 178,
+    "total_tasks": 67704,
+    "utc": "2026-11-11T09:17:12.106145+00:00"
+  },
+  "before": {
+    "cpus": {
+      "0": {
+        "idle_ticks": 136316590,
+        "iowait_ticks": 220210,
+        "total_ticks": 242179698
+      },
+      "1": {
+        "idle_ticks": 149120367,
+        "iowait_ticks": 419600,
+        "total_ticks": 242084635
+      },
+      "10": {
+        "idle_ticks": 135037238,
+        "iowait_ticks": 293608,
+        "total_ticks": 242003903
+      },
+      "100": {
+        "idle_ticks": 167549210,
+        "iowait_ticks": 306579,
+        "total_ticks": 241867493
+      },
+      "101": {
+        "idle_ticks": 166193003,
+        "iowait_ticks": 281850,
+        "total_ticks": 241878468
+      },
+      "102": {
+        "idle_ticks": 171104920,
+        "iowait_ticks": 264120,
+        "total_ticks": 241866152
+      },
+      "103": {
+        "idle_ticks": 167232741,
+        "iowait_ticks": 276183,
+        "total_ticks": 241870114
+      },
+      "104": {
+        "idle_ticks": 156023721,
+        "iowait_ticks": 306085,
+        "total_ticks": 241840317
+      },
+      "105": {
+        "idle_ticks": 154756615,
+        "iowait_ticks": 247695,
+        "total_ticks": 241438527
+      },
+      "106": {
+        "idle_ticks": 154989700,
+        "iowait_ticks": 264228,
+        "total_ticks": 241783225
+      },
+      "107": {
+        "idle_ticks": 152381662,
+        "iowait_ticks": 241442,
+        "total_ticks": 241723852
+      },
+      "108": {
+        "idle_ticks": 156968247,
+        "iowait_ticks": 241776,
+        "total_ticks": 241717088
+      },
+      "109": {
+        "idle_ticks": 160302159,
+        "iowait_ticks": 246101,
+        "total_ticks": 241722523
+      },
+      "11": {
+        "idle_ticks": 132201704,
+        "iowait_ticks": 277498,
+        "total_ticks": 242028239
+      },
+      "110": {
+        "idle_ticks": 157886773,
+        "iowait_ticks": 221237,
+        "total_ticks": 241736823
+      },
+      "111": {
+        "idle_ticks": 163991940,
+        "iowait_ticks": 235143,
+        "total_ticks": 241728662
+      },
+      "112": {
+        "idle_ticks": 143085629,
+        "iowait_ticks": 247787,
+        "total_ticks": 241810928
+      },
+      "113": {
+        "idle_ticks": 156984620,
+        "iowait_ticks": 275103,
+        "total_ticks": 241822890
+      },
+      "114": {
+        "idle_ticks": 154159240,
+        "iowait_ticks": 240483,
+        "total_ticks": 241847710
+      },
+      "115": {
+        "idle_ticks": 155540083,
+        "iowait_ticks": 232748,
+        "total_ticks": 241858604
+      },
+      "116": {
+        "idle_ticks": 161556101,
+        "iowait_ticks": 248696,
+        "total_ticks": 241845606
+      },
+      "117": {
+        "idle_ticks": 160904737,
+        "iowait_ticks": 280531,
+        "total_ticks": 241851631
+      },
+      "118": {
+        "idle_ticks": 165392240,
+        "iowait_ticks": 258672,
+        "total_ticks": 241846375
+      },
+      "119": {
+        "idle_ticks": 166728730,
+        "iowait_ticks": 292949,
+        "total_ticks": 241840304
+      },
+      "12": {
+        "idle_ticks": 132884532,
+        "iowait_ticks": 202386,
+        "total_ticks": 242033425
+      },
+      "120": {
+        "idle_ticks": 150328604,
+        "iowait_ticks": 248000,
+        "total_ticks": 241857512
+      },
+      "121": {
+        "idle_ticks": 168560887,
+        "iowait_ticks": 331175,
+        "total_ticks": 241828725
+      },
+      "122": {
+        "idle_ticks": 167350712,
+        "iowait_ticks": 295994,
+        "total_ticks": 241841303
+      },
+      "123": {
+        "idle_ticks": 172372519,
+        "iowait_ticks": 302170,
+        "total_ticks": 241832145
+      },
+      "124": {
+        "idle_ticks": 173128404,
+        "iowait_ticks": 357179,
+        "total_ticks": 241836158
+      },
+      "125": {
+        "idle_ticks": 166295065,
+        "iowait_ticks": 277660,
+        "total_ticks": 241863932
+      },
+      "126": {
+        "idle_ticks": 169673181,
+        "iowait_ticks": 320488,
+        "total_ticks": 241836639
+      },
+      "127": {
+        "idle_ticks": 167740336,
+        "iowait_ticks": 320239,
+        "total_ticks": 241832266
+      },
+      "128": {
+        "idle_ticks": 137285042,
+        "iowait_ticks": 392793,
+        "total_ticks": 241941945
+      },
+      "129": {
+        "idle_ticks": 152332643,
+        "iowait_ticks": 428430,
+        "total_ticks": 241913402
+      },
+      "13": {
+        "idle_ticks": 134447759,
+        "iowait_ticks": 196102,
+        "total_ticks": 242012697
+      },
+      "130": {
+        "idle_ticks": 155367122,
+        "iowait_ticks": 381023,
+        "total_ticks": 241943249
+      },
+      "131": {
+        "idle_ticks": 159341191,
+        "iowait_ticks": 305166,
+        "total_ticks": 241948263
+      },
+      "132": {
+        "idle_ticks": 156275117,
+        "iowait_ticks": 312216,
+        "total_ticks": 241968235
+      },
+      "133": {
+        "idle_ticks": 162391844,
+        "iowait_ticks": 313830,
+        "total_ticks": 241960751
+      },
+      "134": {
+        "idle_ticks": 154905401,
+        "iowait_ticks": 288556,
+        "total_ticks": 241979912
+      },
+      "135": {
+        "idle_ticks": 157087612,
+        "iowait_ticks": 263169,
+        "total_ticks": 241978669
+      },
+      "136": {
+        "idle_ticks": 143608358,
+        "iowait_ticks": 213836,
+        "total_ticks": 241978291
+      },
+      "137": {
+        "idle_ticks": 158424434,
+        "iowait_ticks": 250321,
+        "total_ticks": 241974590
+      },
+      "138": {
+        "idle_ticks": 159525717,
+        "iowait_ticks": 250814,
+        "total_ticks": 241985573
+      },
+      "139": {
+        "idle_ticks": 159837727,
+        "iowait_ticks": 184344,
+        "total_ticks": 241991205
+      },
+      "14": {
+        "idle_ticks": 133155429,
+        "iowait_ticks": 185574,
+        "total_ticks": 242029786
+      },
+      "140": {
+        "idle_ticks": 163787581,
+        "iowait_ticks": 186237,
+        "total_ticks": 241994046
+      },
+      "141": {
+        "idle_ticks": 162635805,
+        "iowait_ticks": 190853,
+        "total_ticks": 241995159
+      },
+      "142": {
+        "idle_ticks": 168059285,
+        "iowait_ticks": 181572,
+        "total_ticks": 241986795
+      },
+      "143": {
+        "idle_ticks": 164364673,
+        "iowait_ticks": 235628,
+        "total_ticks": 241995517
+      },
+      "144": {
+        "idle_ticks": 141041431,
+        "iowait_ticks": 171024,
+        "total_ticks": 241990452
+      },
+      "145": {
+        "idle_ticks": 150802633,
+        "iowait_ticks": 277664,
+        "total_ticks": 241989284
+      },
+      "146": {
+        "idle_ticks": 158221565,
+        "iowait_ticks": 228316,
+        "total_ticks": 241992039
+      },
+      "147": {
+        "idle_ticks": 167084567,
+        "iowait_ticks": 205857,
+        "total_ticks": 241991023
+      },
+      "148": {
+        "idle_ticks": 161350570,
+        "iowait_ticks": 203733,
+        "total_ticks": 242007937
+      },
+      "149": {
+        "idle_ticks": 165383783,
+        "iowait_ticks": 186351,
+        "total_ticks": 242001282
+      },
+      "15": {
+        "idle_ticks": 165359016,
+        "iowait_ticks": 247537,
+        "total_ticks": 241987195
+      },
+      "150": {
+        "idle_ticks": 161203707,
+        "iowait_ticks": 242818,
+        "total_ticks": 242013074
+      },
+      "151": {
+        "idle_ticks": 170532546,
+        "iowait_ticks": 204467,
+        "total_ticks": 241992818
+      },
+      "152": {
+        "idle_ticks": 137309202,
+        "iowait_ticks": 174570,
+        "total_ticks": 241997370
+      },
+      "153": {
+        "idle_ticks": 151837842,
+        "iowait_ticks": 214860,
+        "total_ticks": 241993102
+      },
+      "154": {
+        "idle_ticks": 159935732,
+        "iowait_ticks": 205274,
+        "total_ticks": 241998087
+      },
+      "155": {
+        "idle_ticks": 165945700,
+        "iowait_ticks": 206250,
+        "total_ticks": 241993510
+      },
+      "156": {
+        "idle_ticks": 171928338,
+        "iowait_ticks": 211246,
+        "total_ticks": 241990351
+      },
+      "157": {
+        "idle_ticks": 165126202,
+        "iowait_ticks": 182168,
+        "total_ticks": 242001261
+      },
+      "158": {
+        "idle_ticks": 171953740,
+        "iowait_ticks": 190065,
+        "total_ticks": 241989425
+      },
+      "159": {
+        "idle_ticks": 163654648,
+        "iowait_ticks": 227754,
+        "total_ticks": 242000122
+      },
+      "16": {
+        "idle_ticks": 125722313,
+        "iowait_ticks": 282621,
+        "total_ticks": 241961737
+      },
+      "160": {
+        "idle_ticks": 132936915,
+        "iowait_ticks": 347769,
+        "total_ticks": 241954803
+      },
+      "161": {
+        "idle_ticks": 135280881,
+        "iowait_ticks": 318068,
+        "total_ticks": 241970638
+      },
+      "162": {
+        "idle_ticks": 144792107,
+        "iowait_ticks": 295845,
+        "total_ticks": 241961766
+      },
+      "163": {
+        "idle_ticks": 151966702,
+        "iowait_ticks": 263440,
+        "total_ticks": 241963586
+      },
+      "164": {
+        "idle_ticks": 158301864,
+        "iowait_ticks": 264932,
+        "total_ticks": 241962254
+      },
+      "165": {
+        "idle_ticks": 155164156,
+        "iowait_ticks": 239665,
+        "total_ticks": 241979364
+      },
+      "166": {
+        "idle_ticks": 157913483,
+        "iowait_ticks": 246059,
+        "total_ticks": 241986199
+      },
+      "167": {
+        "idle_ticks": 158497646,
+        "iowait_ticks": 238134,
+        "total_ticks": 241979621
+      },
+      "168": {
+        "idle_ticks": 139394090,
+        "iowait_ticks": 211632,
+        "total_ticks": 241984443
+      },
+      "169": {
+        "idle_ticks": 151926616,
+        "iowait_ticks": 234043,
+        "total_ticks": 241973330
+      },
+      "17": {
+        "idle_ticks": 150389068,
+        "iowait_ticks": 280332,
+        "total_ticks": 241939588
+      },
+      "170": {
+        "idle_ticks": 159042957,
+        "iowait_ticks": 215536,
+        "total_ticks": 241980326
+      },
+      "171": {
+        "idle_ticks": 164668130,
+        "iowait_ticks": 202388,
+        "total_ticks": 241991017
+      },
+      "172": {
+        "idle_ticks": 165809649,
+        "iowait_ticks": 199036,
+        "total_ticks": 241986862
+      },
+      "173": {
+        "idle_ticks": 139452911,
+        "iowait_ticks": 152452,
+        "total_ticks": 242039136
+      },
+      "174": {
+        "idle_ticks": 163657991,
+        "iowait_ticks": 176208,
+        "total_ticks": 241997414
+      },
+      "175": {
+        "idle_ticks": 167871626,
+        "iowait_ticks": 212134,
+        "total_ticks": 241993314
+      },
+      "176": {
+        "idle_ticks": 140343538,
+        "iowait_ticks": 158616,
+        "total_ticks": 241993947
+      },
+      "177": {
+        "idle_ticks": 151211823,
+        "iowait_ticks": 175796,
+        "total_ticks": 241989494
+      },
+      "178": {
+        "idle_ticks": 160162642,
+        "iowait_ticks": 169747,
+        "total_ticks": 241993268
+      },
+      "179": {
+        "idle_ticks": 165187009,
+        "iowait_ticks": 175360,
+        "total_ticks": 241984463
+      },
+      "18": {
+        "idle_ticks": 132987343,
+        "iowait_ticks": 245896,
+        "total_ticks": 241982001
+      },
+      "180": {
+        "idle_ticks": 167210841,
+        "iowait_ticks": 188747,
+        "total_ticks": 241988145
+      },
+      "181": {
+        "idle_ticks": 169124462,
+        "iowait_ticks": 164426,
+        "total_ticks": 241994979
+      },
+      "182": {
+        "idle_ticks": 169564301,
+        "iowait_ticks": 223669,
+        "total_ticks": 242083049
+      },
+      "183": {
+        "idle_ticks": 173014660,
+        "iowait_ticks": 213262,
+        "total_ticks": 242075233
+      },
+      "184": {
+        "idle_ticks": 142160861,
+        "iowait_ticks": 177952,
+        "total_ticks": 242078743
+      },
+      "185": {
+        "idle_ticks": 155257670,
+        "iowait_ticks": 190158,
+        "total_ticks": 242074139
+      },
+      "186": {
+        "idle_ticks": 164985475,
+        "iowait_ticks": 190542,
+        "total_ticks": 242070913
+      },
+      "187": {
+        "idle_ticks": 172796548,
+        "iowait_ticks": 204634,
+        "total_ticks": 242070614
+      },
+      "188": {
+        "idle_ticks": 171446449,
+        "iowait_ticks": 205094,
+        "total_ticks": 242088434
+      },
+      "189": {
+        "idle_ticks": 153884654,
+        "iowait_ticks": 173714,
+        "total_ticks": 242103896
+      },
+      "19": {
+        "idle_ticks": 136362857,
+        "iowait_ticks": 218204,
+        "total_ticks": 241981040
+      },
+      "190": {
+        "idle_ticks": 168432766,
+        "iowait_ticks": 198746,
+        "total_ticks": 242076350
+      },
+      "191": {
+        "idle_ticks": 174748175,
+        "iowait_ticks": 193720,
+        "total_ticks": 242085910
+      },
+      "192": {
+        "idle_ticks": 125714090,
+        "iowait_ticks": 410874,
+        "total_ticks": 242000261
+      },
+      "193": {
+        "idle_ticks": 134699091,
+        "iowait_ticks": 410758,
+        "total_ticks": 242000966
+      },
+      "194": {
+        "idle_ticks": 138818872,
+        "iowait_ticks": 403362,
+        "total_ticks": 242005380
+      },
+      "195": {
+        "idle_ticks": 143823607,
+        "iowait_ticks": 371469,
+        "total_ticks": 242009452
+      },
+      "196": {
+        "idle_ticks": 146100035,
+        "iowait_ticks": 321332,
+        "total_ticks": 242014016
+      },
+      "197": {
+        "idle_ticks": 147816400,
+        "iowait_ticks": 328877,
+        "total_ticks": 242010896
+      },
+      "198": {
+        "idle_ticks": 155039731,
+        "iowait_ticks": 295002,
+        "total_ticks": 242015521
+      },
+      "199": {
+        "idle_ticks": 155903303,
+        "iowait_ticks": 284416,
+        "total_ticks": 242021283
+      },
+      "2": {
+        "idle_ticks": 158485106,
+        "iowait_ticks": 420404,
+        "total_ticks": 242010726
+      },
+      "20": {
+        "idle_ticks": 123109116,
+        "iowait_ticks": 191814,
+        "total_ticks": 242051321
+      },
+      "200": {
+        "idle_ticks": 129632344,
+        "iowait_ticks": 211035,
+        "total_ticks": 242044934
+      },
+      "201": {
+        "idle_ticks": 142313497,
+        "iowait_ticks": 219206,
+        "total_ticks": 242041107
+      },
+      "202": {
+        "idle_ticks": 151054101,
+        "iowait_ticks": 225671,
+        "total_ticks": 242045360
+      },
+      "203": {
+        "idle_ticks": 155201089,
+        "iowait_ticks": 265557,
+        "total_ticks": 242043688
+      },
+      "204": {
+        "idle_ticks": 156593565,
+        "iowait_ticks": 228272,
+        "total_ticks": 242053975
+      },
+      "205": {
+        "idle_ticks": 141158012,
+        "iowait_ticks": 158454,
+        "total_ticks": 242102434
+      },
+      "206": {
+        "idle_ticks": 157130727,
+        "iowait_ticks": 247234,
+        "total_ticks": 242055827
+      },
+      "207": {
+        "idle_ticks": 153420753,
+        "iowait_ticks": 232959,
+        "total_ticks": 242055073
+      },
+      "208": {
+        "idle_ticks": 131557922,
+        "iowait_ticks": 181227,
+        "total_ticks": 242060425
+      },
+      "209": {
+        "idle_ticks": 146431854,
+        "iowait_ticks": 326911,
+        "total_ticks": 242059575
+      },
+      "21": {
+        "idle_ticks": 139427016,
+        "iowait_ticks": 227574,
+        "total_ticks": 242013701
+      },
+      "210": {
+        "idle_ticks": 152931778,
+        "iowait_ticks": 314029,
+        "total_ticks": 242070612
+      },
+      "211": {
+        "idle_ticks": 162341353,
+        "iowait_ticks": 244473,
+        "total_ticks": 242067357
+      },
+      "212": {
+        "idle_ticks": 147640548,
+        "iowait_ticks": 176593,
+        "total_ticks": 242098863
+      },
+      "213": {
+        "idle_ticks": 163426420,
+        "iowait_ticks": 265954,
+        "total_ticks": 242070005
+      },
+      "214": {
+        "idle_ticks": 166251593,
+        "iowait_ticks": 216480,
+        "total_ticks": 242065415
+      },
+      "215": {
+        "idle_ticks": 163534375,
+        "iowait_ticks": 219480,
+        "total_ticks": 242066147
+      },
+      "216": {
+        "idle_ticks": 142218487,
+        "iowait_ticks": 176370,
+        "total_ticks": 242084722
+      },
+      "217": {
+        "idle_ticks": 154590926,
+        "iowait_ticks": 257743,
+        "total_ticks": 242081381
+      },
+      "218": {
+        "idle_ticks": 162678748,
+        "iowait_ticks": 207809,
+        "total_ticks": 242079463
+      },
+      "219": {
+        "idle_ticks": 150520751,
+        "iowait_ticks": 171107,
+        "total_ticks": 242108257
+      },
+      "22": {
+        "idle_ticks": 120217220,
+        "iowait_ticks": 182183,
+        "total_ticks": 242065660
+      },
+      "220": {
+        "idle_ticks": 171144741,
+        "iowait_ticks": 200970,
+        "total_ticks": 242079196
+      },
+      "221": {
+        "idle_ticks": 169299251,
+        "iowait_ticks": 195081,
+        "total_ticks": 242082956
+      },
+      "222": {
+        "idle_ticks": 169375078,
+        "iowait_ticks": 198242,
+        "total_ticks": 242080985
+      },
+      "223": {
+        "idle_ticks": 168761938,
+        "iowait_ticks": 196628,
+        "total_ticks": 242082636
+      },
+      "224": {
+        "idle_ticks": 130492292,
+        "iowait_ticks": 498430,
+        "total_ticks": 241981907
+      },
+      "225": {
+        "idle_ticks": 141509145,
+        "iowait_ticks": 524075,
+        "total_ticks": 241975936
+      },
+      "226": {
+        "idle_ticks": 148240320,
+        "iowait_ticks": 621963,
+        "total_ticks": 241980393
+      },
+      "227": {
+        "idle_ticks": 154297926,
+        "iowait_ticks": 448690,
+        "total_ticks": 241982208
+      },
+      "228": {
+        "idle_ticks": 157363587,
+        "iowait_ticks": 412549,
+        "total_ticks": 241984241
+      },
+      "229": {
+        "idle_ticks": 159548550,
+        "iowait_ticks": 361407,
+        "total_ticks": 241990715
+      },
+      "23": {
+        "idle_ticks": 154694683,
+        "iowait_ticks": 257189,
+        "total_ticks": 241986084
+      },
+      "230": {
+        "idle_ticks": 157803159,
+        "iowait_ticks": 338833,
+        "total_ticks": 241995773
+      },
+      "231": {
+        "idle_ticks": 160933733,
+        "iowait_ticks": 365388,
+        "total_ticks": 241992146
+      },
+      "232": {
+        "idle_ticks": 132012029,
+        "iowait_ticks": 182670,
+        "total_ticks": 242061137
+      },
+      "233": {
+        "idle_ticks": 147547635,
+        "iowait_ticks": 196715,
+        "total_ticks": 242057806
+      },
+      "234": {
+        "idle_ticks": 157893024,
+        "iowait_ticks": 202938,
+        "total_ticks": 242043920
+      },
+      "235": {
+        "idle_ticks": 163778159,
+        "iowait_ticks": 199906,
+        "total_ticks": 242040992
+      },
+      "236": {
+        "idle_ticks": 163609913,
+        "iowait_ticks": 204621,
+        "total_ticks": 242049235
+      },
+      "237": {
+        "idle_ticks": 164342974,
+        "iowait_ticks": 199664,
+        "total_ticks": 242047940
+      },
+      "238": {
+        "idle_ticks": 165072559,
+        "iowait_ticks": 229734,
+        "total_ticks": 242047490
+      },
+      "239": {
+        "idle_ticks": 165354899,
+        "iowait_ticks": 215605,
+        "total_ticks": 242047593
+      },
+      "24": {
+        "idle_ticks": 141873389,
+        "iowait_ticks": 263959,
+        "total_ticks": 241965894
+      },
+      "240": {
+        "idle_ticks": 133841997,
+        "iowait_ticks": 236025,
+        "total_ticks": 242062106
+      },
+      "241": {
+        "idle_ticks": 147533086,
+        "iowait_ticks": 221241,
+        "total_ticks": 242058130
+      },
+      "242": {
+        "idle_ticks": 159548238,
+        "iowait_ticks": 208815,
+        "total_ticks": 242051752
+      },
+      "243": {
+        "idle_ticks": 163536776,
+        "iowait_ticks": 207650,
+        "total_ticks": 242038675
+      },
+      "244": {
+        "idle_ticks": 166051914,
+        "iowait_ticks": 224386,
+        "total_ticks": 242053490
+      },
+      "245": {
+        "idle_ticks": 167015098,
+        "iowait_ticks": 235704,
+        "total_ticks": 242037818
+      },
+      "246": {
+        "idle_ticks": 165437501,
+        "iowait_ticks": 226764,
+        "total_ticks": 242041085
+      },
+      "247": {
+        "idle_ticks": 166921083,
+        "iowait_ticks": 227259,
+        "total_ticks": 242038061
+      },
+      "248": {
+        "idle_ticks": 137066818,
+        "iowait_ticks": 198643,
+        "total_ticks": 242061238
+      },
+      "249": {
+        "idle_ticks": 152805039,
+        "iowait_ticks": 375288,
+        "total_ticks": 242055675
+      },
+      "25": {
+        "idle_ticks": 150618132,
+        "iowait_ticks": 257763,
+        "total_ticks": 241964583
+      },
+      "250": {
+        "idle_ticks": 160092906,
+        "iowait_ticks": 210013,
+        "total_ticks": 242058548
+      },
+      "251": {
+        "idle_ticks": 164603202,
+        "iowait_ticks": 214182,
+        "total_ticks": 242056883
+      },
+      "252": {
+        "idle_ticks": 167638864,
+        "iowait_ticks": 205043,
+        "total_ticks": 242053420
+      },
+      "253": {
+        "idle_ticks": 168324905,
+        "iowait_ticks": 205145,
+        "total_ticks": 242053543
+      },
+      "254": {
+        "idle_ticks": 168049425,
+        "iowait_ticks": 197247,
+        "total_ticks": 242053668
+      },
+      "255": {
+        "idle_ticks": 169406209,
+        "iowait_ticks": 200954,
+        "total_ticks": 242048791
+      },
+      "256": {
+        "idle_ticks": 110397211,
+        "iowait_ticks": 178213,
+        "total_ticks": 242008925
+      },
+      "257": {
+        "idle_ticks": 172037858,
+        "iowait_ticks": 276473,
+        "total_ticks": 241922728
+      },
+      "258": {
+        "idle_ticks": 175518905,
+        "iowait_ticks": 275839,
+        "total_ticks": 241782029
+      },
+      "259": {
+        "idle_ticks": 182166747,
+        "iowait_ticks": 288609,
+        "total_ticks": 241986402
+      },
+      "26": {
+        "idle_ticks": 151550856,
+        "iowait_ticks": 257647,
+        "total_ticks": 241970882
+      },
+      "260": {
+        "idle_ticks": 172756900,
+        "iowait_ticks": 232528,
+        "total_ticks": 241816428
+      },
+      "261": {
+        "idle_ticks": 178349666,
+        "iowait_ticks": 264639,
+        "total_ticks": 241812475
+      },
+      "262": {
+        "idle_ticks": 175970837,
+        "iowait_ticks": 248172,
+        "total_ticks": 242012738
+      },
+      "263": {
+        "idle_ticks": 176315847,
+        "iowait_ticks": 228931,
+        "total_ticks": 242022042
+      },
+      "264": {
+        "idle_ticks": 193133302,
+        "iowait_ticks": 271362,
+        "total_ticks": 242023309
+      },
+      "265": {
+        "idle_ticks": 168584023,
+        "iowait_ticks": 251198,
+        "total_ticks": 242066161
+      },
+      "266": {
+        "idle_ticks": 179719056,
+        "iowait_ticks": 213377,
+        "total_ticks": 242050655
+      },
+      "267": {
+        "idle_ticks": 155581017,
+        "iowait_ticks": 209274,
+        "total_ticks": 242079283
+      },
+      "268": {
+        "idle_ticks": 147845109,
+        "iowait_ticks": 185044,
+        "total_ticks": 242099678
+      },
+      "269": {
+        "idle_ticks": 187571789,
+        "iowait_ticks": 241647,
+        "total_ticks": 242039615
+      },
+      "27": {
+        "idle_ticks": 136617869,
+        "iowait_ticks": 232121,
+        "total_ticks": 242006084
+      },
+      "270": {
+        "idle_ticks": 180073891,
+        "iowait_ticks": 214674,
+        "total_ticks": 242042176
+      },
+      "271": {
+        "idle_ticks": 185508289,
+        "iowait_ticks": 268163,
+        "total_ticks": 242012841
+      },
+      "272": {
+        "idle_ticks": 184708350,
+        "iowait_ticks": 298577,
+        "total_ticks": 242039235
+      },
+      "273": {
+        "idle_ticks": 187665191,
+        "iowait_ticks": 259687,
+        "total_ticks": 242033341
+      },
+      "274": {
+        "idle_ticks": 188123290,
+        "iowait_ticks": 249358,
+        "total_ticks": 242033758
+      },
+      "275": {
+        "idle_ticks": 192927766,
+        "iowait_ticks": 259096,
+        "total_ticks": 241999704
+      },
+      "276": {
+        "idle_ticks": 191102760,
+        "iowait_ticks": 243834,
+        "total_ticks": 241999031
+      },
+      "277": {
+        "idle_ticks": 189195000,
+        "iowait_ticks": 258572,
+        "total_ticks": 242003094
+      },
+      "278": {
+        "idle_ticks": 192085946,
+        "iowait_ticks": 233320,
+        "total_ticks": 242047422
+      },
+      "279": {
+        "idle_ticks": 190831258,
+        "iowait_ticks": 290004,
+        "total_ticks": 242017530
+      },
+      "28": {
+        "idle_ticks": 133132756,
+        "iowait_ticks": 240530,
+        "total_ticks": 242011324
+      },
+      "280": {
+        "idle_ticks": 188626457,
+        "iowait_ticks": 275805,
+        "total_ticks": 242009149
+      },
+      "281": {
+        "idle_ticks": 191176266,
+        "iowait_ticks": 284197,
+        "total_ticks": 242010512
+      },
+      "282": {
+        "idle_ticks": 189737800,
+        "iowait_ticks": 276409,
+        "total_ticks": 242009313
+      },
+      "283": {
+        "idle_ticks": 192467174,
+        "iowait_ticks": 255895,
+        "total_ticks": 242010088
+      },
+      "284": {
+        "idle_ticks": 192632761,
+        "iowait_ticks": 252067,
+        "total_ticks": 241980513
+      },
+      "285": {
+        "idle_ticks": 192872893,
+        "iowait_ticks": 253828,
+        "total_ticks": 241995039
+      },
+      "286": {
+        "idle_ticks": 191993490,
+        "iowait_ticks": 270035,
+        "total_ticks": 241977109
+      },
+      "287": {
+        "idle_ticks": 190842963,
+        "iowait_ticks": 279834,
+        "total_ticks": 241981234
+      },
+      "288": {
+        "idle_ticks": 181073754,
+        "iowait_ticks": 272711,
+        "total_ticks": 242054370
+      },
+      "289": {
+        "idle_ticks": 186368931,
+        "iowait_ticks": 301283,
+        "total_ticks": 242031839
+      },
+      "29": {
+        "idle_ticks": 126418073,
+        "iowait_ticks": 238525,
+        "total_ticks": 242032583
+      },
+      "290": {
+        "idle_ticks": 177955886,
+        "iowait_ticks": 244447,
+        "total_ticks": 242052086
+      },
+      "291": {
+        "idle_ticks": 184490956,
+        "iowait_ticks": 287737,
+        "total_ticks": 242038165
+      },
+      "292": {
+        "idle_ticks": 171874609,
+        "iowait_ticks": 262231,
+        "total_ticks": 242065537
+      },
+      "293": {
+        "idle_ticks": 194268271,
+        "iowait_ticks": 309208,
+        "total_ticks": 242021796
+      },
+      "294": {
+        "idle_ticks": 185973036,
+        "iowait_ticks": 279941,
+        "total_ticks": 242037608
+      },
+      "295": {
+        "idle_ticks": 182083920,
+        "iowait_ticks": 279882,
+        "total_ticks": 242041491
+      },
+      "296": {
+        "idle_ticks": 180770462,
+        "iowait_ticks": 252606,
+        "total_ticks": 241739189
+      },
+      "297": {
+        "idle_ticks": 176175346,
+        "iowait_ticks": 275255,
+        "total_ticks": 241767178
+      },
+      "298": {
+        "idle_ticks": 179761349,
+        "iowait_ticks": 244215,
+        "total_ticks": 241731083
+      },
+      "299": {
+        "idle_ticks": 169838934,
+        "iowait_ticks": 243279,
+        "total_ticks": 241761925
+      },
+      "3": {
+        "idle_ticks": 160446994,
+        "iowait_ticks": 467235,
+        "total_ticks": 241987065
+      },
+      "30": {
+        "idle_ticks": 149921129,
+        "iowait_ticks": 251215,
+        "total_ticks": 241972299
+      },
+      "300": {
+        "idle_ticks": 171084526,
+        "iowait_ticks": 257144,
+        "total_ticks": 241754352
+      },
+      "301": {
+        "idle_ticks": 178894147,
+        "iowait_ticks": 297786,
+        "total_ticks": 241742450
+      },
+      "302": {
+        "idle_ticks": 180447506,
+        "iowait_ticks": 281694,
+        "total_ticks": 241737386
+      },
+      "303": {
+        "idle_ticks": 170469097,
+        "iowait_ticks": 256485,
+        "total_ticks": 241739227
+      },
+      "304": {
+        "idle_ticks": 176106092,
+        "iowait_ticks": 259887,
+        "total_ticks": 241785922
+      },
+      "305": {
+        "idle_ticks": 183891148,
+        "iowait_ticks": 275580,
+        "total_ticks": 241759674
+      },
+      "306": {
+        "idle_ticks": 182916022,
+        "iowait_ticks": 318488,
+        "total_ticks": 241765733
+      },
+      "307": {
+        "idle_ticks": 184998413,
+        "iowait_ticks": 272770,
+        "total_ticks": 241752533
+      },
+      "308": {
+        "idle_ticks": 180233238,
+        "iowait_ticks": 275375,
+        "total_ticks": 241757056
+      },
+      "309": {
+        "idle_ticks": 182340064,
+        "iowait_ticks": 257951,
+        "total_ticks": 241764067
+      },
+      "31": {
+        "idle_ticks": 149534058,
+        "iowait_ticks": 247834,
+        "total_ticks": 241984108
+      },
+      "310": {
+        "idle_ticks": 180517400,
+        "iowait_ticks": 261821,
+        "total_ticks": 241765121
+      },
+      "311": {
+        "idle_ticks": 181218522,
+        "iowait_ticks": 282108,
+        "total_ticks": 241762092
+      },
+      "312": {
+        "idle_ticks": 174919128,
+        "iowait_ticks": 297980,
+        "total_ticks": 241785250
+      },
+      "313": {
+        "idle_ticks": 171496784,
+        "iowait_ticks": 269536,
+        "total_ticks": 241789240
+      },
+      "314": {
+        "idle_ticks": 170158359,
+        "iowait_ticks": 245356,
+        "total_ticks": 241801231
+      },
+      "315": {
+        "idle_ticks": 176374353,
+        "iowait_ticks": 309014,
+        "total_ticks": 241793039
+      },
+      "316": {
+        "idle_ticks": 173721993,
+        "iowait_ticks": 274836,
+        "total_ticks": 241790292
+      },
+      "317": {
+        "idle_ticks": 178964279,
+        "iowait_ticks": 311229,
+        "total_ticks": 241784052
+      },
+      "318": {
+        "idle_ticks": 157375589,
+        "iowait_ticks": 268826,
+        "total_ticks": 241809737
+      },
+      "319": {
+        "idle_ticks": 171871285,
+        "iowait_ticks": 422568,
+        "total_ticks": 241775866
+      },
+      "32": {
+        "idle_ticks": 108620342,
+        "iowait_ticks": 230313,
+        "total_ticks": 242062609
+      },
+      "320": {
+        "idle_ticks": 175311647,
+        "iowait_ticks": 305377,
+        "total_ticks": 241687044
+      },
+      "321": {
+        "idle_ticks": 170853266,
+        "iowait_ticks": 251886,
+        "total_ticks": 241695528
+      },
+      "322": {
+        "idle_ticks": 174482543,
+        "iowait_ticks": 278245,
+        "total_ticks": 241672712
+      },
+      "323": {
+        "idle_ticks": 174755080,
+        "iowait_ticks": 318999,
+        "total_ticks": 241667193
+      },
+      "324": {
+        "idle_ticks": 175091286,
+        "iowait_ticks": 334949,
+        "total_ticks": 241677843
+      },
+      "325": {
+        "idle_ticks": 175620355,
+        "iowait_ticks": 298396,
+        "total_ticks": 241684669
+      },
+      "326": {
+        "idle_ticks": 170334421,
+        "iowait_ticks": 275210,
+        "total_ticks": 241692954
+      },
+      "327": {
+        "idle_ticks": 163172029,
+        "iowait_ticks": 241586,
+        "total_ticks": 241702032
+      },
+      "328": {
+        "idle_ticks": 184644973,
+        "iowait_ticks": 309889,
+        "total_ticks": 241988835
+      },
+      "329": {
+        "idle_ticks": 182052386,
+        "iowait_ticks": 326781,
+        "total_ticks": 241989340
+      },
+      "33": {
+        "idle_ticks": 137207531,
+        "iowait_ticks": 283161,
+        "total_ticks": 242004893
+      },
+      "330": {
+        "idle_ticks": 187430081,
+        "iowait_ticks": 304722,
+        "total_ticks": 241981047
+      },
+      "331": {
+        "idle_ticks": 183931651,
+        "iowait_ticks": 302673,
+        "total_ticks": 241989647
+      },
+      "332": {
+        "idle_ticks": 184486081,
+        "iowait_ticks": 264249,
+        "total_ticks": 241991472
+      },
+      "333": {
+        "idle_ticks": 183220330,
+        "iowait_ticks": 276821,
+        "total_ticks": 241989812
+      },
+      "334": {
+        "idle_ticks": 183213442,
+        "iowait_ticks": 277503,
+        "total_ticks": 241993664
+      },
+      "335": {
+        "idle_ticks": 187901347,
+        "iowait_ticks": 324739,
+        "total_ticks": 241975548
+      },
+      "336": {
+        "idle_ticks": 192779016,
+        "iowait_ticks": 390642,
+        "total_ticks": 241926604
+      },
+      "337": {
+        "idle_ticks": 186260141,
+        "iowait_ticks": 322342,
+        "total_ticks": 241921959
+      },
+      "338": {
+        "idle_ticks": 193219034,
+        "iowait_ticks": 353918,
+        "total_ticks": 241903525
+      },
+      "339": {
+        "idle_ticks": 192972936,
+        "iowait_ticks": 345125,
+        "total_ticks": 241898493
+      },
+      "34": {
+        "idle_ticks": 124903521,
+        "iowait_ticks": 248026,
+        "total_ticks": 242051855
+      },
+      "340": {
+        "idle_ticks": 191170137,
+        "iowait_ticks": 294604,
+        "total_ticks": 241745159
+      },
+      "341": {
+        "idle_ticks": 194938759,
+        "iowait_ticks": 297607,
+        "total_ticks": 241755401
+      },
+      "342": {
+        "idle_ticks": 182873112,
+        "iowait_ticks": 266295,
+        "total_ticks": 241924816
+      },
+      "343": {
+        "idle_ticks": 189040052,
+        "iowait_ticks": 273098,
+        "total_ticks": 241975380
+      },
+      "344": {
+        "idle_ticks": 190620094,
+        "iowait_ticks": 316547,
+        "total_ticks": 241803617
+      },
+      "345": {
+        "idle_ticks": 189436004,
+        "iowait_ticks": 327964,
+        "total_ticks": 241826558
+      },
+      "346": {
+        "idle_ticks": 173836359,
+        "iowait_ticks": 258350,
+        "total_ticks": 241827388
+      },
+      "347": {
+        "idle_ticks": 183868562,
+        "iowait_ticks": 289042,
+        "total_ticks": 241964918
+      },
+      "348": {
+        "idle_ticks": 183185958,
+        "iowait_ticks": 292271,
+        "total_ticks": 241965104
+      },
+      "349": {
+        "idle_ticks": 184997052,
+        "iowait_ticks": 288403,
+        "total_ticks": 241964475
+      },
+      "35": {
+        "idle_ticks": 147269177,
+        "iowait_ticks": 290091,
+        "total_ticks": 242006094
+      },
+      "350": {
+        "idle_ticks": 181779999,
+        "iowait_ticks": 407812,
+        "total_ticks": 241972966
+      },
+      "351": {
+        "idle_ticks": 181978297,
+        "iowait_ticks": 281113,
+        "total_ticks": 241964588
+      },
+      "352": {
+        "idle_ticks": 167069667,
+        "iowait_ticks": 232734,
+        "total_ticks": 241903857
+      },
+      "353": {
+        "idle_ticks": 171619076,
+        "iowait_ticks": 255775,
+        "total_ticks": 241897125
+      },
+      "354": {
+        "idle_ticks": 177147371,
+        "iowait_ticks": 280509,
+        "total_ticks": 241790955
+      },
+      "355": {
+        "idle_ticks": 169152483,
+        "iowait_ticks": 261966,
+        "total_ticks": 241905257
+      },
+      "356": {
+        "idle_ticks": 177293578,
+        "iowait_ticks": 272036,
+        "total_ticks": 241803409
+      },
+      "357": {
+        "idle_ticks": 177771892,
+        "iowait_ticks": 278480,
+        "total_ticks": 241787677
+      },
+      "358": {
+        "idle_ticks": 174771824,
+        "iowait_ticks": 250496,
+        "total_ticks": 241866545
+      },
+      "359": {
+        "idle_ticks": 184453747,
+        "iowait_ticks": 294945,
+        "total_ticks": 241842613
+      },
+      "36": {
+        "idle_ticks": 135156389,
+        "iowait_ticks": 259233,
+        "total_ticks": 242047220
+      },
+      "360": {
+        "idle_ticks": 179688536,
+        "iowait_ticks": 325327,
+        "total_ticks": 241773906
+      },
+      "361": {
+        "idle_ticks": 179611590,
+        "iowait_ticks": 297417,
+        "total_ticks": 241858749
+      },
+      "362": {
+        "idle_ticks": 178364207,
+        "iowait_ticks": 300677,
+        "total_ticks": 241757593
+      },
+      "363": {
+        "idle_ticks": 177386796,
+        "iowait_ticks": 271624,
+        "total_ticks": 241864998
+      },
+      "364": {
+        "idle_ticks": 173997188,
+        "iowait_ticks": 264949,
+        "total_ticks": 241870060
+      },
+      "365": {
+        "idle_ticks": 184009858,
+        "iowait_ticks": 292834,
+        "total_ticks": 241761833
+      },
+      "366": {
+        "idle_ticks": 176239743,
+        "iowait_ticks": 248490,
+        "total_ticks": 241866919
+      },
+      "367": {
+        "idle_ticks": 173688404,
+        "iowait_ticks": 252380,
+        "total_ticks": 241786892
+      },
+      "368": {
+        "idle_ticks": 185726911,
+        "iowait_ticks": 301973,
+        "total_ticks": 241844149
+      },
+      "369": {
+        "idle_ticks": 182950958,
+        "iowait_ticks": 312299,
+        "total_ticks": 241846862
+      },
+      "37": {
+        "idle_ticks": 168797278,
+        "iowait_ticks": 293950,
+        "total_ticks": 241993209
+      },
+      "370": {
+        "idle_ticks": 178367452,
+        "iowait_ticks": 273094,
+        "total_ticks": 241861626
+      },
+      "371": {
+        "idle_ticks": 188038937,
+        "iowait_ticks": 303843,
+        "total_ticks": 241835715
+      },
+      "372": {
+        "idle_ticks": 187492390,
+        "iowait_ticks": 311392,
+        "total_ticks": 241781384
+      },
+      "373": {
+        "idle_ticks": 188405988,
+        "iowait_ticks": 302507,
+        "total_ticks": 241828091
+      },
+      "374": {
+        "idle_ticks": 188638890,
+        "iowait_ticks": 341008,
+        "total_ticks": 241820168
+      },
+      "375": {
+        "idle_ticks": 188111665,
+        "iowait_ticks": 308380,
+        "total_ticks": 241822885
+      },
+      "376": {
+        "idle_ticks": 179355768,
+        "iowait_ticks": 271468,
+        "total_ticks": 241879622
+      },
+      "377": {
+        "idle_ticks": 187514991,
+        "iowait_ticks": 307026,
+        "total_ticks": 241854328
+      },
+      "378": {
+        "idle_ticks": 188469214,
+        "iowait_ticks": 296767,
+        "total_ticks": 241863134
+      },
+      "379": {
+        "idle_ticks": 182129897,
+        "iowait_ticks": 305457,
+        "total_ticks": 241867159
+      },
+      "38": {
+        "idle_ticks": 145422364,
+        "iowait_ticks": 280509,
+        "total_ticks": 242013922
+      },
+      "380": {
+        "idle_ticks": 190897755,
+        "iowait_ticks": 316612,
+        "total_ticks": 241859831
+      },
+      "381": {
+        "idle_ticks": 187168561,
+        "iowait_ticks": 288747,
+        "total_ticks": 241854677
+      },
+      "382": {
+        "idle_ticks": 189821682,
+        "iowait_ticks": 297889,
+        "total_ticks": 241861433
+      },
+      "383": {
+        "idle_ticks": 192361369,
+        "iowait_ticks": 1028984,
+        "total_ticks": 241788821
+      },
+      "39": {
+        "idle_ticks": 149045164,
+        "iowait_ticks": 251758,
+        "total_ticks": 242011859
+      },
+      "4": {
+        "idle_ticks": 133497135,
+        "iowait_ticks": 346621,
+        "total_ticks": 242030699
+      },
+      "40": {
+        "idle_ticks": 140590760,
+        "iowait_ticks": 229739,
+        "total_ticks": 242004898
+      },
+      "41": {
+        "idle_ticks": 134313646,
+        "iowait_ticks": 204976,
+        "total_ticks": 241970220
+      },
+      "42": {
+        "idle_ticks": 136260228,
+        "iowait_ticks": 216729,
+        "total_ticks": 241986004
+      },
+      "43": {
+        "idle_ticks": 157716475,
+        "iowait_ticks": 231742,
+        "total_ticks": 241997954
+      },
+      "44": {
+        "idle_ticks": 164486864,
+        "iowait_ticks": 260324,
+        "total_ticks": 241982845
+      },
+      "45": {
+        "idle_ticks": 147967098,
+        "iowait_ticks": 234662,
+        "total_ticks": 242003721
+      },
+      "46": {
+        "idle_ticks": 160749677,
+        "iowait_ticks": 248396,
+        "total_ticks": 241993070
+      },
+      "47": {
+        "idle_ticks": 156066471,
+        "iowait_ticks": 241420,
+        "total_ticks": 241991505
+      },
+      "48": {
+        "idle_ticks": 134069955,
+        "iowait_ticks": 270308,
+        "total_ticks": 241996537
+      },
+      "49": {
+        "idle_ticks": 158206312,
+        "iowait_ticks": 303648,
+        "total_ticks": 241972611
+      },
+      "5": {
+        "idle_ticks": 148939821,
+        "iowait_ticks": 387592,
+        "total_ticks": 241991489
+      },
+      "50": {
+        "idle_ticks": 155803692,
+        "iowait_ticks": 312484,
+        "total_ticks": 241978286
+      },
+      "51": {
+        "idle_ticks": 142524262,
+        "iowait_ticks": 305595,
+        "total_ticks": 242013456
+      },
+      "52": {
+        "idle_ticks": 156387967,
+        "iowait_ticks": 332379,
+        "total_ticks": 241994156
+      },
+      "53": {
+        "idle_ticks": 138810886,
+        "iowait_ticks": 281732,
+        "total_ticks": 242026500
+      },
+      "54": {
+        "idle_ticks": 156527311,
+        "iowait_ticks": 319713,
+        "total_ticks": 241992092
+      },
+      "55": {
+        "idle_ticks": 158320927,
+        "iowait_ticks": 279602,
+        "total_ticks": 241988563
+      },
+      "56": {
+        "idle_ticks": 149759797,
+        "iowait_ticks": 262210,
+        "total_ticks": 241979761
+      },
+      "57": {
+        "idle_ticks": 173159582,
+        "iowait_ticks": 304124,
+        "total_ticks": 241969055
+      },
+      "58": {
+        "idle_ticks": 141361451,
+        "iowait_ticks": 254718,
+        "total_ticks": 242039358
+      },
+      "59": {
+        "idle_ticks": 161026126,
+        "iowait_ticks": 311634,
+        "total_ticks": 241990353
+      },
+      "6": {
+        "idle_ticks": 167276455,
+        "iowait_ticks": 404245,
+        "total_ticks": 241961651
+      },
+      "60": {
+        "idle_ticks": 175217306,
+        "iowait_ticks": 364457,
+        "total_ticks": 241973002
+      },
+      "61": {
+        "idle_ticks": 166294652,
+        "iowait_ticks": 365449,
+        "total_ticks": 241982949
+      },
+      "62": {
+        "idle_ticks": 152261614,
+        "iowait_ticks": 286824,
+        "total_ticks": 242018362
+      },
+      "63": {
+        "idle_ticks": 170240996,
+        "iowait_ticks": 295438,
+        "total_ticks": 241987667
+      },
+      "64": {
+        "idle_ticks": 144279404,
+        "iowait_ticks": 286521,
+        "total_ticks": 241992638
+      },
+      "65": {
+        "idle_ticks": 160107883,
+        "iowait_ticks": 346103,
+        "total_ticks": 241983061
+      },
+      "66": {
+        "idle_ticks": 165773141,
+        "iowait_ticks": 387149,
+        "total_ticks": 241979177
+      },
+      "67": {
+        "idle_ticks": 161777893,
+        "iowait_ticks": 306839,
+        "total_ticks": 241994527
+      },
+      "68": {
+        "idle_ticks": 163210006,
+        "iowait_ticks": 392552,
+        "total_ticks": 241995565
+      },
+      "69": {
+        "idle_ticks": 133382636,
+        "iowait_ticks": 258967,
+        "total_ticks": 242085662
+      },
+      "7": {
+        "idle_ticks": 136281781,
+        "iowait_ticks": 312234,
+        "total_ticks": 242019726
+      },
+      "70": {
+        "idle_ticks": 164140648,
+        "iowait_ticks": 312422,
+        "total_ticks": 242009896
+      },
+      "71": {
+        "idle_ticks": 159663861,
+        "iowait_ticks": 346282,
+        "total_ticks": 242019673
+      },
+      "72": {
+        "idle_ticks": 144407232,
+        "iowait_ticks": 296465,
+        "total_ticks": 241992643
+      },
+      "73": {
+        "idle_ticks": 156598224,
+        "iowait_ticks": 331794,
+        "total_ticks": 241988085
+      },
+      "74": {
+        "idle_ticks": 164927415,
+        "iowait_ticks": 357186,
+        "total_ticks": 241991834
+      },
+      "75": {
+        "idle_ticks": 160954976,
+        "iowait_ticks": 301887,
+        "total_ticks": 241992433
+      },
+      "76": {
+        "idle_ticks": 164197886,
+        "iowait_ticks": 301013,
+        "total_ticks": 242000038
+      },
+      "77": {
+        "idle_ticks": 167401645,
+        "iowait_ticks": 318172,
+        "total_ticks": 241989969
+      },
+      "78": {
+        "idle_ticks": 166663697,
+        "iowait_ticks": 326420,
+        "total_ticks": 241993597
+      },
+      "79": {
+        "idle_ticks": 149507357,
+        "iowait_ticks": 293057,
+        "total_ticks": 242046961
+      },
+      "8": {
+        "idle_ticks": 97879659,
+        "iowait_ticks": 246005,
+        "total_ticks": 242054250
+      },
+      "80": {
+        "idle_ticks": 153462241,
+        "iowait_ticks": 296754,
+        "total_ticks": 241989602
+      },
+      "81": {
+        "idle_ticks": 178516589,
+        "iowait_ticks": 351459,
+        "total_ticks": 241969190
+      },
+      "82": {
+        "idle_ticks": 178177424,
+        "iowait_ticks": 371723,
+        "total_ticks": 241968580
+      },
+      "83": {
+        "idle_ticks": 186447811,
+        "iowait_ticks": 383168,
+        "total_ticks": 241956816
+      },
+      "84": {
+        "idle_ticks": 156188687,
+        "iowait_ticks": 294170,
+        "total_ticks": 242018296
+      },
+      "85": {
+        "idle_ticks": 143084820,
+        "iowait_ticks": 263428,
+        "total_ticks": 242051880
+      },
+      "86": {
+        "idle_ticks": 153575030,
+        "iowait_ticks": 266653,
+        "total_ticks": 242031191
+      },
+      "87": {
+        "idle_ticks": 146938207,
+        "iowait_ticks": 236448,
+        "total_ticks": 242058323
+      },
+      "88": {
+        "idle_ticks": 150305988,
+        "iowait_ticks": 322951,
+        "total_ticks": 241980782
+      },
+      "89": {
+        "idle_ticks": 173520701,
+        "iowait_ticks": 318785,
+        "total_ticks": 241951983
+      },
+      "9": {
+        "idle_ticks": 161248995,
+        "iowait_ticks": 399606,
+        "total_ticks": 241976417
+      },
+      "90": {
+        "idle_ticks": 173869255,
+        "iowait_ticks": 293854,
+        "total_ticks": 241965795
+      },
+      "91": {
+        "idle_ticks": 173519786,
+        "iowait_ticks": 291007,
+        "total_ticks": 241966983
+      },
+      "92": {
+        "idle_ticks": 174008357,
+        "iowait_ticks": 299018,
+        "total_ticks": 241977591
+      },
+      "93": {
+        "idle_ticks": 171247047,
+        "iowait_ticks": 277891,
+        "total_ticks": 241977256
+      },
+      "94": {
+        "idle_ticks": 179038551,
+        "iowait_ticks": 294762,
+        "total_ticks": 241962288
+      },
+      "95": {
+        "idle_ticks": 178279081,
+        "iowait_ticks": 296427,
+        "total_ticks": 241963893
+      },
+      "96": {
+        "idle_ticks": 141291013,
+        "iowait_ticks": 249138,
+        "total_ticks": 241880676
+      },
+      "97": {
+        "idle_ticks": 161989461,
+        "iowait_ticks": 344735,
+        "total_ticks": 241859217
+      },
+      "98": {
+        "idle_ticks": 168277219,
+        "iowait_ticks": 380975,
+        "total_ticks": 241856539
+      },
+      "99": {
+        "idle_ticks": 178858919,
+        "iowait_ticks": 372269,
+        "total_ticks": 241823359
+      }
+    },
+    "load_averages": [
+      229.14,
+      223.25,
+      213.34
+    ],
+    "monotonic_seconds": 2422330.339416432,
+    "runnable_tasks": 172,
+    "total_tasks": 67507,
+    "utc": "2026-11-11T09:17:09.219695+00:00"
+  }
+}

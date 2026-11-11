@@ -1,0 +1,166 @@
+{
+  "case": "qcd_n4_uux_epem_mupmum",
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1397579,
+        "pid": 1454179,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242217382,
+        "state": "Z"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1572930,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242219529,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1582615,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242219771,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1582615,
+        "pid": 1582680,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242219771,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1583292,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242219781,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1597100,
+        "process_group": 1597100,
+        "session": 1597100,
+        "start_time_ticks": 242219979,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1641921,
+        "process_group": 1641921,
+        "session": 1641921,
+        "start_time_ticks": 242221139,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1648789,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242222019,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1648789,
+        "pid": 1648811,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242222020,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1648811,
+        "pid": 1648812,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242222020,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1648811,
+        "pid": 1648813,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242222020,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1649537,
+        "process_group": 1649537,
+        "session": 1649537,
+        "start_time_ticks": 242222221,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1653015,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242223156,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1653015,
+        "pid": 1653140,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242223158,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1653650,
+        "process_group": 1653650,
+        "session": 1653650,
+        "start_time_ticks": 242223345,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1657884,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242224270,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 1658467,
+        "process_group": 1658467,
+        "session": 1658467,
+        "start_time_ticks": 242224474,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 2257442,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242244038,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1454179,
+        "pid": 2310281,
+        "process_group": 1454179,
+        "session": 1454179,
+        "start_time_ticks": 242244534,
+        "state": "S"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "performance_acceptance": false,
+  "result_sha256": "db6d229de08d2281e131d38d204ac7455f81e3c5909994026d40773b61c6c14e",
+  "returncode": 0,
+  "status": "complete"
+}
