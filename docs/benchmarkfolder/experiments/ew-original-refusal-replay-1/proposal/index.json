@@ -1,0 +1,78 @@
+{
+  "build_admitted": false,
+  "file_count": 17,
+  "files": {
+    "README.md": {
+      "bytes": 3998,
+      "sha256": "33e9fbd4802b1a7ba1d8348a7d010e6902624be3af707b7d347f12a9d432a65c"
+    },
+    "bindings.json": {
+      "bytes": 8937,
+      "sha256": "5306c9d186ccd6e4fc21b769426c3c0794725fd8a6a69f081ba7641dd61ceb4c"
+    },
+    "extract_inputs.py": {
+      "bytes": 7183,
+      "sha256": "c70020747092acc0988301b9591d7d978134a47a6e1e0f61bfcb33ab25998236"
+    },
+    "input-certificate.json": {
+      "bytes": 15571,
+      "sha256": "2ea05d2a2ca5fab7ca834e8fb26452f44fbc85c2a9bb880781aa50d0431e0c22"
+    },
+    "inputs/ew-point2-mode1-group5-stock.words": {
+      "bytes": 723,
+      "sha256": "c15756b33e36d944fa76cfe259d327790878f50afde291f60ac209dd32a05765"
+    },
+    "inputs/ew-point2-mode4-group5-stock.words": {
+      "bytes": 1420,
+      "sha256": "916088f230987a8404e7a24c79b465e6886a4a17de7e9853538f33cd2649fd9a"
+    },
+    "limit_exec.py": {
+      "bytes": 562,
+      "sha256": "de444ba906f3cd309b0773fecf62aa879b697251cd704d44ff64b201eb25a191"
+    },
+    "replay.f90": {
+      "bytes": 7521,
+      "sha256": "4e01796b1734434b350545d6c218a0ab97c1536e8ce7382b968ea10f0cfcdbd7"
+    },
+    "review.json": {
+      "bytes": 916,
+      "sha256": "6fd724ab4680fdbddd597d197b730301b9f760078aa625f74d57d3dc30b71db1"
+    },
+    "run.py": {
+      "bytes": 12533,
+      "sha256": "9eac988c969aab52abd72907c132d801666d3a688225129d98422018cd3eea97"
+    },
+    "source-verification.json": {
+      "bytes": 209,
+      "sha256": "bb5f71f82cfc8c608fe29f2ded75869ea2460e8587479c50cf2c163722c1364d"
+    },
+    "stage-plan.json": {
+      "bytes": 4784,
+      "sha256": "bd05f14ea0be1495e29397dc59d829461d07aea8fae516c8063a6dab321baf3d"
+    },
+    "test_controller.py": {
+      "bytes": 5285,
+      "sha256": "9d912631e246942fded0afe27f3799d6270bc0954fa14a0c696169456ae872a0"
+    },
+    "test_inputs.py": {
+      "bytes": 2277,
+      "sha256": "32e6bac0ca44cb127b8e30aec26d1ee2a75384f5053283b079a9f602a9515f98"
+    },
+    "test_worker.py": {
+      "bytes": 10377,
+      "sha256": "961a3bf431dd5e24134aadcb4215ee913d7a93e0259261451847348c17cb3bae"
+    },
+    "tests.txt": {
+      "bytes": 2570,
+      "sha256": "0c4eb00301f02f160972b75f0955b017ffc649f9b290b7f5d781bde0a9a5ac0d"
+    },
+    "worker.py": {
+      "bytes": 16783,
+      "sha256": "478714c932b22111fb06cce7b7fff547e2173676c75b28343370de5b37f35204"
+    }
+  },
+  "run_admitted": false,
+  "schema": "private-ew-original-refusal-source-index-v1",
+  "source_only": true,
+  "total_bytes": 101649
+}

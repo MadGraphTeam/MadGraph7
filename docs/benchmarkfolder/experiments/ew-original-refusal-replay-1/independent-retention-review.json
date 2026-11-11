@@ -1,0 +1,53 @@
+{
+  "checks": [
+    "Exact explicit closed-origin selection; source938447/buildc195/runec0 and root reviews authenticated.",
+    "All three build and four run command/log joins, both full raw protocol/error frames, four raw map/provider admissions, unchanged rank-three input echoes and one context/call per worker.",
+    "ERROR_BUFFER_FULL=0, clean finalization, ownership closure, recorded lock release and unchanged protected states.",
+    "Independent helper reconstructs both complete certificates and word files from published source/traces; all thirteen plans and capacity 35 match.",
+    "Only the in-memory sealed Protocol/require parser executes; historical binary/process paths are not followed.",
+    "Numerical status1 is distinct from OS exit0; quoted conditioning diagnostics are not independent conditioning, tensor-accuracy, amplitude or fix proof.",
+    "Deadline qualification accurately records 120 seconds native work after lock, 20-second native protocol and 30-second outer command; 180-second metadata is not a whole-controller hard cap."
+  ],
+  "full_packet_verifier": {
+    "executed_by": "delivery_scope_audit",
+    "external_binary_reads": 0,
+    "native_calls": 0,
+    "terminal_exit_code": 0,
+    "tool_chunk": "1faee7"
+  },
+  "full_packet_verifier_rerun_by_source_reviewer": false,
+  "independent_accuracy_qualified": false,
+  "independent_input_replay": {
+    "native_calls": 0,
+    "session_id": 27096,
+    "terminal_exit_code": 0
+  },
+  "input_interventions": false,
+  "material_blockers": [],
+  "new_native_executions": 0,
+  "original_payload_changes": false,
+  "performance_qualified": false,
+  "pre_review_index_sha256": "41ce4d442a1f1bb94fd5dc6cc138f5b476406042cd3312f84d37520c3d0ffaa4",
+  "production_fix_qualified": false,
+  "reviewed_files": {
+    "README.md": {
+      "bytes": 5328,
+      "sha256": "28e2ce2d2ff7480fe571478c59cd13423ec0b03e27bc7031d98949c768aa2f52"
+    },
+    "capture.py": {
+      "bytes": 6356,
+      "sha256": "49d707e6bbb9df4a92beacd1ddadaf47f608370d534d2205666f95d2e60cded1"
+    },
+    "input_checks.py": {
+      "bytes": 12538,
+      "sha256": "8432481d12cf21c1d691f217ef7e81eeb72152f63057449ac73e75d11d7f9bba"
+    },
+    "verify.py": {
+      "bytes": 22803,
+      "sha256": "e45aaf6b8005ddf6bed7b620a3a02720c2770e49a772f3c45d60da07db43cdf3"
+    }
+  },
+  "reviewer": "delivery_scope_audit/relocation_source_review",
+  "schema": "ew-original-refusal-retention-independent-review-v1",
+  "tensor_coefficients_read": false
+}

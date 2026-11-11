@@ -278,6 +278,13 @@ satisfy the conditional exact error enclosure. The sampled raw values are not
 necessarily produced from their vectors, so this check does not establish
 physical kinematics or qualify the source-DAG bounds and amplitude caller.
 
+The separate [original-input EW replay](experiments/ew-original-refusal-replay-1/README.md)
+reproduces both point-2, rank-three refusals and retains their complete original
+errors: ill-conditioned Gram subsets `[1,2,3]` in DP and `[0,1,2,3]` in QP.
+The inputs, original adapter and library are unchanged. This identifies the
+reported refusal conditions; it establishes neither their numerical cause nor
+a mass-projection fix or amplitude accuracy. Both failed results remain open.
+
 The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
 index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
 passes exact parity across four workers, 76 checked native-DP physical calls
