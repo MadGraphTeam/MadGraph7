@@ -13,8 +13,8 @@ a Monte-Carlo run must never have its logs swamped, the caller decides):
   points, the first point's reason and every affected point index.
 - ``source="symbolica"``: a Symbolica log event of a known, benign class
   captured during the operation (``pyamplicol._internal.symbolica_log``):
-  ``kind`` is Symbolica's log target and level (e.g.
-  ``"WARN symbolica::coefficient"``), ``message`` its first message.
+  ``kind`` is the event's log target (e.g.
+  ``"symbolica::coefficient"``, ``"UFOModelLoader"``), ``message`` its first message.
 
 ``where`` names the operation (and, for captured events, the stage) the
 warning arose in. A result holds them in its ``warnings`` tuple, in

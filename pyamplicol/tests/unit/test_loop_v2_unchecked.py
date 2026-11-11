@@ -523,7 +523,9 @@ def test_the_c_abi_and_the_wrappers_set_the_unchecked_setting(
         assert setter(handle, 0) == 0
         assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
         closed = _evaluate(sdk, handle, points, scales)
-        assert FAILED_STATUS in closed["statuses"]
+        # The structural refusals are served best-effort by the default
+        # failure policy (m-lit ux-besteffort): status 5, never a success.
+        assert 5 in closed["statuses"] and FAILED_STATUS not in closed["statuses"]
         assert closed["diagnostics"]["reduction"]["unchecked"] is False
     finally:
         sdk.rusticol_virtual_free(handle)

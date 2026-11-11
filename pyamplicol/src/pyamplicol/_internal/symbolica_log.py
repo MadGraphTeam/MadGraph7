@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 _ANSI = re.compile(rb"\x1b\[[0-9;]*m")
 SYMBOLICA_CLASSES = (
     (
-        "WARN symbolica::coefficient",
+        "symbolica::coefficient",
         re.compile(
             rb"WARN\s+symbolica::coefficient:\s+"
             rb"(Created infinity by raising 0 to the power of -1)"
@@ -102,7 +102,7 @@ class _LoaderFilter(logging.Filter):
         message = record.getMessage()
         for pattern in LOADER_CLASSES:
             if pattern.search(message):
-                _ACTIVE[0].add("ufo-model-loader", "WARNING UFOModelLoader", message)
+                _ACTIVE[0].add("ufo-model-loader", "UFOModelLoader", message)
                 return False
         return True
 

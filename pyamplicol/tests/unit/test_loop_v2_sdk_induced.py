@@ -53,6 +53,7 @@ STATUS_INVALID_ARGUMENT = 1
 STATUS_RUNTIME_ERROR = 3
 SUCCESS_STATUS = 4  # RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED
 FAILED_STATUS = 3
+BEST_EFFORT_STATUS = 5  # RUSTICOL_VIRTUAL_BEST_EFFORT (m-lit ux-besteffort)
 
 
 @pytest.fixture(scope="module")
@@ -878,6 +879,17 @@ def test_the_c_abi_falls_back_per_point_at_a_stated_target(artifacts, loop_nativ
         capabilities = _json(sdk, sdk.rusticol_virtual_capabilities_json, handle)
         assert capabilities["reduction"]["target"] == 1e-5
         assert set_target(handle, target) == 0, _error(sdk)
+        # The default failure policy serves an explicit backend's refused
+        # point with its best-effort value (m-lit ux-besteffort); "return"
+        # keeps it failed, the fallback's comparison below.
+        assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
+        served = _evaluate(sdk, handle, points, scales)
+        assert served["statuses"] == [
+            BEST_EFFORT_STATUS,
+            SUCCESS_STATUS,
+            SUCCESS_STATUS,
+        ]
+        assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0
         runs = {}
         for backend in ("ninjars", "tirust", "auto"):
             assert sdk.rusticol_virtual_set_reduction(handle, backend.encode()) == 0
@@ -1166,7 +1178,9 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
         assert found["statuses"] == [SUCCESS_STATUS] * count
         assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
         explicit = _evaluate(sdk, handle, points, scales)
-        assert [s == FAILED_STATUS for s in explicit["statuses"]] == [
+        # The default failure policy: the refused points carry their
+        # best-effort value (m-lit ux-besteffort).
+        assert [s == BEST_EFFORT_STATUS for s in explicit["statuses"]] == [
             v is None for v in tirust.values
         ]
     finally:

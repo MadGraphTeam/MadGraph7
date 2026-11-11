@@ -85,6 +85,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "evaluation.reduction",
         "evaluation.reduction_target",
         "evaluation.correlated_requests",
+        "evaluation.on_failure",
         "evaluation.mu_r2",
         "evaluation.mu_r2_file",
         "evaluation.stability.absolute_tolerance",
