@@ -1193,18 +1193,10 @@ class ReweightInterface(extended_cmd.Cmd):
         no beam.
         """
         run_card = getattr(self, 'run_card', None)
-        if self.is_decay or not isinstance(run_card, banner.RunCardLO):
+        pol = self.events_beampol(run_card) if run_card is not None else None
+        if not pol:
             return None
-        pol = [1., 1.]
-        for b in (1, 2):
-            value = float(run_card['polbeam%i' % b])
-            if not value:
-                continue
-            if 'eva' in (run_card['pdlabel'], run_card.get('pdlabel%i' % b)):
-                continue
-            pol[b-1] = math.copysign(1 + abs(value) / 100., value)
-        if pol == [1., 1.]:
-            return None
+        pol = list(pol)
         model = getattr(self, 'original_model', None) or self.model
         self.beampol_legs = []
         for j in (0, 1):
@@ -1220,6 +1212,35 @@ class ReweightInterface(extended_cmd.Cmd):
             return None
         logger.info('Beam polarisation of the events in the matrix elements: '
                     'polbeam1=%s, polbeam2=%s', run_card['polbeam1'], run_card['polbeam2'])
+        return tuple(pol)
+
+    def events_beampol(self, run_card=None):
+        """(pol1, pol2) the run_card of the events asks for, in the
+        /to_beampol/ convention of get_beampol, or None when it asks for no
+        beam polarisation (or is no LO run_card, or the events are decays).
+        Unlike get_beampol it needs no matrix element: it is what the run_card
+        says, before deciding which incoming legs are spin-1/2 fermions, so
+        tree_crossing_flag can read it before the matrix elements exist.
+        run_card defaults to the one of the events' banner."""
+        if getattr(self, 'is_decay', False):
+            return None
+        if run_card is None and getattr(self, 'banner', None) is not None:
+            try:
+                run_card = banner.Banner(self.banner).charge_card('run_card')
+            except Exception:
+                return None
+        if not isinstance(run_card, banner.RunCardLO):
+            return None
+        pol = [1., 1.]
+        for b in (1, 2):
+            value = float(run_card['polbeam%i' % b])
+            if not value:
+                continue
+            if 'eva' in (run_card['pdlabel'], run_card.get('pdlabel%i' % b)):
+                continue
+            pol[b-1] = math.copysign(1 + abs(value) / 100., value)
+        if pol == [1., 1.]:
+            return None
         return tuple(pol)
 
     def _is_fermion(self, model, pid):
@@ -1240,7 +1261,8 @@ class ReweightInterface(extended_cmd.Cmd):
             self._spin_cache[pid] = spin == 2
         return self._spin_cache[pid]
 
-    def set_event_beampol(self, module, event, lab_p, pdg, n_initial, virtual=False):
+    def set_event_beampol(self, module, event, lab_p, pdg, n_initial, virtual=False,
+                          crossed=False):
         """Hand the beam polarisation of this event to the /to_beampol/ of
         module. SMATRIX applies BEAMPOL(J) to its incoming leg J, which is not
         beam J when the legs of the event are reordered to the ones of the
@@ -1248,6 +1270,7 @@ class ReweightInterface(extended_cmd.Cmd):
         beam 1 is the incoming particle that runs along +z in the lab.
 
         lab_p: lab-frame momenta in the order of the library (pdg).
+        crossed: the event is evaluated at a folded crossing's flavor index.
         The value is set again only when it changes, which is rare.
         """
         if not self.beampol or n_initial != 2:
@@ -1269,6 +1292,16 @@ class ReweightInterface(extended_cmd.Cmd):
         value = tuple(self.beampol[b]
                       if self.beampol_legs[j] and self._is_fermion(model, pdg[j]) else 1.
                       for j, b in enumerate(beams))
+        if crossed and any(abs(v) > 1 for v in value):
+            # The crossing-aware SMATRIX refuses a polarised beam at a crossed
+            # flavor index with a Fortran STOP, which would end the session.
+            # tree_crossing_flag generates unfolded matrix elements for
+            # polarised events, so this is a library folded by an earlier run.
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'can not be reweighted with a matrix element folded '
+                                  'by crossing symmetry (event %s): remove the rw_me '
+                                  'directories to have them regenerated without '
+                                  'crossing.' % (pdg,))
         if self._beampol_set.get(id(module)) == value:
             return
         if not hasattr(module, 'py_set_beampol'):
@@ -2160,7 +2193,8 @@ class ReweightInterface(extended_cmd.Cmd):
         # the permutations of all_p differ in their final state only: the
         # incoming legs, still lab-frame here, say which beam is which leg
         self.set_event_beampol(module, event, all_p[0], pdg, len(orig_order[0]),
-                               virtual=is_virtual_tag or 'virt' in base)
+                               virtual=is_virtual_tag or 'virt' in base,
+                               crossed=flav_idx is not None)
 
         # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass shell
         # (add_write_info.f, put_on_MC_mshell_in / put_on_MC_mshell_Hevout)
@@ -2563,6 +2597,14 @@ class ReweightInterface(extended_cmd.Cmd):
          - 'use_eventid' hands the event's process id to SMATRIXHEL, while the
            folded entry point SMATRIXHEL_IDX takes none: a crossed event would
            silently be given the first matching matrix element instead.
+         - beam polarisation (polbeam1/polbeam2 of an LO run_card): SMATRIX
+           weights BEAMPOL(J) with the helicity of its incoming leg J, which for
+           a crossed flavor index is the base's leg, not the event's beam; the
+           crossing-aware SMATRIX therefore refuses that combination with a
+           Fortran STOP, which would end the whole session at the first
+           crossed event. madevent folds such a process when the crossing
+           does not move the polarised beam (e- u > e- u with e- u~ > e- u~),
+           so the events can be polarised while the reweight folds.
         So do, whatever the card says:
          - a perturbative ([...]) definition among `processes`: the reweight
            reads its LO lines (get_LO_definition_from_NLO) unfolded, and
@@ -2579,6 +2621,8 @@ class ReweightInterface(extended_cmd.Cmd):
         redone unfolded afterwards (see create_standalone_tree_directory).
         """
         if self.keep_ordering or self.flag_density_matrix or self.use_eventid:
+            return ' --use_crossing=False'
+        if self.events_beampol():
             return ' --use_crossing=False'
         if self.inc_sudakov or any('[' in proc for proc in processes):
             return ' --use_crossing=False'

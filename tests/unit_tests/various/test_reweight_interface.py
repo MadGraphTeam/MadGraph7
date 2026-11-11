@@ -22,6 +22,7 @@ import tempfile
 import unittest
 
 import madgraph.interface.reweight_interface as rwgt_interface
+import madgraph.various.banner as banner
 
 
 class FakeEvent(object):
@@ -186,6 +187,23 @@ class TestReweightGenerationFoldsCrossings(unittest.TestCase):
         self.obj.use_eventid = True
         self.assertEqual(self.generate(['p p > w+ j']),
                          ['p p > w+ j --use_crossing=False'])
+
+    def test_polarised_beams_unfold(self):
+        """the crossing-aware SMATRIX refuses a polarised beam at a crossed
+        flavor index with a Fortran STOP: polarised events are reweighted
+        unfolded, even against an explicit True replayed from the card (madevent
+        folds e- u~ > e- u~ onto e- u > e- u when only beam 1 is polarised)"""
+        card = banner.RunCardLO()
+        card['lpp1'] = card['lpp2'] = 0
+        card['polbeam1'] = 80
+        self.obj.banner = banner.Banner()
+        self.obj.banner['mgruncard'] = card
+        self.assertEqual(self.generate(['e- q > e- q --use_crossing=True']),
+             ['e- q > e- q --use_crossing=True --use_crossing=False'])
+        card['polbeam1'] = 0
+        self.obj.mg5cmd = FakeMG5Cmd()
+        self.assertEqual(self.generate(['e- q > e- q']),
+                         ['e- q > e- q --use_crossing=True'])
 
     def test_explicit_choice_is_replayed(self):
         """an explicit --use_crossing on a proc card line is the user's choice,
