@@ -385,8 +385,11 @@ through the Python native `evaluate` API (`loop_v2/DESIGN.md`, MF-RESCUE status;
 ## Explicit partial-value returns
 
 All public virtual evaluation methods accept the per-call option
-`on_failure="return"`; the default `"raise"` retains `EvaluationError` and its
-failure payload. The option applies to ordinary, resolved,
+`on_failure`: the default `"best-effort"` (since 1.0.3) returns a refused
+point's best available value (the unchecked reduction's) with status
+`"best-effort"`, its refusal and an uncertainty; `"return"` returns failed
+points as failed lanes without that evaluation; `"raise"` (the default before
+1.0.3) retains `EvaluationError` and its failure payload. The option applies to ordinary, resolved,
 precision-specific, correlated and grouped source requests. It does not change
 the arithmetic or runtime defaults.
 

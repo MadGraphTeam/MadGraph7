@@ -756,8 +756,11 @@ atomic. `mu_r2` is required explicitly; it is the renormalization scale squared.
 `evaluate` also takes `poles` (`"all"`, `"none"` for the finite part only,
 `"uv"`, `"ir"`), `stability_checks` (a `VirtualStabilityChecks`: rotations and
 the reduction-direction and rescaled checks; one estimate per point, none
-without checks) and `on_failure="return"` (a failed point is `None` with its
-reason). Declared colour and spin correlations are served by
+without checks) and `on_failure` (the default `"best-effort"`: a point the
+backend refuses is returned with its best available value, status
+`"best-effort"`, its refusal and an uncertainty; `"return"`: a failed point
+is `None` with its reason; `"raise"`: `EvaluationError` at the first such
+point). Declared colour and spin correlations are served by
 `evaluate_correlated` and `evaluate_correlated_many`, per-helicity and
 per-colour components by `evaluate_resolved`, with the same options. See
 [The v2 loop engine](configuration.md#the-v2-loop-engine) for the generation

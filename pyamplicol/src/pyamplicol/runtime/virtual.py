@@ -460,7 +460,7 @@ def v2_options(
     stability: VirtualRescuePolicy | None = None,
     poles: PoleSelection | str | None = None,
     stability_checks: VirtualStabilityChecks | None = None,
-    on_failure: str = "raise",
+    on_failure: str = "best-effort",
 ) -> tuple[PoleSelection, VirtualStabilityChecks]:
     """Validate the public options a v2 virtual runtime does not forward
     unchanged; returns (pole selection, stability checks). A rescue policy

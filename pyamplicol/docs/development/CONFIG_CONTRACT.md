@@ -318,7 +318,8 @@ One-loop evaluation settings:
 
 - `mu_r2: str | null`, `mu_r2_file: path | null`
 - `correlated_requests: path | null`
-- `on_failure: raise | return = raise`
+- `on_failure: best-effort | return | raise | null = null` (null: the
+  default, `best-effort`; since 1.0.3)
 - `poles: all | none | uv | ir = all` (loop-induced: `all` or `none`)
 - `reduction: auto | ninjars | tirust | null` (null: the artifact's)
 - `reduction_target: float | null` (TIRust's target accuracy; null = 1e-5)
