@@ -96,10 +96,26 @@ def _served(row: Any) -> bool:
 
 # The width of a stage bar (a display constant).
 _BAR = 8
+# The characters of a failure reason shown under the runtime table (the full
+# reasons are in the JSON; a display constant).
+_REASON = 160
+
+
+def _seconds_text(seconds: float) -> str:
+    """A duration with three significant digits."""
+
+    for unit, scale in (("s", 1.0), ("ms", 1e-3), ("us", 1e-6)):
+        if abs(seconds) >= scale:
+            return f"{seconds / scale:.3g} {unit}"
+    return f"{seconds / 1e-9:.3g} ns"
+
+
+def _short(reason: str) -> str:
+    text = " ".join(reason.split())
+    return text if len(text) <= _REASON else text[: _REASON - 3] + "..."
 
 
 def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
-    from .summary import _seconds_text
     from .virtual import _STAGE_COLOURS
 
     rows = report.runtime
@@ -139,22 +155,33 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             continue
         profile = row.profile
         timed = profile.batch * profile.samples
-        for reason, count in profile.failure_reasons[:3]:
-            reasons.append(f"{_name(row.backend)} failed {count} of {timed}: {reason}")
+        if profile.failed_points:
+            shown = profile.failure_reasons[:2]
+            more = len(profile.failure_reasons) - len(shown)
+            reasons.append(
+                f"{_name(row.backend)} failed {profile.failed_points} of {timed} "
+                "timed points"
+                + (
+                    f" ({len(profile.failure_reasons)} distinct reasons)"
+                    if more
+                    else ""
+                )
+                + ": "
+                + "; ".join(f"{count}x {_short(reason)}" for reason, count in shown)
+                + (f"; {more} more in --json" if more else "")
+            )
         if not _served(row):
             # Every timed point failed: the time is that of failing.
             summary.add_row(
                 (
                     label,
                     palette.paint(
-                        f"({_seconds_text(profile.seconds_per_point)} failing)",
+                        _seconds_text(profile.seconds_per_point),
                         palette.MUTED,
                         color=color,
                     ),
                     "",
-                    palette.paint(
-                        "all points failed", palette.BAD, color=color, bold=True
-                    ),
+                    palette.paint("all failed", palette.BAD, color=color, bold=True),
                     "-",
                     palette.paint(
                         f"{profile.failed_points} of {timed}", palette.BAD, color=color
@@ -203,7 +230,9 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     blocks = [str(summary.get_string())]
     notes = [
         "lanes: the timed points per effective backend (as auto, the default "
-        "backend's per-point fallback serves the points it refuses)."
+        "backend's per-point fallback serves the points it refuses). A backend "
+        "that failed every timed point shows the time of failing (grey) and is "
+        "not compared."
     ]
     notes += reasons
     blocks.append(_notes(notes))
@@ -463,10 +492,10 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         )
     notes.append(
         "Failed b64: points the backend refused or failed in binary64 (no rescue "
-        "ran). Flagged: flagged unstable by the default checks; flagged, "
-        "inaccurate: of those, the truly inaccurate ones; missed: truly "
-        "inaccurate points the checks did not flag; time: the backend's "
-        "binary64 and double-double calls. Percentages of the measured points."
+        "ran). Flagged, inaccurate: of the flagged points, the truly "
+        "inaccurate ones; missed: truly inaccurate points the checks did "
+        "not flag; time: the backend's binary64 and double-double calls. "
+        "Percentages of the measured points."
     )
     notes.append(
         "Flagged: the binary64 call's estimate (relative, per sector) above the "

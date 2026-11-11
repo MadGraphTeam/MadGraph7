@@ -312,7 +312,8 @@ def test_runtime_tables_compare_served_backends_only():
         ),
     )
     text = render_summary(_report(None, failed), color=False)
-    assert "all points failed" in text and "8 of 8" in text
-    assert "NinjaRS failed 8 of 8: unsupported: rank 7" in " ".join(text.split())
-    assert "only one served" in text and "failing" in text
+    assert "all failed" in text and "8 of 8" in text
+    flat = " ".join(text.split())
+    assert "NinjaRS failed 8 of 8 timed points: 8x unsupported: rank 7" in flat
+    assert "only one served" in text and "time of failing" in flat
     assert "NinjaRS / TIRust" not in text
