@@ -1,0 +1,47 @@
+{
+  "closed_profile_capsule_index": {
+    "path": "docs/benchmarkfolder/experiments/fortran-dp-n1-profile-qualification-1/evidence-index.json",
+    "sha256": "f3c9e5538eb8d6ad84882cded419da49c7ffe531b6f81430e1d153ce5fc9f6e0"
+  },
+  "donor_proposal": "docs/benchmarkfolder/experiments/fortran-dp-n1-profile-proposal-2",
+  "donor_proposal_files": {
+    "README.md": "c1aa042e5c9634bcb82dcee87227804b7a834fe608157b95a4493e86205b6cdf",
+    "analyze.py": "a245f363947466dc905d234bc5ca1061e8e347ee557b5a982de3978a7c1c40ed",
+    "audit.json": "87b5712e2c86119e6d93c1a4de66b8abc826b945b914daf3724cff3529601e17",
+    "baseline-source/TIRUST_interface.f": "c740fdb22e1347ff2c3f6bcacc2a4d22085fd94bf3ca022e24da3f821cfb9bda",
+    "baseline-source/TIR_interface.f": "b5d5487df140ea69aed722086dc853e5fa26cdacdd5af7785efa3590ef3c2d5f",
+    "baseline-source/check_sa.f": "73ef67604a894b3bd9f3c557dd2b028ad328409363244cc9104d54b60f0cfb2f",
+    "baseline-source/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+    "controller.py": "db3f17d6d2832f88fc04fd379dbd0e4d8e8c2aa926d9a41b7c76ebe5b6f5c14b",
+    "environment-successor.diff": "bc0320bf22ad495e63f07ee9b391af0d3525e6d9a6531b0cd6c3dc729b6a3fc3",
+    "input-pins.json": "e340a56acc6044b27ceea9c18f8ec627afe6aab9e1e64ff0ccbc4d98a4d57e70",
+    "instrumentation.diff": "38c78e1b909178e0dab815c280570777303bcfb8d0de64267ea06e7799d58ab4",
+    "observed-source/TIRUST_interface.f": "491186e857ed12ea5e9d34168cff63cea01bdfb5389201f0ffd090bcbb73bc33",
+    "observed-source/TIR_interface.f": "f2347ce4e38711b097d86d2798ac79de4312e2956fff51fc1d15a6fb044b4f7a",
+    "observed-source/check_sa.f": "73ef67604a894b3bd9f3c557dd2b028ad328409363244cc9104d54b60f0cfb2f",
+    "observed-source/mtirust.f90": "e381f3c6c18e24922dfd1853a0bdc4f264201c21d6d803f6bf945c624a355a9e",
+    "original-source/TIRUST_interface.f": "c740fdb22e1347ff2c3f6bcacc2a4d22085fd94bf3ca022e24da3f821cfb9bda",
+    "original-source/TIR_interface.f": "b5d5487df140ea69aed722086dc853e5fa26cdacdd5af7785efa3590ef3c2d5f",
+    "original-source/check_sa.f": "e1e0334777c59a2e673722ad2fa3b631089e52c332b6bfd79621404f49cbaf17",
+    "original-source/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+    "predecessor.json": "1464ecbde7c33aec4f4b16426a6dd80b08ea5b9280485519fbf4a2bb379cc492",
+    "prepare.py": "c0b1b65c0e1a770a396ea9aff0ef7136de1021b538304ff5a0cf0182f57d62d2",
+    "prepare_environment.py": "b76ed31f32b709f62e80a7821dc874a6aa48a37aed8604fb5dad7cc571c8feae",
+    "qp_profile.f90": "1f0daf4d18574a84b3316135b2cec14a91a7aedd182e089c770441692ed579b1",
+    "seal.py": "dfe208ca5918e140eaf6985b681d15974cd71995bfab259bee409686a5c897fa",
+    "source-index.json": "e633405b99d782ad6cf021be875b258f13e5669a7113c3890c40fa36eca6160f",
+    "source-test-receipt.json": "203b9d908727169504be3936a649bc25ef8b7daeced8c0e088186282cb5e335f",
+    "test_source.py": "3db614252224608f2412f88a5a1ba4cf9c6ac828c0636fbf4485cdcef36c554b",
+    "tool_environment.py": "10ca7340f1e1ed95e372c0ed0fde4a8072cbcd4b9dede3ddb5726586d8b8f88e",
+    "toolchain-pins.json": "d130e5c61691adf9b70b5dbf912567926241ecc20650d1a2557524f3818e17ba"
+  },
+  "donor_source_index_sha256": "e633405b99d782ad6cf021be875b258f13e5669a7113c3890c40fa36eca6160f",
+  "failure_cleanup_helper_origin": {
+    "copied_unchanged": true,
+    "path": ".tirust-build/generic-equality-postcondition-qualification-proposal-1/ownership.py",
+    "sha256": "a7a741337b40788e480fd32c13ae9132be6d7eb2b96a2ca426041b9db44f9f80"
+  },
+  "native_calls": 0,
+  "purpose": "Reuse a closed successful n1 source/toolchain and worker/scaffolding only; no numerical or timing result imported into this new experiment.",
+  "schema": "host-repair-profile-source-ancestry-v1"
+}

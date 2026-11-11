@@ -1,0 +1,28 @@
+{
+  "compiler_loader_reducer_executions": 0,
+  "corrections": [
+    "Correcttestexpectations; retainfirstreceipt",
+    "Move direct-testentryafteralltestclasses",
+    "Assertfreshdestinationidentities, not future nonexistence",
+    "Independentreview removedassumedoneDPcall and closedrawchildcleanup gap"
+  ],
+  "final_pure_tests": {
+    "normal": {
+      "path": "tests-normal.json",
+      "sha256": "de8c8af255bcbf80a96d7d42015f2141b577775cf676cab91573dc208d78c042"
+    },
+    "optimized": {
+      "path": "tests-optimized.json",
+      "sha256": "933619c7b778c1b475f692b36504fffad1b3ea6a5483d07dab42d5a5f4ba9844"
+    }
+  },
+  "first_pure_attempt": {
+    "failures": [
+      "Mock poll sequence expectedone signal butfixturekeptrootrunning throughSIGKILL",
+      "Makefile fixtureexpectedfourmentionswhereactualcorrectpolicyhasthree"
+    ],
+    "receipt": "test-attempt-1-normal.json"
+  },
+  "science_changes": false,
+  "status": "Source authoring only; no native stages"
+}

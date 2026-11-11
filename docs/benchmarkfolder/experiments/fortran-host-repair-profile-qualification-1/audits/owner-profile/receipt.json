@@ -1,0 +1,138 @@
+{
+  "amplitude_calls": 358400,
+  "batches": 28,
+  "build_terminal_sha256": "663b3947123be881864b78179bb8caaa19870277ed654c1232219699a992e5b2",
+  "direct_MP": 0,
+  "enabled_DP_and_nested_MP_counts": 179200,
+  "final_word_decimal_raw_joins": 28000,
+  "independent_finite_truth": false,
+  "native_replay_calls": 0,
+  "parity_terminal_sha256": "5218212507e983ae8400c6396c32da84d4aed180660addac7436297d5ec761d8",
+  "performance_acceptance": false,
+  "profile_terminal_sha256": "39fb1129fa6417ddf9b7950e0eedab3a4484c4a23a314538630a46c4ee33797d",
+  "result_sha256": "b2b12b6cd71aaa91e510fead3fc02fb85361b602c95d81704fb3a7c9a29baa5a",
+  "scope": "Owner pure full raw PROFILE replay; descriptive attribution only.",
+  "source_sha256": "97cad155079138419c198599adbbbcc00bb8df0a3ac799b8ef9ec9dd9858bace",
+  "status": "passed",
+  "status_codes": [
+    219
+  ],
+  "summary": {
+    "actual_DP_calls_by_cycle": [
+      12800,
+      12800,
+      12800,
+      12800,
+      12800,
+      12800,
+      12800
+    ],
+    "actual_DP_calls_per_amplitude": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "actual_MP_calls_by_cycle": [
+      12800,
+      12800,
+      12800,
+      12800,
+      12800,
+      12800,
+      12800
+    ],
+    "actual_MP_calls_per_amplitude": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "actual_MP_direct_calls_by_cycle": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "all_five_backends_qualified": false,
+    "amplitude_calls_by_cycle": [
+      12800,
+      12800,
+      12800,
+      12800,
+      12800,
+      12800,
+      12800
+    ],
+    "interpretation": "Actual common host repair scopes and instrumentation overhead; DP includes nested MP, no subtraction.",
+    "median_ratios": {
+      "observed-0": 1.0001745998182014,
+      "observed-1": 1.006183905011585,
+      "observed-2": 0.9993648645797385
+    },
+    "median_repair_seconds_per_amplitude": {
+      "1": 6.075338359375e-06,
+      "2": 5.627017890625e-06
+    },
+    "paired_cycle_ratios": {
+      "observed-0": [
+        1.0127912867865068,
+        1.0008629511031364,
+        0.9889361728829195,
+        0.9944955859361563,
+        1.004164209000156,
+        1.0001745998182014,
+        0.9565617444445026
+      ],
+      "observed-1": [
+        1.0117451881459785,
+        1.0313865991395925,
+        1.006183905011585,
+        1.0028017159385327,
+        1.030045736022024,
+        1.0042914102446132,
+        0.9695687140080921
+      ],
+      "observed-2": [
+        0.9928535536017167,
+        1.0168920129267343,
+        0.9993648645797385,
+        0.9984823353729674,
+        1.0164811020460247,
+        1.0031593928482672,
+        0.9701085898052587
+      ]
+    },
+    "performance_acceptance": false,
+    "repair_seconds_per_amplitude": {
+      "1": [
+        6.037534453125001e-06,
+        6.097975234375e-06,
+        6.02957796875e-06,
+        6.075338359375e-06,
+        6.086736875e-06,
+        6.086173125e-06,
+        5.999706640625e-06
+      ],
+      "2": [
+        5.603705390625e-06,
+        5.65242796875e-06,
+        5.591936640625e-06,
+        5.64028375e-06,
+        5.6464411718750005e-06,
+        5.627017890625e-06,
+        5.558497734375e-06
+      ]
+    },
+    "speedup_claimed": false
+  }
+}

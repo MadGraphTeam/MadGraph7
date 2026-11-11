@@ -1,0 +1,32 @@
+{
+  "cap_seconds": 300.0,
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/fortran-host-repair-profile-proposal-1/controller.py",
+    "--child",
+    "parity",
+    "--source",
+    "97cad155079138419c198599adbbbcc00bb8df0a3ac799b8ef9ec9dd9858bace",
+    "--reviewed-build",
+    "663b3947123be881864b78179bb8caaa19870277ed654c1232219699a992e5b2"
+  ],
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2453574.891866739,
+  "parent_pid": 2,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "reviewed_build_sha256": "663b3947123be881864b78179bb8caaa19870277ed654c1232219699a992e5b2",
+  "reviewed_parity_sha256": null,
+  "source_index_sha256": "97cad155079138419c198599adbbbcc00bb8df0a3ac799b8ef9ec9dd9858bace",
+  "stage": "parity",
+  "status": "running"
+}

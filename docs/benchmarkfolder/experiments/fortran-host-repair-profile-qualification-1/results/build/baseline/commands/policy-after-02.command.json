@@ -1,0 +1,8 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "--version"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-host-repair-profile-work-1/build/baseline/SubProcesses/P0_uux_z",
+  "scope": "Compiler-policy helper; make-internal child queries not individually traced"
+}

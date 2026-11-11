@@ -260,6 +260,16 @@ controlled compiler experiment. It establishes no optimization gain, current
 NinjaRS comparison or local performance acceptance. Portable replay preserves
 the initial missing-tool build failure and all subsequent qualification records.
 
+The [phase-space repair profile](experiments/fortran-host-repair-profile-qualification-1/README.md)
+measures the existing Fortran repair in the same small process, preserving its
+bodies, compiler flags and numerical results. Four controls and 358,400 timed
+calls give a median inclusive repair scope of `6.075 us`, containing `5.627 us`
+of nested MP repair. Its median paired fraction is `6.7567%` of the clocked
+whole-amplitude time. Every timed status passes; retained final-point words and
+IEEE observations match the baseline. These overlapping scopes and separate
+probe measurements are retained without subtraction. This is runtime
+attribution, with no optimization gain or performance acceptance claim.
+
 The subsequent [strict wrapper compiler experiment](experiments/fortran-tirust-interface-o3-qualification-1/README.md)
 changes only `TIRUST_interface.f` to add `-O3 -fno-fast-math` in private builds.
 All coefficient, accuracy, status and observed IEEE words match on the full100

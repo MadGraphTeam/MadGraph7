@@ -1,0 +1,98 @@
+{
+  "CPU_reservation": false,
+  "actual_call_counts": "Measured without one-call-per-amplitude assumption; DP count positive, each DP body has one nested MP call; counter/clock counts must agree.",
+  "actual_source_bindings": 111,
+  "aliases_required": [
+    "libcts.a",
+    "libdhelas.a",
+    "libiregi.a",
+    "libmodel.a",
+    "mpmodule.mod"
+  ],
+  "all_five_backends_qualified": false,
+  "amplitude_calls_per_batch": 12800,
+  "automatic_retry": false,
+  "backend": 9,
+  "campaign": "entry-latch-cache-guard-1",
+  "cleanup_reserve_seconds": 60,
+  "clock_overhead": "Four fresh baseline/hooksdisabled/counter/clock lanes and100000 empty brackets; no subtraction.",
+  "cpu": 12,
+  "cycles": 7,
+  "full_learning_points": 100,
+  "lanes": [
+    "baseline",
+    "observed-0",
+    "observed-1",
+    "observed-2"
+  ],
+  "main_modes": {
+    "CTModeRun": -1,
+    "ImprovePSPoint": 2
+  },
+  "model": "loop_sm",
+  "native_DSO_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "native_admission": false,
+  "numerical_gate": "Exact all100 Born/Laurent/accuracy/status words, both orders; status219 only; actual IEEEpre/post equal; complete bootstrap/learning traces exact.",
+  "original_flags_preserved": true,
+  "original_object_bindings": 60,
+  "performance_acceptance": false,
+  "points": 100,
+  "precise_local_timings": "Hua-Sheng TODO",
+  "process": "u u~ > z [virt=QCD]",
+  "profile_stages": {
+    "1": "DP repair inclusive of nested MP and hooks",
+    "2": "All actual MP core calls, nested/direct counters distinguished",
+    "3": "Empty bracket probe only, excluded from physics flush"
+  },
+  "repair_flags": [
+    "-w",
+    "-fPIC",
+    "-ffixed-line-length-132"
+  ],
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "schema": "n1-host-repair-attribution-dormant-v1",
+  "shared_mutex": ".tirust-build/numerical-tests.lock",
+  "source_commit": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "source_only": true,
+  "speedup_claimed": false,
+  "stages": {
+    "build": {
+      "amplitude_calls": 0,
+      "cap_seconds": 600,
+      "compiles_per_executable": 3,
+      "executables": 2,
+      "links_per_executable": 1,
+      "predecessors": []
+    },
+    "parity": {
+      "cap_seconds": 300,
+      "fresh_workers": 4,
+      "predecessors": [
+        "build"
+      ]
+    },
+    "profile": {
+      "cap_seconds": 600,
+      "fresh_workers": 4,
+      "predecessors": [
+        "build",
+        "parity"
+      ]
+    }
+  },
+  "timed_amplitude_calls_total": 358400,
+  "timed_gate": "All12800 statuses perbatch; exact words on final100; actual repair counts/ticks allcalls; timedpre/postIEEEequal.",
+  "traversals_per_batch": 128,
+  "unqualified": [
+    "Native ABI/bodywrapperbehavior",
+    "Physical timing attribution untilseparateRUN",
+    "Otherbackends/processes/models/stress/alternative repairbranches",
+    "Generaltrapequivalence",
+    "Optimizationorrecoveredunaccountedhosttime"
+  ],
+  "wrapper_source_delta": "Rename only the two actual DP/MP routine headers; append original-public-ABI begin/body/end wrappers. All scientific bodies reconstruct exactly."
+}

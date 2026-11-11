@@ -1,0 +1,65 @@
+{
+  "cap_seconds": 600.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 245354481,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 5,
+        "process_group": 5,
+        "session": 5,
+        "start_time_ticks": 245355610,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 8,
+        "process_group": 8,
+        "session": 8,
+        "start_time_ticks": 245356243,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 11,
+        "process_group": 11,
+        "session": 11,
+        "start_time_ticks": 245356796,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 14,
+        "process_group": 14,
+        "session": 14,
+        "start_time_ticks": 245357376,
+        "state": "S"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2454143.636154415,
+  "pid": 3,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "result_sha256": "b2b12b6cd71aaa91e510fead3fc02fb85361b602c95d81704fb3a7c9a29baa5a",
+  "returncode": 0,
+  "source_index_sha256": "97cad155079138419c198599adbbbcc00bb8df0a3ac799b8ef9ec9dd9858bace",
+  "stage": "profile",
+  "status": "passed"
+}
