@@ -495,7 +495,7 @@ class MadSpinOptions(banner.ConfigFile):
         if canonical != list(value):
             dict.__setitem__(self, name, canonical)
 
-    def beampol_me(self):
+    def beampol_me(self, incoming=None):
         """The beam polarisations in the convention the matrix elements use.
 
         The card and the run_card both speak percent (-100 .. 100, 0 for an
@@ -506,6 +506,14 @@ class MadSpinOptions(banner.ConfigFile):
         polarised along +1 helicity, -2 fully polarised along -1. Converting
         here rather than at parse time keeps the stored option equal to what the
         user typed, and keeps one convention in the cards and one in Fortran.
+
+        ``incoming``: the lab-frame momenta of incoming legs 1 and 2 of the
+        matrix element (with a ``pz`` attribute, or (E, px, py, pz)). The
+        matrix element applies the first value to its leg 1, which is not
+        beam 1 when the event is reordered to the legs of the library -- the
+        events of a madevent mirror process have the parton of beam 2 on leg 1
+        of the process. Beam 1 is the incoming particle along +z: the two
+        values are swapped when it is leg 2.
         """
         pol = self['beampol'] or [0., 0.]      # unset / [] is unpolarised
         out = []
@@ -513,6 +521,11 @@ class MadSpinOptions(banner.ConfigFile):
             value = float(value)
             out.append(1. if not value
                        else math.copysign(1 + abs(value) / 100., value))
+        if incoming is not None and len(incoming) == 2:
+            pz = [getattr(p, 'pz', None) for p in incoming]
+            pz = [p[3] if z is None else z for p, z in zip(incoming, pz)]
+            if pz[1] > pz[0]:
+                out.reverse()
         return tuple(out)
 
     ############################################################################        
@@ -12596,7 +12609,9 @@ class MadSpinInterface(extended_cmd.Cmd):
     def _set_f2py_beampol(self, mymod):
         """Push the beam polarisation into the matrix-element library once per
         module. The value is constant over a run and ``get_density`` is on the
-        hot path, so this is a setter rather than a per-call argument."""
+        hot path, so this is a setter rather than a per-call argument; only
+        the events whose beams sit on the library's legs in the other order
+        change it (see _set_event_beampol)."""
         pol = self._beampol()
         if pol is None:
             # the library defaults to unpolarised (BLOCK DATA BEAMPOL_DEFAULT)
@@ -12608,6 +12623,21 @@ class MadSpinInterface(extended_cmd.Cmd):
                            'directory to enable it.', list(pol))
             return
         mymod.py_set_beampol(pol[0], pol[1])
+        self.__dict__.setdefault('_beampol_set', {})[id(mymod)] = pol
+
+    def _set_event_beampol(self, module, incoming):
+        """The beam polarisation of one event: ``incoming`` holds the lab-frame
+        momenta of legs 1 and 2 of the production matrix element. A madevent
+        mirror process writes events with the parton of beam 2 on its leg 1,
+        for which the two values are swapped (MadSpinOptions.beampol_me). The
+        library is called only when the value changes."""
+        if self._beampol() is None or not hasattr(module, 'py_set_beampol'):
+            return
+        pol = self.options.beampol_me(incoming)
+        cache = self.__dict__.setdefault('_beampol_set', {})
+        if cache.get(id(module)) != pol:
+            module.py_set_beampol(pol[0], pol[1])
+            cache[id(module)] = pol
 
     def _production_bwcutoff(self):
         """The run_card ``bwcutoff`` the production events were generated with,
@@ -12963,6 +12993,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         # moves an ordinary reweight weight by ~1e-6 -- enough to break a
         # 6-significant-figure comparison, for no gain where there is no
         # frame to be consistent with.
+        # the incoming legs in the lab say which beam is which leg
+        lab_incoming = p[:len(orig_order[0])]
         p = self._project_massless(p, pdgs, len(orig_order[0]), final_state=True)
         if frame_boost is not None:
             p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
@@ -12974,6 +13006,8 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         if self.all_me[tag]['type'] == 'production':
             module = self.f2py_module[0]
+            if len(lab_incoming) == 2:
+                self._set_event_beampol(module, lab_incoming)
         elif self.all_me[tag]['type'] == 'decay':
             module = self.f2py_module[1]
         else:
@@ -13051,6 +13085,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         # decay pool can hold 1 -> 2 and 1 -> 3 channels for the same parent.
         momenta = [None] * len(events)
         pdgs = [None] * len(events)
+        lab_incoming = [None] * len(events)
+        polarised = self._beampol() is not None
         groups = {}
         for k, event in enumerate(events):
             orig_order = getattr(event, '_ms_orig_order_for_density', None)
@@ -13078,14 +13114,23 @@ class MadSpinInterface(extended_cmd.Cmd):
             need_raw_pdg = (self._revert_merged and
                             any(abs(pid) in merged_particles for pid in pdg_template))
             pdgs[k] = event.get_pdg(p) if need_raw_pdg else pdg_template
+            # one fortran call has one beam polarisation: the events whose
+            # beams sit on the legs of the library in the other order (see
+            # _set_event_beampol) are a group of their own
+            pol = None
+            if module_index == 0 and len(orig_order[0]) == 2 and polarised:
+                lab_incoming[k] = p[:2]
+                pol = self.options.beampol_me(p[:2])
             # same Monte-Carlo-mass projection as get_density, initial and
             # final state, on a copy
             momenta[k] = self._project_massless(p, pdgs[k], len(orig_order[0]))
-            groups.setdefault((len(p), len(pdgs[k]), module_index), []).append(k)
+            groups.setdefault((len(p), len(pdgs[k]), module_index, pol), []).append(k)
 
         out = [None] * len(events)
-        for (next_, npdg, module_index), idx in groups.items():
+        for (next_, npdg, module_index, pol), idx in groups.items():
             module = self.f2py_module[module_index]
+            if pol is not None:
+                self._set_event_beampol(module, lab_incoming[idx[0]])
             if isinstance(module, madmatrix_density.MadDensityLibrary):
                 inter = module.density_batch([pdgs[k] for k in idx],
                                              [momenta[k] for k in idx],
