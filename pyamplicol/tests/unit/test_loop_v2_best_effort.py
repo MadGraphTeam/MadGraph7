@@ -513,6 +513,27 @@ def test_every_sdk_returns_refused_points_with_their_best_effort_value(
         (warning,) = record["warnings"]
         assert warning["kind"] == "best-effort" and warning["count"] == len(refused)
         assert record["on_failure"] == "best-effort"
+        # The helicity-resolved call: the same policy at the same points.
+        from tests.unit.test_loop_v2_sdk_extras import _request
+
+        request, _alive = _request(points, scales, resolved=True)
+        result = ctypes.c_void_p()
+        assert (
+            sdk.rusticol_virtual_evaluate(
+                handle, ctypes.byref(request), ctypes.byref(result)
+            )
+            == 0
+        ), _error(sdk)
+        statuses = (ctypes.c_uint32 * len(points))()
+        try:
+            assert (
+                sdk.rusticol_virtual_result_copy_statuses(result, statuses, len(points))
+                == 0
+            )
+        finally:
+            sdk.rusticol_virtual_result_free(result)
+        # (its own lanes: its refused points need not be the ordinary call's)
+        assert 5 in list(statuses) and 3 not in list(statuses)
         uncertainties = _uncertainties(sdk, handle, points, scales)
         assert [math.isfinite(u) for u in uncertainties] == [
             p in refused for p in range(len(points))
