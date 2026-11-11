@@ -81,7 +81,9 @@ variant 2 with its fallback to variant 1, finished by a frame-independent
 projection only when the produced point is not exact; `"rescaling"`,
 `"projection"` or `"off"`). Binary64 evaluations are improved only with
 `kinematics_improvement_binary64 = true` (default false). Points whose beams
-lie along the z axis keep MadLoop's values bit for bit. See
+lie along the z axis keep MadLoop's values bit for bit. Leave the
+improvement on above binary64: switched off there, near-forward points can be
+served far off without a flag. See
 [Configuration](configuration.md#kinematics-improvement-of-the-input-points).
 
 Binary64 stability checks (rotations, the reduction-direction and rescaled
