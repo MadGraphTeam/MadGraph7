@@ -700,10 +700,12 @@ result then carries no estimate); `"none"`: no estimate could be formed,
 `uncertainty` is None, said so in the lane's detail, never invented. Why:
 one rotation alone (the profile cards' check set) under-states the error of
 an unchecked TIRust value of a Born-interfered process. Measured with the
-shipped profile cards (one default rotation), the one-rotation estimate
-covered the true error of 220 of 722 u u~ > t t~ g g best-effort points and
-37 of 65 u u~ > d d~ e+ e- ones; with the recommended checks included see
-the coverage in the 1.0.3 release notes. A user who runs weak checks (one
+shipped profile cards' check set (one default rotation; explicit TIRust,
+binary64, flat points seed 1 at sqrt(s) = 1000, truth = double-double), the
+one-rotation estimate covered the true error of 220 of 722 u u~ > t t~ g g
+best-effort points and 39 of 65 u u~ > d d~ e+ e- ones; with the
+recommended checks included, 722 of 722 and 65 of 65 (the C ABI alike: 221
+-> 722 of 722 and 42 -> 64 of 65). A user who runs weak checks (one
 rotation) thus still gets an uncertainty that covers the measured errors;
 the lane's public `stability` estimate is that of the checks asked for and
 can be optimistic for a best-effort value (compare it with
