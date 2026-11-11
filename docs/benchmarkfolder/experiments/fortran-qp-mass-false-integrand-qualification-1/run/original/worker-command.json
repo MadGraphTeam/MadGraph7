@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-false-integrand-qualification-work-3/original/SubProcesses/P0_uux_zgg/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/points/qcd_n3_uux_zgg.dat"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-false-integrand-qualification-work-3/original/SubProcesses/P0_uux_zgg",
+  "executable_sha256": "c0a141c7f46303f382352f94dba0f79d38e24d127ff88d48e7c435f85d073a37"
+}

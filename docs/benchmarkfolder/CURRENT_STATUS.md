@@ -8,6 +8,8 @@ Its exporter inventory is
 and numerical identity is
 `3c13ad88b825d9d19b1030b62b317c0f31759e002d8dfdb9050142301a7cae24`.
 The baseline remains `9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f`.
+Review: [draft TIRust PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/437)
+into `madloop_ninjars`, stacked on [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315) into `main`.
 The integration goal is incomplete.
 
 | Evidence | Current result and scope |
@@ -19,6 +21,8 @@ The integration goal is incomplete.
 | [Five-reducer timing appendix](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md) | Twenty descriptive full-amplitude timing lanes cover four SM processes, including a fresh QCD `2→4` process. All twenty pass their retained `3e-6` and `1e-8` numerical gates. Shared-host timings do not satisfy precise performance acceptance. |
 | [Stability comparisons](stability_appendix_c/current-source-qcd3-raw-delivery-2/README.md) | Current-source QCD Zgg comparisons supplement the preserved Appendix-C-style plots. Internal consistency estimates, unavailable diagnostics and independent numerical error retain distinct scopes. |
 | [Generic CMS prototype](experiments/generic-owned-CMS-normal-qualification-1/README.md) | Three ordinary controls agree bit for bit. Two forward fixtures retain legacy `420` refusals and candidate-reported `323` QP acceptance. Both caches are disabled; these self-check observations establish neither independent finite accuracy nor generic production coverage. |
+| [Copied-integrand physical pair](experiments/fortran-qp-mass-false-integrand-qualification-1/README.md) | With `UseQPIntegrandForTIRust=False`, original and fresh-CLI mass candidate agree exactly on 100 physical QCD Zgg points per arm, including 13 accepted QP rescues. Histories, accuracy and observed state match. Both caches are disabled; internal copied-coefficient/native-input observations and broader coverage remain open. |
+| [Original CMS observer refusal](experiments/generic-owned-CMS-observer-refusal-1/README.md) | The original replay remains failed at its first candidate journal. Three legacy workers pass own-plain comparisons; the partial candidate exposes a DP-eligibility/actual-QP flag-semantics mismatch. Exact refusal and incomplete scope are replayable; candidate provenance and a corrected native rerun remain unqualified. |
 
 The [QP-mass correction](experiments/fortran-qp-mass-current-qualification-1/README.md),
 its [fresh-CLI follow-up](experiments/fortran-qp-mass-fresh-cli-qualification-1/README.md),

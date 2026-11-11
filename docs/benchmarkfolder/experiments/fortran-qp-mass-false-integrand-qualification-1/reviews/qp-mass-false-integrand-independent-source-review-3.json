@@ -1,0 +1,47 @@
+{
+  "compiler_queries_this_review": 0,
+  "findings": [],
+  "limits": [
+    "Source-only complete startup/resource closure review does not establish physical False-policy qualification.",
+    "Predecessor source2 retains actual executable startup failure before READY; no passed result or numerical point is attributed to it."
+  ],
+  "loader_queries_this_review": 0,
+  "native_calls_this_review": 0,
+  "pure_tests": {
+    "external_effect_attempts": 0,
+    "logs": {
+      ".tirust-build/qp-mass-false-integrand-independent-source-review-3-normal.txt": {
+        "bytes": 3704,
+        "sha256": "bbc0c6b4ac6809faf3eff17e3edd2998fb08ff0baee277628602689203743da6"
+      },
+      ".tirust-build/qp-mass-false-integrand-independent-source-review-3-optimized.txt": {
+        "bytes": 3703,
+        "sha256": "e72fdab0ff8e829d5596073d80a6f33b93fc49f735821f7227f983ca23a9c010"
+      }
+    },
+    "normal": 20,
+    "optimized": 20
+  },
+  "runtime_delta": {
+    "added_per_arm": "Cards/ident_card.dat",
+    "bytes": 460,
+    "new_runtime_files_per_arm": 17,
+    "prior16_bindings_unchanged": true,
+    "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493"
+  },
+  "source2_failed_terminal": {
+    "bytes": 1146,
+    "sha256": "4038bbb4b9281d66dae098bdb361b09deaa3574ef70b3353532cc19feec62072"
+  },
+  "source2_failure_scope": "Actual executable entered; missing ident_card before READY; no completed numerical point.",
+  "source2_retained": {
+    "bytes": 886,
+    "sha256": "8feb2de2034c96c10951b9840c68ae6b72953d52ddd7dac5f4e0812f5c5c7eba"
+  },
+  "source_index": {
+    "bytes": 1029,
+    "sha256": "05a51c4fc579c3977ad3ddae7e69044160ca70fd4012e0c56e998cb323d6e1aa"
+  },
+  "startup_source_bindings_verified": 16,
+  "status": "clear_source_only"
+}

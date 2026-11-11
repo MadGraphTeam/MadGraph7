@@ -3,6 +3,10 @@
 The [current acceptance selection](CURRENT_STATUS.md) distinguishes production
 evidence, unapplied experiments and preserved historical indices.
 
+Review is tracked in [draft PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/437)
+into `madloop_ninjars`; the original [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315)
+targets `main`.
+
 **Current status.** Production registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
 target. The [42-page benchmark PDF](benchmark.pdf) preserves all preceding 41
@@ -35,6 +39,22 @@ experimental caller reports accepted TIRust-QP code `323`. Independent replay
 retains all 106 outer calls and 22 runtime maps. These are plain self-check
 observations: constructor/q/veto provenance, independent physical accuracy,
 default-cache coverage and performance remain open. Production is unchanged.
+
+The [copied-integrand physical qualification](experiments/fortran-qp-mass-false-integrand-qualification-1/README.md)
+now passes with `UseQPIntegrandForTIRust=False`: original and fresh-CLI
+QP-mass candidate agree bit for bit across 100 physical QCD Zgg points per arm,
+including 13 accepted QP rescues. The 200 returned overall/split-order rows
+represent those same 100 points. Cards, histories, accuracy and observed state
+remain matched; the experimental mass patch is unapplied. The packet retains
+the earlier missing-identifier startup failure and the exact resource correction.
+
+The [original CMS observer replay](experiments/generic-owned-CMS-observer-refusal-1/README.md)
+remains failed: three legacy workers pass their plain-reference comparisons,
+while the first candidate control reaches a strict parser refusal. The recorded
+DP eligibility constant differs in meaning from the actual-QP flag; other
+checked words and masks match. This portable capsule reproduces that refusal
+and preserves the unattempted candidate requests. It establishes no candidate
+constructor/q/veto qualification or repaired native rerun.
 
 Final precise timings remain
 [Hua-Sheng’s local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).

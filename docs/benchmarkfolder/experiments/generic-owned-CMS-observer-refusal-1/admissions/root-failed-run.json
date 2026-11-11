@@ -1,0 +1,18 @@
+{
+  "admitted_utc": "2026-11-11T22:37:26.782411+00:00",
+  "phase": "run",
+  "source_index_sha256": "2333cb5216b178da1d77083de30ee4c72226d2b82ec6753d0ddc1fd6459b9e29",
+  "reviewed_build_terminal_sha256": "c04a37845f1e5fd9a02cea25375d4f6a8e523071829b19fcb853ae27c73025fd",
+  "independent_build_review_sha256": "f670a433f7a269bc748ce9e716ce4e53f380a13edbccd1ceae32a2453df4ac44",
+  "scope": "Exactly six fresh observed workers; require exact own-plain RAW/state/history parity and complete fault-free journals before interpreting actual constructor, q and veto provenance. Legacy numerical refusals retained, no physical truth or production promotion claim.",
+  "queue_condition": "Start only after root confirms analytic BUILD closure and mutex release.",
+  "cap_seconds": 1800,
+  "cleanup_reserve_seconds": 60,
+  "per_protocol_reply_seconds": 180,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 268435456,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "retry_allowed": false
+}

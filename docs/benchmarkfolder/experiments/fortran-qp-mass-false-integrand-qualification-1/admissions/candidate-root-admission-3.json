@@ -1,0 +1,19 @@
+{
+  "admitted_utc": "2026-11-11T22:47:22.169322+00:00",
+  "stage": "candidate",
+  "source_index_sha256": "05a51c4fc579c3977ad3ddae7e69044160ca70fd4012e0c56e998cb323d6e1aa",
+  "reviewed_original_terminal_sha256": "6108741ded610fef1a2e46f1c23ae48e680b4b7522c5a9d4cd0d3cabd5a1a4fe",
+  "reviewed_original_result_sha256": "798c440b67334375c135482b6ce5327bcaaac90a406af30dd6bb0160c59f77c0",
+  "observed_original_cohort": {
+    "9:DP": 87,
+    "9:QP": 13
+  },
+  "scope": "One fresh candidate=False normal full100 learning/final100 run and comparison to exact original=False. Require3e-6 and hard1e-8, complete accepted histories and observed state. No retry, promotion or performance claim.",
+  "cap_seconds": 600,
+  "cleanup_reserve_seconds": 60,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 536870912,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false
+}

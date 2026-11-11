@@ -1,0 +1,14 @@
+{
+  "admitted_utc": "2026-11-11T22:43:41.453725+00:00",
+  "stage": "original",
+  "source_index_sha256": "05a51c4fc579c3977ad3ddae7e69044160ca70fd4012e0c56e998cb323d6e1aa",
+  "review_sha256": "f6857c232a5c41cd0184bfcd539941737476c7a2f0a9a0778d9fb8483b01d19c",
+  "scope": "One fresh original=False normal full100 learning/final100 run; source3 adds exact missing Cards/ident_card.dat. Source2 startup failure retained. Candidate not admitted. No retries or promotion.",
+  "cap_seconds": 600,
+  "cleanup_reserve_seconds": 60,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 536870912,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false
+}

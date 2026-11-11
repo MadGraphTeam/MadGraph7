@@ -1,0 +1,26 @@
+{
+  "cleanup_error": null,
+  "cleanup_owner": "Retained worker first, then original owned stage; never qualification on failure",
+  "error": "ObserverError('journal line1419: owned frame not bound to actual width-selected consumer')",
+  "finished_utc": "2026-11-11T22:40:45.081892+00:00",
+  "observations_sha256_at_failure": "feed964f80f8b7306658c4dc70375378bb81ff09d2f20e058107da342c6804ef",
+  "pid": 839891,
+  "returncode_at_failure": -15,
+  "stderr_sha256_at_failure": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "uncertainty_blocks_later_stages": false,
+  "worker_cleanup": {
+    "events": [
+      "terminate"
+    ],
+    "returncode": -15,
+    "started_identity": {
+      "parent_pid": 802856,
+      "pid": 839891,
+      "process_group": 802856,
+      "session": 802856,
+      "start_time_ticks": 247054186,
+      "state": "R"
+    },
+    "survivors": []
+  }
+}

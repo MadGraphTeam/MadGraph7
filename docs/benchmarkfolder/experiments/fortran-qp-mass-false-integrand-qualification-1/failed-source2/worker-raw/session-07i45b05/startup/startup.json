@@ -1,0 +1,7 @@
+{
+  "error": {
+    "type": "ProtocolError",
+    "message": "Worker exited (0) before reply; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-false-integrand-qualification-execution-2/original/worker.log"
+  },
+  "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-false-integrand-qualification-execution-2/original/worker.log"
+}

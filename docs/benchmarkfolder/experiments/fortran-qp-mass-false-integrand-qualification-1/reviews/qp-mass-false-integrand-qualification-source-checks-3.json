@@ -1,0 +1,39 @@
+{
+  "collector_card_science_points_limits_deadline_unchanged": true,
+  "default_source_preflight": "passed",
+  "execution3_exists": false,
+  "existing_runtime_bindings_unchanged": true,
+  "normal_pure_tests": {
+    "passed": true,
+    "tests": 20
+  },
+  "optimized_pure_tests": {
+    "passed": true,
+    "tests": 20
+  },
+  "outer_guards": "subprocess Popen/run/check_output, ctypes CDLL, OS process creation, resource mutation, signal installation/timers, numerical mutex APIs blocked",
+  "preparation_MG_import_execution": 0,
+  "preparation_compiler_queries": 0,
+  "preparation_loader_queries": 0,
+  "preparation_native_calls": 0,
+  "preserved_source_seals": {
+    "1": "eab42489ae3fb3b0b4bd9b51b5ad4e83607a62a4fa09323a3b156aac8bc26a79",
+    "2": "8feb2de2034c96c10951b9840c68ae6b72953d52ddd7dac5f4e0812f5c5c7eba"
+  },
+  "proposal_bytes": 89828,
+  "proposal_files": 8,
+  "runtime_file_additions_each_arm": {
+    "Cards/ident_card.dat": {
+      "bytes": 460,
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493"
+    }
+  },
+  "runtime_files_per_arm": 17,
+  "schema": "false-integrand-source-checks-v3",
+  "scope": "Source3 preparation only; source2 failed startup retained separately; no new native admission.",
+  "source2_failure_audit_sha256": "ceccbca680ea366654adf37d47f149caaa27819cddb6e9158a76cf068495b898",
+  "source3_native_stage_executed": false,
+  "source_index_sha256": "05a51c4fc579c3977ad3ddae7e69044160ca70fd4012e0c56e998cb323d6e1aa",
+  "startup_resource_audit_sha256": "56da4e51eafe28c1a196e2e71f855ece59137757284382b74433d5cf5ce562ad",
+  "work3_exists": false
+}

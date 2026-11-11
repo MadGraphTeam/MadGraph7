@@ -1,0 +1,23 @@
+{
+  "MG_import_execution": 0,
+  "compiler_queries": 0,
+  "default_source_preflight": "passed",
+  "execution_exists": false,
+  "loader_queries": 0,
+  "native_calls": 0,
+  "native_stage_executed": false,
+  "normal_pure_tests": {
+    "passed": true,
+    "tests": 15
+  },
+  "optimized_pure_tests": {
+    "passed": true,
+    "tests": 15
+  },
+  "proposal_bytes": 76685,
+  "proposal_files": 7,
+  "schema": "false-integrand-source-checks-v1",
+  "scope": "Source-only test summary; observed outputs are in tool transcript. No native admission.",
+  "source_index_sha256": "eab42489ae3fb3b0b4bd9b51b5ad4e83607a62a4fa09323a3b156aac8bc26a79",
+  "work_exists": false
+}

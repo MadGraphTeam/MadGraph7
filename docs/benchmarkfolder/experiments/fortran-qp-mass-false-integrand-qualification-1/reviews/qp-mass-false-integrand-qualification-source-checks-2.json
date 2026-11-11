@@ -1,0 +1,29 @@
+{
+  "MG_import_execution": 0,
+  "compiler_queries": 0,
+  "deadline_regression": "540-second handoff cutoff rearms original60-second hard-end alarm; hard600-second end raises without extension",
+  "default_source_preflight": "passed",
+  "environment_reconstruction_before_handoff": true,
+  "execution_exists": false,
+  "loader_queries": 0,
+  "native_calls": 0,
+  "native_stage_executed": false,
+  "normal_pure_tests": {
+    "passed": true,
+    "tests": 17
+  },
+  "optimized_pure_tests": {
+    "passed": true,
+    "tests": 17
+  },
+  "outer_guards": "subprocess Popen/run/check_output, ctypes CDLL, OS process creation, resource mutation, signal installation/timers, numerical mutex APIs blocked",
+  "proposal_bytes": 78999,
+  "proposal_files": 7,
+  "qualified_helper_sha256": "51ca38f0621c3d57a15b8ac08b7c37be1e6023843af9a1fca1b48dd4242a2b97",
+  "schema": "false-integrand-source-checks-v2",
+  "scientific_collector_card_runtime_bindings_unchanged": true,
+  "scope": "Source-only checks; no native admission.",
+  "source1_unchanged": "eab42489ae3fb3b0b4bd9b51b5ad4e83607a62a4fa09323a3b156aac8bc26a79",
+  "source_index_sha256": "8feb2de2034c96c10951b9840c68ae6b72953d52ddd7dac5f4e0812f5c5c7eba",
+  "work_exists": false
+}
