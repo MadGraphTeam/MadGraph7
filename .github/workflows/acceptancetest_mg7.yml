@@ -272,7 +272,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_running_helas_parameters -pA -t0 -l INFO
+            ./tests/test_manager.py test_madmatrix_running_helas_parameters test_madmatrix_running_helas_pole_precision -pA -t0 -l INFO
 
       # ---- acceptancetest_mg7_hel_recycling ----
       # --hel_recycling: the recycled madmatrix build gives the |M|^2 of the
