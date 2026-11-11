@@ -154,11 +154,11 @@ registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
 Its numerical report is bound to a sealed terminal eleven-process checkpoint
 and immutable source-specific selection/dossier. Those 66 lanes do not qualify
-the changed Fortran source. The current 34-page PDF retains that evidence and
-adds the separately bound nine-case current-source supplement and the
-current-source QCD three-particle raw stability study. Its immutable progress-2
-selection predates the QCD four-particle checkpoint. Precise timing remains
-deferred. The runnable
+the changed Fortran source. The current 35-page PDF retains that evidence and
+adds the separately bound eleven-case current-source supplement and the
+current-source QCD three-particle raw stability study. Its immutable progress-3
+selection includes both four-particle checkpoints, all 66 regression passes and
+the retained ordinary-target misses. Precise timing remains deferred. The runnable
 [preceding-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md)
 documents fresh installation, local registration, numerical replay, timing and a
 separate local PDF for that preceding source. Handoff 4 binds the tracked `bin/madgraph` launcher;
@@ -374,7 +374,7 @@ the denominator and give unknown-tail bounds, including [0, 0.05] at 1e-3.
 These three-probe, host forced-DP/card-selected diagnostics measure internal
 consistency; they establish neither true error nor observed internal precision.
 The exact data, failures and independent replay are retained separately. The
-current PDF adds this study on page 34; the immutable 33-page report's
+current PDF adds this study on page 35; the immutable 33-page report's
 progress-1 selection remains a separate reproduction anchor.
 
 The [first-failure capture and standalone replay](experiments/tirust-first-failure-capture/closed-2/COMPACT_README.md)
@@ -401,17 +401,20 @@ unchanged.
 The [published 31-page preceding-source PDF](https://github.com/MadGraphTeam/MadGraph7/blob/913a746201eb6ef806ccb219c890a7f3486d6322/docs/benchmarkfolder/benchmark.pdf)
 retains its exact source, ledger and plots at commit `913a746201eb6`. Its SHA-256 is
 `91ceeae99968df742e7e141467e3bab321394a0512328be7df9be0f5b86d559a`.
-The new view keeps that campaign's scientific evidence and adds a separately
-bound `entry-latch-cache-guard-1` supplement: nine closed cases and 54 lanes,
-with both n4 cases pending in its explicit snapshot. QCD n3's `1e-8` target
-misses and accepted DP/QP counts remain visible. The guard-only cache experiment
-is descriptive shared-host evidence; precise local acceptance is still TODO.
+The current view keeps that campaign's scientific evidence and adds a separately
+bound `entry-latch-cache-guard-1` supplement: eleven closed cases and 66 lanes.
+All lanes pass `3e-6`; 54 also pass `1e-8`. The QCD n3/n4 and EW n4 ordinary-target
+misses, accepted DP/QP counts and interrupted EW attempt remain visible. The
+guard-only cache experiment is descriptive shared-host evidence; precise local
+acceptance is still TODO.
 The [33-page milestone](https://github.com/MadGraphTeam/MadGraph7/blob/48b664a029d35acb2646b8820f9c654cfed6e852/docs/benchmarkfolder/benchmark.pdf)
 and its progress-1 selection remain unchanged at that commit. The current PDF
-has 34 pages: historical raw figures remain on pages 27–30, current-source
-progress and cache-guard scope on pages 32–33, and the separately qualified
-current-source raw study on page 34. Its progress-2 selection retains all
-existing numerical gates and the nine-case snapshot.
+has 35 pages: historical raw figures remain on pages 27–30, current-source
+numerical progress is on pages 32–33, cache-guard scope and local TODOs are on
+page 34, and the separately qualified current-source raw study is on page 35.
+The progress-3 selection retains the preceding campaign's gates and adds the
+closed eleven-case current-source snapshot. The independently reviewed report
+proposal and a small layout amendment are retained with the release receipts.
 
 A new old-source selection/dossier binds the preceding precision TODO through
 its exact archived path; the published selection/dossier remain immutable.
@@ -420,7 +423,7 @@ Rebuild and verify this explicitly selected two-source view:
 ```sh
 source tools/tirust_env.sh
 current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-entry-cache-supplement-1.json
-current_report_supplement=campaigns/entry-latch-cache-guard-1/report-supplements/progress-2/selection.json
+current_report_supplement=campaigns/entry-latch-cache-guard-1/report-supplements/progress-3/selection.json
 python3 -B docs/benchmarkfolder/build_report.py --campaign invariant-symmetry-1 \
   --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
 python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign invariant-symmetry-1 \

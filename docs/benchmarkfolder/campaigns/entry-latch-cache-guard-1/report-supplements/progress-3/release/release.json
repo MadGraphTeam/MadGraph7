@@ -1,0 +1,50 @@
+{
+  "schema": "madloop-current-source-report-release-v1",
+  "pdf": {
+    "bytes": 2282758,
+    "sha256": "2ecf83e01bd6367a7a39ecd7ea23dec40024d2ef5072dc7a583e26ebf9a37cc8"
+  },
+  "ledger": {
+    "bytes": 2831149,
+    "sha256": "9c7675b16c900cf6ed7ab7d11c3c23a378bc37e96c0c84a90449fdbd0e855a27"
+  },
+  "context": {
+    "bytes": 403758,
+    "sha256": "d20fcf205b065e747785216cfcc6f7426b9a56968da6fceae4325e580b4dd514"
+  },
+  "selection": {
+    "bytes": 6628,
+    "sha256": "529748a4c9931398fa89c9522da6c7d3efd35adc589a36263d5146ec56ad5774"
+  },
+  "canonical_typst": {
+    "bytes": 9823,
+    "sha256": "c58e81bc74d39d3b71eaec6bb928fc0f46f009789c236877f303d2b2f53e4780"
+  },
+  "canonical_helper": {
+    "bytes": 32667,
+    "sha256": "350931cc1079e2147fec1a18d51df340ecb0ce10058d344d0fb3e8c58bf6b9ea"
+  },
+  "page_count": 35,
+  "authenticated_document_inputs": 12252,
+  "all_inputs_tracked_or_exactly_staged": true,
+  "render_completed": true,
+  "serial_verify_only": {
+    "exit_code": 0,
+    "output": {
+      "bytes": 38,
+      "sha256": "5ec1a137bece584f3381d989e605ebeadd218e69b143d1b401172c56659fcc66"
+    }
+  },
+  "focused_root_checks_passed": 11,
+  "numerical_measurements_rerun": false,
+  "goal_complete": false,
+  "performance_acceptance": "Pending Hua-Sheng local machine campaign",
+  "current_source_ordinary": {
+    "cases": 11,
+    "lanes": 66,
+    "regression_pass_lanes": 66,
+    "ordinary_target_pass_lanes": 54,
+    "accepted_dp": 6396,
+    "accepted_qp": 204
+  }
+}

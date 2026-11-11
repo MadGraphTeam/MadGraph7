@@ -1,0 +1,30 @@
+{
+  "benchmark.pdf": {
+    "bytes": 2262036,
+    "sha256": "281c66314942e1b1d0e39a573668a6618b40049c52dfacc43c83ef3f81415f1d"
+  },
+  "benchmark.typ": {
+    "bytes": 28034,
+    "sha256": "09171e1071e8f1a9523fc5fc338b934d38eef27bad7010956e93edcd8f2b261e"
+  },
+  "build_report.py": {
+    "bytes": 23131,
+    "sha256": "d7544f47080c3242851ffef385c58c185125dbc3739fed292ccbc6eb588844b8"
+  },
+  "campaigns/entry-latch-cache-guard-1/report-supplements/progress-2/report-context.json": {
+    "bytes": 201500,
+    "sha256": "707754c30e0ab3001a143738e9d9716540ec029abded4542aa6ad4583bbcd920"
+  },
+  "campaigns/entry-latch-cache-guard-1/report-supplements/progress-2/selection.json": {
+    "bytes": 5672,
+    "sha256": "17d391c746cb9da5887fbd2558566ccef68c5dda9172a377c5728c7e80754706"
+  },
+  "current-source-supplement.typ": {
+    "bytes": 9474,
+    "sha256": "eb0b79e8136ec8706e2e735f18b7a6ecf6d72a230483bdf94ec4cbb85db3513b"
+  },
+  "current_source_supplement.py": {
+    "bytes": 25980,
+    "sha256": "998a2218be6fca71b3732557caf97fd16e120f1ebd984d8046860853ded802c6"
+  }
+}

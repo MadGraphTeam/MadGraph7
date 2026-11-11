@@ -1,0 +1,69 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 6035,
+      "sha256": "942436d8b2d70fbbcc5dabca14c87977c5aefb3f83bda065e26b31862a531ff5"
+    },
+    "baselines.json": {
+      "bytes": 1065,
+      "sha256": "9a6730981c5a1ffc2779a964ccc098a57bb2f3b158beef2313c01517045ccaa7"
+    },
+    "existing-files.patch": {
+      "bytes": 15730,
+      "sha256": "62ad114fe073846abf15fd5779acd378d81686c615eb1690b7f426b0417a4619"
+    },
+    "prepare_preview.py": {
+      "bytes": 4658,
+      "sha256": "a7b3da9eb916b5852a9fa16d076766d7a1e94d487b0956e73a1a6bd8596eb8fc"
+    },
+    "preview-inputs.json": {
+      "bytes": 2731106,
+      "sha256": "14881dc367dfe0352241d0cfbd65be8fb3441c29714629ae6b15eee16bddcc02"
+    },
+    "preview-receipt.json": {
+      "bytes": 773,
+      "sha256": "f2cc1225fe7b00045030f8d483b723cd97b34f9b937b9bff9f1394dd3564b5f2"
+    },
+    "preview.json": {
+      "bytes": 403758,
+      "sha256": "d20fcf205b065e747785216cfcc6f7426b9a56968da6fceae4325e580b4dd514"
+    },
+    "promotion-manifest.json": {
+      "bytes": 1886,
+      "sha256": "0e60c173c840ff6fa9c6c13c0d87f123d270aaef901fa1c9f8b4cc4e56504788"
+    },
+    "proposed/current-source-supplement.typ": {
+      "bytes": 9733,
+      "sha256": "bd3cefdc59e022c47b7a849a44ec3d4d460b06f849ecb0159e63fe10d5938c94"
+    },
+    "proposed/current_source_supplement.py": {
+      "bytes": 32667,
+      "sha256": "350931cc1079e2147fec1a18d51df340ecb0ce10058d344d0fb3e8c58bf6b9ea"
+    },
+    "selection.json": {
+      "bytes": 6628,
+      "sha256": "529748a4c9931398fa89c9522da6c7d3efd35adc589a36263d5146ec56ad5774"
+    },
+    "source-review.json": {
+      "bytes": 1269,
+      "sha256": "fac592a7b5b56aadef83ef9a4c37cec1abf684f40a4b05075f5c4992d7a8cee2"
+    },
+    "test_campaign_extension.py": {
+      "bytes": 9204,
+      "sha256": "2b28c0f44dd1a83abc70ddb8bba94017f643b4913c0d393ac9573fa4c156bc37"
+    },
+    "tests.log": {
+      "bytes": 1689,
+      "sha256": "4cdda89065908d2562a06b9b28ae58b8cfcbe89b876e503f483714a3dd57e86a"
+    },
+    "validation.json": {
+      "bytes": 1151,
+      "sha256": "fc75d89932ca5d407814d3c03f944e10af085500a863516dd830551e5539135e"
+    }
+  },
+  "payload_count": 15,
+  "root": "docs/benchmarkfolder/experiments/current-source-final-campaign-supplement-proposal-1",
+  "schema": "madloop-current-source-final-campaign-report-proposal-v1",
+  "scope": "source-only eleven-case report proposal; canonical patch unapplied; no native/compiler/render",
+  "total_payload_bytes": 3227352
+}

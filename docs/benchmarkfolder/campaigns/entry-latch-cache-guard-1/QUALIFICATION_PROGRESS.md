@@ -91,8 +91,11 @@ independent raw, source, build, input and runtime audits.
 
 Historical accuracy failures and raw stability plots are preserved;
 these ordinary-point passes do not close the stress/CMS accuracy items.
-The 34-page `benchmark.pdf` remains the separately frozen nine-case
-`progress2` snapshot; it has not been regenerated for this checkpoint.
+The 35-page `benchmark.pdf` now includes the separately frozen eleven-case
+[`progress-3` selection](report-supplements/progress-3/selection.json), retaining
+all 66 regression passes, the twelve ordinary-target lane misses and this
+checkpoint's interruption history. The preceding-source report and its gates
+remain separately identified.
 
 No precise timing acceptance is claimed. Hua-Sheng's [local run TODO](timing-handoff-1/LOCAL_TIMING_TODO.md)
 still requires a fresh local installation and all 66 local numerical lanes,

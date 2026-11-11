@@ -1,0 +1,27 @@
+{
+  "canonical_context_written": false,
+  "current_closed_cases": 11,
+  "current_closed_lanes": 66,
+  "existing_nonnumerical_context_fields_identical": true,
+  "input_count": 12251,
+  "native_or_compiler_executions": 0,
+  "previous_closed_numerical_cases_identical": true,
+  "previous_target_misses_identical": true,
+  "process_or_foreign_calls": 0,
+  "raw_available": [
+    100,
+    100,
+    100,
+    100,
+    95
+  ],
+  "raw_bootstrap_calls": 25,
+  "raw_primary_calls": 1500,
+  "rendered": false,
+  "typst_inputs": {
+    "context": "campaigns/entry-latch-cache-guard-1/report-supplements/progress-3/report-context.json",
+    "manifest": "campaigns/invariant-symmetry-1/manifest.json",
+    "summary": "campaigns/invariant-symmetry-1/summary.json"
+  },
+  "verified": true
+}

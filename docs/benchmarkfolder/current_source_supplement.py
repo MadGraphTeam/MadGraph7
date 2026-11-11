@@ -17,6 +17,14 @@ NUMERICAL = "3c13ad88b825d9d19b1030b62b317c0f31759e002d8dfdb9050142301a7cae24"
 DSO = "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
 CACHE = "a8a1d3c9d50f4a7bd4feeecd7fadf40ad81e32be1d254ef29fe15e658317483f"
 LANES = (("baseline", 1), *(("candidate", b) for b in (1, 6, 7, 8, 9)))
+ONE_CASE_SCHEMAS = {"one-case-v1": "madloop-tirust-one-case-closure-v1",
+                    "combined-one-case-v1": "madloop-tirust-combined-one-case-closure-v1"}
+COMBINED_PROTOCOL_ALIASES = {
+    "tools/" + name: "campaigns/entry-latch-cache-guard-1/ew-n4-continuation-1/lane/" + name
+    for name in ("tirust_benchmark.py", "tirust_benchmark_campaign.py",
+                 "tirust_benchmark_compiler.py", "tirust_benchmark_numerical.py",
+                 "tirust_benchmark_warmup.py", "tirust_benchmark_worker.py",
+                 "tirust_benchmark_worker.f")}
 ADMITTED_NUMERICAL = ({
     "closure_index": {"path": "campaigns/entry-latch-cache-guard-1/n1-qualification-1/closure-index.json",
         "sha256": "3888b1ca29d3e368c748c141462ea4286a8c88fd14ecc00a80928c24e8555dfa"},
@@ -58,6 +66,17 @@ ADMITTED_NUMERICAL += ({'closure_index': {'path': 'campaigns/entry-latch-cache-g
                    'sha256': 'b08adff102fdaabe6dc290e3724a211238664c22e27546ad3f45ab3fc50660e0'},
   'replay_api': 'one-case-v1'})
 
+ADMITTED_NUMERICAL += ({
+    "closure_index": {
+        "path": "campaigns/entry-latch-cache-guard-1/remaining-qualification-1/qcd_n4_uux_zzgg/checkpoint.json",
+        "sha256": "55649478b7aa8c2916765c5389ff2dcc1ec2e3359cc3c212f363ec6bf462a53a"},
+    "replay_index": {
+        "path": "experiments/closed-continuation-verifier-1/source-index.json",
+        "sha256": "b08adff102fdaabe6dc290e3724a211238664c22e27546ad3f45ab3fc50660e0"},
+    "replay_api": "one-case-v1"},)
+
+ADMITTED_NUMERICAL += ({'closure_index': {'path': 'campaigns/entry-latch-cache-guard-1/ew-n4-continuation-1/checkpoint.json', 'sha256': '2819df51b7dc3816ce869a8a5b08b7a7bccd05e6a8d67b0e629112645d3aa0ae'}, 'replay_index': {'path': 'campaigns/entry-latch-cache-guard-1/ew-n4-continuation-1/replay-index.json', 'sha256': '1188b11951bcfb78d2c02768f5d36db37bd6b610e5c3da83f0a2291dc2a10b06'}, 'replay_api': 'combined-one-case-v1'},)
+
 PROMOTION = {"path": "experiments/fortran-lifecycle-promotion-1/index.json",
     "sha256": "8f222c796d3c135440e87d4678eb1a35b37a8ffecda6a5afe12a8124d0550e49"}
 HANDOFF = {"path": "campaigns/entry-latch-cache-guard-1/timing-handoff-1/index.json",
@@ -96,17 +115,25 @@ def pin_json(inputs, pin):
     return inputs.json(safe(pin["path"]), checksum)
 
 
-def bind_index(inputs, pin, *, repository_paths=False):
+def bind_index(inputs, pin, *, repository_paths=False, repository_aliases=None):
     """Bind only declared payloads, with one explicit path convention per role."""
     index = pin_json(inputs, pin)
     require(isinstance(index.get("files"), dict) and index["files"], "Empty supplement inventory")
+    aliases = repository_aliases or {}
+    if aliases:
+        require(repository_paths and aliases == COMBINED_PROTOCOL_ALIASES
+                and set(aliases) == {name for name in index["files"] if not name.startswith(DOCS)},
+                "Unexpected combined protocol alias inventory")
+        require(all(index["files"].get(DOCS + alias) == index["files"][name]
+                    for name, alias in aliases.items()), "Combined protocol alias identity differs")
     prefix = str(PurePosixPath(pin["path"]).parent)
     names = {pin["path"]}
     for relative, record in index["files"].items():
         safe(relative)
         if repository_paths:
-            require(relative.startswith(DOCS), "Numerical closure payload is outside the docs root")
-            name = relative[len(DOCS):]
+            require(relative.startswith(DOCS) or relative in aliases,
+                    "Numerical closure payload is outside the docs root")
+            name = aliases[relative] if relative in aliases else relative[len(DOCS):]
         else:
             name = prefix + "/" + relative
         raw = inputs.add(safe(name), record["sha256"])
@@ -116,7 +143,7 @@ def bind_index(inputs, pin, *, repository_paths=False):
     return index, names
 
 
-def replay(inputs, names, module_name, argument_root, *arguments):
+def replay(inputs, names, module_name, argument_root, *arguments, repository_aliases=None):
     """Run the admitted pure verifier in an indexed text-only relocation."""
     require(sys.flags.optimize == 0, "Closed supplement replay requires unoptimized Python")
     require(module_name in names, "Supplement verifier is not indexed")
@@ -126,6 +153,14 @@ def replay(inputs, names, module_name, argument_root, *arguments):
             target = root / DOCS / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(inputs.add(name, inputs.files[name]["sha256"]))
+        if repository_aliases:
+            require(repository_aliases == COMBINED_PROTOCOL_ALIASES,
+                    "Unexpected combined replay aliases")
+            for name, alias in repository_aliases.items():
+                require(alias in names, "Combined replay alias is not indexed")
+                target = root / safe(name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(inputs.add(alias, inputs.files[alias]["sha256"]))
         module_path = root / DOCS / module_name
         previous, previous_path = sys.dont_write_bytecode, sys.path[:]
         try:
@@ -147,22 +182,59 @@ def admit_numerical(selections):
     require(len(keys) == len(set(keys)), "Duplicate numerical checkpoint")
 
 
+def continuation_note(result, case_ids):
+    """Describe the admitted verifier's separate attempts without joining streams."""
+    require(case_ids == ["ew_n4_epem_mupmumaa"], "Unexpected combined continuation case")
+    continuation = result.get("continuation", {})
+    require(set(continuation) == {"reason", "original_attempt", "fresh_attempt", "concatenated"}
+            and continuation["reason"] == "user-requested daemon update"
+            and continuation["concatenated"] is False,
+            "Combined continuation reason or nonconcatenation proof differs")
+    original, fresh = continuation["original_attempt"], continuation["fresh_attempt"]
+    require(set(original) == {"path", "status", "selected_completed_lanes",
+                            "partial_backend9_selected", "last_saved_point"}
+            and original["status"] == "interrupted"
+            and original["selected_completed_lanes"] == ["baseline-1", "candidate-1",
+                                                         "candidate-6", "candidate-7", "candidate-8"]
+            and original["partial_backend9_selected"] is False
+            and type(original["last_saved_point"]) is int and original["last_saved_point"] == 74,
+            "Combined continuation relabels or selects the interrupted stream")
+    require(set(fresh) == {"path", "selected_lane", "points"}
+            and fresh["selected_lane"] == "candidate-9"
+            and type(fresh["points"]) is int and fresh["points"] == 100,
+            "Combined continuation needs a separate full100 TIRust stream")
+    paths = [safe(attempt["path"]) for attempt in (original, fresh)]
+    require(len(set(paths)) == 2 and all(path.startswith(DOCS + "campaigns/" + CURRENT + "/")
+                                      for path in paths),
+            "Combined continuation attempt paths are not distinct campaign paths")
+    return ("The EW n4 original attempt was interrupted for a user-requested daemon update "
+            "after TIRust saved point 74. Its five completed baseline/CutTools/Ninja/COLLIER/"
+            "NinjaRS lanes remain selected. The interrupted TIRust stream is retained but "
+            "excluded from qualification; a separate full 100-point TIRust attempt supplies "
+            "the sixth selected lane. No partial streams were concatenated, and the original "
+            "interrupted stage has not been relabelled as passed.")
+
+
 def numerical(inputs, selections, manifest, config):
     admit_numerical(selections)
     observed = {}
     lane_records = {}
+    execution_notes = []
     for selected in selections:
-        closure, closure_names = bind_index(inputs, selected["closure_index"], repository_paths=True)
+        aliases = COMBINED_PROTOCOL_ALIASES if selected.get("replay_api") == "combined-one-case-v1" else None
+        closure, closure_names = bind_index(inputs, selected["closure_index"],
+                                           repository_paths=True, repository_aliases=aliases)
         portable, portable_names = bind_index(inputs, selected["replay_index"])
         require(closure.get("manifest_sha256") == MANIFEST
                 and closure.get("performance_acceptance_eligible") is False,
                 "Numerical supplement belongs to another source or timing scope")
         module = str(PurePosixPath(selected["replay_index"]["path"]).parent) + "/verify.py"
-        if selected.get("replay_api") == "one-case-v1":
-            require(closure.get("schema") == "madloop-tirust-one-case-closure-v1",
+        if selected.get("replay_api") in ONE_CASE_SCHEMAS:
+            require(closure.get("schema") == ONE_CASE_SCHEMAS[selected["replay_api"]],
                     "Expected the admitted one-case checkpoint schema")
             result = replay(inputs, closure_names | portable_names, module, "",
-                            DOCS + selected["closure_index"]["path"], selected["closure_index"]["sha256"])
+                            DOCS + selected["closure_index"]["path"], selected["closure_index"]["sha256"],
+                            repository_aliases=aliases)
             case_ids = [row.get("case") for row in closure.get("cases", [])]
             require(case_ids == [closure.get("case", {}).get("id")], "One-case checkpoint identity differs")
         else:
@@ -180,11 +252,16 @@ def numerical(inputs, selections, manifest, config):
                 and result.get("payloads_verified") == len(closure["files"])
                 and result.get("performance_acceptance") is False,
                 "Portable numerical replay did not qualify its declared closed cases")
+        if selected.get("replay_api") == "combined-one-case-v1":
+            require(result.get("verified") is True, "Combined continuation replay is unverified")
+            execution_notes.append(continuation_note(result, case_ids))
         for case in closure["cases"]:
             identifier = case["case"]
             require(identifier not in observed, "Duplicate numerical case across selected checkpoints")
             lanes = case.get("lanes", [])
-            require(case.get("status") in ("passed", "failed") and type(case.get("returncode")) is int
+            returncode_valid = ("returncode" not in case if selected.get("replay_api") == "combined-one-case-v1"
+                                else type(case.get("returncode")) is int)
+            require(case.get("status") in ("passed", "failed") and returncode_valid
                     and [(row.get("source"), row.get("backend")) for row in lanes] == list(LANES),
                     "Incomplete or unordered six-lane numerical case")
             dp = qp = 0
@@ -201,7 +278,7 @@ def numerical(inputs, selections, manifest, config):
                 dp += counts.get(str(lane["backend"]) + ":DP", 0)
                 qp += counts.get(str(lane["backend"]) + ":QP", 0)
             lane_records[identifier] = {"lanes": lanes}
-            if selected.get("replay_api") == "one-case-v1":
+            if selected.get("replay_api") in ONE_CASE_SCHEMAS:
                 diagnostics = result.get("lanes", [])
                 require([(row.get("source"), row.get("backend")) for row in diagnostics] == list(LANES)
                         and all(raw.get("regression_passed") == closed["numerical_agreement_passed"]
@@ -213,7 +290,8 @@ def numerical(inputs, selections, manifest, config):
             observed[identifier] = (dp, qp,
                 all(lane["numerical_agreement_passed"] for lane in lanes),
                 all(lane["ordinary_target_passed"] for lane in lanes),
-                case["status"] == "passed" and case["returncode"] == 0)
+                case["status"] == "passed" and (selected.get("replay_api") == "combined-one-case-v1"
+                                               or case["returncode"] == 0))
         require(result["regression_and_target_passed"] == all(
             observed[identifier][2] and observed[identifier][3] for identifier in case_ids),
             "Portable numerical pass flags differ from the closed lane outcomes")
@@ -237,6 +315,11 @@ def numerical(inputs, selections, manifest, config):
     build_notes = []
     if "ew_n3_epem_ttxa" in observed:
         build_notes.append("The EW n3 snapshot binds 375 unchanged inherited baseline objects, 426 generated source pins and the donor compiler flags. The original baseline full-build receipt was not located in this audit; this does not demonstrate a fresh baseline full rebuild. Candidate exports and numerical objects are fresh. Numerical agreement and this baseline provenance limitation remain separate.")
+    if "qcd_n4_uux_zzgg" in observed:
+        build_notes.append("The QCD n4 snapshot binds 155 unchanged inherited baseline objects, 206 generated source pins and the donor compiler flags. The original baseline full-build receipt was not located in this audit; this does not demonstrate a fresh baseline full rebuild. Candidate exports and numerical objects are fresh. Numerical agreement and this baseline provenance limitation remain separate.")
+    if "ew_n4_epem_mupmumaa" in observed:
+        build_notes.append("The EW n4 snapshot binds 320 unchanged inherited baseline objects, 371 generated source pins and the donor compiler flags. The original baseline full-build receipt was not located in this audit; this does not demonstrate a fresh baseline full rebuild. Candidate exports and numerical objects are fresh. Numerical agreement and this baseline provenance limitation remain separate.")
+    build_notes.extend(execution_notes)
     return {"closed_cases": len(observed), "qualified_cases": sum(row["status"] == "qualified" for row in rows), "total_cases": 11,
             "target_misses": misses, "build_scope_notes": build_notes, "closed_lanes": 6 * len(observed),
             "total_lanes": 66, "points_per_lane": 100, "cases": rows}

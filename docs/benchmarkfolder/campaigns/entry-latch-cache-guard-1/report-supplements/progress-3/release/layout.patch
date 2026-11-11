@@ -1,0 +1,14 @@
+--- reviewed-proposal/current-source-supplement.typ
++++ canonical/current-source-supplement.typ
+@@ -85,3 +85,5 @@
+-    The remaining #(s.numerical.total_cases - s.numerical.closed_cases) cases
+-    and #(s.numerical.total_lanes - s.numerical.closed_lanes) lanes are pending
+-    in this frozen selection.]
++    #if s.numerical.closed_cases < s.numerical.total_cases {
++      [The remaining #(s.numerical.total_cases - s.numerical.closed_cases) cases
++      and #(s.numerical.total_lanes - s.numerical.closed_lanes) lanes are pending
++      in this frozen selection.]
++    }]
+@@ -139 +141 @@
+-  v(8pt)
++  pagebreak(weak: true)

@@ -1,0 +1,34 @@
+{
+  "schema": "madloop-current-source-report-release-index-v1",
+  "files": {
+    "README.md": {
+      "bytes": 1444,
+      "sha256": "671b4e95fd6013cbf4862bcf9b98ae6fdde9a4944c98f9cb0d0bfa91dcda8f99"
+    },
+    "historical-text-check.json": {
+      "bytes": 631,
+      "sha256": "3e3a83ba10c5b63fa7fea6295c001a3e9ab0348c4593c6835eb67ebbc17b46d5"
+    },
+    "independent-review.json": {
+      "bytes": 933,
+      "sha256": "3240aba118011473dd3a0bba5691ae51c0b81df5b6db646340f5fb52ba45ad94"
+    },
+    "layout-amendment.json": {
+      "bytes": 1065,
+      "sha256": "cebc1e90130b67fea0087170c580a4ceac34a8b9988257f7760257bf38726b40"
+    },
+    "layout.patch": {
+      "bytes": 626,
+      "sha256": "22f4f6620c427092033552e8073a757f449ffc5a766dbef80d24a5fe3fcefcd1"
+    },
+    "release.json": {
+      "bytes": 1479,
+      "sha256": "9aa50d0aa1326a05654f39ec75be9fe84dce0eedf80099dfffbcbe472b69d2bc"
+    },
+    "verify-only.txt": {
+      "bytes": 38,
+      "sha256": "5ec1a137bece584f3381d989e605ebeadd218e69b143d1b401172c56659fcc66"
+    }
+  },
+  "payload_count": 7
+}

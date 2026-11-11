@@ -82,9 +82,11 @@
     records: #s.numerical.closed_lanes of #s.numerical.total_lanes lanes,
     with #s.numerical.points_per_lane saved points per lane.
     #s.numerical.qualified_cases cases pass the 3e-6 regression criterion.
-    The remaining #(s.numerical.total_cases - s.numerical.closed_cases) cases
-    and #(s.numerical.total_lanes - s.numerical.closed_lanes) lanes are pending
-    in this frozen selection.]
+    #if s.numerical.closed_cases < s.numerical.total_cases {
+      [The remaining #(s.numerical.total_cases - s.numerical.closed_cases) cases
+      and #(s.numerical.total_lanes - s.numerical.closed_lanes) lanes are pending
+      in this frozen selection.]
+    }]
   v(6pt)
   figure(table-style(table(columns: (1.5fr, .65fr, .45fr, .6fr, .6fr, .85fr),
     inset: (x: 4pt, y: 5pt), stroke: table-stroke, fill: table-fill,
@@ -109,16 +111,20 @@
     no paired runtime acceptance.]
   if s.numerical.target_misses.len() > 0 {
     v(6pt)
-    table-style(table(columns: (1.5fr, .5fr, .65fr, .7fr, 1.2fr), inset: 4pt,
+    table-style(table(columns: (1.5fr, .4fr, .55fr, 1.1fr, .6fr, 1.1fr), inset: 4pt,
       stroke: table-stroke, fill: table-fill,
-      table.header([Target-miss case], [Tool], [Scalar misses], [Saved points], [Max. finite residual]),
+      table.header([Target-miss case], [Tool], [Scalar misses], [B / F / 1 / 2], [Saved points], [Max. finite residual]),
       ..s.numerical.target_misses.map(row => (
-        [#raw(row.case)], [#row.backend], [#row.scalar_misses], [#row.distinct_points],
+        [#raw(row.case)], [#row.backend], [#row.scalar_misses],
+        [#row.columns.at("0") / #row.columns.at("1") / #row.columns.at("2") / #row.columns.at("3")],
+        [#row.distinct_points],
         [#source-sci(row.maximum_finite_symmetric_residual)],
       )).flatten(),
     ))
     v(3pt)
-    text(8pt, fill: ink2)[The ordinary-target counts retain both order rows at each
+    text(8pt, fill: ink2)[B / F / 1 / 2 gives the Born, finite, single-pole and
+      double-pole miss counts. Their sum equals the scalar count.
+      The ordinary-target counts retain both order rows at each
       saved point; they are not counts of distinct physical failures. Residuals
       compare against the source-matched baseline CutTools result and supply no
       independent truth estimate.
@@ -132,7 +138,7 @@
     text(8pt, fill: ink2, note-text)
   }
 
-  v(8pt)
+  pagebreak(weak: true)
   heading(level: 1)[Cache-guard scope · #raw(s.current.revision.slice(0, 12))]
   note(fill: warm)[Scope: #s.cache.scope. The following paired observations
     compare the guarded candidate with the original guard-off code. This
