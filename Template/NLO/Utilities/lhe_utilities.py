@@ -1468,6 +1468,12 @@ def cmd_check(args):
         if not shower:
             for message in momentum_messages(event, ext):
                 warn('momentum checks', 'event %d: %s' % (nevt, message))
+                if message.startswith('mass shell violation'):
+                    mass_errors.write('####event: %d\n %s\n' % (nevt, message))
+                    nmass_err += 1
+                else:
+                    errors.write('####event: %d\n %s\n' % (nevt, message))
+                    nerr += 1
         if nevt % max(10000, (nevents_header or 0) // 10 or 1) == 0:
             print('Processed %d events' % nevt)
     ef.close()

@@ -83,6 +83,45 @@ class TestLHEUtilities(unittest.TestCase):
                      'check_events.HwU', 'res_wgt'):
             self.assertTrue(os.path.isfile(pjoin(self.root, name)), name)
 
+    def test_check_counts_and_records_kinematic_failures(self):
+        cases = (
+            ('valid', (3., 4., 5.), (-3., -4., 5.), 0, 0, 1),
+            ('momentum', (0., 6., 6.), (-3., -4., 5.), 1, 0, 1),
+            ('mass_shell', (3., 0., 5.), (-3., 0., 5.), 0, 2, 1),
+            ('both', (3., 4., 6.), (-3., -4., 5.), 1, 1, 1),
+            ('showered', (3., 4., 6.), (-3., -4., 5.), 0, 0, -1),
+        )
+        for name, first, second, momentum_errors, mass_errors, nevents in cases:
+            with self.subTest(case=name):
+                directory = pjoin(self.root, name)
+                os.mkdir(directory)
+                path = pjoin(directory, 'events.lhe')
+                contents = ('<LesHouchesEvents version="3.0">\n<header>\n'
+                            '<MGRunCard>\n%d = nevents\n</MGRunCard>\n</header>\n'
+                            '<init>\n11 -11 5 5 0 0 0 0 -4 1\n1 0 1 1\n</init>\n'
+                            '<event>\n4 1 1 10 0.007 0.118\n'
+                            '11 -1 0 0 0 0 0 0 5 5 0 0 9\n'
+                            '-11 -1 0 0 0 0 0 0 -5 5 0 0 9\n') % nevents
+                for pdg, (px, pz, energy) in ((13, first), (-13, second)):
+                    contents += '%d 1 1 2 0 0 %g 0 %g %g 0 0 9\n' % (
+                        pdg, px, pz, energy)
+                with open(path, 'w') as stream:
+                    stream.write(contents + '</event>\n</LesHouchesEvents>\n')
+                output = self.run_command('check', path, '-d', directory)
+                self.assertIn('Total number of errors found: %d' % (
+                    momentum_errors + mass_errors), output)
+                self.assertIn('Of which mass shell: %d' % mass_errors, output)
+                with open(pjoin(directory, 'LHEF.errors')) as stream:
+                    errors = stream.read()
+                with open(pjoin(directory, 'LHEF.mass_errors')) as stream:
+                    masses = stream.read()
+                self.assertEqual(errors.count('momentum is not conserved'), momentum_errors)
+                self.assertEqual(masses.count('mass shell violation'), mass_errors)
+                if momentum_errors:
+                    self.assertIn('####event: 1', errors)
+                if mass_errors:
+                    self.assertIn('####event: 1', masses)
+
     def test_quoted_run_card_values_preserve_cross_section_normalization(self):
         with gzip.open(EVENTS, 'rt') as stream:
             contents = stream.read()

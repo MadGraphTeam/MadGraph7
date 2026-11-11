@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -45,6 +46,28 @@
 #endif
 
 using namespace Pythia8;
+
+// Pythia can read several LHE events inside next() when matching vetoes
+// them. Enforce the requested prefix before each new LHE event is read.
+class LimitedLHEF : public LHAupLHEF {
+public:
+  LimitedLHEF(Info* info, const char* filename, const char* header,
+    bool readHeaders, bool setScales, long limit)
+    : LHAupLHEF(info, filename, header, readHeaders, setScales),
+      limit_(limit), nRead_(0) {}
+
+  bool setEvent(int process = 0) override {
+    if (nRead_ >= limit_) return false;
+    if (!LHAupLHEF::setEvent(process)) return false;
+    ++nRead_;
+    return true;
+  }
+
+  long nRead() const { return nRead_; }
+
+private:
+  long limit_, nRead_;
+};
 
 //==========================================================================
 // Fortran analysis interface.
@@ -295,6 +318,23 @@ int main(int argc, char* argv[]) {
 #endif
   }
 
+  const std::string eventFile = pythia.word("Beams:LHEF");
+  const std::string headerFile = pythia.word("Beams:LHEFheader");
+  bool setScales = pythia.flag("Beams:setProductionScalesFromLHEF")
+    || (pythia.settings.isFlag("Beams:setDipoleShowerStartingScalesFromLHEF")
+        && pythia.flag("Beams:setDipoleShowerStartingScalesFromLHEF"));
+  std::shared_ptr<LimitedLHEF> lheInput(new LimitedLHEF(
+    const_cast<Info*>(&pythia.info), eventFile.c_str(),
+    headerFile == "void" ? nullptr : headerFile.c_str(),
+    pythia.flag("Beams:readLHEFheaders"), setScales, nShower));
+#if PYTHIA_VERSION_INTEGER >= 8300
+  pythia.setLHAupPtr(lheInput);
+#else
+  pythia.setLHAupPtr(lheInput.get());
+#endif
+  // External-reader mode keeps Pythia from replacing the bounded reader.
+  pythia.readString("Beams:frameType = 5");
+
   if (!pythia.init()) {
     std::cerr << "Error: could not initialise Pythia" << std::endl;
     return 1;
@@ -324,10 +364,6 @@ int main(int argc, char* argv[]) {
   HepMC3::WriterAscii hepmcOut(hepmcFile);
   std::shared_ptr<HepMC3::GenRunInfo> runInfo
     = std::make_shared<HepMC3::GenRunInfo>();
-  // All the weights of the events (nominal and variations), as named by
-  // Pythia8.
-  runInfo->set_weight_names(pythia.info.weightNameVector());
-  hepmcOut.set_run_info(runInfo);
 #elif MG5_HEPMC == 2
   HepMC::Pythia8ToHepMC toHepMC;
   toHepMC.set_store_pdf(false);
@@ -344,7 +380,7 @@ int main(int argc, char* argv[]) {
   // Read nShower events from the LHE file. Events vetoed by Pythia (e.g. by
   // the FxFx merging) or lost in errors still count, so that the sum of the
   // normalised weights of the accepted events estimates the cross section.
-  while (pythia.info.nTried() < nShower) {
+  while (lheInput->nRead() < nShower) {
     if (!pythia.next()) {
       if (pythia.info.atEndOfFile()) break;
       if (++nErrors > maxErrors) {
@@ -356,6 +392,7 @@ int main(int argc, char* argv[]) {
       continue;
     }
     ++nAccepted;
+    const long nRead = lheInput->nRead();
 
     if (nPrintLHA > 0 && pythia.info.isLHA()) {
       pythia.LHAeventList();
@@ -369,9 +406,16 @@ int main(int argc, char* argv[]) {
     sigmaSum += weight * normEvent;
     // Running estimate of the total cross section (pb).
     double sigmaNow = sigmaSum * double(nShower)
-      / double(std::max(1L, long(pythia.info.nTried())));
+      / double(std::max(1L, nRead));
 
 #if MG5_HEPMC == 3
+    if (nAccepted == 1) {
+      // LHE variation names are populated only after reading an event.
+      // Setting the pointer alone does not serialize the run metadata.
+      runInfo->set_weight_names(pythia.info.weightNameVector());
+      hepmcOut.set_run_info(runInfo);
+      hepmcOut.write_run_info();
+    }
     HepMC3::GenEvent hepmcEvent(runInfo, HepMC3::Units::GEV, HepMC3::Units::MM);
     toHepMC.fill_next_event(pythia, &hepmcEvent);
     // All weights (nominal and variations) follow event_norm.
@@ -400,7 +444,7 @@ int main(int argc, char* argv[]) {
 #ifdef MG5_ANALYSIS
     // Keep the weight reader in step with the events read by Pythia,
     // including those rejected before this one.
-    for (long nTried = pythia.info.nTried(); nLHEread < nTried; ++nLHEread)
+    for (; nLHEread < nRead; ++nLHEread)
       reader.lhef_read_wgts_(weights);
     if (!fillHepevt(pythia.event, int(nAnalysed + 1))) {
       ++nTooLarge;
@@ -414,13 +458,13 @@ int main(int argc, char* argv[]) {
       // Intermediate output; the histograms are averaged over the events
       // analysed, and rescaled for the events vetoed or lost by Pythia.
       double norm = ((lower(evtNorm) == "sum") ? double(nTotal) : 1.)
-        * double(nAnalysed) / double(pythia.info.nTried());
+        * double(nAnalysed) / double(nRead);
       pyaend_(norm);
     }
 #endif
   }
 
-  long nRead = pythia.info.nTried();
+  long nRead = lheInput->nRead();
 #ifdef MG5_ANALYSIS
   if (nAnalysed > 0) {
     double norm = ((lower(evtNorm) == "sum") ? double(nTotal) : 1.)
