@@ -1,0 +1,160 @@
+{
+  "name": "compile-disabled",
+  "argv": [
+    "/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc",
+    "--test",
+    "--edition=2024",
+    "-C",
+    "panic=unwind",
+    "-C",
+    "codegen-units=1",
+    "-C",
+    "opt-level=0",
+    "--crate-name",
+    "checked_hook_disabled",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs",
+    "-o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-disabled"
+  ],
+  "cpu": 0,
+  "start_offset_seconds": 1.3793651447631419,
+  "peak_sampled_aggregate_rss_bytes": 85426176,
+  "process_samples": [
+    [
+      {
+        "pid": 3973211,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 0
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 41172992
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ],
+    [
+      {
+        "pid": 3973211,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973211,
+        "start_ticks": 241154155,
+        "rss_bytes": 85426176
+      }
+    ]
+  ],
+  "pid": 3973211,
+  "returncode": 0,
+  "elapsed_seconds": 0.26958765136078,
+  "failure": null,
+  "log": "logs/compile-disabled.txt",
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

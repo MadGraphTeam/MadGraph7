@@ -1,0 +1,114 @@
+{
+  "passed": true,
+  "file_only": true,
+  "native_commands_run": 0,
+  "source_index": {
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-guards-proposal-1/index.json",
+    "bytes": 7766,
+    "sha256": "5902b9b2b6e378d7d2617b991399f22f86cf3d1813a51432e05ba33c4638b8e2"
+  },
+  "source_file": {
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-guards-proposal-1/candidate/sources/oneloopmaster/src/native/dilog.rs",
+    "bytes": 13882,
+    "sha256": "9691edd8ec68b13d02ec4fbce924fb2884c5130771d1a88b669155885e5e76ed"
+  },
+  "extraction": {
+    "start_byte": 3028,
+    "end_byte": 5423,
+    "module": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/extracted-module.rs",
+      "bytes": 2395,
+      "sha256": "58958f74ed2c2e6966fc2d665c515777d6a8c27561b6dc620f01ba40cbeb12b0"
+    },
+    "wrapper_prefix_hex": "23215b666f7262696428756e736166655f636f6465295d0a0a",
+    "wrapper_suffix_hex": "0a",
+    "source": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs",
+      "bytes": 2421,
+      "sha256": "2aa296274b56ac6d20c91f7fbcbfe0bbc2a08438bbf7fe9fc14ed1cf2bfec5f5"
+    },
+    "embedded_tests": 2,
+    "edition": "2024"
+  },
+  "rustc": {
+    "path": "/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc",
+    "bytes": 16352,
+    "sha256": "dc1b5dd54d177e134d8b47ee9ff857f895cbe405d698e78a2671d7572c4f13c3"
+  },
+  "cc": {
+    "path": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc",
+    "bytes": 10845,
+    "sha256": "3c48a46fb1dc134c0f10c2da6ec1a8d34a381b93c2ac588b7d19dd3e804eeeef"
+  },
+  "commands": [
+    {
+      "name": "compile-enabled",
+      "argv": [
+        "/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc",
+        "--test",
+        "--edition=2024",
+        "-C",
+        "panic=unwind",
+        "-C",
+        "codegen-units=1",
+        "-C",
+        "opt-level=0",
+        "--crate-name",
+        "checked_hook_enabled",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-enabled",
+        "--cfg",
+        "feature=\"checked-dilog-rounding\""
+      ]
+    },
+    {
+      "name": "run-enabled",
+      "argv": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-enabled",
+        "--test-threads=1",
+        "--nocapture"
+      ]
+    },
+    {
+      "name": "compile-disabled",
+      "argv": [
+        "/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc",
+        "--test",
+        "--edition=2024",
+        "-C",
+        "panic=unwind",
+        "-C",
+        "codegen-units=1",
+        "-C",
+        "opt-level=0",
+        "--crate-name",
+        "checked_hook_disabled",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-disabled"
+      ]
+    },
+    {
+      "name": "run-disabled",
+      "argv": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-disabled",
+        "--test-threads=1",
+        "--nocapture"
+      ]
+    }
+  ],
+  "limits": {
+    "max_commands": 4,
+    "work_wall_seconds": 60,
+    "cleanup_wall_seconds": 30,
+    "address_space_bytes_per_process": 1073741824,
+    "aggregate_rss_sampled_cap_bytes": 1073741824,
+    "cpu_count": 1,
+    "nonexclusive_cpu": 0,
+    "mutex": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/numerical-tests.lock",
+    "mutex_wait": false,
+    "network_commands": false,
+    "library_physics_cargo_builds": false
+  }
+}

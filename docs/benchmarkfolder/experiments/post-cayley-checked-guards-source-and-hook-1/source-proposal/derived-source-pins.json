@@ -1,0 +1,46 @@
+{
+  "sources/adaptive-qp-rescue-prototype3/Cargo.lock": {
+    "original": "0d09649d4005c3a905dd605407d29e5b2818cd2c574d608d34a7f1dff3d4a2d3",
+    "candidate": "0d09649d4005c3a905dd605407d29e5b2818cd2c574d608d34a7f1dff3d4a2d3"
+  },
+  "sources/adaptive-qp-rescue-prototype3/Cargo.toml": {
+    "original": "a19b74bbbe02530dadee8fc9b61feacdd8e01a8de528a9f3f68a4a78d6e91bcb",
+    "candidate": "99d2a97acfee68f4da16e00316b271192a23ac97fd424221ecfb41c37f4db0c7"
+  },
+  "sources/adaptive-qp-rescue-prototype3/src/lib.rs": {
+    "original": "23c21927c5c6168f7684d2b58ccfc2bf1fb265b05212a4f5df2c36ccb8847ad9",
+    "candidate": "e152a48749394aeb1261b6a2ac6f65d2e3e3719b539d1782164c1b7bf97e358c"
+  },
+  "sources/oneloopmaster/Cargo.toml": {
+    "original": "7796765f4e9b6677418f185f416dd1e27a57cb06916f9e7f9b84e30d200a8149",
+    "candidate": "a41afd28211f7445fa61130af2394fd19520b6c1d78322ccb0ded46cd33c33cf"
+  },
+  "sources/oneloopmaster/src/lib.rs": {
+    "original": "435689af35f1a8ce09bb7413cb5d02cfb7d8d5e98ac243d5e6956cfba354b2b8",
+    "candidate": "a3051282bc231b3f6597939e2d8b4c5600070c60d5f6d9016b2e07f658c96b45"
+  },
+  "sources/oneloopmaster/src/native/dilog.rs": {
+    "original": "bcf5add6fbb397e7a002541dac15fdef000ef3ff95a4a3fdbf3c474e407308e9",
+    "candidate": "9691edd8ec68b13d02ec4fbce924fb2884c5130771d1a88b669155885e5e76ed"
+  },
+  "sources/oneloopmaster/src/native/mod.rs": {
+    "original": "a666d5acb3fe577de1b33f8907b4cf16a845c319d46de65da0897f44c9e13780",
+    "candidate": "af001807aaa345abd5ea60b300dff41ef9839bbb8a84d1a356d7c762cab6a03b"
+  },
+  "sources/pole-development/Cargo.toml": {
+    "original": "ff958f661d463bca4ea3b361b3abd23f7b9dfd6bbe4cb5b062bccf85c7be2018",
+    "candidate": "ff958f661d463bca4ea3b361b3abd23f7b9dfd6bbe4cb5b062bccf85c7be2018"
+  },
+  "sources/pole-development/crates/iregi-rust/Cargo.toml": {
+    "original": "6bf1486a8760db43ab57317b00ea11ca0fb53861b54fe9b6d18da005a2990550",
+    "candidate": "ab1dfb037b50fe1320e19bf9310f8f824c2d68f8fd413c87fb018bf60559edfd"
+  },
+  "sources/pole-development/crates/iregi-rust/src/direct/exec/gram.rs": {
+    "original": "572fff44788d7a419151065a75af86a028cc1477987ec70dc0f47d70894a4dda",
+    "candidate": "c898f5512ec5e457ad959abdf73c8d963266b342f79375a81296e54caff9a159"
+  },
+  "sources/pole-development/crates/iregi-rust/src/lib.rs": {
+    "original": "bd57b4b8c7771220ea528a97f22d517839452c8ca5877d9043a568a05d100121",
+    "candidate": "df2141e5a42907faa92ae76ed4fc60b10b139f13500f54861cd7bd6766d5820a"
+  }
+}

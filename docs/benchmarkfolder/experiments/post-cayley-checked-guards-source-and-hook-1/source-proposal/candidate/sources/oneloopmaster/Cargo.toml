@@ -1,0 +1,43 @@
+[package]
+name = "oneloop"
+version = "0.1.0"
+edition = "2024"
+license = "0BSD"
+description = "Exact Symbolica expressions for one-loop integrals"
+publish = false # Development snapshot.
+
+[features]
+default = ["prebuilt"]
+# Opt into ahead-of-time Rust evaluators instead of the smaller interpreted hooks.
+generated-evaluators = []
+prebuilt = []
+# Reuse the exact Symbolica instruction-to-Rust emitter and its numeric runtime.
+rust-codegen = []
+# Private opt-in; a missing/false host probe leaves the original estimator.
+checked-dilog-rounding = []
+
+[[example]]
+name = "generate_native"
+required-features = ["rust-codegen"]
+
+[[example]]
+name = "rows_survey"
+required-features = ["generated-evaluators"]
+
+[dependencies]
+# Do not impose Symbolica's optional global mimalloc allocator on embedding hosts.
+symbolica = { version = "3.0.1", default-features = false, features = ["tracing_max_level_info", "integer-gmp", "float-mpfr", "native_code_generation", "bincode"] }
+bincode = "2.0"
+# Limb access for the fused double-double kernels (already required by Symbolica).
+xprec = "0.2.3"
+# Compatible backend updates are selected by the consuming Cargo.lock.
+symjit = "2.27.3"
+
+[patch.crates-io]
+# Symbolica: symbolica-dev/symbolica `community` plus the consolidated upstream PR
+# symbolica-dev/symbolica#163 (branch ValentinHirschi/symbolica loop_me_pyamplicol), the one revision
+# shared by pyAmpliCol, NinjaRS and OneLoop; it moves to upstream once the PR is merged.
+# Keep all three packages on one source; embedding hosts supply their own patch.
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }

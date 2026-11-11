@@ -1,0 +1,64 @@
+[workspace]
+resolver = "3"
+exclude = ["dependencies/linnest", "madloop-pole-kernels"]
+members = ["crates/iregi-rust", "crates/iregi-masters", "crates/iregi-prepare", "crates/iregi-cli", "crates/iregi-python", "dependencies/feynkit-integrals"]
+# Routine Rust builds keep the optional Python host and rendering closure out.
+default-members = ["crates/iregi-rust", "crates/iregi-masters", "crates/iregi-prepare", "crates/iregi-cli", "dependencies/feynkit-integrals"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+authors = ["huashengshao <erdissshaw@gmail.com>"]
+license = "0BSD"
+repository = "https://github.com/huashengshao/TIRust"
+
+[workspace.dependencies]
+symbolica = { version = "3.0", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "serde"] }
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "bd703d09a78f7849a6b86a07096e6f222fc01193", default-features = false, features = ["generated-evaluators", "rust-codegen"] }
+feynkit-graph = { git = "https://github.com/alphal00p/gammaloop", rev = "9102f885722e856e30227ed46e685e5c465905f7" }
+feynkit-model = { git = "https://github.com/alphal00p/gammaloop", rev = "9102f885722e856e30227ed46e685e5c465905f7", features = ["native"] }
+feynkit-generator = { git = "https://github.com/alphal00p/gammaloop", rev = "9102f885722e856e30227ed46e685e5c465905f7" }
+spenso = { git = "https://github.com/alphal00p/gammaloop", rev = "9102f885722e856e30227ed46e685e5c465905f7", default-features = false }
+spenso-hep-lib = { git = "https://github.com/alphal00p/gammaloop", rev = "9102f885722e856e30227ed46e685e5c465905f7", default-features = false }
+idenso = { git = "https://github.com/alphal00p/gammaloop", rev = "9102f885722e856e30227ed46e685e5c465905f7", default-features = false }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+clap = { version = "4", features = ["derive"] }
+iregi-masters = { path = "crates/iregi-masters" }
+iregi-rust = { path = "crates/iregi-rust" }
+iregi-prepare = { path = "crates/iregi-prepare" }
+
+[patch.crates-io]
+# Symbolica: ValentinHirschi/symbolica dfe6bd97 (symbolica-dev/symbolica `community` 36cbac3a plus
+# the consolidated upstream PR symbolica-dev/symbolica#163), the one revision shared with
+# pyAmpliCol, NinjaRS and oneloopmaster; it moves to upstream once the PR is merged. Crates
+# require symbolica = "3.0" so that an embedding workspace's own patch decides the revision.
+# Needed Symbolica changes go to that PR line, never into a vendored or modified copy here.
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Fast incremental optimized builds for development iteration only.
+[profile.devopt]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+
+[profile.bench]
+inherits = "release"
+debug = true
+
+# Native SVG layout must keep numeric CBOR typed under exact JSON feature unification.
+[patch."https://github.com/alphal00p/gammaloop"]
+linnest = { path = "dependencies/linnest" }

@@ -1,0 +1,12 @@
+--- a/sources/oneloopmaster/src/native/mod.rs
++++ b/sources/oneloopmaster/src/native/mod.rs
+@@ -7,6 +7,9 @@
+ #[cfg_attr(not(feature = "generated-evaluators"), allow(dead_code))]
+ pub mod primitives;
+ mod dilog;
++#[cfg(feature = "checked-dilog-rounding")]
++pub use dilog::with_checked_dilog_rounding_probe;
++
+ pub mod double_double;
+ mod small_momentum;
+ pub use small_momentum::b0_momentum_shift;

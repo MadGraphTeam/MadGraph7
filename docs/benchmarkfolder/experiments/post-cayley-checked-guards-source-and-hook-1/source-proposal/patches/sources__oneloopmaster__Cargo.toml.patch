@@ -1,0 +1,11 @@
+--- a/sources/oneloopmaster/Cargo.toml
++++ b/sources/oneloopmaster/Cargo.toml
+@@ -13,6 +13,8 @@
+ prebuilt = []
+ # Reuse the exact Symbolica instruction-to-Rust emitter and its numeric runtime.
+ rust-codegen = []
++# Private opt-in; a missing/false host probe leaves the original estimator.
++checked-dilog-rounding = []
+ 
+ [[example]]
+ name = "generate_native"

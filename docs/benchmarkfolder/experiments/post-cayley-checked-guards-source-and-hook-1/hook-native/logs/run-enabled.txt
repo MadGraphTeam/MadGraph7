@@ -1,0 +1,14 @@
+
+running 2 tests
+test checked_rounding::tests::default_nesting_reentry_and_thread_isolation ... ok
+test checked_rounding::tests::restores_action_and_probe_panics ... 
+thread 'checked_rounding::tests::restores_action_and_probe_panics' (3973209) panicked at /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs:53:76:
+action unwind
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'checked_rounding::tests::restores_action_and_probe_panics' (3973209) panicked at /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs:37:36:
+probe unwind
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

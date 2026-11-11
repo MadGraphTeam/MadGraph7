@@ -1,0 +1,692 @@
+{
+  "name": "compile-enabled",
+  "argv": [
+    "/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc",
+    "--test",
+    "--edition=2024",
+    "-C",
+    "panic=unwind",
+    "-C",
+    "codegen-units=1",
+    "-C",
+    "opt-level=0",
+    "--crate-name",
+    "checked_hook_enabled",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs",
+    "-o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-enabled",
+    "--cfg",
+    "feature=\"checked-dilog-rounding\""
+  ],
+  "cpu": 0,
+  "start_offset_seconds": 0.00011381972581148148,
+  "peak_sampled_aggregate_rss_bytes": 110313472,
+  "process_samples": [
+    [
+      {
+        "pid": 3973000,
+        "state": "D",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 0
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "D",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 3166208
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 3166208
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 6311936
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 9461760
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 15753216
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 15753216
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 18898944
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 22048768
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 22048768
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "D",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 28344320
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 31494144
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 34639872
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 34639872
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 34639872
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 34639872
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 37789696
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 40955904
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 44101632
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 47247360
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 50393088
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 59846656
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 63012864
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 66158592
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 66158592
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 69308416
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 72458240
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 78794752
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 85086208
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 85086208
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 88236032
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 91394048
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 91394048
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 91394048
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94539776
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 100851712
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 100851712
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 104022016
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 107167744
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 110313472
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 110313472
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 110313472
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 110313472
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 84881408
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 84881408
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 88035328
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 88035328
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 91181056
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 91181056
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "S",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 94326784
+      }
+    ],
+    [
+      {
+        "pid": 3973000,
+        "state": "R",
+        "ppid": 3972452,
+        "pgrp": 3973000,
+        "start_ticks": 241154017,
+        "rss_bytes": 0
+      }
+    ]
+  ],
+  "pid": 3973000,
+  "returncode": 0,
+  "elapsed_seconds": 1.349480520002544,
+  "failure": null,
+  "log": "logs/compile-enabled.txt",
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

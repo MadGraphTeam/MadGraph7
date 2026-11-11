@@ -1,0 +1,215 @@
+{
+  "schema": "private-source-proposal-v1",
+  "classification": "SOURCE_ONLY_UNCOMPILED_UNQUALIFIED",
+  "native_executions": 0,
+  "production_or_reference_edits": false,
+  "scientific_accuracy_claim": false,
+  "hardware_trap_remedy_claim": false,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 11748,
+      "sha256": "6081e683b4596040c3732222d6c2f4f8a15a256b327ad83b68f92a13f20951c6"
+    },
+    {
+      "path": "candidate/sources/adaptive-qp-rescue-prototype3/Cargo.lock",
+      "bytes": 35874,
+      "sha256": "0d09649d4005c3a905dd605407d29e5b2818cd2c574d608d34a7f1dff3d4a2d3"
+    },
+    {
+      "path": "candidate/sources/adaptive-qp-rescue-prototype3/Cargo.toml",
+      "bytes": 1219,
+      "sha256": "99d2a97acfee68f4da16e00316b271192a23ac97fd424221ecfb41c37f4db0c7"
+    },
+    {
+      "path": "candidate/sources/adaptive-qp-rescue-prototype3/src/lib.rs",
+      "bytes": 55462,
+      "sha256": "e152a48749394aeb1261b6a2ac6f65d2e3e3719b539d1782164c1b7bf97e358c"
+    },
+    {
+      "path": "candidate/sources/oneloopmaster/Cargo.toml",
+      "bytes": 1910,
+      "sha256": "a41afd28211f7445fa61130af2394fd19520b6c1d78322ccb0ded46cd33c33cf"
+    },
+    {
+      "path": "candidate/sources/oneloopmaster/src/lib.rs",
+      "bytes": 9401,
+      "sha256": "a3051282bc231b3f6597939e2d8b4c5600070c60d5f6d9016b2e07f658c96b45"
+    },
+    {
+      "path": "candidate/sources/oneloopmaster/src/native/dilog.rs",
+      "bytes": 13882,
+      "sha256": "9691edd8ec68b13d02ec4fbce924fb2884c5130771d1a88b669155885e5e76ed"
+    },
+    {
+      "path": "candidate/sources/oneloopmaster/src/native/mod.rs",
+      "bytes": 19885,
+      "sha256": "af001807aaa345abd5ea60b300dff41ef9839bbb8a84d1a356d7c762cab6a03b"
+    },
+    {
+      "path": "candidate/sources/pole-development/Cargo.toml",
+      "bytes": 3626,
+      "sha256": "ff958f661d463bca4ea3b361b3abd23f7b9dfd6bbe4cb5b062bccf85c7be2018"
+    },
+    {
+      "path": "candidate/sources/pole-development/crates/iregi-rust/Cargo.toml",
+      "bytes": 770,
+      "sha256": "ab1dfb037b50fe1320e19bf9310f8f824c2d68f8fd413c87fb018bf60559edfd"
+    },
+    {
+      "path": "candidate/sources/pole-development/crates/iregi-rust/src/direct/exec/gram.rs",
+      "bytes": 113252,
+      "sha256": "c898f5512ec5e457ad959abdf73c8d963266b342f79375a81296e54caff9a159"
+    },
+    {
+      "path": "candidate/sources/pole-development/crates/iregi-rust/src/lib.rs",
+      "bytes": 2902,
+      "sha256": "df2141e5a42907faa92ae76ed4fc60b10b139f13500f54861cd7bd6766d5820a"
+    },
+    {
+      "path": "derive.py",
+      "bytes": 8272,
+      "sha256": "ec68543cdd5fc6cf6ee563b122e009b9a2b3d219e262fbaabfc3e20614a76162"
+    },
+    {
+      "path": "derived-source-pins.json",
+      "bytes": 2489,
+      "sha256": "afda819f0f894637f63922eda0a5282835f60e12f039e3411bdea9868a111909"
+    },
+    {
+      "path": "input/environment_token.c",
+      "bytes": 688,
+      "sha256": "5b82404bf31bb731e80d63c0187efe3cdc5e7a213373697124a7c888919f4196"
+    },
+    {
+      "path": "input/prior-gram-zero-only.patch",
+      "bytes": 491,
+      "sha256": "d3f546105bf6ed2b1c37aef1bdc73e084a3f0c757c89f374a9983be4fdd3a266"
+    },
+    {
+      "path": "input/prior-index.json",
+      "bytes": 731,
+      "sha256": "2f659381a25cfba38539280bd7be06c154efcebc185b2679b52b87c1ecd81fbf"
+    },
+    {
+      "path": "input/prior-proposal.json",
+      "bytes": 6141,
+      "sha256": "480c319205febc1e184f999509cfcc85a973b269148480e467f346da7dd0e90b"
+    },
+    {
+      "path": "original/sources/adaptive-qp-rescue-prototype3/Cargo.lock",
+      "bytes": 35874,
+      "sha256": "0d09649d4005c3a905dd605407d29e5b2818cd2c574d608d34a7f1dff3d4a2d3"
+    },
+    {
+      "path": "original/sources/adaptive-qp-rescue-prototype3/Cargo.toml",
+      "bytes": 1058,
+      "sha256": "a19b74bbbe02530dadee8fc9b61feacdd8e01a8de528a9f3f68a4a78d6e91bcb"
+    },
+    {
+      "path": "original/sources/adaptive-qp-rescue-prototype3/src/lib.rs",
+      "bytes": 54310,
+      "sha256": "23c21927c5c6168f7684d2b58ccfc2bf1fb265b05212a4f5df2c36ccb8847ad9"
+    },
+    {
+      "path": "original/sources/oneloopmaster/Cargo.toml",
+      "bytes": 1806,
+      "sha256": "7796765f4e9b6677418f185f416dd1e27a57cb06916f9e7f9b84e30d200a8149"
+    },
+    {
+      "path": "original/sources/oneloopmaster/src/lib.rs",
+      "bytes": 9307,
+      "sha256": "435689af35f1a8ce09bb7413cb5d02cfb7d8d5e98ac243d5e6956cfba354b2b8"
+    },
+    {
+      "path": "original/sources/oneloopmaster/src/native/dilog.rs",
+      "bytes": 10564,
+      "sha256": "bcf5add6fbb397e7a002541dac15fdef000ef3ff95a4a3fdbf3c474e407308e9"
+    },
+    {
+      "path": "original/sources/oneloopmaster/src/native/mod.rs",
+      "bytes": 19791,
+      "sha256": "a666d5acb3fe577de1b33f8907b4cf16a845c319d46de65da0897f44c9e13780"
+    },
+    {
+      "path": "original/sources/pole-development/Cargo.toml",
+      "bytes": 3626,
+      "sha256": "ff958f661d463bca4ea3b361b3abd23f7b9dfd6bbe4cb5b062bccf85c7be2018"
+    },
+    {
+      "path": "original/sources/pole-development/crates/iregi-rust/Cargo.toml",
+      "bytes": 710,
+      "sha256": "6bf1486a8760db43ab57317b00ea11ca0fb53861b54fe9b6d18da005a2990550"
+    },
+    {
+      "path": "original/sources/pole-development/crates/iregi-rust/src/direct/exec/gram.rs",
+      "bytes": 113130,
+      "sha256": "572fff44788d7a419151065a75af86a028cc1477987ec70dc0f47d70894a4dda"
+    },
+    {
+      "path": "original/sources/pole-development/crates/iregi-rust/src/lib.rs",
+      "bytes": 2806,
+      "sha256": "bd57b4b8c7771220ea528a97f22d517839452c8ca5877d9043a568a05d100121"
+    },
+    {
+      "path": "patches/sources__adaptive-qp-rescue-prototype3__Cargo.toml.patch",
+      "bytes": 806,
+      "sha256": "7b23c8182e0d63c2b6fc4927dfdfdc9aed1d058715544b6b643c29ae6b1abd68"
+    },
+    {
+      "path": "patches/sources__adaptive-qp-rescue-prototype3__src__lib.rs.patch",
+      "bytes": 1666,
+      "sha256": "b4001cb94d56d94569b4068f57565eb32facfd7d0cc2b3d9cba8f38e6355fec3"
+    },
+    {
+      "path": "patches/sources__oneloopmaster__Cargo.toml.patch",
+      "bytes": 359,
+      "sha256": "299d179afdde8e33483a40e18c32fc13a466ac7766e3d6dd091bfbd28ef8c5c9"
+    },
+    {
+      "path": "patches/sources__oneloopmaster__src__lib.rs.patch",
+      "bytes": 341,
+      "sha256": "1d3ccd81dfaeb9aa9d5b42c4fa1ec78ab2194f6c727d89263f2e04bf3e00ef65"
+    },
+    {
+      "path": "patches/sources__oneloopmaster__src__native__dilog.rs.patch",
+      "bytes": 3852,
+      "sha256": "a623b6613b4e0085a9b5f5ad5b12cf41046e686309c27c9ca170014313a646f0"
+    },
+    {
+      "path": "patches/sources__oneloopmaster__src__native__mod.rs.patch",
+      "bytes": 397,
+      "sha256": "7ba7a8d5650d69680d3717f9be3264b0ba8cfc4a4953ca8c050facd076ab94bd"
+    },
+    {
+      "path": "patches/sources__pole-development__crates__iregi-rust__Cargo.toml.patch",
+      "bytes": 358,
+      "sha256": "4a1a3a06d29eec6f5cf65a7a06f10f11b1c0e2c26784d11833da9253e46dc136"
+    },
+    {
+      "path": "patches/sources__pole-development__crates__iregi-rust__src__direct__exec__gram.rs.patch",
+      "bytes": 541,
+      "sha256": "de6ff4280b516c0234e91f0034927469d1a41a688914178f224251d3ddd43a42"
+    },
+    {
+      "path": "patches/sources__pole-development__crates__iregi-rust__src__lib.rs.patch",
+      "bytes": 381,
+      "sha256": "685f8e26280f4d44647b18c5daf34cda696308b3fd42e68c9ddf220e7ab78800"
+    },
+    {
+      "path": "source-provenance.json",
+      "bytes": 4917,
+      "sha256": "4a37a1351da017f359e857ca813c7fbf5dc4365f6177d3daf4b70d4d1ada4cf6"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 6636,
+      "sha256": "36b5919e0ff53625bae4eef7247afeb036b1dc466ed6afbcf9d848cf8cd48e1b"
+    },
+    {
+      "path": "verify.py",
+      "bytes": 8202,
+      "sha256": "7c49fc988b4aa30a6e34599c30de84dbdbb462341c036a71a77ee137417b84a1"
+    }
+  ]
+}

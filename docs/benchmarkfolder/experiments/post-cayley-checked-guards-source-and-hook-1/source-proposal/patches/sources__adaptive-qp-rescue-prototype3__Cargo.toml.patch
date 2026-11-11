@@ -1,0 +1,20 @@
+--- a/sources/adaptive-qp-rescue-prototype3/Cargo.toml
++++ b/sources/adaptive-qp-rescue-prototype3/Cargo.toml
+@@ -16,6 +16,7 @@
+ default = []
+ # Enabled by the installer only after applying the checked TIRust patch series.
+ poles-only = []
++checked-dilog-rounding = ["iregi-rust/checked-dilog-rounding"]
+ 
+ [dependencies]
+ iregi-rust = { path = "../pole-development/crates/iregi-rust" }
+@@ -26,6 +27,9 @@
+ numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+ graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+ 
++[patch."https://github.com/alphal00p/oneloopmaster.git"]
++oneloop = { path = "../oneloopmaster" }
++
+ [profile.release]
+ lto = "thin"
+ codegen-units = 1

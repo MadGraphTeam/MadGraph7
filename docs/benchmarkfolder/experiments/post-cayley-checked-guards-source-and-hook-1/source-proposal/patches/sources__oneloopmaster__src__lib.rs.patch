@@ -1,0 +1,11 @@
+--- a/sources/oneloopmaster/src/lib.rs
++++ b/sources/oneloopmaster/src/lib.rs
+@@ -19,6 +19,8 @@
+ pub use labelling::regular_d0_labelling;
+ pub use native::double_double;
+ mod native;
++#[cfg(feature = "checked-dilog-rounding")]
++pub use native::with_checked_dilog_rounding_probe;
+ mod precision;
+ mod poles;
+ #[cfg(feature = "rust-codegen")]

@@ -1,0 +1,28 @@
+[package]
+name = "iregi-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Batched generic one-loop tensor integral reduction"
+publish = false
+
+[features]
+default = []
+native-f64-abc = ["iregi-masters/native-f64-abc"]
+checked-dilog-rounding = ["oneloop/checked-dilog-rounding"]
+
+[dependencies]
+madloop-pole-kernels = { path = "../../madloop-pole-kernels" }
+symbolica.workspace = true
+iregi-masters.workspace = true
+# Direct binary64 scalar masters (hand-written OneLOop kernels) for the direct engine.
+oneloop.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+sha2 = "=0.10.9"

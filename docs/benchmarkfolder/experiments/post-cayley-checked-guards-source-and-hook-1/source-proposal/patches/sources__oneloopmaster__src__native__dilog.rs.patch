@@ -1,0 +1,91 @@
+--- a/sources/oneloopmaster/src/native/dilog.rs
++++ b/sources/oneloopmaster/src/native/dilog.rs
+@@ -69,8 +69,88 @@
+         .collect()
+ }
+ 
++
++// Optional, scoped, thread-local evidence supplied by an embedding host.
++// The probe must only inspect current floating-point controls; it must neither
++// change the environment nor evaluate scientific kernels. Unknown means false.
++#[cfg(feature = "checked-dilog-rounding")]
++mod checked_rounding {
++    use std::cell::Cell;
++    std::thread_local! {
++        static PROBE: Cell<Option<fn() -> bool>> = const { Cell::new(None) };
++    }
++    struct Restore(Option<fn() -> bool>);
++    impl Drop for Restore {
++        fn drop(&mut self) {
++            PROBE.with(|slot| slot.set(self.0));
++        }
++    }
++    /// Install a read-only, fresh-control probe only for this thread and scope.
++    /// No pointer is retained after normal return or Rust panic unwinding.
++    /// Returning true promises binary64 nearest rounding and no FTZ/DAZ.
++    /// The host owns this promise; false/absent probes retain the old arithmetic.
++    pub fn with_probe<R>(probe: fn() -> bool, action: impl FnOnce() -> R) -> R {
++        let previous = PROBE.with(|slot| slot.replace(Some(probe)));
++        let _restore = Restore(previous);
++        action()
++    }
++    pub(super) fn now() -> bool {
++        // No Cell access or borrow remains active while calling host code.
++        // Reentry from a probe sees no probe and therefore the old path.
++        let previous = PROBE.with(|slot| slot.replace(None));
++        let _restore = Restore(previous);
++        previous.is_some_and(|probe| probe())
++    }
++    #[cfg(test)]
++    mod tests {
++        use super::*;
++        fn yes() -> bool { true }
++        fn no() -> bool { false }
++        fn reentrant() -> bool { !now() }
++        fn panic_probe() -> bool { panic!("probe unwind"); }
++        #[test]
++        fn default_nesting_reentry_and_thread_isolation() {
++            assert!(!now());
++            with_probe(yes, || {
++                assert!(now());
++                with_probe(no, || assert!(!now()));
++                assert!(now());
++                std::thread::spawn(|| assert!(!now())).join().unwrap();
++                with_probe(reentrant, || assert!(now()));
++            });
++            assert!(!now());
++        }
++        #[test]
++        fn restores_action_and_probe_panics() {
++            with_probe(yes, || {
++                let result = std::panic::catch_unwind(|| with_probe(no, || panic!("action unwind")));
++                assert!(result.is_err());
++                assert!(now());
++                let result = std::panic::catch_unwind(|| with_probe(panic_probe, now));
++                assert!(result.is_err());
++                assert!(now());
++            });
++            assert!(!now());
++        }
++    }
++}
++#[cfg(feature = "checked-dilog-rounding")]
++pub use checked_rounding::with_probe as with_checked_dilog_rounding_probe;
++
+ /// Series terms needed at `bits` for `|u|^2 <= modulus` (at most `(pi/3)^2`).
+ pub(crate) fn series_terms(bits: u32, modulus: f64) -> usize {
++    #[cfg(feature = "checked-dilog-rounding")]
++    let ratio = if modulus.to_bits() > 0 && modulus.to_bits() <= 0x0030_0000_0000_0000
++        && checked_rounding::now()
++    {
++        // Under the fresh checked contract the old binary64 ratio overflows
++        // to positive infinity. Preserve the old masked coefficient count.
++        // This intentionally suppresses old overflow/inexact status effects.
++        f64::INFINITY
++    } else {
++        4.0 * std::f64::consts::PI * std::f64::consts::PI / modulus
++    };
++    #[cfg(not(feature = "checked-dilog-rounding"))]
+     let ratio = 4.0 * std::f64::consts::PI * std::f64::consts::PI / modulus;
+     ((f64::from(bits) + 6.0) * std::f64::consts::LN_2 / ratio.ln()).ceil() as usize + 1
+ }

@@ -1,0 +1,166 @@
+{
+  "passed": true,
+  "native_commands_run": 4,
+  "commands": [
+    {
+      "name": "compile-enabled",
+      "argv": [
+        "/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc",
+        "--test",
+        "--edition=2024",
+        "-C",
+        "panic=unwind",
+        "-C",
+        "codegen-units=1",
+        "-C",
+        "opt-level=0",
+        "--crate-name",
+        "checked_hook_enabled",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-enabled",
+        "--cfg",
+        "feature=\"checked-dilog-rounding\""
+      ],
+      "cpu": 0,
+      "start_offset_seconds": 0.00011381972581148148,
+      "peak_sampled_aggregate_rss_bytes": 110313472,
+      "pid": 3973000,
+      "returncode": 0,
+      "elapsed_seconds": 1.349480520002544,
+      "failure": null,
+      "log": "logs/compile-enabled.txt",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-enabled",
+      "argv": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-enabled",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cpu": 0,
+      "start_offset_seconds": 1.3539115451276302,
+      "peak_sampled_aggregate_rss_bytes": 0,
+      "pid": 3973205,
+      "returncode": 0,
+      "elapsed_seconds": 0.024727846961468458,
+      "failure": null,
+      "log": "logs/run-enabled.txt",
+      "log_sha256": "27954e89df4782a290b9f7cfba9ab2393a71be8a10aaab41f885f68652a07205"
+    },
+    {
+      "name": "compile-disabled",
+      "argv": [
+        "/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc",
+        "--test",
+        "--edition=2024",
+        "-C",
+        "panic=unwind",
+        "-C",
+        "codegen-units=1",
+        "-C",
+        "opt-level=0",
+        "--crate-name",
+        "checked_hook_disabled",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/hook.rs",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-disabled"
+      ],
+      "cpu": 0,
+      "start_offset_seconds": 1.3793651447631419,
+      "peak_sampled_aggregate_rss_bytes": 85426176,
+      "pid": 3973211,
+      "returncode": 0,
+      "elapsed_seconds": 0.26958765136078,
+      "failure": null,
+      "log": "logs/compile-disabled.txt",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-disabled",
+      "argv": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/post-cayley-checked-hook-native-1/bin/hook-disabled",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cpu": 0,
+      "start_offset_seconds": 1.6516412948258221,
+      "peak_sampled_aggregate_rss_bytes": 0,
+      "pid": 3973273,
+      "returncode": 0,
+      "elapsed_seconds": 0.024452937301248312,
+      "failure": null,
+      "log": "logs/run-disabled.txt",
+      "log_sha256": "df166913f47ff1f04202cae9b31df67ed272d692d99a0023a8117dc3029100dd"
+    }
+  ],
+  "source_index_sha256": "5902b9b2b6e378d7d2617b991399f22f86cf3d1813a51432e05ba33c4638b8e2",
+  "scientific_qualification": false,
+  "fenv_or_trap_qualification": false,
+  "library_or_physics_build": false,
+  "network_commands": 0,
+  "lock_acquired": true,
+  "cleanup": [
+    {
+      "pgid": 3973000,
+      "existed_at_cleanup": false,
+      "exists_after_cleanup": false,
+      "parent_reaped": true
+    },
+    {
+      "pgid": 3973205,
+      "existed_at_cleanup": false,
+      "exists_after_cleanup": false,
+      "parent_reaped": true
+    },
+    {
+      "pgid": 3973211,
+      "existed_at_cleanup": false,
+      "exists_after_cleanup": false,
+      "parent_reaped": true
+    },
+    {
+      "pgid": 3973273,
+      "existed_at_cleanup": false,
+      "exists_after_cleanup": false,
+      "parent_reaped": true
+    }
+  ],
+  "child_environment_overrides": {
+    "RUST_TEST_THREADS": "1",
+    "RUST_MIN_STACK": "2097152",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "CARGO_NET_OFFLINE": "true"
+  },
+  "path": "/home/external/.codex/packages/app-server-daemon/releases/local-a1765550a13b280b04613f2404d39d8f045edef04748f010310bcfb3a71d8778-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0oaos5m:/home/external/.codex/tmp/arg0-linux/codex-arg00x1CQf:/nix/store/n5dvf0lhnr21gjszwkygx9bwmvfhsg83-codex-0.167.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin",
+  "limits": {
+    "max_commands": 4,
+    "work_wall_seconds": 60,
+    "cleanup_wall_seconds": 30,
+    "address_space_bytes_per_process": 1073741824,
+    "aggregate_rss_sampled_cap_bytes": 1073741824,
+    "cpu_count": 1,
+    "nonexclusive_cpu": 0,
+    "mutex": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/numerical-tests.lock",
+    "mutex_wait": false,
+    "network_commands": false,
+    "library_physics_cargo_builds": false
+  },
+  "elfs": [
+    {
+      "path": "bin/hook-enabled",
+      "bytes": 1327640,
+      "sha256": "c1b8486bbb6c0039eecb8abf2fd8c2e42341bea0c023114cbb82dfae9cfe84ca"
+    },
+    {
+      "path": "bin/hook-disabled",
+      "bytes": 1246504,
+      "sha256": "1a593973c967f2a28892cec120f9c9f6bd65552b3b03e79b57d68422e29756da"
+    }
+  ],
+  "cleanup_complete": true,
+  "elapsed_work_and_cleanup_seconds": 1.6768639348447323,
+  "lock_released": true
+}
