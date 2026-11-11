@@ -1,6 +1,10 @@
 """Tests of the MC@NLO matching contract and of the shower configuration."""
 
 import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -323,6 +327,53 @@ class TestPythia8Settings(unittest.TestCase):
                           pythia8_options='{}')
         self.assertIsNone(s.get('Check:epTolErr'))
         self.assertTrue(any('Check:epTolErr' in n for n in s.notes))
+
+
+@unittest.skipUnless(sys.platform.startswith('linux') and shutil.which('g++')
+                     and shutil.which('make'), 'requires Linux, g++ and make')
+class TestPythia8Build(unittest.TestCase):
+
+    def test_hepmc_library_can_load_without_environment_search_paths(self):
+        with tempfile.TemporaryDirectory(prefix='mg7_hepmc_rpath_') as directory:
+            root = Path(directory)
+            library = root / 'external'
+            library.mkdir()
+            source = library / 'hepmc.cc'
+            source.write_text('extern "C" int hepmc_probe() { return 42; }\n')
+            subprocess.run(['g++', '-shared', '-fPIC', str(source),
+                            '-Wl,-soname,libmg7_hepmc_probe.so', '-o',
+                            str(library / 'libmg7_hepmc_probe.so')],
+                           check=True, capture_output=True)
+            installation = root / 'pythia'
+            (installation / 'bin').mkdir(parents=True)
+            config = installation / 'bin/pythia8-config'
+            config.write_text('#!/bin/sh\nexit 0\n')
+            config.chmod(0o755)
+            xmldoc = installation / 'share/Pythia8/xmldoc'
+            xmldoc.mkdir(parents=True)
+            (xmldoc / 'Version.xml').write_text(
+                '<parm name="Pythia:versionNumber" default="8.318">\n')
+            mcatnlo = root / 'MCatNLO'
+            (mcatnlo / 'pythia8').mkdir(parents=True)
+            template = Path(__file__).resolve().parents[3] / 'Template/NLO/MCatNLO'
+            shutil.copy(template / 'pythia8/Makefile', mcatnlo / 'pythia8')
+            (mcatnlo / 'pythia8/mcatnlo_pythia8.cc').write_text(
+                'extern "C" int hepmc_probe();\n'
+                'int main() { return hepmc_probe() == 42 ? 0 : 1; }\n')
+            pythia = mcatnlo_shower.Pythia8Installation(str(installation))
+            for major, search_path in ((2, '-L%s' % library),
+                                       (3, '-L %s' % library)):
+                with self.subTest(hepmc=major):
+                    executable = mcatnlo_shower.build_pythia8_driver(
+                        str(mcatnlo), pythia,
+                        hepmc=(major, search_path + ' -lmg7_hepmc_probe'),
+                        log=str(root / 'build.log'))
+                    environment = dict(os.environ)
+                    environment.pop('LD_LIBRARY_PATH', None)
+                    environment.pop('DYLD_LIBRARY_PATH', None)
+                    result = subprocess.run([executable], env=environment,
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class TestPythia8Installation(unittest.TestCase):

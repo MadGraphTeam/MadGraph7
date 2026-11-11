@@ -275,7 +275,7 @@ class LHEHeader(object):
 
     def _run_card_value(self, name):
         m = re.search(r'^\s*(\S+)\s*=\s*%s\b' % name, self.text, re.M)
-        return m.group(1) if m else None
+        return m.group(1).strip("'\"") if m else None
 
     @property
     def nevents(self):
@@ -1904,7 +1904,7 @@ def pdf_uncertainty(members, error_type, conf_level=None, target_cl=None):
     while error_type.endswith('+as'):
         error_type = error_type[:-3]
         n_extra += 2
-    central = members[0]
+    central = list(members[0])
     errors = members[1:len(members) - n_extra] if n_extra else members[1:]
     nbins = len(central)
     minus = [0.] * nbins
@@ -1917,6 +1917,7 @@ def pdf_uncertainty(members, error_type, conf_level=None, target_cl=None):
             vals = [m[b] for m in errors]
             n = len(vals)
             avg = sum(vals) / n
+            central[b] = avg
             var = sum((v - avg) ** 2 for v in vals) / (n - 1) if n > 1 else 0.
             plus[b] = minus[b] = math.sqrt(var)
         elif error_type == 'symmhessian':

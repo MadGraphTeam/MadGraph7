@@ -48,6 +48,12 @@ FFLAGS_REQUIRED := -fPIC -ffixed-line-length-132
 PY8_CXXFLAGS := $(shell $(PYTHIA8_CONFIG) --cxxflags)
 PY8_LIBS     := $(shell $(PYTHIA8_CONFIG) --libs)
 
+# pythia8-config can supply HepMC search paths without runtime paths.
+# Accept both -L/path and -L /path when embedding them in the executable.
+COMMA := ,
+HEPMC_LIBDIRS := $(patsubst -L%,%,$(filter -L%,$(subst -L ,-L,$(strip $(HEPMC_FLAGS)))))
+HEPMC_RPATHS := $(addprefix -Wl$(COMMA)-rpath$(COMMA),$(HEPMC_LIBDIRS))
+
 ifeq ($(shell uname -s),Darwin)
 SOEXT := dylib
 else
@@ -89,7 +95,7 @@ mcatnlo_pythia8.o: $(SRCDIR)/mcatnlo_pythia8.cc
 
 Pythia8.exe: $(ANALYSIS) mcatnlo_pythia8.o
 	$(CXX) $(PY8_CXXFLAGS) $(CXXSTD) -o $@ mcatnlo_pythia8.o $(ANALYSIS) \
-	  $(PY8_LIBS) $(HEPMC_FLAGS) $(EXTRA_LDFLAGS) $(FORTRAN_LIBS) $(STDLIB)
+	  $(PY8_LIBS) $(HEPMC_FLAGS) $(HEPMC_RPATHS) $(EXTRA_LDFLAGS) $(FORTRAN_LIBS) $(STDLIB)
 
 clean:
 	rm -f *.o *.mod Pythia8.exe

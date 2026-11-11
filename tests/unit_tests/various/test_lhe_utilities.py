@@ -4,7 +4,9 @@ import contextlib
 import gzip
 import importlib.util
 import io
+import json
 import os
+import re
 import tempfile
 import unittest
 
@@ -81,6 +83,48 @@ class TestLHEUtilities(unittest.TestCase):
                      'check_events.HwU', 'res_wgt'):
             self.assertTrue(os.path.isfile(pjoin(self.root, name)), name)
 
+    def test_quoted_run_card_values_preserve_cross_section_normalization(self):
+        with gzip.open(EVENTS, 'rt') as stream:
+            contents = stream.read()
+        ef = L.open_events(EVENTS)
+        weights = [L.LHEEvent(text).wgt for text in L.iter_raw(ef)]
+        ef.close()
+        analysis = pjoin(self.root, 'rates.py')
+        with open(analysis, 'w') as stream:
+            stream.write("def book(book): book('total rate', 1, 0., 1.)\n"
+                         "def analyse(event, fill): fill('total rate', .5)\n")
+        for index, value in enumerate(("'average'", '"average"', "'bias'",
+                                        '"bias"', "'sum'")):
+            with self.subTest(event_norm=value):
+                directory = pjoin(self.root, str(index))
+                os.mkdir(directory)
+                path = pjoin(directory, 'events.lhe')
+                text, count = re.subn(r'(?m)^\s*\S+[^\S\n]*=[^\S\n]*event_norm\b[^\n]*',
+                                      '  %s = event_norm' % value, contents)
+                self.assertEqual(count, 1)
+                with open(path, 'w') as stream:
+                    stream.write(text)
+                expected = sum(weights)
+                if 'sum' not in value:
+                    expected /= len(weights)
+                tolerance = 1e-6 * max(1., abs(expected))
+                self.run_command('check', path, '-d', directory)
+                with open(pjoin(directory, 'res_wgt')) as stream:
+                    cross_section = float(stream.readline().split('=')[1].split()[0])
+                self.assertAlmostEqual(cross_section, expected, delta=tolerance)
+                histogram = pjoin(directory, 'rates.HwU')
+                self.run_command('plot', path, '--analysis', analysis, '-o', histogram)
+                _, histograms = L.read_hwu(histogram)
+                self.assertAlmostEqual(histograms[0][1][0][2], expected, delta=tolerance)
+                report = pjoin(directory, 'uncertainties.json')
+                self.run_command('uncertainties', path, '--pdf-error', 'replicas',
+                                 '-o', report)
+                with open(report) as stream:
+                    result = json.load(stream)
+                self.assertAlmostEqual(result['cross_section'], expected, delta=tolerance)
+        header = L.LHEHeader("  'PYTHIA8' = parton_shower\n")
+        self.assertEqual(header.parton_shower, 'PYTHIA8')
+
     def test_rescale(self):
         ef = L.open_events(EVENTS)
         text = next(L.iter_raw(ef))
@@ -103,6 +147,7 @@ class TestLHEUtilities(unittest.TestCase):
                                          0.03 ** 2) ** 0.5)
         c, minus, plus = L.pdf_uncertainty([[1.], [1.], [2.], [3.]],
                                            'replicas')
+        self.assertEqual(c, [2.])
         self.assertAlmostEqual(plus[0], 1.)
         # +as: the last two members are ignored
         c, minus, plus = L.pdf_uncertainty(members + [[5.], [5.]],
@@ -111,6 +156,26 @@ class TestLHEUtilities(unittest.TestCase):
         # 90% CL to 68% CL
         c, minus, plus = L.pdf_uncertainty(members, 'hessian', 90., 68.27)
         self.assertAlmostEqual(minus[0], 0.03 / 1.6449, places=4)
+
+    def test_replica_uncertainty_intervals_use_replica_means(self):
+        for error_type in ('replicas', 'replicas+as'):
+            with self.subTest(error_type=error_type):
+                values = [[1., 5.], [1., 2.], [2., 4.], [3., 6.]]
+                if error_type.endswith('+as'):
+                    values += [[-100., 400.], [1000., -500.]]
+                infos = [L.WeightInfo(str(i), 'PDF= %d Example_mc' % (300000 + i))
+                         for i in range(len(values))]
+                groups = L.VariationGroups(infos)
+                args = L.build_parser().parse_args(
+                    ['uncertainties', 'unused.lhe', '--pdf-error', error_type])
+                result, = L.UncertaintyEngine(args).compute(
+                    groups, lambda w: values[int(w.id)])
+                self.assertEqual(result['central'], [2., 4.])
+                self.assertEqual(result['min'], [1., 2.])
+                self.assertEqual(result['max'], [3., 6.])
+                self.assertEqual(values[0], [1., 5.])
+        self.assertEqual(L.pdf_uncertainty([[9.], [3.]], 'replicas'),
+                         ([3.], [0.], [0.]))
 
     def test_scale_uncertainty(self):
         points = {(1., 1.): [1.], (2., 1.): [0.9], (0.5, 1.): [1.1],
