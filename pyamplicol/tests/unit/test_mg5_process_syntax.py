@@ -142,9 +142,7 @@ def test_the_card_translates_and_requested_keeps_the_expression():
         {
             "action": "generate",
             "process": {
-                "entries": [
-                    {"expression": "u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]"}
-                ]
+                "entries": [{"expression": "u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]"}]
             },
         }
     )
@@ -160,9 +158,7 @@ def test_the_card_translates_and_requested_keeps_the_expression():
         {
             "action": "generate",
             "process": {
-                "entries": [
-                    {"expression": "u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]"}
-                ],
+                "entries": [{"expression": "u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]"}],
                 "loop_coupling_orders": ["QED", "QCD"],
                 "coupling_order_policy": "explicit",
             },
@@ -239,7 +235,7 @@ def test_the_squared_setting_is_validated_and_one_loop_only():
         }
     ).effective.process
     assert process.squared_coupling_orders == ("QCD^2==6", "QED^2<=4")
-    with pytest.raises(ValueError, match="requires process.loop_coupling_orders"):
+    with pytest.raises(ValueError, match=r"requires process\.loop_coupling_orders"):
         resolve_config(
             {
                 "action": "generate",
@@ -426,7 +422,11 @@ def test_flat_points_decay_and_two_to_one(tmp_path):
     single = _fake_artifact(
         tmp_path / "h",
         "g g > h",
-        [["62.5", "0", "0", "62.5"], ["62.5", "0", "0", "-62.5"], ["125", "0", "0", "0"]],
+        [
+            ["62.5", "0", "0", "62.5"],
+            ["62.5", "0", "0", "-62.5"],
+            ["125", "0", "0", "0"],
+        ],
     )
     flat = draw_flat_points(single, process=None, points=2, seed=1, sqrt_s=None)
     assert flat.points[0] == flat.points[1]

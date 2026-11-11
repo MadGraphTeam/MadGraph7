@@ -54,7 +54,7 @@ def test_decays_are_processes(expression):
         ("t > b w+ @1", "'@' (a process tag)"),
         # Served MG5_aMC syntax: translated by the card, the CLI and
         # pyamplicol.generate, not by a plain ProcessRequest.
-        ("t > b w+ / z", "generation.particle_veto = [\"z\"]"),
+        ("t > b w+ / z", 'generation.particle_veto = ["z"]'),
     ],
 )
 def test_decay_chains_and_mg5_only_syntax_are_refused_typed(expression, found):
