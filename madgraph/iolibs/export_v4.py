@@ -337,6 +337,21 @@ COLOR_MATRIX_ENCODING_TEMPLATES = frozenset((
     'matrix_madevent_group_v4_onia_pwave.inc',
 ))
 
+# The initial states a dressed-lepton beam (pdlabel='dressed') can be made of.
+# Source/PDF/eepdf.f only provides the lepton densities of an electron or a
+# muon beam (|lpp| = 3 or 4), and only these get a <part><beam>_components
+# array written out next to their PDG2PDF call, so only these may take the
+# ee_comp_prod path below.
+DRESSED_LEPTON_PDGS = frozenset((11, 13))
+
+
+def is_dressed_lepton_beam(pdgs):
+    """Whether every initial state of one beam carries lepton-density
+    components, i.e. whether that beam can be a dressed-lepton beam."""
+
+    return bool(pdgs) and all(abs(pdg) in DRESSED_LEPTON_PDGS for pdg in pdgs)
+
+
 #===============================================================================
 # ProcessExporterFortran
 #===============================================================================
@@ -4212,6 +4227,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         ENDIF
         DO IWARP=1, warp_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+c         the dressed-lepton densities read 1-x from OMX_EE, not from x
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
           """
 
 
@@ -4255,10 +4272,43 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                             one_initial_state += [-i for i in self.model['merged_particles'][-pdg]]
 
 
-            if tuple(initial_states) in [([-11],[11]), ([11],[-11]), ([-13],[13]),([13],[-13])]:
-                dressed_lep = True
-            else:
-                dressed_lep = False
+            # With pdlabel='dressed' a lepton density is not one number but
+            # n_ee components which have to be contracted beam by beam
+            # (ee_comp_prod), so the two beams may take that path only if
+            # every one of their initial states has such components. Testing
+            # tuple(initial_states) against a list of pdg pairs used to stand
+            # in for that, but the loop just above expands the merged
+            # particles of the model into initial_states: with
+            # apply_flavor_grouping on, 'e+ e- > mu+ mu-' gives
+            # ([-11,-13],[11,13]), which no list of pairs covers, and the
+            # components were silently dropped (leaving only the first one,
+            # i.e. no beamstrahlung, 13% low at FCC-ee).
+            dressed_lep = all(is_dressed_lepton_beam(one_initial_state)
+                              for one_initial_state in initial_states)
+
+            if not dressed_lep and all(any(abs(pdg) in DRESSED_LEPTON_PDGS
+                                           for pdg in one_initial_state)
+                                       for one_initial_state in initial_states):
+                # Both beams are (partly) leptonic but one of them also holds
+                # something with no lepton density -- a tau, say. Contracting
+                # the components is then only half right and multiplying the
+                # plain PDG2PDF values is not right at all, so refuse at run
+                # time, where pdlabel is known: it is a card entry, so
+                # generation cannot tell whether this directory will ever see
+                # 'dressed'. A beam with no lepton at all (a quark or a photon
+                # facing a lepton beam) does not come here: that subprocess is
+                # simply absent from the density, and pdg2pdf answers 0 for
+                # it, which is the right answer and not a mis-sum.
+                pdf_lines += "IF (PDLABEL.EQ.'dressed') THEN\n" + \
+                    "WRITE(*,*) 'ERROR: dressed lepton densities are not " + \
+                    "supported for this subprocess:'\n" + \
+                    "WRITE(*,*) '       its initial states are not all " + \
+                    "electrons/muons, so the'\n" + \
+                    "WRITE(*,*) '       luminosity components cannot be " + \
+                    "combined.'\n" + \
+                    "STOP 1\n" + \
+                    "ENDIF\n"
+
             ee_pdf_definition_lines += "DOUBLE PRECISION dummy_components(n_ee)\n"
 
    
@@ -4296,7 +4346,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                 ee_pdf_definition_lines += "DOUBLE PRECISION " + \
                                        ",".join(["%s%d_components(n_ee %s)" % (pdf_codes[pdg],i+1, vector_ext2) \
                                                  for pdg in \
-                                                 initial_states[i] if abs(pdg) in [11,13]]) + \
+                                                 initial_states[i] if abs(pdg) in DRESSED_LEPTON_PDGS]) + \
                                                  "\n"
                 
 
@@ -4319,13 +4369,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
             if 22 in initial_states[0] and 22 in initial_states[1]:
                 if subproc_group:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(IB(1)),XBK(IB(2)))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
                 else:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(1),XBK(2))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
@@ -6891,7 +6941,11 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')         
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')         
 
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
@@ -7759,7 +7813,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')                        
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')                        
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
         cp(_file_path+'/various/histograms.py', 
@@ -8465,31 +8523,46 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # probabilities keep using the (n-1)! trace one
         ncolor = self.set_color_flow_lines(matrix_element, replace_dict, ncolor)
 
+        # POL(B) is the polarisation of beam B. In a grouped output, a mirror
+        # process (IMIRROR=2, IM=2) evaluates leg 1 on the parton of beam 2
+        # and leg 2 on the one of beam 1, so leg JJ takes POL(JB), JB the beam
+        # it comes from. A non-grouped output has no mirror process.
+        if isinstance(self, ProcessExporterFortranMEGroup):
+            beam_of_leg = """
+               JB = %(leg)s
+               IF (IM.EQ.2) JB = 3-%(leg)s"""
+            pol = 'JB'
+        else:
+            beam_of_leg = ''
+            pol = '%(leg)s'
         if self.beam_polarization == [True, True]:
-            replace_dict['beam_polarization'] = """
-                         DO JJ=1,nincoming
+            leg = 'JJ'
+            replace_dict['beam_polarization'] = ("""
+                         DO JJ=1,nincoming"""+ beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-               IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                 T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-               ELSE IF(POL(JJ).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+               IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
                ENDIF
              ENDDO
-            """
+            """) % {'leg': leg, 'pol': pol % {'leg': leg}}
         else:
             replace_dict['beam_polarization'] = ""
             for i in [0,1]:
                 if self.beam_polarization[i]:
-                    replace_dict['beam_polarization'] = """
-                                   ! handling only one beam polarization here. Second beam can be handle via the pdf.
+                    leg = '%i' % (i+1)
+                    replace_dict['beam_polarization'] = ("""
+                                   ! handling only one beam polarization here. Second beam can be handle via the pdf."""
+                                   + beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-                                   IF(POL(%(bid)i).NE.1d0.AND.NHEL(%(bid)i,I).EQ.INT(SIGN(1d0,POL(%(bid)i)))) THEN
-                 T=T*ABS(POL(%(bid)i))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ELSE IF(POL(%(bid)i).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(%(bid)i)))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ENDIF """ % {'bid': i+1}
+                                   IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ENDIF """) % {'leg': leg, 'pol': pol % {'leg': leg}}
 
         if matrix_element.get_nonia() > 0:
             tmpl = self.matrix_file.replace('.inc', '_onia_pwave.inc'

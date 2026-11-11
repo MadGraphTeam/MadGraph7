@@ -39,7 +39,6 @@ jobs:
 
   # IOTest framework self-tests (from unittest_2)
 
-
   IOtest_bundle_1:
     # former jobs, run one after the other: IOtest_iotest_examples
     #   IOtest_fks IOtest_fd_gauge IOtest_export
@@ -51,6 +50,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
+      # numpy (madgraph needs it) comes with the pip cache: a fresh self-hosted
+      # machine has none in ~/.local until some other job installs it there
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- IOtest_iotest_examples ----
       - name: "IOtest_iotest_examples: test IOTest framework examples"
@@ -105,7 +108,6 @@ jobs:
       - if: always()
         uses: ./.github/actions/clean_tmp
 
-
   # Loop squared-order IOTest – needs UFO model cache (from unittest_29)
   IOtest_loop_sqso:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
@@ -114,6 +116,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
+      # numpy (madgraph needs it) comes with the pip cache: a fresh self-hosted
+      # machine has none in ~/.local until some other job installs it there
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
       - name: test loop squared order IO test
         run: |
@@ -125,16 +131,18 @@ jobs:
       - if: always()
         uses: ./.github/actions/clean_tmp
 
-
   IOtest_bundle_2:
-    # former jobs, run one after the other: IOtest_acceptance_proc
-    #   IOtest_matchbox
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # merged jobs, run one after the other: IOtest_bundle_2 IOtest_bundle_3
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- IOtest_acceptance_proc ----
       # ---------------------------------------------------------------------------
@@ -157,17 +165,6 @@ jobs:
             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
             ./tests/test_manager.py testIO_MatchBoxOutput -pA -t0 -l INFO
 
-
-  IOtest_bundle_3:
-    # former jobs, run one after the other: IOtest_TIR IOtest_loop_induced
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
-
       # ---- IOtest_TIR ----
       # TIR output IOTest (from acceptancetest_70)
       - name: "IOtest_TIR: test TIR output IO test"
@@ -187,6 +184,9 @@ jobs:
             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
             ./tests/test_manager.py testIO_loop_induced_standalone_output -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   # Gnuplot histogram output IOTest (from acceptancetest_100)
   IOtest_gnuplot:

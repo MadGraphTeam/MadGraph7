@@ -58,6 +58,14 @@ cmd_logger = logging.getLogger('cmdprint2') # -> print
 dir_to_f2py_free_mod = {}
 nb_f2py_module = 0 # each time the process/model is changed this number is modified to 
                # forced the python module to re-create an executable
+# names (output directory name + suffix, e.g. rw_me, rw_me_r2) under which a
+# reweighting f2py module and its shared library were imported in this python
+# process. Nothing loaded can be unloaded: the dynamic loader resolves a
+# library by its install name/SONAME to the one already loaded, whichever
+# directory it comes from (e.g. the rw_me of a previous reweighting in the same
+# session, or of another sample). A new build must therefore use a name that is
+# not in here (see get_f2py_suffix), or it gets the previous matrix elements.
+loaded_f2py_names = set()
 
 #lhapdf = None
 
@@ -143,6 +151,14 @@ class ReweightInterface(extended_cmd.Cmd):
         self.event_path = event_path
         self.path2prefix = {} # store the f2pyprefix associated to a library
         self.scale2_is_rooted = set() # loop libraries expecting mu^4 (see load_module)
+        self.beampol = None # (pol1, pol2) of the events' beams (see get_beampol)
+        self.beampol_legs = None # per incoming leg: is it polarised
+        self._beampol_set = {} # id(module) -> value its /to_beampol/ holds
+        self._spin_cache = {}
+        self._pickled_spins = {} # pdg -> spin, from rwgt.pkl (see save_to_pickle)
+        # output directory name (rw_me, rw_mevirt, ...) -> suffix of the names
+        # its f2py modules and library were built with ('' = default names)
+        self.f2py_suffix = {}
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1145,7 +1161,117 @@ class ReweightInterface(extended_cmd.Cmd):
                             if self.model:
                                 raise
                     module.update_all_coup()
+
+        self.beampol = self.get_beampol()
+        self._beampol_set = {}
         return param_card_iterator, tag_name
+
+    def get_beampol(self):
+        """The beam polarisation of the events, (pol1, pol2) per beam in the
+        convention of the /to_beampol/ common of the matrix elements -- the
+        internal one of madevent's /to_polarization/ (setrun.f):
+        sign(1 + |polbeam|/100, polbeam), so 1 is unpolarised and 2 fully
+        polarised -- or None when no beam polarisation enters the matrix
+        element of the events.
+
+        madevent applies the polarisation only to a leg of the process whose
+        particles are all spin-1/2 fermions, across all the processes of the
+        output (export_v4.beam_polarization), and with the EVA pdf it is the
+        pdf that carries it. The value is the one of the beam the particle of
+        that leg comes from: beam 2 for leg 1 of a mirror process, as in the
+        `e- a > e- a` and `a e- > e- a` of an e- e- collider. self.beampol_legs
+        keeps that decision per leg of the library (whose legs are the ones of
+        the madevent process), for set_event_beampol. Unpolarised legs stay
+        unpolarised here as well: a polarised ratio on events generated
+        unpolarised would be as wrong as an unpolarised one on polarised
+        events. An NLO or mg7 run_card has no beam polarisation, and a decay
+        no beam.
+        """
+        run_card = getattr(self, 'run_card', None)
+        if self.is_decay or not isinstance(run_card, banner.RunCardLO):
+            return None
+        pol = [1., 1.]
+        for b in (1, 2):
+            value = float(run_card['polbeam%i' % b])
+            if not value:
+                continue
+            if 'eva' in (run_card['pdlabel'], run_card.get('pdlabel%i' % b)):
+                continue
+            pol[b-1] = math.copysign(1 + abs(value) / 100., value)
+        if pol == [1., 1.]:
+            return None
+        model = getattr(self, 'original_model', None) or self.model
+        self.beampol_legs = []
+        for j in (0, 1):
+            partons = set(order[0][j] for key, (order, _, _) in self.id_to_path.items()
+                          if not isinstance(key[1], str))
+            self.beampol_legs.append(all(self._is_fermion(model, pid) for pid in partons))
+            if not self.beampol_legs[-1]:
+                logger.warning('As in madevent, incoming leg %i of the processes has no '
+                               'beam polarisation: one of its particles (%s) is not a '
+                               'spin-1/2 fermion.', j + 1,
+                               ', '.join(str(p) for p in sorted(partons)))
+        if not any(self.beampol_legs):
+            return None
+        logger.info('Beam polarisation of the events in the matrix elements: '
+                    'polbeam1=%s, polbeam2=%s', run_card['polbeam1'], run_card['polbeam2'])
+        return tuple(pol)
+
+    def _is_fermion(self, model, pid):
+        """True when pid is a spin-1/2 particle of model, or -- for a job set
+        up from rwgt.pkl, which has no model -- of the spins saved there. An
+        unknown spin is an error: taking it as "not a fermion" would silently
+        reweight with unpolarised matrix elements."""
+        if pid not in self._spin_cache:
+            particle = model.get_particle(pid) if model else None
+            spin = particle.get('spin') if particle else None
+            if spin is None:
+                spin = getattr(self, '_pickled_spins', {}).get(pid)
+            if spin is None:
+                raise self.InvalidCmd('The spin of particle %s is not known: the beam '
+                                      'polarisation (polbeam1/polbeam2) can not be '
+                                      'applied. Remove the rw_me directory to have it '
+                                      'regenerated.' % pid)
+            self._spin_cache[pid] = spin == 2
+        return self._spin_cache[pid]
+
+    def set_event_beampol(self, module, event, lab_p, pdg, n_initial, virtual=False):
+        """Hand the beam polarisation of this event to the /to_beampol/ of
+        module. SMATRIX applies BEAMPOL(J) to its incoming leg J, which is not
+        beam J when the legs of the event are reordered to the ones of the
+        library (an e+ e- event computed by an `e- e+ >` matrix element):
+        beam 1 is the incoming particle that runs along +z in the lab.
+
+        lab_p: lab-frame momenta in the order of the library (pdg).
+        The value is set again only when it changes, which is rare.
+        """
+        if not self.beampol or n_initial != 2:
+            return
+        model = getattr(self, 'original_model', None) or self.model
+        if virtual or hasattr(module, 'set_madloop_path'):
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'are not supported by the loop matrix elements of '
+                                  'the reweighting.')
+        incoming = [(part.E, part.px, part.py, part.pz) for part in event
+                    if part.status == -1]
+        legs = [tuple(p) for p in lab_p[:2]]
+        if any(p not in incoming for p in legs):
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'can not be reweighted with a crossed matrix element: '
+                                  'a final-state particle of the event is an incoming '
+                                  'leg of %s.' % pdg)
+        beams = (0, 1) if legs[0][3] >= legs[1][3] else (1, 0)
+        value = tuple(self.beampol[b]
+                      if self.beampol_legs[j] and self._is_fermion(model, pdg[j]) else 1.
+                      for j, b in enumerate(beams))
+        if self._beampol_set.get(id(module)) == value:
+            return
+        if not hasattr(module, 'py_set_beampol'):
+            raise self.InvalidCmd('The reweighting matrix elements predate the beam '
+                                  'polarisation support (no py_set_beampol): remove '
+                                  'the rw_me directories to have them regenerated.')
+        module.py_set_beampol(*value)
+        self._beampol_set[id(module)] = value
 
         
     def do_set(self, line):
@@ -2004,6 +2130,11 @@ class ReweightInterface(extended_cmd.Cmd):
         if relevant_merged and any(p in relevant_merged for p in pdg):
             pdg = event.get_pdg(all_p[0])
 
+        # the permutations of all_p differ in their final state only: the
+        # incoming legs, still lab-frame here, say which beam is which leg
+        self.set_event_beampol(module, event, all_p[0], pdg, len(orig_order[0]),
+                               virtual=is_virtual_tag or 'virt' in base)
+
         # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass shell
         # (add_write_info.f, put_on_MC_mshell_in / put_on_MC_mshell_Hevout)
         # while these matrix elements are massless ones. Undo that on both
@@ -2037,8 +2168,12 @@ class ReweightInterface(extended_cmd.Cmd):
             if not self.use_eventid:
                 pid = -1
             
-            if not scale2: 
-                if hasattr(event, 'scale'):
+            if not scale2:
+                # mu_R: the mur of the <scales> tag when the event has one
+                # (mg7), else SCALUP, which holds mu_F
+                if hasattr(event, 'get_ren_scale'):
+                    scale2 = event.get_ren_scale()**2
+                elif hasattr(event, 'scale'):
                     scale2 = event.scale**2
                 else:
                     scale2 = 0
@@ -2817,11 +2952,26 @@ class ReweightInterface(extended_cmd.Cmd):
                 if not os.path.isdir(pjoin(path_me,onedir)):
                     continue
                 pdir = pjoin(path_me, onedir, 'SubProcesses')
-                self.compile_SubProcess_dir(pdir)
+                self.f2py_suffix[onedir] = self.get_f2py_suffix(pdir)
+                self.compile_SubProcess_dir(pdir, self.f2py_suffix[onedir])
 
+    @staticmethod
+    def get_f2py_suffix(Sdir):
+        """suffix for the names of the f2py modules/library built in Sdir:
+        '' (the default names) unless that name was already imported in this
+        process, from this or any other directory (see loaded_f2py_names).
+        """
+        name = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        suffix = ''
+        i = 1
+        while name + suffix in loaded_f2py_names:
+            i += 1
+            suffix = '_r%i' % i
+        return suffix
 
-    def compile_SubProcess_dir(self, Sdir):
-        """compile a full Subprocess directory"""
+    def compile_SubProcess_dir(self, Sdir, suffix=''):
+        """compile a full Subprocess directory. A non-empty suffix is appended
+        to the names of the f2py modules and of their shared library."""
 
         if self.mother:
             nb_core = self.mother.options['nb_core'] if self.mother.options['run_mode'] !=0 else 1
@@ -2832,20 +2982,25 @@ class ReweightInterface(extended_cmd.Cmd):
         # the loader hands the second f2py module the first library.
         # The leading '_' keeps it different from the liball<dir>_<N>me.so
         # name that load_module tries to preload with RTLD_GLOBAL.
-        procname = 'PROCNAME=_%s' % os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
-        os.environ['MENUM'] = '2'
-        try: 
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
-        except Exception as e:
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=1)
-
-        if not (self.second_model or self.second_process or self.dedicated_path):
-            os.environ['MENUM'] = '3'
+        # A rebuild of a name already loaded in this process (suffix) also
+        # renames the f2py module, and for the loop output (rw_mevirt, whose
+        # makefile names its library after ROOTNAME) the library too.
+        dirname = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        names = ['PROCNAME=_%s%s' % (dirname, suffix)]
+        if suffix:
+            names.append('ROOTNAME=%s%s' % (dirname, suffix))
+        for menum in ['2', '3']:
+            if menum == '3' and (self.second_model or self.second_process or self.dedicated_path):
+                break
+            os.environ['MENUM'] = menum
+            args = names + ['all_matrix%spy.so' % menum]
+            if suffix:
+                args.insert(-1, 'F2PYMOD=all_matrix%spy%s' % (menum, suffix))
             try:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+                misc.compile(args, cwd=Sdir, nb_core=nb_core)
             except Exception as e:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=1)
-                
+                misc.compile(args, cwd=Sdir, nb_core=1)
+
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -2883,23 +3038,19 @@ class ReweightInterface(extended_cmd.Cmd):
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
                             break
-                    mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
-                    #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
-                    if mod_name in list(sys.modules.keys()):
-                        del sys.modules[mod_name]
-                        tmp_mod_name = mod_name
-                        while '.' in tmp_mod_name:
-                            tmp_mod_name = tmp_mod_name.rsplit('.',1)[0]
-                            del sys.modules[tmp_mod_name]
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        mymod = importlib.reload(mymod)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    else:
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    
+                    suffix = self.f2py_suffix.get(onedir, '')
+                    mod_name = '%s.SubProcesses.all_matrix%spy%s' % (onedir, tag, suffix)
+                    # forget the module and its packages: the packages of a
+                    # previous reweighting may point to another rwgt_dir
+                    tmp_mod_name = mod_name
+                    while tmp_mod_name:
+                        sys.modules.pop(tmp_mod_name, None)
+                        tmp_mod_name = tmp_mod_name.rpartition('.')[0]
+                    import importlib
+                    importlib.invalidate_caches()
+                    mymod = importlib.import_module(mod_name)
+                    loaded_f2py_names.add(onedir + suffix)
+
                 if fprefix != '':
                     fprefix = 'f%i_' % fprefix
                     for attr in dir(mymod):
@@ -3109,6 +3260,16 @@ class ReweightInterface(extended_cmd.Cmd):
         to_save['allow_missing_finalstate'] = self.options['allow_missing_finalstate']
         to_save['identical_particle_in_prod_and_decay'] = self.options['identical_particle_in_prod_and_decay']
         to_save['nb_library'] = self.nb_library
+        # the jobs that load this pickle (--multicore=wait, a reused rwgt_dir)
+        # have no model, and get_beampol needs the spin of the incoming
+        # particles, flavour-merged ones included
+        spins = {}
+        for model in (getattr(self, 'original_model', None), self.model):
+            if model:
+                spins.update((pid, part.get('spin'))
+                             for pid, part in model.get('particle_dict').items())
+        to_save['spins'] = spins
+        to_save['f2py_suffix'] = self.f2py_suffix
 
         name = pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl')
         save_load_object.save_to_file(name, to_save)
@@ -3158,6 +3319,8 @@ class ReweightInterface(extended_cmd.Cmd):
         self.second_model = obj['second_model']
         self.has_nlo = obj['has_nlo']
         self.nb_library = obj['nb_library']
+        self._pickled_spins = obj.get('spins') or {}
+        self.f2py_suffix = obj.get('f2py_suffix', {})
         if not self.rwgt_mode:
             self.rwgt_mode = obj['rwgt_mode']
             logger.info("mode set to %s" % self.rwgt_mode)
@@ -3424,8 +3587,8 @@ class DensityInterface(ReweightInterface):
         elif line[0] == 'False':
             self.matrix_normalisation = False
         else:
-            logger.warning('Option matrix_normalisation not understood, set it to True. Please use the syntax: change matrix_normalisation True if you want to enable it.')
-            self.matrix_normalisation = False
+            logger.warning('Option matrix_normalisation not understood, set it to True (the default). Please use the syntax: change matrix_normalisation False if you want to disable it.')
+            self.matrix_normalisation = True
 
 
     def do_change_particle_in_density_matrix(self, line):
@@ -3748,6 +3911,7 @@ class DensityInterface(ReweightInterface):
         # and all_p, so that a returned position is a leg for all three
         lab_p = event.get_momenta(orig_order, merged_map=self.revert_merged,
                                  decay_chain=not self.keep_ordering)
+        self.set_event_beampol(module, event, lab_p, pdg, n_ini)
         boost_corrected = self.chose_particle_user_input(lab_p, pdg, self.momenta_boost, 'momenta_boost', fortran_format = False)
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id, boost_corrected)
         
@@ -3817,17 +3981,21 @@ class DensityInterface(ReweightInterface):
                     prefix = prefix_cor[k]
 
         get_density = lambda *args: module.py_get_density(pdg, *args)
+        # mu_R: the mur of the <scales> tag when the event has one (mg7), else
+        # SCALUP, which holds mu_F
+        ren_scale2 = (event.get_ren_scale() if hasattr(event, 'get_ren_scale')
+                      else event.scale)**2
         for i in range(len(all_p)):
             pinv = self.invert_momenta(all_p[i])
             # npdg = len(all_p[i]) #number of particles in the event
-            # the argument event.scale**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
+            # the argument mu_R**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
             production_matrix = get_density(-1, pinv, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
 
             if self.symmetrise_initial_state:
                 pinv_bis = self.invert_momenta(all_p_bis[i])
                 production_matrix_bis = get_density(-1, pinv_bis, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
                 
             if self.symmetrise_initial_state:
                 rho_instance = dens.DensityMatrixObservables(production_matrix + production_matrix_bis, self.number_combinations * (self.number_combinations + 1) / 2)

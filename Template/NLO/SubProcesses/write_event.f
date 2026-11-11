@@ -1,32 +1,30 @@
       subroutine finalize_event(xx,weight,lunlhe,putonshell,p_label)
+      use fks_phase_space_data, only: ybst_til_tolab,p_born
+      use fks_phase_space, only: fks_phase_space_point,generate_born_event,
+     $     generate_momenta
       use mint_module
+      use process_module
+      use scale_module
       implicit none
       include 'nexternal.inc'
       include "genps.inc"
-      include "unlops.inc"
-      include "run.inc"
-      include 'timing_variables.inc'
       logical Hevents
       common/SHevents/Hevents
-      integer i,j,lunlhe,p_label
+      integer i,lunlhe,p_label
       real*8 xx(ndimmax),weight,evnt_wgt
       logical putonshell
       double precision wgt
-      double precision x(99),p(0:3,nexternal)
+      double precision x(99),p(0:3,nexternal),p_lab(0:3,nexternal)
+     $     ,p_cms(0:3,nexternal)
       integer jpart(7,-nexternal+3:2*nexternal-3)
       double precision pb(0:4,-nexternal+3:2*nexternal-3)
       logical unwgt
       double precision evtsgn
       common /c_unwgt/evtsgn,unwgt
-      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
-     #                        sqrtshat,shat
       integer npart
-      double precision shower_scale,shower_scale_a(-nexternal+3:2
+      double precision shower_scale_a(-nexternal+3:2
      $     *nexternal-3,-nexternal+3:2*nexternal-3)
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
-      call cpu_time(tBefore)
+      type(fks_phase_space_point) phase_space
 
       do i=1,99
         if(i.le.ndim)then
@@ -38,7 +36,17 @@
       
       wgt=1d0
       evnt_wgt=evtsgn*weight
-      call generate_momenta(ndim,iconfig,wgt,x,p)
+      if(.not.Hevents)then
+c S events need the Born momenta and their beam frame only.
+         call generate_born_event(ndim,iconfig,wgt,x,
+     $        phase_space)
+         p=phase_space%p
+         p_lab=phase_space%p_lab
+         p_cms=phase_space%p_cms
+      else
+c H events need real momenta.
+         call generate_momenta(ndim,iconfig,wgt,x,p,p_lab,p_cms)
+      endif
 c
 c Get all the info we need for writing the events.
 c      
@@ -48,45 +56,13 @@ c
          call set_cms_stuff(0)
       endif
 
-      if (ickkw.eq.4) putonshell=.false.
-
-      if (ickkw.eq.4) then
-         if (Hevents) then
-            write (*,*) 'For ickkw=4, Hevents should be false',Hevents
-            stop
-         endif
-         Hevents=.true.
-         call add_write_info(p_born,p,ybst_til_tolab,iconfig,Hevents,
-     &        .false.,ndim,x,jpart,npart,pb,shower_scale,shower_scale_a)
-c Put the Hevent info in a common block
-         NUP_H=npart
-         do i=1,NUP_H
-            IDUP_H(i)=jpart(1,i)
-            ISTUP_H(i)=jpart(6,i)
-            MOTHUP_H(1,i)=jpart(2,i)
-            MOTHUP_H(2,i)=jpart(3,i)
-            ICOLUP_H(1,i)=jpart(4,i)
-            ICOLUP_H(2,i)=jpart(5,i)
-            PUP_H(1,i)=pb(1,i)
-            PUP_H(2,i)=pb(2,i)
-            PUP_H(3,i)=pb(3,i)
-            PUP_H(4,i)=pb(0,i)
-            PUP_H(5,i)=pb(4,i)
-            VTIMUP_H(i)=0.d0
-            SPINUP_H(i)=dfloat(jpart(7,i))
-         enddo
-         Hevents=.false.
-      endif
-      
       call add_write_info(p_born,p,ybst_til_tolab,iconfig,Hevents,
-     &     putonshell,ndim,x,jpart,npart,pb,shower_scale,shower_scale_a)
-
+     &     putonshell,ndim,x,jpart,npart,pb,shower_scale_a)
+      
 c Write-out the events
       call write_events_lhe(pb(0,1),evnt_wgt,jpart(1,1),npart,lunlhe
-     $     ,shower_scale,shower_scale_a,ickkw,p_label)
+     $     ,shower_scale_a,p_label)
       
-      call cpu_time(tAfter)
-      t_write=t_write+(tAfter-tBefore)
       return
       end
 
@@ -121,38 +97,36 @@ c get info on beam and PDFs
       call write_lhef_init(lunlhe,
      #  IDBMUP,EBMUP,PDFGUP,PDFSUP,IDWTUP,NPRUP,
      #  XSECUP,XERRUP,XMAXUP,LPRUP)
- 250  format(1x,i8)
- 501  format(2(1x,i6),2(1x,d14.8),2(1x,i2),2(1x,i8),1x,i2,1x,i3)
- 502  format(3(1x,d14.8),1x,i6)
 
       return
       end
 
-      subroutine write_events_lhe(p,wgt,ic,npart,lunlhe,shower_scale
-     $     ,shower_scale_a,ickkw,p_label)
+      subroutine write_events_lhe(p,wgt,ic,npart,lunlhe
+     $     ,shower_scale_a,p_label)
       use extra_weights
+      use process_module
+      use scale_module
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
-      include "madfks_mcatnlo.inc"
       double precision p(0:4,2*nexternal-3),wgt
-      integer ic(7,2*nexternal-3),npart,lunlhe,kwgtinfo,ickkw,p_label
+      integer ic(7,2*nexternal-3),npart,lunlhe,kwgtinfo,p_label
       double precision pi,zero
       parameter (pi=3.1415926535897932385d0)
       parameter (zero=0.d0)
       integer izero
       parameter (izero=0)
-      double precision aqcd,aqed,scale
+      double precision aqcd,aqed
       character*1000 buff
-      double precision shower_scale,shower_scale_a(-nexternal+3:2
-     $     *nexternal-3,-nexternal+3:2*nexternal-3)
-      INTEGER MAXNUP,i,j,k
+      INTEGER MAXNUP,i
       PARAMETER (MAXNUP=500)
       INTEGER NUP,IDPRUP,IDUP(MAXNUP),ISTUP(MAXNUP),
      # MOTHUP(2,MAXNUP),ICOLUP(2,MAXNUP)
-      DOUBLE PRECISION XWGTUP,AQEDUP,AQCDUP,
+      DOUBLE PRECISION XWGTUP,AQEDUP,AQCDUP,SCALUP,
      # PUP(5,MAXNUP),VTIMUP(MAXNUP),SPINUP(MAXNUP),
      # SCALUP_a(MAXNUP,MAXNUP)
+c Reuse the large event-scale workspace without using the call stack.
+      save SCALUP_a
       include 'nFKSconfigs.inc'
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
@@ -162,42 +136,33 @@ c get info on beam and PDFs
       common/cto_LHE1/iSorH_lhe,ifks_lhe,jfks_lhe,
      #                fksfather_lhe,ipartner_lhe
       common/cto_LHE2/scale1_lhe,scale2_lhe
-      double precision muR2_current,muF12_current,
-     #                 muF22_current,QES2_current
-      common/cscales_current_values/muR2_current,muF12_current,
-     #                              muF22_current,QES2_current
       logical firsttime
       data firsttime/.true./
+      double precision shower_scale_a(-nexternal+3:2
+     $     *nexternal-3,-nexternal+3:2*nexternal-3)
 c
       scalup_a=-1d0
-      if (ickkw.eq.4) then
-         scale = sqrt(muF12_current)
-         do j=1,2*nexternal-3
-            do k=1,2*nexternal-3
-               if(j.eq.k)cycle
-               scalup_a(j,k)=sqrt(muF12_current)
-            enddo
-         enddo
-      elseif (ickkw.eq.-1) then
-         scale = mu_r
-         do j=1,2*nexternal-3
-            do k=1,2*nexternal-3
-               if(j.eq.k)cycle
-               scalup_a(j,k)=mu_r
-            enddo
-         enddo
+      if (iSorH_lhe.eq.1.and.scalar_S_scales()) then
+c The scalar is the damped hard scale. The shower applies its dipole
+c limits; Delta additionally records the effective directed scales.
+         SCALUP=showerscaleS_hard
+         if (mcatnlo_delta_mod) scalup_a(1:npart,1:npart)=
+     $           shower_scale_a(1:npart,1:npart)
+      elseif (.not.mcatnlo_delta_mod) then
+         if (iSorH_lhe.eq.1) then ! S-event
+            SCALUP=showerscaleS(1,1)
+         else
+            SCALUP=showerscaleH(1,1)
+         endif
+         scalup_a(1:npart,1:npart)=-1d0
       else
-         scale = shower_scale
-         do j=1,2*nexternal-3
-            do k=1,2*nexternal-3
-               if(j.eq.k)cycle
-               scalup_a(j,k)=shower_scale_a(j,k)
-            enddo
-         enddo
+         ! use array of scale for MC@NLO-Delta
+         SCALUP=-1d0
+         scalup_a(1:npart,1:npart)=shower_scale_a(1:npart,1:npart)
       endif
 c
       aqcd=g**2/(4d0*pi)
-      aqed=gal(1)**2/(4d0*pi)
+      aqed=dble(gal(1)**2/(4d0*pi))
 c
 c 'write_header_init' should be called after 'aqcd' has been set,
 c because it includes a call to 'setrun', which resets the value of
@@ -207,29 +172,25 @@ c alpha_s to the one in the param_card.dat (without any running).
          firsttime=.false.
       endif
 c
-      if(AddInfoLHE)then
-        if(.not.doreweight)then
-           write(buff,201)'#aMCatNLO',iSorH_lhe,ifks_lhe(nFKSprocess)
+      if(.not.doreweight)then
+         write(buff,201)'#aMCatNLO',iSorH_lhe,ifks_lhe(nFKSprocess)
      &          ,jfks_lhe(nFKSprocess),fksfather_lhe(nFKSprocess)
      &          ,ipartner_lhe(nFKSprocess),scale1_lhe(nFKSprocess)
      &          ,scale2_lhe(nFKSprocess),izero,izero,izero,zero,zero
      &          ,zero,zero,zero
-        else
-          if(iwgtinfo.ne.-5)then
+      else
+         if(iwgtinfo.ne.-5)then
             write(*,*)'Error in write_events_lhe'
             write(*,*)'  Inconsistency in reweight parameters'
             write(*,*)doreweight,iwgtinfo
             stop
-          endif
-          kwgtinfo= iwgtinfo
-          write(buff,201)'#aMCatNLO',iSorH_lhe,ifks_lhe(nFKSprocess)
+         endif
+         kwgtinfo= iwgtinfo
+         write(buff,201)'#aMCatNLO',iSorH_lhe,ifks_lhe(nFKSprocess)
      &         ,jfks_lhe(nFKSprocess),fksfather_lhe(nFKSprocess)
      &         ,ipartner_lhe(nFKSprocess),scale1_lhe(nFKSprocess)
      &         ,scale2_lhe(nFKSprocess),kwgtinfo,nexternal,iwgtnumpartn
      &         ,zero,zero,zero,zero,zero
-        endif
-      else
-        buff=' '
       endif
 c********************************************************************
 c     Writes one event from data file #lun according to LesHouches
@@ -261,204 +222,10 @@ c********************************************************************
          VTIMUP(i)=0.d0
          SPINUP(i)=dfloat(ic(7,i))
       enddo
+
       call write_lhef_event(lunlhe,
-     #    NUP,IDPRUP,XWGTUP,scale,AQEDUP,AQCDUP,
+     #    NUP,IDPRUP,XWGTUP,SCALUP,AQEDUP,AQCDUP,
      #    IDUP,ISTUP,MOTHUP,ICOLUP,PUP,VTIMUP,SPINUP,buff,SCALUP_a)
  201  format(a9,1x,i1,4(1x,i2),2(1x,d14.8),2x,i2,2(1x,i2),5(1x,d14.8))
-      return
-      end
-
-      subroutine fill_HEPEUP_event(p, wgt, npart, id, status, mothers,
-     &           cols, spin, scalup, scales_a)
-      implicit none
-      double precision pi
-      parameter (pi=3.1415926535897932385d0)
-      include "nexternal.inc"
-      include "coupl.inc"
-      include 'hep_event_streams.inc'
-      double precision wgt, aqcd, aqed, scalup
-
-      double precision p(0:3,nexternal)
-      integer id(nexternal)
-      integer mothers(2,nexternal)
-      integer cols(2,nexternal)
-      integer status(nexternal)
-      integer spin(nexternal)
-      double precision scales_a(nexternal,nexternal)
-      double precision pmass(nexternal)
-
-      integer i_fks,j_fks
-      common/fks_indices/i_fks,j_fks
-
-      REAL*8 ZERO
-      PARAMETER (ZERO=0D0)
-
-      integer npart, i, j, proc_code, iscale(maxpup_out)
-      logical firsttime
-      data firsttime/.true./
-
-c
-      scalup_out = scalup
-
-c     Read the particle masses.
-      include "pmass.inc"
-
-      aqcd=g**2/(4d0*pi)
-      aqed=gal(1)**2/(4d0*pi)
-c
-c 'fill_HEPrup_block' should be called after 'aqcd' has been set,
-c because it includes a call to 'setrun', which resets the value of
-c alpha_s to the one in the param_card.dat (without any running).
-      if (firsttime) then
-         call fill_HEPRUP_init()
-         firsttime=.false.
-      endif
-
-c
-
-c********************************************************************
-c     Fill in LesHouches event block according to conventions
-c     ic(1,*) = Particle ID
-c     ic(2.*) = Mothup(1)
-c     ic(3,*) = Mothup(2)
-c     ic(4,*) = ICOLUP(1)
-c     ic(5,*) = ICOLUP(2)
-c     ic(6,*) = ISTUP   -1=initial state +1=final  +2=decayed
-c     ic(7,*) = Helicity
-c********************************************************************
-      proc_code = 66
-      NUP_out=npart
-      IDPRUP_out=proc_code
-      XWGTUP_out=wgt
-      AQEDUP_out=aqed
-      AQCDUP_out=aqcd
-
-      do i=1,maxpup_out
-        IDUP_out(i)=0
-        ISTUP_out(i)=0
-        MOTHUP_out(1,i)=0
-        MOTHUP_out(2,i)=0
-        ICOLUP_out(1,i)=0
-        ICOLUP_out(2,i)=0
-        PUP_out(1,i)=0.0
-        PUP_out(2,i)=0.0
-        PUP_out(3,i)=0.0
-        PUP_out(4,i)=0.0
-        PUP_out(5,i)=0.0
-        VTIMUP_out(i)=0.0
-        SPINUP_out(i)=0.0
-        SCALES_out(1,i)=-1.0
-        SCALES_out(2,i)=-1.0
-        iscale(i)=0
-      enddo
-
-      do i=1,NUP_out
-        IDUP_out(i)=id(i)
-        ISTUP_out(i)=status(i)
-        MOTHUP_out(1,i)=mothers(1,i)
-        MOTHUP_out(2,i)=mothers(2,i)
-        ICOLUP_out(1,i)=cols(1,i)
-        ICOLUP_out(2,i)=cols(2,i)
-        PUP_out(1,i)=p(1,i)
-        PUP_out(2,i)=p(2,i)
-        PUP_out(3,i)=p(3,i)
-        PUP_out(4,i)=p(0,i)
-        PUP_out(5,i)=pmass(i)
-        VTIMUP_out(i)=0.d0
-        SPINUP_out(i)=dfloat(spin(i))
-c scale information relevant to S-event configuration
-        do j=i+1,NUP_out
-           if(scales_a(i,j).gt.0d0)then
-              iscale(i)=iscale(i)+1
-              SCALES_out(iscale(i),i)=scales_a(i,j)
-           endif
-        enddo
-      enddo
-
-      ifks_out = i_fks
-      jfks_out = j_fks
-
-      return
-      end
-
-      subroutine clear_HEPEUP_event()
-      implicit none
-      include 'hep_event_streams.inc'
-      integer i
-      NUP_out=-1
-      IDPRUP_out=0
-      XWGTUP_out=0.0
-      AQEDUP_out=0.0
-      AQCDUP_out=0.0
-      do i=1,maxpup_out
-         IDUP_out(i)=0
-         ISTUP_out(i)=0
-         MOTHUP_out(1,i)=0
-         MOTHUP_out(2,i)=0
-         ICOLUP_out(1,i)=0
-         ICOLUP_out(2,i)=0
-         PUP_out(1,i)=0.0
-         PUP_out(2,i)=0.0
-         PUP_out(3,i)=0.0
-         PUP_out(4,i)=0.0
-         PUP_out(5,i)=0.0
-         VTIMUP_out(i)=0.0
-         SPINUP_out(i)=0.0
-      enddo
-      return
-      end
-
-      subroutine read_HEPEUP_event(p, wgt)
-      include 'hep_event_streams.inc'
-      include 'nexternal.inc'
-      double precision p(0:4,2*nexternal-3),wgt
-      integer i,j
-      do i=1,2*nexternal-3
-         p(1,i) = pup_in(1,i)
-         p(2,i) = pup_in(2,i)
-         p(3,i) = pup_in(3,i)
-         p(0,i) = pup_in(4,i)
-         p(4,i) = pup_in(5,i)
-      enddo
-      wgt = xwgtup_in
-      end
-
-      subroutine fill_HEPRUP_init()
-      implicit none
-C     This fills in the common block that has the necessary
-C     information to initialize the shower
-      include 'hep_event_streams.inc'
-C     Retrieve information set by setrun()
-      integer maxpup
-      parameter(maxpup=100)
-      integer idbmup,pdfgup,pdfsup,idwtup,nprup,lprup
-      double precision ebmup,xsecup,xerrup,xmaxup
-      common /heprup/ idbmup(2),ebmup(2),pdfgup(2),pdfsup(2),
-     &     idwtup,nprup,xsecup(maxpup),xerrup(maxpup),
-     &     xmaxup(maxpup),lprup(maxpup)
-      integer ifile, i
-      integer ievents
-      double precision inter,absint,uncer
-      common /to_write_header_init/inter,absint,uncer,ifile,ievents
-      character*7 event_norm
-      common /event_normalisation/event_norm
-C     Retrieve information from the run parameters
-      call setrun() 
-      XSECUP_out(1)=inter
-      XERRUP_out(1)=uncer
-      XMAXUP_out(1)=absint/ievents
-      LPRUP_out(1)=66
-      if (event_norm(1:5).eq.'unity'.or.event_norm(1:3).eq.'sum') then
-         IDWTUP_out=-3
-      else
-         IDWTUP_out=-4
-      endif
-      NPRUP_out=1
-      do i=1,2
-         idbmup_out(i)=idbmup(i)
-         ebmup_out(i)=ebmup(i)
-         pdfgup_out(i)=pdfgup(i)
-         pdfsup_out(i)=pdfsup(i)
-      enddo
       return
       end
