@@ -123,6 +123,7 @@ CF2PY INTENT(IN) :: PATH
       RETURN
       END
 
+%(onia_f77_subroutines)s
 
       BLOCK DATA %(f2py_prefix)sBEAMPOL_DEFAULT
 C     Unpolarised beams unless PY_SET_BEAMPOL says otherwise. This has

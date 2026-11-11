@@ -15588,6 +15588,24 @@ DECAY 443 9.26e-05
         self.assertAlmostEqual(R.branching_ratio(chain, card['decay']), 9.75e-2 * 0.343 * 5.961e-2, 15)
         chain2 = R.parse_chain(reg, 'psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > e+ e-', name2pdg)
         self.assertRaises(ValueError, R.branching_ratio, chain2, card['decay'])
+        # colour octets: the soft gluon has branching ratio 1. The LO partial width (lo_widths)
+        # stands in for a missing BR line only in the ordinary decay of the hadron the octet
+        # turns into; a radiative chain after the gluon ends as for the colour singlet, with
+        # its BR line or the default
+        jpsi, chic1 = chain2.terminal().fock, chain2.sub.parent
+        ee = chain2.terminal().process
+        o_psi = self.fock('Jpsi(1|3S18)', 9940003, 1, 0, 1, colour=8)
+        o_chi = self.fock('chic1(1|3S18)', 9940023, 1, 0, 1, colour=8)
+        direct = R.Chain(o_psi, jpsi, 'kept', chain2.terminal(), boson=R.GLUON)
+        radiative = R.Chain(o_chi, chic1, 'E1', chain2.sub, boson=R.GLUON)
+        self.assertTrue(R.direct_octet(direct))
+        self.assertFalse(R.direct_octet(radiative))
+        self.assertAlmostEqual(R.branching_ratio(direct, card['decay'], lo_widths={ee: 1e-6}),
+                               1e-6 / 9.26e-05, 12)
+        self.assertRaises(ValueError, R.branching_ratio, radiative, card['decay'], None, None,
+                          {ee: 1e-6})
+        self.assertAlmostEqual(R.branching_ratio(radiative, card['decay'], {443: (9.26e-05, {(-11, 11): 0.05971})},
+                                                 lo_widths={ee: 1e-6}), 0.343 * 0.05971, 12)
 
     def test_model_defaults(self):
         """The PDG 2026 widths and branching fractions of the onia

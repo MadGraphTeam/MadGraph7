@@ -36,6 +36,7 @@ C
       DATA WARNED/.FALSE./
       SAVE WARNED
       INTEGER I, J, CNT_ONIA, CNT_ELEM, NELEM, NFONIA, NIONIA, RESH_TYPE
+      INTEGER IELEM
       INTEGER MAP(NEXTERNAL), ITER
 
       REAL*8 TINY
@@ -166,11 +167,17 @@ C     FINAL-STATE MOMENTUM RESHUFFLING
           ELSE
             CNT_ELEM = CNT_ELEM + 1
             MAP(I) = -CNT_ELEM
+            IELEM = I
             HAD_K(0:3,CNT_ELEM) = PCOM(0:3,I)
             HAD_KX(0:3) = HAD_KX(0:3) + HAD_K(0:3,CNT_ELEM)
           ENDIF
         ENDDO
         MREC = MASS(HAD_KX)
+C       A single recoiling particle is put on its own mass shell: the
+C       invariant mass of its momentum in an event record (11 digits)
+C       is not its mass (0.016 GeV for a massless quark of 1.8 TeV), and
+C       an event and its mirror in z gave it differently
+        IF (NELEM.EQ.1) MREC = PMASS(IELEM)
 
         HAD_PIN(0:3,NFONIA) = HAD_P(0:3,NFONIA)
         HAD_MIN(NFONIA) = HAD_M(NFONIA)
@@ -195,6 +202,12 @@ C         system the onia carry all of it.
             P_RESH = P
             RETURN
           ENDIF
+        ELSE IF (NELEM.EQ.0) THEN
+C         Without a recoil system (e.g. a 2 -> 1 process) the onia carry
+C         all of the energy: the partonic energy is their reshuffled mass.
+C         PHI would keep it near the physical one, leaving the onia off
+C         their mass shell and the event without momentum conservation.
+          PAR_SQRTS = PAR_MIN(1)
         ELSE
           PAR_SQRTS = PHI(HAD_SQRTS,PAR_MIN(1),MREC,HAD_MIN(1),MREC,RESH_TYPE)
         ENDIF

@@ -101,6 +101,23 @@ ANNOUNCEMENT:
          onia by the Breit-Wigner truncation of their width (0.979 for BW_cut = 15), although an
          onium decays on its mass shell and no virtuality is drawn: the decayed cross section is
          now the production one times the branching ratio (test_madspin_onium_decay_2to2).
+       - Bug fix: the final-state momentum reshuffling (mom_resh_type 1, 2, 3, the default
+         1) of a process without a recoil system, e.g. "p p > Jpsi(1|3S18)" or "g g >
+         chic2(1|3P21)", kept the partonic energy near the physical one, so that a bound
+         state at an onium_mass above the sum of its constituent masses was left off its
+         mass shell and the reshuffled event did not conserve momentum: u u~ > 3S1[8] at
+         3.3 GeV (2 m_c = 3.1) came out 12% low and g g > 3S1[8], zero at LO, at 2.7% of the
+         q q~ rate. The partonic energy is now the reshuffled mass of the onia
+         (test_onia_reshuffle_two_to_one). Processes with a recoil system, decays, and
+         onia at onium_mass = m1 + m2 are unchanged.
+       - Bug fix: the f2py libraries of an onia output (MadSpin's density matrices) never
+         set the reshuffling type, i.e. reshuffled in the initial state, while madevent
+         reshuffles in the final state (mom_resh_type 1): they now default to 1, and
+         PY_SET_MOM_RESH_TYPE sets the type of the events, which MadSpin passes from the
+         run_card of the production. With the final-state reshuffling, a single recoiling
+         particle is now put on its own mass shell: its invariant mass in an event record
+         (0.016 GeV for a massless quark of 1.8 TeV, from the rounding) was kept, and came
+         out differently for an event and its mirror in z (7.6e-6 in |M|^2).
        - Bug fix: the momentum reshuffling of a bound state put the first incoming leg
          along +z. A standalone call with that leg along -z (MadSpin's normalisation of a
          mirrored subprocess, e.g. u g > chi_c1 u with the quark from the second beam) of an

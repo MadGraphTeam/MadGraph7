@@ -478,6 +478,12 @@ def ambiguous(chains, masses, tolerance=1e-6):
     return out
 
 
+def direct_octet(chain):
+    """A colour octet turning into its hadron, which then decays as an
+    ordinary particle (not by a radiative transition)."""
+    return getattr(chain, 'boson', GAMMA) == GLUON and isinstance(chain.sub, Terminal)
+
+
 def branching_ratio(chain, decay_block, defaults=None, used=None, lo_widths=None):
     """The product of the BR lines of the chain's steps in the DECAY blocks of
     the param_card; a step without a BR line takes the default branching
@@ -521,7 +527,10 @@ def branching_ratio(chain, decay_block, defaults=None, used=None, lo_widths=None
     term = chain.terminal()
     if isinstance(term, Terminal):
         pdg = term.fock.get('pdg_code')
-        if lo_widths is not None and term.process in lo_widths:
+        # only the ordinary decay of the hadron a colour octet turns into: in
+        # a radiative chain the decay that ends it has its BR line or the
+        # default, as for the colour singlet
+        if lo_widths is not None and term.process in lo_widths and direct_octet(chain):
             table = decay_block.decay_table.get(abs(pdg))
             explicit = None
             if table:

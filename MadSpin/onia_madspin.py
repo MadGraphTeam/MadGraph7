@@ -786,8 +786,7 @@ class OniaRegistry(object):
         self.radiative_lo_widths = {}
         for chain in self.radiative.values():
             term = chain.terminal()
-            if chain.boson != onia_radiative.GLUON or not isinstance(term, onia_radiative.Terminal) \
-                    or term.process in self.radiative_lo_widths:
+            if not onia_radiative.direct_octet(chain) or term.process in self.radiative_lo_widths:
                 continue
             table = decay_block.decay_table.get(abs(term.fock.get('pdg_code')))
             if table:
@@ -1011,6 +1010,19 @@ class OniaRegistry(object):
                 block.append(check_param_card.Parameter(block='mass', lhacode=[code], value=mass,
                                                         comment='onium_mass of the onia card'))
         return masses
+
+    @staticmethod
+    def set_reshuffling(banner, module):
+        """The momentum reshuffling of the production run (mom_resh_type of
+        its run_card, 1 by default) in an onia library, so that a matrix
+        element at physical masses is evaluated as madevent evaluated it."""
+        if not hasattr(module, 'py_set_mom_resh_type'):
+            return
+        try:
+            value = int(banner.get_detail('run_card', 'mom_resh_type'))
+        except Exception:
+            value = 1
+        module.py_set_mom_resh_type(value)
 
     @staticmethod
     def write_onia_card(banner, cards_dir):

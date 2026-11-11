@@ -136,6 +136,7 @@ CF2PY INTENT(IN) :: PATH
       RETURN
       END
 
+%(onia_subroutines)s
 
       SUBROUTINE %(f2py_prefix)sPY_SET_BEAMPOL(POL1, POL2)
 C     ROUTINE FOR F2PY to set the beam polarisation of the density

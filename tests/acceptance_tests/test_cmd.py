@@ -2982,6 +2982,65 @@ class TestCmdShell2(unittest.TestCase,
         # 3e-4 GeV^2) moves |M|^2 by 8e-6
         self.assertLess(abs(values[0] / values[2] - 1), 1e-4, values)
 
+    def test_onia_reshuffle_two_to_one(self):
+        """The final-state momentum reshuffling of a 2 -> 1 process: without
+        a recoil system the partonic energy is the reshuffled mass of the
+        onium. It was kept near the physical one (PHI), which left the onium
+        off its mass shell and the event without momentum conservation, so
+        that g g > Jpsi(1|3S18) -- zero at LO -- came out at 2.7% of the
+        q q~ rate in madevent with the octet at 3.3 GeV. For every
+        mom_resh_type the reshuffled 2 -> 1 event is now the event at
+        2 m_c: g g > 3S1[8] vanishes and u u~ > 3S1[8] has its value at
+        3.1 GeV. The f2py library reshuffles as madevent by default
+        (mom_resh_type 1; it used to leave the type unset, i.e. 0) and
+        PY_SET_MOM_RESH_TYPE sets another."""
+
+        import glob
+        import importlib.util
+        import math
+        import numpy
+        import madgraph.interface.master_interface as MGCmd
+
+        f2py = misc.default_f2py()
+        if not f2py:
+            raise unittest.SkipTest('no f2py')
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('set group_subprocesses False')
+        mg_cmd.exec_cmd('generate p p > Jpsi(1|3S18)')
+        mg_cmd.exec_cmd('output standalone_fortran %s --prefix=int -f' % self.out_dir)
+        param = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        sp = pjoin(self.out_dir, 'SubProcesses')
+        subprocess.check_call(['make', 'all_matrix6py.so', 'MENUM=6', 'F2PY=%s' % f2py], cwd=sp,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        lib = [f for f in glob.glob(pjoin(sp, 'all_matrix6py*.so')) if os.path.getsize(f)][0]
+        spec = importlib.util.spec_from_file_location('all_matrix6py', lib)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with misc.chdir(sp):
+            mod.initialise(param)
+        self.assertTrue(hasattr(mod, 'py_set_mom_resh_type'))
+
+        def me(pdgs, M, eta):
+            # p p > onium at rapidity eta, the onium at mass M (2 m_c = 3.1)
+            e1, e2 = 0.5 * M * math.exp(eta), 0.5 * M * math.exp(-eta)
+            moms = [[e1, 0., 0., e1], [e2, 0., 0., -e2], [e1 + e2, 0., 0., e1 - e2]]
+            p = numpy.asfortranarray(numpy.array(moms, float).T)
+            return mod.smatrixhel(pdgs + [9940003], -1, p, 0.118, 100., -1)
+
+        lo = me([2, -2], 3.1, 0.)
+        self.assertGreater(lo, 1e-5)
+        for kind in (None, 0, 1, 2, 3):
+            if kind is not None:
+                mod.py_set_mom_resh_type(kind)
+            for eta in (0., 1.3, -2.1):
+                self.assertLess(abs(me([2, -2], 3.3, eta) / lo - 1), 1e-10, (kind, eta))
+                self.assertLess(me([21, 21], 3.3, eta), 1e-20 * lo, (kind, eta))
+
     def test_leptonium_decay_without_photon_vertex(self):
         """A leptonium decaying without a photon vertex: ortho-ditauonium into
         nu_e nubar_e through the Z. The Coulomb LDME takes alpha from the

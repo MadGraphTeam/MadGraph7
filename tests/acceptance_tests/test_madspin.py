@@ -210,7 +210,9 @@ class TestMadSpin(unittest.TestCase):
                             (octet[0].E, octet[0].px, octet[0].py, octet[0].pz)):
                 self.assertLess(abs(a - b), 1e-5 * octet[0].E)
             pair = lhe_parser.FourMomentum(mu[0]) + lhe_parser.FourMomentum(mu[1])
-            self.assertLess(abs(pair.mass - psi[0].mass), 1e-4)
+            # the record keeps 11 digits: a J/psi of a few TeV (g g > octet reaches |y| ~ 8)
+            # has its pair mass to ~ 1e-11 E^2 / m
+            self.assertLess(abs(pair.mass - psi[0].mass), 1e-4 + 1e-10 * psi[0].E ** 2 / psi[0].mass)
             muon = [p for p in mu if p.pdg == 13][0]
             rest = lhe_parser.FourMomentum(muon).boost_to_restframe(
                 lhe_parser.FourMomentum(psi[0]))

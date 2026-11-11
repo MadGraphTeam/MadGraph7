@@ -5798,9 +5798,39 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                           # a bound state needs its LDMEs and masses: the onia
                           # card next to the param card given to INITIALISE
                           'onia_init_decl': '      INTEGER I_ONIA' if getattr(self, 'f2py_has_onia', False) else '',
+                          # and the momentum reshuffling of madevent, the default
+                          # mom_resh_type of the run_card (PY_SET_MOM_RESH_TYPE
+                          # sets that of the events). The matrix elements are in
+                          # the shared library of all_matrix.f, whose commons the
+                          # f2py wrapper does not see: it calls a routine there.
                           'onia_init': ('      I_ONIA = INDEX(PATH, \'/\', BACK=.TRUE.)\n'
-                                        '      CALL SETONIA(PATH(1:I_ONIA)//\'onia_card.dat\')')
+                                        '      CALL SETONIA(PATH(1:I_ONIA)//\'onia_card.dat\')\n'
+                                        '      CALL %sF77_SET_MOM_RESH_TYPE(1)' % f2py_prefix)
                                        if getattr(self, 'f2py_has_onia', False) else '',
+                          'onia_subroutines': (
+                              '      SUBROUTINE %sPY_SET_MOM_RESH_TYPE(ITYPE)\n'
+                              'C     ROUTINE FOR F2PY: the momentum reshuffling of the bound\n'
+                              'C     states, mom_resh_type of the run_card (0: initial state,\n'
+                              'C     1, 2, 3: final state; 1 after INITIALISE)\n'
+                              '      IMPLICIT NONE\n'
+                              '      INTEGER ITYPE\n'
+                              'CF2PY INTENT(IN) :: ITYPE\n'
+                              '      CALL %sF77_SET_MOM_RESH_TYPE(ITYPE)\n'
+                              '      RETURN\n'
+                              '      END\n' % (f2py_prefix, f2py_prefix))
+                                             if getattr(self, 'f2py_has_onia', False) else '',
+                          'onia_f77_subroutines': (
+                              '      SUBROUTINE %sF77_SET_MOM_RESH_TYPE(ITYPE)\n'
+                              'C     the reshuffling type read by the matrix elements of this\n'
+                              'C     library (onia_reshuffle_momenta)\n'
+                              '      IMPLICIT NONE\n'
+                              '      INTEGER ITYPE\n'
+                              '      INTEGER MOM_RESH_TYPE\n'
+                              '      COMMON/TO_MOM_RESH_TYPE/MOM_RESH_TYPE\n'
+                              '      MOM_RESH_TYPE = ITYPE\n'
+                              '      RETURN\n'
+                              '      END\n' % f2py_prefix)
+                                                 if getattr(self, 'f2py_has_onia', False) else '',
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,

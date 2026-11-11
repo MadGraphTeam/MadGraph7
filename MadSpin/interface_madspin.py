@@ -12211,6 +12211,8 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         with misc.chdir(sp_path): #changed the search of the card to the subdirectories madspin_me and madspin_decay
             mymod.initialise(self.me_param_card(folder_name))
+            if getattr(self, 'onia', None):
+                self.onia.set_reshuffling(self.banner, mymod)
             # If the module is loop-induced, we also need to set the directory in which the MadLoop param card is present
             MadLoopCardPath = pjoin(self.path_me, folder_name, 'SubProcesses', 'MadLoop5_resources')
             if os.path.exists(MadLoopCardPath):
@@ -12305,6 +12307,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             mod = self._load_f2py_matrix_module(sp_path_unc, menum=3)
             with misc.chdir(sp_path_unc):
                 mod.initialise(self.me_param_card(self.ms_me_subdir + '_unc'))
+                self.onia.set_reshuffling(self.banner, mod)
             self.f2py_module_unc = mod
         try:
             sp_path_prod = pjoin(self.path_me, self.ms_me_subdir, 'SubProcesses')
@@ -13493,6 +13496,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                         # disagree with the events (see me_param_card).
                         mymod.initialise(self.me_param_card(self.ms_me_subdir))
                         self._set_f2py_bwcutoff(mymod, 'prod')
+                        if getattr(self, 'onia', None):
+                            self.onia.set_reshuffling(self.banner, mymod)
             mymod = self.f2py_module
 
             #if Rpath linking is not working the below code can be an alternative:

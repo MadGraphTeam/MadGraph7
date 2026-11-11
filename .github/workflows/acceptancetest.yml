@@ -805,6 +805,7 @@ jobs:
             ./tests/test_manager.py test_leptonium_decay_without_photon_vertex -pA -t0 -l INFO
             ./tests/test_manager.py test_onia_density_matrix -pA -t0 -l INFO
             ./tests/test_manager.py test_onia_reshuffle_mirrored_beams -pA -t0 -l INFO
+            ./tests/test_manager.py test_onia_reshuffle_two_to_one -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_onium_decay -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_onium_octet_decay -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_onium_decay_2to2 -pA -t0 -l INFO
