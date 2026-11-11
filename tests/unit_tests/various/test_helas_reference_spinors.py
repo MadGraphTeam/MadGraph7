@@ -311,8 +311,8 @@ class TestPythonReferenceSpinors(unittest.TestCase):
             r = self.momentum(rng, 0., 10 ** rng.uniform(-2, 4))
             ps = self.slash(p)
             for nsf in (-1, 1):
-                fi = dict((h, ixxxxxr(p, m, h, nsf, r)) for h in (-1, 1))
-                fo = dict((h, oxxxxxr(p, m, h, nsf, r)) for h in (-1, 1))
+                fi = dict((h, ixxxxxr(p, m, h, nsf, -1, r)) for h in (-1, 1))
+                fo = dict((h, oxxxxxr(p, m, h, nsf, -1, r)) for h in (-1, 1))
                 for h in (-1, 1):
                     w = [fi[h][2 + i] for i in range(4)]
                     for i in range(4):
@@ -332,13 +332,13 @@ class TestPythonReferenceSpinors(unittest.TestCase):
                         worst['complete'] = max(worst['complete'], abs(s) / p[0])
             k = [math.sqrt(sum(x * x for x in p[1:]))] + [-x for x in p[1:]]
             for h in (-1, 1):
-                a, b = ixxxxxr(p, m, h, 1, k), oxxxxx(p, m, h, 1)
+                a, b = ixxxxxr(p, m, h, 1, -1, k), oxxxxx(p, m, h, 1)
                 s = sum(b[2 + i] * a[2 + i] for i in range(4))
                 worst['hel'] = max(worst['hel'], abs(abs(s) - 2 * m) / (2 * m))
             for h in (-1, 1):
-                self.assertEqual(list(ixxxxxr(p, m, h, 1, [0., 0., 0., 0.])),
+                self.assertEqual(list(ixxxxxr(p, m, h, 1, -1, [0., 0., 0., 0.])),
                                  list(ixxxxx(p, m, h, 1)))
-                self.assertEqual(list(oxxxxxr(r, 0., h, 1, p)),
+                self.assertEqual(list(oxxxxxr(r, 0., h, 1, -1, p)),
                                  list(oxxxxx(r, 0., h, 1)))
         for key, value in worst.items():
             self.assertLess(value, 1e-12, key)

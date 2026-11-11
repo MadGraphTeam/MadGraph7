@@ -355,12 +355,13 @@ def _hlspxx(p, pp):
         return [complex(0.), complex(1.)]
     return [complex(sqrt(pp3*0.5/pp)), complex(p[1], p[2])/sqrt(2.*pp*pp3)]
 
-def ixxxxxr(p, fmass, nhel, nsf, r, flavor=-1):
+def ixxxxxr(p, fmass, nhel, nsf, flavor, r):
     """A massive inflow fermion whose spin is quantised along the axis fixed
     by the reference momentum r instead of its own momentum (Kleiss-Stirling
     spinors, u(p,h;r) = (pslash + m) u0(r,-h)/sqrt(2 p.r)): see ixxxxxr in
-    aloha_functions.f for the numerically stable form used here. ixxxxx for
-    a massless fermion or a reference without direction."""
+    aloha_functions.f for the numerically stable form used here; the same
+    arguments, the reference last. ixxxxx for a massless fermion or a
+    reference without direction."""
 
     rr = sqrt(r[1]**2 + r[2]**2 + r[3]**2)
     if fmass == 0. or rr == 0.:
@@ -393,14 +394,14 @@ def ixxxxxr(p, fmass, nhel, nsf, r, flavor=-1):
         fi[5] = fm*rho[1]
     return fi
 
-def oxxxxxr(p, fmass, nhel, nsf, r, flavor=-1):
+def oxxxxxr(p, fmass, nhel, nsf, flavor, r):
     """The Dirac conjugate of ixxxxxr: a massive outflow fermion whose spin
     is quantised along the axis fixed by the reference momentum r. oxxxxx
     for a massless fermion or a reference without direction."""
 
     if fmass == 0. or (r[1] == 0. and r[2] == 0. and r[3] == 0.):
         return oxxxxx(p, fmass, nhel, nsf, flavor)
-    fi = ixxxxxr(p, fmass, nhel, nsf, r, flavor)
+    fi = ixxxxxr(p, fmass, nhel, nsf, flavor, r)
     fo = WaveFunction(2)
     fo[0] = complex(p[0]*nsf, p[3]*nsf)
     fo[1] = complex(p[1]*nsf, p[2]*nsf)

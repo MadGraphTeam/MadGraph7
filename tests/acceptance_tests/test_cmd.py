@@ -5503,7 +5503,7 @@ C
             self.do('check gauge e+ e- > ve ve~ w+ w-')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_pp_wpwm(self):
@@ -5521,7 +5521,7 @@ C
             self.do('check p p > w+ w-')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Q Qx > w+ w-', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
         # the four flavors (both orderings) are still checked, here:
@@ -5539,7 +5539,7 @@ C
             self.do('check gauge p p > w+ w-')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Q Qx > w+ w-', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
@@ -5553,7 +5553,11 @@ C
         with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
             self.do('check gauge g g > t t~ g')
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Reference: unitary gauge with the reference momenta', log)
+        header = [line for line in log.splitlines() if 'Unitary' in line and 'Feynman' in line
+                  and 'Result' in line][0]
+        self.assertIn('Reference', header)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
         for process in ('u u~ > t t~ g g', 'g g > g g g'):
             with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
@@ -5571,7 +5575,7 @@ C
             self.do('check gauge e+ e- > a a')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
          
 

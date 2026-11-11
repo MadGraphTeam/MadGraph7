@@ -356,6 +356,73 @@ class TestReferenceMomentaChecks(unittest.TestCase):
         comparison[0]['ref'] = {'m2': 1.0, 'jamp': [[1.0]]}
         self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 0)
 
+    def test_output_unitary_feynman_missing_value(self):
+        """a gauge in which a process got no value is reported as a failure,
+        not an IndexError"""
+
+        value = {'m2': 1.0, 'jamp': [[1.0]]}
+        result = [{'perturbation_couplings': []},
+                  {'process': 'g g > t t~ g', 'value_unit': value,
+                   'value_feynm': value, 'value_ref': None}]
+        self.assertEqual(process_checks.output_unitary_feynman(result,
+                                                               output='fail'), 1)
+        self.assertIn('no value in the Reference gauge',
+                      process_checks.output_unitary_feynman(result))
+
+    def test_check_gauge_without_reference_value(self):
+        """check gauge does not crash when the reference evaluation leaves a
+        process out"""
+
+        import madgraph.interface.master_interface as interface
+        cmd = interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('import model sm')
+        procdef = cmd.extract_process('e+ e- > a a')
+        original = process_checks.evaluate_with_reference_momenta
+        process_checks.evaluate_with_reference_momenta = lambda *args, **opts: []
+        try:
+            process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+            result = process_checks.check_unitary_feynman(procdef, procdef,
+                                cmd=cmd, processes_reference=procdef)
+        finally:
+            process_checks.evaluate_with_reference_momenta = original
+        self.assertIsNone(result[1]['value_ref'])
+        self.assertEqual(process_checks.output_unitary_feynman(result,
+                                                               output='fail'), 1)
+
+    def test_brs_widths_zero_in_every_gauge(self):
+        """check_gauge on a Process sets the widths to zero in the FD gauge as
+        in the unitary one (a fixed width breaks gauge invariance)"""
+
+        import aloha
+        seen = []
+        original = process_checks.MatrixElementEvaluator.evaluate_matrix_element
+        def spy(evaluator, *args, **opts):
+            seen.append(evaluator.full_model.get('parameter_dict')['mdl_WT'])
+            return original(evaluator, *args, **opts)
+        process_checks.MatrixElementEvaluator.evaluate_matrix_element = spy
+        old = aloha.unitary_gauge
+        try:
+            for gauge in (1, 3):
+                aloha.unitary_gauge = gauge
+                process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+                process_checks.check_gauge(self.process([21, 21, 6, -6, 21]))
+        finally:
+            aloha.unitary_gauge = old
+            process_checks.MatrixElementEvaluator.evaluate_matrix_element = original
+        self.assertTrue(seen)
+        self.assertEqual(set(seen), {0.})
+
+    def test_brs_no_reference_without_references(self):
+        """t t~ > z a: no leg gets a reference, so nothing is evaluated with
+        the reference momenta and the table shows '-'"""
+
+        process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+        comparison = process_checks.check_gauge(self.process([6, -6, 23, 22]))
+        self.assertEqual(len(comparison), 1)
+        self.assertNotIn('ref', comparison[0])
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 0)
+
     def test_output_unitary_feynman_reference_column(self):
         """check gauge: the Reference column, and its failure"""
 

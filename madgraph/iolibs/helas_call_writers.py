@@ -2721,12 +2721,11 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
                 elif argument.get('spin') == 3:
                     fixed_wf_name = 'vfdxxxx'
             if fixed_wf_name is None:
-                call = call + wf_name
                 # Fill out with X up to 6 positions
-                call = call + 'x' * (14 - len(call))
+                routine = wf_name + 'x' * (6 - len(wf_name))
             else:
-                call = call + fixed_wf_name
-            call = call + "(p[%d],"
+                routine = fixed_wf_name
+            call = call + routine + "(p[%d],"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
                 if gauge_check and argument.get('spin') == 3 and \
@@ -2735,6 +2734,18 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
                 else:
                     call = call + "%s,hel[%d],"
             call = call + "%+d)"
+            # --axial_gauge (check gauge / brs): a leg with a reference
+            # (get_axial_gauge_refs) is vxxxxxr / ixxxxxr / oxxxxxr, with the
+            # momentum of the reference leg as the last argument, as in the
+            # Fortran routines. The template is cached per call key, which
+            # legs with and without a reference share: decided per leg.
+            ref_call = None
+            if fixed_wf_name is None and not gauge_check and \
+                                             argument.get('spin') in (2, 3):
+                ref_call = "w[%d] = " + routine + "r(p[%d],%s,hel[%d],%+d"
+                if argument.get('spin') == 2:
+                    ref_call += ", flavor[%d] if flavor is not None else -1"
+                ref_call += ",p[%d])"
             if argument.get('spin') == 1:
                 call_function = lambda wf: call % \
                                 (wf.get('me_id')-1,
@@ -2743,13 +2754,13 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
                                  (-1)**(wf.get('state') == 'initial'))
             elif argument.is_boson():
                 if not gauge_check or argument.get('mass') != 'ZERO':
-                    call_function = lambda wf: call % \
-                                (wf.get('me_id')-1,
+                    arguments = lambda wf: (wf.get('me_id')-1,
                                  wf.get('number_external')-1,
                                  wf.get('mass'),
                                  wf.get('number_external')-1,
                                  # For boson, need initial/final here
                                  (-1)**(wf.get('state') == 'initial'))
+                    call_function = lambda wf: call % arguments(wf)
                 else:
                     call_function = lambda wf: call % \
                                 (wf.get('me_id')-1,
@@ -2764,8 +2775,7 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
                 # passed as an optional argument to smatrix/matrix; when it
                 # is None (standard non-merged call) we fall back to -1.
                 call_ferm = call[:-1] + ', flavor[%d] if flavor is not None else -1)'
-                call_function = lambda wf, c=call_ferm: c % \
-                                (wf.get('me_id')-1,
+                arguments = lambda wf: (wf.get('me_id')-1,
                                  wf.get('number_external')-1,
                                  wf.get('mass'),
                                  wf.get('number_external')-1,
@@ -2773,6 +2783,12 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
                                  -(-1)**wf.get_with_flow('is_part'),
                                  # 0-based index into the runtime flavor list
                                  wf.get('number_external')-1)
+                call_function = lambda wf, c=call_ferm: c % arguments(wf)
+            if ref_call is not None:
+                plain_function = call_function
+                call_function = lambda wf, plain=plain_function: \
+                    ref_call % (arguments(wf) + (self.get_axial_gauge_ref(wf) - 1,)) \
+                    if self.has_axial_gauge_ref(wf) else plain(wf)
         else:
             # String is LOR1_0, LOR1_2 etc.
             
@@ -2817,24 +2833,6 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
             routine_name = aloha_writers.combine_name(
                                         '%s' % l[0], l[1:], outgoing, flag)
         
-        if isinstance(argument, helas_objects.HelasWavefunction) and \
-               not argument.get('mothers') and not gauge_check and \
-               argument.get('spin') in (2, 3):
-            # --axial_gauge: a leg with a reference (get_axial_gauge_refs) is
-            # vxxxxxr / ixxxxxr / oxxxxxr, the momentum of the reference leg
-            # after nsv / nsf. The template is cached per call key, which legs
-            # with and without a reference share: decided per leg.
-            plain_function = call_function
-            def call_function(wf, plain=plain_function):
-                text = plain(wf)
-                if not self.has_axial_gauge_ref(wf):
-                    return text
-                ref = 'p[%d]' % (self.get_axial_gauge_ref(wf) - 1)
-                text = text.replace('xxxxx(', 'xxxxxr(', 1)
-                if wf.get('spin') == 3:
-                    return text[:-1] + ',%s)' % ref
-                return text.replace(', flavor[', ',%s, flavor[' % ref, 1)
-
         # Add the constructed function to wavefunction or amplitude dictionary
         if isinstance(argument, helas_objects.HelasWavefunction):
             if not gauge_check:

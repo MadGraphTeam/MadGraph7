@@ -1537,8 +1537,8 @@ class AxialGaugeReferenceTest(unittest.TestCase):
         self.assertEqual(calls[:6],
             ['w[0] = ixxxxx(p[0],ZERO,hel[0],+1, flavor[0] if flavor is not None else -1)',
              'w[1] = oxxxxx(p[1],ZERO,hel[1],-1, flavor[1] if flavor is not None else -1)',
-             'w[2] = oxxxxxr(p[2],mdl_MT,hel[2],+1,p[0], flavor[2] if flavor is not None else -1)',
-             'w[3] = ixxxxxr(p[3],mdl_MT,hel[3],-1,p[0], flavor[3] if flavor is not None else -1)',
+             'w[2] = oxxxxxr(p[2],mdl_MT,hel[2],+1, flavor[2] if flavor is not None else -1,p[0])',
+             'w[3] = ixxxxxr(p[3],mdl_MT,hel[3],-1, flavor[3] if flavor is not None else -1,p[0])',
              'w[4] = vxxxxxr(p[4],ZERO,hel[4],+1,p[0])',
              'w[5] = vxxxxxr(p[5],ZERO,hel[5],+1,p[0])'])
         calls = writer.get_matrix_element_calls(me, gauge_check=True)

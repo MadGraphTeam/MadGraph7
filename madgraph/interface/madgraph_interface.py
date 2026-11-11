@@ -6219,9 +6219,12 @@ This implies that with decay chains:
                 gauge_labels.append('Axial')
             if any('value_fd' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('FD')
-            if any('value_ref' in res for res in gauge_result_no_brs[1:]):
-                gauge_labels.append('Reference')
             text += 'Gauge results (switching between %s gauge):\n' % '/'.join(gauge_labels)
+            if any('value_ref' in res for res in gauge_result_no_brs[1:]):
+                # not a gauge of the propagators: the external wavefunctions
+                text += 'Reference: unitary gauge with the reference momenta of ' \
+                        'output --axial_gauge=True (external vectors and spin ' \
+                        'axis of the massive fermions)\n'
             text += process_checks.output_unitary_feynman(gauge_result_no_brs) + '\n'
         if cms_results:
             text += 'Complex mass scheme results (varying width in the off-shell regions):\n'
