@@ -41,7 +41,7 @@ class NumericalAccuracyWarning(UserWarning):
     pyAmpliCol on its own: only a caller's ``emit_warnings()`` emits it."""
 
 
-WARNING_SOURCES = ("numerical", "symbolica")
+WARNING_SOURCES = ("numerical", "symbolica", "ufo-model-loader")
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +53,7 @@ class ResultWarning:
     and, for numerical warnings, the affected ``points`` (caller point
     indices)."""
 
-    source: Literal["numerical", "symbolica"]
+    source: Literal["numerical", "symbolica", "ufo-model-loader"]
     kind: str
     message: str
     count: int
