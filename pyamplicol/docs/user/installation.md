@@ -230,6 +230,11 @@ python -m pip install --upgrade pip
 python -m pip install "$PWD"/dist/pyamplicol-1.0.3-*.whl
 ```
 
+On NixOS, PyPI's manylinux wheels of the dependencies (NumPy) need
+`libstdc++.so.6` on the loader path, which NixOS does not provide by default:
+use `nix-ld`, or export `LD_LIBRARY_PATH` with your GCC runtime library
+directory before running `pyamplicol`.
+
 **3. Check the installation and run the loop examples** from a directory
 outside the repository. Generation uses Symbolica: pyAmpliCol registers its
 package key at import; if you hold a personal Symbolica license, export it as
