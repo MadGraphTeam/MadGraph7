@@ -85,12 +85,15 @@ build_contur()  {
     # YODA's python extension needs Cython (see warm_cache.yml contur_cache);
     # no sudo here, so into the user site of the interpreter madgraph uses
     python3 -c 'import Cython' 2> /dev/null || python3 -m pip install --user Cython
-    # ... and the `cython` command: YODA's build regenerates core.cpp with it,
-    # from PATH. pip --user puts it in ~/.local/bin, which is on PATH on the
-    # hosted runners but not for this runner service; without it the Python
-    # extension failed while libYODA still installed (rivet-mkhtml: "No
-    # module named 'yoda'").
-    export PATH="$(python3 -m site --user-base)/bin:$PATH"
+    # ... and two commands from PATH, both there on the hosted runners: the
+    # `cython` that regenerates core.cpp (pip --user puts it in ~/.local/bin,
+    # not on this runner service's PATH), and an unversioned `python` for its
+    # `#!/usr/bin/env python` template script (AlmaLinux only has python3).
+    # Without them YODA's Python extension failed while libYODA still
+    # installed (rivet-mkhtml: "No module named 'yoda'").
+    mkdir -p "$HEP.bin"
+    ln -sfn "$(command -v python3)" "$HEP.bin/python"
+    export PATH="$HEP.bin:$(python3 -m site --user-base)/bin:$PATH"
     if [ -d "$HEP/yoda" ] && ! yoda_pyext; then
         # rebuild YODA alone (rivet does not, YODA being found): its installer
         # untars over an existing tree, so start from none
