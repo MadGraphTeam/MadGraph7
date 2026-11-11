@@ -193,10 +193,12 @@ class BackendRuntime:
 @dataclass(frozen=True, slots=True)
 class StabilityPoint:
     """One flat point of a backend's stability run: its ``index`` among the
-    flat points (point i from seed + i), ``status`` ("measured"; "binary64-
-    failed": refused or failed in binary64, 0 true digits and no estimate;
-    "reference-failed": no double-double reference, not measured), the
-    digits and the failure ``reason``."""
+    flat points (point i from seed + i), ``status`` ("measured": accepted in
+    binary64; "best-effort": refused by the backend's own checks, measured
+    with its best-effort value, the unchecked reduction's, m-lit
+    ux-besteffort; "binary64-failed": no binary64 value at all, 0 true digits
+    and no estimate; "reference-failed": no double-double reference, not
+    measured), the digits and the refusal or failure ``reason``."""
 
     index: int
     status: str
@@ -216,7 +218,11 @@ class BackendStability:
     ``flagged``: measured points the default checks flag (estimate above
     ``target``, or a binary64 failure); ``flagged_inaccurate``: of those, the
     truly inaccurate ones; ``unflagged_inaccurate``: truly inaccurate points
-    not flagged; ``truly_inaccurate``: all truly inaccurate ones."""
+    not flagged; ``truly_inaccurate``: all truly inaccurate ones.
+    ``best_effort``: measured points the backend refused in binary64 and
+    served with their best-effort value (counted flagged: never accepted),
+    measured at their true digits; ``best_effort_covered``: of those with an
+    uncertainty, the ones whose true relative error is within it."""
 
     backend: str
     refusal: str | None = None
@@ -232,6 +238,8 @@ class BackendStability:
     truly_inaccurate: int = 0
     seconds: float = 0.0
     per_point: tuple[StabilityPoint, ...] = ()
+    best_effort: int = 0
+    best_effort_covered: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -444,6 +452,7 @@ def _stability(
             plain: list[Any] = []
             estimates: list[Any] = []
             reasons: list[str | None] = []
+            statuses: list[str] = []
             reference: list[Any] = []
             reference_reasons: list[str | None] = []
             for start in range(0, len(points), chunk):
@@ -453,17 +462,23 @@ def _stability(
                     if not isinstance(scales, list)
                     else scales[start : start + chunk]
                 )
-                common = {
-                    "mu_r2": mu,
-                    "poles": "none",
-                    "on_failure": "return",
-                    "reduction": backend,
-                }
-                checked = runtime.evaluate(batch, stability_checks=checks, **common)
+                common = {"mu_r2": mu, "poles": "none", "reduction": backend}
+                # A point the backend refuses keeps its best-effort value
+                # (the default policy, m-lit ux-besteffort), measured as such;
+                # the double-double reference counts only accepted values.
+                checked = runtime.evaluate(
+                    batch,
+                    stability_checks=checks,
+                    on_failure="best-effort",
+                    **common,
+                )
                 plain.extend(checked.values)
                 estimates.extend(checked.stability)
                 reasons.extend(_reasons(checked))
-                exact = runtime.evaluate(batch, arithmetic="double-double", **common)
+                statuses.extend(checked.statuses)
+                exact = runtime.evaluate(
+                    batch, arithmetic="double-double", on_failure="return", **common
+                )
                 reference.extend(exact.values)
                 reference_reasons.extend(_reasons(exact))
         except ReductionUnavailable as error:
@@ -479,6 +494,7 @@ def _stability(
                 time.perf_counter() - begin,
                 reasons=reasons,
                 reference_reasons=reference_reasons,
+                statuses=statuses,
             )
         )
     setup = {
@@ -508,10 +524,17 @@ def _stability(
 def _reasons(result: Any) -> list[str | None]:
     from pyamplicol.benchmarking import failure_reason
 
-    return [
-        None if valid else failure_reason(lane)
-        for valid, lane in zip(result.valid, result.diagnostics, strict=True)
-    ]
+    out: list[str | None] = []
+    for valid, lane in zip(result.valid, result.diagnostics, strict=True):
+        best = getattr(lane, "best_effort", None)
+        out.append(
+            None
+            if valid
+            else best.refusal
+            if best is not None
+            else failure_reason(lane)
+        )
+    return out
 
 
 def _backend_statistics(
@@ -524,21 +547,32 @@ def _backend_statistics(
     *,
     reasons: Sequence[str | None] | None = None,
     reference_reasons: Sequence[str | None] | None = None,
+    statuses: Sequence[str] | None = None,
 ) -> BackendStability:
     true_digits: list[float] = []
     estimated_digits: list[float | None] = []
     per_point: list[StabilityPoint] = []
     flagged = flagged_inaccurate = unflagged_inaccurate = inaccurate = 0
-    failed_binary64 = failed_reference = 0
+    failed_binary64 = failed_reference = best_effort = covered = 0
     count = len(plain)
+    statuses = statuses if statuses is not None else ["success"] * count
     reasons = reasons if reasons is not None else [None] * count
     reference_reasons = (
         reference_reasons if reference_reasons is not None else [None] * count
     )
-    for index, (value, estimate, exact, reason, reference_reason) in enumerate(
-        zip(plain, estimates, reference, reasons, reference_reasons, strict=True)
+    for index, (value, estimate, exact, reason, reference_reason, status) in enumerate(
+        zip(
+            plain,
+            estimates,
+            reference,
+            reasons,
+            reference_reasons,
+            statuses,
+            strict=True,
+        )
     ):
-        if value is None or estimate is None:
+        served = status == "best-effort"
+        if value is None or (estimate is None and not served):
             # Refused or failed in binary64: no value (0 true digits, the
             # worst end, whatever the reference) and no estimate; the
             # failure is reported, so the default checks detect it.
@@ -574,11 +608,28 @@ def _backend_statistics(
         total = float(_total_finite(value))
         true_relative = relative_error(total, _total_finite(exact))
         digits = stable_digits(true_relative)
-        estimated = stable_digits(_estimated_relative(estimate, total))
+        estimated = (
+            None
+            if estimate is None
+            else stable_digits(_estimated_relative(estimate, total))
+        )
         true_digits.append(digits)
         estimated_digits.append(estimated)
-        per_point.append(StabilityPoint(index, "measured", digits, estimated))
-        flag = float(estimate.relative) > target
+        per_point.append(
+            StabilityPoint(
+                index,
+                "best-effort" if served else "measured",
+                digits,
+                estimated,
+                reason if served else None,
+            )
+        )
+        if served:
+            # Never accepted: flagged whatever its estimate says.
+            best_effort += 1
+            if estimate is not None:
+                covered += true_relative <= _estimated_relative(estimate, total)
+        flag = served or float(estimate.relative) > target
         wrong = true_relative > target
         flagged += flag
         inaccurate += wrong
@@ -599,6 +650,8 @@ def _backend_statistics(
         inaccurate,
         seconds,
         tuple(per_point),
+        best_effort,
+        covered,
     )
 
 

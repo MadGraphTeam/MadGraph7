@@ -60,6 +60,10 @@ def _json_value(value: object) -> object:
                 normalization="Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)",
                 shape=list(value.shape),
                 born_shape=list(value.born_shape),
+                # Per-point status and the result-level warning metadata
+                # (m-lit ux-besteffort: data for the caller, never printed).
+                statuses=list(value.statuses),
+                warnings=[item.to_json() for item in value.warnings],
             )
         if isinstance(value, TreeOrderEvaluation):
             result.update(

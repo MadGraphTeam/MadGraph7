@@ -38,6 +38,8 @@ BACKEND = {"tirust": "LIGHTCYAN_EX", "ninjars": "LIGHTYELLOW_EX"}
 STATUS = {
     "success": GOOD,
     "rescued": RECOVERED,
+    # A value without an accepted accuracy (m-lit ux-besteffort).
+    "best-effort": RECOVERED,
     "accuracy-not-established": BAD,
     "unsupported": BAD,
     "failed": BAD,
