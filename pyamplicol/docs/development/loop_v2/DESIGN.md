@@ -1,5 +1,23 @@
 # pyAmpliCol one-loop engine v2: final design
 
+> **Current state (version 1.0.3, 2026-11-11).** This file is the design
+> record of the v2 engine: its revision text, work-package status lines and
+> measurements keep the dates they were written on, and the user
+> documentation (`docs/user/`) is authoritative for what ships. In 1.0.3 the
+> v2 engine is the only one-loop engine and serves Born-interfered virtuals
+> (plan v4) and loop-induced |A_loop|^2 (plan v5, full colour only, §7.11).
+> Both reduction backends serve both process types: `reduction = "auto"`
+> takes TIRust for loop-induced processes (per-point NinjaRS fallback,
+> guarded in double-double and arbitrary precision by a rotation re-test of
+> the promoted, improved point; the guard's estimate is an estimate) and
+> NinjaRS for Born-interfered ones. Inputs of double-double and
+> arbitrary-precision evaluations are improved with MadLoop's z-shift by
+> default (binary64 only on request); stability checks are off by default,
+> the recommended checks are `stability.RECOMMENDED_CHECKS`, and the
+> backends' own acceptance checks stay on unless `reduction_unchecked`.
+> Schedule B is the production dressing schedule; schedule M (WP2.8) exists
+> as an opt-in executor and is not selected automatically.
+
 **Date** 2026-10-20, revision 2 (same day; supersedes revision 1). **Host** branch `loop` @ 4faafcad (read only for this design). **File** `workspace/reports/engine-v2/loop-engine-v2-design.md`.
 
 This is the implementation design of the shared-recursion one-loop engine ("v2") that replaces the inherited per-Feynman-diagram engine. It consolidates the seven `understand-*.md` reports, the three candidate designs and the three judgements in this directory, and adds checks made for this document: code and NinjaRS source re-reads, provider timings, and a literature pass. Where it departs from a candidate design or from `MASTER_PLAN.md`, it says so.

@@ -1,7 +1,9 @@
 # Loop engine v2 — binding user requirements addendum (2026-10-20)
 
 These requirements come directly from the user after reviewing the v2 design.
-They override the design document (`loop-engine-v2-design.md`) where they differ.
+They override the design document ([DESIGN.md](DESIGN.md)) where they differ.
+They apply unchanged to the loop-induced processes added in version 1.0.3
+(served at full colour, with the pole selections `"all"` and `"none"`).
 
 ## A. Freedom in structure and algorithms; performance gates unchanged
 
