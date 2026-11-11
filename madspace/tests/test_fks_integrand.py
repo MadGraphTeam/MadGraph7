@@ -275,25 +275,29 @@ class Channel:
         return real, born, color, spin, diagonal
 
     def scales(self):
-        """The Ellis-Sexton scale Q of the n-body part and mu_F of the
-        collinear counterterms (Q where there are none), from the scales of
-        the contributions (Q of the real emission is at its own kinematics)."""
+        """The Ellis-Sexton scale Q of the n-body part (mu_R of the
+        references), its mu_F and mu_F of the collinear counterterms (that of
+        the n-body part where there are none), from the scales of the
+        contributions (those of the real emission are at its own
+        kinematics)."""
         q = np.ones(len(self.points))
-        mu_f = np.zeros(len(self.points))
+        mu_f = np.ones(len(self.points))
+        collinear = np.zeros(len(self.points))
         for k, point in enumerate(self.points):
             for c in point["contributions"]:
                 if c["type"] in (2, 3):
                     q[k] = math.sqrt(c["scales2"][0])
-                if c["type"] in (5, 6):
                     mu_f[k] = math.sqrt(c["scales2"][2])
-        return q, np.where(mu_f > 0, mu_f, q)
+                if c["type"] in (5, 6):
+                    collinear[k] = math.sqrt(c["scales2"][2])
+        return q, mu_f, np.where(collinear > 0, collinear, mu_f)
 
     @functools.cached_property
     def subtraction(self):
         """The outputs of FKSSubtraction at the event."""
         out, index = self.event
         real, born, color, spin, _ = self.blocks
-        q, mu_f = self.scales()
+        q, _, mu_f = self.scales()
         function = fks_subtraction(self.born, self.configurations, n_f=self.n_f)
         names = [
             "momenta",
@@ -338,7 +342,7 @@ class Channel:
         """The outputs of FKSSoftVirtual at the Born, at mu_R = mu_F = Q."""
         out, _ = self.event
         _, born, color, _, _ = self.blocks
-        q, _ = self.scales()
+        q, _, _ = self.scales()
         count = len(self.points)
         function = fks_soft_virtual(self.born, self.configurations, n_f=self.n_f)
         return evaluate(
@@ -428,7 +432,7 @@ class Channel:
         out, _ = self.event
         real, born, color, spin, _ = self.blocks
         soft_virtual, ren, fact = self.soft_virtual
-        q, mu_f = self.scales()
+        q, born_mu_f, mu_f = self.scales()
         nbody = soft_virtual.copy()
         virtual = np.zeros_like(soft_virtual)
         for k, point in enumerate(self.points):
@@ -453,8 +457,8 @@ class Channel:
             virtual=virtual,
             alpha=np.full(len(q), self.alpha),
             ren_scale=q,
-            fact_scale1=q,
-            fact_scale2=q,
+            fact_scale1=born_mu_f,
+            fact_scale2=born_mu_f,
             collinear_fact_scale1=mu_f,
             collinear_fact_scale2=mu_f,
             channel_weight=self.field("blocks", "channel", "enhance"),

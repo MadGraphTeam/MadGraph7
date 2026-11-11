@@ -266,11 +266,13 @@ class TestFKSConfigurationsJson(unittest.TestCase):
                                real_processes=list(real_processes))
 
     @staticmethod
-    def real(colors, charges, fks_j_from_i, tags=None):
+    def real(colors, charges, fks_j_from_i, tags=None, flavors=()):
         tags = tags if tags is not None else [False] * len(colors)
+        processes = [{'legs': [{'id': pdg} for pdg in pdgs]} for pdgs in flavors]
         return SimpleNamespace(colors=colors, charges=charges,
                                particle_tags=tags,
-                               fks_j_from_i=fks_j_from_i, isfinite=False)
+                               fks_j_from_i=fks_j_from_i, isfinite=False,
+                               matrix_element={'processes': processes})
 
     @staticmethod
     def info(n_me, pdgs, i, j, ij_id, soft):
@@ -292,12 +294,19 @@ class TestFKSConfigurationsJson(unittest.TestCase):
             self.info(2, [21, 21, 2, 11, -11, -2], 6, 1, 2, False)], [
             self.real([3, 8, 3, 1, 1, 8], charges + [0.],
                       {1: [], 2: [], 3: [], 4: [], 5: [], 6: [1, 2, 3]},
-                      [False, False, False, True, False, False]),
+                      [False, False, False, True, False, False],
+                      [[2, 21, 2, 11, -11, 21], [4, 21, 4, 11, -11, 21]]),
             self.real([8, 8, 3, 1, 1, -3], [0., 0.] + charges[2:] + [-2 / 3],
-                      {1: [], 2: [], 3: [], 4: [], 5: [], 6: [2]})])
+                      {1: [], 2: [], 3: [], 4: [], 5: [], 6: [2]},
+                      flavors=[[21, 21, 2, 11, -11, -2],
+                               [21, 21, 4, 11, -11, -4]])])
         data = export_fks.get_fks_configurations(fksborn)
         self.assertEqual(data['nincoming'], 2)
         self.assertEqual(data['born_pdgs'], [2, 21, 2, 11, -11])
+        self.assertEqual(data['born_flavors'], [[2, 21, 2, 11, -11]])
+        self.assertEqual(data['real_flavors'], [
+            [[2, 21, 2, 11, -11, 21], [4, 21, 4, 11, -11, 21]],
+            [[21, 21, 2, 11, -11, -2], [21, 21, 4, 11, -11, -4]]])
         self.assertEqual(data['configurations'], [
             {'i_fks': 6, 'j_fks': 1, 'ij_pdg': 2,
              'real_pdgs': [2, 21, 2, 11, -11, 21], 'real_me': 1,
@@ -326,6 +335,7 @@ class TestFKSConfigurationsJson(unittest.TestCase):
         # [LOonly]: none, not the fake configuration of fks_info.inc
         data = export_fks.get_fks_configurations(self.fksborn([]))
         self.assertEqual(data['configurations'], [])
+        self.assertEqual(data['real_flavors'], [])
         self.assertEqual(data['extra_counterterms'], [])
         self.assertEqual(data['born_pdgs'], [2, 21, 2, 11, -11])
 

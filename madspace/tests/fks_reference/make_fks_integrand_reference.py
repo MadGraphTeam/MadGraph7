@@ -113,6 +113,11 @@ PROCESSES = {
         "p p > e+ e- [QCD]",
         dict(HADRONIC, mll_sf=30, ptl=20, etal=2.5, drll=0.4),
     ),
+    # mu_R = 2 H_T/2 and mu_F = H_T/4, with the Ellis-Sexton scale at mu_R
+    "pp_epem_scales": (
+        "p p > e+ e- [QCD]",
+        dict(HADRONIC, mll_sf=30, mur_over_ref=2.0, muf_over_ref=0.5),
+    ),
 }
 # more points where the jet cuts fail rarely at the event alone
 POINTS = {"epem_jj_kt": 100, "epem_jj_antikt": 100}

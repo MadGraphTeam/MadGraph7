@@ -123,6 +123,12 @@ def get_fks_configurations(fksborn, orders=None):
                 i - 1), the particles j with which it forms an FKS pair, all
                 1-based, FKS_J_FROM_I_D: the pairs whose sector functions
                 partition the phase space of the real process
+        born_flavors: the flavours that share the Born matrix element, the
+            PDG codes of each in the order of its momenta, as the processes of
+            the Born (the first is born_pdgs)
+        real_flavors[]: those of each real matrix element (real_me =
+            position + 1), whose luminosity parton_lum_<real_me>.f sums over
+            them in this order (the first is real_pdgs of its configurations)
         extra_counterterms[]: the Borns of the extra counterterms
             (born_cnt_<n>.f, n = position + 1), which configurations with a
             second splitting type use for it (extra_cnt_index), for a pair of
@@ -176,10 +182,17 @@ def get_fks_configurations(fksborn, orders=None):
             'real_tags': [bool(tag) for tag in real.particle_tags],
             'fks_j_from_i': fks_j_from_i,
         })
+    def flavors(matrix_element):
+        return [[leg['id'] for leg in process['legs']]
+                for process in matrix_element['processes']]
+
     extra_cnt_me_list = getattr(fksborn, 'extra_cnt_me_list', [])
     data = {
         'nincoming': len([leg for leg in born_legs if not leg['state']]),
         'born_pdgs': [leg['id'] for leg in born_legs],
+        'born_flavors': flavors(fksborn.born_me),
+        'real_flavors': [flavors(real.matrix_element)
+                         for real in fksborn.real_processes],
         'configurations': configurations,
         'extra_counterterms': [
             {'born_pdgs': [leg['id'] for leg in me['processes'][0]['legs']]}
