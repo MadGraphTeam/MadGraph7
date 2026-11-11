@@ -220,7 +220,8 @@ public:
         const std::optional<CustomFunction>& custom_bias = std::nullopt,
         const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
         const std::optional<MappingChannelWeights>& mapping_chan_weights = std::nullopt,
-        int mlm_history_qcd_power = -1
+        int mlm_history_qcd_power = -1,
+        const std::optional<EELuminosity>& lepton_luminosity = std::nullopt
     );
     /// Globals prefix under which the second beam's PDF grid is registered
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
@@ -326,6 +327,7 @@ private:
     AdaptiveDiscrete _discrete_flavor;
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
+    std::optional<EELuminosity> _lepton_luminosity;
     // with different PDFs per beam: each leg's density from the other beam,
     // for the events whose orientation is mirrored
     std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;

@@ -3173,6 +3173,31 @@ class Event(list):
         return self.loweight
     
             
+    beamstrahlung_pattern = re.compile(
+        r"<beamstrahlung>(.*?)</beamstrahlung>", re.DOTALL)
+
+    def parse_beamstrahlung(self):
+        """Return [xbs1, xbs2], the momentum fraction each beam retained
+        after beamstrahlung, or None if the event carries no such block.
+
+        A dressed-lepton density convolutes beamstrahlung with ISR, so the
+        x's implied by the initial-state momenta are the product of the
+        two; this block is what lets a shower tell them apart (only the
+        ISR part may be backward-evolved). Unlike the other parse_*
+        methods this one leaves self.tag alone, so the information
+        survives being read and written back out."""
+
+        found = self.beamstrahlung_pattern.search(self.tag)
+        if not found:
+            return None
+        try:
+            values = [float(v) for v in found.group(1).split()]
+        except ValueError:
+            return None
+        if len(values) != 2:
+            return None
+        return values
+
     scales_attribute_pattern = re.compile(r'(\w+)\s*=\s*["\']([^"\']*)["\']')
 
     def get_scales_attributes(self):
