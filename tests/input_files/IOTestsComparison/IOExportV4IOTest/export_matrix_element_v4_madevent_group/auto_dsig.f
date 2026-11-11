@@ -467,6 +467,13 @@ C      orientation)
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IGRAPH(VECSIZE_MEMMAX)
       COMMON/VEC_IGRAPH/IGRAPH
+C     1-x of each beam: OMX_EE is what PDG2PDF reads for a
+C      dressed-lepton
+C     density, ALL_OMX_EE its value per lane (filled in dsample.f)
+      DOUBLE PRECISION OMX_EE(2)
+      COMMON /TO_EE_OMX1/ OMX_EE
+      DOUBLE PRECISION ALL_OMX_EE(2, VECSIZE_MEMMAX)
+      COMMON /TO_EE_OMX_VEC/ ALL_OMX_EE
 C     
 C     DATA
 C     
@@ -504,6 +511,8 @@ C     Continue only if IMODE is 0, 4 or 5
         ENDIF
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+C         the dressed-lepton densities read 1-x from OMX_EE, not from x
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
           IF (ABS(LPP(IB(1))).GE.1) THEN
 C           LP=SIGN(1,LPP(IB(1)))
             U1(IVEC)=PDG2PDF(LPP(IB(1)),2, IB(1),ALL_XBK(IB(1),IVEC)
@@ -564,6 +573,7 @@ C         Do not need those three here. do I?
           XBK(:) = ALL_XBK(:,IVEC)
 C         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
 
 C         Select a flavor combination (need to do here for right sign)
@@ -643,6 +653,8 @@ C       set minimum ipsel for this IFLAV
           XBK(:) = ALL_XBK(:,IVEC)
 C         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+C         UNWGT samples the beamstrahlung split from it
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
           IF(FRAME_ID.NE.6)THEN
             CALL BOOST_TO_FRAME(ALL_PP(0,1,IVEC), FRAME_ID, P1)
