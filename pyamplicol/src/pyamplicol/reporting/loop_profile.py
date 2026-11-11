@@ -74,7 +74,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             "time per point",
             "fastest - slowest call",
             "vs fastest",
-            "effective (reason)",
+            "lanes per effective backend",
             "failed points",
         ),
         "Runtime per reduction backend (the setup above)",
@@ -109,14 +109,16 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             if len(served) < 2
             else palette.paint(f"x{row.ratio:.2f}", palette.RECOVERED, color=color)
         )
-        reduction = profile.reduction
-        effective = str(reduction.get("effective", "N/A"))
-        reason = str(reduction.get("reason", ""))
-        lanes = reduction.get("lanes") or {}
-        if len(lanes) > 1:
-            reason += "; lanes: " + ", ".join(
-                f"{name} {count}" for name, count in sorted(lanes.items())
+        lanes = profile.reduction.get("lanes") or {}
+        lane_text = ", ".join(
+            palette.paint(
+                f"{_name(name)} {count}",
+                palette.BACKEND.get(name) if name == row.backend else palette.RECOVERED,
+                color=color,
             )
+            + ("" if name == row.backend else " (per-point fallback)")
+            for name, count in sorted(lanes.items(), key=lambda i: i[0] != row.backend)
+        )
         summary.add_row(
             (
                 label,
@@ -128,7 +130,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 ),
                 f"{_seconds_text(profile.low)} - {_seconds_text(profile.high)}",
                 ratio,
-                f"{_name(effective)} ({reason})" if reason else _name(effective),
+                lane_text,
                 palette.paint(
                     str(profile.failed_points),
                     palette.GOOD if profile.failed_points == 0 else palette.BAD,
@@ -276,7 +278,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         prettytable,
         (
             "backend",
-            "points (failed)",
+            "points (failed: binary64 / reference)",
             "median digits true / estimated",
             f"flagged unstable (estimate > {target:g})",
             "of which truly inaccurate",
@@ -308,7 +310,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 label,
                 f"{row.points} ("
                 + palette.paint(
-                    str(row.failed),
+                    f"{row.failed_binary64} / {row.failed_reference}",
                     palette.GOOD if row.failed == 0 else palette.BAD,
                     color=color,
                 )

@@ -196,6 +196,11 @@ class BackendStability:
     unflagged_inaccurate: int = 0
     truly_inaccurate: int = 0
     seconds: float = 0.0
+    # Of ``failed``: the points without a binary64 value or estimate (the
+    # backend refused or failed them; no rescue runs) and those whose
+    # double-double reference failed.
+    failed_binary64: int = 0
+    failed_reference: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -466,10 +471,14 @@ def _backend_statistics(
     true_digits: list[float] = []
     estimated_digits: list[float] = []
     flagged = flagged_inaccurate = unflagged_inaccurate = inaccurate = 0
-    failed = 0
+    failed = failed_binary64 = failed_reference = 0
     for value, estimate, exact in zip(plain, estimates, reference, strict=True):
-        if value is None or exact is None or estimate is None:
+        if value is None or estimate is None or exact is None:
             failed += 1
+            if value is None or estimate is None:
+                failed_binary64 += 1
+            else:
+                failed_reference += 1
             continue
         total = float(_total_finite(value))
         true_relative = relative_error(total, _total_finite(exact))
@@ -496,6 +505,8 @@ def _backend_statistics(
         unflagged_inaccurate,
         inaccurate,
         seconds,
+        failed_binary64,
+        failed_reference,
     )
 
 
