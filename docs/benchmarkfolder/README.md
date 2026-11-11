@@ -8,8 +8,11 @@ later [private matched-input QP comparison](experiments/matched-native-input-qua
 agrees in Born, finite and both poles at the saved forward fixture, with
 maximum relative disagreement `2.014e-16`. Its explicit backend-8 input-policy
 derivative is unpromoted; original legacy 8's failure remains historical.
-Independent amplitude truth, normal checked execution and generic production
-coverage remain unqualified. Final precise timings remain
+A later [private checked CMS20 replay](experiments/normal-checked-cms20-qualification-1/README.md)
+also passes MadLoop's automatic DP-to-QP rescue and independent stability checks,
+retaining six failed DP reductions before the accepted QP result. That fixture
+uses cache disabled. Independent amplitude truth and generic production coverage
+remain unqualified. Final precise timings remain
 [Hua-Sheng’s local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
 
 This campaign compares the exact starting revision

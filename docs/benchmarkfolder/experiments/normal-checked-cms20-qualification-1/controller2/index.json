@@ -1,0 +1,99 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 4008,
+      "sha256": "81bcb6646ae36788215990da7ca4c813e5869f65921a00265998b5da06d47576"
+    },
+    "SOURCE_REVIEW.md": {
+      "bytes": 1706,
+      "sha256": "4d0c4e431b5f45a810de2f19ad2666d7ebfd25dfae3536e4c6eb7d8cfc5664aa"
+    },
+    "backend9-auto-MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "2121218a2f7d87e9e80ebe1bd217c9669173d7adf194e9c06e37401b9c50c7a4"
+    },
+    "bindings.json": {
+      "bytes": 3731,
+      "sha256": "54e06eeed43560ec422129f931b1e77e26bd8ff7ed6c02e03c457fe1e3a6a135"
+    },
+    "compare.py": {
+      "bytes": 27818,
+      "sha256": "a5e7f4dbce19940f9e5110f391f378ee85c5dac6038bd4986da390e4ad3df590"
+    },
+    "inputs/cms-param_card.dat": {
+      "bytes": 4397,
+      "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+    },
+    "inputs/cms-point1.dat": {
+      "bytes": 390,
+      "sha256": "ed760e231007f76fa0f6b80aad72be2291a5e5cef8343e14c69e40dd6a50233b"
+    },
+    "inputs/cms-point20.dat": {
+      "bytes": 389,
+      "sha256": "57d7f677e925d7bc258e65fe440880d2876f0317de3904c348060e08c48edd1d"
+    },
+    "limit_exec.py": {
+      "bytes": 449,
+      "sha256": "202b098298427eb34c60474ee2e0695ce4535fd36c5365b23ded3c58a0343356"
+    },
+    "native_job.py": {
+      "bytes": 9411,
+      "sha256": "2b9f31501859681884cfba554abda08cd4dc60f2c53f473cf6df05440fab9ec8"
+    },
+    "pole_checks.py": {
+      "bytes": 11618,
+      "sha256": "d4a272250645fdc2a87d864c3b81b7ae4539384cb957e6d6b6db3dd3baf44bce"
+    },
+    "run.py": {
+      "bytes": 12247,
+      "sha256": "dc6a5bba07974bb2e574cf1e287d57ab35394504a80f08b40d779e8b2b6a8e8f"
+    },
+    "test-receipt.json": {
+      "bytes": 966,
+      "sha256": "4f145226705357cf4baeca8c00bbadeb77858f0f96a124914ad88c7be56e4de0"
+    },
+    "test_compare.py": {
+      "bytes": 16629,
+      "sha256": "9328011afa17c309430df7218a9d8637040297b46004f4a98ebec01b82489c49"
+    },
+    "test_controller.py": {
+      "bytes": 10316,
+      "sha256": "6b9e1ed7541f24e8ae56f3feff893f92cb5333a7b2aab11ef24b3d90b2ae5e0a"
+    },
+    "test_native_job.py": {
+      "bytes": 6617,
+      "sha256": "4dc4e98ebf14d84fd899b6ed36195b9a85ee8fc13b133028ba2268afa04b8208"
+    },
+    "test_pole_checks.py": {
+      "bytes": 7883,
+      "sha256": "67db1de2ed26075ec12ef3f6c24d65e8d1265a5fe68e622c062cbd9b63da4a0e"
+    },
+    "test_retrospective.py": {
+      "bytes": 4665,
+      "sha256": "b1be37d09ecb58447d2814ba8e4247fc057921065518b1feaa7a10317696c6f6"
+    },
+    "tests-normal.log": {
+      "bytes": 8891,
+      "sha256": "0f3ef61a13c6fed0a07cdb32f54573ce2c33789007d2d23f0c925abce1cc1229"
+    },
+    "tests-optimized.log": {
+      "bytes": 8891,
+      "sha256": "5dcb78ea91e781830149e4b4572d138d850ebcf1b390b2afd80db3f05d464bbe"
+    },
+    "validation-plan.json": {
+      "bytes": 2140,
+      "sha256": "bfe4c422069e033d6a443b0d083a094d31bb6ba26fd6afca40b1b6a01ab42f4f"
+    },
+    "verify.py": {
+      "bytes": 13758,
+      "sha256": "7a4a010161cd2b31a541d53533cb1138f70b110683ed128d54ae4ec07d00759c"
+    },
+    "worker_entry.py": {
+      "bytes": 2335,
+      "sha256": "6316b6ff2740e536293eff2ff3fa4b4e5e4386ce78f357f22a0670d9074f6f12"
+    }
+  },
+  "native_actions": 0,
+  "schema": "private-normal-checked-run-only-controller-source-index-v1",
+  "scope": "source-only RUN-only successor; native admission required separately"
+}
