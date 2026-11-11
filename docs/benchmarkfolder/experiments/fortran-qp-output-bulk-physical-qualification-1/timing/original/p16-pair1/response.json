@@ -1,0 +1,14 @@
+{
+  "after_utc": "2026-11-11T13:36:01.039212+00:00",
+  "files": {
+    "anchor-status.dat": "79d632d9294e535bf28407ffd84ce3edf3e2565b948809c78f6f1080dacf869d",
+    "anchor-timing.dat": "621b26e3f4cc2723e37b35d9991a8f4d18a93dc8e8ed13798cc84bb564243d4a",
+    "anchor-words.dat": "7ef921fb8e2129951fd72d3a9a546e95775d22890bb2604fb8f2bf921b513bb4"
+  },
+  "response": [
+    "ANCHORDONE",
+    "12",
+    "16",
+    "1"
+  ]
+}

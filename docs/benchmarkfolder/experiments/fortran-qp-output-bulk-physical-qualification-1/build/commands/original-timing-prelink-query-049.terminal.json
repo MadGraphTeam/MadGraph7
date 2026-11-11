@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libutil.so"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-physical-work-1/build/original-timing/SubProcesses/P0_uux_zgg",
+  "finished_utc": "2026-11-11T13:07:43.398284+00:00",
+  "returncode": 0,
+  "started_utc": "2026-11-11T13:07:43.384081+00:00",
+  "stdout_sha256": "47752d2193a5738473520f5e010d4819b4d4da145bad343384452b67f382c7fe",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

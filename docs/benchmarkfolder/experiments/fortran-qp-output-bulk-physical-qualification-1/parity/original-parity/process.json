@@ -1,0 +1,16 @@
+{
+  "affinity": [
+    12
+  ],
+  "cpu_exclusive": false,
+  "identity": {
+    "parent_pid": 3,
+    "pid": 4,
+    "process_group": 4,
+    "session": 4,
+    "start_time_ticks": 243687362,
+    "state": "S"
+  },
+  "loadavg_after_READY": "153.77 841.81 1492.83 172/72158 5\n",
+  "pid": 4
+}

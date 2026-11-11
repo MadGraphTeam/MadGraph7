@@ -1,0 +1,135 @@
+{
+  "audit_compiler_calls": 0,
+  "audit_elapsed_seconds": 9.629978618118912,
+  "audit_loader_calls": 0,
+  "audit_reducer_or_amplitude_calls": 0,
+  "audit_source_sha256": "17248b9f2ca0c4f05d91a349c9f45ff8d769bbbd595e349b0ca1117ba8b656ec",
+  "build_cap_seconds": 300,
+  "build_elapsed_seconds": 88.177632,
+  "build_result_sha256": "933bb657609b6fda31f800b10da0b9e9248e05dcd745bbed8158384b39cc0b12",
+  "build_terminal_sha256": "5fe62f2983e1c80e919fb404d167f1cbce2e004a1a89bab06c465d01860c932c",
+  "cleanup_reserve_seconds": 60,
+  "closed_original_objects_and_modules_and_archives": 144,
+  "closed_original_sources": 195,
+  "command_logs_sha256_verified": 292,
+  "distinct_resolved_bytes_live_hashed": 1301186894,
+  "distinct_resolved_files_live_hashed": 5544,
+  "executables": {
+    "candidate-parity": {
+      "MP_external_relocations": [
+        {
+          "offset": 5550,
+          "section": ".text",
+          "type": "R_X86_64_PLT32"
+        }
+      ],
+      "actual_PT_INTERP": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "actual_link_load_count": 55,
+      "executable_sha256": "370766295b3c762be1b01bd0f5c3c96ec8ddb97238b948988586d6f1b085409f",
+      "generated_object_inventory_count": 141,
+      "prebound_file_count": 88,
+      "private_module_sha256": "256f0d877d0349c181278ac5222c4800cc216195e5d44d2e0740912950ad1de3",
+      "runtime_provider_count": 15,
+      "source_count": 196,
+      "unchanged_original_object_bindings": 143,
+      "unique_private_module_symbols": 23,
+      "wire_wrapper_definitions": 0
+    },
+    "candidate-timing": {
+      "MP_external_relocations": [
+        {
+          "offset": 5550,
+          "section": ".text",
+          "type": "R_X86_64_PLT32"
+        }
+      ],
+      "actual_PT_INTERP": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "actual_link_load_count": 55,
+      "executable_sha256": "97a5cd8b45ef1915396d3ab45de0a3d3b746fce95a5c000cad7b397b7482cddc",
+      "generated_object_inventory_count": 141,
+      "prebound_file_count": 88,
+      "private_module_sha256": "256f0d877d0349c181278ac5222c4800cc216195e5d44d2e0740912950ad1de3",
+      "runtime_provider_count": 15,
+      "source_count": 196,
+      "unchanged_original_object_bindings": 143,
+      "unique_private_module_symbols": 23,
+      "wire_wrapper_definitions": 0
+    },
+    "original-parity": {
+      "MP_external_relocations": [
+        {
+          "offset": 5528,
+          "section": ".text",
+          "type": "R_X86_64_PLT32"
+        }
+      ],
+      "actual_PT_INTERP": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "actual_link_load_count": 55,
+      "executable_sha256": "1bfa52c7f97dc4ffc479857f65bbe9d28d48963825d4086fac1ee77c2a29496d",
+      "generated_object_inventory_count": 141,
+      "prebound_file_count": 88,
+      "private_module_sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+      "runtime_provider_count": 15,
+      "source_count": 196,
+      "unchanged_original_object_bindings": 143,
+      "unique_private_module_symbols": 23,
+      "wire_wrapper_definitions": 0
+    },
+    "original-timing": {
+      "MP_external_relocations": [
+        {
+          "offset": 5528,
+          "section": ".text",
+          "type": "R_X86_64_PLT32"
+        }
+      ],
+      "actual_PT_INTERP": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "actual_link_load_count": 55,
+      "executable_sha256": "c0885d0917c23d010a9b16484bb7cc280e94e87039679fcc59200b95e8a29d72",
+      "generated_object_inventory_count": 141,
+      "prebound_file_count": 88,
+      "private_module_sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+      "runtime_provider_count": 15,
+      "source_count": 196,
+      "unchanged_original_object_bindings": 143,
+      "unique_private_module_symbols": 23,
+      "wire_wrapper_definitions": 0
+    },
+    "wire-parity": {
+      "MP_external_relocations": [
+        {
+          "offset": 5528,
+          "section": ".text",
+          "type": "R_X86_64_PLT32"
+        }
+      ],
+      "actual_PT_INTERP": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "actual_link_load_count": 56,
+      "executable_sha256": "edc86daab75df537274e6981222b43ce3fbef1096f427fa8d0c0988573ff6d74",
+      "generated_object_inventory_count": 142,
+      "prebound_file_count": 89,
+      "private_module_sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+      "runtime_provider_count": 15,
+      "source_count": 197,
+      "unchanged_original_object_bindings": 143,
+      "unique_private_module_symbols": 23,
+      "wire_wrapper_definitions": 1
+    }
+  },
+  "parity_executed_or_qualified_by_audit": false,
+  "parity_source_boundary_clear": true,
+  "protected_absences": [
+    "Template/NLO/MCatNLO/include/pineappl_maxproc.inc",
+    "input/.mg5_configuration_default.txt",
+    "input/mg5_configuration.txt",
+    "vendor/SudGen/NNPDFDriver.f"
+  ],
+  "protected_input_bindings": 3539,
+  "recorded_cleanup_survivors": 0,
+  "runtime_scope": "Actual retained PT_INTERP --list and map/symbol receipts independently rejoined; all listed binaries/providers freshly byte-hashed; no loader run by audit.",
+  "schema": "independent-physical-bulk-QP-build-audit-v1",
+  "source_index_sha256": "8e19ec4f1e422e5022cb3161cfe248bbc3a11cc6a2e3912e3693718ccea571ce",
+  "source_payloads": 29,
+  "status": "pass",
+  "successful_serial_tool_commands": 292
+}

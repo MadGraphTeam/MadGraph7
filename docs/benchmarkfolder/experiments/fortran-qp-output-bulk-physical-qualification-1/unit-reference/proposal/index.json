@@ -1,0 +1,57 @@
+{
+  "compiler_executions": 0,
+  "created_utc": "2026-11-11T08:02:44.493218+00:00",
+  "file_count": 11,
+  "files": {
+    "EQUIVALENCE.md": {
+      "bytes": 6141,
+      "sha256": "c352c38fda910561b1b1f9fae6cd2d6e183e199835ab0cc5bb4595f333d5deae"
+    },
+    "README.md": {
+      "bytes": 4681,
+      "sha256": "dda64ab702ec47fe5df21ec4183e94682923b0312bf3c9e6dd37808d233aa725"
+    },
+    "bindings.json": {
+      "bytes": 1127,
+      "sha256": "9fd86c8a34fa32eea1223c1a587e29ab429a807b5450c84d8a363cacbb2fc8b1"
+    },
+    "candidate-mtirust.f90": {
+      "bytes": 19948,
+      "sha256": "256f0d877d0349c181278ac5222c4800cc216195e5d44d2e0740912950ad1de3"
+    },
+    "formatter-source.json": {
+      "bytes": 8127,
+      "sha256": "d0f11659a533eb8847d872864c9e5056289fe15a095a29d9ef0b7896c544cc72"
+    },
+    "helper.f90": {
+      "bytes": 3692,
+      "sha256": "d001f6a97961b25b8595062b76696287e6f9b5c3b6201713306e92444f7eb3be"
+    },
+    "original-mtirust.f90": {
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "prepare.py": {
+      "bytes": 4316,
+      "sha256": "22c207193bd6e5146a28243137590ca94247f6365975d1b73ec582f14d9a235b"
+    },
+    "proposal.diff": {
+      "bytes": 5880,
+      "sha256": "527af02d5723865f0a79603edc65fbff37b6191e46ccc4828bed42fb640431fe"
+    },
+    "pure-checks.json": {
+      "bytes": 506,
+      "sha256": "3dfe37f1cd99b148ea8bc0029823a27fd702c83079e91f59950f34a2885268fb"
+    },
+    "test_source.py": {
+      "bytes": 3364,
+      "sha256": "258a6082077ee3a77e9696284ad46c1ed7f66627ef98b0cead3addd9660d2332"
+    }
+  },
+  "native_executions": 0,
+  "performance_acceptance": false,
+  "production_modified": false,
+  "schema": "madloop-tirust-bulk-output-source-proposal-index-v1",
+  "status": "source-only-uncompiled-unqualified",
+  "total_bytes": 73779
+}

@@ -1,0 +1,10 @@
+{
+  "before_utc": "2026-11-11T13:35:35.482874+00:00",
+  "command": "ANCHORRUN 9 1 15",
+  "expected_response": [
+    "ANCHORDONE",
+    "9",
+    "1",
+    "15"
+  ]
+}

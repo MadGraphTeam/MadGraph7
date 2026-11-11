@@ -1,0 +1,157 @@
+{
+  "actual_native_return_counts": {
+    "-8": 3,
+    "0": 398
+  },
+  "actual_tirust_reducer_calls": 0,
+  "candidate_promoted": false,
+  "compiler_or_native_executions_by_verifier": 0,
+  "completed_case_branch_counts": {
+    "candidate": {
+      "binary128_word_records": 169080,
+      "bulk_calls": 0,
+      "forced_calls": 0,
+      "public_calls": 660,
+      "scalar_calls": 0
+    },
+    "forced": {
+      "binary128_word_records": 80,
+      "bulk_calls": 4,
+      "forced_calls": 4,
+      "public_calls": 10,
+      "scalar_calls": 6
+    },
+    "observer": {
+      "binary128_word_records": 169080,
+      "bulk_calls": 104,
+      "forced_calls": 0,
+      "public_calls": 660,
+      "scalar_calls": 551
+    },
+    "original": {
+      "binary128_word_records": 169080,
+      "bulk_calls": 0,
+      "forced_calls": 0,
+      "public_calls": 660,
+      "scalar_calls": 0
+    }
+  },
+  "corpus_cases": 149,
+  "emitted_binary128_word_records": 507368,
+  "executed_distinct_cases": 135,
+  "lexical_only_cases": 14,
+  "measured_benefit": null,
+  "native_unit_invocations": 401,
+  "new_executed_cases": 47,
+  "new_invocations": 137,
+  "non_nearest_directional_reference_diagnostics": [
+    {
+      "case": "ieee-round1-sticky0",
+      "difference_records": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky0",
+      "difference_records": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky0",
+      "difference_records": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky1",
+      "difference_records": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky1",
+      "difference_records": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky1",
+      "difference_records": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky2",
+      "difference_records": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky2",
+      "difference_records": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky2",
+      "difference_records": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky4",
+      "difference_records": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky4",
+      "difference_records": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky4",
+      "difference_records": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky8",
+      "difference_records": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky8",
+      "difference_records": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky8",
+      "difference_records": 2,
+      "variant": "observer"
+    },
+    {
+      "case": "ieee-round1-sticky16",
+      "difference_records": 2,
+      "variant": "original"
+    },
+    {
+      "case": "ieee-round1-sticky16",
+      "difference_records": 2,
+      "variant": "candidate"
+    },
+    {
+      "case": "ieee-round1-sticky16",
+      "difference_records": 2,
+      "variant": "observer"
+    }
+  ],
+  "non_nearest_scope": "Diagnostic only; default internal-file READ ROUND= semantics unqualified; all-mode exact differential words and IEEE gates remain hard",
+  "observed_mock_ABI_entries": 1999,
+  "observer_all_call_markers": {
+    "ABI_ENTER": 663,
+    "BULK_ENTER": 104,
+    "SCALAR_ENTER": 554
+  },
+  "old_build2_status": "failed",
+  "old_run3_status": "failed",
+  "performance_acceptance": false,
+  "physical_amplitude_calls": 0,
+  "preserved_trap_case": "ieee-halt5-inexact",
+  "remaining": "Real wire corpus, unchanged-full100-learning amplitude parity and measured benefit; final precise acceptance local to Hua-Sheng",
+  "retained_invocations": 264,
+  "retained_replayed_cases": 88,
+  "returned_public_calls": 1996,
+  "schema": "madloop-tirust-bulk-unit-portable-summary-v1",
+  "status": "pass"
+}

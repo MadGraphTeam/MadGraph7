@@ -1,0 +1,91 @@
+{
+  "W03_actual_console_records": 0,
+  "accuracy_drift_from_earlier_parity": 0,
+  "audit_compiler_calls": 0,
+  "audit_elapsed_seconds": 2.9373068218119442,
+  "audit_loader_calls": 0,
+  "audit_native_calls": 0,
+  "audit_source_sha256": "f6203bcb4ce451f5c45efe8b90dee2386d657cce154bb9cd4e9fd27b867ba0d9",
+  "build_terminal_sha256": "5fe62f2983e1c80e919fb404d167f1cbce2e004a1a89bab06c465d01860c932c",
+  "candidate_promoted": false,
+  "cap_seconds": 480,
+  "chronological_order_exact": true,
+  "cleanup_reserve_seconds": 60,
+  "common_calibrations_and_fixed_counts_rederived": true,
+  "distinct_resolved_bytes_live_hashed": 788327996,
+  "distinct_resolved_files_live_hashed": 4414,
+  "elapsed_seconds": 311.960073,
+  "forbidden_API_attempts": 0,
+  "independent_integer_clock_fraction_statistics": {
+    "1": {
+      "candidate": {
+        "median_seconds_per_call": 0.070549385,
+        "unscaled_MAD_seconds_per_call": 0.00030925193333333333
+      },
+      "fixed_loops": 15,
+      "median_paired_ratio": 0.9991082634261533,
+      "original": {
+        "median_seconds_per_call": 0.070471572,
+        "unscaled_MAD_seconds_per_call": 0.00016874733333333334
+      },
+      "pilot_loops": 15,
+      "ratio_max": 1.0141218342888323,
+      "ratio_min": 0.973444153731721
+    },
+    "16": {
+      "candidate": {
+        "median_seconds_per_call": 4.932372859,
+        "unscaled_MAD_seconds_per_call": 0.006694427
+      },
+      "fixed_loops": 1,
+      "median_paired_ratio": 0.996738513958119,
+      "original": {
+        "median_seconds_per_call": 4.931854117,
+        "unscaled_MAD_seconds_per_call": 0.02230016
+      },
+      "pilot_loops": 1,
+      "ratio_max": 1.0076103085117207,
+      "ratio_min": 0.9897034910388964
+    }
+  },
+  "matched_history_coefficient_accuracy_status_words_exact": true,
+  "native_batches": 36,
+  "native_post_learning_calls_including_calibration": 260,
+  "pairs_each_anchor": 7,
+  "parity_terminal_sha256": "f2623135240aab116af97f27eb09cf64d8a8f30c44db91852f471411d237c656",
+  "performance_acceptance": false,
+  "protected_bindings_verified": 3539,
+  "raw_parser_results_exact": true,
+  "recorded_cleanup_survivors": 0,
+  "runtime": {
+    "candidate": {
+      "ELF_files_each": 16,
+      "after": "77f728b71ac5ed7f4eecaa055774dc34bc403a380e8aa5ae83bbaf9206f5e74d",
+      "before": "77f728b71ac5ed7f4eecaa055774dc34bc403a380e8aa5ae83bbaf9206f5e74d",
+      "executable_sha256": "97a5cd8b45ef1915396d3ab45de0a3d3b746fce95a5c000cad7b397b7482cddc"
+    },
+    "original": {
+      "ELF_files_each": 16,
+      "after": "a9be64c1a43a90dff06c50e21d0646f9309b89e09034d1323d4a6e3ec4911d94",
+      "before": "a9be64c1a43a90dff06c50e21d0646f9309b89e09034d1323d4a6e3ec4911d94",
+      "executable_sha256": "c0885d0917c23d010a9b16484bb7cc280e94e87039679fcc59200b95e8a29d72"
+    }
+  },
+  "schema": "independent-physical-bulk-targeted-timing-audit-v1",
+  "scope": "Targeted two-anchor shared-host timings; 7 ratios vary above and below 1; no persuasive useful improvement, no full-process or baseline-chain qualification.",
+  "source_index_sha256": "8e19ec4f1e422e5022cb3161cfe248bbc3a11cc6a2e3912e3693718ccea571ce",
+  "status": "pass",
+  "timing_result_sha256": "e7f1e68f167c6ad82c2155475d0aa361d026802aa1a5400cc0eff201e2e4b9cc",
+  "timing_terminal_sha256": "a851754444b8c0e644871df82b8c79173e36a5f5c8229bccf33b498051f80067",
+  "warmup_points_each": 100,
+  "warmup_status_counts": {
+    "candidate": {
+      "219": 87,
+      "323": 13
+    },
+    "original": {
+      "219": 87,
+      "323": 13
+    }
+  }
+}

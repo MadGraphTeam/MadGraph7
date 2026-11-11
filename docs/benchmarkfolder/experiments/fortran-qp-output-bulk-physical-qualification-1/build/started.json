@@ -1,0 +1,21 @@
+{
+  "cap_seconds": 300.0,
+  "child_pid": 3,
+  "cleanup_reserve_seconds": 60,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/fortran-qp-output-bulk-physical-proposal-1/controller.py",
+    "--child",
+    "--phase",
+    "build",
+    "--source",
+    "8e19ec4f1e422e5022cb3161cfe248bbc3a11cc6a2e3912e3693718ccea571ce"
+  ],
+  "phase": "build",
+  "started_utc": "2026-11-11T13:06:47.985933+00:00",
+  "status": "running"
+}

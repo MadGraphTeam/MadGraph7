@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make",
+    "-n",
+    "-B",
+    "SHELL=/nix/store/lw117lsr8d585xs63kx5k233impyrq7q-bash-5.3p3/bin/bash",
+    "check"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-physical-work-1/build/original-parity/SubProcesses/P0_uux_zgg",
+  "started_utc": "2026-11-11T13:06:52.467458+00:00",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

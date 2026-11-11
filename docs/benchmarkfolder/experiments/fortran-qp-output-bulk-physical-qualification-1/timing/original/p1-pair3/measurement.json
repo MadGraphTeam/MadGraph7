@@ -1,0 +1,33 @@
+{
+  "accepted_status_counts": {
+    "219": 15
+  },
+  "accuracy_differs_from_earlier_parity_anchor": false,
+  "clock_rate": 1000000000,
+  "end_ticks": 2437828111496631,
+  "last_output": {
+    "accuracy_words": {
+      "0": "3d14221227bb050a",
+      "1": "3d14221227bb050a"
+    },
+    "ans_words": {
+      "0:0": "3f04bfda5a671406",
+      "0:1": "bee3a6b592238877",
+      "0:2": "bef6e83c91eb4451",
+      "0:3": "bedb048fd2b9e7be",
+      "1:0": "3f04bfda5a671406",
+      "1:1": "bee3a6b592238877",
+      "1:2": "bef6e83c91eb4451",
+      "1:3": "bedb048fd2b9e7be"
+    },
+    "phase": 4,
+    "point": 1,
+    "status": 219
+  },
+  "loops": 15,
+  "point": 1,
+  "seconds": 1.046530408,
+  "seconds_per_call": 0.06976869386666666,
+  "sequence": 5,
+  "start_ticks": 2437827064966223
+}

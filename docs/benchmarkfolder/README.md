@@ -217,8 +217,21 @@ fallback, status/error/cache behavior and observed IEEE state. The intentional
 inexact trap agrees across original, candidate and observer variants. Both the
 earlier runtime-binding failure and corrected native-error expectation remain
 recorded. Portable raw replay and twelve independent integrity/relocation tests
-pass. Production is unchanged: actual TIRust wire coverage, full physical
-amplitude parity and measured benefit remain required before promotion.
+pass. Production is unchanged; the subsequent physical study is recorded below.
+
+The [physical decoder study](experiments/fortran-qp-output-bulk-physical-qualification-1/README.md)
+uses `u u~ > z g g [virt=QCD]`, five fresh full100 learning workers, and three
+102-call parity streams. Original, candidate and wire observer agree exactly
+in public amplitude, accuracy, status and observed IEEE words, including
+automatic QP rescues. All 3,248 successful native QP batches, containing 818,720
+records, meet the proposed bulk eligibility conditions; these are potential
+eligibility counts, not instrumented candidate branch counts. Seven alternating
+timing pairs per anchor give median candidate/original ratios `0.999108` for
+native DP and `0.996739` for automatic QP. The effects are smaller than paired
+scatter, so the candidate remains unpromoted. Portable replay retains every
+build, learning, parity, wire and timing observation. These shared-host anchor
+measurements qualify neither whole-process performance nor local acceptance.
+The separately frozen 41-page PDF is unchanged.
 
 The experimental adaptive-precision bridge is an isolated development build,
 not a private repository or the installed backend used in this campaign. It

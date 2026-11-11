@@ -1,0 +1,11 @@
+{
+  "after_utc": "2026-11-11T13:24:44.014471+00:00",
+  "files": {
+    "parity-ieee.dat": "29815f59aa616c27686657d977d5c25ac4c46f5ccb60ea35312dcbb7d509a5d1",
+    "parity-words.dat": "f335feea35ce743b661a845273133150b6bdef2e814318e7cd074724b629181e"
+  },
+  "response": [
+    "PARITYDONE",
+    "1"
+  ]
+}

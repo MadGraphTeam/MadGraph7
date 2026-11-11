@@ -1,0 +1,120 @@
+{
+  "accuracy_drift_batches": 0,
+  "all_public_coefficient_accuracy_status_IEEE_words_equal": true,
+  "anchors": {
+    "1": {
+      "baseline_chain_claim": false,
+      "candidate": {
+        "median_seconds_per_call": 0.070549385,
+        "unscaled_MAD_seconds_per_call": 0.00030925193333333767
+      },
+      "candidate_original_ratios": [
+        0.973444153731721,
+        1.0124873346447434,
+        1.0141218342888323,
+        0.9984555634966504,
+        1.00194934981025,
+        0.9991082634261532,
+        0.9963812216364352
+      ],
+      "candidate_promoted": false,
+      "fixed_loops": 15,
+      "full_process_claim": false,
+      "median_paired_ratio": 0.9991082634261532,
+      "observed_percent_change": -0.08917365738467797,
+      "original": {
+        "median_seconds_per_call": 0.070471572,
+        "unscaled_MAD_seconds_per_call": 0.00016874733333333003
+      },
+      "pairs": 7,
+      "performance_acceptance": false,
+      "scope": "Targeted-anchor shared-host observations only"
+    },
+    "16": {
+      "baseline_chain_claim": false,
+      "candidate": {
+        "median_seconds_per_call": 4.932372859,
+        "unscaled_MAD_seconds_per_call": 0.006694427000000225
+      },
+      "candidate_original_ratios": [
+        0.9963790388150069,
+        0.9897034910388963,
+        0.9987477964973228,
+        0.9947786766154052,
+        0.9967385139581191,
+        1.0076103085117207,
+        1.004676757237236
+      ],
+      "candidate_promoted": false,
+      "fixed_loops": 1,
+      "full_process_claim": false,
+      "median_paired_ratio": 0.9967385139581191,
+      "observed_percent_change": -0.32614860418809233,
+      "original": {
+        "median_seconds_per_call": 4.931854117,
+        "unscaled_MAD_seconds_per_call": 0.022300160000000346
+      },
+      "pairs": 7,
+      "performance_acceptance": false,
+      "scope": "Targeted-anchor shared-host observations only"
+    }
+  },
+  "binary_bytes_retained": false,
+  "build_tool_commands": 292,
+  "candidate_promoted": false,
+  "decision": "No convincing useful measured benefit; observed effects are smaller than paired scatter. Keep candidate private and unpromoted.",
+  "elapsed_seconds": {
+    "build": 88.177632,
+    "parity": 506.512215,
+    "timing": 311.960073
+  },
+  "initialization_seconds": {
+    "candidate-parity": 73.001167831,
+    "candidate-timing": 73.711240896,
+    "original-parity": 74.923559391,
+    "original-timing": 73.642658034,
+    "wire-parity": 73.376498036
+  },
+  "learning_points": 500,
+  "learning_workers": 5,
+  "original_wire_observer": {
+    "eligibility_role": "Original native wire/FEnv classification; potential candidate fast path, not instrumented candidate branch counts",
+    "native_QP_calls": 3248,
+    "raw_records": 818720,
+    "scope": "Separate original-module observer, post-full100-learning anchors and full100 parity cohort; no timing instrumentation",
+    "successful_native_QP_calls": 3248,
+    "whole_batch_eligible": 3248
+  },
+  "parity_statuses_each": {
+    "219": 88,
+    "323": 14
+  },
+  "parity_workers": 3,
+  "performance_acceptance": false,
+  "portable_verifier_native_executions": 0,
+  "post_learning_parity_calls": 306,
+  "prior_profile_interpretation": {
+    "inference": "An output-only change targets a small interval. Eligibility alone does not establish useful full-amplitude benefit; the separate profile does not causally explain these tiny timing differences.",
+    "native_FFI_fraction_of_recorded_QP_intervals": 0.9233066795983601,
+    "output_decode_and_tensor_mapping_fraction": 0.05317467001583061,
+    "profile_scope": "Only served-QP sequential stages1..6; module decode and subsequent wrapper mapping share stage5. Excludes clear/host/numerator/probe overhead; not full-amplitude runtime."
+  },
+  "reused_original_objects_modules_archives": 144,
+  "runtime_proof": "Recorded bound binary identities, LOAD/PT_INTERP/runtime/map text and independent live-hash audit receipts; no fresh native verification during portable replay.",
+  "schema": "madloop-tirust-bulk-physical-summary-v1",
+  "scope": "Matched-history targeted DP/QP anchor observations on a shared host; no full-process, baseline-chain or local acceptance claim.",
+  "source_index_sha256": "8e19ec4f1e422e5022cb3161cfe248bbc3a11cc6a2e3912e3693718ccea571ce",
+  "stage_terminal_sha256": {
+    "build": "5fe62f2983e1c80e919fb404d167f1cbce2e004a1a89bab06c465d01860c932c",
+    "parity": "f2623135240aab116af97f27eb09cf64d8a8f30c44db91852f471411d237c656",
+    "timing": "a851754444b8c0e644871df82b8c79173e36a5f5c8229bccf33b498051f80067"
+  },
+  "status": "passed",
+  "timing_batches": 36,
+  "timing_calls_including_calibration": 260,
+  "timing_statuses_each": {
+    "219": 121,
+    "323": 9
+  },
+  "unit_packet_index_sha256": "d0d816c0bb7ebe4cd5b8e051aaf206552597c65c8a1e26fdf6d678d8ae685546"
+}

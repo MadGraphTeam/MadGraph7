@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=librt.a"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-output-bulk-physical-work-1/build/original-parity/SubProcesses/P0_uux_zgg",
+  "finished_utc": "2026-11-11T13:06:54.147019+00:00",
+  "returncode": 0,
+  "started_utc": "2026-11-11T13:06:54.133164+00:00",
+  "stdout_sha256": "df288ccfcbdb0de87003de6cbbf5d8a726c13b984ef471d979e860df2f1f9a3a",
+  "subprocess_new_session": false,
+  "timeout_seconds": null
+}

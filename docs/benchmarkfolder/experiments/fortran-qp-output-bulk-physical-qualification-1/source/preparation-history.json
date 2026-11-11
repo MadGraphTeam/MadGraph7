@@ -1,0 +1,9 @@
+{
+  "compiler_executions": 0,
+  "corrections_before_native": "Recognize existing declared dangling-link absence; pin explicit reviewed Bash for make because generated SHELL=/bin/bash is absent on this harness; restore exact donor frozen-runtime prelink join",
+  "initial_input_pins_retained": "input-pins.initial.json",
+  "initial_input_pins_sha256": "ec2e87875866d690ae0592b82eae165f3f40ef17e9c3bc3f50679f1a15f00b0e",
+  "initial_pure_prepare_failure": "Expected-absent pineappl_maxproc.inc was initially treated as a regular hashed file; no preview/pin publication occurred in that failed pure pass",
+  "native_executions": 0,
+  "schema": "madloop-bulk-physical-source-preparation-history-v1"
+}
