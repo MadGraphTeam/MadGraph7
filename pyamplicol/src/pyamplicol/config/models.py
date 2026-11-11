@@ -536,6 +536,13 @@ class ProcessConfig:
         default=LoopInducedPolicy.AUTO,
         metadata=_setting("str", choices=tuple(LoopInducedPolicy)),
     )
+    # The squared-coupling-order sectors a one-loop request serves (MG5_aMC's
+    # squared-order constraints, ``QCD^2<=4``; ``processes.mg5_syntax``):
+    # empty serves every sector; otherwise a sector is reported and summed
+    # only when its powers pass every constraint. Stored canonical and sorted.
+    squared_coupling_orders: tuple[str, ...] = field(
+        default=(), metadata=_setting("list_str")
+    )
     max_color_sectors: int | None = field(
         default=None, metadata=_setting("int", nullable=True)
     )
@@ -623,6 +630,19 @@ class ProcessConfig:
             "loop_induced",
             _enum(self.loop_induced, LoopInducedPolicy, "process.loop_induced"),
         )
+        from pyamplicol.processes.mg5_syntax import canonical_squared_orders
+
+        try:
+            squared = canonical_squared_orders(
+                _tuple_of_strings(
+                    self.squared_coupling_orders, "process.squared_coupling_orders"
+                )
+            )
+        except ValueError as exc:
+            if isinstance(exc, ConfigurationError):
+                raise
+            raise ConfigurationError(f"process.squared_coupling_orders: {exc}") from exc
+        object.__setattr__(self, "squared_coupling_orders", squared)
         object.__setattr__(
             self,
             "max_color_sectors",
@@ -2059,6 +2079,12 @@ class RunConfig:
                 f"loop.reduction = {str(self.loop.reduction)!r} requires one-loop "
                 "generation (process.loop_coupling_orders); an evaluation "
                 "overrides an artifact's backend with evaluation.reduction"
+            )
+        if not virtual and self.process.squared_coupling_orders:
+            raise ConfigurationError(
+                "process.squared_coupling_orders selects the squared-order "
+                "sectors of a one-loop request and requires "
+                "process.loop_coupling_orders"
             )
         if not virtual and self.process.loop_induced in (
             LoopInducedPolicy.ONLY,

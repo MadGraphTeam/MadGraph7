@@ -7,14 +7,16 @@ a listed rule (``PROCESS_REQUEST_REFUSALS``; a loop dry run lists them as
 ``process_request_refusals``). The rules read the request's syntax, never a
 particle or process name:
 
-* ``madloop-syntax``: MG5_aMC process syntax that has a pyAmpliCol run-card
-  setting instead (``[virt=QCD]``, ``[QCD]`` and the other NLO brackets;
-  ``[noborn=QCD]``: ``process.loop_induced`` with the correction in
-  ``process.loop_coupling_orders``,
-  coupling-order constraints such as ``QED=2`` or ``QCD^2==4``, ``/ x``
-  particle exclusions) or no counterpart (``$``/``$$`` s-channel exclusions,
-  decay chains ``p p > t t~, t > b w+`` and ``t > b w+, w+ > e+ ve``, ``@N``
-  process tags). The message names the run-card setting.
+* ``madloop-syntax``: MG5_aMC process syntax that is not served (decay
+  chains ``p p > t t~, t > b w+``, ``$``/``$$`` s-channel exclusions,
+  ``@N`` process tags, ``[real=QCD]`` and ``[LOonly=QCD]``: only the
+  one-loop virtual is computed, amplitude-level ``==``/``>`` limits). The
+  served MG5_aMC syntax (NLO brackets, coupling-order constraints, ``/ x``
+  exclusions) is translated into run-card settings by
+  ``processes.mg5_syntax`` wherever a process expression enters (TOML
+  ``process.entries``, the CLI, ``pyamplicol.generate`` / ``Generator``); a
+  ``ProcessRequest`` is a plain expression and refuses it with that
+  pointer.
 
 A process has one initial particle (a 1 -> n decay, MG5_aMC's ``t > b w+``)
 or two (a 2 -> n scattering; ``processes.model.require_external_leg_counts``).
@@ -24,7 +26,6 @@ served.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -44,22 +45,19 @@ class ProcessRequestRefusal:
 PROCESS_REQUEST_REFUSALS = (
     ProcessRequestRefusal(
         "madloop-syntax",
-        "MG5_aMC process syntax inside the process expression: NLO brackets "
-        "([virt=QCD], [QCD], [real=QCD], [noborn=QCD], ...), coupling-order "
-        "constraints (QED=2, QCD^2==4, QED<=2), particle exclusions (/ x), "
-        "s-channel exclusions ($ x, $$ x), decay chains (a > b c, b > d e) and "
-        "process tags (@N)",
-        "plain 'a b > c d ...' with the run-card settings: "
-        'process.loop_coupling_orders = ["QCD"] for [virt=QCD] or [QCD]; '
-        "process.max_coupling_orders = {QED = 2} for QED=2 (squared-order "
-        "sectors are read out of the result, QCD^2==); "
-        'generation.particle_veto = ["x"] for / x; for [noborn=QCD] '
-        '(loop-induced, |A_loop|^2) process.loop_coupling_orders = ["QCD"] '
-        'with process.loop_induced = "auto" (the default: a request none of '
-        "whose processes has a Born amplitude is served loop-induced) or "
-        '"only" (only the processes without a Born); s-channel exclusions and '
-        "decay chains (request each decay, 't > b w+', as its own process) "
-        "are not served",
+        "MG5_aMC process syntax that is not served: decay chains (a > b c, "
+        "b > d e), s-channel exclusions ($ x, $$ x), process tags (@N), NLO "
+        "brackets other than the virtual ([real=QCD], [LOonly=QCD]: only the "
+        "one-loop virtual is computed), amplitude-level limits other than "
+        "QED=2 / QED<=2; and, in a plain ProcessRequest, any MG5_aMC syntax",
+        "request each decay ('t > b w+') as its own process; [QCD], "
+        "[virt=QCD], [QCD QED], [noborn=QCD], [sqrvirt=QCD], QED=2, "
+        "QED<=2, QCD^2<=4 (also ==, <, >, >=) and '/ x' are translated into "
+        "the run-card settings (process.loop_coupling_orders, "
+        "process.loop_induced, process.max_coupling_orders, "
+        "process.squared_coupling_orders, generation.particle_veto) when the "
+        "expression is given as a run-card process entry, with --process, or "
+        "to pyamplicol.generate / Generator.plan / Generator.generate",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in PROCESS_REQUEST_REFUSALS}
@@ -83,60 +81,20 @@ def listed_process_refusal_keys() -> tuple[str, ...]:
     return tuple(_REFUSALS)
 
 
-# MG5_aMC process-line syntax with no place in a pyAmpliCol expression. A
-# bracket holding '=' is an NLO bracket ([virt=QCD]); a bare '[QCD]' is
-# recognised by the caller that knows the model's coupling orders
-# (``refuse_order_brackets``), since '[u d]' is an anonymous multiparticle.
-_ORDER_CONSTRAINT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\^2)?(==|<=|>=|=|<|>)-?\d+$")
-
-
 def refuse_madloop_syntax(expression: str) -> None:
-    """Refuse (``madloop-syntax``) an expression that uses MG5_aMC process
-    syntax (``ProcessRequestRefusal`` 'madloop-syntax'): an NLO bracket
-    holding '=', a coupling-order constraint, '/', '$', '@', or a decay
-    chain (a second ',' separated clause)."""
+    """Refuse (``madloop-syntax``) MG5_aMC syntax in a plain process
+    expression (a ``ProcessRequest``): the unserved syntax with its reason
+    (``mg5_syntax.translate_process_expression``), the served syntax with
+    the entry points that translate it and what it translates to."""
 
-    text = " ".join(str(expression).split())
-    found: list[str] = []
-    if re.search(r"\[\s*noborn\s*=[^\]]*\]", text, re.IGNORECASE):
-        found.append(
-            "a loop-induced NLO bracket ('[noborn=QCD]' style: process.loop_induced)"
-        )
-    elif re.search(r"\[[^\]]*=[^\]]*\]", text):
-        found.append("an NLO bracket ('[virt=QCD]' style)")
-    if "$" in text:
-        found.append("an s-channel exclusion ('$')")
-    if "/" in text:
-        found.append("a particle exclusion ('/')")
-    if "@" in text:
-        found.append("a process tag ('@')")
-    if _decay_chain(text):
-        found.append("a decay chain (',')")
-    if any(
-        _ORDER_CONSTRAINT.match(token)
-        for token in re.split(r"\s+", re.sub(r"\[[^\]]*\]", " ", text))
-        if token
-    ):
-        found.append("a coupling-order constraint ('QED=2' style)")
-    if found:
+    from .mg5_syntax import translate_process_expression
+
+    translation = translate_process_expression(expression)
+    if translation.translated:
         raise ProcessRequestUnsupported(
             "madloop-syntax",
-            f"the process {text!r} uses MG5_aMC syntax: " + ", ".join(found),
+            f"a ProcessRequest takes a plain expression; {translation.describe()}",
         )
-
-
-def _decay_chain(text: str) -> bool:
-    """Whether ``text`` has a ',' outside brackets (MG5_aMC decay chains)."""
-
-    depth = 0
-    for character in text:
-        if character == "[":
-            depth += 1
-        elif character == "]":
-            depth -= 1
-        elif character == "," and depth == 0:
-            return True
-    return False
 
 
 def refuse_order_brackets(
