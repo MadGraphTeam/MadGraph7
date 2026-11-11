@@ -5038,7 +5038,8 @@ RESTART = %(mint_mode)s
         try:
             pdfsetsdir = self.get_lhapdf_pdfsetsdir()
             self.copy_lhapdf_set([lhaid], pdfsetsdir)
-            name = mcatnlo_shower.lhapdf_set_name(self.options['lhapdf'], lhaid)
+            name = mcatnlo_shower.lhapdf_set_name(
+                self.options['lhapdf'], lhaid, pdfsetsdir=pdfsetsdir)
             if not name:
                 raise aMCatNLOError('LHAPDF set %d not found' % lhaid)
         except Exception as error:

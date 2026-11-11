@@ -1161,19 +1161,24 @@ def build_pythia8_driver(mcatnlo_dir, installation, analysis=(), hepmc=(0, ''),
     return exe
 
 
-def lhapdf_set_name(lhapdf_config, lhaid):
+def lhapdf_set_name(lhapdf_config, lhaid, pdfsetsdir=None):
     """Pythia8 name of the LHAPDF6 set member lhaid: 'set' for the central
     member, 'set/member' otherwise. None if the set is unknown.
+
+    Use pdfsetsdir when the run has already selected its data directory;
+    otherwise use the default reported by lhapdf-config.
 
     In pdfsets.index each line gives the id of the first member of a set
     (the third column is the data version, not the number of members)."""
     import subprocess
-    try:
-        datadir = subprocess.check_output([lhapdf_config, '--datadir'],
-                                          stderr=subprocess.DEVNULL)
-        datadir = datadir.decode(errors='ignore').strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
+    datadir = pdfsetsdir
+    if datadir is None:
+        try:
+            datadir = subprocess.check_output([lhapdf_config, '--datadir'],
+                                              stderr=subprocess.DEVNULL)
+            datadir = datadir.decode(errors='ignore').strip()
+        except (OSError, subprocess.CalledProcessError):
+            return None
     index = pjoin(datadir, 'pdfsets.index')
     if not os.path.isfile(index):
         return None

@@ -362,6 +362,8 @@ int main(int argc, char* argv[]) {
   toHepMC.set_store_proc(false);
   toHepMC.set_store_xsec(false);
   HepMC3::WriterAscii hepmcOut(hepmcFile);
+  // Delay the last event so its cross section includes any vetoed tail.
+  std::unique_ptr<HepMC3::GenEvent> pendingEvent;
   std::shared_ptr<HepMC3::GenRunInfo> runInfo
     = std::make_shared<HepMC3::GenRunInfo>();
 #elif MG5_HEPMC == 2
@@ -370,6 +372,7 @@ int main(int argc, char* argv[]) {
   toHepMC.set_store_proc(false);
   toHepMC.set_store_xsec(false);
   HepMC::IO_GenEvent hepmcOut(hepmcFile.c_str(), std::ios::out);
+  std::unique_ptr<HepMC::GenEvent> pendingEvent;
 #endif
 
   int  nPrintLHA = 1;
@@ -409,6 +412,7 @@ int main(int argc, char* argv[]) {
       / double(std::max(1L, nRead));
 
 #if MG5_HEPMC == 3
+    if (pendingEvent) hepmcOut.write_event(*pendingEvent);
     if (nAccepted == 1) {
       // LHE variation names are populated only after reading an event.
       // Setting the pointer alone does not serialize the run metadata.
@@ -416,29 +420,28 @@ int main(int argc, char* argv[]) {
       hepmcOut.set_run_info(runInfo);
       hepmcOut.write_run_info();
     }
-    HepMC3::GenEvent hepmcEvent(runInfo, HepMC3::Units::GEV, HepMC3::Units::MM);
-    toHepMC.fill_next_event(pythia, &hepmcEvent);
+    pendingEvent.reset(new HepMC3::GenEvent(
+      runInfo, HepMC3::Units::GEV, HepMC3::Units::MM));
+    toHepMC.fill_next_event(pythia, pendingEvent.get());
     // All weights (nominal and variations) follow event_norm.
-    for (size_t i = 0; i < hepmcEvent.weights().size(); ++i)
-      hepmcEvent.weights()[i] *= weightFactor;
+    for (size_t i = 0; i < pendingEvent->weights().size(); ++i)
+      pendingEvent->weights()[i] *= weightFactor;
     std::shared_ptr<HepMC3::GenCrossSection> xsec
       = std::make_shared<HepMC3::GenCrossSection>();
-    hepmcEvent.set_cross_section(xsec);
+    pendingEvent->set_cross_section(xsec);
     xsec->set_cross_section(sigmaNow, pythia.info.sigmaErr() * 1e9);
-    hepmcOut.write_event(hepmcEvent);
 #elif MG5_HEPMC == 2
-    HepMC::GenEvent* hepmcEvent = new HepMC::GenEvent();
-    toHepMC.fill_next_event(pythia, hepmcEvent);
+    if (pendingEvent) hepmcOut.write_event(pendingEvent.get());
+    pendingEvent.reset(new HepMC::GenEvent());
+    toHepMC.fill_next_event(pythia, pendingEvent.get());
     // All weights (nominal and variations) follow event_norm.
-    HepMC::WeightContainer& eventWeights = hepmcEvent->weights();
+    HepMC::WeightContainer& eventWeights = pendingEvent->weights();
     if (eventWeights.size() == 0) eventWeights.push_back(weight);
     for (size_t i = 0; i < eventWeights.size(); ++i)
       eventWeights[i] *= weightFactor;
     HepMC::GenCrossSection xsec;
     xsec.set_cross_section(sigmaNow, pythia.info.sigmaErr() * 1e9);
-    hepmcEvent->set_cross_section(xsec);
-    hepmcOut << hepmcEvent;
-    delete hepmcEvent;
+    pendingEvent->set_cross_section(xsec);
 #endif
 
 #ifdef MG5_ANALYSIS
@@ -486,6 +489,17 @@ int main(int argc, char* argv[]) {
   // merging) or lost in errors count with zero weight, so that with FxFx
   // this is the merged cross section, smaller than the NLO one.
   double sigma = sigmaSum * double(nShower) / double(std::max(1L, nRead));
+#if MG5_HEPMC == 2 || MG5_HEPMC == 3
+  if (pendingEvent) {
+    pendingEvent->cross_section()->set_cross_section(
+      sigma, pythia.info.sigmaErr() * 1e9);
+#if MG5_HEPMC == 3
+    hepmcOut.write_event(*pendingEvent);
+#else
+    hepmcOut.write_event(pendingEvent.get());
+#endif
+  }
+#endif
   std::cout << "MG5_MCATNLO_SUMMARY read=" << nRead << " showered=" << nAccepted
             << " failed=" << nErrors << " sigma=" << sigma << std::endl;
   if (isFxFx) {

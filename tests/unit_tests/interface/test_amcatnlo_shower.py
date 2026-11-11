@@ -1,6 +1,7 @@
 """Exercise split-shower scripts, collection and cleanup with small analyses."""
 
 import gzip
+import os
 from pathlib import Path
 import shutil
 import tarfile
@@ -280,6 +281,52 @@ class TestPythia8OutputSetup(unittest.TestCase):
                                side_effect=[interface.MadGraph5Error('missing'),
                                             '-lHepMC']):
             self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (2, '-lHepMC'))
+
+
+class TestShowerPDFSelection(unittest.TestCase):
+    def test_selected_index_is_used_for_generated_and_explicit_pdf_requests(self):
+        with tempfile.TemporaryDirectory(prefix='mg7_shower_pdf_') as directory:
+            root = Path(directory)
+            default = root / 'default'
+            selected = root / 'selected'
+            empty = root / 'empty'
+            for path in (default, selected, empty):
+                path.mkdir()
+            (default / 'pdfsets.index').write_text('400000 DefaultPDF 1\n')
+            (selected / 'pdfsets.index').write_text(
+                '400000 UserPDF 1\n800000 CustomPDF 1\n')
+            for path, name, members in ((default, 'DefaultPDF', 1),
+                                         (selected, 'UserPDF', 3),
+                                         (selected, 'CustomPDF', 2)):
+                (path / name).mkdir()
+                (path / name / (name + '.info')).write_text(
+                    'NumMembers: %d\n' % members)
+            config = root / 'lhapdf-config'
+            config.write_text('#!/bin/sh\necho %s\n' % default)
+            config.chmod(0o755)
+            command = object.__new__(interface.aMCatNLOCmd)
+            command.stop_for_runweb = True
+            command.options = {'lhapdf': str(config)}
+            command.shower_card = ShowerCard()
+            command.get_lhapdf_version = mock.Mock(return_value='6.5.4')
+            command.copy_lhapdf_set = mock.Mock()
+            command.get_init_dict = mock.Mock()
+            cases = ((1, 800000, 'CustomPDF', False),
+                     (-1, 800001, 'CustomPDF/1', True),
+                     (800000, 800000, 'CustomPDF', False),
+                     (-800001, 800001, 'CustomPDF/1', True),
+                     (1, 400000, 'UserPDF', False),
+                     (400001, 400001, 'UserPDF/1', False))
+            with mock.patch.dict(os.environ, {
+                    'LHAPDF_DATA_PATH': str(empty) + ':' + str(selected)}):
+                for pdfcode, lhaid, name, extrapolate in cases:
+                    with self.subTest(pdfcode=pdfcode, lhaid=lhaid):
+                        command.shower_card['pdfcode'] = pdfcode
+                        command.get_init_dict.return_value = {
+                            'pdfsup1': lhaid, 'pdfsup2': lhaid}
+                        self.assertEqual(command.get_shower_pdf('unused.lhe'),
+                                         ('lhapdf6', name, extrapolate))
+                        command.copy_lhapdf_set.assert_called_with([lhaid], str(selected))
 
 
 class TestStdHEPOnDemand(unittest.TestCase):
