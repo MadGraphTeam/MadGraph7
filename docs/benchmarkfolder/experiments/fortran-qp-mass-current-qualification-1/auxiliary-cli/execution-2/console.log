@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-proposal-2/controller.py", line 361, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-proposal-2/controller.py", line 351, in main
+    generate()
+    ~~~~~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-proposal-2/controller.py", line 241, in generate
+    require(result.returncode==0,'Actual CLI failed; stop with no automatic retry')
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-cli-generation-proposal-2/controller.py", line 33, in require
+    raise ValueError(message)
+ValueError: Actual CLI failed; stop with no automatic retry

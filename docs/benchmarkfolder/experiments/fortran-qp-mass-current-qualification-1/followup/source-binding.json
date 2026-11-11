@@ -1,0 +1,17 @@
+{
+  "independent_finite_truth_qualified": false,
+  "matched_input_replay_executed": false,
+  "observer_bindings": {
+    "observer.f90": {
+      "final_source_sha256": "475219ffdd707a2e84ecfe0886140130e2df372ccb1191d322d792955c2db6c0",
+      "handoff_sha256": "475219ffdd707a2e84ecfe0886140130e2df372ccb1191d322d792955c2db6c0",
+      "matches": true
+    },
+    "observer_analysis.py": {
+      "final_source_sha256": "c805664d73a2dfff3bd69fad57bdf49c3b64c7fe2c96c4d6e1a16ef9babeee23",
+      "handoff_sha256": "c805664d73a2dfff3bd69fad57bdf49c3b64c7fe2c96c4d6e1a16ef9babeee23",
+      "matches": true
+    }
+  },
+  "source_only_followup_sha256": "ff32a834e10c08a26f9842f0e0448f928e979f8581c77c5de09b886719184b7c"
+}

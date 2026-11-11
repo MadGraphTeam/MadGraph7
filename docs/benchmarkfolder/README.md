@@ -198,6 +198,18 @@ Scale construction also differs: TIRust uses `REAL(MU_R,QP)**2`, whereas NinjaRS
 uses `REAL(MU_R**2,QP)`. Native scalar inputs across adapters are therefore not
 claimed bit-identical; the retained backend-8 scale discrepancy stays explicit.
 
+The [private QP mass correction](experiments/fortran-qp-mass-current-qualification-1/README.md)
+passes six qualification stages for the frozen QCD three-particle process.
+Six fresh workers retain all 100 learning and 100 final points, with identical
+amplitudes, accuracy, statuses and observed exception states across the mass
+variants and native-cache settings. Paired native journals confirm 1,118
+recovered 105-bit bottom-mass squares and 72 changed mass-dependent invariants;
+shifts, scales and 95,030 complex numerator coefficients remain identical.
+Separate recording controls preserve genuine 113-bit mass arguments. The patch
+remains unapplied, and the packet retains its failed inventory build and a
+separate fresh-CLI startup failure. Broader models, independent physical finite
+truth and performance remain unqualified.
+
 A [closed ordinary-QP transport profile](experiments/fortran-qp-transport-profile-qualification-1/README.md)
 retains three fresh workers, each with the unchanged 100-point learning traversal
 and the same DP and automatically rescued QP anchors. All coefficient, status,

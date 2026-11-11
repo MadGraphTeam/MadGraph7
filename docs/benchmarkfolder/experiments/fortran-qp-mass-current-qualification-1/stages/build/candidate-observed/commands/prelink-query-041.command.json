@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libquadmath.so"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-qualification-work-2/build/candidate-observed/SubProcesses/P0_uux_zgg",
+  "process_group": 3,
+  "session": 3,
+  "subprocess_new_session": false
+}

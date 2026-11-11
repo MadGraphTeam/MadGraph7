@@ -1,0 +1,70 @@
+{
+  "compiler_calls": 0,
+  "errors": 0,
+  "failures": 0,
+  "native_Fortran_executions": 0,
+  "oracle": {
+    "DPARG": [
+      [
+        "3FF6A09E667F3BCD",
+        "0000000000000000"
+      ],
+      [
+        "3FF0000000000000",
+        "BFC0000000000000"
+      ],
+      [
+        "4012CCCCCCCCCCCD",
+        "0000000000000000"
+      ]
+    ],
+    "MASS2": [
+      [
+        "7828F5C28F5C2900",
+        "40036170A3D70A3D",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      [
+        "FFFFFFFFFFFFFFFF",
+        "3FFFFFFFFFFFFFFF",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      [
+        "FFFFFFFFFFE04000",
+        "3FFEF7FFFFFFFFFF",
+        "0000000002001000",
+        "BFFD000000000000"
+      ]
+    ],
+    "QPARG": [
+      [
+        "C908B2FB1366EA95",
+        "3FFF6A09E667F3BC",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      [
+        "0000000000001000",
+        "3FFF000000000000",
+        "0000000002000000",
+        "BFFC000000000000"
+      ],
+      [
+        "D000000000000000",
+        "40012CCCCCCCCCCC",
+        "0000000000000000",
+        "0000000000000000"
+      ]
+    ],
+    "bottom_square_significand_bits": 105,
+    "genuine_113bit_mass_input_indices": [
+      1,
+      2
+    ]
+  },
+  "success": true,
+  "test_input": "Synthetic parser fixture; not native stdout",
+  "tests": 10
+}

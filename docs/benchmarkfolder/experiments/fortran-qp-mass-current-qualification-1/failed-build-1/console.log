@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-qualification-proposal-1/controller.py", line 639, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-qualification-proposal-1/controller.py", line 630, in main
+    actions[args.child]()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-qualification-proposal-1/controller.py", line 352, in build
+    objects=unchanged_objects(output,observed)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-qualification-proposal-1/controller.py", line 314, in unchanged_objects
+    require(all(actual.get(name)==wanted for name,wanted in expected.items()),'Unselected physics object changed')
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-qualification-proposal-1/controller.py", line 44, in require
+    if not value:raise ValueError(message)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Unselected physics object changed

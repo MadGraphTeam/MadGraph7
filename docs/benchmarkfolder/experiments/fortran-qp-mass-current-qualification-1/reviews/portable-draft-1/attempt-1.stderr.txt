@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "<stdin>", line 31, in <module>
+  File "<frozen importlib._bootstrap_external>", line 1023, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-retention-1/package/replay.py", line 2, in <module>
+    import argparse
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1019, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1115, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1214, in get_data
+  File "<stdin>", line 19, in audit
+  File "<stdin>", line 13, in reject
+RuntimeError: Independent audit rejected an external or mutating effect

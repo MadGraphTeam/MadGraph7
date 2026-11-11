@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "make",
+    "--no-print-directory",
+    "--dry-run",
+    "--always-make",
+    "COLLIER_interface.o",
+    "CT_interface.o",
+    "MadLoopCommons.o",
+    "MadLoopParamReader.o",
+    "TIRUST_interface.o",
+    "TIR_interface.o",
+    "born_matrix.o",
+    "check_sa.o",
+    "check_sa_born_splitOrders.o",
+    "coef_construction_1.o",
+    "f2py_wrapper.o",
+    "helas_calls_ampb_1.o",
+    "helas_calls_uvct_1.o",
+    "improve_ps.o",
+    "loop_CT_calls_1.o",
+    "loop_matrix.o",
+    "loop_num.o",
+    "mg5_citation.o",
+    "mp_coef_construction_1.o",
+    "mp_compute_loop_coefs.o",
+    "mp_helas_calls_ampb_1.o",
+    "mp_helas_calls_uvct_1.o",
+    "polynomial.o"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-current-qualification-work-2/build/original-observed/SubProcesses/P0_uux_zgg",
+  "scope": "compiler-policy helper; make-internal child queries are not individually recorded"
+}

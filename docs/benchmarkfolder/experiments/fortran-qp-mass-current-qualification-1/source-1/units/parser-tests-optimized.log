@@ -1,0 +1,15 @@
+test_01_positive_two_complete_calls (__main__.UnitParser.test_01_positive_two_complete_calls) ... ok
+test_02_binary_words_known_values (__main__.UnitParser.test_02_binary_words_known_values) ... ok
+test_03_real_and_complex_inputs_have_extra_bits (__main__.UnitParser.test_03_real_and_complex_inputs_have_extra_bits) ... ok
+test_04_reversed_or_narrowed_square_is_rejected (__main__.UnitParser.test_04_reversed_or_narrowed_square_is_rejected) ... ok
+test_05_narrowed_mass_argument_is_rejected (__main__.UnitParser.test_05_narrowed_mass_argument_is_rejected) ... ok
+test_06_incomplete_duplicate_and_bad_footer_fail (__main__.UnitParser.test_06_incomplete_duplicate_and_bad_footer_fail) ... ok
+test_07_fatal_flag_rounding_or_halting_fail (__main__.UnitParser.test_07_fatal_flag_rounding_or_halting_fail) ... ok
+test_08_inexact_may_be_raised_but_not_cleared (__main__.UnitParser.test_08_inexact_may_be_raised_but_not_cleared) ... ok
+test_09_wrong_selected_backend_or_group_fails (__main__.UnitParser.test_09_wrong_selected_backend_or_group_fails) ... ok
+test_10_actual_source_binding_and_no_reducer_link (__main__.UnitParser.test_10_actual_source_binding_and_no_reducer_link) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.017s
+
+OK

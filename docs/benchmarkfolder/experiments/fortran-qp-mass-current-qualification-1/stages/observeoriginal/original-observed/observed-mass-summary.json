@@ -1,0 +1,14 @@
+{
+  "actual_formal_symbols": {
+    "MDL_MB": 1118,
+    "MDL_MT": 1118,
+    "ZERO": 7618
+  },
+  "groups": 3016,
+  "independent_real_mass_square_gate": true,
+  "native_bottom_square_witnesses_by_point": {},
+  "native_reversed_mass_groups": 1196,
+  "physical_finite_truth_qualified": false,
+  "recovered_square_entries": 0,
+  "true113bit_mass_input_scope": false
+}

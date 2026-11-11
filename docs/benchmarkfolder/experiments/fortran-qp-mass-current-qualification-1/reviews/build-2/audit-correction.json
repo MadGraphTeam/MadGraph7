@@ -1,0 +1,5 @@
+{
+  "initial_audit_attempt": "KeyError finished_utc before any object/native validation",
+  "followup_schema_read": "limits.json absent; actual name actual-limits.json",
+  "correction": "Use recorded stage caps, actual-limits.json and source-backed deadline closure; do not invent unrecorded wall elapsed. No native/scientific evidence changed."
+}

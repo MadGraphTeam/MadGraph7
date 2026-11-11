@@ -1,0 +1,41 @@
+{
+  "cap_seconds": 600.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 245170071,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 5,
+        "process_group": 5,
+        "session": 5,
+        "start_time_ticks": 245172972,
+        "state": "S"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2452298.432411054,
+  "pid": 3,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "result_sha256": "2a3b38facc6b7b5e1f9c8ec931d214ed06cbc3d34e7b2c300c8806bac900b9d1",
+  "returncode": 0,
+  "source_index_sha256": "3c0f53a6e5526535b6fae98b0f055466b429a9a9cfc863fb22fb999a5c8a0815",
+  "stage": "observeoriginal",
+  "status": "passed"
+}
