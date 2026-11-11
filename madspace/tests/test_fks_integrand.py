@@ -360,9 +360,11 @@ def test_kinematics(path):
                 ours, theirs = to_partonic_frame(ours), to_partonic_frame(theirs)
                 scale = theirs[..., 0].max()
                 np.testing.assert_allclose(ours / scale, theirs / scale, atol=1e-12)
+        # xi and y to the rounding of the Born, absolute: xi is an energy in
+        # units of sqrt(s_hat) (up to 1e-14 for a Born at rapidity 6)
         valid = event_valid.astype(bool)
         np.testing.assert_allclose(
-            out["xi"][valid], channel.field("event", "xi")[valid], rtol=1e-12
+            out["xi"][valid], channel.field("event", "xi")[valid], rtol=0, atol=1e-13
         )
         np.testing.assert_allclose(
             out["y"][valid], channel.field("event", "y")[valid], rtol=0, atol=1e-13
