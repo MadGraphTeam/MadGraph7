@@ -341,12 +341,19 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             assert report["stability_setup"]["sqrt_s"] == 500.0
             first = report["stability"][0]
             assert first["backend"] == "ninjars" and first["refusal"] is None
-            assert first["points"] + first["failed"] == 3
+            assert first["points"] + first["failed_reference"] == 3
+            # Every flat point is recorded by index; binary64 failures rank
+            # among the measured points at 0 digits.
+            assert [p["index"] for p in first["per_point"]] == [0, 1, 2]
+            assert first["failed_binary64"] == sum(
+                p["status"] == "binary64-failed" for p in first["per_point"]
+            )
             assert len(first["percentiles"]) == 4
             assert all(0.0 <= d <= 16.0 for d in first["true_digits"])
         else:
             text = stdout.getvalue()
-            assert "NinjaRS true digits" in text and "50 % (median)" in text
+            assert "true digits" in text and "NinjaRS" in text and "50 %" in text
+            assert max(len(line) for line in text.splitlines()) <= 100
     from pyamplicol.api import BenchmarkRunner
 
     result = BenchmarkRunner().run(uux_ddx)
