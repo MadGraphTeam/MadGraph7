@@ -1,4 +1,6 @@
 #include "madspace/phasespace/phasespace.hpp"
+
+#include "madspace/phasespace/luminosity.hpp"
 #include "madspace/constants.hpp"
 #include "madspace/util.hpp"
 #include <algorithm>
@@ -239,6 +241,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double beam_rapidity,
     bool mirror_beams,
     std::optional<double> s_hat_power,
+    double lepton_sampling_power,
     bool sqrt_s_hat_min_condition,
     bool sqrt_s_hat_condition
 ) :
@@ -248,7 +251,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             NamedVector<Type> in{
                 {"random",
                  batch_float_array(
-                     PhaseSpaceMapping::random_dim_for(topology, leptonic)
+                     PhaseSpaceMapping::random_dim_for(
+                         topology, leptonic, lepton_sampling_power
+                     )
                  )}
             };
             // Opt-in discrete channel: only declared when the t-channel strategy
@@ -262,12 +267,29 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             return in;
         }(),
-        {{"momenta",
-          batch_four_vec_array(
-              topology.outgoing_masses().size() + topology.incoming_masses().size()
-          )},
-         {"x1", batch_float},
-         {"x2", batch_float}},
+        [&] {
+            NamedVector<Type> out{
+                {"momenta",
+                 batch_four_vec_array(
+                     topology.outgoing_masses().size()
+                     + topology.incoming_masses().size()
+                 )},
+                {"x1", batch_float},
+                {"x2", batch_float}
+            };
+            // A dressed-lepton density needs 1-x, not x. The split samples x
+            // so close to 1 that recomputing 1-x from a double underflows to
+            // exactly zero for about a quarter of the events, and then the
+            // (1-x)^-p the Jacobian carries has nothing to cancel against --
+            // those events silently drop out of the cross section. MadEvent
+            // carries the same quantity for the same reason, in
+            // /to_ee_omx1/.
+            if (lepton_sampling_power != 0.) {
+                out.push_back("omx1", batch_float);
+                out.push_back("omx2", batch_float);
+            }
+            return out;
+        }(),
         [&] {
             NamedVector<Type> conditions;
             if (permutations.size() > 1) {
@@ -306,6 +328,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         (_topology.t_propagator_count() == 0 ||
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
+    _lepton_power(lepton_sampling_power),
     _two_to_one(topology.outgoing_masses().size() == 1),
     _t_mapping(std::monostate{}) {
     // the chain order and settings belong to the color-ordered mode only
@@ -321,6 +344,15 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     }
     if ((_beam_rapidity != 0. || _mirror_beams) && _topology.is_decay()) {
         throw std::invalid_argument("a decay has no beams to give a rapidity");
+    }
+    if (_lepton_power != 0. && (_mirror_beams || _two_to_one)) {
+        // The dressed split draws x1 and x2 itself and returns 1-x per beam:
+        // a mirrored event would swap the beams after the densities were
+        // assigned to them, and the 2 -> 1 shortcut below samples neither.
+        throw std::invalid_argument(
+            "PhaseSpaceMapping: dressed-lepton beams (lepton_sampling_power) "
+            "support neither mirrored beams nor a 2 -> 1 process"
+        );
     }
     if (sqrt_s_hat_condition &&
         (!leptonic || _topology.is_decay() ||
@@ -761,6 +793,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double beam_rapidity,
     bool mirror_beams,
     std::optional<double> s_hat_power,
+    double lepton_sampling_power,
     bool sqrt_s_hat_min_condition,
     bool sqrt_s_hat_condition
 ) :
@@ -817,6 +850,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         beam_rapidity,
         mirror_beams,
         s_hat_power,
+        lepton_sampling_power,
         sqrt_s_hat_min_condition,
         sqrt_s_hat_condition
     ) {}
@@ -841,6 +875,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
 
     ValueVec dets{_pi_factors};
     Value x1 = 1.0, x2 = 1.0;
+    Value omx1, omx2;
 
     // permute, boost into the lab frame and apply the cuts
     auto finish = [&](Value p_ext_stack) -> Result {
@@ -875,10 +910,14 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 ? x
                 : fb.full({x, fb.batch_size({p_ext_lab})});
         };
-        return {
-            {{"momenta", p_ext_lab}, {"x1", as_batch(x1)}, {"x2", as_batch(x2)}},
-            ps_weight
+        NamedVector<Value> outputs{
+            {"momenta", p_ext_lab}, {"x1", as_batch(x1)}, {"x2", as_batch(x2)}
         };
+        if (_lepton_power != 0.) {
+            outputs.push_back("omx1", omx1);
+            outputs.push_back("omx2", omx2);
+        }
+        return {outputs, ps_weight};
     };
 
     if (_two_to_one) {
@@ -909,6 +948,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     root_data.max_mass = partonic_energy(conditions);
 
     // sample decay s-invariants, following the integration order
+    // 1 - s_hat/s_lab for the dressed-lepton root, carried from where it is
+    // still exact to lepton_split; see lepton_s_hat.
+    Value lepton_omtau;
     std::size_t invariant_index = 0;
     for (std::size_t decay_index : _topology.decay_integration_order()) {
         auto& decay = _topology.decays().at(decay_index);
@@ -919,7 +961,28 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         if (data.decay.e_max > 0.) {
             sqrt_s_max = fb.min(sqrt_s_max, data.decay.e_max);
         }
-        if (decay_index != 0 || _map_luminosity) {
+        if (decay_index == 0 && _map_luminosity && _lepton_power != 0.) {
+            // A dressed-lepton density piles its weight at s_hat -> s, which
+            // the hadronic root sampling barely visits. See @ref lepton_s_hat.
+            ++invariant_index;   // keep the remaining decays aligned
+            auto s_max = fb.square(sqrt_s_max);
+            auto root =
+                lepton_s_hat(fb, s_min, s_max, next_random(), _lepton_power);
+            data.mass2 = root.s_hat;
+            data.mass = fb.sqrt(root.s_hat);
+            dets.push_back(root.det);
+            // (s_lab - s_max) + (s_max - s_hat), over s_lab. Built from the
+            // gap rather than from s_hat so that the endpoint survives: for
+            // 22% of the draws s_hat has rounded to s_max and 1 - s_hat/s_lab
+            // would be exactly zero. With the usual s_max = s_lab the first
+            // term drops out and this is just the gap.
+            auto batch = fb.batch_size({s_max});
+            double s_lab_sq = _sqrt_s_lab * _sqrt_s_lab;
+            auto s_lab_val = fb.full({s_lab_sq, batch});
+            lepton_omtau = fb.div(
+                fb.add(fb.sub(s_lab_val, s_max), root.s_gap), s_lab_val
+            );
+        } else if (decay_index != 0 || _map_luminosity) {
             auto s_max = fb.square(sqrt_s_max);
             if (decay_index == 0 && _sqrt_s_hat_min_condition) {
                 s_min = raised_s_min(fb, s_min, s_max, conditions);
@@ -942,7 +1005,20 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     // sample momentum fractions
     auto sqrt_s_hat = root_data.mass.value();
     auto s_hat = root_data.mass2.value();
-    if (_map_luminosity && _y_max_lab >= 0.) {
+    if (_map_luminosity && _lepton_power != 0.) {
+        // A dressed-lepton density diverges as x -> 1, which the hadronic
+        // x1 = tau^r split gives no weight to. See @ref lepton_split. Any
+        // rapidity window from the cuts is left to the cuts here.
+        auto split = lepton_split(
+            fb, s_hat, lepton_omtau, next_random(), next_random(),
+            _sqrt_s_lab * _sqrt_s_lab, _lepton_power
+        );
+        x1 = split.x1;
+        x2 = split.x2;
+        omx1 = split.omx1;
+        omx2 = split.omx2;
+        dets.push_back(split.det);
+    } else if (_map_luminosity && _y_max_lab >= 0.) {
         auto [x1_new, x2_new, det_x] = fb.r_to_x1x2_window(
             next_random(), s_hat, _sqrt_s_lab * _sqrt_s_lab, _y_max_lab
         );
@@ -1153,6 +1229,16 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
 ) const {
+    if (_lepton_power != 0.) {
+        // The dressed split picks which beam carries the drawn fraction, and
+        // recovering that choice needs a comparison the instruction set does
+        // not have. Nothing asks for it -- Integrand inverts the adaptive
+        // mapping and the discrete samplers, never the phase space itself --
+        // so this refuses rather than returning something plausible.
+        throw std::runtime_error(
+            "PhaseSpaceMapping: no inverse map with dressed-lepton beams"
+        );
+    }
     Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
     if (_two_to_one) {
         auto [r, det_x] = fb.x1x2_to_r(x1, x2, _sqrt_s_lab * _sqrt_s_lab);

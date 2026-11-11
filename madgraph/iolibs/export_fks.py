@@ -676,6 +676,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
           pjoin('various','cluster.py'),
           pjoin('various','systematics.py'),          
           pjoin('various','lhe_parser.py'),
+          # imported by common_run_interface: picks the beamstrahlung Pythia8 main
+          pjoin('various','py8_bstrahl.py'),
           pjoin('various','collect_events.py'),
           # citation tracking (module + bibliography database)
           pjoin('various','citation.py'),
