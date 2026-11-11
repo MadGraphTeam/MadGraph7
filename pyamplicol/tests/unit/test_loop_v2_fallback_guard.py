@@ -1296,6 +1296,9 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
     stream, stream_scales, _ = _stream()
     if not _tirust(loop_native):
         handle = _open(sdk, zzz)
+        # The fallback's own decisions: a point it fails stays Failed (the
+        # default best-effort policy is test_loop_v2_best_effort's).
+        assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0
         try:
             found = _evaluate(sdk, handle, *_c_inputs(tilt, tilt_scales))
             assert found["diagnostics"]["reduction"]["fallback"] is None
@@ -1315,6 +1318,9 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
 
     def call(artifact, points, scales, arithmetic=b"double", digits=0, **settings):
         handle = _open(sdk, artifact)
+        # The fallback's own decisions: a point it fails stays Failed (the
+        # default best-effort policy is test_loop_v2_best_effort's).
+        assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0
         try:
             assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
             for name, value in settings.items():
@@ -1615,6 +1621,9 @@ def test_a_helicity_selection_at_the_defect_returns_no_value(zzz, loop_native):
         return
     sdk = _sdk()
     handle = _open(sdk, zzz)
+    # The fallback's own decisions: a point it fails stays Failed (the
+    # default best-effort policy is test_loop_v2_best_effort's).
+    assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0
     try:
         assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
         assert sdk.rusticol_virtual_set_arithmetic(handle, b"double-double", 0) == 0
@@ -1706,6 +1715,9 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
             ctypes.c_double,
         ]
         handle = _open(sdk, artifact)
+        # The fallback's own decisions: a point it fails stays Failed (the
+        # default best-effort policy is test_loop_v2_best_effort's).
+        assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0
         try:
             assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
             assert sdk.rusticol_virtual_set_reduction_target(handle, target) == 0

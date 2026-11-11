@@ -1893,7 +1893,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                 let reason = reduction_policy::fallback_rejected(
                     &choice.effective,
                     fallback,
-                    &first.join("; "),
+                    &bounded_reasons(&first).join("; "),
                     arithmetic.name(),
                     estimate,
                     target,
@@ -1917,7 +1917,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                         reason: reduction_policy::fallback_served(
                             &choice.effective,
                             fallback,
-                            &first.join("; "),
+                            &bounded_reasons(&first).join("; "),
                         ),
                         estimate,
                     },
@@ -1931,11 +1931,13 @@ pub(crate) fn with_fallback<P: PointOutcome>(
             .iter()
             .map(|reason| reduction_policy::fallback_failed(fallback, reason))
             .collect();
+        // One message per reason class with the count of the others (the
+        // Python API's bounded reasons, m-lit ux-besteffort F6).
         record.points.insert(
             index,
             FallbackPoint {
                 effective: None,
-                reason: second.join("; "),
+                reason: bounded_reasons(&second).join("; "),
                 estimate: None,
             },
         );
