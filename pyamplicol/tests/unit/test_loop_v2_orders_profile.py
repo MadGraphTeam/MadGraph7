@@ -14,7 +14,8 @@ public loop profiling route (m-lit lit-examples G4, G5).
 * ``pyamplicol profile`` / ``BenchmarkRunner`` of a loop artifact returns the
   per-point time and its split into trees, dressing, scatter, reduction and
   rest from the executor's stage report of the timed calls, for the checked
-  default and the unchecked setting.
+  default and the unchecked setting; the CLI on both reduction backends, and
+  ``--stability`` the stable-digit statistics over flat points.
 """
 
 from __future__ import annotations
@@ -294,7 +295,15 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             stderr=io.StringIO(),
         )
         assert code == 0
-        profile = json.loads(stdout.getvalue())
+        report = json.loads(stdout.getvalue())
+        # Both reduction backends side by side, the type's default first and
+        # profiled as "auto" (the default setup); the stability not asked.
+        assert [row["backend"] for row in report["runtime"]] == ["ninjars", "tirust"]
+        assert report["runtime"][0]["requested"] == "auto"
+        assert report["stability"] is None and report["default_backend"] == "ninjars"
+        other = report["runtime"][1]
+        assert (other["profile"] is None) is (other["refusal"] is not None)
+        profile = report["runtime"][0]["profile"]
         assert set(profile["stages"]) == set(PROFILE_GROUPS)
         assert profile["batch"] == 4 and profile["samples"] == 2
         assert profile["unchecked"] is bool(setting)
@@ -304,6 +313,40 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
         assert profile["reduction"]["lanes"]["ninjars"] >= 2
         assert profile["seconds_per_point"] > 0 and profile["label"] is None
         assert sum(profile["stages"].values()) > 0
+    # --stability on both backends over three flat points (binary64 with the
+    # default rotation against a double-double re-run); human and JSON.
+    for output in (["--json"], ["--color", "never"]):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "3",
+                "--sqrt-s",
+                "500",
+                "--progress",
+                "off",
+                *output,
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        if output == ["--json"]:
+            report = json.loads(stdout.getvalue())
+            assert report["runtime"] is None
+            assert report["stability_setup"]["points"] == 3
+            assert report["stability_setup"]["sqrt_s"] == 500.0
+            first = report["stability"][0]
+            assert first["backend"] == "ninjars" and first["refusal"] is None
+            assert first["points"] + first["failed"] == 3
+            assert len(first["percentiles"]) == 4
+            assert all(0.0 <= d <= 16.0 for d in first["true_digits"])
+        else:
+            text = stdout.getvalue()
+            assert "NinjaRS true digits" in text and "50 % (median)" in text
     from pyamplicol.api import BenchmarkRunner
 
     result = BenchmarkRunner().run(uux_ddx)
