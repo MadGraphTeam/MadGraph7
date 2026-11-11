@@ -216,7 +216,8 @@ int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
  * "reduction"}} and its relative uncertainty
  * (rusticol_virtual_result_copy_uncertainties): the call's own binary64
  * stability estimate ("source": "stability-checks"), else one default
- * rotation re-test of that point ("rotation"), else none ("none", NaN, said
+ * rotation and the rescaled reduction-direction check of that point
+ * ("recommended-checks"), else none ("none", NaN, said
  * so in "detail"); a point without any value stays RUSTICOL_VIRTUAL_FAILED.
  * The diagnostics' "warnings" list the best-effort and failed points (kind,
  * first reason, count, point ids); "failures" keeps one message per reason

@@ -9,8 +9,8 @@
 //! unchecked reduction, `Runtime::set_reduction_unchecked`): where that gives
 //! a value, the point returns it with status `BestEffort` (never a success),
 //! its refusal and an uncertainty (the call's own binary64 stability estimate
-//! when the call runs checks, else one default rotation re-test of that point
-//! alone; none outside the binary64 monitoring, said so explicitly). The
+//! when the call runs checks, else one default rotation and the rescaled
+//! reduction-direction check of that point alone; none outside the binary64 monitoring, said so explicitly). The
 //! call still returns OK: nothing is printed, logged or raised; the result's
 //! statuses, `uncertainties` and its diagnostics (`"best_effort"`,
 //! `"warnings"`) carry it. [`OnFailure::Return`] keeps such points failed
@@ -436,7 +436,7 @@ impl Runtime {
             let saved = (self.unchecked, self.checks.clone());
             self.unchecked = true;
             if rotation {
-                self.checks = StabilityChecks::with_default_rotations(1, false, false, false)?;
+                self.checks = StabilityChecks::with_default_rotations(1, true, true, false)?;
             }
             let extra = rerun(self, inputs.subset(&failed));
             (self.unchecked, self.checks) = saved;
@@ -449,7 +449,7 @@ impl Runtime {
                 let uncertainty = estimate_of(&extra_diagnostics, position);
                 let source = match (uncertainty, rotation) {
                     (None, _) => "none",
-                    (Some(_), true) => "rotation",
+                    (Some(_), true) => "recommended-checks",
                     (Some(_), false) => "stability-checks",
                 };
                 let index = requested
