@@ -260,6 +260,17 @@ establish refusal causation or an accuracy fix. All ten input/status analyses
 replay from retained bytes; no failed tensor output supplies an accuracy claim.
 The 35-page PDF remains its separately frozen ordinary-campaign snapshot.
 
+The subsequent [isolated causal replay](experiments/kinematic-projection-causal-replay-1/README.md)
+reproduces the CMS rank-two, four-propagator refusal at both stress points in
+DP and QP using the original installed Fortran adapter and TIRust library.
+Replacing only the two symmetric zeroed invariant entries with their captured
+spacelike values changes all four refusals to successful statuses. Exact input
+reconstruction and the error's two-by-two Gram matrix establish this scoped
+projection cause. No tensor coefficients or amplitudes were inspected by the
+replay, so a general Fortran correction, amplitude accuracy and performance
+remain unqualified. Its portable verifier checks the retained inputs, ten raw
+protocols and twenty loader maps without running native code.
+
 The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
 index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
 passes exact parity across four workers, 76 checked native-DP physical calls
