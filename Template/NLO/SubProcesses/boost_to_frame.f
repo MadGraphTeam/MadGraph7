@@ -77,6 +77,7 @@ c     input:  p_born_in(0:3,nexternal-1)  Born momenta of this configuration
 c             imother                     position of the mother in them
 c     output: azifact, boosted
 c**************************************************************************
+      use fks_phase_space_data, only: xij_kperp
       implicit none
       include 'nexternal.inc'
       double precision p_born_in(0:3,nexternal-1)
@@ -90,8 +91,6 @@ c**************************************************************************
       parameter (vtiny=1d-8)
       integer ids(nexternal-1)
       logical trivial
-      double precision xij_kperp(0:3)
-      common/cxij_kperp/xij_kperp
 
       call get_frame_mask_born(ids)
       call get_me_frame_boost(p_born_in, nexternal-1, ids, pboost,
@@ -200,6 +199,7 @@ c     the phase multiplies borntilde. azifact is <ij>/[ij] only in the
 c     generic branch; the collinear one pre-cancels the caller's mother
 c     factor instead, so do not assume it if you change the caller.
 c**************************************************************************
+      use fks_phase_space_data, only: xij_kperp
       implicit none
       include 'nexternal.inc'
       double precision p_born_in(0:3,nexternal-1)
@@ -209,8 +209,6 @@ c**************************************************************************
       double precision cphi_mother, sphi_mother
       double precision pm(0:3), kp(0:3), pib(0:3), pjb(0:3)
       integer ids(nexternal-1)
-      double precision xij_kperp(0:3)
-      common/cxij_kperp/xij_kperp
 
       call me_frame_apply(p_born_in(0,imother), pboost, pm)
       call get_frame_mask_born(ids)

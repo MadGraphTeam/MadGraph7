@@ -1086,3 +1086,64 @@ class AlohaModelPathTest(unittest.TestCase):
         self.assertEqual(recorded, [os.path.join(MG5DIR, 'models', 'sm')])
         self.assertEqual(aloha_model.model_pos,
                          os.path.join(MG5DIR, 'models', 'sm'))
+
+
+#===============================================================================
+# MG7LeptonDensityShippingTest
+#===============================================================================
+class MG7LeptonDensityShippingTest(unittest.TestCase):
+    """Source/PDF/lep_densities ships only for beams that can use it.
+
+    A dressed-lepton run resolves beam.lepton_density against that directory,
+    so without it the run stops at startup; a hadronic output has no business
+    carrying 3.5 MB of e+ e- tables.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def exporter(self, ninitial, pdg1, pdg2):
+        # the method only needs dir_path and proc_characteristic, and
+        # ProcessExporterMG7.__init__ wants a full set of export arguments
+        exporter = export_cpp.ProcessExporterMG7.__new__(
+            export_cpp.ProcessExporterMG7)
+        exporter.dir_path = self.tmpdir
+        exporter.proc_characteristic = {'ninitial': ninitial,
+                                        'pdg_initial1': pdg1,
+                                        'pdg_initial2': pdg2}
+        return exporter
+
+    def shipped(self):
+        return os.path.isdir(os.path.join(self.tmpdir, 'Source', 'PDF',
+                                          'lep_densities', 'fcce240ll'))
+
+    def test_shipped_for_electron_beams(self):
+        self.exporter(2, [-11], [11]).copy_lepton_densities()
+        self.assertTrue(self.shipped())
+
+    def test_shipped_for_muon_beams(self):
+        self.exporter(2, [-13], [13]).copy_lepton_densities()
+        self.assertTrue(self.shipped())
+
+    def test_not_shipped_for_hadronic_beams(self):
+        self.exporter(2, [2, 21], [-2, 21]).copy_lepton_densities()
+        self.assertFalse(self.shipped())
+
+    def test_not_shipped_for_photon_beams(self):
+        # beam.leptonic is true for these too, so gating on that flag rather
+        # than on the beam PDGs would ship tables they cannot use
+        self.exporter(2, [22], [22]).copy_lepton_densities()
+        self.assertFalse(self.shipped())
+
+    def test_not_shipped_for_a_decay(self):
+        self.exporter(1, [6], []).copy_lepton_densities()
+        self.assertFalse(self.shipped())
+
+    def test_existing_directory_is_left_alone(self):
+        target = os.path.join(self.tmpdir, 'Source', 'PDF', 'lep_densities')
+        os.makedirs(target)
+        self.exporter(2, [-11], [11]).copy_lepton_densities()
+        self.assertEqual(os.listdir(target), [])

@@ -464,7 +464,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_raise_invalid_path_hwpp -pA -t0 -l INFO
+            ./tests/test_manager.py test_raise_invalid_path_hw7 -pA -t0 -l INFO
 
 
   acceptancetest_bundle_8:
@@ -1131,3 +1131,15 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_gen_evt_onlygen test_generate_events_lo_hw6_stdhep test_generate_events_lo_py6_stdhep -pA -t0 -l INFO
+
+
+  acceptancetest_82_helicities:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: Check real-emission helicity sums across frames
+        run: ./tests/test_manager.py test_real_helicity_sum_survives_a_boost -pA -t0 -l INFO

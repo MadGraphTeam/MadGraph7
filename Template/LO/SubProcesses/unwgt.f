@@ -528,6 +528,8 @@ c     include 'vector.inc' ! defines VECSIZE_MEMMAX
       include 'cluster.inc' ! includes vector.inc that defines VECSIZE_MEMMAX
       include 'run.inc'
       include 'run_config.inc'
+      include '../../Source/PDF/pdf.inc'
+      include '../../Source/bstrahl.inc'
 
 
       
@@ -564,8 +566,14 @@ c
       integer ievent
       logical flip
 
+      integer ibeam1, ibeam2
+
       real ran1
       external ran1
+      integer bstrahl_beam_id
+      external bstrahl_beam_id
+      logical eepdf_has_bstrahl
+      external eepdf_has_bstrahl
 
       character*40 cfmt
 C     
@@ -580,6 +588,9 @@ C
 
       integer          IPSEL
       COMMON /SubProc/ IPSEL
+
+      double precision omx_ee(2)
+      common /to_ee_omx1/ omx_ee
 
 c      character*101       hel_buf
 c      common/to_helicity/hel_buf
@@ -925,6 +936,32 @@ C     bias module, then the beginning of the routine will directly
 C     jump here.
 
  1123 continue
+
+c     Split each beam momentum fraction into its beamstrahlung and ISR
+c     parts.  Only the ISR part may be handed to a shower's backward
+c     evolution, so the beamstrahlung part is written to the event
+c     file -- see Source/bstrahl.inc.  xbk/omx_ee/q2fact still hold the
+c     current phase-space point here: unwgt() is called from the
+c     integration loop, not from a replay of stored events.
+c
+c     This sits before the do_write_events guard because the bias
+c     module calls us with .False. purely to set up the event and then
+c     writes the record itself, via write_event_to_stream.
+      write_bstrahl = .false.
+      xbs_beam(1) = 1d0
+      xbs_beam(2) = 1d0
+      if (pdlabel.eq.'dressed') then
+         ibeam1 = bstrahl_beam_id(lpp(1))
+         ibeam2 = bstrahl_beam_id(lpp(2))
+         if (ibeam1.ne.0 .and. ibeam2.ne.0) then
+            call sample_beamstrahlung(
+     &           xbk(1), omx_ee(1), q2fact(1), ibeam1,
+     &           xbk(2), omx_ee(2), q2fact(2), ibeam2,
+     &           xbs_beam(1), xbs_beam(2))
+            write_bstrahl = eepdf_has_bstrahl()
+         endif
+      endif
+
       if (.not.do_write_events) then
         return
       endif
@@ -953,7 +990,10 @@ c     are not light partons the event's hardest scale instead:
 c     max(SCALUP, pt_clust of the light partons below sqrt(s)). Light
 c     partons at sqrt(s) (core partons) keep it: that value is Pythia8's
 c     do-not-match flag. Only the shower start changes, not the matching.
-c     Same rule as apply_mlm_hardest_shower_scale in madspace.
+c     The hardest scale also includes the core-process scale of the
+c     clustering (mlm_core_scale, cluster.inc), so it does not drop below the
+c     hard process when mu_F does. Same rule as apply_mlm_hardest_shower_scale
+c     in madspace.
 c************************************************************************
       implicit none
       include 'genps.inc'
@@ -968,9 +1008,15 @@ c************************************************************************
       integer i, id
       double precision flag, hardest
       logical light
+c     cluster.inc (not included: it also declares ptclus)
+      double precision mlm_core_scale
+      common/cl_core/mlm_core_scale
 
       flag = 0.999d0*sqrt(stot)
+c     the core-process scale (setclscales) keeps the start at the hard
+c     process when mu_F is lower (scalefact < 1, a fixed scale)
       hardest = 0d0
+      if (mlm_core_scale.lt.flag) hardest = max(hardest, mlm_core_scale)
       if (q2fact(1).gt.0d0) hardest = max(hardest, sqrt(q2fact(1)))
       if (q2fact(2).gt.0d0) hardest = max(hardest, sqrt(q2fact(2)))
       do i=nincoming+1,nexternal

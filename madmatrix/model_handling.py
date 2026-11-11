@@ -608,6 +608,22 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     out.write('    if(zero_coup%i ==0) { COUP%i = C_ACCESS::kernelAccessConst( MCOUP%i.value + C_ACCESS::flv_stride*flv_index1 ); }\n' % (i,i,i))
         else:
             incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+            # The P1N currents of --hel_recycling (the vertex with one external
+            # fermion left off, see hel_recycle.CppDialect._p1n_group) resolve
+            # the flavour of a single flavoured coupling in BOTH orientations,
+            # as the _0 / _3 routines above do: the table is filled with the
+            # merged leg as its first fermion (ProcessTables.h for a running
+            # coupling) while the call can put that leg second, e.g. the
+            # gluino-squark-quark vertex of MSSM_SLHA2, whose P1N_1 with the
+            # merged antiquark as F2 found partner2[flv] = -1 and dropped the
+            # amplitude for every flavour but the first. Orientation A (the
+            # table's first fermion is F1) uses slot flv_index1 and is tried
+            # first, as in _0; orientation B (it is F2) uses slot flv_index2.
+            # A table where both give a different partner cannot be one current:
+            # the recycler does not split those (p1n_flavour_safe). The full
+            # _1 / _2 routines keep the one orientation they always had.
+            both = nb_coupling == 1 and 'P1N' in self.tag and incoming in (1, 2)
+            slot = 'flv_sel' if both else 'flv_index1'
             if incoming %2 == 1:
                 outgoing = self.outgoing
                 out.write('    int flv_index%i = F%i.flv_index;\n' % (incoming, incoming))
@@ -616,7 +632,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if nb_coupling == 1:
+                if both:
+                    out.write('    int flv_index2 = MCOUP.partner1[flv_index1];\n')
+                    out.write('    int flv_sel = flv_index1;\n')
+                    out.write('    if(flv_index2 == -1) { flv_index2 = MCOUP.partner2[flv_index1]; flv_sel = flv_index2; }\n')
+                elif nb_coupling == 1:
                     out.write('    int flv_index2 = MCOUP.partner1[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index2 = MCOUP1.partner1[flv_index%i];\n' %(incoming))
@@ -636,7 +656,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if nb_coupling == 1:
+                if both:
+                    out.write('    int flv_index1 = MCOUP.partner2[flv_index2];\n')
+                    out.write('    int flv_sel = flv_index1;\n')
+                    out.write('    if(flv_index1 == -1) { flv_index1 = MCOUP.partner1[flv_index2]; flv_sel = flv_index2; }\n')
+                elif nb_coupling == 1:
                     out.write('    int flv_index1 = MCOUP.partner2[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
@@ -654,7 +678,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                     # so, when we need to shift within the array, we need to double the shift width to account for
                     # both real and imaginary parts
-                    out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*flv_index1 );\n' % (name, name))
+                    out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*%s );\n' % (name, name, slot))
         return out.getvalue()
 
     # OM - add the formats which aloha_writers.ALOHAWriterForCPP is missing.
@@ -2475,6 +2499,42 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             for amp, number in numbers:
                 amp.set('number', number)
 
+    @staticmethod
+    def flv_partner_pairs(coupl, dependent):
+        """The (k1, k2) pairs (0-based) of a flavoured coupling, k1 the flavour
+        whose slot holds the value, as its table is filled: by
+        FLV_Coupling.get_partner_indices for a fixed coupling (the model's
+        FLV_COUPLING), and with the merged leg always first for a running one
+        (cDPF_partner1/2 of ProcessTables.h, see edit_processtables)."""
+        from madgraph.core import base_objects
+        pairs = []
+        for key in coupl.flavors:
+            if dependent:
+                nonzero = [i for i in key if i != 0]
+                k1, k2 = nonzero if len(nonzero) == 2 else (nonzero[0], 1)
+            else:
+                k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
+            pairs.append((k1 - 1, k2 - 1))
+        return pairs
+
+    def hr_flavour_tables(self):
+        """{argument: (k1, k2) pairs} of every flavoured coupling of the
+        process, by the argument the vertex calls pass (flvCOUPs[i],
+        flvCOUPs_dep[i]); None for one whose table is not known. The recycler
+        does not split the amplitudes of a vertex whose table a P1N current with
+        a fermion output cannot follow (hel_recycle.CppDialect.p1n_flavour_safe)."""
+        writer = self.helas_call_writer
+        flv_map = getattr(writer, 'flv_couplings_map', {})
+        tables = {}
+        for name, order, dependent in (
+                ('flvCOUPs', getattr(writer, 'couporderflv', {}), False),
+                ('flvCOUPs_dep', getattr(writer, 'couporderflv_dep', {}), True)):
+            for coup, pos in order.items():
+                coupl = flv_map.get(coup)
+                tables['%s[%d]' % (name, pos)] = None if coupl is None else \
+                    self.flv_partner_pairs(coupl, dependent)
+        return tables
+
     def write_recycled(self, good_hels, zero_perhel):
         """Run the recycler over the hr_orig calls for the good helicities
         (1-based rows of cHel) and the (row, amplitude) pairs that vanish, and
@@ -2516,6 +2576,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    self.HR_CALLS_MARK))
         dialect = hel_recycle.CppDialect()
         dialect.TABLES = self.hel_recycling_tables()
+        dialect.p1n_flavour_tables = self.hr_flavour_tables()
         recycler = hel_recycle.HelicityRecycler(
                         [str(hel) for hel in kept], [],
                         sorted((int(h), int(a)) for h, a in zero_perhel),

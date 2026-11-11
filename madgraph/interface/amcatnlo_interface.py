@@ -1093,6 +1093,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             # Save processes instances generated
             self.born_processes_for_olp = []
             self.born_processes = []
+            if hasattr(self._curr_exporter, 'prepare_born_support'):
+                self._curr_exporter.prepare_born_support(
+                    self._curr_matrix_elements.get('matrix_elements'))
             for ime, me in \
                 enumerate(self._curr_matrix_elements.get('matrix_elements')):
                 if not self.options['low_mem_multicore_nlo_generation']:
@@ -1258,6 +1261,8 @@ _launch_usage = "launch [DIRPATH] [MODE] [options]\n" + \
                 "     in the run_card.dat\n"
 
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory for the launch, without editing them")
 _launch_parser.add_option("-c", "--cluster", default=False, action='store_true',

@@ -364,6 +364,38 @@ square:
   dims: 0
   desc: "Element-wise square."
 
+log:
+  inputs:
+    - name: in1
+      type: [float, ...]
+      desc: "input tensor"
+  outputs:
+    - name: out
+      type: [float, ...]
+      desc: "natural logarithm of the input"
+  differentiable: True
+  dims: 0
+  desc: "Element-wise natural logarithm. Non-positive inputs return zero, as
+    `sqrt` does for negative ones."
+
+pow:
+  inputs:
+    - name: in1
+      type: [float, ...]
+      desc: "base"
+    - name: in2
+      type: [float, ...]
+      desc: "exponent"
+  outputs:
+    - name: out
+      type: [float, ...]
+      desc: "base raised to the exponent"
+  differentiable: True
+  dims: 0
+  desc: "Element-wise power. A non-positive base returns zero rather than a
+    NaN, so that an endpoint of a sampling density cannot poison a whole
+    batch."
+
 min:
   inputs:
     - name: in1

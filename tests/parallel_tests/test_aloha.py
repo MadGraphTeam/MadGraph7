@@ -3172,6 +3172,7 @@ class test_aloha_creation(IOTests.IOTestManager):
             keeps the sign of even powers of P (the $ veto P1D was always
             passing for outgoing fermions since P**2 was turned into -P**2)"""
 
+        self.addCleanup(aloha_lib.KERNEL.clean)
         builder = create_aloha.AbstractRoutineBuilder.__new__(
                                               create_aloha.AbstractRoutineBuilder)
         namespace = vars(create_aloha)

@@ -70,6 +70,7 @@ except ImportError:
     import internal.save_load_object as save_load_object
     import internal.gen_crossxhtml as gen_crossxhtml
     import internal.lhe_parser as lhe_parser
+    import internal.py8_bstrahl as py8_bstrahl
     import internal.FO_analyse_card as FO_analyse_card 
     import internal.sum_html as sum_html
     from internal import InvalidCmd, MadGraph5Error
@@ -88,6 +89,7 @@ else:
     import madgraph.iolibs.files as files
     import madgraph.various.cluster as cluster
     import madgraph.various.lhe_parser as lhe_parser
+    import madgraph.various.py8_bstrahl as py8_bstrahl
     import madgraph.various.FO_analyse_card as FO_analyse_card 
     import madgraph.iolibs.save_load_object as save_load_object
     import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
@@ -690,7 +692,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
                        'hepmc3_path': None,
@@ -2782,21 +2784,52 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'The corresponding directory cannot be found in \n' + \
                     'Source/PDF/lep_densities')
 
-        # now copy the files. Source/makefile builds libpdf.a from the PDF
-        # *directory*, whose mtime does not move when an existing file is
-        # overwritten, so a new density would never be compiled: the previous
-        # one stayed linked (a 240 GeV FCC-ee density used for a 365 GeV run).
-        # Hence remove the stale objects and the library whenever the density
-        # actually changes, and leave everything alone when it does not.
+        # now copy the files. bstrahl_pars.inc carries the parameters of this
+        # density's beamstrahlung/ISR splitting, and replaces the
+        # no-beamstrahlung default shipped in Template/Common/Source/PDF; the
+        # splitting code itself, bstrahl.f, is shared by all densities.
+        #
+        # Check each source first. allowed_lep_densities is built by listing
+        # this directory, so a set added by hand is selectable without
+        # necessarily carrying all three files, and files.cp only logs a
+        # warning when the source is missing. For bstrahl_pars.inc that would
+        # leave the default in place, i.e. a run that quietly writes no
+        # beamstrahlung fractions and is then showered with undegraded beams
+        # -- the exact failure the fractions exist to prevent.
+        #
+        # Source/makefile builds libpdf.a from the PDF *directory*, whose mtime
+        # does not move when an existing file is overwritten, so a new density
+        # would never be compiled: the previous one stayed linked (a 240 GeV
+        # FCC-ee density used for a 365 GeV run). Hence remove the stale
+        # objects and the library whenever the density actually changes, and
+        # leave everything alone when it does not.
+        # file of the density -> the object compiled from it
+        objects = {'eepdf.f': 'eepdf.o',
+                   'gridpdfaux.f': 'gridpdfaux.o',
+                   'bstrahl_pars.inc': 'bstrahl.o'}
+        for filename in objects:
+            source = os.path.join(lep_d_path, filename)
+            if not os.path.exists(source):
+                raise madgraph.aMCatNLOError(
+                    ('The dressed-lepton density %s is incomplete: %s is '
+                     'missing.\n' % (name, source)) +
+                    'Every density directory must provide eepdf.f, '
+                    'gridpdfaux.f and bstrahl_pars.inc;\nbstrahl_pars.inc '
+                    'declares whether the density folds beamstrahlung into '
+                    'its\ngrid and, if it does, the parameters needed to split '
+                    'x into its\nbeamstrahlung and ISR parts. See '
+                    'vendor/eepdfgrid/readme for how to generate it.')
+        # all present: only now touch Source/PDF, so that an incomplete set
+        # leaves the previous density whole
         changed = False
-        for filename in ['eepdf.f', 'gridpdfaux.f']:
-            new = os.path.join(lep_d_path, filename)
+        for filename, objname in objects.items():
+            source = os.path.join(lep_d_path, filename)
             old = os.path.join(pdf_path, filename)
-            if os.path.exists(old) and filecmp.cmp(new, old, shallow=False):
+            if os.path.exists(old) and filecmp.cmp(source, old, shallow=False):
                 continue
-            files.cp(new, pdf_path)
+            files.cp(source, pdf_path)
             changed = True
-            obj = os.path.join(pdf_path, filename[:-2] + '.o')
+            obj = os.path.join(pdf_path, objname)
             if os.path.exists(obj):
                 os.remove(obj)
         libpdf = os.path.join(sourcedir, os.pardir, 'lib', 'libpdf.a')
@@ -3734,17 +3767,33 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     ############################################################################
     def get_pid_final_initial_states(self):
         """Find the pid of all particles in the final and initial states"""
+        import json
+
         pids = set()
         subproc = [l.strip() for l in open(pjoin(self.me_dir,'SubProcesses',
                                                                  'subproc.mg'))]
-        nb_init = self.ninitial
-        pat = re.compile(r'''DATA \(IDUP\(ILH|I,\d+\),ILH|I=1,\d+\)/([\+\-\d,\s]*)/''', re.I)
+        pat = re.compile(r'DATA\s*\(IDUP\((?:ILH|I),\d+\),'
+                         r'\s*(?:ILH|I)=1,\d+\)\s*/([+\-\d,\s]*)/', re.I)
         for Pdir in subproc:
-            text = open(pjoin(self.me_dir, 'SubProcesses', Pdir, 'born_leshouche.inc')).read()
+            directory = pjoin(self.me_dir, 'SubProcesses', Pdir)
+            metadata_path = pjoin(directory, 'born_support.json')
+            source = pjoin(directory, 'born_leshouche.inc')
+            if os.path.isfile(metadata_path):
+                with open(metadata_path) as stream:
+                    metadata = json.load(stream)
+                if 'born_pdgs' in metadata:
+                    pids.update(str(pdg) for process in metadata['born_pdgs']
+                                for pdg in process)
+                    continue
+                # Earlier shared-provider outputs keep the immutable IDUP
+                # table in the context metadata rather than in this include.
+                source = pjoin(self.me_dir, 'Source', 'BornSupport',
+                               'c%d' % metadata['context'], 'metadata.f')
+            with open(source) as stream:
+                text = stream.read()
             group = pat.findall(text)
             for particles in group:
-                particles = particles.split(',')
-                pids.update(set(particles))
+                pids.update(str(int(pdg)) for pdg in particles.split(','))
 
         return pids
 
@@ -7547,7 +7596,16 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                         logger.info('Remember that Parton-Shower are not yet ready for such proton component definition (HW implementation in progress).', '$MG:BOLD' )
                 elif (abs(self.run_card['lpp1'])==3 and abs(self.run_card['lpp2'])==3):
                     if 'pythia8_card.dat' in self.cards:
-                        if self.run_card['pdlabel'] == 'isronlyll':
+                        # A density that folds beamstrahlung into the PDF can be
+                        # showered too: the beamstrahlung part of x is written
+                        # per event and consumed by the dedicated Pythia8 main,
+                        # which degrades the beams so that only the ISR part is
+                        # backward-evolved. Either way the QED shower has to be
+                        # on, since that is what reconstructs the ISR.
+                        has_bstrahl = py8_bstrahl.density_has_bstrahl(
+                            self.run_card['pdlabel'],
+                            pjoin(self.me_dir, 'Source'))
+                        if self.run_card['pdlabel'] == 'isronlyll' or has_bstrahl:
                            if 'partonshower' not in self.run_card['bypass_check']:
                                 # force that QED shower is on?
                                 for param in ['TimeShower:QEDshowerByQ', 'TimeShower:QEDshowerByL', 'TimeShower:QEDshowerByGamma', 'SpaceShower:QEDshowerByQ', 'SpaceShower:QEDshowerByL']:
@@ -7577,14 +7635,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if proc_charac and 'MLM' in proc_charac['limitations']:
                 if self.run_card['ickkw']:
                     raise Exception( "Your model is identified as not fully supported within MadGraph7.\n" +\
-                      "You can NOT run with FxFx/UnLOPS matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
+                      "You can NOT run with FxFx matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
             
-            # ensure that for fixed order ICKKW model are not set to FxFx and/or UNLOPS
+            # FxFx requires shower matching, so it cannot be used at fixed order.
             if 'shower_cards' not in self.cards and self.opt['switch']['fixed_order'] == 'ON':
-                if self.run_card['ickkw'] in [3,4]:
-                    # 3 is FxFx and 4 is UNLOPS
-                    mergemode = {3:'FxFx', 4:'UNLOPS'}
-                    raise Exception("You are running in fixed order mode but ICKKW is set to %s (%s). This does not make sense. Please fix and retry" %(self.run_card['ickkw'], mergemode[self.run_card['ickkw']]))
+                if self.run_card['ickkw'] == 3:
+                    raise Exception("You are running in fixed order mode but ICKKW is set to 3 (FxFx). This does not make sense. Please fix and retry")
 
 
             if 'fix_scale' in proc_charac['limitations']:
@@ -7659,7 +7715,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             extralibs = self.shower_card['extralibs'].split()
             extrapaths = self.shower_card['extrapaths'].split()
             # remove default stdhep/Fmcfio for recent shower
-            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIGPP', 'HW7']:
+            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIG7', 'HW7']:
                 if 'stdhep' in self.shower_card['extralibs']:
                     extralibs.remove('stdhep')
                     modify_extralibs = True

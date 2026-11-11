@@ -12,17 +12,18 @@ photonflux=tbessk.o tbessj.o elliptic_integral.o nielsen_generalized_polylog.o p
 
 all: $(LIBDIR)$(LIBRARY)
 
-# A module and its .mod file come from one compile of its
-# source: only the .o is a target, so a parallel make never
-# runs that compile twice (the two would race on the .mod).
-# Modules a file USEs are prerequisites through their .o.
-
 $(LIBDIR)$(LIBRARY): $(photonflux)
 	$(call CREATELIB, $@, $^)
 
 $(EXE): test.o $(photonflux)
 	$(FC) $(FFLAGS) -o $(EXE) test.o $(photonflux)
 
+# Each module is a prerequisite through its .o: one 'gfortran -c X.f90' writes
+# both X.o and x.mod. A rule 'X.o X.mod: X.f90' declares two independent
+# targets, so 'make -j' ran that compilation twice at the same time and the
+# two collided on x.mod ("Cannot rename module file 'x.mod0'"). gfortran
+# also lowercases the .mod name, which a case-sensitive file system never
+# matches to X.mod.
 test.o: test.f90 ElasticPhotonPhotonFlux.o OpticalGlauber_Geometry.o
 	$(FC) $(FFLAGS) -c $<
 
@@ -32,7 +33,7 @@ ElasticPhotonPhotonFlux.o: ElasticPhotonPhotonFlux.f90 OpticalGlauber_Geometry.o
 photoabsorption.o: photoabsorption.f90
 	$(FC) $(FFLAGS) -c $<
 
-photonpdfsquare.o : photonpdfsquare.f ElasticPhotonPhotonFlux.o
+photonpdfsquare.o: photonpdfsquare.f ElasticPhotonPhotonFlux.o
 	$(FC) $(FFLAGS) -c $<
 
 tbessk.o: tbessk.f90
