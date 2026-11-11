@@ -7,7 +7,9 @@ integrand of madspace will be compared with: the weight of a contribution
 is its luminosity times (wgt_1 + wgt_2 log(mu_R^2/Q^2) + wgt_3
 log(mu_F^2/Q^2)) g_s^n, summed over the subprocesses of parton_iproc, the
 n-body part sits at the FKS configuration of the Born and the n+1-body part
-at the picked one, and the momenta conserve energy and momentum.
+at the picked one, the momenta conserve energy and momentum, and the
+prefactor of the real emission is that of compute_prefactors_n1body. The
+weights themselves are compared with madspace in test_fks_integrand.py.
 """
 
 import glob
@@ -150,4 +152,23 @@ def test_matrix_element_blocks(path):
             if os.path.basename(path) == "epem_jj.json":
                 ratio = link["value"] / (link["g"] ** 2 * blocks["born"])
                 np.testing.assert_allclose(ratio, -4 / 3, rtol=1e-12)
+    assert count > 0
+
+
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_prefactor_of_the_real_emission(path):
+    """f_r is xinorm / (xi (1 - y)) times the Jacobian of the event, the FKS
+    symmetry factor, the weight of vegas and the multichannel factor, which
+    include_multichannel_enhance applies where the real emission passes the
+    cuts."""
+    count = 0
+    for _, point in points(reference(path)):
+        if not any(c["type"] == 1 for c in point["contributions"]):
+            continue
+        count += 1
+        event = point["event"]
+        expected = point["xi_norm"]["xinorm_ev"] / (event["xi"] * (1 - event["y"]))
+        expected *= event["jacobian"] * point["symmetry_factors"][0]
+        expected *= point["vegas_wgt"] * point["blocks"]["channel"]["enhance"]
+        np.testing.assert_allclose(point["prefactors"]["f_r"], expected, rtol=1e-14)
     assert count > 0

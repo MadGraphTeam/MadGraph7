@@ -11,7 +11,8 @@ them into madspace/tests/test_data/fks_integrand/<name>.json:
 
     process, mg_commit, run_card (the values of RUN_CARD below and those the
     integrand depends on), param_card (masses, widths, couplings of the
-    run), channels[]: subprocess, channel (the G directory), fks_configurations
+    run), n_f, n_l (light quarks and massless leptons of the model),
+    channels[]: subprocess, channel (the G directory), fks_configurations
     (fks_configurations.json of the subprocess), points[]:
         call (the number of the call of sigint), ichan, iconfig, nfks_picked
         (the FKS configuration of the n+1-body part), iran_picked, nfks_born
@@ -19,14 +20,22 @@ them into madspace/tests/test_data/fks_integrand/<name>.json:
         ndim, sum (all configurations summed instead of picked), vegas_wgt,
         vol (the weight of the pick of the configuration), xx, x (the random
         numbers before and after update_vegas_x), born (valid, xjac, xpswgt,
-        shat, tau, ycm, xbjrk, stot, weight of the phase-space point),
+        shat, tau, ycm, xbjrk, stot, weight of the phase-space point, and
+        tau_born_lower_bound, tau_lower_bound_resonance, tau_lower_bound),
+        resonance (resonance_recoil, mass2, momentum of the resonance of the
+        resonance-local recoil of the event),
         p_born, event and counter_events[k] for k = 0, 1, 2 (valid,
         jacobian, xi, y, xi_hat, xi_max, xbjrk), radiation (the three random
-        numbers of the radiation), contributions[]:
+        numbers of the radiation), prefactors (f_b, f_nb, f_r, f_s, f_c,
+        f_dc, f_sc, f_dsc, f_pdf_scheme as sigint leaves them, with the
+        multichannel factor where include_multichannel_enhance ran),
+        symmetry_factors (fkssymmetryfactor, its Born and Deg versions),
+        xi_norm (xinorm_ev, xinorm_cnt[k], xiimax_ev, xiimax_cnt[k] for
+        k = 0, 1, 2), contributions[]:
             index, type (add_wgt: 1 real, 2 Born, 3 integrated counterterms,
             4 soft, 5 collinear, 6 soft-collinear, 14 virtual, 15 average
             virtual of the virtual trick, 20 + sud_mod EW Sudakov), nfks,
-            qcd_power, plot_id, h_event, niproc, orders_tag, amp_pos, wgt
+            qcd_power, h_event, niproc, orders_tag, amp_pos, wgt
             (the coefficients of 1, log(mu_R^2/Q^2), log(mu_F^2/Q^2)), bjx,
             scales2 (Q^2, mu_R^2, mu_F^2), g_strong, y_bst, cpower, weight
             (wgts(1), PDFs and couplings included, in pb), wgt_me_tree,
@@ -36,11 +45,20 @@ them into madspace/tests/test_data/fks_integrand/<name>.json:
         blocks of the point, where the Born is valid, each with the coupling
         it took): nfks, i_fks, j_fks (the picked configuration), g_real,
         real, real_orders (at the event, per split-order position), k_perp
-        (xij_kperp of the event), g_born, born, born_orders,
+        (xij_kperp of the event), azimuthal_phase (real and imaginary
+        part of xij_aor, the phase of azimuthal_orders that sborncol_isr
+        and sborncol_fsr take at y = 1), g_born, born, born_orders,
         azimuthal_orders (real and imaginary part, at the position of the
-        counterterm, sborn), nbody (nfks, i_fks, j_fks of the configuration
-        of the n-body part, links[]: m, n (legs of the real process), g,
-        value, orders of sborn_sf for the pairs sbornsoft takes)
+        counterterm, sborn), channel (config, diagram, symmetry_factor,
+        enhance and amp2 of the Born diagrams of the multichannel factor
+        of include_multichannel_enhance), nbody (nfks, i_fks, j_fks of the
+        configuration of the n-body part, links[]: m, n (legs of the real
+        process), g, value, orders of sborn_sf for the pairs sbornsoft
+        takes, channel there, virtual where bornsoftvirtual evaluated it:
+        qes2 (the Ellis-Sexton scale squared), fraction (virtual_fraction
+        of the channel), orders (the finite part of MadLoop per
+        split-order position at the Born, summed over helicities, with the
+        coupling of the n-body contributions))
     orders[] (per channel): position, qcd_pos, qed_pos, orders of the
     split-order positions (amp_split_pos_to_orders)
 
@@ -129,6 +147,19 @@ def patch_driver(out):
         f.write(source + "\n" + dump)
 
 
+def sum_helicities(out):
+    """MadLoop sums the helicities of the virtual explicitly
+    (NHelForMCoverHels = -1 in FKS_params.dat) instead of sampling one, so
+    that the finite part it gives is that of the point."""
+    path = os.path.join(out, "Cards", "FKS_params.dat")
+    with open(path) as f:
+        lines = f.read().split("\n")
+    k = lines.index("#NHelForMCoverHels")
+    lines[k + 1] = "-1"
+    with open(path, "w") as f:
+        f.write("\n".join(lines))
+
+
 def launch(out, values, points, work, name):
     run_name = f"dump_{len(os.listdir(os.path.join(out, 'Events')))}"
     script = os.path.join(work, f"{name}_launch.mg")
@@ -185,7 +216,20 @@ def parse(text, nexternal):
             v = floats(rest)
             point["blocks"].update(g_real=v[0], real=v[1], real_orders=v[2:])
         elif key == "KPERP":
-            point["blocks"]["k_perp"] = floats(rest)
+            v = floats(rest)
+            point["blocks"].update(k_perp=v[:4], azimuthal_phase=v[4:6])
+        elif key == "BOUNDS":
+            v = floats(rest)
+            point["born"].update(
+                tau_born_lower_bound=v[0],
+                tau_lower_bound_resonance=v[1],
+                tau_lower_bound=v[2],
+            )
+        elif key == "RESONANCE":
+            v = floats(rest[1:])
+            point["resonance"] = dict(
+                resonance_recoil=bool(int(rest[0])), mass2=v[0], momentum=v[1:5]
+            )
         elif key == "BORN_BLOCK":
             g, *v = floats(rest)
             n = len(orders)
@@ -202,6 +246,47 @@ def parse(text, nexternal):
             g, *v = floats(rest[2:])
             point["blocks"]["nbody"]["links"].append(
                 dict(m=int(rest[0]), n=int(rest[1]), g=g, value=v[0], orders=v[1:])
+            )
+        elif key in ("CHANNEL", "CHANNELB"):
+            channel = dict(
+                config=int(rest[0]),
+                diagram=int(rest[1]),
+                symmetry_factor=float(rest[2]),
+                enhance=float(rest[3]),
+            )
+            if key == "CHANNEL":
+                point["blocks"]["channel"] = channel
+            else:
+                point["blocks"]["nbody"]["channel"] = channel
+        elif key == "AMP2":
+            # the channel of the last CHANNEL or CHANNELB line
+            nbody = point["blocks"]["nbody"] if "nbody" in point["blocks"] else None
+            target = nbody if nbody and "channel" in nbody else point["blocks"]
+            target["channel"]["amp2"] = floats(rest)
+        elif key == "VIRTUAL":
+            qes2, fraction, *v = floats(rest)
+            point["blocks"]["nbody"]["virtual"] = dict(
+                qes2=qes2, fraction=fraction, orders=v
+            )
+        elif key == "FACTORS":
+            v = floats(rest)
+            point["prefactors"] = dict(
+                f_b=v[0],
+                f_nb=v[1],
+                f_r=v[2],
+                f_s=v[3],
+                f_c=v[4],
+                f_dc=v[5],
+                f_sc=v[6],
+                f_dsc=v[7:11],
+                f_pdf_scheme=v[11:14],
+            )
+        elif key == "SYMMETRY":
+            point["symmetry_factors"] = floats(rest)
+        elif key == "XINORM":
+            v = floats(rest)
+            point["xi_norm"] = dict(
+                xinorm_ev=v[0], xinorm_cnt=v[1:4], xiimax_ev=v[4], xiimax_cnt=v[5:8]
             )
         elif key == "POINT":
             v = [int(f) for f in rest]
@@ -253,11 +338,10 @@ def parse(text, nexternal):
                 type=v[1],
                 nfks=v[2],
                 qcd_power=v[3],
-                plot_id=v[4],
-                h_event=bool(v[5]),
-                niproc=v[6],
-                orders_tag=v[7],
-                amp_pos=v[8],
+                h_event=bool(v[4]),
+                niproc=v[5],
+                orders_tag=v[6],
+                amp_pos=v[7],
             )
             point["contributions"].append(contribution)
         elif key == "CWGT":
@@ -291,7 +375,7 @@ def read_cards(out):
     with open(os.path.join(out, "Cards", "run_card.dat")) as f:
         for line in f:
             line = line.split("!")[0]
-            if "=" in line:
+            if "=" in line and not line.lstrip().startswith("#"):
                 value, key = (s.strip() for s in line.split("=", 1))
                 run_card[key] = value
     blocks, block = {}, None
@@ -312,6 +396,20 @@ def read_cards(out):
     return run_card, blocks
 
 
+def light_flavors(out):
+    """The numbers of light quarks and massless leptons of the model
+    (NF and NL of coupl.inc), which the subtraction takes."""
+    values = {}
+    with open(os.path.join(out, "Source", "coupl.inc")) as f:
+        for line in f:
+            for key in ("NF", "NL"):
+                head = f"PARAMETER({key}="
+                if head in line.replace(" ", ""):
+                    text = line.replace(" ", "").split(head)[1].split(")")[0]
+                    values[key.lower()] = float(text.lower().replace("d", "e"))
+    return dict(n_f=values["nf"], n_l=values["nl"])
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--points", type=int, default=40, help="points per channel")
@@ -328,6 +426,7 @@ def main():
         process, values = PROCESSES[name]
         out = generate(name, process, work, os.path.join(work, f"{name}_gen.log"))
         patch_driver(out)
+        sum_helicities(out)
         launch(out, values, args.points, work, name)
         run_card, param_card = read_cards(out)
         channels = []
@@ -357,6 +456,7 @@ def main():
             mg_commit=commit,
             run_card=run_card,
             param_card=param_card,
+            **light_flavors(out),
             channels=channels,
         )
         path = os.path.join(OUT_DIR, f"{name}.json")
