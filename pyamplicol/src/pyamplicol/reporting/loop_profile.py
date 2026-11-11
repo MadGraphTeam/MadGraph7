@@ -126,7 +126,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         (
             "backend",
             "time / point",
-            "fastest - slowest",
+            "min - max call",
             "vs fastest",
             "lanes",
             "failed",
