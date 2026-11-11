@@ -13,6 +13,10 @@ c   its Jacobians and the bounds on tau (tau_Born_lower_bound,
 c   tau_lower_bound_resonance, tau_lower_bound), the event and the
 c   counter-events with theirs, the resonance of the resonance-local
 c   recoil of the event with its mass squared.
+c - where the Born is valid, the cuts of sigint: passcuts at the soft
+c   counter-event (passcuts_nbody), at the collinear one (passcuts_coll,
+c   that of the soft one with event projection) and at the event
+c   (passcuts_n1body).
 c - the prefactors f_* of compute_prefactors_nbody and
 c   compute_prefactors_n1body as sigint leaves them (with the
 c   multichannel factor where include_multichannel_enhance ran, where
@@ -37,7 +41,8 @@ c The environment variable MADFKS_INTEGRAND_DUMP sets the number of
 c points it writes (none without it), to fks_integrand_dump.txt in the
 c channel directory.
       subroutine fks_integrand_dump(xx,x,vegas_wgt,nFKS_picked
-     $     ,iran_picked,vol,nFKS_born,sum,real_type,phase_space)
+     $     ,iran_picked,vol,nFKS_born,sum,real_type,phase_space
+     $     ,passcuts_nbody,passcuts_coll,passcuts_n1body)
       use weight_lines
       use mint_module, only: ichan,iconfig,ndimmax,virtual_fraction
       use fks_phase_space, only: fks_phase_space_point
@@ -81,7 +86,7 @@ c channel directory.
       integer kk,jj
       double precision xx(ndimmax),x(99),vegas_wgt,vol
       integer nFKS_picked,iran_picked,nFKS_born,real_type
-      logical sum
+      logical sum,passcuts_nbody,passcuts_coll,passcuts_n1body
       integer i,j,k,ndump,ncalls,nwritten,lun
       integer         nndim
       common/tosigint/nndim
@@ -154,6 +159,9 @@ c channel directory.
      $     ,fkssymmetryfactorBorn,fkssymmetryfactorDeg
       write(lun,'(a,99(1x,es24.16e3))') 'XINORM',xinorm_ev
      $     ,(xinorm_cnt(k),k=0,2),xiimax_ev,(xiimax_cnt(k),k=0,2)
+      if (phase_space%born%valid) write(lun,'(a,3(1x,i2))') 'CUTS'
+     $     ,merge(1,0,passcuts_nbody),merge(1,0,passcuts_coll)
+     $     ,merge(1,0,passcuts_n1body)
       write(lun,'(a,1x,i8)') 'NCONTR',icontr
       do i=1,icontr
          write(lun,'(a,8(1x,i12))') 'CINT',i,itype(i),nFKS(i)

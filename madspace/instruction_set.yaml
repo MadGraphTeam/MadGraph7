@@ -4065,6 +4065,27 @@ fks_soft_virtual:
   vectorized: False
   desc: "The n-body part of bornsoftvirtual in fks_singular.f without the virtual per NLO order, for QCD and QED and with the Ellis-Sexton scale at mu_R. With a = alpha_s / (2 pi) for QCD and alpha / (2 pi) for QED and the Born B of the order of the counterterms, each is a B sum_j Q_j over the massless particles with Q terms plus a sum_(m, n) f_mn L_mn I_mn over the pairs of linked particles, with L_mn = <T_m . T_n> B for QCD and B for QED and the integrated eikonals I_mn of eikonal_Ireg. Q_j = gamma'_j - log(s deltaO / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j / sqrt_s) for a final-state particle with its energy in the partonic center-of-mass frame, -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) for an incoming one with the factorization scale of its beam. The coefficients of log mu_R^2 and log mu_F^2 of the weight lines of MadFKS are a b gamma_g B of QCD and the sum of -a (gamma_j + 2 C_j log xicut) B over QCD and QED."
 
+fks_cuts:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta of the event or of a counter-event in the lab frame, in the order of the real process of the configuration of the event"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: pdg
+      type: [int, single, c, n]
+      desc: "PDG codes of the real process of each configuration"
+    - name: options
+      type: [float, single, 11]
+      desc: "jetalgo, jetradius, ptj, etaj, maxjetflavor, ptl, etal, drll, drll_sf, mll and mll_sf of the run card"
+  outputs:
+    - name: mask
+      type: [float]
+      desc: "1 where the kinematics passes the cuts, else 0"
+  vectorized: False
+  desc: "The generation cuts of cuts.f of MadFKS on one kinematics (passcuts_leptons and passcuts_jets). The charged leptons pass ptl and etal, each pair of opposite charge drll and mll, and the pairs of the same flavor drll_sf and mll_sf. The QCD partons (quarks up to maxjetflavor and gluons) are clustered with the pp generalized kT algorithm of fastjet (power jetalgo, radius jetradius) into jets with pt >= ptj and |eta| <= etaj, and with ptj > 0 and more than one parton, at most one may be soft and all of them, or all but one, must make jets. See @ref FKSCuts."
+
 fks_contribution_weight:
   inputs:
     - name: coefficients

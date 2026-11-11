@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
@@ -521,6 +522,101 @@ private:
 };
 
 /**
+ * The generation cuts of the FKS integrand on one kinematics, those of
+ * cuts.f of MadFKS (passcuts_leptons and passcuts_jets, with the parameters
+ * of the run card) [2], which sigint of driver_mintFO.f applies to the
+ * event, to the soft counter-event (for the soft and soft-collinear
+ * counterterms and the n-body part) and, without event projection, to the
+ * collinear counter-event. The cuts on jets are infrared safe: the QCD
+ * partons (quarks up to `maxjetflavor` and gluons) are clustered with the pp
+ * generalized @f$k_T@f$ algorithm of fastjet (power `jetalgo`, 1 for
+ * @f$k_T@f$, 0 for Cambridge/Aachen, -1 for anti-@f$k_T@f$, radius
+ * `jetradius`, rapidity and azimuth, E scheme) into jets with
+ * @f$p_T \ge@f$ `ptj` and @f$|\eta| \le@f$ `etaj`. With `ptj` > 0 and more
+ * than one parton, at most one parton may be soft and all partons, or all
+ * but one, must make jets, so a soft or collinear emission never decides.
+ * The charged leptons pass `ptl` and `etal`, each pair of opposite charge
+ * `drll` and `mll`, and the pairs of the same flavor `drll_sf` and `mll_sf`.
+ * A bound of zero (or below for `etaj` and `etal`) is no cut. The cuts on
+ * photons, the photon recombination and the cuts per PDG code of cuts.f are
+ * not part of it.
+ *
+ * `batch` is the leading batch dimension and `n` the number of particles of
+ * the real processes, incoming included.
+ *
+ * **Arguments**
+ * - `momenta` – `float`, shape `(batch, n, 4)` – the event or a counter-event
+ *   in the lab frame, in the order of the real process of the configuration.
+ * - `fks_index` – `int`, shape `(batch,)` – the FKS configuration of the
+ *   event.
+ *
+ * **Returns**
+ * - `mask` – `float`, shape `(batch,)` – 1 where the kinematics passes the
+ *   cuts, else 0.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
+ */
+class FKSCuts : public FunctionGenerator {
+public:
+    /**
+     * @param configurations  The FKS configurations of the Born, for the
+     *                        PDG codes of their real processes.
+     * @param jetalgo         Power of the generalized @f$k_T@f$ algorithm.
+     * @param jetradius       Its radius.
+     * @param ptj             Least transverse momentum of a jet.
+     * @param etaj            Largest @f$|\eta|@f$ of a jet.
+     * @param maxjetflavor    Heaviest quark flavor of a jet.
+     * @param ptl             Least transverse momentum of a charged lepton.
+     * @param etal            Largest @f$|\eta|@f$ of a charged lepton.
+     * @param drll            Least @f$\Delta R@f$ of a pair of opposite
+     *                        charge.
+     * @param drll_sf         The same for a pair of the same flavor.
+     * @param mll             Least invariant mass of a pair of opposite
+     *                        charge.
+     * @param mll_sf          The same for a pair of the same flavor.
+     * @throws std::invalid_argument for configurations that
+     *         check_fks_configurations rejects or with more QCD partons than
+     *         the clustering takes.
+     */
+    FKSCuts(
+        const std::vector<FKSConfiguration>& configurations,
+        double jetalgo = 1.,
+        double jetradius = 0.7,
+        double ptj = 0.,
+        double etaj = -1.,
+        int maxjetflavor = 4,
+        double ptl = 0.,
+        double etal = -1.,
+        double drll = 0.,
+        double drll_sf = 0.,
+        double mll = 0.,
+        double mll_sf = 0.
+    );
+    /// Most QCD partons of a real process the clustering takes
+    /// (FKS_JET_PARTONS_MAX of the kernel).
+    static constexpr std::size_t jet_parton_max = 16;
+    /// Number of particles of the real processes, incoming included.
+    std::size_t particle_count() const { return _particle_count; }
+    /// The options of the kernel: jetalgo, jetradius, ptj, etaj,
+    /// maxjetflavor, ptl, etal, drll, drll_sf, mll and mll_sf.
+    const std::vector<double>& options() const { return _options; }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    std::size_t _particle_count;
+    nested_vector2<me_int_t> _pdg;
+    std::vector<double> _options;
+};
+
+/**
  * The FKS integrand from the kinematics of @ref FKSKinematics and the
  * matrix-element blocks: @ref FKSSubtraction for the real emission and its
  * counterterms, @ref FKSSoftVirtual for the n-body part and @ref FKSWeights
@@ -546,6 +642,16 @@ private:
  *   where the subtraction also takes the Borns of extra counterterms.
  * - `fks_index` last, as for the subtraction.
  *
+ * With @ref FKSCuts, the luminosity of each contribution takes the cut of its
+ * kinematics, as sigint: the real emission that of the event, the soft and
+ * soft-collinear counterterms and the n-body part that of the soft
+ * counter-event, and the collinear counterterm that of the soft
+ * counter-event with event projection and of its own without (where the
+ * subtraction takes `collinear_born`). The n-body part takes the soft
+ * counter-event of the configuration of the event, where MadFKS takes that
+ * of its n-body configuration: for QCD they differ only in the flavor of the
+ * soft parton, which the cuts never see.
+ *
  * **Returns**
  * - those of @ref FKSWeights.
  *
@@ -559,13 +665,15 @@ public:
      * @param subtraction   The real emission and its counterterms.
      * @param soft_virtual  The n-body part without the Born and the virtual.
      * @param weights       The weights of the contributions.
-     * @throws std::invalid_argument if the three do not have the same numbers
+     * @param cuts          The generation cuts, if any.
+     * @throws std::invalid_argument if they do not all have the same numbers
      *         of particles and orders.
      */
     FKSCrossSection(
         const FKSSubtraction& subtraction,
         const FKSSoftVirtual& soft_virtual,
-        const FKSWeights& weights
+        const FKSWeights& weights,
+        const std::optional<FKSCuts>& cuts = std::nullopt
     );
     /// The real emission and its counterterms.
     const FKSSubtraction& subtraction() const { return _subtraction; }
@@ -573,6 +681,8 @@ public:
     const FKSSoftVirtual& soft_virtual() const { return _soft_virtual; }
     /// The weights of the contributions.
     const FKSWeights& weights() const { return _weights; }
+    /// The generation cuts, if any.
+    const std::optional<FKSCuts>& cuts() const { return _cuts; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -582,6 +692,7 @@ private:
     FKSSubtraction _subtraction;
     FKSSoftVirtual _soft_virtual;
     FKSWeights _weights;
+    std::optional<FKSCuts> _cuts;
 };
 
 } // namespace madspace

@@ -148,6 +148,7 @@ CASES = {
         configurations=FKS_CONFIGURATIONS,
         orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
     ),
+    "FKSCuts": dict(configurations=FKS_CONFIGURATIONS, ptj=10.0),
     "FKSCrossSection": dict(
         subtraction=ms.FKSSubtraction(
             FKS_CONFIGURATIONS, ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS)

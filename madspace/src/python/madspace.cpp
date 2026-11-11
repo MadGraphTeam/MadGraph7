@@ -2460,14 +2460,55 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSWeights::nlo_order_count")
         );
 
+    py::classh<FKSCuts, FunctionGenerator>(m, "FKSCuts", pydoc::doc("FKSCuts"))
+        .def(
+            py::init<
+                const std::vector<FKSConfiguration>&,
+                double,
+                double,
+                double,
+                double,
+                int,
+                double,
+                double,
+                double,
+                double,
+                double,
+                double>(),
+            py::arg("configurations"),
+            py::arg("jetalgo") = 1.,
+            py::arg("jetradius") = 0.7,
+            py::arg("ptj") = 0.,
+            py::arg("etaj") = -1.,
+            py::arg("maxjetflavor") = 4,
+            py::arg("ptl") = 0.,
+            py::arg("etal") = -1.,
+            py::arg("drll") = 0.,
+            py::arg("drll_sf") = 0.,
+            py::arg("mll") = 0.,
+            py::arg("mll_sf") = 0.,
+            pydoc::doc("FKSCuts::FKSCuts")
+        )
+        .def(
+            "particle_count",
+            &FKSCuts::particle_count,
+            pydoc::doc("FKSCuts::particle_count")
+        )
+        .def("options", &FKSCuts::options, pydoc::doc("FKSCuts::options"));
+
     py::classh<FKSCrossSection, FunctionGenerator>(
         m, "FKSCrossSection", pydoc::doc("FKSCrossSection")
     )
         .def(
-            py::init<const FKSSubtraction&, const FKSSoftVirtual&, const FKSWeights&>(),
+            py::init<
+                const FKSSubtraction&,
+                const FKSSoftVirtual&,
+                const FKSWeights&,
+                const std::optional<FKSCuts>&>(),
             py::arg("subtraction"),
             py::arg("soft_virtual"),
             py::arg("weights"),
+            py::arg("cuts") = std::nullopt,
             pydoc::doc("FKSCrossSection::FKSCrossSection")
         )
         .def(
@@ -2482,7 +2523,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def(
             "weights", &FKSCrossSection::weights, pydoc::doc("FKSCrossSection::weights")
-        );
+        )
+        .def("cuts", &FKSCrossSection::cuts, pydoc::doc("FKSCrossSection::cuts"));
 
     py::classh<EWSudakovAmplitude>(
         m, "EWSudakovAmplitude", pydoc::doc("EWSudakovAmplitude")

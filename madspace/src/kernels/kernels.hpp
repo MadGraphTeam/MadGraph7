@@ -5,6 +5,7 @@
 #include "discrete.hpp"
 #include "ew_sudakov.hpp"
 #include "fks.hpp"
+#include "fks_cuts.hpp"
 #include "fks_subtraction.hpp"
 #include "invariants.hpp"
 #include "kinematics.hpp"

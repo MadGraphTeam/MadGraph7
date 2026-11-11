@@ -56,6 +56,7 @@ import madspace as ms
 from madspace.fks import (
     fks_configuration_mapping,
     fks_cross_section,
+    fks_cuts,
     fks_soft_virtual,
     fks_subtraction,
     fks_weights,
@@ -78,6 +79,20 @@ COUNTERTERMS = {
 # the factors 1 - stiny and 1 - ctiny of the radiation of a final-state
 # emitter that MadFKS divides f_b by (fsr_born_cutoff_factor)
 FSR_BORN_CUTOFF_FACTOR = (1 - 1e-6) * (1 - 5e-7)
+# the cuts of FKSCuts, by their names in the run card
+CUTS = (
+    "jetalgo",
+    "jetradius",
+    "ptj",
+    "etaj",
+    "maxjetflavor",
+    "ptl",
+    "etal",
+    "drll",
+    "drll_sf",
+    "mll",
+    "mll_sf",
+)
 # GeV^-2 to pb, of madspace (INV_GEV2_TO_PB) and of MadFKS (conv of
 # include_PDF_and_alphas)
 MADSPACE_CONV = 0.38937937217186e9
@@ -446,38 +461,41 @@ class Channel:
             configuration_weight=1 / self.field("vol"),
         )
         inputs.update({f"{k}_alpha_s": v for k, v in alpha_s.items()})
-        inputs.update(
-            {f"{k}_luminosity": v * self.passes_cuts(k) for k, v in luminosity.items()}
-        )
+        inputs.update({f"{k}_luminosity": v for k, v in luminosity.items()})
         return inputs
 
-    def passes_cuts(self, kinematics):
-        """Where a kinematics passes the cuts of the run, as a stand-in for
-        the cuts of the integrand: mll_sf on the lepton pair of p p > e+ e-,
-        the only cut of these runs that any of their points fails (the jets of
-        e+ e- > j j pass ptj everywhere, as test_weights finds)."""
-        out, _ = self.event
-        prefix = {"event": "", "born": "born_"}.get(kinematics, kinematics + "_")
-        p = out[prefix + "momenta"]
-        mll = float(self.run_card.get("mll_sf", 0))
-        pdgs = self.configurations["born_pdgs"]
-        leptons = [k for k, pdg in enumerate(pdgs) if abs(pdg) == 11]
-        if mll <= 0 or len(leptons) != 2:
-            return np.ones(len(p))
-        if kinematics != "born":
-            # the leptons keep their positions in front of i
-            i_fks = self.field("blocks", "i_fks") - 1
-            assert (i_fks > max(leptons)).all()
-        pair = p[:, leptons[0]] + p[:, leptons[1]]
-        m2 = pair[:, 0] ** 2 - (pair[:, 1:] ** 2).sum(-1)
-        return (m2 >= mll**2).astype(float)
+    def cuts(self):
+        """The cuts of the run, by the names of FKSCuts."""
+        cuts = {name: float(self.run_card[name]) for name in CUTS}
+        cuts["maxjetflavor"] = int(cuts["maxjetflavor"])
+        return cuts
 
-    def run(self, function):
+    @functools.cached_property
+    def masks(self):
+        """The cuts of each luminosity: those of FKSCuts at the event and,
+        for the counterterms and the n-body part, at the soft counter-event,
+        as sigint with event projection."""
+        out, index = self.event
+        function = fks_cuts(self.born, self.configurations, **self.cuts())
+        (event,) = evaluate(function, out["momenta"], fks_index=index)
+        (soft,) = evaluate(function, out["soft_momenta"], fks_index=index)
+        return dict(
+            event_luminosity=event,
+            soft_luminosity=soft,
+            collinear_luminosity=soft,
+            soft_collinear_luminosity=soft,
+            born_luminosity=soft,
+        )
+
+    def run(self, function, masked=False):
         """The outputs of a generator on the inputs of its arguments, by
-        name."""
+        name, with the luminosities times the cuts if masked."""
         _, index = self.event
+        inputs = dict(self.inputs)
+        if masked:
+            inputs.update({k: inputs[k] * v for k, v in self.masks.items()})
         names = list(function.arg_types().keys())
-        args = [self.inputs[name] for name in names if name != "fks_index"]
+        args = [inputs[name] for name in names if name != "fks_index"]
         outputs = evaluate(
             function, *args, fks_index=index if "fks_index" in names else None
         )
@@ -485,8 +503,8 @@ class Channel:
 
     @functools.cached_property
     def weights(self):
-        """The outputs of FKSWeights."""
-        return self.run(fks_weights(self.born, self.configurations))
+        """The outputs of FKSWeights, with the cuts."""
+        return self.run(fks_weights(self.born, self.configurations), masked=True)
 
 
 @functools.lru_cache(maxsize=None)
@@ -673,8 +691,8 @@ def test_weights(path):
     lines, summed over the orders and the contributions at each kinematics),
     per unit weight of vegas, up to the ratio of the Jacobians of the two Born
     mappings, MadFKS's spread of the n-body part and the two conversions to
-    pb. A kinematics without contributions of MadFKS has zero weight, and the
-    cross section is the sum."""
+    pb. With the cuts of FKSCuts, a kinematics without contributions of
+    MadFKS has zero weight, and the cross section is the sum."""
     seen = set()
     for channel in channels(path):
         ours = channel.weights
@@ -699,11 +717,13 @@ def test_weights(path):
 
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_cross_section(path):
-    """FKSCrossSection from the blocks is FKSSubtraction, FKSSoftVirtual and
-    FKSWeights in turn, so it gives the weights of test_weights."""
+    """FKSCrossSection from the blocks with the cuts of the run is
+    FKSSubtraction, FKSSoftVirtual and FKSWeights in turn with the
+    luminosities times the cuts of FKSCuts, so it gives the weights of
+    test_weights."""
     for channel in channels(path):
         function = fks_cross_section(
-            channel.born, channel.configurations, n_f=channel.n_f
+            channel.born, channel.configurations, cuts=channel.cuts(), n_f=channel.n_f
         )
         ours = channel.run(function)
         for name, value in channel.weights.items():

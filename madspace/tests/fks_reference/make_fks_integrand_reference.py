@@ -29,7 +29,10 @@ them into madspace/tests/test_data/fks_integrand/<name>.json:
         numbers of the radiation), prefactors (f_b, f_nb, f_r, f_s, f_c,
         f_dc, f_sc, f_dsc, f_pdf_scheme as sigint leaves them, with the
         multichannel factor where include_multichannel_enhance ran),
-        symmetry_factors (fkssymmetryfactor, its Born and Deg versions),
+        cuts (where the Born is valid: passcuts of sigint at the soft
+        counter-event, at the collinear one, that of the soft one with event
+        projection, and at the event), symmetry_factors (fkssymmetryfactor,
+        its Born and Deg versions),
         xi_norm (xinorm_ev, xinorm_cnt[k], xiimax_ev, xiimax_cnt[k] for
         k = 0, 1, 2), contributions[]:
             index, type (add_wgt: 1 real, 2 Born, 3 integrated counterterms,
@@ -69,8 +72,10 @@ Run from anywhere with a gfortran in the PATH:
 """
 
 import argparse
+import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -95,7 +100,22 @@ PROCESSES = {
     "epem_jj": ("e+ e- > j j [QCD]", {}),
     "pp_epem": ("p p > e+ e- [QCD]", dict(HADRONIC, mll_sf=30)),
     "pp_ttx": ("p p > t t~ [QCD]", HADRONIC),
+    # the cuts of cuts.f: jets with the kT and anti-kT algorithms, leptons
+    "epem_jj_kt": (
+        "e+ e- > j j [QCD]",
+        dict(ptj=150, etaj=0.8, jetalgo=1, jetradius=1.0),
+    ),
+    "epem_jj_antikt": (
+        "e+ e- > j j [QCD]",
+        dict(ptj=150, etaj=0.8, jetalgo=-1, jetradius=0.4),
+    ),
+    "pp_epem_cuts": (
+        "p p > e+ e- [QCD]",
+        dict(HADRONIC, mll_sf=30, ptl=20, etal=2.5, drll=0.4),
+    ),
 }
+# more points where the jet cuts fail rarely at the event alone
+POINTS = {"epem_jj_kt": 100, "epem_jj_antikt": 100}
 # a short run: the points come from its first iteration
 RUN_CARD = {
     "req_acc_FO": -1,
@@ -109,7 +129,8 @@ RUN_CARD = {
 }
 DUMP_CALL = (
     "      call fks_integrand_dump(xx,x,vegas_wgt,nFKS_picked,iran_picked\n"
-    "     $     ,vol,nFKS_born,sum,real_channel_type,phase_space)\n"
+    "     $     ,vol,nFKS_born,sum,real_channel_type,phase_space\n"
+    "     $     ,passcuts_nbody,passcuts_coll,passcuts_n1body)\n"
 )
 
 
@@ -128,8 +149,10 @@ def generate(name, process, work, log):
 
 
 def patch_driver(out):
-    """sigint calls fks_integrand_dump after include_PDF_and_alphas (a kept
-    output gets the current fks_integrand_dump.f)."""
+    """sigint calls fks_integrand_dump after include_PDF_and_alphas. A kept
+    output gets the current call and fks_integrand_dump.f, and loses its
+    executables, so that a failed compilation stops the run instead of
+    running the old ones."""
     path = os.path.join(out, "SubProcesses", "driver_mintFO.f")
     with open(path) as f:
         source = f.read()
@@ -138,13 +161,15 @@ def patch_driver(out):
     head = dump.splitlines()[0]
     if head in source:
         source = source[: source.index(head)].rstrip("\n") + "\n"
-    else:
-        anchor = "      call include_PDF_and_alphas\n"
-        if source.count(anchor) != 1:
-            raise ValueError("sigint: include_PDF_and_alphas not found once")
-        source = source.replace(anchor, anchor + DUMP_CALL)
+    source = re.sub(r"      call fks_integrand_dump\(.*\n(     \$.*\n)*", "", source)
+    anchor = "      call include_PDF_and_alphas\n"
+    if source.count(anchor) != 1:
+        raise ValueError("sigint: include_PDF_and_alphas not found once")
+    source = source.replace(anchor, anchor + DUMP_CALL)
     with open(path, "w") as f:
         f.write(source + "\n" + dump)
+    for stale in glob.glob(os.path.join(out, "SubProcesses", "P*", "madevent_mintFO")):
+        os.remove(stale)
 
 
 def sum_helicities(out):
@@ -281,6 +306,9 @@ def parse(text, nexternal):
                 f_dsc=v[7:11],
                 f_pdf_scheme=v[11:14],
             )
+        elif key == "CUTS":
+            nbody, collinear, event = (bool(int(v)) for v in rest)
+            point["cuts"] = dict(soft=nbody, collinear=collinear, event=event)
         elif key == "SYMMETRY":
             point["symmetry_factors"] = floats(rest)
         elif key == "XINORM":
@@ -370,7 +398,8 @@ def parse(text, nexternal):
 
 
 def read_cards(out):
-    """The values of the run_card and param_card the integrand depends on."""
+    """The values of the run_card and param_card the integrand depends on,
+    with maxjetflavor of run_card.inc where the run_card hides it."""
     run_card = {}
     with open(os.path.join(out, "Cards", "run_card.dat")) as f:
         for line in f:
@@ -378,6 +407,10 @@ def read_cards(out):
             if "=" in line and not line.lstrip().startswith("#"):
                 value, key = (s.strip() for s in line.split("=", 1))
                 run_card[key] = value
+    with open(os.path.join(out, "Source", "run_card.inc")) as f:
+        for line in f:
+            if line.split("=")[0].strip().upper() == "MAXJETFLAVOR":
+                run_card.setdefault("maxjetflavor", line.split("=")[1].strip())
     blocks, block = {}, None
     with open(os.path.join(out, "Cards", "param_card.dat")) as f:
         for line in f:
@@ -412,7 +445,9 @@ def light_flavors(out):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--points", type=int, default=40, help="points per channel")
+    parser.add_argument(
+        "--points", type=int, default=40, help="points per channel (see POINTS)"
+    )
     parser.add_argument("--keep", help="keep the generated outputs in this directory")
     parser.add_argument("--only", help="only this process")
     args = parser.parse_args()
@@ -427,7 +462,7 @@ def main():
         out = generate(name, process, work, os.path.join(work, f"{name}_gen.log"))
         patch_driver(out)
         sum_helicities(out)
-        launch(out, values, args.points, work, name)
+        launch(out, values, POINTS.get(name, args.points), work, name)
         run_card, param_card = read_cards(out)
         channels = []
         sub_root = os.path.join(out, "SubProcesses")
