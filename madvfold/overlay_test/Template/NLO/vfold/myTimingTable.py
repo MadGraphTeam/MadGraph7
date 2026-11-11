@@ -310,6 +310,8 @@ def _run_params(data):
     return {
         'nevents': nev,
         'folding': env.get('ENV_VFOLDTEST_FOLDING') or '?',
+        # MC@NLO-Delta (ENV_VFOLDTEST_MCATNLODELTA, ENV_MCATNLODELTA in older logs)
+        'delta': env.get('ENV_VFOLDTEST_MCATNLODELTA', '0') not in ('', '0'),
         # (N/A before step 9a: that code evaluates one kpoint at a time and
         # never reads ENV_VFOLD_KPOINT_BATCH, which myLaunch.sh exports anyway)
         'kbatch': 'N/A' if _noswitch(cnt, 'kbatch_log') else
@@ -413,6 +415,8 @@ def build_table(data, step, grouping='default', rescale=RESCALE_BASELINE, isTex=
                  % (step, p['nevents'], p['folding'], p['kbatch'], p['bsffused'], p['sborn']))
     else:
         title = ('%s | NEVENTS=%s | folding=%s' % (step, p['nevents'], p['folding']))
+        if p['delta']:
+            title += r' | MC@NLO-$\Delta$'
         if p['kbatch'] != 'N/A':
             title += ' | kbatch=%s' % p['kbatch']
     vecsizes = [_vecsize(n, d) for n, d in data.items()]
