@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal, NamedTuple, TYPE_CHECKING
 
+from madgraph.mg7 import lepton_density as lepton_density_module
 from madgraph.mg7.common import logger, me_parameters, ms
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_surrogate
 from madgraph.mg7.observables import build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
@@ -507,7 +508,8 @@ class MadgraphSubprocess:
                     cuts=self.cuts,
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
-                    leptonic=self.process.leptonic,
+                    leptonic=self.ps_leptonic,
+                    lepton_sampling_power=self.lepton_sampling_power,
                     beam_rapidity=self.process.beam_rapidity,
                     mirror_beams=self.mirror_beams,
                 )
@@ -580,7 +582,8 @@ class MadgraphSubprocess:
             self.process.e_cm,
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
-            leptonic=self.process.leptonic,
+            leptonic=self.ps_leptonic,
+            lepton_sampling_power=self.lepton_sampling_power,
             beam_rapidity=self.process.beam_rapidity,
             mirror_beams=self.mirror_beams,
         )
@@ -779,7 +782,8 @@ class MadgraphSubprocess:
                 cuts=self.cuts,
                 invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                 permutations=chan_permutations,
-                leptonic=self.process.leptonic,
+                leptonic=self.ps_leptonic,
+                lepton_sampling_power=self.lepton_sampling_power,
             ).empty()
             for chan_topologies, chan_permutations in zip(
                 mcdata.topologies, mcdata.permutations
@@ -1084,6 +1088,28 @@ class MadgraphSubprocess:
         )
         return cwnet
 
+    @property
+    def ps_leptonic(self) -> bool:
+        """Whether the phase space skips the beam-fraction sampling.
+
+        A dressed-lepton run is 'leptonic' in the run card -- there is no
+        hadronic PDF -- but its beams do *not* keep their full energy, so the
+        mapping still has to sample x. The two senses of the word part here.
+        """
+        return self.process.leptonic and self.process.lepton_density is None
+
+    @property
+    def lepton_sampling_power(self) -> float:
+        """Nonzero switches the beam split to the dressed-lepton one.
+
+        It must equal the exponent the density was reduced with, or the cross
+        section is wrong by (1-x)**delta with nothing to flag it, so it comes
+        from the same constant the density was built with.
+        """
+        if self.process.lepton_density is None:
+            return 0.
+        return lepton_density_module.PS_EXPO
+
     def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:
         modes = {
             "propagator": ms.PhaseSpaceMapping.propagator,
@@ -1201,9 +1227,16 @@ class MadgraphSubprocess:
             flavor_mirror.append(flav["mirror"])
 
         cross_sections = []
+        dressed = self.process.lepton_density
         for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
+            pdf_arg2 = pdf_arg
+            if dressed is not None:
+                # one luminosity for both beams, on beam 1; see
+                # lepton_density.pdf_factor for why beam 2 stays empty
+                pdf_arg = ms.CachedPdf()
+                pdf_arg2 = None
             cross_sections.append(
                 ms.DifferentialCrossSection(
                     matrix_element=mat,
@@ -1215,7 +1248,7 @@ class MadgraphSubprocess:
                     energy_scale=ms.CachedScale(),
                     pid_options=[],
                     pdf1=pdf_arg,
-                    pdf2=pdf_arg,
+                    pdf2=pdf_arg2,
                     input_momentum_fraction=True,
                     decay=self.process.is_decay,
                     # also the events' raw |M|^2, which MadtRex normalises with
@@ -1267,6 +1300,7 @@ class MadgraphSubprocess:
                 None if self.process.leptonic else self.process.pdf_grid2,
                 phasespace.mapping_chan_weights,
                 mlm_history_qcd_power,
+                None if dressed is None else dressed.luminosity,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

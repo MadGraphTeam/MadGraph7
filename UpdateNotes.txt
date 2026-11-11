@@ -15,6 +15,9 @@ ANNOUNCEMENT:
        so that a new card costs a run of it (milliseconds); a card at which the filter
        comes out the same rewrites and recompiles nothing, and a build for another filter
        than the output's has its own library name (lib..._P*_hr<hash>_*.so).
+   OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).
+   OM: madevent/MadSpin: polarised beams with a mirror process gave beam 1's polarisation
+       to the particle of beam 2 (#394).
    RF: Preserve the legacy scalar-scale fallback for MC@NLO-Delta events
        with an unspecified mur when reading MadGraph7 scale metadata.
    RF: Remove UNLOPS merging and NNLL+NLO jet-veto resummation, including their

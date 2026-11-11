@@ -23,6 +23,7 @@ import shutil
 import sys
 import logging
 import tempfile
+import glob
 
 pjoin = os.path.join
 
@@ -5648,6 +5649,48 @@ C
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
          
+
+    def test_madevent_dressed_lepton_components(self):
+        """The dressed-lepton luminosity must survive flavor grouping.
+
+        With apply_flavor_grouping on (the default) 'e+ e- > mu+ mu-' is
+        written out as the merged process '_anti_lepton _lepton >
+        _anti_lepton _lepton', whose initial states expand to
+        ([-11,-13],[11,13]). get_pdf_lines used to recognize a dressed-lepton
+        beam by comparing that pair against a hard-coded list of single-flavor
+        pairs, so the grouped process fell through to PD(IPROC)=EP1*EM2 and
+        lost every lepton-density component but the first -- the
+        beamstrahlung ones, 13% of the luminosity at FCC-ee, silently.
+        """
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate e+ e- > mu+ mu-')
+        self.do('output madevent %s -nojpeg' % self.out_dir)
+
+        auto_dsig = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*',
+                                    'auto_dsig1.f'))
+        self.assertEqual(len(auto_dsig), 1)
+        content = open(auto_dsig[0]).read()
+
+        # the luminosity is the contraction of the two beams' components,
+        # once in the scalar routine and once in the vectorized one
+        self.assertIn('EE_COMP_PROD', content)
+        self.assertEqual(content.count('=EE_COMP_PROD('), 2)
+        # and every PDG2PDF call keeps the components it just filled, since
+        # the next call overwrites the ee_components common block
+        self.assertEqual(content.count('=PDG2PDF('),
+                         content.count('EE_COMPONENTS(1:4)'))
+        # The densities read 1-x from OMX_EE, which genps sets per generated
+        # point: the vectorized routine has to restore each lane's value
+        # before its PDFs (and before UNWGT samples the beamstrahlung split),
+        # or every lane uses the 1-x of the last point -- which doubled the
+        # FCC-ee 240 GeV cross section at vector_size 16.
+        self.assertEqual(
+            content.replace(' ', '').upper().count(
+                'OMX_EE(:)=ALL_OMX_EE(:,IVEC)'), 3)
 
     def test_madevent_subproc_group(self):
         """Test MadEvent output using the SubProcess group functionality"""

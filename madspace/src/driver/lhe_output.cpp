@@ -214,6 +214,18 @@ void LHEEvent::format_to(std::string& buffer) const {
         }
         buffer += "</rwgt>\n";
     }
+    if (beamstrahlung) {
+        // Same element MadEvent writes (rw_events.f). The readers are
+        // format-tolerant -- lhe_parser splits on whitespace, mg5amc_bstrahl
+        // streams two doubles -- so this does not reproduce Fortran's E
+        // format exactly, only the element and its two values.
+        std::format_to(
+            insert_iter,
+            "<beamstrahlung>{:15.7e}{:15.7e} </beamstrahlung>\n",
+            beamstrahlung->first,
+            beamstrahlung->second
+        );
+    }
     buffer += "</event>\n";
 }
 
