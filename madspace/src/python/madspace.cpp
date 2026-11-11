@@ -3734,12 +3734,23 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector3<me_int_t>&,
                 const std::optional<PdfGrid>&,
                 const std::optional<PdfGrid>&,
-                const std::string&>(),
+                const std::string&,
+                const std::array<bool, 2>&,
+                bool,
+                const nested_vector2<double>&>(),
             py::arg("flavors"),
             py::arg("pdf_grid") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
             py::arg("pdf2_prefix") = "beam2",
+            py::arg("densities") = std::array<bool, 2>{true, true},
+            py::arg("sum_flavors") = false,
+            py::arg("factors") = nested_vector2<double>{},
             pydoc::doc("FKSLuminosity::FKSLuminosity")
+        )
+        .def(
+            "sum_flavors",
+            &FKSLuminosity::sum_flavors,
+            pydoc::doc("FKSLuminosity::sum_flavors")
         )
         .def(
             "configuration_count",

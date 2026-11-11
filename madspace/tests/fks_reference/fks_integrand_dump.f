@@ -7,7 +7,9 @@ c - per contribution the type (add_wgt), the FKS configuration, the
 c   power of g_strong, the coefficients wgt(1:3) of 1, log(mu_R^2/Q^2)
 c   and log(mu_F^2/Q^2), the momentum fractions, the scales, g_strong,
 c   the boost to the lab, the momenta and PDG codes, the luminosity per
-c   subprocess and the final central weight wgts(1).
+c   subprocess, the PDG codes of each subprocess (parton_pdg) and of its
+c   underlying Born (parton_pdg_uborn, without the extra leg) and the
+c   final central weight wgts(1).
 c - the phase-space point of the last FKS configuration: the Born with
 c   its Jacobians and the bounds on tau (tau_Born_lower_bound,
 c   tau_lower_bound_resonance, tau_lower_bound), the event and the
@@ -176,6 +178,10 @@ c channel directory.
          write(lun,'(a,99(1x,i8))') 'CPDG',(pdg(k,i),k=1,nexternal)
          write(lun,'(a,99(1x,es24.16e3))') 'CLUM',(parton_iproc(k,i)
      $        ,k=1,niproc(i))
+         write(lun,'(a,9999(1x,i8))') 'CFLV',((parton_pdg(k,j,i),k=1
+     $        ,nexternal),j=1,niproc(i))
+         write(lun,'(a,9999(1x,i8))') 'CUBN',((parton_pdg_uborn(k,j,i)
+     $        ,k=1,nexternal-1),j=1,niproc(i))
       enddo
       if (phase_space%born%valid .and. real_type.eq.0) then
          write(lun,'(a,1x,es24.16e3)') 'G',g

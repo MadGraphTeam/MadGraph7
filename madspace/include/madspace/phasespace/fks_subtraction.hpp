@@ -665,8 +665,10 @@ private:
  * then have no scales, couplings and luminosities but the momentum fractions
  * of the kinematics of @ref FKSKinematics in their place: `x1`, `x2`,
  * `soft_x1`, `soft_x2`, `collinear_x1`, `collinear_x2`, `soft_collinear_x1`,
- * `soft_collinear_x2`, `born_x1` and `born_x2`. The soft-collinear remnants
- * take the factorization scales of the collinear counter-event, which equal
+ * `soft_collinear_x2`, `born_x1` and `born_x2`, and with luminosities of one
+ * flavor `flavor_index` before `fks_index`, the flavor of the event among the
+ * real flavors of its configuration (see @ref FKSLuminosity). The soft-collinear
+ * remnants take the factorization scales of the collinear counter-event, which equal
  * those of the Born for the scale choices of @ref FKSScale.
  *
  * **Returns**
@@ -704,11 +706,12 @@ public:
      * @param running_coupling  @f$\alpha_s@f$ at the renormalization scale.
      * @param luminosity        The luminosity of the real emission and its
      *                          counter-events, per FKS configuration.
-     * @param born_luminosity   That of the n-body part, for one or each FKS
-     *                          configuration.
+     * @param born_luminosity   That of the n-body part, per FKS configuration
+     *                          (for one flavor, by the real flavor), or once
+     *                          for the sum over the flavors.
      * @throws std::invalid_argument as the other constructor, or if the
      *         luminosities do not have the FKS configurations of the
-     *         subtraction.
+     *         subtraction, or one sums over the flavors and the other not.
      */
     FKSCrossSection(
         const FKSSubtraction& subtraction,

@@ -41,7 +41,13 @@ from test_fks_integrand import (
 )
 
 import madspace as ms
-from madspace.fks import fks_cross_section, fks_luminosities, fks_scale
+from madspace.fks import (
+    fks_born_flavor_indices,
+    fks_cross_section,
+    fks_luminosities,
+    fks_scale,
+    underlying_born,
+)
 
 NNPDF_GRID = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -483,6 +489,34 @@ def test_luminosities(path):
     assert lines > 0
 
 
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_flavors(path):
+    """The flavors of each weight line (parton_pdg of set_pdg_codes) are the
+    real flavors of its configuration, in the order of real_flavors, and
+    their underlying Borns (parton_pdg_uborn) those of underlying_born, which
+    for the n-body part are the flavors of the Born."""
+    lines = 0
+    for channel, _, c, kinematics in weight_lines(path):
+        configurations = channel.configurations
+        configuration = configurations["configurations"][c["nfks"] - 1]
+        reals = configurations["real_flavors"][configuration["real_me"] - 1]
+        assert c["parton_pdg"] == reals
+        borns = [underlying_born(flavor, configuration) for flavor in reals]
+        assert c["parton_pdg_uborn"] == borns
+        if kinematics == "born":
+            assert borns == configurations["born_flavors"]
+        lines += 1
+    assert lines > 0
+    for channel in channels(path):
+        indices = fks_born_flavor_indices(channel.configurations)
+        born_flavors = channel.configurations["born_flavors"]
+        for k, configuration in enumerate(channel.configurations["configurations"]):
+            reals = channel.configurations["real_flavors"][configuration["real_me"] - 1]
+            assert [born_flavors[b] for b in indices[k]] == [
+                underlying_born(flavor, configuration) for flavor in reals
+            ]
+
+
 def channel_pids(channel):
     """The incoming partons of all flavors of a channel."""
     configurations = channel.configurations
@@ -494,23 +528,27 @@ def channel_pids(channel):
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_luminosity_function(path, grids):
     """FKSLuminosity of the real emission at each of its kinematics and of the
-    n-body part is the sum over the flavors of f_1 f_2 of PartonDensity, and
-    within the interpolation the NNPDF luminosity of MadFKS."""
+    n-body part, for each flavor and summed, is f_1 f_2 of PartonDensity, and
+    within the interpolation the NNPDF luminosity of MadFKS. With a flavor
+    index the n-body part takes the underlying Born of the real flavor over
+    the number of real flavors with that Born."""
     pdf_grid, _ = grids(asmz(path))
     for channel in channels(path):
         hadrons = beams(channel) != (0, 0)
-        real, born = fks_luminosities(
-            channel.configurations, pdf_grid if hadrons else None, beams=beams(channel)
+        grid = pdf_grid if hadrons else None
+        summed = fks_luminosities(
+            channel.configurations, grid, beams=beams(channel), sum_flavors=True
         )
+        flavored = fks_luminosities(channel.configurations, grid, beams=beams(channel))
+        born_indices = fks_born_flavor_indices(channel.configurations)
+        born_flavors = channel.configurations["born_flavors"]
         _, index = channel.event
         pids = [p for p in channel_pids(channel) if p in PIDS]
         density = ms.PartonDensity(pdf_grid, pids)
         for kinematics in FRACTIONS:
             x1, x2, fact1, fact2 = densities(channel, kinematics)
             nbody = kinematics == "born"
-            function = born if nbody else real
-            fks_index = np.zeros_like(index) if nbody else index
-            (ours,) = evaluate(function, x1, x2, fact1, fact2, fks_index=fks_index)
+            f1 = f2 = n1 = n2 = None
             if hadrons:
                 # within the grid, as FKSLuminosity
                 q_range = (pdf_grid.q[0], pdf_grid.q[-1])
@@ -520,28 +558,74 @@ def test_luminosity_function(path, grids):
                 f2 = dict(zip(pids, (xf2 / x2[:, None]).T))
                 n1 = {p: nnpdf().density(p, x1, fact1) for p in pids}
                 n2 = {p: nnpdf().density(p, x2, fact2) for p in pids}
+
+            def product(densities1, densities2, pair, k):
+                if not hadrons:
+                    return 1.0
+                a, b = pair
+                if a not in pids or b not in pids:
+                    return 0.0
+                return densities1[a][k] * densities2[b][k]
+
+            # the sum over the flavors
+            function = summed[1] if nbody else summed[0]
+            fks_index = np.zeros_like(index) if nbody else index
+            (ours,) = evaluate(function, x1, x2, fact1, fact2, fks_index=fks_index)
             expected, madfks = np.zeros(len(x1)), np.zeros(len(x1))
             for k in range(len(x1)):
                 pairs = flavors(channel, dict(nfks=index[k] + 1), kinematics)
-                if not hadrons:
-                    expected[k] = madfks[k] = len(pairs)
-                    continue
-                pairs = [(a, b) for a, b in pairs if a in pids and b in pids]
-                expected[k] = sum(f1[a][k] * f2[b][k] for a, b in pairs)
-                madfks[k] = sum(n1[a][k] * n2[b][k] for a, b in pairs)
+                expected[k] = sum(product(f1, f2, pair, k) for pair in pairs)
+                madfks[k] = sum(product(n1, n2, pair, k) for pair in pairs)
             np.testing.assert_allclose(ours, expected, rtol=1e-14)
             rtol = interpolation_rtol([x1, x2], [fact1, fact2])
             assert_within_interpolation(ours, madfks, rtol)
+            # each flavor of the event, the underlying Born for the n-body part
+            function = flavored[1] if nbody else flavored[0]
+            count = max(len(r) for r in channel.configurations["real_flavors"])
+            for r in range(count + 1):
+                flavor_index = np.full(len(index), r)
+                (ours,) = evaluate(
+                    function,
+                    x1,
+                    x2,
+                    fact1,
+                    fact2,
+                    flavor_index=flavor_index,
+                    fks_index=index,
+                )
+                expected = np.zeros(len(x1))
+                for k in range(len(x1)):
+                    reals = flavors(channel, dict(nfks=index[k] + 1), "event")
+                    if r >= len(reals):
+                        continue
+                    if nbody:
+                        b = born_indices[index[k]][r]
+                        share = born_indices[index[k]].count(b)
+                        pair = born_flavors[b][:2]
+                        expected[k] = product(f1, f2, pair, k) / share
+                    else:
+                        expected[k] = product(f1, f2, reals[r][:2], k)
+                np.testing.assert_allclose(ours, expected, rtol=1e-14, atol=0)
 
 
-def run_with_couplings(channel, function):
+def run_with_couplings(channel, function, flavor_index=None):
     """The outputs of an FKSCrossSection with the couplings inside, on the
-    inputs of the integrand test and the momentum fractions of madspace."""
+    inputs of the integrand test, the momentum fractions of madspace and a
+    flavor index."""
     out, index = channel.event
     inputs = dict(channel.inputs)
     inputs.update({name: out[name] for names in FRACTIONS.values() for name in names})
-    names = [name for name in function.arg_types().keys() if name != "fks_index"]
-    outputs = evaluate(function, *[inputs[name] for name in names], fks_index=index)
+    names = [
+        name
+        for name in function.arg_types().keys()
+        if name not in ("flavor_index", "fks_index")
+    ]
+    outputs = evaluate(
+        function,
+        *[inputs[name] for name in names],
+        flavor_index=flavor_index,
+        fks_index=index,
+    )
     return dict(zip(function.return_types().keys(), outputs))
 
 
@@ -563,6 +647,7 @@ def test_cross_section_with_couplings(path, grids):
             running_coupling=running,
             pdf_grid=pdf_grid if hadrons else None,
             beams=beams(channel),
+            sum_flavors=True,
             **parameters,
         )
         ours = run_with_couplings(channel, inside)
@@ -582,7 +667,10 @@ def test_cross_section_with_couplings(path, grids):
         for name in ("event", "born", "collinear"):
             (inputs[f"{name}_alpha_s"],) = evaluate(running, scales[name][0])
         real, born = fks_luminosities(
-            channel.configurations, pdf_grid if hadrons else None, beams=beams(channel)
+            channel.configurations,
+            pdf_grid if hadrons else None,
+            beams=beams(channel),
+            sum_flavors=True,
         )
         for kinematics in FRACTIONS:
             x1, x2, f1, f2 = densities(channel, kinematics)
@@ -604,6 +692,52 @@ def test_cross_section_with_couplings(path, grids):
         rtol = interpolation_rtol(fractions, factorization)
         for name in WEIGHTS:
             assert_within_interpolation(ours[name], channel.weights[name], rtol)
+
+
+@needs_nnpdf
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_cross_section_per_flavor(path, grids):
+    """FKSCrossSection with a flavor index, summed over the flavor of each
+    event, is FKSCrossSection summed over the flavors, and each flavor gives
+    the weights of its own luminosities. A batch mixes configurations, and
+    flavors beyond those of a configuration give zero."""
+    pdf_grid, alpha_s_grid = grids(asmz(path))
+    running = ms.RunningCoupling(alpha_s_grid)
+    for channel in channels(path):
+        hadrons = beams(channel) != (0, 0)
+        options = dict(
+            scales=scale_parameters(channel.run_card),
+            running_coupling=running,
+            pdf_grid=pdf_grid if hadrons else None,
+            beams=beams(channel),
+            n_f=channel.n_f,
+            cuts=channel.cuts(),
+        )
+        summed = fks_cross_section(
+            channel.born, channel.configurations, sum_flavors=True, **options
+        )
+        flavored = fks_cross_section(channel.born, channel.configurations, **options)
+        assert "flavor_index" in flavored.arg_types().keys()
+        assert "flavor_index" not in summed.arg_types().keys()
+        expected = run_with_couplings(channel, summed)
+        _, index = channel.event
+        count = max(len(r) for r in channel.configurations["real_flavors"])
+        total = {name: 0.0 for name in expected}
+        for r in range(count + 1):
+            ours = run_with_couplings(channel, flavored, np.full(len(index), r))
+            reals = np.array(
+                [len(flavors(channel, dict(nfks=k + 1), "event")) for k in index]
+            )
+            for name, value in ours.items():
+                assert (value[r >= reals] == 0).all()
+                total[name] = total[name] + value
+        for name, value in expected.items():
+            scale = np.abs(value).max()
+            # the sum over the flavors rounds differently, to 1e-12 of the
+            # largest weight of the cross section with its cancellations
+            np.testing.assert_allclose(
+                total[name] / scale, value / scale, rtol=0, atol=1e-12
+            )
 
 
 def setscales(p, choice, fixed_ren, fixed_fac, ref_fixed, over_ref):
@@ -725,7 +859,12 @@ def test_luminosity_flavors(grids):
     q = np.array([91.0, 200.0, 50.0])
     index = np.array([0, 1, 2])
     (ours,) = evaluate(
-        ms.FKSLuminosity(flavors_, pdf_grid), x1, x2, q, q, fks_index=index
+        ms.FKSLuminosity(flavors_, pdf_grid, sum_flavors=True),
+        x1,
+        x2,
+        q,
+        q,
+        fks_index=index,
     )
     density = ms.PartonDensity(pdf_grid, [-4, -2, 2, 4, 21])
     (xf1,) = evaluate(density, x1, q)
@@ -738,8 +877,23 @@ def test_luminosity_flavors(grids):
         f1[2][2] * f2[21][2],
     ]
     np.testing.assert_allclose(ours, expected, rtol=1e-15)
+    # one flavor of each event, with factors, beyond the flavors zero
+    factors = [[0.5, 2.0], [1.0, 3.0], [4.0]]
+    (picked,) = evaluate(
+        ms.FKSLuminosity(flavors_, pdf_grid, factors=factors),
+        x1,
+        x2,
+        q,
+        q,
+        flavor_index=np.array([1, 0, 1]),
+        fks_index=index,
+    )
+    np.testing.assert_allclose(
+        picked, [2.0 * f1[4][0] * f2[-4][0], f1[21][1] * f2[-2][1], 0.0], rtol=1e-15
+    )
+    # leptons count one, a hadron of DIS takes its densities
     (leptons,) = evaluate(
-        ms.FKSLuminosity([[[-11, 11], [-11, 11]], [[-11, 11]]]),
+        ms.FKSLuminosity([[[-11, 11], [-11, 11]], [[-11, 11]]], sum_flavors=True),
         x1,
         x2,
         q,
@@ -747,6 +901,17 @@ def test_luminosity_flavors(grids):
         fks_index=np.array([0, 1, 0]),
     )
     np.testing.assert_array_equal(leptons, [2.0, 1.0, 2.0])
+    (dis,) = evaluate(
+        ms.FKSLuminosity(
+            [[[11, 2], [11, 4]]], pdf_grid, densities=[False, True], sum_flavors=True
+        ),
+        x1,
+        x2,
+        q,
+        q,
+        fks_index=np.zeros(3, dtype=int),
+    )
+    np.testing.assert_allclose(dis, f2[2] + f2[4], rtol=1e-15)
 
 
 @needs_nnpdf
@@ -760,11 +925,44 @@ def test_luminosity_errors(grids):
         ms.FKSLuminosity([[[1, 2, 3]]])
     with pytest.raises(ValueError, match="needs one for the first"):
         ms.FKSLuminosity([[[1, -1]]], pdf_grid2=pdf_grid)
+    with pytest.raises(ValueError, match="a beam with densities"):
+        ms.FKSLuminosity([[[1, -1]]], pdf_grid, densities=[False, False])
+    with pytest.raises(ValueError, match="factors need the FKS configurations"):
+        ms.FKSLuminosity([[[1, -1]]], factors=[[1.0], [1.0]])
+    with pytest.raises(ValueError, match="a factor for each flavor"):
+        ms.FKSLuminosity([[[1, -1]]], factors=[[1.0, 2.0]])
     configurations = {"configurations": []}
     with pytest.raises(ValueError, match="older FKS exporter"):
         fks_luminosities(configurations)
     configurations.update(born_flavors=[], real_flavors=[])
-    with pytest.raises(ValueError, match="two hadrons or two leptons"):
-        fks_luminosities(configurations, pdf_grid, beams=(1, 0))
+    with pytest.raises(ValueError, match="not protons, antiprotons or leptons"):
+        fks_luminosities(configurations, pdf_grid, beams=(2, 2))
     with pytest.raises(ValueError, match="hadron beams need a PdfGrid"):
         fks_luminosities(configurations, beams=(1, 1))
+    with pytest.raises(ValueError, match="hadron beams need a PdfGrid"):
+        fks_luminosities(configurations, pdf_grid, beams=(0, 0))
+
+
+def test_underlying_born():
+    """underlying_born as set_pdg_codes: q -> q g, g -> q q~ in the final
+    state, q -> g q and g -> q q~ in the initial state, and a missing Born."""
+    final = dict(i_fks=5, j_fks=4, splitting_type=["QCD"])
+    assert underlying_born([1, -1, 21, 2, 21], final) == [1, -1, 21, 2]
+    assert underlying_born([1, -1, 21, 2, -2], final) == [1, -1, 21, 21]
+    initial = dict(i_fks=5, j_fks=1, splitting_type=["QCD"])
+    assert underlying_born([2, -1, 11, -12, 2], initial) == [21, -1, 11, -12]
+    assert underlying_born([21, -1, 11, -12, -2], initial) == [2, -1, 11, -12]
+    assert (
+        underlying_born([1, -1, 11, -11, 1], dict(initial, splitting_type=["QED"]))[0]
+        == 22
+    )
+    with pytest.raises(ValueError, match="no mother"):
+        underlying_born([2, -1, 11, -12, 1], initial)
+    configurations = {
+        "born_pdgs": [2, -2, 11, -11],
+        "born_flavors": [[2, -2, 11, -11]],
+        "real_flavors": [[[21, -2, 11, -11, -4]]],
+        "configurations": [dict(initial, real_me=1)],
+    }
+    with pytest.raises(ValueError, match="is not a flavor of the Born"):
+        fks_born_flavor_indices(configurations)

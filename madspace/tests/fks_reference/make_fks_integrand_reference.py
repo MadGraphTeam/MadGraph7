@@ -43,7 +43,9 @@ them into madspace/tests/test_data/fks_integrand/<name>.json:
             scales2 (Q^2, mu_R^2, mu_F^2), g_strong, y_bst, cpower, weight
             (wgts(1), PDFs and couplings included, in pb), wgt_me_tree,
             momenta, pdg, parton_iproc (the luminosity per subprocess times
-            the weight without PDFs)
+            the weight without PDFs), parton_pdg (the PDG codes of each
+            subprocess), parton_pdg_uborn (those of its underlying Born,
+            set_pdg_codes)
         g (the coupling at the end of the call), blocks (the matrix-element
         blocks of the point, where the Born is valid, each with the coupling
         it took): nfks, i_fks, j_fks (the picked configuration), g_real,
@@ -396,6 +398,13 @@ def parse(text, nexternal):
             contribution["pdg"] = [int(f) for f in rest]
         elif key == "CLUM":
             contribution["parton_iproc"] = floats(rest)
+        elif key in ("CFLV", "CUBN"):
+            codes = [int(f) for f in rest]
+            size = nexternal if key == "CFLV" else nexternal - 1
+            name = "parton_pdg" if key == "CFLV" else "parton_pdg_uborn"
+            contribution[name] = [
+                codes[k : k + size] for k in range(0, len(codes), size)
+            ]
         elif key == "END":
             points.append(point)
             point = None

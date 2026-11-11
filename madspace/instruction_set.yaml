@@ -4186,15 +4186,21 @@ fks_luminosity:
     - name: index
       type: [int]
       desc: "FKS configuration of the event"
+    - name: flavor
+      type: [int]
+      desc: "flavor of the event among those of its configuration, negative for their sum"
     - name: flavors
       type: [int, single, c, f]
-      desc: "for each configuration the positions in pdf1 and pdf2 of its flavors, in pairs, -1 after the last"
+      desc: "for each configuration the positions in pdf1 and pdf2 of its flavors, in pairs, -2 for a flavor without density, -1 after the last"
+    - name: factors
+      type: [float, single, c, g]
+      desc: "for each configuration the factor of each of its flavors"
   outputs:
     - name: luminosity
       type: [float]
-      desc: "sum of f_1(x_1) f_2(x_2) over the flavors of the configuration"
+      desc: "f_1(x_1) f_2(x_2) of the flavor, or the sum over the flavors, times the factors"
   vectorized: False
-  desc: "The parton luminosity of one kinematics, PD of the parton_lum_*.f files of MadFKS summed over the flavors of the FKS configuration of the event, without the conversion to pb. See @ref FKSLuminosity."
+  desc: "The parton luminosity of one kinematics, PD of the parton_lum_*.f files of MadFKS for the flavor of the event or summed over the flavors of its FKS configuration, each times its factor, without the conversion to pb. See @ref FKSLuminosity."
 
 ew_sudakov:
   inputs:

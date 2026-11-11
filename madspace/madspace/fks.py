@@ -77,7 +77,8 @@ without the virtual, fks_weights the weights of the integrand from them and
 the couplings and luminosities of each kinematics, fks_cuts the generation
 cuts of each kinematics, fks_scale the scales of each kinematics,
 fks_luminosities the parton luminosities of the real emission and of the
-n-body part, and fks_cross_section the integrand from the matrix-element
+n-body part, per flavor or summed, fks_born_flavor_indices the flavor of the
+Born under each real flavor, and fks_cross_section the integrand from the matrix-element
 blocks, with the scales, couplings and luminosities inside or not. ew_sudakov builds the EWSudakov of the
 Sudakov approximation of the EW corrections from the ewsudakov entry.
 """
@@ -820,9 +821,12 @@ def fks_scale(configurations, **scales):
     return FKSScale(len(configurations["born_pdgs"]) + 1, **options)
 
 
-def _beam_flavors(flavors, beams):
+def _beam_flavors(flavors, beams, nincoming=2):
     """The PDG codes of the two incoming partons of each flavor, those of a
-    beam of antiprotons (-1) charge conjugated."""
+    beam of antiprotons (-1) charge conjugated, the decaying particle and 0
+    for a decay."""
+    if nincoming == 1:
+        return [[flavor[0], 0] for flavor in flavors]
     result = []
     for flavor in flavors:
         pair = []
@@ -833,46 +837,141 @@ def _beam_flavors(flavors, beams):
     return result
 
 
-def fks_luminosities(configurations, pdf_grid=None, pdf_grid2=None, beams=(1, 1)):
-    """The FKSLuminosity of the real emission (per FKS configuration, over the
-    flavors of its real matrix element) and that of the n-body part (over the
-    flavors of the Born), as the parton_lum_*.f files of MadFKS.
-
-    Args:
-        configurations: the content of fks_configurations.json (see
-            read_fks_configurations).
-        pdf_grid: the PdfGrid of the beams, None for lepton beams.
-        pdf_grid2: the PdfGrid of the second beam where it differs.
-        beams: lpp1 and lpp2 of the run card, 1 for protons, -1 for
-            antiprotons and 0 for leptons without densities.
-
-    Raises:
-        ValueError: for a fks_configurations.json of an older exporter
-            without the flavors, for beams other than two hadrons or two
-            leptons, for hadrons without a grid or leptons with one.
-    """
+def _check_flavors(configurations):
     if "born_flavors" not in configurations or "real_flavors" not in configurations:
         raise ValueError(
             "fks_configurations.json has no flavors, it comes from an older FKS "
             "exporter"
         )
-    beams = tuple(int(beam) for beam in beams)
-    hadrons = all(abs(beam) == 1 for beam in beams)
-    if not hadrons and beams != (0, 0):
+
+
+def underlying_born(flavor, configuration):
+    """The flavor of the underlying Born of a real flavor of an FKS
+    configuration, as set_pdg_codes of MadFKS: j_fks takes the mother of the
+    splitting (a gluon, or a photon for a QED splitting, where i_fks and j_fks
+    are a pair) and i_fks goes.
+
+    Raises:
+        ValueError: for a splitting without a gluon or a photon or a pair.
+    """
+    i, j = configuration["i_fks"] - 1, configuration["j_fks"] - 1
+    pdg_i, pdg_j = flavor[i], flavor[j]
+    if abs(pdg_i) == abs(pdg_j) and abs(pdg_i) not in (21, 22):
+        mother = 21 if "QCD" in configuration["splitting_type"] else 22
+    elif abs(pdg_i) == 21 or pdg_i == 22:
+        mother = pdg_j
+    elif pdg_j in (21, 22):
+        mother = -pdg_i
+    else:
         raise ValueError(
-            f"fks_luminosities: beams {beams} are not two hadrons or two leptons"
+            f"underlying_born: no mother for i_fks {pdg_i} and j_fks {pdg_j}"
         )
-    if hadrons != (pdf_grid is not None):
+    born = list(flavor)
+    born[j] = mother
+    del born[i]
+    return born
+
+
+def fks_born_flavor_indices(configurations):
+    """For each FKS configuration, the flavor of the Born (position in
+    born_flavors) that underlies each of its real flavors (see
+    underlying_born), the flavor of the Born blocks and of the n-body part
+    for an event of that real flavor.
+
+    Raises:
+        ValueError: for a fks_configurations.json of an older exporter, or a
+            real flavor whose underlying Born is not a flavor of the Born.
+    """
+    _check_flavors(configurations)
+    born_flavors = [list(flavor) for flavor in configurations["born_flavors"]]
+    indices = []
+    for k, configuration in enumerate(configurations["configurations"]):
+        reals = configurations["real_flavors"][configuration["real_me"] - 1]
+        row = []
+        for flavor in reals:
+            born = underlying_born(flavor, configuration)
+            if born not in born_flavors:
+                raise ValueError(
+                    f"fks_born_flavor_indices: the underlying Born {born} of the "
+                    f"real flavor {list(flavor)} of configuration {k} is not a "
+                    "flavor of the Born"
+                )
+            row.append(born_flavors.index(born))
+        indices.append(row)
+    return indices
+
+
+def fks_luminosities(
+    configurations, pdf_grid=None, pdf_grid2=None, beams=(1, 1), sum_flavors=False
+):
+    """The FKSLuminosity of the real emission (per FKS configuration, over the
+    flavors of its real matrix element) and that of the n-body part, as the
+    parton_lum_*.f files of MadFKS.
+
+    With a flavor index (event generation), the event and its counter-events
+    take the real flavor of the event, and the n-body part the flavor of its
+    underlying Born (see fks_born_flavor_indices) over the number of real
+    flavors of the configuration with that Born, so that the sum over the real
+    flavors gives the sum over those of the Born. With sum_flavors (fixed
+    order), each sums over its flavors.
+
+    Args:
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        pdf_grid: the PdfGrid of the hadron beams, None for none.
+        pdf_grid2: the PdfGrid of the second beam where it differs.
+        beams: lpp1 and lpp2 of the run card, 1 for protons, -1 for
+            antiprotons and 0 for leptons without densities (one of each for
+            DIS), ignored for a decay.
+        sum_flavors: whether the luminosities sum over the flavors, without a
+            flavor index.
+
+    Raises:
+        ValueError: for a fks_configurations.json of an older exporter, for
+            other beams, for hadrons without a grid or a grid without
+            hadrons, as fks_born_flavor_indices, or if a Born flavor does
+            not underlie any real flavor of a configuration.
+    """
+    _check_flavors(configurations)
+    nincoming = int(configurations.get("nincoming", 2))
+    beams = (0, 0) if nincoming == 1 else tuple(int(beam) for beam in beams)
+    if any(beam not in (-1, 0, 1) for beam in beams):
+        raise ValueError(
+            f"fks_luminosities: beams {beams} are not protons, antiprotons or "
+            "leptons"
+        )
+    densities = [abs(beam) == 1 for beam in beams]
+    if any(densities) != (pdf_grid is not None):
         raise ValueError(
             "fks_luminosities: hadron beams need a PdfGrid and lepton beams none"
         )
-    real = [
-        _beam_flavors(configurations["real_flavors"][c["real_me"] - 1], beams)
+    options = dict(
+        pdf_grid=pdf_grid,
+        pdf_grid2=pdf_grid2,
+        densities=densities,
+        sum_flavors=sum_flavors,
+    )
+    reals = [
+        configurations["real_flavors"][c["real_me"] - 1]
         for c in configurations["configurations"]
     ]
-    born = [_beam_flavors(configurations["born_flavors"], beams)]
-    grids = dict(pdf_grid=pdf_grid, pdf_grid2=pdf_grid2)
-    return FKSLuminosity(real, **grids), FKSLuminosity(born, **grids)
+    real = FKSLuminosity(
+        [_beam_flavors(flavors, beams, nincoming) for flavors in reals], **options
+    )
+    born_flavors = _beam_flavors(configurations["born_flavors"], beams, nincoming)
+    if sum_flavors:
+        return real, FKSLuminosity([born_flavors], **options)
+    flavors, factors = [], []
+    for k, indices in enumerate(fks_born_flavor_indices(configurations)):
+        missing = set(range(len(born_flavors))) - set(indices)
+        if missing:
+            raise ValueError(
+                f"fks_luminosities: the Born flavors {sorted(missing)} underlie no "
+                f"real flavor of configuration {k}"
+            )
+        flavors.append([born_flavors[b] for b in indices])
+        factors.append([1.0 / indices.count(b) for b in indices])
+    return real, FKSLuminosity(flavors, factors=factors, **options)
 
 
 def fks_cross_section(
@@ -885,6 +984,7 @@ def fks_cross_section(
     pdf_grid=None,
     pdf_grid2=None,
     beams=(1, 1),
+    sum_flavors=False,
     **parameters,
 ):
     """The FKSCrossSection of the FKS configurations of a Born, the FKS
@@ -902,7 +1002,9 @@ def fks_cross_section(
         scales: the scales by their names in the run card (see fks_scale), or
             None for the scales, couplings and luminosities as arguments. With
             them, the integrand takes them itself from running_coupling,
-            pdf_grid, pdf_grid2 and beams (see fks_luminosities).
+            pdf_grid, pdf_grid2, beams and sum_flavors (see
+            fks_luminosities), with flavor_index among its arguments unless
+            it sums over the flavors.
         running_coupling: the RunningCoupling of alpha_s, with scales.
         parameters: those of fks_subtraction, of which xicut, delta_o and n_f
             also go to the n-body part.
@@ -925,7 +1027,7 @@ def fks_cross_section(
     if running_coupling is None:
         raise ValueError("fks_cross_section: the scales need a running_coupling")
     luminosity, born_luminosity = fks_luminosities(
-        configurations, pdf_grid, pdf_grid2, beams
+        configurations, pdf_grid, pdf_grid2, beams, sum_flavors
     )
     return FKSCrossSection(
         *arguments,

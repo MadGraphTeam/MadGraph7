@@ -90,19 +90,29 @@ FKSLuminosity::FKSLuminosity(
     const nested_vector3<me_int_t>& flavors,
     const std::optional<PdfGrid>& pdf_grid,
     const std::optional<PdfGrid>& pdf_grid2,
-    const std::string& pdf2_prefix
+    const std::string& pdf2_prefix,
+    const std::array<bool, 2>& densities,
+    bool sum_flavors,
+    const nested_vector2<double>& factors
 ) :
     FunctionGenerator(
         "FKSLuminosity",
-        NamedVector<Type>{
-            {"x1", batch_float},
-            {"x2", batch_float},
-            {"fact_scale1", batch_float},
-            {"fact_scale2", batch_float},
-            {"fks_index", batch_int},
-        },
+        [&] {
+            NamedVector<Type> args{
+                {"x1", batch_float},
+                {"x2", batch_float},
+                {"fact_scale1", batch_float},
+                {"fact_scale2", batch_float},
+            };
+            if (!sum_flavors) {
+                args.push_back("flavor_index", batch_int);
+            }
+            args.push_back("fks_index", batch_int);
+            return args;
+        }(),
         NamedVector<Type>{{"luminosity", batch_float}}
     ),
+    _sum_flavors(sum_flavors),
     _q_min{0., 0.},
     _q_max{0., 0.} {
     if (flavors.empty()) {
@@ -113,11 +123,27 @@ FKSLuminosity::FKSLuminosity(
             "FKSLuminosity: a grid for the second beam needs one for the first"
         );
     }
+    if (pdf_grid && !densities.at(0) && !densities.at(1)) {
+        throw std::invalid_argument(
+            "FKSLuminosity: a grid needs a beam with densities"
+        );
+    }
+    if (!factors.empty() && factors.size() != flavors.size()) {
+        throw std::invalid_argument(
+            "FKSLuminosity: the factors need the FKS configurations of the flavors"
+        );
+    }
     std::size_t flavor_max = 0;
-    for (const auto& configuration : flavors) {
+    for (std::size_t c = 0; c < flavors.size(); ++c) {
+        const auto& configuration = flavors.at(c);
         if (configuration.empty()) {
             throw std::invalid_argument(
                 "FKSLuminosity: an FKS configuration without flavors"
+            );
+        }
+        if (!factors.empty() && factors.at(c).size() != configuration.size()) {
+            throw std::invalid_argument(
+                "FKSLuminosity: a factor for each flavor of each FKS configuration"
             );
         }
         for (const auto& flavor : configuration) {
@@ -130,11 +156,11 @@ FKSLuminosity::FKSLuminosity(
         }
         flavor_max = std::max(flavor_max, configuration.size());
     }
-    // the flavors of each beam in the grid, in the order of the densities
+    // the flavors of each beam with densities in the grid, in their order
     std::array<std::vector<int>, 2> pids;
     for (std::size_t beam = 0; beam < 2; ++beam) {
         const auto& grid = beam == 1 && pdf_grid2 ? pdf_grid2 : pdf_grid;
-        if (!grid) {
+        if (!grid || !densities.at(beam)) {
             continue;
         }
         std::set<int> beam_pids;
@@ -149,8 +175,7 @@ FKSLuminosity::FKSLuminosity(
         }
         pids.at(beam) = {beam_pids.begin(), beam_pids.end()};
         if (pids.at(beam).empty()) {
-            // no density of the beam: a column of zeros is not needed, but
-            // PartonDensity wants a flavor
+            // no density of the beam: PartonDensity still wants a flavor
             pids.at(beam).push_back(grid->pids.at(0));
         }
         _pdfs.at(beam) = PartonDensity(
@@ -160,10 +185,10 @@ FKSLuminosity::FKSLuminosity(
         _q_max.at(beam) = grid->q.back();
     }
     // the positions of each flavor in the densities, -2 for none (no density),
-    // 0 without a grid (one), -1 after the last
-    for (const auto& configuration : flavors) {
+    // 0 for a beam without densities (one), -1 after the last
+    for (std::size_t c = 0; c < flavors.size(); ++c) {
         std::vector<me_int_t> positions;
-        for (const auto& flavor : configuration) {
+        for (const auto& flavor : flavors.at(c)) {
             for (std::size_t beam = 0; beam < 2; ++beam) {
                 if (!_pdfs.at(beam)) {
                     positions.push_back(0);
@@ -185,6 +210,11 @@ FKSLuminosity::FKSLuminosity(
         }
         positions.resize(2 * flavor_max, -1);
         _positions.push_back(positions);
+        std::vector<double> weights = factors.empty()
+            ? std::vector<double>(flavors.at(c).size(), 1.)
+            : factors.at(c);
+        weights.resize(flavor_max, 0.);
+        _factors.push_back(weights);
     }
 }
 
@@ -195,7 +225,7 @@ NamedVector<Value> FKSLuminosity::build_function_impl(
     std::array<Value, 2> pdfs, xs;
     for (std::size_t beam = 0; beam < 2; ++beam) {
         if (!_pdfs.at(beam)) {
-            // lepton beams: one per flavor
+            // a beam without densities: one per flavor
             auto one = fb.full({1., batch_size});
             pdfs.at(beam) = fb.unsqueeze(one);
             xs.at(beam) = one;
@@ -210,6 +240,9 @@ NamedVector<Value> FKSLuminosity::build_function_impl(
         pdfs.at(beam) = _pdfs.at(beam)->build_function(fb, {x, q}).at(0);
         xs.at(beam) = x;
     }
+    Value flavor = _sum_flavors
+        ? fb.full({static_cast<me_int_t>(-1), batch_size})
+        : args.at("flavor_index");
     return {
         {"luminosity",
          fb.fks_luminosity(
@@ -218,7 +251,9 @@ NamedVector<Value> FKSLuminosity::build_function_impl(
              xs.at(0),
              xs.at(1),
              args.at("fks_index"),
-             _positions
+             flavor,
+             _positions,
+             _factors
          )}
     };
 }

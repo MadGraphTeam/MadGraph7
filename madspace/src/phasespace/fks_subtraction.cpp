@@ -783,12 +783,14 @@ const std::vector<std::string> KINEMATICS = {
 // and with the factorization scales of the Born and of the remnants, then
 // those of the weights that the subtraction and the n-body part do not give,
 // fks_index last. With the couplings inside, the scales, the couplings and
-// the luminosities give way to the momentum fractions.
+// the luminosities give way to the momentum fractions, and luminosities of
+// one flavor take flavor_index before fks_index.
 NamedVector<Type> cross_section_args(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
     const FKSWeights& weights,
-    bool couplings = false
+    bool couplings = false,
+    bool flavor = false
 ) {
     if (subtraction.particle_count() != weights.particle_count() ||
         soft_virtual.particle_count() + 1 != weights.particle_count() ||
@@ -841,6 +843,9 @@ NamedVector<Type> cross_section_args(
             args.push_back(name, type);
         }
     }
+    if (flavor) {
+        args.push_back("flavor_index", batch_int);
+    }
     args.push_back("fks_index", subtraction.arg_types().at("fks_index"));
     return args;
 }
@@ -881,7 +886,9 @@ FKSCrossSection::FKSCrossSection(
 ) :
     FunctionGenerator(
         "FKSCrossSection",
-        cross_section_args(subtraction, soft_virtual, weights, true),
+        cross_section_args(
+            subtraction, soft_virtual, weights, true, !luminosity.sum_flavors()
+        ),
         weights.return_types()
     ),
     _subtraction(subtraction),
@@ -899,9 +906,17 @@ FKSCrossSection::FKSCrossSection(
         );
     }
     std::size_t count = subtraction.configuration_count();
+    if (luminosity.sum_flavors() != born_luminosity.sum_flavors()) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the luminosities both sum over the flavors or both "
+            "take a flavor index"
+        );
+    }
+    // with a flavor index the n-body part takes the Born of the real flavor,
+    // per configuration
     if (luminosity.configuration_count() != count ||
         (born_luminosity.configuration_count() != count &&
-         born_luminosity.configuration_count() != 1)) {
+         (born_luminosity.configuration_count() != 1 || !luminosity.sum_flavors()))) {
         throw std::invalid_argument(
             "FKSCrossSection: the luminosities need the FKS configurations of the "
             "subtraction"
@@ -943,16 +958,17 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
                 if (function.configuration_count() == 1) {
                     index = fb.full({static_cast<me_int_t>(0), batch_size});
                 }
-                return function
-                    .build_function(
-                        fb,
-                        {args.at(kinematics + "x1"),
-                         args.at(kinematics + "x2"),
-                         scales.at("fact_scale1"),
-                         scales.at("fact_scale2"),
-                         index}
-                    )
-                    .at(0);
+                std::vector<Value> inputs{
+                    args.at(kinematics + "x1"),
+                    args.at(kinematics + "x2"),
+                    scales.at("fact_scale1"),
+                    scales.at("fact_scale2"),
+                };
+                if (!function.sum_flavors()) {
+                    inputs.push_back(args.at("flavor_index"));
+                }
+                inputs.push_back(index);
+                return function.build_function(fb, inputs).at(0);
             };
         args["event_luminosity"] = luminosity("", event);
         args["soft_luminosity"] = luminosity("soft_", born);

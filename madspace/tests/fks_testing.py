@@ -140,16 +140,17 @@ def reference_born_mapping(data):
     )
 
 
-def evaluate(function, *args, fks_index=None):
-    """The outputs of a FunctionGenerator on numpy arguments, with fks_index
-    as the last argument where it is given, as numpy arrays with the batch
-    dimension."""
+def evaluate(function, *args, flavor_index=None, fks_index=None):
+    """The outputs of a FunctionGenerator on numpy arguments, with the integer
+    flavor_index and fks_index as the last arguments where they are given, as
+    numpy arrays with the batch dimension."""
     device = torch.get_default_device()
     tensors = [torch.as_tensor(np.asarray(a)).to(device) for a in args]
-    if fks_index is not None:
-        tensors.append(
-            torch.as_tensor(np.asarray(fks_index), dtype=torch.int32).to(device)
-        )
+    for index in (flavor_index, fks_index):
+        if index is not None:
+            tensors.append(
+                torch.as_tensor(np.asarray(index), dtype=torch.int32).to(device)
+            )
     runtime = ms.FunctionRuntime(function.function(), default_context())
     batch = len(args[0])
     outputs = []
