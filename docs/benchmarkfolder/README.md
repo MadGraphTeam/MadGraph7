@@ -2,11 +2,12 @@
 
 **Current status.** Production registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
-target. The [41-page benchmark PDF](benchmark.pdf) preserves the original 35
-report pages and four separately bound CMS chronology pages, then appends
-[two pages of actual shared-host timings](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md)
+target. The [42-page benchmark PDF](benchmark.pdf) preserves all preceding 41
+pages, including [two pages of actual shared-host timings](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md)
 for four SM processes and all five reducers, including a fresh QCD 2→4
-four-lepton process. All twenty timing lanes pass the retained `3e-6` and
+four-lepton process. It adds [one page of implementation qualifications](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md),
+with Typst source and complete report reproduction commands. The experimental
+patches remain unapplied. All twenty timing lanes pass the retained `3e-6` and
 ordinary `1e-8` numerical gates; these descriptive timings are separate from
 local performance acceptance. The reusable
 [20-row timing CSV](experiments/current-source-five-backend-timing-report-1/rendered-1/timing-summary.csv)
@@ -254,7 +255,7 @@ native DP and `0.996739` for automatic QP. The effects are smaller than paired
 scatter, so the candidate remains unpromoted. Portable replay retains every
 build, learning, parity, wire and timing observation. These shared-host anchor
 measurements qualify neither whole-process performance nor local acceptance.
-The separately frozen 41-page PDF is unchanged.
+The separately frozen [41-page PDF](history/report-before-additional-qualifications-1/benchmark.pdf) remains archived.
 
 The [current-source small-process DP profile](experiments/fortran-dp-n1-profile-qualification-1/README.md)
 uses `u u~ > z [virt=QCD]`, four instrumentation modes and eight fresh full100
@@ -368,7 +369,7 @@ preserves the original failed build and separate successful validation, and
 independently joins recorded native outputs to Fortran words. Scope remains
 the historical generated adapter with caching disabled; physical amplitudes,
 checked rescues, general stress and performance acceptance remain open.
-Production and the separately frozen 41-page report are unchanged.
+Production is unchanged; the separately frozen [41-page report](history/report-before-additional-qualifications-1/benchmark.pdf) remains archived.
 
 The [current-source relocated deployment check](experiments/current-source-deployment-runtime-qualification-1/README.md)
 uses actual standalone and FKS/NLO CLI exports at `0fcd2cd873d6`, the installed
@@ -523,7 +524,7 @@ remains unchanged at `2c13246ffa63` with 96 tensor-key requests. The new proof's
 physical scope remains real-SM N≤3/rank≤2, while QP coverage uses exactly promoted
 DP tensor inputs. Physical-QP rescues, rank six, EW, loop-induced, poles-only,
 general stress accuracy and performance remain separate qualifications. The
-41-page PDF is a separately frozen snapshot preceding this lifecycle replay.
+[archived 41-page PDF](history/report-before-additional-qualifications-1/benchmark.pdf) is a separately frozen snapshot preceding this lifecycle replay.
 Native-DP/rescued timing cohorts and all precise performance gates remain
 unqualified. Complete delivery remains false.
 
@@ -733,7 +734,7 @@ the earlier 1/3–3/3 footers, then joins them before the same checks. The older
 builder guards canonical composite output; explicit custom output remains
 available. No report command launches native physics or qualifies local timing.
 
-The canonical 41-page PDF now preserves that exact 39-page composite under
+The [archived 41-page PDF](history/report-before-additional-qualifications-1/benchmark.pdf) preserves that exact 39-page composite under
 `history/report-before-five-backend-timing-1/`, including its old ledger and
 owning builder, and appends the sealed two-page
 [five-backend timing tail](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md).
@@ -767,6 +768,22 @@ uses bounded read-only document tools. The ordinary and stress builders
 refuse to overwrite this canonical timing composite; explicit historical
 custom outputs remain available. The main historical Typst source and
 NinjaRS report PDF/source remain unchanged.
+
+The current 42-page PDF appends the sealed [implementation qualification page](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md)
+to that exact 41-page archive. Its matching owner is
+`build_qualification_report.py`; the linked README gives Typst and full-report
+reproduction commands. The builder authenticates all five selected evidence
+packets and preserves every old page and the new tail with paired raster,
+text, geometry and font checks. File-only verification runs no programs:
+
+```sh
+python3 -B docs/benchmarkfolder/build_qualification_report.py --root docs/benchmarkfolder --output docs/benchmarkfolder/benchmark.pdf --verify-only
+```
+
+The older campaign builder also guards this canonical format; its custom
+historical outputs remain available. This report update changes no production
+scientific source, campaign identity or acceptance gate. Formal local timings
+and broader qualification of the unapplied experimental patches remain open.
 
 Dossier creation and report building never launch new numerical measurements.
 Each retrospective and raw plot has a separate page. The original numerical

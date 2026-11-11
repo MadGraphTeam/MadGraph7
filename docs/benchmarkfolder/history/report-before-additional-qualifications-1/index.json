@@ -1,0 +1,20 @@
+{
+  "files": {
+    "benchmark.pdf": {
+      "bytes": 2400873,
+      "sha256": "1afc4fa5806628ccec7b3754622a35a607f32e2c93b15bf4708e357ccf0afac1"
+    },
+    "build_timing_report.py": {
+      "bytes": 10594,
+      "sha256": "5874cf625946bded03155e6568b34f56bccaa7178bcc56b21d728be9a4130274"
+    },
+    "report-build.json": {
+      "bytes": 170221,
+      "sha256": "7e15e537c380eb98796421964dc727d3040411fda2b578cb9abdc7fdd3cc2829"
+    }
+  },
+  "page_count": 41,
+  "performance_acceptance": false,
+  "production_source_promotion": false,
+  "schema": "madloop-tirust-41page-report-archive-v1"
+}
