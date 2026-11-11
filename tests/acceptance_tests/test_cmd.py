@@ -2917,6 +2917,71 @@ class TestCmdShell2(unittest.TestCase,
             for r in ratios[1:]:
                 self.assertLess(abs(r / ratios[0] - 1), 1e-12, (production, ratios))
 
+    def test_onia_reshuffle_mirrored_beams(self):
+        """The momentum reshuffling of a bound state (onia_reshuffle_momenta)
+        keeps the incoming legs along their own beam directions. A standalone
+        call -- MadSpin's production normalisation -- may have the first leg
+        along -z (the mirror of a subprocess), and an onium at the 11-digit
+        precision of an event record is reshuffled: the beams used to be put
+        back with the first one along +z, which reversed them and gave
+        |M|^2 ~ 1e-9 instead of 2e3 for this u g > chi_c1 u event of p p at
+        7 TeV. Now the record event, its mirror in z, and the same event with
+        the chi_c1 exactly on its mass shell (no reshuffling) agree."""
+
+        import glob
+        import importlib.util
+        import math
+        import numpy
+        import madgraph.interface.master_interface as MGCmd
+
+        f2py = misc.default_f2py()
+        if not f2py:
+            raise unittest.SkipTest('no f2py')
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('set group_subprocesses False')
+        mg_cmd.exec_cmd('generate u g > chic1(1|3P11) u')
+        mg_cmd.exec_cmd('output standalone_fortran %s --prefix=int -f' % self.out_dir)
+        # the chi_c1 at 2 m_c = 3 GeV (m_c = 1.5): only the rounding of the record reshuffles
+        param = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        text = re.sub(r'(?m)^(\s*4\s+)[0-9.Ee+-]+(\s+#\s*MC)', r'\g<1>1.5\2', open(param).read())
+        open(param, 'w').write(text)
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = re.sub(r'(?m)^(\s*20443\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>3.0\2', open(card).read())
+        open(card, 'w').write(text)
+        sp = pjoin(self.out_dir, 'SubProcesses')
+        subprocess.check_call(['make', 'all_matrix5py.so', 'MENUM=5', 'F2PY=%s' % f2py], cwd=sp,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        lib = [f for f in glob.glob(pjoin(sp, 'all_matrix5py*.so')) if os.path.getsize(f)][0]
+        spec = importlib.util.spec_from_file_location('all_matrix5py', lib)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with misc.chdir(sp):
+            mod.initialise(param)
+
+        def me(moms):
+            p = numpy.asfortranarray(numpy.array(moms, float).T)
+            return mod.smatrixhel([2, 21, 20443, 2], -1, p, 0.118, 100., -1)
+
+        # an event of the record (11 digits), the u quark along -z
+        record = [[1851.0030904, 0., 0., -1851.0030904], [7.4474214402, 0., 0., 7.4474214402],
+                  [8.9497416689, -5.5512345996, -2.2478092298, 5.935404285],
+                  [1849.5007702, 5.5512345996, 2.2478092298, -1849.4910732]]
+        mirror = [[m[0], m[1], m[2], -m[3]] for m in record]
+        exact = [list(m) for m in record]
+        exact[2][0] = math.sqrt(9. + sum(x * x for x in record[2][1:]))
+        values = [me(record), me(mirror), me(exact)]
+        self.assertGreater(values[2], 1e2)
+        # the record and its mirror: the same reshuffled event
+        self.assertLess(abs(values[0] / values[1] - 1), 1e-9, values)
+        # against no reshuffling: the rounding of the record (its u quark is off shell by
+        # 3e-4 GeV^2) moves |M|^2 by 8e-6
+        self.assertLess(abs(values[0] / values[2] - 1), 1e-4, values)
+
     def test_leptonium_decay_without_photon_vertex(self):
         """A leptonium decaying without a photon vertex: ortho-ditauonium into
         nu_e nubar_e through the Z. The Coulomb LDME takes alpha from the

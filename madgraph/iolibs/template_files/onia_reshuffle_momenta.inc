@@ -45,6 +45,9 @@ C
       REAL*8 HAD_P(0:3,NEXTERNAL), HAD_M(NEXTERNAL), HAD_K(0:3,NEXTERNAL)
       REAL*8 HAD_PIN(0:3,NEXTERNAL), HAD_MIN(NEXTERNAL), HAD_KX(0:3)
       REAL*8 HAD_SQRTS, MREC
+C     the direction of the first incoming leg along the beam (+1 or -1): a
+C     standalone call may have it along -z (the mirror of a subprocess)
+      REAL*8 S1
 
       ! PARTONIC SYSTEM
       REAL*8 PAR_P(0:3,NEXTERNAL), PAR_M(NEXTERNAL), PAR_K(0:3,NEXTERNAL)
@@ -147,6 +150,8 @@ C     FINAL-STATE MOMENTUM RESHUFFLING
         DO I = 1, NEXTERNAL
           CALL BOOST(PIN,+1D0,P(0:3,I),PCOM(0:3,I))
         ENDDO
+        S1 = 1D0
+        IF (NINCOMING.EQ.2) S1 = SIGN(1D0,PCOM(3,1))
 
         CNT_ONIA = 0
         CNT_ELEM = 0
@@ -242,8 +247,8 @@ C         system the onia carry all of it.
         IF (NINCOMING.EQ.1) THEN
           P_RESH(0:3,1) = (/PAR_SQRTS,0D0,0D0,0D0/)
         ELSE
-          P_RESH(0:3,1) = 0.5D0*PAR_SQRTS*(/1D0,0D0,0D0,1D0/)
-          P_RESH(0:3,2) = 0.5D0*PAR_SQRTS*(/1D0,0D0,0D0,-1D0/)
+          P_RESH(0:3,1) = 0.5D0*PAR_SQRTS*(/1D0,0D0,0D0,S1/)
+          P_RESH(0:3,2) = 0.5D0*PAR_SQRTS*(/1D0,0D0,0D0,-S1/)
         ENDIF
 
         PCOM = P_RESH
@@ -263,8 +268,9 @@ C     INITIAL-STATE RESHUFFLING
         PAR_SQRTS = SUM(P_RESH(0,NINCOMING+1:))
         PAR_E1 = 0.5D0*(PAR_SQRTS+P(0,1)-P(0,2))
         PAR_E2 = 0.5D0*(PAR_SQRTS-P(0,1)+P(0,2))
-        P_RESH(0:3,1) = PAR_E1*(/ 1D0, 0D0, 0D0, 1D0/)
-        P_RESH(0:3,2) = PAR_E2*(/ 1D0, 0D0, 0D0,-1D0/)
+        S1 = SIGN(1D0,P(3,1))
+        P_RESH(0:3,1) = PAR_E1*(/ 1D0, 0D0, 0D0, S1/)
+        P_RESH(0:3,2) = PAR_E2*(/ 1D0, 0D0, 0D0,-S1/)
       ENDIF
 
       CONTAINS

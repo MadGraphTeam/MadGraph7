@@ -730,7 +730,10 @@ class OniaRegistry(object):
             rng.shuffle(events)
             i0 = group[0][0]
             decay_dir = os.path.join(ms.path_me, 'decay_%s_%s' % (str(pdg).replace('-', 'x'), i0))
-            path = os.path.join(decay_dir, 'Events', run_name, 'unweighted_events.lhe.gz')
+            # one file, outside Events/<run_name>: a refill (run_name
+            # ms_refill_<gen>) then splits it into the per-worker slices
+            # MadSpin's parallel unweighting reads (_generate_refill_pool)
+            path = os.path.join(decay_dir, 'radiative_%s.lhe.gz' % run_name)
             gen.write(path, events, total * totwidth, mass)
             out[i0] = lhe_parser.EventFile(path)
             for (i, text, chain), br in zip(group, gbrs):
