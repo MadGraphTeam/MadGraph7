@@ -65,10 +65,11 @@ jobs:
     #   acceptancetest_contur acceptancetest_60
     #   acceptancetest_uncovered_madevent
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
@@ -94,7 +95,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             #./tests/test_manager.py test_contur_from_file test_rivet_from_file -pA -t0 -l INFO
-            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10:/home/runner/.cache/HEPTools/rivet/local/lib/python3.10/dist-packages/:/home/runner/.cache/HEPTools/yoda/local/lib/python3.10/dist-packages/ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py  test_rivet_from_file -pA -t0 -l INFO
+            PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/contur/python3.10:$HOME/.cache/HEPTools/rivet/local/lib/python3.10/dist-packages/:$HOME/.cache/HEPTools/yoda/local/lib/python3.10/dist-packages/ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPTools/lib ./tests/test_manager.py  test_rivet_from_file -pA -t0 -l INFO
 
       # ---- acceptancetest_60 ----
       - name: "acceptancetest_60"
@@ -111,6 +112,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_flavor_grouping_consistency_width test_madevent_dy3j_mlm -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_madevent_bundle_2:
     # merged jobs, run one after the other: acceptancetest_madevent_bundle_2
@@ -472,10 +477,11 @@ jobs:
     # merged jobs, run one after the other: acceptancetest_102 test_oneloop_reweighting
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -487,7 +493,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
             ./tests/test_manager.py  test_nlo_reweighting -pA -t0 -l INFO
@@ -497,7 +503,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
             ./tests/test_manager.py  test_nlo_reweighting_new_parameter -pA -t0 -l INFO
@@ -514,3 +520,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_oneloop_reweighting -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp

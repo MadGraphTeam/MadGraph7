@@ -46,10 +46,11 @@ jobs:
     # former jobs, run one after the other: readonly_gridpack
     #   acceptancetest_emela3
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -70,6 +71,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             ./tests/test_manager.py test_generate_eeww_nlo_emela_noph -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_core_1:
     # merged jobs, run one after the other: acceptancetest_5 acceptancetest_18
@@ -416,10 +421,11 @@ jobs:
     # former jobs, run one after the other: acceptancetest_30
     #   acceptancetest_ewsudakov acceptancetest_density_LI_convolution
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
@@ -445,14 +451,19 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_LI_validation -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
   acceptancetest_bundle_6:
     # former jobs, run one after the other: acceptancetest_71 acceptancetest_76
     #   acceptancetest_95
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -481,13 +492,18 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_LOonly -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
   acceptancetest_72:
     # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -498,6 +514,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_check_cms_aem_emvevex -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_7:
     # merged jobs, run one after the other: acceptancetest_bundle_7
@@ -587,10 +607,11 @@ jobs:
     # former jobs, run one after the other: acceptancetest_74 acceptancetest_93
     #   acceptancetest_96
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -617,14 +638,19 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_ON_and_onshell_atNLO -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
   acceptancetest_bundle_9:
     # former jobs, run one after the other: acceptancetest_75
     #   acceptancetest_emela2 acceptancetest_88
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -650,14 +676,19 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_generate_eett_nlo_qcd_noisr -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
   acceptancetest_bundle_10:
     # merged jobs, run one after the other: acceptancetest_bundle_10 acceptancetest_106
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -702,15 +733,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_polarised_nlo_ps_me_frame -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
   acceptancetest_bundle_11:
     # former jobs, run one after the other: acceptancetest_83
     #   acceptancetest_uncovered_madloop
     #   acceptancetest_polarised_rotation_at_rest
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -719,6 +755,8 @@ jobs:
       # which compiles StdHEP once for all the tests below (a failed compilation
       # leaves vendor/StdHEP/fail and is not retried)
       - name: Install libtirpc-dev
+        # preinstalled (libtirpc-devel) on the self-hosted alma10 runners
+        if: runner.environment != 'self-hosted'
         run: sudo apt-get -o Acquire::Retries=5 install -y libtirpc-dev
 
       # ---- acceptancetest_83 ----
@@ -745,6 +783,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_polarised_rotation_stability_leg_at_rest -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_12:
     # former jobs, run one after the other: acceptancetest_emela4
@@ -806,10 +848,11 @@ jobs:
     # FKS Born building-block standalone output ('output standalone_fortran --fks'):
     # hardcoded-value regression, consistency vs a plain aMC@NLO output, and
     # the '--limits' soft/collinear limit test.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -820,14 +863,19 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo test_fks_standalone_limits -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
   acceptancetest_107:
     # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -840,6 +888,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_polarised_nlo_me_frame -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_wj_ms_decay:
     # wj production with madspin decay (CI coverage audit)
@@ -873,12 +925,13 @@ jobs:
 
   acceptancetest_madspin_LI:
     # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
@@ -887,6 +940,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_loop_induced -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_uncovered:
     # Acceptance tests that no workflow selected (audit of 2026-10-24).
