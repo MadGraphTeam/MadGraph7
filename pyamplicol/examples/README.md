@@ -403,9 +403,17 @@ pyamplicol loop_gg_zgg_check.toml           # the same checks on the generated a
 pyamplicol loop_gg_zgg_evaluate.toml
 pyamplicol loop_gg_zgg_profile.toml
 pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --reduction-unchecked
-python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 \
+python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 --regenerate \
   --native-client native/loop_client
 ```
+
+The walkthrough generates the artifact with the example's correlator
+declaration; `--regenerate` makes it do so even when the card's generation
+above already wrote `artifacts/loop_gg_zgg` without the declaration (without
+`--regenerate` it reuses an existing artifact, whose correlated step then
+refuses the undeclared correlators: generate it with `pyamplicol generate
+--card loop_gg_zgg_generate.toml --correlators data/loop_gg_zgg_correlators.json`
+instead to reuse it).
 
 The walkthrough steps, in order:
 

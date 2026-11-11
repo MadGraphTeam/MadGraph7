@@ -253,12 +253,15 @@ for example in loop_uux_ttxgg loop_uux_ddxepem loop_gg_zgg loop_gg_epemmpmm; do
   pyamplicol "${example}_check.toml"
   pyamplicol "${example}_evaluate.toml"
   pyamplicol "${example}_profile.toml"
-  python python/loop_walkthrough.py "${example}_generate.toml" --points 2 \
+  python python/loop_walkthrough.py "${example}_generate.toml" --points 2 --regenerate \
     --native-client native/loop_client
 done
 ```
 
-Each step is described in [the examples guide](../../examples/README.md#one-loop-examples).
+Each step is described in [the examples guide](../../examples/README.md#one-loop-examples);
+`--regenerate` makes the walkthrough generate its artifact again with the
+example's correlator declaration (the card's generation above writes it
+without one).
 `loop_uux_ttxgg` and `loop_gg_zgg` generate in seconds, the electroweak and
 complex-mass examples (`loop_uux_ddxepem`, `loop_gg_epemmpmm`) in a few
 minutes with up to about 8.4 GiB of memory; each walkthrough generates its
