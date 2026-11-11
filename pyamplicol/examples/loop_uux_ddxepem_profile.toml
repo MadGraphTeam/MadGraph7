@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # Loop example: profile the uux_ddxepem artifact (time per stage, checked
-# default; add --reduction-unchecked for the unchecked timing mode).
+# default; add --reduction-unchecked for the unchecked timing mode) on both
+# reduction backends side by side; --stability adds the stable-digit statistics
+# (pyamplicol profile --card loop_uux_ddxepem_profile.toml --stability).
 
 schema_version = 1
 action = "benchmark"
@@ -13,3 +15,8 @@ momenta = "data/loop_uux_ddxepem_momenta.json"
 batch_size = 32
 warmup_runs = 1
 minimum_samples = 3
+# The flat points of --stability: few, so that it runs in seconds here (about
+# 4 s per point for both backends together (four squared-order sectors;
+# NinjaRS's double-double reference dominates)); raise with --stability-
+# points.
+stability_points = 3

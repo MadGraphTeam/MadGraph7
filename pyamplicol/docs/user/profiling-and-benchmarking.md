@@ -214,13 +214,23 @@ level, one batch per scale):
 | reduction | `reduction` (TIRust or NinjaRS, its masters included) |
 | rest | every other stage and the call's untimed remainder |
 
-The table is coloured with a bar per group. No timer beyond the executor's
-own runs, so the split is the timed calls' (a split read from a separate
-instrumented run is labelled as such). `--loop-reduction` and
-`--reduction-unchecked` profile the other backend and the unchecked timing
-mode (no accuracy certificate). The loop examples' profile cards
-(`examples/loop_*_profile.toml`) and `examples/python/loop_walkthrough.py`
-print the table for the checked default and the unchecked setting.
+No timer beyond the executor's own runs, so the split is the timed calls' (a
+split read from a separate instrumented run is labelled as such).
+
+`pyamplicol profile` of a loop artifact profiles both reduction backends side
+by side (TIRust and NinjaRS; `--loop-reduction` selects one) and measures the
+runtime (`--runtime`, the default), the stability statistics (`--stability`)
+or both: per backend the time per point and stage with the ratio between the
+backends (the faster highlighted), and the stable digits of pure binary64
+against a double-double re-run over flat points at the percentiles 1 per mil,
+1 %, 10 % and 50 %, with the accuracy of the default rotation estimate against
+that truth (the measure of MadLoop, arXiv:1103.0621 sect. 3.4, and
+arXiv:1405.0301). The definitions, flags and JSON are in the
+[command-line guide](command-line-interface.md#profile). `--reduction-unchecked`
+profiles the unchecked timing mode (no accuracy certificate). The loop
+examples' profile cards (`examples/loop_*_profile.toml`) set a small point
+count for `--stability`; `examples/python/loop_walkthrough.py` prints the
+stage table for the checked default and the unchecked setting.
 
 ## Native work counters
 

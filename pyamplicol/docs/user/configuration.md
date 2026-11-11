@@ -1815,13 +1815,26 @@ override that default; a complete summed-axis list is normalized to equivalent
 omission. A valid shape outside the optimized layout emits at most one pre-loop
 warning per loaded process.
 
-A one-loop artifact is profiled per stage (trees, dressing, scatter,
+A one-loop artifact is profiled on both reduction backends side by side
+(`[evaluation] reduction` selects one): per stage (trees, dressing, scatter,
 reduction, rest, from the native executor's stage report of the timed
-calls): `batch_size`, `warmup_runs` and `minimum_samples` apply, and
-`[evaluation] reduction`, `reduction_unchecked` and `mu_r2` select the
-backend, the unchecked timing mode and the scale (default: per point the
-squared invariant mass of its initial state); see the
-[command-line guide](command-line-interface.md#profile).
+calls; `batch_size`, `warmup_runs` and `minimum_samples` apply) and/or as
+stable-digit statistics over flat points. `[evaluation] reduction_unchecked`
+and `mu_r2` select the unchecked timing mode and the scale (default: per
+point the squared invariant mass of its initial state). The loop settings of
+`[benchmark]`:
+
+```toml
+[benchmark]
+runtime = false          # --runtime: time per point and stage
+stability = true         # --stability (neither set: the runtime only)
+stability_points = 20    # --stability-points: flat (RAMBO) points
+stability_seed = 12345   # --stability-seed (null: generation.validation.seed)
+sqrt_s = 1000.0          # --sqrt-s (null: the artifact's generation energy)
+```
+
+See the [command-line guide](command-line-interface.md#profile) for the
+definitions of the tables.
 
 See [Runtime and Selectors](runtime-and-selectors.md) for evaluation and profiling
 semantics.

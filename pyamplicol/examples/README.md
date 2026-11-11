@@ -74,20 +74,20 @@ These three showcase cards print colorized terminal tables by default. Add
 | `loop_uux_ttxgg_lc_generate.toml` | One-loop: the same at leading colour, for its colour-flow selection (the helicity selection runs at every accuracy) |
 | `loop_uux_ttxgg_check.toml` | One-loop: `pyamplicol check` (Catani poles, Ward identities of both gluons) of its artifact |
 | `loop_uux_ttxgg_evaluate.toml` | One-loop: evaluate with poles and the recommended stability checks |
-| `loop_uux_ttxgg_profile.toml` | One-loop: time per point and per stage (trees, dressing, scatter, reduction, rest) |
+| `loop_uux_ttxgg_profile.toml` | One-loop: time per point and per stage (trees, dressing, scatter, reduction, rest) on both reduction backends; `--stability` for the stable-digit statistics |
 | `loop_uux_ddxepem_generate.toml` | One-loop: generate `u u~ > d d~ e+ e-`, NLO QCD+EW at every order, complex-mass scheme |
 | `loop_uux_ddxepem_check.toml` | One-loop: `pyamplicol check` of its artifact (poles against Catani's QCD and QED operators) |
 | `loop_uux_ddxepem_evaluate.toml` | One-loop: evaluate its four squared-order sectors and three Born orders |
 | `loop_uux_ddxepem_orders.toml` | One-loop: partial weights per squared coupling order (`--orders`) with their explicit sums |
-| `loop_uux_ddxepem_profile.toml` | One-loop: time per point and per stage |
+| `loop_uux_ddxepem_profile.toml` | One-loop: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
 | `loop_gg_zgg_generate.toml` | Loop-induced: generate `g g > z g g`, every quark loop (five massless flavours and the top) |
 | `loop_gg_zgg_check.toml` | Loop-induced: `pyamplicol check` (finiteness, Ward identity of the gluons) of its artifact |
 | `loop_gg_zgg_evaluate.toml` | Loop-induced: evaluate on TIRust (the default) with the recommended stability checks |
-| `loop_gg_zgg_profile.toml` | Loop-induced: time per point and per stage |
+| `loop_gg_zgg_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
 | `loop_gg_epemmpmm_generate.toml` | Loop-induced: generate `g g > e+ e- m+ m-` in the complex-mass scheme |
 | `loop_gg_epemmpmm_check.toml` | Loop-induced: `pyamplicol check` of its artifact |
 | `loop_gg_epemmpmm_evaluate.toml` | Loop-induced: evaluate on TIRust with the recommended stability checks |
-| `loop_gg_epemmpmm_profile.toml` | Loop-induced: time per point and per stage |
+| `loop_gg_epemmpmm_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
 | `all_options.toml` | Every current schema field, active and commented |
 
 ## Generate Pure Gluons With Adjoint FFT
@@ -400,12 +400,29 @@ from a wheel built from a checkout, in a fresh environment, see
 pyamplicol loop_gg_zgg_generate.toml        # or: pyamplicol examples run loop_gg_zgg_generate
 pyamplicol check loop_gg_zgg_generate.toml  # the card's request, regenerated in memory
 pyamplicol loop_gg_zgg_check.toml           # the same checks on the generated artifact
-pyamplicol loop_gg_zgg_evaluate.toml
-pyamplicol loop_gg_zgg_profile.toml
+pyamplicol loop_gg_zgg_evaluate.toml        # coloured tables (--color never|always)
+pyamplicol loop_gg_zgg_profile.toml         # runtime of TIRust and NinjaRS side by side
+pyamplicol profile --card loop_gg_zgg_profile.toml --stability            # stable-digit statistics
+pyamplicol profile --card loop_gg_zgg_profile.toml --runtime --stability --stability-points 200 --loop-reduction tirust
 pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --reduction-unchecked
 python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 --regenerate \
   --native-client native/loop_client
 ```
+
+The evaluate cards print coloured tables: the finite part, the single and
+the double pole each in its own colour, the squared-order sectors, the
+carrier and the reduction backend of every point, and the stability verdicts
+(green: success or within the target; yellow: recovered, by a higher-precision
+rescue or the per-point fallback; red: failed, refused or above the target).
+The profile cards compare both reduction backends: `--runtime` (the default)
+times them in the default setup with the ratio between them, `--stability`
+measures over `[benchmark] stability_points` flat points the stable digits of
+pure binary64 against a double-double re-run, at the percentiles 1 per mil,
+1 %, 10 % and 50 %, and how well the default rotation estimate predicts them
+([the command-line guide](../docs/user/command-line-interface.md#profile)).
+Each card's point count is small so that `--stability` takes seconds; raise it
+with `--stability-points` for meaningful tails (a populated 1 per mil class
+needs 1000 points).
 
 The walkthrough generates the artifact with the example's correlator
 declaration; `--regenerate` makes it do so even when the card's generation
