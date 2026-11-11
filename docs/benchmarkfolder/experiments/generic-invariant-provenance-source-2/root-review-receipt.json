@@ -1,0 +1,20 @@
+{
+  "actual_generation_cases": 7,
+  "closed_windows": 4,
+  "files": 21,
+  "live_input_count": 470,
+  "native_execution": false,
+  "parent_proof": {
+    "current_sources": 17,
+    "parent_payloads": 71
+  },
+  "passed": true,
+  "pure_tests": {
+    "external_execution": false,
+    "passed": true,
+    "tests": 40,
+    "writes": false
+  },
+  "scientific_admission": false,
+  "source_index_sha256": "0e93995f751c7a0f3dfae1e39748714afe5a194ed6dbc1c9e873ca9d89117685"
+}

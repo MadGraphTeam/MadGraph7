@@ -1,0 +1,20 @@
+test_forwarded_whole_object_to_numeric_component (__main__.Window.test_forwarded_whole_object_to_numeric_component) ... ok
+test_function_numeric_dummy_receives_momentum (__main__.Window.test_function_numeric_dummy_receives_momentum) ... ok
+test_interleaved_write_is_unknown (__main__.Window.test_interleaved_write_is_unknown) ... ok
+test_later_function_momentum_overwrite (__main__.Window.test_later_function_momentum_overwrite) ... ok
+test_later_io_function_is_followed (__main__.Window.test_later_io_function_is_followed) ... ok
+test_later_numerator_component_preserved (__main__.Window.test_later_numerator_component_preserved) ... ok
+test_later_whole_object_overwrite (__main__.Window.test_later_whole_object_overwrite) ... ok
+test_loop_counter_dummy_is_a_write (__main__.Window.test_loop_counter_dummy_is_a_write) ... ok
+test_malformed_receipt_or_unknown_batch (__main__.Window.test_malformed_receipt_or_unknown_batch) ... ok
+test_numeric_common_reinterpretation_unknown (__main__.Window.test_numeric_common_reinterpretation_unknown) ... ok
+test_numeric_dummy_receives_momentum_component (__main__.Window.test_numeric_dummy_receives_momentum_component) ... ok
+test_prefix_function_setter_not_hidden (__main__.Window.test_prefix_function_setter_not_hidden) ... ok
+test_proved_readonly_numeric_dummy_is_allowed (__main__.Window.test_proved_readonly_numeric_dummy_is_allowed) ... ok
+test_safe_prefix_write_after_final_momentum (__main__.Window.test_safe_prefix_write_after_final_momentum) ... ok
+test_unknown_later_effects_not_ignored (__main__.Window.test_unknown_later_effects_not_ignored) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.023s
+
+OK
