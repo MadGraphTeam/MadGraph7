@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-2/controller.py", line 598, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-2/controller.py", line 591, in main
+    if args.run_child is not None:run_child(args.run_child);return
+                                  ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-2/controller.py", line 462, in run_child
+    run_locked(mode,before,built)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-2/controller.py", line 468, in run_locked
+    private_before=private_binding(output,built,report/'commands','before')
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-2/controller.py", line 449, in private_binding
+    if cards!=lane['numerical_cards']:raise ValueError('Private numerical cards differ')
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Private numerical cards differ

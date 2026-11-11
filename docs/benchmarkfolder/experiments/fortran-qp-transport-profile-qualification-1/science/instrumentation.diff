@@ -1,0 +1,451 @@
+--- original/TIRUST_interface.f
++++ private/TIRUST_interface.f
+@@ -5,12 +5,14 @@
+ C     no numerator contraction or counterterm addition.
+       SUBROUTINE ML5_0_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK
+      $ ,PL,M2L,TIRCOEFS,STABLE)
++      USE QP_PROFILE_STATE
+       USE MTIRUST
+       USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T
+       USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      $ ,IEEE_VALUE,IEEE_QUIET_NAN
+       USE ML5_0_POLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+       IMPLICIT NONE
++      INTEGER*8 QP_PT0
+       INCLUDE 'loop_max_coefs.inc'
+       INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
+ C     integer exponent classification does not quiet sNaN.
+@@ -54,11 +56,14 @@
+       IF(RANK.LT.0.OR.RANK.GT.4) RETURN
+       IF(.NOT.TIRUST_SUPPORTS(NLOOPLINE,RANK,TIRUSTCOMPUTEFINITE))
+      $  RETURN
++      CALL QP_PROFILE_START(QP_PT0)
+       CALL ML5_0_INITIALIZE_TIRUST(STATUS)
+       IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+       CALL TIRUST_SET_CACHE_BUDGET(INT(TIRUSTCACHEMAXBYTES,C_INT64_T)
+      $ ,STATUS)
+       IF(STATUS.NE.TIRUST_SUCCESS) RETURN
++      CALL QP_PROFILE_END(1,QP_PT0)
++      CALL QP_PROFILE_START(QP_PT0)
+       PDEN_DUMMY=0
+       MASSES=CMPLX(M2L,KIND=KI_TIR)
+       CALL ML5_0_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,M2L)
+@@ -122,9 +127,24 @@
+       CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.
+      $ -1.OR.NLOOPLINE.LE.TIRUSTGLOBALCACHE
+       CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5
++      CALL QP_PROFILE_END(2,QP_PT0)
++      IF(QP_PROFILE_MODE.EQ.2) THEN
++      CALL QP_PROFILE_BLOB('post_shifts',
++     $ TRANSFER(SHIFTS,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('post_invariants',
++     $ TRANSFER(INVARIANTS,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('post_masses',
++     $ TRANSFER(MASSES,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('post_scale',
++     $ TRANSFER(SCALE,[0_QP_PROFILE_BYTE]))
++      ENDIF
++      CALL QP_PROFILE_START(QP_PT0)
+       CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS
+      $ ,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LOOPPOLEMODE)
+      $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)
++      CALL QP_PROFILE_END(4,QP_PT0)
++      QP_PROFILE_NATIVE_STATUS=STATUS
++      CALL QP_PROFILE_START(QP_PT0)
+       IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+       DO I=0,NC-1
+         K=TIRUST_MAP(I)
+@@ -142,6 +162,7 @@
+         TIRCOEFS(I,2)=RAW(K,1)+RAW(K,2)
+         TIRCOEFS(I,3)=RAW(K,3)
+       ENDDO
++      CALL QP_PROFILE_END(5,QP_PT0)
+       STABLE=.TRUE.
+       END
+ 
+@@ -152,12 +173,14 @@
+ C     no numerator contraction or counterterm addition.
+       SUBROUTINE ML5_0_MP_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE
+      $ ,RANK,PL,M2L,TIRCOEFS,STABLE)
++      USE QP_PROFILE_STATE
+       USE MTIRUST
+       USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T
+       USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      $ ,IEEE_VALUE,IEEE_QUIET_NAN
+       USE ML5_0_POLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+       IMPLICIT NONE
++      INTEGER*8 QP_PT0
+       INCLUDE 'loop_max_coefs.inc'
+       INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
+ C     integer exponent classification does not quiet sNaN.
+@@ -202,11 +225,14 @@
+       IF(RANK.LT.0.OR.RANK.GT.4) RETURN
+       IF(.NOT.TIRUST_SUPPORTS(NLOOPLINE,RANK,TIRUSTCOMPUTEFINITE))
+      $  RETURN
++      CALL QP_PROFILE_START(QP_PT0)
+       CALL ML5_0_INITIALIZE_TIRUST(STATUS)
+       IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+       CALL TIRUST_SET_CACHE_BUDGET(INT(TIRUSTCACHEMAXBYTES,C_INT64_T)
+      $ ,STATUS)
+       IF(STATUS.NE.TIRUST_SUCCESS) RETURN
++      CALL QP_PROFILE_END(1,QP_PT0)
++      CALL QP_PROFILE_START(QP_PT0)
+       PDEN_DUMMY=0
+       MASSES=CMPLX(M2L,KIND=KI_QTIR)
+       CALL ML5_0_MP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,MASSES)
+@@ -270,9 +296,22 @@
+       CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.
+      $ -1.OR.NLOOPLINE.LE.TIRUSTGLOBALCACHE
+       CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5
++      CALL QP_PROFILE_END(2,QP_PT0)
++      IF(QP_PROFILE_MODE.EQ.2) THEN
++      CALL QP_PROFILE_BLOB('post_shifts',
++     $ TRANSFER(SHIFTS,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('post_invariants',
++     $ TRANSFER(INVARIANTS,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('post_masses',
++     $ TRANSFER(MASSES,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('post_scale',
++     $ TRANSFER(SCALE,[0_QP_PROFILE_BYTE]))
++      ENDIF
+       CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS
+      $ ,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LOOPPOLEMODE)
+      $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)
++      QP_PROFILE_NATIVE_STATUS=STATUS
++      CALL QP_PROFILE_START(QP_PT0)
+       IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+       DO I=0,NC-1
+         K=TIRUST_MAP(I)
+@@ -290,27 +329,51 @@
+         TIRCOEFS(I,2)=RAW(K,1)+RAW(K,2)
+         TIRCOEFS(I,3)=RAW(K,3)
+       ENDDO
++      CALL QP_PROFILE_END(5,QP_PT0)
+       STABLE=.TRUE.
+       END
+ 
+       SUBROUTINE ML5_0_TIRUSTLOOP(CTMODE,NLOOPLINE,RANK,PL,M2L
+      $ ,TIRCOEFS,STABLE)
+-      IMPLICIT NONE
++      USE QP_PROFILE_STATE
++      USE MTIRUST, ONLY: TIRUST_CONTEXT_GENERATION
++      IMPLICIT NONE
++      INTEGER*8 QP_PT0
+       INCLUDE 'loop_max_coefs.inc'
+       INTEGER CTMODE,NLOOPLINE,RANK
+       REAL*8 PL(0:3,NLOOPLINE)
+       COMPLEX*16 M2L(NLOOPLINE)
+       COMPLEX*16 TIRCOEFS(0:LOOPMAXCOEFS-1,3)
+       LOGICAL STABLE
++      INCLUDE 'coupl.inc'
++      INCLUDE 'MadLoopParams.inc'
++      CALL QP_PROFILE_BEGIN(CTMODE,NLOOPLINE,RANK,1,
++     $ MAX(0,LOOPPOLEMODE),TIRUSTCOMPUTEFINITE,
++     $ TIRUSTGLOBALCACHE.EQ.-1.OR.
++     $ NLOOPLINE.LE.TIRUSTGLOBALCACHE,
++     $ INT(TIRUSTCACHEMAXBYTES,8),TIRUST_CONTEXT_GENERATION())
++      IF(QP_PROFILE_MODE.EQ.2) THEN
++      CALL QP_PROFILE_BLOB('pre_pl',
++     $ TRANSFER(PL,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('pre_m2l',
++     $ TRANSFER(M2L,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('pre_mur',
++     $ TRANSFER(MU_R,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('pre_osthres',
++     $ TRANSFER(OSTHRES,[0_QP_PROFILE_BYTE]))
++      ENDIF
+       CALL ML5_0_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL,M2L
+      $ ,TIRCOEFS,STABLE)
++      CALL QP_PROFILE_FINISH(QP_PROFILE_NATIVE_STATUS,STABLE)
+       END
+ 
+       SUBROUTINE ML5_0_MP_TIRUST_LOOP(NLOOPLINE,PL,M2L,RANK,RES,STABLE)
+-      USE MTIRUST, ONLY: KI_QTIR
++      USE MTIRUST, ONLY: KI_QTIR,TIRUST_CONTEXT_GENERATION
+       USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+       USE ML5_0_POLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+-      IMPLICIT NONE
++      USE QP_PROFILE_STATE
++      IMPLICIT NONE
++      INTEGER*8 QP_PT0
+       INTEGER NLOOPGROUPS,NSQUAREDSO
+       PARAMETER(NLOOPGROUPS=116,NSQUAREDSO=1)
+       INCLUDE 'loop_max_coefs.inc'
+@@ -331,13 +394,33 @@
+       COMMON/ML5_0_LOOP/ID,SQSOINDEX,R
+       COMPLEX*32 LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+       COMMON/ML5_0_MP_LCOEFS/LOOPCOEFS
++      INCLUDE 'coupl.inc'
++      INCLUDE 'MadLoopParams.inc'
++      CALL QP_PROFILE_BEGIN(CTMODE,NLOOPLINE,RANK,2,
++     $ MAX(0,LOOPPOLEMODE),TIRUSTCOMPUTEFINITE,
++     $ TIRUSTGLOBALCACHE.EQ.-1.OR.
++     $ NLOOPLINE.LE.TIRUSTGLOBALCACHE,
++     $ INT(TIRUSTCACHEMAXBYTES,8),TIRUST_CONTEXT_GENERATION())
++      IF(QP_PROFILE_MODE.EQ.2) THEN
++      CALL QP_PROFILE_BLOB('pre_pl',
++     $ TRANSFER(PL,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('pre_m2l',
++     $ TRANSFER(M2L,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('pre_mur',
++     $ TRANSFER(MU_R,[0_QP_PROFILE_BYTE]))
++      CALL QP_PROFILE_BLOB('pre_osthres',
++     $ TRANSFER(OSTHRES,[0_QP_PROFILE_BYTE]))
++      ENDIF
++
+       RES=0
+       CALL ML5_0_MP_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL
+      $ ,M2L,COEFS,STABLE)
+       IF(.NOT.STABLE) THEN
+         FPE_IN_QP_REDUCTION=.TRUE.
++      CALL QP_PROFILE_FINISH(QP_PROFILE_NATIVE_STATUS,STABLE)
+         RETURN
+       ENDIF
++      CALL QP_PROFILE_START(QP_PT0)
+       RESULT=0
+       DO I=1,3
+         DO J=0,NCOEF_R(RANK)-1
+@@ -352,6 +435,8 @@
+         RES=0
+         FPE_IN_QP_REDUCTION=.TRUE.
+       ENDIF
++      CALL QP_PROFILE_END(6,QP_PT0)
++      CALL QP_PROFILE_FINISH(QP_PROFILE_NATIVE_STATUS,STABLE)
+       END
+ 
+       SUBROUTINE ML5_0_INITIALIZE_TIRUST(STATUS)
+--- original/TIR_interface.f
++++ private/TIR_interface.f
+@@ -1,5 +1,6 @@
+       SUBROUTINE ML5_0_TIRLOOP(I_SQSO,I_LOOPGROUP,I_LIB,NLOOPLINE,PL
+      $ ,M2L,RANK,RES,STABLE)
++      USE QP_PROFILE_STATE
+       USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+ C     
+ C     Generated by MadGraph7 v. 0.2.1, 2026-09-24
+@@ -30,6 +31,7 @@
+ C     ARGUMENTS 
+ C     
+       INTEGER I_SQSO,I_LOOPGROUP,I_LIB
++      INTEGER*8 QP_PT0
+       INTEGER NLOOPLINE, RANK
+       REAL*8 PL(0:3,NLOOPLINE)
+       REAL*8 PCT(0:3,0:NLOOPLINE-1),ABSPCT(0:3)
+@@ -242,6 +244,9 @@
+           RETURN
+         ENDIF
+       END SELECT
++      IF(MLREDUCTIONLIB(I_LIB).EQ.9) THEN
++      CALL QP_PROFILE_START(QP_PT0)
++      ENDIF
+       DO I=1,3
+         RES(I)=(0.0D0,0.0D0)
+         DO J=0,NLOOPCOEFS-1
+@@ -268,6 +273,9 @@
+ C     ELSEIF(MLReductionLib(I_LIB).EQ.7) THEN
+ C     WRITE(*,*) 'COLLIER: Loop ID',ID,' =',RES(1),RES(2),RES(3)
+ C     ENDIF
++      IF(MLREDUCTIONLIB(I_LIB).EQ.9) THEN
++      CALL QP_PROFILE_END(6,QP_PT0)
++      ENDIF
+       END
+ 
+       SUBROUTINE ML5_0_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
+--- original/check_sa.f
++++ private/check_sa.f
+@@ -1,6 +1,7 @@
+ C     Persistent benchmark template. Expand ML5_0_, 5, 1.
+ C     Usage: check --masses, or check points.dat protocol.fifo.
+       PROGRAM BENCHMARK_MADLOOP_WORKER
++      USE QP_PROFILE_STATE
+       IMPLICIT NONE
+       INTEGER NEXTERNAL
+       PARAMETER(NEXTERNAL=5)
+@@ -16,7 +17,8 @@
+       REAL*8 P(0:3,NEXTERNAL),TOTAL(0:3),COLD,ELAPSED
+       INTEGER NPOINTS,NDIM,NSO,I,J,K,L,NLOOPS,CODE
+       INTEGER TENS,WARM_POINTS,WARM_POINT,IOS,SEQUENCE
+-      INTEGER PREVIOUS_SEQUENCE
++      INTEGER PREVIOUS_SEQUENCE,QP_POINT,QP_MODE
++      CHARACTER*80 QP_NAME
+       LOGICAL BENCHMARK_WARM_STATUS
+       INTEGER*8 TIMED_CODES(0:499),T0,T1,RATE
+       CHARACTER*1024 ARG
+@@ -125,58 +127,33 @@
+       IF(IOS.LT.0) GOTO 900
+       IF(IOS.NE.0) GOTO 800
+       IF(TRIM(COMMAND).EQ.'STOP') GOTO 900
+-      IF(TRIM(COMMAND).NE.'RUN') GOTO 800
+-      IF(SEQUENCE.NE.PREVIOUS_SEQUENCE+1.OR.NLOOPS.LE.0) GOTO 800
+-      PREVIOUS_SEQUENCE=SEQUENCE
+-      TIMED_CODES=0
+-      CALL SYSTEM_CLOCK(T0)
+-      DO L=1,NLOOPS
+-         DO K=1,NPOINTS
+-            P=POINTS(:,:,K)
++      IF(TRIM(COMMAND).EQ.'PROFILE') THEN
++         IF(SEQUENCE.NE.1.OR.PREVIOUS_SEQUENCE.NE.0) GOTO 800
++         IF(NLOOPS.LT.0.OR.NLOOPS.GT.2) GOTO 800
++         QP_MODE=NLOOPS
++         PREVIOUS_SEQUENCE=SEQUENCE
++         OPEN(76,FILE='profile-values.dat',STATUS='NEW')
++         DO QP_POINT=1,16,15
++            CALL QP_PROFILE_RESET(QP_MODE,67108864_8)
++            P=POINTS(:,:,QP_POINT)
+             TOTAL=P(:,1)+P(:,2)
+             MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))
+             CALL UPDATE_AS_PARAM()
+             ANS=0D0
++            ACC=-1D0
+             CALL ML5_0_SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+-            IF(CODE.LT.0.OR.CODE.GT.499) STOP 4
+-            TIMED_CODES(CODE)=TIMED_CODES(CODE)+1
+-C           The final timed traversal supplies numerical evidence.
+-            IF(L.EQ.NLOOPS) THEN
+-               VALUES(:,:,K)=ANS
+-               ACCURACIES(:,K)=ACC
+-               CODES(K)=CODE
+-            ENDIF
++            CALL BENCHMARK_TRACE_WARMUP(76,QP_POINT,QP_POINT,
++     $           NDIM,NSO,CODE,ANS,ACC)
++            WRITE(QP_NAME,'(A,I2.2)') 'point-',QP_POINT
++            CALL QP_PROFILE_WRITE(TRIM(QP_NAME))
+          ENDDO
+-      ENDDO
+-      CALL SYSTEM_CLOCK(T1)
+-      ELAPSED=DBLE(T1-T0)/DBLE(RATE)
+-      OPEN(73,FILE='timing.dat',STATUS='REPLACE')
+-      WRITE(73,'(2ES26.17E3)') COLD,ELAPSED
+-      CLOSE(73)
+-      OPEN(73,FILE='values.dat',STATUS='REPLACE')
+-      DO K=1,NPOINTS
+-         DO J=0,NDIM
+-            IF(J.LE.NSO) THEN
+-               WRITE(73,'(3I8,5ES26.17E3)') K,J,CODES(K),
+-     $              VALUES(:,J,K),ACCURACIES(J,K)
+-            ELSE
+-C              Born-only columns have no per-order loop accuracy.
+-               WRITE(73,'(3I8,5ES26.17E3)') K,J,CODES(K),
+-     $              VALUES(:,J,K),ACCURACIES(0,K)
+-            ENDIF
+-         ENDDO
+-      ENDDO
+-      CLOSE(73)
+-      OPEN(73,FILE='timed_status.dat',STATUS='REPLACE')
+-      DO I=0,499
+-         IF(TIMED_CODES(I).GT.0) WRITE(73,'(I5,1X,I20)')
+-     $        I,TIMED_CODES(I)
+-      ENDDO
+-      CLOSE(73)
+-      WRITE(74,'(A,2I12)') 'DONE ',SEQUENCE,NLOOPS
+-      FLUSH(74)
+-      GOTO 100
+-
++         CLOSE(76)
++         WRITE(74,'(A,2I12)') 'PROFILED ',SEQUENCE,QP_MODE
++         FLUSH(74)
++         GOTO 100
++      ENDIF
++C     Diagnostic-only driver never accepts a timing RUN.
++      GOTO 800
+  800  CONTINUE
+       WRITE(74,'(A)') 'ERROR invalid-command'
+       FLUSH(74)
+--- original/mtirust.f90
++++ private/mtirust.f90
+@@ -2,6 +2,7 @@
+ ! with slots [UV1, IR1, IR2, finite]. Convention::MadLoop is applied in Rust.
+ ! The module retains one context and is intended for serial MadLoop calls.
+ module mtirust
++  use qp_profile_state
+   use, intrinsic :: iso_c_binding
+   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+   implicit none
+@@ -134,11 +135,25 @@
+     if (present(status)) status = result
+   end subroutine
+ 
++  subroutine profile_clear_before()
++    integer(c_int64_t) :: counts(6)
++    integer :: result
++    if (qp_profile_mode == 0) return
++    counts = -1_c_int64_t
++    result = -1
++    if (c_associated(context)) result = qp_cache_statistics(context,counts,6_c_size_t)
++    call qp_profile_stats(3,counts,result,tirust_context_generation())
++  end subroutine
++
+   subroutine tirust_clear_cache(status)
+     integer, intent(out), optional :: status
+     integer :: result
++    integer(c_int64_t) :: qp_tick
++    call profile_clear_before()
++    call qp_profile_start(qp_tick)
+     call ensure_context(result)
+     if (result == TIRUST_SUCCESS) result = clear_cache(context)
++    call qp_profile_end(7,qp_tick)
+     if (present(status)) status = result
+   end subroutine
+ 
+@@ -306,7 +321,8 @@
+     character(kind=c_char), allocatable :: p_text(:,:),s_text(:,:),m_text(:,:),output(:,:)
+     character(kind=c_char) :: scale_text(record_size)
+     real(KI_QTIR), allocatable :: values(:)
+-    integer :: i,j,k,count,ios
++    integer :: i,j,k,count,ios,qp_stats_status
++    integer(c_int64_t) :: qp_tick,qp_counts(6)
+     coefs = cmplx(0,0,kind=KI_QTIR)
+     if (.not.valid_shapes(n,rank,shape(shifts),shape(invariants),size(masses),shape(coefs),status)) return
+     status = TIRUST_UNSUPPORTED
+@@ -316,6 +332,7 @@
+     status = TIRUST_ERROR
+     local_error = 'TIRust quadruple-precision transport allocation failed.'
+     if (int(count,c_int64_t)*8_c_int64_t > int(huge(count),c_int64_t)) return
++    call qp_profile_start(qp_tick)
+     allocate(p_text(record_size,4*n),s_text(record_size,n*n),m_text(record_size,2*n), &
+              output(record_size,8*count),values(8*count),stat=ios)
+     if (ios /= 0) return
+@@ -339,16 +356,35 @@
+     call options(pole_mode,compute_finite,check_pass,cache_enabled,poles,finite,check,cache)
+     call ensure_context(status)
+     if (status /= TIRUST_SUCCESS) return
++    call qp_profile_end(3,qp_tick)
++    if (qp_profile_mode /= 0) then
++      call tirust_qp_cache_statistics(qp_counts,qp_stats_status)
++      call qp_profile_stats(1,qp_counts,qp_stats_status,tirust_context_generation())
++    endif
++    if (qp_profile_mode == 2) then
++      call qp_profile_blob('encoded_p',transfer(p_text,[0_qp_profile_byte]))
++      call qp_profile_blob('encoded_s',transfer(s_text,[0_qp_profile_byte]))
++      call qp_profile_blob('encoded_m',transfer(m_text,[0_qp_profile_byte]))
++      call qp_profile_blob('encoded_scale',transfer(scale_text,[0_qp_profile_byte]))
++    endif
++    call qp_profile_start(qp_tick)
+     status = evaluate_mp(context,int(n,c_int),int(rank,c_int),p_text,size(p_text,kind=c_size_t), &
+                          s_text,size(s_text,kind=c_size_t),m_text,size(m_text,kind=c_size_t), &
+                          scale_text,size(scale_text,kind=c_size_t),output,size(output,kind=c_size_t), &
+                          poles,finite,check,cache)
++    call qp_profile_end(4,qp_tick)
++    if (qp_profile_mode /= 0) then
++      call tirust_qp_cache_statistics(qp_counts,qp_stats_status)
++      call qp_profile_stats(2,qp_counts,qp_stats_status,tirust_context_generation())
++    endif
++    call qp_profile_start(qp_tick)
+     if (status /= TIRUST_SUCCESS) return
+     do k=1,8*count
+       call unpack(output(:,k),values(k),ios)
+       if (ios /= 0) then
+         ! Native insertion precedes this public Fortran transport check.
+         ! Reject all numerical cache entries when decoding the result fails.
++        call profile_clear_before()
+         ios = clear_cache(context)
+         status = TIRUST_ERROR
+         local_error = 'TIRust returned an invalid or nonfinite binary128 output record.'
+@@ -361,6 +397,7 @@
+         coefs(i,j) = cmplx(values(k-1),values(k),kind=KI_QTIR)
+       enddo
+     enddo
++    call qp_profile_end(5,qp_tick)
+   end subroutine
+ 
+   subroutine tirust_error_message(message)

@@ -1,0 +1,25 @@
+{
+  "cap_seconds": 300.0,
+  "command": [
+    "taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-3/controller.py",
+    "--run-child",
+    "0",
+    "--source",
+    "e70bf61cb3be793b1d66b8e010ad4e7c0aa98931ae795c1c9bda6adf1715406e",
+    "--reviewed-build",
+    "90ef4a7b47c0a795b9f2bd80a4c4b059d1930af4a5ad05e2e68ba70b3c516a11"
+  ],
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "reviewed_build_sha256": "90ef4a7b47c0a795b9f2bd80a4c4b059d1930af4a5ad05e2e68ba70b3c516a11",
+  "source_index_sha256": "e70bf61cb3be793b1d66b8e010ad4e7c0aa98931ae795c1c9bda6adf1715406e",
+  "stage": "mode-0"
+}

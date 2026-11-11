@@ -1,0 +1,130 @@
+{
+  "caps_seconds": {
+    "build": 180.0,
+    "mode-0": 300.0,
+    "mode-1": 300.0,
+    "mode-2": 300.0
+  },
+  "compiled": false,
+  "files": {
+    "README.md": {
+      "bytes": 7478,
+      "sha256": "75ab6185f9032e9bf996faac829ded7ce3c1c3549d917f0cab0c28936fe7fb8c"
+    },
+    "controller.py": {
+      "bytes": 35720,
+      "sha256": "90504f945ac19f084b3f5585bd8f60844354e7dadd153f7dd893ba8a00109f0d"
+    },
+    "failed-expanded-check.txt": {
+      "bytes": 13874,
+      "sha256": "bc5ee36d10468e8e2cbe6863187be715f63d38e34ce0cbbfdad33d24b26f6d53"
+    },
+    "input-pins.json": {
+      "bytes": 395474,
+      "sha256": "c902425c44982220e939b7458cf6e394d319871df4bcb61e0027e3d0677394f1"
+    },
+    "loader_checks.py": {
+      "bytes": 6854,
+      "sha256": "4b8d035797b0ad742a0b0903228a20cc4bddca922146c4c5ea02ad4f3a011e55"
+    },
+    "test_controller.py": {
+      "bytes": 10427,
+      "sha256": "551ab83542227551781d6b022a6be4c5482a32fa1310af59bfe36986b6d7cc2a"
+    },
+    "test_loader_checks.py": {
+      "bytes": 6857,
+      "sha256": "207232e9fb5ae4f831c5b6476ee68d7e6f17e2af548d6cdc70a5563a3534cba3"
+    },
+    "test_worker_flags.py": {
+      "bytes": 3570,
+      "sha256": "f0c001eeff8ed118755c81875f8bf66260373c276401a28e460f55c9479ee31b"
+    },
+    "worker_flags.py": {
+      "bytes": 4483,
+      "sha256": "e716448ca25b7f095ce942bf50f600b6c49688211279d25be8f428407d78930e"
+    }
+  },
+  "native_executions": 0,
+  "parent_proposal_index_sha256": "049c26fbf460e0102269bdd237a71fd8d2438160f0fa47afeb57be59aa218ba2",
+  "predecessor": {
+    "changed_scope": "Selection of exact five compile commands and final link before strict validation; distinct source/work namespace.",
+    "failure_index": {
+      "path": "docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/build/failure-index.json",
+      "sha256": "8814dfb6b0d7e2c6dd0e3129af7ef4382acce4b43ca42b7846f7385d24229ab5"
+    },
+    "source_index": {
+      "path": "docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/source-index.json",
+      "sha256": "25ae013c98a9c0f30ef9e43c3aa9e1dee62ce97a76a44ac7f51b018d698702b7"
+    },
+    "terminal": {
+      "path": "docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/build/terminal.json",
+      "sha256": "53daedd3dee46c2bf168306968b66b01aba9f37bd7243c973a11317268d46359"
+    }
+  },
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "schema": "private-qp-profile-controller-source-v1",
+  "separate_reviewed_build_required": true,
+  "source_only": true,
+  "support": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/run.py": {
+      "bytes": 16476,
+      "sha256": "726f629210a155b894f423ad76fa1de9d96b1f98270d4aceba2ba240250d6901"
+    },
+    "docs/benchmarkfolder/experiments/current-cms-replay-supervisor-1/ownership/legacy_qualify.py": {
+      "bytes": 31845,
+      "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a"
+    },
+    "docs/benchmarkfolder/experiments/current-cms-replay-supervisor-1/ownership/linker_bind.py": {
+      "bytes": 8865,
+      "sha256": "b54528ebf6b9847f134a7d8ad927c7394607e927397e45169cb644479c8452c6"
+    },
+    "docs/benchmarkfolder/experiments/current-cms-replay-supervisor-1/ownership/run.py": {
+      "bytes": 32408,
+      "sha256": "be6212d7e93f698b551eee35ec577132c0ebb6db73d07cc203262be6319ce861"
+    },
+    "docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/build/failure-index.json": {
+      "bytes": 1738,
+      "sha256": "8814dfb6b0d7e2c6dd0e3129af7ef4382acce4b43ca42b7846f7385d24229ab5"
+    },
+    "docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/build/terminal.json": {
+      "bytes": 1276,
+      "sha256": "53daedd3dee46c2bf168306968b66b01aba9f37bd7243c973a11317268d46359"
+    },
+    "docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/source-index.json": {
+      "bytes": 3563,
+      "sha256": "25ae013c98a9c0f30ef9e43c3aa9e1dee62ce97a76a44ac7f51b018d698702b7"
+    },
+    "tools/tirust_benchmark.py": {
+      "bytes": 96661,
+      "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370"
+    },
+    "tools/tirust_benchmark_campaign.py": {
+      "bytes": 41779,
+      "sha256": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710"
+    },
+    "tools/tirust_benchmark_compiler.py": {
+      "bytes": 8272,
+      "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46"
+    },
+    "tools/tirust_benchmark_warmup.py": {
+      "bytes": 7041,
+      "sha256": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d"
+    },
+    "tools/tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "tools/tirust_env.sh": {
+      "bytes": 3531,
+      "sha256": "4311818b26bf38090655003a2aa14431267b727a65d167671b948a65fc54de00"
+    }
+  }
+}

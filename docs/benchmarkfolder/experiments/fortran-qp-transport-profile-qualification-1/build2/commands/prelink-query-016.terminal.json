@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libdhelas.a"
+  ],
+  "controller_process_group": 3765576,
+  "controller_session": 3765576,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-transport-profile-controller-2/build/SubProcesses/P0_uux_zgg",
+  "finished_utc": "2026-11-11T07:04:42.223342+00:00",
+  "owned_controller_pid": 3765576,
+  "returncode": 0,
+  "started_utc": "2026-11-11T07:04:42.213429+00:00",
+  "stdout_sha256": "54dd90053cbd154e0ad49656d73d55796cf7a0a821fb0cf479f75da4b00f2d32",
+  "subprocess_new_session": false
+}

@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/controller.py", line 574, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/controller.py", line 566, in main
+    if args.build_child:build_child();return
+                        ~~~~~~~~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/controller.py", line 261, in build_child
+    build_locked(before,environment)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/controller.py", line 277, in build_locked
+    recipes,link=expanded_commands(directory,environment,logs)
+                 ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-transport-profile-controller-1/controller.py", line 199, in expanded_commands
+    if any(t in {';','&&','||','|','>','>>','<'} for t in tokens):raise ValueError('Compound build recipe')
+                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Compound build recipe

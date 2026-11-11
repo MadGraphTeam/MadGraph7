@@ -1,0 +1,13 @@
+{
+  "command": [
+    "nm",
+    "--defined-only",
+    "mtirust.o"
+  ],
+  "controller_process_group": 3765576,
+  "controller_session": 3765576,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-transport-profile-controller-2/build/SubProcesses/P0_uux_zgg",
+  "owned_controller_pid": 3765576,
+  "started_utc": "2026-11-11T07:04:52.411531+00:00",
+  "subprocess_new_session": false
+}

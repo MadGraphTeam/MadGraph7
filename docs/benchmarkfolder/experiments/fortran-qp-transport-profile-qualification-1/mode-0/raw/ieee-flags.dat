@@ -1,0 +1,7 @@
+# mode point phase rounding f_invalid f_divide_by_zero f_overflow f_underflow f_inexact h_invalid h_divide_by_zero h_overflow h_underflow h_inexact
+# phase 1=before 2=after; flags/halting -1=unsupported 0=false 1=true; sticky flags are not cleared
+# rounding -1=unavailable 0=other 1=nearest 2=to_zero 3=up 4=down
+           0           1           1           1           0           0           0           0           0           0           0           0           0           0
+           0           1           2           1           0           0           0           0           0           0           0           0           0           0
+           0          16           1           1           0           0           0           0           0           0           0           0           0           0
+           0          16           2           1           0           0           0           0           0           0           0           0           0           0

@@ -1,0 +1,20 @@
+{
+  "after_preflight_sha256": "8ff03964967c03f50c070dd46e802013c9ecef97638a6bc06a69852acc1e43fb",
+  "amplitude_calls": 0,
+  "before_preflight_path": ".tirust-build/fortran-qp-profile-source-preflight-1.json",
+  "before_preflight_sha256": "8ff03964967c03f50c070dd46e802013c9ecef97638a6bc06a69852acc1e43fb",
+  "fortran_compile_commands": 0,
+  "link_commands": 0,
+  "loader_queries": 0,
+  "model_setup_calls": 0,
+  "owned_child_pid": 1232813,
+  "owned_child_proc_absent": true,
+  "postcheck_scope": "Pure administrative hashes after failed stage; not a passed measurement",
+  "protected_before_after_identical": true,
+  "reason": "Strict expanded-command parser rejected an unselected ln prerequisite containing ||; no retry performed.",
+  "runtime_admitted": false,
+  "schema": "private-qp-profile-build-failure-v1",
+  "source_index_sha256": "25ae013c98a9c0f30ef9e43c3aa9e1dee62ce97a76a44ac7f51b018d698702b7",
+  "status": "failed-before-compilation",
+  "terminal_sha256": "53daedd3dee46c2bf168306968b66b01aba9f37bd7243c973a11317268d46359"
+}

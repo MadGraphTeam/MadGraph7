@@ -1,0 +1,13 @@
+{
+  "command": [
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "--list",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-transport-profile-controller-2/build/SubProcesses/P0_uux_zgg/check"
+  ],
+  "controller_process_group": 3765576,
+  "controller_session": 3765576,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-qp-transport-profile-controller-2/build/SubProcesses/P0_uux_zgg",
+  "owned_controller_pid": 3765576,
+  "started_utc": "2026-11-11T07:04:53.857401+00:00",
+  "subprocess_new_session": false
+}

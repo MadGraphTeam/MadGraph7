@@ -1,0 +1,53 @@
+{
+  "bytes": 167483,
+  "compiled": false,
+  "files": {
+    "admission.json": {
+      "bytes": 642,
+      "sha256": "4e2209a4989e952834094b4912d2627a2e610f546edaadcf26a2c97cffdd0110"
+    },
+    "commands/expanded-check.command.json": {
+      "bytes": 463,
+      "sha256": "7811199f5f1060a743a24fea8bf88ae7d17c751d4226ef3c61782e0127cf6abf"
+    },
+    "commands/expanded-check.stdout.txt": {
+      "bytes": 13874,
+      "sha256": "bc5ee36d10468e8e2cbe6863187be715f63d38e34ce0cbbfdad33d24b26f6d53"
+    },
+    "commands/expanded-check.terminal.json": {
+      "bytes": 623,
+      "sha256": "beae10f3cb7a7a706b65944c721a5a054ad1a4505fa8a88ac6d1bf429f1ca8b3"
+    },
+    "compiler-before.json": {
+      "bytes": 131028,
+      "sha256": "5aad4d25da89b7b125f0772e2d7aa1c36987ab07db48b1f231ef5d315b447eff"
+    },
+    "console.log": {
+      "bytes": 1540,
+      "sha256": "0c7c8b088d5a571aa4c648583c1d38ad13c01907cb9967f22aae6592427f46aa"
+    },
+    "failure-closure.json": {
+      "bytes": 1039,
+      "sha256": "01668e01a9e56b1a46b2717a7af954fcbad4a5e3454da00a30ddff2aafb2bde7"
+    },
+    "protected-postfailure.json": {
+      "bytes": 16027,
+      "sha256": "8ff03964967c03f50c070dd46e802013c9ecef97638a6bc06a69852acc1e43fb"
+    },
+    "resource-limits.json": {
+      "bytes": 277,
+      "sha256": "48638d15368b3f8a273c6de6be64a26c2471cc8bdbbd762af4a34c3643313de0"
+    },
+    "started.json": {
+      "bytes": 694,
+      "sha256": "ca8baec18e1349c1236c5a470c5564b6dcd379de756526b33edad188639b1a42"
+    },
+    "terminal.json": {
+      "bytes": 1276,
+      "sha256": "53daedd3dee46c2bf168306968b66b01aba9f37bd7243c973a11317268d46359"
+    }
+  },
+  "native_executions": 0,
+  "schema": "private-qp-profile-build-failure-index-v1",
+  "status": "failed"
+}
