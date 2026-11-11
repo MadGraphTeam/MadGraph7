@@ -1,0 +1,26 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 4195,
+      "sha256": "58b7316767cb2df061102fb955de9115a6b5986ae452fede3f6457f5ec293393"
+    },
+    "bindings.json": {
+      "bytes": 2177,
+      "sha256": "ba1564cc399b29bc95c8d51c10134e9d81fff731e5b1f8aef00d204ddf62285d"
+    },
+    "guard.py": {
+      "bytes": 10529,
+      "sha256": "3c07166e530d8914cd3e868ea7877d2982140a4aa3a0864e3cd3d9f0a0001582"
+    },
+    "test_guard.py": {
+      "bytes": 5995,
+      "sha256": "cf808bb86824d9588ea7da4ec2ab5646049f128983d7bafd7abd25fe7282694b"
+    },
+    "tests.txt": {
+      "bytes": 954,
+      "sha256": "21199c28f371881ca0904f3573e14fc9ecb5709cc5cee72e3dda46a7adb671d3"
+    }
+  },
+  "schema": "current-trace-build-admission-index-v1",
+  "status": "Source-only root review required; no build or loader query executed"
+}

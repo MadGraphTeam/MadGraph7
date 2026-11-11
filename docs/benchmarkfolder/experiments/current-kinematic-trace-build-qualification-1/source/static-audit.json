@@ -1,0 +1,16 @@
+{
+  "findings_resolved": [
+    "Explicit full-pole bypass/restored INIT semantics and fixed codes110/120.",
+    "Exact external-directory aliases/private prebuilt paths.",
+    "READY/DONE mapping boundary, never BYE.",
+    "Late stdout overflow/collection errors reject completion.",
+    "Aggregate trace allowance reserved before launch.",
+    "Exact427-entry source/build-input closure rejects additions.",
+    "Native PID, exit code and close receipts retained."
+  ],
+  "native_executions": 0,
+  "review_scope": "Current source/binding/controller inspection only; generation, build and native parity remain separately gated.",
+  "reviewer": "/root/kinematic_trace_prototype/routing_review",
+  "schema": "current-trace-executor-static-audit-v1",
+  "verdict": "static clear for source-only seal"
+}

@@ -1,0 +1,16 @@
+{
+  "amplitude_evaluations": 0,
+  "derived_index_sha256": "25c2114756ed3eb968c311945a27d175c5c5a0af54d4ae21158abc8ed42a4184",
+  "failure": null,
+  "guard_index_sha256": "c30fefa33c13dc04cbeed5b12a6a44284d1fc4858c12aa569382ea8a8f8bf813",
+  "loader_queries": [
+    "cms-instrumented",
+    "cms-unmodified",
+    "ew-instrumented",
+    "ew-unmodified"
+  ],
+  "ordinary_or_stress_admitted": false,
+  "passed": true,
+  "postcheck_failure": null,
+  "source_index_sha256": "7ea709b48d8de462b754fabfb47dcbd5d21d7847458382f5844190028e8c1bed"
+}

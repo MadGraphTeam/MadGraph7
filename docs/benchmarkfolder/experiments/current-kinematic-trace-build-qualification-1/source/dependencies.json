@@ -1,0 +1,899 @@
+{
+  "CT_version": "15.2.0",
+  "external": {
+    "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": {
+      "executable": false,
+      "resolved": "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+      "sha256": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396",
+      "size": 3281212
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.lock": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.lock",
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+      "size": 35857
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.toml": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.toml",
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "size": 1074
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/mtirust.f90": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/mtirust.f90",
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+      "size": 15997
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/tirust.h": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/tirust.h",
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+      "size": 5742
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+      "executable": true,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+      "size": 69094528
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a",
+      "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+      "size": 26118
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/mtirust.mod": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/mtirust.mod",
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+      "size": 3432
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json",
+      "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9",
+      "size": 3055
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-link-before.txt": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-link-before.txt",
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "size": 8
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-native-libs.txt": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-native-libs.txt",
+      "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62",
+      "size": 17
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.a": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.a",
+      "sha256": "70891c9d04fd5e109838a701df1ee616ab2092599c5a615d24b5f9cd33c96a07",
+      "size": 5037496
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": {
+      "executable": true,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "size": 3752144
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include/collier.mod": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/collier.mod",
+      "sha256": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+      "size": 15355
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/bin/ninja-config": {
+      "executable": true,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/bin/ninja-config",
+      "sha256": "ec85b1dd97845b96ca5d5092a69ca1bdc89184cdf942a49dcfaf010027d5cafe",
+      "size": 17504
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include/mninja.mod": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include/mninja.mod",
+      "sha256": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+      "size": 3856
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libavh_olo.a": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a",
+      "sha256": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48",
+      "size": 2585768
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.a": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.a",
+      "sha256": "4d9aa36adc1df40eae062d82d3fb930a5cd64040252df5af68dc1a3e247f8fb9",
+      "size": 3935002
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so": {
+      "executable": true,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d",
+      "size": 3770520
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a",
+      "sha256": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+      "size": 298293528
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/mninjars.mod": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/mninjars.mod",
+      "sha256": "bdbdea4365d04be8693de8ff10d9594137cca6ceaaf9ce2de3e6991467a625ec",
+      "size": 2102
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-config.json": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-config.json",
+      "sha256": "ebb9ebfec9c71041fc3e441e2546524025080a13692b522d5495bef710be8d56",
+      "size": 4706
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-link-before.txt": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-link-before.txt",
+      "sha256": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe",
+      "size": 117
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-native-libs.txt": {
+      "executable": false,
+      "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-native-libs.txt",
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "size": 48
+    }
+  },
+  "sources": {
+    "candidate": {
+      "copies": {
+        "vendor/CutTools/includects/avh_olo_forcuttools.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools.mod",
+          "sha256": "a2efd5f8042ff71073dfa53fe5cd9daa89167598cc480a75da3db35489902efa",
+          "size": 11777
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp.mod",
+          "sha256": "c1053098cd1213b4c0f53880b2468ea55e010cc6892636df236e798ba46592a2",
+          "size": 4055
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_arrays.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_arrays.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_arrays.mod",
+          "sha256": "8476add5673ae8523572556650e4f164fa3a55fd49cab3b9d1a4797bbd8587d7",
+          "size": 731
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_auxfun.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_auxfun.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_auxfun.mod",
+          "sha256": "a8ed9a76b932a48ee359f433440440b5dd510d7f39f049f3b04c2b00f2761c9e",
+          "size": 1326
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_bnlog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_bnlog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_bnlog.mod",
+          "sha256": "36e8336b9a289244d5e17c7e1085806c10c0a4a0a917e69ce38c21e59cd7e24b",
+          "size": 442
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_box.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_box.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_box.mod",
+          "sha256": "23f69bc9246b926caa541fe7e0ce4672f3a63a05952889797e7d79b7f9664a62",
+          "size": 2876
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_boxc.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_boxc.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_boxc.mod",
+          "sha256": "49978e66dfc998b16bc40ceb3c5899e48619f43be0f58fea9f6c38cf9cef3d4f",
+          "size": 913
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_bub.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_bub.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_bub.mod",
+          "sha256": "356e09561df30f44f2ab51d7ce03336ceb92c4b1f29fceb5dd04f55774d24385",
+          "size": 1732
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_dilog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_dilog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_dilog.mod",
+          "sha256": "46cdb3ac57528123115021b4b0c444a3c11e84305fed505c29a7460db6eb99fe",
+          "size": 556
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_kinds.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_kinds.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_kinds.mod",
+          "sha256": "d692314a500be759cd2ebef9dbdfdf241e3942288d4c8ada4c48bfda54fc1d35",
+          "size": 329
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_olog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_olog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_olog.mod",
+          "sha256": "6175b416c9b5d03ebeed44684299947d9b9adce9a4f19bf36cf4f60751e42362",
+          "size": 706
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_prec.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_prec.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_prec.mod",
+          "sha256": "02c30a637c7b95383fe78e1b1fe8d3575296c04cb66dbb8cf043aa8564d96b42",
+          "size": 1174
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_print.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_print.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_print.mod",
+          "sha256": "e3c76c61e65486cfe8fb98d4ed5936d19bf80c1e8eb890d1a36c49b1ed33d769",
+          "size": 781
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_qmplx.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_qmplx.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_qmplx.mod",
+          "sha256": "c2d839ac0f178b1956d029594a557042f09b7fe7ea20663567fb57e399f3121e",
+          "size": 1604
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_dp_tri.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_tri.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_tri.mod",
+          "sha256": "216179104a10e96f328a5dee6e7cea3e9cba96cb8bacae244f73732dc3813007",
+          "size": 1810
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp.mod",
+          "sha256": "ce4991110f0703a20a8bbe833d61701e1f5ffafe9aeda92e858e5913c9bf508b",
+          "size": 5005
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_arrays.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_arrays.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_arrays.mod",
+          "sha256": "abc8504365e9080419dd1d6134968132374f01a0f66015983fc604cbef5242ba",
+          "size": 1697
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_auxfun.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_auxfun.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_auxfun.mod",
+          "sha256": "595f2d3388da2fee330fa873d3ad8f953a0cf0b41da24e7981d29a6989d9f2a6",
+          "size": 2289
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_bnlog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_bnlog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_bnlog.mod",
+          "sha256": "3447f4b87a33f097a545cc66e5d62e75f0f841411f4fb88a436a54ea4ac2c164",
+          "size": 1288
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_box.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_box.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_box.mod",
+          "sha256": "4d3ac36cb7aef87669ec6ee7b3ceaab1000bb6b148839165078169642dd14635",
+          "size": 3423
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_boxc.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_boxc.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_boxc.mod",
+          "sha256": "f0a1affd70d6f0e354ed81e122e23ec0a9936b10e235854113f1210f47db6641",
+          "size": 1442
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_bub.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_bub.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_bub.mod",
+          "sha256": "2e951fa4a4195f9a9c01235bae8ee1300f2a9e63354b1714d89e75d6fb3fb70b",
+          "size": 2283
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_dilog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_dilog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_dilog.mod",
+          "sha256": "fbdfc4f4d8ddfc2214d3bad09c2e6503e133e2fcd740fdca6589a31d6326521a",
+          "size": 1402
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_olog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_olog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_olog.mod",
+          "sha256": "c18544258e202831900bd568a69eeceede6d588399f4fea43a712c57d69e5e79",
+          "size": 1658
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_prec.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_prec.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_prec.mod",
+          "sha256": "465a9499c6347d70be1449060c629f20db3d3f96ab1881da0425e69f87b650ad",
+          "size": 25147
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_print.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_print.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_print.mod",
+          "sha256": "a6e10bd03deb78355f2cb93caa5a1edf3bd71c0b95da0504f3ec90d2f6ce6e20",
+          "size": 1609
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_qmplx.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_qmplx.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_qmplx.mod",
+          "sha256": "af1977a78e4ff3ca166fe553ac65f5e204bc8d50a523d6f0a46b87293abb2f44",
+          "size": 4485
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_mp_tri.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_tri.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_tri.mod",
+          "sha256": "a88f491138358acfc4cb52312277ae3732129884105ed70916e0ea99e0105ffc",
+          "size": 2345
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp.mod",
+          "sha256": "5d7b5b684ccfa1597c51452ccb0f1b00f808d6f2a753d4af34d9074624fd111b",
+          "size": 4066
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_arrays.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_arrays.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_arrays.mod",
+          "sha256": "d661ebd4ba9cc5c2fbd1b03534289e2b722112a73fc994e0a71d654ac1fa4f00",
+          "size": 733
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_auxfun.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_auxfun.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_auxfun.mod",
+          "sha256": "f8f602b814f6e56733ce323ac431cab9579ad27fc3f0d5baadf044c984c12357",
+          "size": 1323
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_bnlog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_bnlog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_bnlog.mod",
+          "sha256": "8d70ce3bf7f48525ad180fa0d20005abf0503808b7ab0e091f469c59a86a52bc",
+          "size": 442
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_box.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_box.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_box.mod",
+          "sha256": "f9c522ce6b7c918e92d51060d10ab1a51982290ad6563032dec02165f42c5633",
+          "size": 2877
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_boxc.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_boxc.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_boxc.mod",
+          "sha256": "085ce8d82d404f5aa09c2a2904af10c07cb4bd2de8398544e425978b03647786",
+          "size": 914
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_bub.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_bub.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_bub.mod",
+          "sha256": "63fc19488df8451d1561ecac381e16bb1abf5ea7caec5f49902c9f5698973327",
+          "size": 1734
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_dilog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_dilog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_dilog.mod",
+          "sha256": "bcfbffc0c3f23129818213817908ded0c57bda010217ecc1f379a483ff7c8eda",
+          "size": 557
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_kinds.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_kinds.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_kinds.mod",
+          "sha256": "b0d56a5d95a6818460109298bc68d186bb4568b1baf700fc1c647c2981259d0b",
+          "size": 261
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_olog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_olog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_olog.mod",
+          "sha256": "c19a7aae02a787556f99c20235811e4aa6a45205201f4cd4c98e8d40486cc263",
+          "size": 707
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_prec.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_prec.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_prec.mod",
+          "sha256": "71b761d31af550dc410cb6f164aadd4fbce0951c3bc0ba44dd1a2462cc420756",
+          "size": 1187
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_print.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_print.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_print.mod",
+          "sha256": "618db78c344d1b8963f751514ccb30967c344dbbb7164f03b2d872523c870958",
+          "size": 783
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_qmplx.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_qmplx.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_qmplx.mod",
+          "sha256": "875e1924fbc876c2a18c3553c7277c4b0c6977ebc52cde7df85dbcd9218614d2",
+          "size": 1606
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_qp_tri.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_tri.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_tri.mod",
+          "sha256": "a0478fa62315f0b5afb5f0447a338bc23abf17235ba347266fe6b6482ebe9610",
+          "size": 1810
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_units.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_units.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_units.mod",
+          "sha256": "746de20158abcb53e53221fc61a253e4c8c70cdac9078b88b4b0be52f50632a9",
+          "size": 382
+        },
+        "vendor/CutTools/includects/avh_olo_forcuttools_version.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_version.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_version.mod",
+          "sha256": "a10dbc4e96d1d4fdaea203f0ace262706812bb87416c004a4284fa72f8879112",
+          "size": 202
+        },
+        "vendor/CutTools/includects/coefficients.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/coefficients.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/coefficients.mod",
+          "sha256": "f343b8ba127d99b5b111758db5cb38bb9325efd7c4cafb14dc21d04964cf3c52",
+          "size": 4863
+        },
+        "vendor/CutTools/includects/combinatorics.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/combinatorics.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/combinatorics.mod",
+          "sha256": "f7e46365d2a4ae22da8e44c2db65c356e86ea3120dea68493c8064ac0759cac6",
+          "size": 352
+        },
+        "vendor/CutTools/includects/compiler_version.log": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/compiler_version.log",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/compiler_version.log",
+          "sha256": "a60d64d1829618ea9442646fc24fc2ad143a76611d19f2d7d82aff022e0daae9",
+          "size": 7
+        },
+        "vendor/CutTools/includects/constants.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/constants.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/constants.mod",
+          "sha256": "8d44246c6a8c7edfb8946dae108365e2b1f228ecfac17394edce56c0815b789c",
+          "size": 2113
+        },
+        "vendor/CutTools/includects/countdigits.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/countdigits.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/countdigits.mod",
+          "sha256": "6cbdb0aa07d73f366567aa1b5bbfa5d88a6d1aaf58b91972093c51d562ec3dcb",
+          "size": 1132
+        },
+        "vendor/CutTools/includects/cuttings.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cuttings.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cuttings.mod",
+          "sha256": "b786dcdc888db2da35682619bf056232d3e6becb47593eff7834762ec90d071a",
+          "size": 4118
+        },
+        "vendor/CutTools/includects/def_mp_propagator.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_mp_propagator.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_mp_propagator.mod",
+          "sha256": "0f004f3273aa9bdf01bc0eb1bad1bab7376a8f81261ab44bfcf3ab0fe5a0f8c0",
+          "size": 1507
+        },
+        "vendor/CutTools/includects/def_mp_solcut.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_mp_solcut.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_mp_solcut.mod",
+          "sha256": "c7c13964bb9fd4eb98f1774b8a656f08fcb09f04eed5d3353acaa7c383dea299",
+          "size": 2351
+        },
+        "vendor/CutTools/includects/def_propagator.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_propagator.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_propagator.mod",
+          "sha256": "d8eb6ab75eb82eca1a2c414a3814fc7eb6d2181a25d4511ada0722180a5f70e5",
+          "size": 837
+        },
+        "vendor/CutTools/includects/def_solcut.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_solcut.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_solcut.mod",
+          "sha256": "2f42b7b2923b31eeb030290f0ca7898fc54d1308c3957a2f856ea9aebe9c8f87",
+          "size": 1668
+        },
+        "vendor/CutTools/includects/denominators.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/denominators.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/denominators.mod",
+          "sha256": "d3d204f5c8cced6e1066e6d15605423006029555e5b8949bf3b4741c46c76d9f",
+          "size": 2269
+        },
+        "vendor/CutTools/includects/dimensions.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/dimensions.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/dimensions.mod",
+          "sha256": "04c1ec5ee105770ded7f1ff6467b1f7bdf4eb9e787a47346fcb1bf9aa04754dd",
+          "size": 459
+        },
+        "vendor/CutTools/includects/inout.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/inout.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/inout.mod",
+          "sha256": "5e3ff2625fed73d81201c613cb407605c90d390b040a8decd25d66de5303b103",
+          "size": 1191
+        },
+        "vendor/CutTools/includects/libcts.a": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+          "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+          "size": 10134496
+        },
+        "vendor/CutTools/includects/loopfunctions.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/loopfunctions.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/loopfunctions.mod",
+          "sha256": "3b2bd7bebeca88e3c88a1d4ce64fd4f35ea537a941c8f30b195df8981a36f46e",
+          "size": 1861
+        },
+        "vendor/CutTools/includects/maxnumden.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/maxnumden.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/maxnumden.mod",
+          "sha256": "c117e01dfdc19c3949c9f6bb12f60cf2b89051bf71bdca62fcf79ed393b33ed8",
+          "size": 215
+        },
+        "vendor/CutTools/includects/maxsolutions.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/maxsolutions.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/maxsolutions.mod",
+          "sha256": "35cd11a4b531c5756bb466ce876077de128524bc2fa5e518ab101cb9b62914ab",
+          "size": 203
+        },
+        "vendor/CutTools/includects/mbnvalues.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mbnvalues.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mbnvalues.mod",
+          "sha256": "e2b06400a173d8bc5516369cf6563208a658266521d841ffeee67d33954f4ed9",
+          "size": 266
+        },
+        "vendor/CutTools/includects/mp_loopfunctions.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mp_loopfunctions.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mp_loopfunctions.mod",
+          "sha256": "a550ee8d965c3356e45452eb48faeda89690d9411ce026f9c449df322a229d76",
+          "size": 1865
+        },
+        "vendor/CutTools/includects/mpcmpmod.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpcmpmod.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpcmpmod.mod",
+          "sha256": "439911e61f7b99fedc1ebede986a02b2ce5f4ec3b46ab1804f8871c071248f7d",
+          "size": 12830
+        },
+        "vendor/CutTools/includects/mpdefmod.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpdefmod.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpdefmod.mod",
+          "sha256": "da6b02e9b7dc4e43a8f2d27660b8d9e87e6adc6f848eddf852aa0243ef280108",
+          "size": 10273
+        },
+        "vendor/CutTools/includects/mpfuna.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfuna.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfuna.mod",
+          "sha256": "7a17ca40e689ff5b9d514c1a457168b74e4927c1d3f91761ac7d1f69bda6a483",
+          "size": 846
+        },
+        "vendor/CutTools/includects/mpfunb.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunb.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunb.mod",
+          "sha256": "f503bedaf768abdd4eed621dd300ac2938943f91170e45d70f07a5e3fc7e1e98",
+          "size": 1311
+        },
+        "vendor/CutTools/includects/mpfunc.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunc.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunc.mod",
+          "sha256": "2b643077afc741efa1f6782d9c27eb73644abdb367cdd69fd78a7d05922d7946",
+          "size": 2291
+        },
+        "vendor/CutTools/includects/mpfund.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfund.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfund.mod",
+          "sha256": "41585a03e485d40d0771519272ba73b27d92b33c8249c6c4aa8f8479445dd034",
+          "size": 2986
+        },
+        "vendor/CutTools/includects/mpfune.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfune.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfune.mod",
+          "sha256": "2f766cdda7526f441417f58c156d4a55c69905f11cf7b6d4e59398892571e9c5",
+          "size": 3686
+        },
+        "vendor/CutTools/includects/mpfunf.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunf.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunf.mod",
+          "sha256": "2e166569826e52902366719d27e6259fd51bd03eaf8a090486d49b3514394d4a",
+          "size": 3876
+        },
+        "vendor/CutTools/includects/mpfung.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfung.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfung.mod",
+          "sha256": "3c3bc977e577c004a4a732d048421c5d9e6a7af47bd0368d3a90855fb0cd7bcb",
+          "size": 1559
+        },
+        "vendor/CutTools/includects/mpfunh.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunh.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunh.mod",
+          "sha256": "abe62fd8b7727660f270dd04a2266ed0210343772ea1fdfb04c538b1dd2a1288",
+          "size": 3493
+        },
+        "vendor/CutTools/includects/mpfuni.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfuni.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfuni.mod",
+          "sha256": "513347019790801c869bebe20430aa2146937fd702f7a1e3774cb6d2c74f9901",
+          "size": 5383
+        },
+        "vendor/CutTools/includects/mpfunj.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunj.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunj.mod",
+          "sha256": "6fb7c9181eb0c97ff9a52ab78e090863cafe4eddb1630b9e79768372df62f6b2",
+          "size": 6969
+        },
+        "vendor/CutTools/includects/mpfunmod.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunmod.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunmod.mod",
+          "sha256": "450b9f60f8350bd1d90247ea05a5e5e5bc2c29519eecd8ed71ed4cd5258ffb33",
+          "size": 7005
+        },
+        "vendor/CutTools/includects/mpfunsubmod.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunsubmod.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunsubmod.mod",
+          "sha256": "726731a5a47d4b4ce713f91e587639b6f3ae8b941b9aac12841709dc11b8c8a4",
+          "size": 18091
+        },
+        "vendor/CutTools/includects/mpgenmod.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpgenmod.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpgenmod.mod",
+          "sha256": "233d9214cce78a63a9801bd8bc68aaff021a6ec99805d1bd6d788e58eceda624",
+          "size": 13779
+        },
+        "vendor/CutTools/includects/mpintmod.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpintmod.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpintmod.mod",
+          "sha256": "7ed8d855d009dde7741ff73e0cd4cbeb519e12085553c4a9df865a35da2bd23f",
+          "size": 14011
+        },
+        "vendor/CutTools/includects/mpmodule.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+          "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+          "size": 24356
+        },
+        "vendor/CutTools/includects/mpmodulem.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodulem.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodulem.mod",
+          "sha256": "b8f4c0c80b27d47fbfa90d75889bae286a73b036181890a3b45541e35b5c8a77",
+          "size": 26748
+        },
+        "vendor/CutTools/includects/mpmodulex.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodulex.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodulex.mod",
+          "sha256": "d3a7d1cb8ecbe8f74ddb77ce8153c5519a48a94d807ddccc141b40e1b6d76ab2",
+          "size": 26524
+        },
+        "vendor/CutTools/includects/mprealmod.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mprealmod.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mprealmod.mod",
+          "sha256": "445be487a01175bf7be873316896bd146ae158b93a5aae5d08c7d47208080d1c",
+          "size": 13912
+        },
+        "vendor/CutTools/includects/qt2value.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/qt2value.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/qt2value.mod",
+          "sha256": "c3d3499113cd6a893dceb662f3366f844a6543824e559e87a154a95f263fdefc",
+          "size": 1165
+        },
+        "vendor/CutTools/includects/scale.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/scale.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/scale.mod",
+          "sha256": "99c2ae079c699e9751145576b2cac1ae56e66f9c89d2f3e7a96ff4d8030aa228",
+          "size": 393
+        },
+        "vendor/CutTools/includects/tensor_operations.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/tensor_operations.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/tensor_operations.mod",
+          "sha256": "9d2a600cfdb63f1c352578100d120667c9fceb572f9478fa50b43cf56ce898ae",
+          "size": 1645
+        },
+        "vendor/IREGI/src/avh_olo_foriregi.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi.mod",
+          "sha256": "f58d1728792fdcfbfb178608b53d983d59fe53fdc4e57b32b93304f28cdbe84c",
+          "size": 3747
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp.mod",
+          "sha256": "597da8bed67c10ae21b81cf09d9cd834dcb768c9d17502b020ed54aefb4e90c4",
+          "size": 3706
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_arrays.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_arrays.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_arrays.mod",
+          "sha256": "9be554bd30a029f72c1764ef2b11c0a39ab4412c3e95773e90e90cd62d869e58",
+          "size": 752
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_auxfun.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_auxfun.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_auxfun.mod",
+          "sha256": "ef13e4f3edb58325b982c8273e91e48a854662069466c94e430fa640bd244b6b",
+          "size": 1339
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_bnlog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_bnlog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_bnlog.mod",
+          "sha256": "1bf447a8a1ea1148915e9c4e72d05a8178269fbf30bde554ee4d050df1c66556",
+          "size": 447
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_box.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_box.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_box.mod",
+          "sha256": "01221873c6919bc0268511a301b2ee98f0a7ceaffc5449f9a28b06d02d7e65c9",
+          "size": 2869
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_boxc.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_boxc.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_boxc.mod",
+          "sha256": "a8310fc3132f3fd27d9385b80c78d1b40196afc562f42911c99934fe5d2abc7a",
+          "size": 910
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_bub.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_bub.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_bub.mod",
+          "sha256": "9431f9fb349e33304e7f7735c3d8a974a4d8489096dc98ed87db884d3c5e19d6",
+          "size": 1632
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_dilog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_dilog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_dilog.mod",
+          "sha256": "f3d8dd71bb83e68fa945b6552c2a1f3cb4ede3f7f39a913b442bab248320863e",
+          "size": 559
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_kinds.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_kinds.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_kinds.mod",
+          "sha256": "ab8e3dd206e623cc168538726771f450a2f4e1969794027e223cb8331c7383fc",
+          "size": 341
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_olog.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_olog.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_olog.mod",
+          "sha256": "856e9f01ad1b2ecc32d47368c4a96075ed0fcee42e77383c07f8a1583d0df104",
+          "size": 526
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_prec.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_prec.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_prec.mod",
+          "sha256": "ef058d03ea91fe84ee1c9e631380af817bfd7b7f428d82fed7769b8cb4ee751f",
+          "size": 1145
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_print.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_print.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_print.mod",
+          "sha256": "3844d607b428cc35339bef2245a0ea3d187999270cd2d8fbb924f9357eea14e6",
+          "size": 785
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_qmplx.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_qmplx.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_qmplx.mod",
+          "sha256": "82c8a5c8142d98c63cab71d5bcd60e08bfa82378f71312c1ba6436f60f2963a6",
+          "size": 1572
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_dp_tri.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_tri.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_dp_tri.mod",
+          "sha256": "c639d747de5ae7657be85482889f715ede61ff0a4fbb3bce2e002037f4af71cb",
+          "size": 1786
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_units.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_units.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_units.mod",
+          "sha256": "a796902ca082edb6b45c5e1df603f7f54a64734e1a66805ec2bc671ef75b6fd2",
+          "size": 380
+        },
+        "vendor/IREGI/src/avh_olo_foriregi_version.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_version.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/avh_olo_foriregi_version.mod",
+          "sha256": "8a2f9d355ddde8b2b013be848c421b5df2c3c56d0262aafae717b7891e5811df",
+          "size": 199
+        },
+        "vendor/IREGI/src/binary_tree.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/binary_tree.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/binary_tree.mod",
+          "sha256": "93ebb32e2751f079febe21f303b79daf1633cfe06d4f4c7e33e89e59b0cccdff",
+          "size": 7892
+        },
+        "vendor/IREGI/src/cmatrix_base.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/cmatrix_base.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/cmatrix_base.mod",
+          "sha256": "5cb8da038fbba983e07d5784fd1838f61b7a60be4e4c705ea8da4fbd2ab6aac4",
+          "size": 1871
+        },
+        "vendor/IREGI/src/cpave_reduce.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/cpave_reduce.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/cpave_reduce.mod",
+          "sha256": "4107e74c8086b172f7e2c47f2bd5db5b80cd94580d33b4e9d5f5b9f843a2ee22",
+          "size": 21227
+        },
+        "vendor/IREGI/src/csi_reduce.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/csi_reduce.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/csi_reduce.mod",
+          "sha256": "9fa73e55d4cecba19a6d2635f59bf4eca41cccf512d7515b5edfa518ddf59029",
+          "size": 22375
+        },
+        "vendor/IREGI/src/cti_reduce.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/cti_reduce.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/cti_reduce.mod",
+          "sha256": "46741f71459b9f17063b3742634bf820631eaf377025e5c87b549d4d4da7ecc8",
+          "size": 24182
+        },
+        "vendor/IREGI/src/funlib.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/funlib.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/funlib.mod",
+          "sha256": "8b3ed5b96fe0d0f9e5b320fdb2b9cbb4314b49be501c50dd5fd29274b6c1833d",
+          "size": 6457
+        },
+        "vendor/IREGI/src/global.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/global.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/global.mod",
+          "sha256": "b0c2206e1fc81d42b142801455c8acb934146675d1bd8fcc1f60e8fe18692ec2",
+          "size": 5279
+        },
+        "vendor/IREGI/src/gti_reduce.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/gti_reduce.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/gti_reduce.mod",
+          "sha256": "ff8f8dd0d574dd1d1829ac5dac67876d315509b84d9a61f4fb5ad63d1d89764a",
+          "size": 24218
+        },
+        "vendor/IREGI/src/kinematics.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/kinematics.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/kinematics.mod",
+          "sha256": "7cbb4a82a97ce2f35f9dbf321259070aa966defb5ebe45ba7222d046dcd64945",
+          "size": 5477
+        },
+        "vendor/IREGI/src/libiregi.a": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/libiregi.a",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/libiregi.a",
+          "sha256": "6246428ec9d75ec8d57e0d1dd16efc4525053dc8d49857c6c41366ea14eb4fdf",
+          "size": 3821534
+        },
+        "vendor/IREGI/src/linear_algebra.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/linear_algebra.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/linear_algebra.mod",
+          "sha256": "e10c022f41834ae2dbade4aa1ac8dd7bffd9265b712cc02891a6bc17a8dd7651",
+          "size": 508
+        },
+        "vendor/IREGI/src/matrices.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/matrices.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/matrices.mod",
+          "sha256": "6b3a5100682c7bb1f7a34961a6fe88c66c8202efdfc3728b2d4d95ac585ef6f8",
+          "size": 14073
+        },
+        "vendor/IREGI/src/matrix_base.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/matrix_base.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/matrix_base.mod",
+          "sha256": "0fbcc05097f9b830f7116fe9a35d72863459fb475863d191f3c61c412f7a50e4",
+          "size": 2159
+        },
+        "vendor/IREGI/src/mis_warp.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/mis_warp.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/mis_warp.mod",
+          "sha256": "95ea9693add265e3dd68e51cdbb88483f4ab5e4d0b299f55b2df1641cb37ee3c",
+          "size": 10160
+        },
+        "vendor/IREGI/src/pave_reduce.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/pave_reduce.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/pave_reduce.mod",
+          "sha256": "1ef36f916812386384c619fc7c585bb041a1fd53c6fec9ce4b78f244debf1ff8",
+          "size": 20731
+        },
+        "vendor/IREGI/src/qcdloop/ff/libff.a": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/qcdloop/ff/libff.a",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/qcdloop/ff/libff.a",
+          "sha256": "20a3f71b0f5836e39a95021915d68696a6da412e4347d665aa71c4de8c5a0a62",
+          "size": 3000692
+        },
+        "vendor/IREGI/src/qcdloop/ql/libqcdloop.a": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/qcdloop/ql/libqcdloop.a",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/qcdloop/ql/libqcdloop.a",
+          "sha256": "0143bcc17e8d74455c4281eba13b82c4c0646a36db8b3d73c2375c255da8d94b",
+          "size": 208956
+        },
+        "vendor/IREGI/src/si_reduce.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/si_reduce.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/si_reduce.mod",
+          "sha256": "a5d43cc2ce73e33188dcb37f583496dbb85507cf0f2865e9700bf5719c66dd41",
+          "size": 21478
+        },
+        "vendor/IREGI/src/special_fun.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/special_fun.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/special_fun.mod",
+          "sha256": "1bc47f243bd9b877885b74cabd855c4c5e124fcbf7222e472d6bf7cb50392422",
+          "size": 505
+        },
+        "vendor/IREGI/src/ti_reduce.mod": {
+          "donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/ti_reduce.mod",
+          "resolved_donor": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/ti_reduce.mod",
+          "sha256": "bbd49a0fe322ed36c0b9bc9d40d775344af6db879005158e3af063553fd7913b",
+          "size": 23250
+        }
+      },
+      "required": [
+        "vendor/CutTools/includects/libcts.a",
+        "vendor/CutTools/includects/mpmodule.mod",
+        "vendor/CutTools/includects/compiler_version.log",
+        "vendor/IREGI/src/libiregi.a"
+      ]
+    }
+  }
+}

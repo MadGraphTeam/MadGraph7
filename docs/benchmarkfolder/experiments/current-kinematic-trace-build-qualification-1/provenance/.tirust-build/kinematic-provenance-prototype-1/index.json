@@ -1,0 +1,109 @@
+{
+  "compiled": false,
+  "files": {
+    "HANDOFF.md": {
+      "bytes": 4962,
+      "sha256": "eed66a20b0676bd7874c7ce3a5c7befe88ec54996f1a48d6ac9c244b58bc3ff5"
+    },
+    "README.md": {
+      "bytes": 7091,
+      "sha256": "e77a9d436db5611e56fef02166a3832483321b90b9d00fdce5d5f98d8465a765"
+    },
+    "bindings.json": {
+      "bytes": 115445,
+      "sha256": "d6da968f024c6fa2f17e2d201d94ac914c57450174a08c5cb853a16f0b2a9c9c"
+    },
+    "propose_trace.py": {
+      "bytes": 13869,
+      "sha256": "a7ec776a9ef893fe77abdd3969418b78dc126a5a15e0af7abefc72cf414c67bd"
+    },
+    "routing.py": {
+      "bytes": 4592,
+      "sha256": "c3d9088f3507707b4303b832bd925a341861545e677767a85a4e70be1c0e3ca3"
+    },
+    "saved_source.py": {
+      "bytes": 17684,
+      "sha256": "37c9134dae35d88f240fcb025ec517b484d2dfe32d1f95ebcc51dd8f472659c4"
+    },
+    "symbolic-routing.json": {
+      "bytes": 2204506,
+      "sha256": "8fa26acc6e115f7ef1bbef0ba6460cd550ac27db926701b3904ac8279898a1dc"
+    },
+    "test_routing.py": {
+      "bytes": 4781,
+      "sha256": "34bc2433782fddf4018c86ed89da9427d3e90ebc51085636378672e0c670e95c"
+    },
+    "test_saved_source.py": {
+      "bytes": 5898,
+      "sha256": "da610a611a4281124b8448b463c3038a50892d870dd140ecbc88e942e0656ad4"
+    },
+    "test_trace.py": {
+      "bytes": 4790,
+      "sha256": "60c5a9e25a6136df2894e38ddd9bc0043d4adebdb295b23b9f93620fe25f397b"
+    },
+    "tests-normal.log": {
+      "bytes": 2621,
+      "sha256": "7f1143cfbad73585257929ad4a2318c36a1e06769435f99fad9ad3aea9aed86d"
+    },
+    "tests-optimized.log": {
+      "bytes": 2621,
+      "sha256": "a6ab41a987ae0c6cada56e049f74d17fa50f1111375ccd30e7a9ac1381dcca99"
+    },
+    "trace-bindings.json": {
+      "bytes": 1910,
+      "sha256": "f1d3493c5020395e537eed23c624fb5b01425e48843151615329f0f45cbcf10e"
+    },
+    "trace-proposal/cms_ew_n2_epem_mupmum/CT_interface.f": {
+      "bytes": 70738,
+      "sha256": "3268b5e98adc71bd33dd518bf473fd9046944b08929f9632342fdcde9c5f0fe1"
+    },
+    "trace-proposal/cms_ew_n2_epem_mupmum/CT_interface.f.patch": {
+      "bytes": 20356,
+      "sha256": "db500c7da1a43404621c37b3e4091370b36b05d2348fbd2f337ac44466b77a77"
+    },
+    "trace-proposal/cms_ew_n2_epem_mupmum/TIRUST_interface.f": {
+      "bytes": 12597,
+      "sha256": "ae6e9c78418acce0327b85c80c92a0656f512c95d15ee4972554d0d2eaff585c"
+    },
+    "trace-proposal/cms_ew_n2_epem_mupmum/TIRUST_interface.f.patch": {
+      "bytes": 2666,
+      "sha256": "1478930f00ab0840335d25c4bb884a0cadd6a23949099eff8e6cb2473d5f93e6"
+    },
+    "trace-proposal/derivation.json": {
+      "bytes": 2679,
+      "sha256": "8d0210b7a4828e0fc90db45c70422d8ae9ef3c4ec7a292256477a674a19b6d7f"
+    },
+    "trace-proposal/ew_n3_epem_ttxa/CT_interface.f": {
+      "bytes": 91696,
+      "sha256": "041418adf28a38c7dea099c7650f7f9126610b670b8c9ec8373a5dbbc8b3ffa9"
+    },
+    "trace-proposal/ew_n3_epem_ttxa/CT_interface.f.patch": {
+      "bytes": 27921,
+      "sha256": "cdafdbee622a61c220d46537b27d4e7da53ffa9407789259ec0c64e9c5ba9af8"
+    },
+    "trace-proposal/ew_n3_epem_ttxa/TIRUST_interface.f": {
+      "bytes": 13550,
+      "sha256": "9621c5307f6f324457a71dc2ff9e2b75ed6d50a978762550de626ae834b215c4"
+    },
+    "trace-proposal/ew_n3_epem_ttxa/TIRUST_interface.f.patch": {
+      "bytes": 2650,
+      "sha256": "f3f47adb9e015a84346d0bb75fea463e410e905ed14d9750dcc295f7cef64c82"
+    },
+    "validation.json": {
+      "bytes": 2218,
+      "sha256": "4e380d26b45e3e66690efc09d6ffa0d1468ce3a771de41101fa850c5a1ba2647"
+    },
+    "verify.py": {
+      "bytes": 1636,
+      "sha256": "307797a47a3e79b018c2a3e511afdab5716c6a16412a782ab1c38f0b6edb7446"
+    }
+  },
+  "native_executions": 0,
+  "payload_bytes": 2639477,
+  "payload_files": 24,
+  "production_changes": false,
+  "schema": "private-kinematic-provenance-prototype-v1",
+  "scope": "Private source-only symbolic extraction and unbuilt insertion-only historical generated Fortran trace proposal, not an accuracy/performance qualification.",
+  "source_binding_sha256": "d6da968f024c6fa2f17e2d201d94ac914c57450174a08c5cb853a16f0b2a9c9c",
+  "trace_binding_sha256": "f1d3493c5020395e537eed23c624fb5b01425e48843151615329f0f45cbcf10e"
+}

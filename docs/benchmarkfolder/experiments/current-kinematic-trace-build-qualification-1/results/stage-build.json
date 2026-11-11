@@ -1,0 +1,10 @@
+{
+  "derived_index_sha256": "25c2114756ed3eb968c311945a27d175c5c5a0af54d4ae21158abc8ed42a4184",
+  "elapsed_after_lock": 197.1755477511324,
+  "elapsed_with_lock_wait": 197.17573523102328,
+  "failure": null,
+  "passed": true,
+  "performance_measurement": false,
+  "source_index_sha256": "7ea709b48d8de462b754fabfb47dcbd5d21d7847458382f5844190028e8c1bed",
+  "stage": "build"
+}

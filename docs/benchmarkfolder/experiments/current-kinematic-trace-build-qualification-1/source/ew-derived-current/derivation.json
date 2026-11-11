@@ -1,0 +1,569 @@
+{
+  "compiled": false,
+  "deferred_native_modes": [
+    2,
+    5
+  ],
+  "driver_common_contract": {
+    "required_statements": [
+      "DATACHECKPHASE/.TRUE./",
+      "DATAHELDOUBLECHECKED/.FALSE./",
+      "COMMON/ML5_0_INIT/CHECKPHASE,HELDOUBLECHECKED",
+      "REAL*8LSCALE",
+      "INTEGERCTMODE",
+      "COMMON/ML5_0_CT/LSCALE,CTMODE",
+      "DATAFPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION/.FALSE.,.FALSE./",
+      "COMMON/ML5_0_FPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION"
+    ],
+    "scope": "source declaration/DATA only; native storage parity pending"
+  },
+  "explicit_full_pole_bypass_contract": {
+    "fixed_return_codes": {
+      "1": 110,
+      "4": 120
+    },
+    "force_stability_check": false,
+    "full_helicity_userhel": -1,
+    "pole_mode": 0,
+    "postcall_init_flags": "restored; not effective-call readiness",
+    "prefix": "ML5_0_",
+    "schema": "current-pole-zero-bypass-contract-v1",
+    "source_only": true,
+    "temporary_all_helicities_and_groups": true,
+    "unchecked_codes_are_not_success_certification": true
+  },
+  "header_fields": [
+    "point",
+    "serial",
+    "id",
+    "mode",
+    "rank",
+    "n",
+    "i",
+    "j",
+    "branch",
+    "split_order"
+  ],
+  "initial_native_modes": [
+    1,
+    4
+  ],
+  "input_binding_sha256": "877046cffd1221da622eb2af3b807f1d9928f8164eccd3332b7e6b112185af2f",
+  "native_executions": 0,
+  "records": [
+    {
+      "boundaries": {
+        "loops": 7,
+        "matrix_dp": 1,
+        "matrix_qp": 1,
+        "tensor_dp": 0,
+        "tensor_qp": 0
+      },
+      "input": ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/ew_n3_epem_ttxa/SubProcesses/P0_epem_ttxa/CT_interface.f",
+      "input_sha256": "ac240d6ffc2f7e1a15a72e61a325a53d0acf776f65b9329e4e9518cd85f3da0a",
+      "proposed_sha256": "34f37ef5d930a6839769426d6d87a545a37f2c1e4c7409fad0ce9170460edd3b",
+      "strip_recovers_original_bytes": true
+    },
+    {
+      "boundaries": {
+        "loops": 0,
+        "matrix_dp": 0,
+        "matrix_qp": 0,
+        "tensor_dp": 1,
+        "tensor_qp": 1
+      },
+      "input": ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/ew_n3_epem_ttxa/SubProcesses/P0_epem_ttxa/TIRUST_interface.f",
+      "input_sha256": "7bc16f17b3c1c36512f23a8dab8c826868efd8bb7cd6b87452b9a251224c39f5",
+      "proposed_sha256": "252ce2861bec3166a9893707e598f51a82237f9352666cd83c2cdc8345b1ba91",
+      "strip_recovers_original_bytes": true
+    }
+  ],
+  "schema": "current-kinematic-trace-derivation-v2",
+  "target_groups": [
+    5
+  ],
+  "target_identities": [
+    {
+      "conservation_coefficients": [
+        1,
+        1,
+        -1,
+        -1,
+        -1
+      ],
+      "corner_wavefunctions": [
+        [
+          3
+        ],
+        [
+          4
+        ],
+        [
+          5
+        ],
+        [
+          6
+        ]
+      ],
+      "identity_kind": "group",
+      "line": 113,
+      "modes": {
+        "1": {
+          "check_reversal_applied": false,
+          "conservation_residual": [
+            1,
+            1,
+            -1,
+            -1,
+            -1
+          ],
+          "corners": [
+            [
+              0,
+              0,
+              -1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              -1,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              -1
+            ],
+            [
+              1,
+              1,
+              0,
+              0,
+              0
+            ]
+          ],
+          "shifts": [
+            [
+              1,
+              1,
+              -1,
+              -1,
+              -1
+            ],
+            [
+              0,
+              0,
+              -1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              -1,
+              -1,
+              0
+            ],
+            [
+              0,
+              0,
+              -1,
+              -1,
+              -1
+            ]
+          ],
+          "squared_mass_source_expressions": [
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(MDL_MT)"
+          ],
+          "squared_mass_source_indices": [
+            4,
+            1,
+            2,
+            3
+          ],
+          "squaring_precision": "DP in optimized generated LOOP routine"
+        },
+        "2": {
+          "check_reversal_applied": true,
+          "conservation_residual": [
+            -1,
+            -1,
+            1,
+            1,
+            1
+          ],
+          "corners": [
+            [
+              -1,
+              -1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0,
+              0
+            ]
+          ],
+          "shifts": [
+            [
+              -1,
+              -1,
+              1,
+              1,
+              1
+            ],
+            [
+              -1,
+              -1,
+              0,
+              0,
+              0
+            ],
+            [
+              -1,
+              -1,
+              0,
+              0,
+              1
+            ],
+            [
+              -1,
+              -1,
+              0,
+              1,
+              1
+            ]
+          ],
+          "squared_mass_source_expressions": [
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(ZERO)"
+          ],
+          "squared_mass_source_indices": [
+            4,
+            3,
+            2,
+            1
+          ],
+          "squaring_precision": "DP in optimized generated LOOP routine"
+        },
+        "4": {
+          "check_reversal_applied": false,
+          "conservation_residual": [
+            1,
+            1,
+            -1,
+            -1,
+            -1
+          ],
+          "corners": [
+            [
+              0,
+              0,
+              -1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              -1,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              -1
+            ],
+            [
+              1,
+              1,
+              0,
+              0,
+              0
+            ]
+          ],
+          "shifts": [
+            [
+              1,
+              1,
+              -1,
+              -1,
+              -1
+            ],
+            [
+              0,
+              0,
+              -1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              -1,
+              -1,
+              0
+            ],
+            [
+              0,
+              0,
+              -1,
+              -1,
+              -1
+            ]
+          ],
+          "squared_mass_source_expressions": [
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(MDL_MT)"
+          ],
+          "squared_mass_source_indices": [
+            4,
+            1,
+            2,
+            3
+          ],
+          "squaring_precision": "DP in optimized generated LOOP routine"
+        },
+        "5": {
+          "check_reversal_applied": true,
+          "conservation_residual": [
+            -1,
+            -1,
+            1,
+            1,
+            1
+          ],
+          "corners": [
+            [
+              -1,
+              -1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0,
+              0
+            ]
+          ],
+          "shifts": [
+            [
+              -1,
+              -1,
+              1,
+              1,
+              1
+            ],
+            [
+              -1,
+              -1,
+              0,
+              0,
+              0
+            ],
+            [
+              -1,
+              -1,
+              0,
+              0,
+              1
+            ],
+            [
+              -1,
+              -1,
+              0,
+              1,
+              1
+            ]
+          ],
+          "squared_mass_source_expressions": [
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(MDL_MT)",
+            "DCMPLX(ZERO)"
+          ],
+          "squared_mass_source_indices": [
+            4,
+            3,
+            2,
+            1
+          ],
+          "squaring_precision": "DP in optimized generated LOOP routine"
+        }
+      },
+      "primary_pairs": [
+        {
+          "difference_coefficients": [
+            1,
+            1,
+            0,
+            -1,
+            -1
+          ],
+          "external_leg_equivalences": [
+            {
+              "is_exact_symbolic_singleton": false,
+              "leg": 3,
+              "residual_multiple": 1,
+              "sign": 1
+            }
+          ],
+          "pair": [
+            1,
+            2
+          ]
+        },
+        {
+          "difference_coefficients": [
+            1,
+            1,
+            0,
+            0,
+            -1
+          ],
+          "external_leg_equivalences": [],
+          "pair": [
+            1,
+            3
+          ]
+        },
+        {
+          "difference_coefficients": [
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          "external_leg_equivalences": [],
+          "pair": [
+            1,
+            4
+          ]
+        },
+        {
+          "difference_coefficients": [
+            0,
+            0,
+            0,
+            1,
+            0
+          ],
+          "external_leg_equivalences": [
+            {
+              "is_exact_symbolic_singleton": true,
+              "leg": 4,
+              "residual_multiple": 0,
+              "sign": 1
+            }
+          ],
+          "pair": [
+            2,
+            3
+          ]
+        },
+        {
+          "difference_coefficients": [
+            0,
+            0,
+            0,
+            1,
+            1
+          ],
+          "external_leg_equivalences": [],
+          "pair": [
+            2,
+            4
+          ]
+        },
+        {
+          "difference_coefficients": [
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "external_leg_equivalences": [
+            {
+              "is_exact_symbolic_singleton": true,
+              "leg": 5,
+              "residual_multiple": 0,
+              "sign": 1
+            }
+          ],
+          "pair": [
+            3,
+            4
+          ]
+        }
+      ],
+      "rank": 3,
+      "raw_mass_expressions": [
+        "DCMPLX(ZERO)",
+        "DCMPLX(MDL_MT)",
+        "DCMPLX(MDL_MT)",
+        "DCMPLX(MDL_MT)"
+      ],
+      "reduction_identifier": 5,
+      "source": ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/ew_n3_epem_ttxa/SubProcesses/P0_epem_ttxa/loop_CT_calls_1.f",
+      "source_comment_number_kind": "amplitude",
+      "source_comment_numbers": [
+        9,
+        11
+      ],
+      "statement": "CALLML5_0_LOOP_4(3,4,5,6,DCMPLX(ZERO),DCMPLX(MDL_MT),DCMPLX(MDL_MT),DCMPLX(MDL_MT),3,I_SO,5)"
+    }
+  ],
+  "unknown_model_metadata_remains_unknown": true
+}

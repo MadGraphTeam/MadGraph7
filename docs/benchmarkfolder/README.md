@@ -241,6 +241,14 @@ internal deployment, relocation and the virtual-entry guard. Stability, rescue,
 cache invalidation, Monte Carlo integration and runtime performance remain
 outside this check.
 
+The [current-source kinematic-trace build packet](experiments/current-kinematic-trace-build-qualification-1/README.md)
+retains fresh CMS generation, signed corner mappings and four unmodified or
+instrumented CMS/EW executables at `0fcd2cd873d6`. All 258 build commands and
+four compiler-selected loader-resolution queries passed with unchanged protected
+inputs and clean process shutdown. This closed packet contains zero amplitude
+evaluations and qualifies compilation and library resolution only. Later
+observational and physical checks remain separate from this build record.
+
 The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
 index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
 passes exact parity across four workers, 76 checked native-DP physical calls

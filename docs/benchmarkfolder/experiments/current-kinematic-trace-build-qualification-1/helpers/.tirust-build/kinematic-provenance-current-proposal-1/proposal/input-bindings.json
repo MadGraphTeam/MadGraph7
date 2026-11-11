@@ -1,0 +1,99 @@
+{
+  "cms": {
+    "command_donor": {
+      "bytes": 969,
+      "path": "docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/commands/candidate-cms_ew_n2_epem_mupmum.mg5",
+      "sha256": "c9fd59c569f0a7e1aebf5b6f0acf1da802d9ed6e9adac746b74f8e75ff0fac77"
+    },
+    "complex_mass_scheme": true,
+    "numerical_card": {
+      "bytes": 14623,
+      "path": "docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/candidate-9-MadLoopParams.dat",
+      "sha256": "0130897072e2303882fb4e0c18affdf2d03e89357a6f6fbe9240d3cd162a7e69"
+    },
+    "ordinary_control": 1,
+    "physical_card": {
+      "bytes": 4397,
+      "path": "docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/param_card.dat",
+      "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+    },
+    "points": {
+      "bytes": 8142,
+      "path": "docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.dat",
+      "sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60"
+    },
+    "points_metadata": {
+      "bytes": 22713,
+      "path": "docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.json",
+      "sha256": "e27239fb2ef0e8b136a4c5f9b6d60aa5c6cf58bdd9cbf88a6da68b9b6d69f042"
+    },
+    "policy": {
+      "bytes": 2216,
+      "path": "docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/policy-reference.json",
+      "sha256": "9c74bf96911cd3c8829d1670732ad330c64cf595eb2622ccc76fb6887b17c989"
+    },
+    "process": "e+ e- > mu+ mu- [virt=QED]",
+    "selected_original_point_numbers": [
+      1,
+      20,
+      21
+    ]
+  },
+  "diagnostic_only_card_derivatives": {
+    "CTModeInit": "1",
+    "CTModeRun": [
+      1,
+      2,
+      4,
+      5
+    ],
+    "LoopPoleMode": "0",
+    "MLReductionLib": "9",
+    "TIRustComputeFinite": ".TRUE.",
+    "TIRustGlobalCache": "0",
+    "UseQPIntegrandForTIRust": ".TRUE."
+  },
+  "ew": {
+    "complex_mass_scheme": false,
+    "numerical_card": {
+      "bytes": 14623,
+      "path": ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/ew_n3_epem_ttxa/Cards/MadLoopParams.dat",
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "ordinary_control": 1,
+    "physical_card": {
+      "bytes": 4538,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/param_card.dat",
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "points": {
+      "bytes": 974,
+      "path": "docs/benchmarkfolder/experiments/physical-stress/points/ew_n3_epem_ttxa/selected.dat",
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    "process": "e+ e- > t t~ a [virt=QED]",
+    "selected_original_point_numbers": [
+      1,
+      2
+    ]
+  },
+  "generated_inputs_now": false,
+  "model": {
+    "bytes": 18974,
+    "path": "docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/model-pin.json",
+    "sha256": "c3138d449033233a59db761e708014e4af94383cad932f36169a4fc43d019829"
+  },
+  "preserved_policy": {
+    "CMS_MLStabThres": "1e-3",
+    "EW_MLStabThres": "preserve current pinned donor card value",
+    "OSThres": "1e-8 for both processes",
+    "other_flags": "unchanged unless a separately reviewed explicit diagnostic derivative is required",
+    "physical_cards": "byte-identical copied inputs"
+  },
+  "prior_alternate_trace": {
+    "OSThres": "1e-24",
+    "point": 20,
+    "used_as_primary_reference": false
+  },
+  "schema": "current-kinematic-trace-scientific-inputs-v1"
+}

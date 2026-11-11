@@ -1,0 +1,42 @@
+{
+  "amplitude_evaluations": 0,
+  "ast_all_top_level_python": true,
+  "cli_executions": 0,
+  "compiler_executions": 0,
+  "deferred_native_modes": [
+    2,
+    5
+  ],
+  "ew_current_trace_files": 2,
+  "ew_source_inventory_exact_entries": 427,
+  "git_actions": 0,
+  "library_loads": 0,
+  "maximum_outer_entries": 60,
+  "native_modes": [
+    1,
+    4
+  ],
+  "native_qualification": false,
+  "old31ea_and1b57_packets_unchanged": true,
+  "pure_tests": {
+    "normal": {
+      "count": 14,
+      "exit_code": 0,
+      "log": {
+        "bytes": 2076,
+        "sha256": "035fb3e271baef287cab5838d5ef4b7e661587dc455fb5651ca89e5985b2f14a"
+      }
+    },
+    "optimized": {
+      "count": 14,
+      "exit_code": 0,
+      "log": {
+        "bytes": 2076,
+        "sha256": "b66acc5f756065b73f833711893426b3b05cfb122d83cbd6647e92c76329f9ae"
+      }
+    }
+  },
+  "schema": "current-trace-executor-source-validation-v1",
+  "work_results_absent": true,
+  "workers": 30
+}
