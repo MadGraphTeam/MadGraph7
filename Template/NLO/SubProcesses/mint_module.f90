@@ -1656,6 +1656,9 @@ contains
     call check_evenly_random_numbers
     if (imode.eq.0) then
        call reset_accumulated_grids_for_updating
+    else
+       ! Start MINT1 with a fresh iteration-rejection flag.
+       reset=.false.
     endif
     vtot(1:nintegrals,0:nchans)=0d0
     etot(1:nintegrals,0:nchans)=0d0
