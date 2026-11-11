@@ -950,6 +950,32 @@ binary64 call on NinjaRS or TIRust touches no Symbolica state, and a
 double-double or arbitrary-precision fallback and its guard run under the
 package key as any SDK call in that arithmetic.
 
+The failure policy `rusticol_virtual_set_on_failure(handle, policy)` (C++,
+Fortran and packaged Rust `set_on_failure`; the Python API's `on_failure=`)
+is `"best-effort"` by default (since 1.0.3): every evaluation returns OK
+with every point, and a point that no configured alternative accepts (the
+backend's own acceptance checks, the `"auto"` per-point fallback) is
+evaluated again from its exact inputs without those checks (as
+`rusticol_virtual_set_reduction_unchecked(handle, 1)` gives it) and, where
+that yields a value, returned as a numerical row with status
+`RUSTICOL_VIRTUAL_BEST_EFFORT` (5; Fortran `VIRTUAL_BEST_EFFORT`, Rust
+`PointStatus::BestEffort`), never a success. Rows exist for every point with
+a value (`successful_point_ids`): check the statuses. Its relative
+uncertainty is `rusticol_virtual_result_copy_uncertainties` (C++ / Rust
+`uncertainties`, Fortran `%uncertainties`; NaN for every other point): the
+call's own binary64 stability estimate, else one default rotation and the
+rescaled reduction-direction check of that point, else none (NaN; the record says so). `diagnostics_json` carries
+`"best_effort"` per point id (`refusal`, `uncertainty`, `source`, `detail`,
+`reduction`), `"warnings"` (the Python API's `ResultWarning` records),
+`"on_failure"`, and `"failures"` with one message per reason class plus the
+count of the others. Nothing is printed. `"return"` keeps such points
+`RUSTICOL_VIRTUAL_FAILED` without the extra evaluation; `"raise"` (opt-in
+strict mode) returns `RUSTICOL_VIRTUAL_RUNTIME_ERROR` for a call with such
+a point (C++ throws `VirtualError`, Fortran sets `ierr`, Rust returns an
+error). Points the configured alternatives accept are evaluated exactly as
+before; a call whose points are all accepted only appends the policy's
+empty records to its diagnostics. Additive symbols, ABI version 2 kept.
+
 ## Common setup failures
 
 | Symptom | Resolution |

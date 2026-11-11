@@ -119,6 +119,7 @@ from pyamplicol.api.virtual_results import (
     VirtualRescuePolicy,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
+    best_effort_detail,
     computes_poles,
     splits_poles,
 )
@@ -2226,7 +2227,7 @@ class V2VirtualRuntime:
         stability: VirtualRescuePolicy | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] = "best-effort",
         reduction: str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
@@ -2367,6 +2368,8 @@ class V2VirtualRuntime:
                     records,
                 )
 
+            last = policy.levels[-1]
+
             def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
                 carrier, setting = self._carrier(rung.arithmetic, rung.precision)
                 # Every level from the original exact inputs (never an
@@ -2384,7 +2387,14 @@ class V2VirtualRuntime:
                         r2,
                         selection,
                         rung.checks,
-                        "return",
+                        # Only the last level serves best-effort values
+                        # (``on_failure="best-effort"``); the earlier ones
+                        # return their refused points to the next level.
+                        (
+                            "best-effort"
+                            if on_failure == "best-effort" and rung is last
+                            else "return"
+                        ),
                         choices[rung],
                     ),
                     records,
@@ -2598,7 +2608,12 @@ class V2VirtualRuntime:
             )
 
         results, failures, served = with_fallback(
-            run, reduction, len(points), checks, carrier
+            run,
+            reduction,
+            len(points),
+            checks,
+            carrier,
+            best_effort=on_failure == "best-effort",
         )
         if failures and on_failure == "raise":
             index = min(failures)
@@ -2819,13 +2834,23 @@ class V2VirtualRuntime:
                 )
             estimates.append(estimate)
             parts.append(self._pole_parts(result) if splits_poles(poles) else None)
+            best = None if own is None else own.best_effort
             diagnostics.append(
                 VirtualLaneDiagnostic(
-                    "success",
+                    "success" if best is None else "best-effort",
                     arithmetic,
                     bits,
                     False,
-                    detail,
+                    detail if best is None else best_effort_detail(best),
+                    failures=(
+                        ()
+                        if best is None
+                        else (
+                            VirtualFailureDiagnostic(
+                                index, None, None, None, "v2-evaluation", best.refusal
+                            ),
+                        )
+                    ),
                     primary_color_contraction=contraction,
                     reduction=(served or {}).get(index, reduction),
                     finiteness=result.finiteness,

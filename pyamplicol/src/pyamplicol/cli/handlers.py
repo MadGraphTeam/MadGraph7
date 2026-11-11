@@ -77,7 +77,7 @@ def dispatch(
     """Dispatch a typed config without importing a concrete domain backend."""
 
     if config.action != "evaluate" and (
-        config.evaluation.on_failure != "raise"
+        config.evaluation.on_failure is not None
         or config.evaluation.correlated_requests is not None
     ):
         raise ConfigurationError(
@@ -476,7 +476,7 @@ class DefaultCliServices:
             or evaluation.mu_r2 is not None
             or evaluation.mu_r2_file is not None
             or config.loop.r2_strategy != "auto"
-            or evaluation.on_failure != "raise"
+            or evaluation.on_failure not in (None, "raise")
             or evaluation.reduction is not None
             or evaluation.reduction_target is not None
             or evaluation.reduction_unchecked

@@ -79,7 +79,18 @@ int main(int argc,char **argv) {
   check(rusticol_virtual_result_copy_statuses(partial,statuses,3));
   assert(actual_ids[0]==91 && actual_ids[1]==70);
   assert(statuses[0]==RUSTICOL_VIRTUAL_SUCCESS && statuses[1]==RUSTICOL_VIRTUAL_FAILED && statuses[2]==RUSTICOL_VIRTUAL_SUCCESS);
+  /* The default failure policy ("best-effort") returns OK: a point a backend
+   * refuses would carry its unchecked value with RUSTICOL_VIRTUAL_BEST_EFFORT
+   * and an uncertainty; this one has no value at all (NaN uncertainty). */
+  double uncertainties[3];
+  check(rusticol_virtual_result_copy_uncertainties(partial,uncertainties,3));
+  assert(isnan(uncertainties[0]) && isnan(uncertainties[1]) && isnan(uncertainties[2]));
   check(rusticol_virtual_result_free(partial));
+  /* The opt-in strict mode: such a call is an error. */
+  check(rusticol_virtual_set_on_failure(runtime,"raise"));
+  partial=NULL;
+  assert(rusticol_virtual_evaluate(runtime,&request,&partial)==RUSTICOL_VIRTUAL_RUNTIME_ERROR && !partial);
+  check(rusticol_virtual_set_on_failure(runtime,NULL));
   memcpy(momenta+16,p,sizeof(p));
   request.point_count=0; request.momentum_count=0; request.scale_count=0;
   request.momenta=NULL; request.mu_r2=NULL; request.point_ids=NULL;

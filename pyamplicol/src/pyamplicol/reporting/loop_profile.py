@@ -400,9 +400,9 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         (
             "backend",
             "measured",
-            "failed b64",
+            "best-eff./none",
             "flagged",
-            "flagged, inaccurate",
+            "flagged inacc.",
             "missed",
             "time",
         ),
@@ -440,7 +440,13 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 label,
                 measured,
                 palette.paint(
-                    _percent(row.failed_binary64, row.points),
+                    str(row.best_effort),
+                    palette.GOOD if row.best_effort == 0 else palette.RECOVERED,
+                    color=color,
+                )
+                + " / "
+                + palette.paint(
+                    str(row.failed_binary64),
                     palette.GOOD if row.failed_binary64 == 0 else palette.BAD,
                     color=color,
                     bold=row.failed_binary64 > 0,
@@ -457,6 +463,9 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             )
         )
     blocks.append(str(verdicts.get_string()))
+    best = _best_effort_table(served, prettytable, color)
+    if best is not None:
+        blocks.append(best)
     first = served[0].percentiles if served else ()
     notes = [
         "Digits: -log10(|ME_b64 - ME_dd| / |ME_dd|) on the finite part of the "
@@ -466,9 +475,12 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         "sectors over |total|, capped the same way. Measure of MadLoop, "
         "arXiv:1103.0621 sect. 3.4, and arXiv:1405.0301.",
         "Measured points: those with a double-double reference, plus the points "
-        "the backend failed or refused in binary64, which count 0 true digits "
-        "(worst end) and have no estimate. Points with a binary64 value but no "
-        "reference are left out (no ref.).",
+        "without any binary64 value (no value), which count 0 true digits "
+        "(worst end) and have no estimate. A point the backend's own checks "
+        "refuse is measured with its best-effort value (the unchecked "
+        "reduction's, returned by default with status best-effort; never "
+        "accepted, so always flagged) at its true digits. Points with a "
+        "binary64 value but no reference are left out (no ref.).",
         "Sorted by true digits, worst first; N = measured points. The row of "
         "percentile p shows the true digits of the point of rank floor(p N) "
         "(50 %: the median, the lower middle point for even N). Its class "
@@ -491,8 +503,9 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             f"N >= {first[0].needed_points} measured points."
         )
     notes.append(
-        "Failed b64: points the backend refused or failed in binary64 (no rescue "
-        "ran). Flagged, inaccurate: of the flagged points, the truly "
+        "Best-effort: points the backend refused in binary64, served with their "
+        "best-effort value; no value: points without any binary64 value (no "
+        "rescue ran). Flagged, inaccurate: of the flagged points, the truly "
         "inaccurate ones; missed: truly inaccurate points the checks did "
         "not flag; time: the backend's binary64 and double-double calls. "
         "Percentages of the measured points."
@@ -510,6 +523,73 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     notes += refusals
     blocks.append(_notes(notes))
     return blocks
+
+
+def _best_effort_table(served: Any, prettytable: Any, color: bool) -> str | None:
+    """How accurate the best-effort values and their uncertainties are
+    (m-lit ux-besteffort): per backend with best-effort points, their true
+    digits (min / median / max), the median digits of their uncertainty,
+    the median |uncertainty - true| digits and how many uncertainties cover
+    the true error."""
+
+    rows = [row for row in served if row.best_effort]
+    if not rows:
+        return None
+    table = palette.table(
+        prettytable,
+        (
+            "backend",
+            "points",
+            "true min/med/max",
+            "unc. median",
+            "|unc-true| med",
+            "unc. covers",
+        ),
+        "Best-effort values (refused in binary64) against the truth",
+        color=color,
+    )
+    table.max_width = 20
+    for row in rows:
+        points = [item for item in row.per_point if item.status == "best-effort"]
+        true = sorted(float(item.true_digits) for item in points)
+        estimated = [item.estimated_digits for item in points]
+        known = sorted(float(e) for e in estimated if e is not None)
+        gaps = sorted(
+            abs(float(item.estimated_digits) - float(item.true_digits))
+            for item in points
+            if item.estimated_digits is not None
+        )
+
+        def med(values: list[float]) -> float | None:
+            return values[(len(values) - 1) // 2] if values else None
+
+        def cell(value: float | None) -> str:
+            if value is None:
+                return palette.paint("-", palette.MUTED, color=color)
+            return _number(value, color, palette.ESTIMATE)
+
+        table.add_row(
+            (
+                palette.paint(
+                    _name(row.backend), palette.BACKEND.get(row.backend), color=color
+                ),
+                str(len(points)),
+                " / ".join(cell(v) for v in (true[0], med(true), true[-1])),
+                cell(med(known)),
+                cell(med(gaps)),
+                f"{row.best_effort_covered} of {len(known)}"
+                + (
+                    palette.paint(
+                        f" ({len(points) - len(known)} without)",
+                        palette.MUTED,
+                        color=color,
+                    )
+                    if len(known) < len(points)
+                    else ""
+                ),
+            )
+        )
+    return str(table.get_string())
 
 
 def loop_profile_summary(report: Any, *, prettytable: Any, color: bool) -> str:

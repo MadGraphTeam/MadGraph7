@@ -73,6 +73,9 @@ pub struct CorrelatedEvaluation {
     pub history_ids: Vec<String>,
     pub spin_legs: Vec<usize>,
     pub diagnostics_json: String,
+    /// Per requested point the relative uncertainty of a `BestEffort`
+    /// point's value (NaN otherwise; m-lit ux-besteffort).
+    pub uncertainties: Vec<f64>,
     /// Double-double and arbitrary-precision evaluations: the exact values
     /// (the Python API's `Decimal` results) as `[real, imaginary]` decimal
     /// literals in the layout of `born` and `virtual_values` (absent poles
@@ -148,8 +151,19 @@ impl Runtime {
         scales: Vec<String>,
         strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
-        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
-        self.evaluate_correlated_inputs(inputs, strategy)
+        let inputs = self.prepare_inputs(momenta.clone(), point_ids.clone(), scales.clone())?;
+        let base = self.evaluate_correlated_inputs(inputs, strategy)?;
+        let call = crate::best_effort::CallInputs {
+            momenta: &momenta,
+            point_ids: &point_ids,
+            scales: &scales,
+            selection: None,
+            sources: None,
+        };
+        self.with_policy(base, call, |runtime, subset| {
+            let inputs = runtime.prepare_inputs(subset.momenta, subset.point_ids, subset.scales)?;
+            runtime.evaluate_correlated_inputs(inputs, strategy)
+        })
     }
     /// Additive binary64 source ingress; the old method always uses ordinary states.
     pub fn evaluate_correlated_with_sources(
@@ -183,9 +197,22 @@ impl Runtime {
         sources: BTreeMap<usize, Vec<[String; 2]>>,
         strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
-        let mut inputs = self.prepare_inputs(momenta, point_ids, scales)?;
-        inputs.spin_sources = sources;
-        self.evaluate_correlated_inputs(inputs, strategy)
+        let mut inputs = self.prepare_inputs(momenta.clone(), point_ids.clone(), scales.clone())?;
+        inputs.spin_sources = sources.clone();
+        let base = self.evaluate_correlated_inputs(inputs, strategy)?;
+        let call = crate::best_effort::CallInputs {
+            momenta: &momenta,
+            point_ids: &point_ids,
+            scales: &scales,
+            selection: None,
+            sources: Some(&sources),
+        };
+        self.with_policy(base, call, |runtime, subset| {
+            let mut inputs =
+                runtime.prepare_inputs(subset.momenta, subset.point_ids, subset.scales)?;
+            inputs.spin_sources = subset.sources.unwrap_or_default();
+            runtime.evaluate_correlated_inputs(inputs, strategy)
+        })
     }
     /// Every stored colour history (`born` first, the declared histories in
     /// their order) in one batch, with the spin sources of `inputs` (one
@@ -432,6 +459,7 @@ impl CorrelatedEvaluation {
             history_ids: vec![],
             spin_legs: vec![],
             diagnostics_json,
+            uncertainties: Vec::new(),
             decimal,
         })
     }

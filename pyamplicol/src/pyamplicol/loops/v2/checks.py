@@ -424,6 +424,9 @@ class CheckReport:
     regeneration: str
     seconds: float
     exit_code: int = EXIT_PASSED
+    # Known, benign dependency log events of the check, returned instead of
+    # printed (``ResultWarning``; m-lit ux-besteffort).
+    warnings: tuple[Any, ...] = ()
 
     def __post_init__(self) -> None:
         statuses = {process.status for process in self.processes}

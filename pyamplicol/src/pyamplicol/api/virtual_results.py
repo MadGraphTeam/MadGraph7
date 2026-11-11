@@ -30,6 +30,9 @@ from pyamplicol.loops.v2.stability import (
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
 
+from .result_warnings import LaneWarnings
+from .result_warnings import NumericalAccuracyWarning as NumericalAccuracyWarning
+from .result_warnings import ResultWarning as ResultWarning
 from .results import _exact_decimal_sum
 
 VirtualScalar: TypeAlias = float | complex | Decimal | CorrelatedValue
@@ -349,6 +352,87 @@ REDUCTION_CHECKS = ("none", "reversed", "rescaled")
 RESCUE_METRICS = ("relative", "finite", "scale")
 
 
+BEST_EFFORT_SOURCES = ("stability-checks", "recommended-checks", "none")
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualBestEffort:
+    """The best-effort value of one point (``on_failure="best-effort"``):
+    every configured alternative (the call's backend with its acceptance
+    checks, ``"auto"``'s per-point fallback, the rescue levels up to the
+    last) refused or failed the point, and its value is the one the same
+    reduction returns WITHOUT the backends' own acceptance and refusal
+    checks (``reduction_unchecked=True``: TIRust's method choice and last
+    resort as computed, NinjaRS with zero stability thresholds), bitwise.
+    Such a lane has status ``"best-effort"``: never a success, its accuracy
+    not established.
+
+    ``refusal`` holds the reasons of the refusals the value overrides (one
+    message per distinct reason class, with the count of the others).
+    ``uncertainty`` is the relative accuracy estimate of the value (the
+    ``"relative"`` metric of the stability estimate: each squared-order
+    sector against its own magnitude, an output that vanishes against the
+    largest returned output) from ``source``: ``"stability-checks"``, the
+    call's own checks, run on the best-effort evaluation as on any other
+    point; ``"recommended-checks"``, the recommended checks (the guard's
+    rotation and the rescaled reduction-direction check,
+    ``VirtualStabilityChecks(1, True, rescaled=True)``'s kind) run on the
+    best-effort point alone when the call requested no checks (the public
+    result then carries no estimate, as the call asked; measured on
+    u u~ > t t~ g g's 219 TIRust best-effort points: every one within its
+    uncertainty, where one rotation alone covers 30 %); ``"none"``, no
+    estimate could be formed (the re-test failed or was not a number), and
+    ``uncertainty`` is None. ``backend_deviation`` is the backend's own
+    accuracy measure where its refusal states one: the largest deviation
+    of a TIRust method-choice lane between its two frames relative to that
+    lane's term scale (a lane-level measure, not the result's accuracy);
+    None when the refusals state none (e.g. an ill-conditioned Gram matrix,
+    NinjaRS's thresholds)."""
+
+    refusal: str
+    uncertainty: float | None
+    source: Literal["stability-checks", "recommended-checks", "none"]
+    backend_deviation: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.refusal, str) or not self.refusal:
+            raise ValueError("a best-effort value states the refusal it overrides")
+        if self.source not in BEST_EFFORT_SOURCES:
+            raise ValueError(f"unknown best-effort uncertainty source {self.source!r}")
+        if (self.uncertainty is None) != (self.source == "none"):
+            raise ValueError(
+                "a best-effort uncertainty is given exactly when its source is "
+                "not 'none'"
+            )
+        for name in ("uncertainty", "backend_deviation"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{name} is a relative estimate (a float)")
+            if math.isnan(value) or value < 0:
+                raise ValueError(f"{name} is a nonnegative number")
+            object.__setattr__(self, name, float(value))
+
+
+def best_effort_detail(record: VirtualBestEffort) -> str:
+    """The lane detail of a best-effort value (``VirtualBestEffort``): what
+    the value is and its uncertainty, or that none could be given."""
+
+    where = {
+        "stability-checks": "call's checks",
+        "recommended-checks": "recommended checks",
+    }
+    head = "refused; value of the unchecked reduction (best effort)"
+    if record.uncertainty is None:
+        tail = "no uncertainty could be estimated"
+    else:
+        tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
+    if record.backend_deviation is not None:
+        tail += f"; backend deviation {record.backend_deviation:.2e}"
+    return f"{head}; {tail}; refusal in failures / --json"
+
+
 @dataclass(frozen=True, slots=True)
 class VirtualReduction:
     """The reduction backend of one evaluation (m-lit PLAN §2.b.4, RULED
@@ -392,7 +476,13 @@ class VirtualReduction:
     limit; a point within it keeps the fallback's value. None on every other
     record (the call's own, a point TIRust served, a point the fallback
     failed, a binary64 fallback point, which is served unguarded). The
-    point's public stability estimate stays the call's checks' own."""
+    point's public stability estimate stays the call's checks' own.
+
+    ``best_effort`` is set on the record of a point served by the
+    best-effort evaluation (``on_failure="best-effort"``,
+    :class:`VirtualBestEffort`): ``effective`` is the backend whose
+    unchecked reduction gave the value, ``unchecked`` True and the lane's
+    status ``"best-effort"``; None on every other record."""
 
     requested: Literal["auto", "ninjars", "tirust"]
     effective: Literal["ninjars", "tirust"]
@@ -401,6 +491,7 @@ class VirtualReduction:
     target: float | None = None
     unchecked: bool = False
     guard_estimate: float | None = None
+    best_effort: VirtualBestEffort | None = None
 
     def __post_init__(self) -> None:
         # The choices are ``config.ReductionBackend``'s (one definition, one
@@ -432,6 +523,14 @@ class VirtualReduction:
                     "guard_estimate is a per-point fallback record's, not a call's"
                 )
             object.__setattr__(self, "guard_estimate", float(self.guard_estimate))
+        if self.best_effort is not None:
+            if not isinstance(self.best_effort, VirtualBestEffort):
+                raise TypeError("best_effort is a VirtualBestEffort record")
+            if self.fallback is not None or not self.unchecked:
+                raise ValueError(
+                    "a best-effort record is a per-point record of an unchecked "
+                    "reduction"
+                )
 
 
 def _carrier_bits(arithmetic: str, precision: int | None) -> int:
@@ -764,6 +863,14 @@ class VirtualRescueRecord:
 
         return self.attempts[-1].reduction
 
+    @property
+    def best_effort(self) -> bool:
+        """Whether the point returns a best-effort value (every level
+        refused it; its last attempt's reduction record says so)."""
+
+        reduction = self.attempts[-1].reduction
+        return reduction is not None and reduction.best_effort is not None
+
 
 @dataclass(frozen=True, slots=True)
 class VirtualColorContraction:
@@ -819,10 +926,22 @@ class VirtualVerificationDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class VirtualLaneDiagnostic:
-    """Accuracy is explicit; a finite output is not an accuracy certificate."""
+    """Accuracy is explicit; a finite output is not an accuracy certificate.
+
+    ``"best-effort"`` (``on_failure="best-effort"``) is a lane every
+    configured alternative refused or failed whose value is the unchecked
+    reduction's: it carries that value (``has_value``) but is never
+    ``valid``; its ``reduction.best_effort`` record
+    (:class:`VirtualBestEffort`) holds the overridden refusal and the
+    uncertainty, and ``failures`` the refusals."""
 
     status: Literal[
-        "success", "rescued", "unsupported", "failed", "accuracy-not-established"
+        "success",
+        "rescued",
+        "best-effort",
+        "unsupported",
+        "failed",
+        "accuracy-not-established",
     ]
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision_bits: int
@@ -856,6 +975,7 @@ class VirtualLaneDiagnostic:
         if self.status not in {
             "success",
             "rescued",
+            "best-effort",
             "unsupported",
             "failed",
             "accuracy-not-established",
@@ -886,14 +1006,33 @@ class VirtualLaneDiagnostic:
             self.reduction, VirtualReduction
         ):
             raise TypeError("a lane's reduction is a VirtualReduction record")
+        if (self.status == "best-effort") != (self.best_effort is not None):
+            raise ValueError(
+                "a best-effort lane carries its reduction's best-effort record, "
+                "and only such a lane"
+            )
         if self.finiteness is not None:
             _nonnegative(self.finiteness, "finiteness")
-            if not self.valid:
+            if not self.has_value:
                 raise ValueError("failed lanes carry no finiteness ratio")
 
     @property
     def valid(self) -> bool:
         return self.status in {"success", "rescued"}
+
+    @property
+    def has_value(self) -> bool:
+        """Whether the lane carries a value: a valid lane, or a best-effort
+        one (never valid)."""
+
+        return self.valid or self.status == "best-effort"
+
+    @property
+    def best_effort(self) -> VirtualBestEffort | None:
+        """The best-effort record of a ``"best-effort"`` lane (its
+        reduction's), else None."""
+
+        return None if self.reduction is None else self.reduction.best_effort
 
 
 def _scalar(value: object, correlated: bool, arithmetic: str) -> VirtualScalar:
@@ -1048,7 +1187,7 @@ def _pole_parts(
         raise ValueError("pole parts and diagnostics differ in lane count")
     out: list[VirtualPoleParts | None] = []
     for lane, diagnostic in zip(lanes, diagnostics, strict=True):
-        if not diagnostic.valid:
+        if not diagnostic.has_value:
             if lane is not None:
                 raise ValueError("failed lanes carry no pole parts")
             out.append(None)
@@ -1242,7 +1381,7 @@ def _common(
     for born, virtual, diagnostic in zip(
         result.born_values, result.values, diagnostics, strict=True
     ):
-        if not diagnostic.valid:
+        if not diagnostic.has_value:
             if born is not None or virtual is not None:
                 raise ValueError("failed lanes must not expose stale numerical values")
             frozen_born.append(None)
@@ -1303,12 +1442,12 @@ def _stability(
         estimates, diagnostics, unchecked, strict=True
     ):
         if estimate is None:
-            if diagnostic.valid and not free:
+            if diagnostic.has_value and not free:
                 raise ValueError("a checked successful lane has an estimate")
             continue
         if not isinstance(estimate, VirtualStabilityEstimate):
             raise TypeError("stability estimates are VirtualStabilityEstimate records")
-        if not diagnostic.valid:
+        if not diagnostic.has_value:
             raise ValueError("failed lanes carry no stability estimate")
         if (estimate.single_pole is not None) != with_poles:
             raise ValueError("pole estimates exist exactly when poles were computed")
@@ -1328,7 +1467,7 @@ def _rescue(
     for record, diagnostic in zip(records, diagnostics, strict=True):
         if not isinstance(record, VirtualRescueRecord):
             raise TypeError("rescue records are VirtualRescueRecord records")
-        if record.failed == diagnostic.valid:
+        if record.failed == diagnostic.has_value:
             raise ValueError("a rescue record fails exactly with its lane")
         if (record.arithmetic, record.precision_bits) != (
             diagnostic.arithmetic,
@@ -1341,7 +1480,7 @@ def _rescue(
 
 
 @dataclass(frozen=True, slots=True)
-class VirtualEvaluation:
+class VirtualEvaluation(LaneWarnings):
     """Born [point, order] and interference [point, order, epsilon].
 
     Ordinary interference is real and directed correlations may be complex.
@@ -1429,17 +1568,25 @@ class VirtualEvaluation:
     def rescue_counts(self) -> dict[int | str, int] | None:
         """Lanes per rescue level whose estimate met the level's target
         (levels 0 to the highest reached), plus ``"not met"`` (lanes kept
-        at the last level with the target missed) and ``"failed"`` (lanes
-        that failed at every level); ``None`` without a rescue policy."""
+        at the last level with the target missed), ``"best-effort"`` (lanes
+        every level refused, kept at the last level with their best-effort
+        value, ``on_failure="best-effort"``) and ``"failed"`` (lanes that
+        failed at every level); ``None`` without a rescue policy."""
 
         if self.rescue is None:
             return None
         top = max((record.level for record in self.rescue), default=0)
         counts: dict[int | str, int] = dict.fromkeys(range(top + 1), 0)
-        counts["not met"] = counts["failed"] = 0
+        counts["not met"] = counts["best-effort"] = counts["failed"] = 0
         for record in self.rescue:
             key: int | str = (
-                "failed" if record.failed else record.level if record.met else "not met"
+                "failed"
+                if record.failed
+                else "best-effort"
+                if record.best_effort
+                else record.level
+                if record.met
+                else "not met"
             )
             counts[key] += 1
         return counts
@@ -1617,7 +1764,7 @@ def _order_index(orders: Sequence[CouplingOrders], order: CouplingOrders) -> int
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedVirtualEvaluation:
+class ResolvedVirtualEvaluation(LaneWarnings):
     """Interference [point, order, helicity, virtual colour component, epsilon].
 
     Born colour components have their own independent axis. LC components are
@@ -1712,11 +1859,11 @@ class ResolvedVirtualEvaluation:
         out: list[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None] = []
         for lane, diagnostic in zip(lanes, self.diagnostics, strict=True):
             if lane is None:
-                if diagnostic.valid:
+                if diagnostic.has_value:
                     raise ValueError("a checked successful lane has estimates")
                 out.append(None)
                 continue
-            if not diagnostic.valid:
+            if not diagnostic.has_value:
                 raise ValueError("failed lanes carry no stability estimate")
             rows = tuple(tuple(row) for row in cast(Sequence[Sequence[object]], lane))
             if len(rows) != len(self.helicity_ids) or any(

@@ -319,6 +319,28 @@ outputs) return `"estimates": null` with the reason.
 Point statuses keep their meaning; comparing an estimate with a target is the
 caller's.
 
+**Failure policy** (m-lit ux-besteffort; the Python API's `on_failure=`):
+`Runtime::set_on_failure` (C `rusticol_virtual_set_on_failure`, C++ / Fortran /
+packaged Rust `set_on_failure`). The default, `"best-effort"`, never turns a
+per-point refusal into an error, so a Monte-Carlo run is never interrupted: a
+point that no configured alternative accepts (the backend's own acceptance
+checks, the `"auto"` per-point fallback) is evaluated again from its exact
+inputs without those checks (as `set_reduction_unchecked(true)`) and, where
+that yields a value, returned as a numerical row with status `BestEffort`
+(`RUSTICOL_VIRTUAL_BEST_EFFORT` = 5; never a success). Its relative uncertainty
+is `uncertainties` (`rusticol_virtual_result_copy_uncertainties`; NaN for every
+other point): the call's own binary64 stability estimate, else one default
+rotation and the rescaled reduction-direction check of that point, else none (NaN, said so in the record). The
+diagnostics carry `"best_effort"` per point id (`refusal`, `uncertainty`,
+`source`: `"stability-checks"` | `"recommended-checks"` | `"none"`, `detail`,
+`reduction`) and `"warnings"` (per kind `best-effort` / `failed`: the first
+reason, the count and the point ids; the Python API's `ResultWarning`);
+`"failures"` keeps one message per reason class with the count of the others.
+Nothing is printed. `"return"` keeps such points `Failed` without the extra
+evaluation; `"raise"` is the opt-in strict mode (a call with such a point is
+an evaluation error). Points the configured alternatives accept are
+evaluated exactly as before.
+
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
 and colour-component axes before epsilon. Resolved LC components are signed
 coherent interferences anchored to canonical groups of Born tensors, potentially

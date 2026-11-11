@@ -15,7 +15,10 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
    value is promoted, MASTER_PLAN §2.18); an accepted point is never
    evaluated again;
 3. at the last level a point that evaluates keeps its value with the target
-   marked as not met; a point that failed at every level is a failed lane.
+   marked as not met; a point that failed at every level is a failed lane,
+   or, under ``on_failure="best-effort"``, a best-effort lane when the last
+   level's unchecked reduction gives it a value (only the last level runs
+   the best-effort evaluation, ``reduction.with_fallback``).
 
 A level compares the public estimate's field named by its ``metric`` with
 its target. An integrated zero (a Landau-Yang |A|^2 of a loop-induced
@@ -201,7 +204,9 @@ def _attempt(
     diagnostic = evaluation.diagnostics[lane]
     # The level's reduction backend as its evaluation recorded it
     # (``VirtualLaneDiagnostic.reduction``: requested, effective, reason).
-    if not diagnostic.valid:
+    # A best-effort lane (the last level's, ``on_failure="best-effort"``)
+    # is an attempt with a value: its estimate when the level checks.
+    if not diagnostic.has_value:
         return VirtualRescueAttempt(
             diagnostic.arithmetic,
             diagnostic.precision_bits,
@@ -264,7 +269,17 @@ def _merged(
             item.met,
             tuple(attempts[index]),
         )
-        if original.valid:
+        if original.status == "best-effort":
+            # Every level refused the point; the last level's best-effort
+            # value is returned, never as a success.
+            diagnostic = replace(
+                original,
+                detail=f"{_detail(record, level.metric)}; {original.detail}",
+                failures=tuple(
+                    replace(failure, point_id=index) for failure in original.failures
+                ),
+            )
+        elif original.valid:
             diagnostic = replace(
                 original,
                 status="success" if item.level == 0 else "rescued",

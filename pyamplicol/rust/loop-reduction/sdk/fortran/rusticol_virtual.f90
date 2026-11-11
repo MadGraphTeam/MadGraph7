@@ -17,6 +17,9 @@ module rusticol_virtual
   integer(c_int), parameter, public :: VIRTUAL_BUFFER_TOO_SMALL=2, VIRTUAL_RUNTIME_ERROR=3, VIRTUAL_PANIC=4
   integer(c_int32_t), parameter, public :: VIRTUAL_SUCCESS=0, VIRTUAL_VERIFIED=1, VIRTUAL_RESCUED=2
   integer(c_int32_t), parameter, public :: VIRTUAL_FAILED=3, VIRTUAL_ACCURACY_NOT_ESTABLISHED=4
+  ! A point no configured alternative accepted, returned with the unchecked
+  ! reduction's value (never a success; set_on_failure, m-lit ux-besteffort).
+  integer(c_int32_t), parameter, public :: VIRTUAL_BEST_EFFORT=5
 
   type, bind(C), public :: virtual_shape
     integer(c_size_t) :: external_count=0, born_orders=0, virtual_orders=0, helicities=0
@@ -44,6 +47,7 @@ module rusticol_virtual
     complex(c_double), allocatable :: virtual_values(:,:,:,:) ! epsilon, order, history, point
     integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
     integer(c_int32_t), allocatable :: statuses(:)
+    real(c_double), allocatable :: uncertainties(:) ! best-effort points; NaN otherwise
     character(:), allocatable :: diagnostics_json, histories_json, spin_legs_json
     ! Extended precision: [real, imaginary] decimal literals (JSON); "null" in binary64.
     character(:), allocatable :: decimal_json
@@ -70,6 +74,9 @@ module rusticol_virtual
     real(c_double), allocatable :: virtual_values(:,:,:,:,:) ! epsilon, colour, helicity, order, point
     integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
     integer(c_int32_t), allocatable :: statuses(:) ! every requested point
+    ! Per requested point the relative uncertainty of a best-effort point
+    ! (VIRTUAL_BEST_EFFORT); NaN otherwise.
+    real(c_double), allocatable :: uncertainties(:)
     character(:), allocatable :: diagnostics_json
     ! Extended precision: {"arithmetic","digits","born","virtual"} decimal
     ! literals in the C layouts (JSON); "null" in binary64.
@@ -115,6 +122,7 @@ module rusticol_virtual
     procedure :: set_reduction
     procedure :: set_reduction_target
     procedure :: set_reduction_unchecked
+    procedure :: set_on_failure
     procedure :: set_kinematics_improvement
     procedure :: set_kinematics_improvement_binary64
     procedure :: set_stability_checks
@@ -231,6 +239,26 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle
       integer(c_int), value :: unchecked
+      integer(c_int) :: value
+    end function
+    function c_set_on_failure(handle, on_failure) &
+        bind(C, name="rusticol_virtual_set_on_failure") result(value)
+      import
+      type(c_ptr), value :: handle, on_failure
+      integer(c_int) :: value
+    end function
+    function c_result_copy_uncertainties(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_result_copy_uncertainties") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlated_uncertainties(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_correlated_result_copy_uncertainties") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
       integer(c_int) :: value
     end function
     function c_set_kinematics_improvement(handle, setting) &
@@ -754,6 +782,22 @@ contains
       error_message=error_message)
   end subroutine
 
+  ! Failure policy of later evaluations (the Python API's on_failure=):
+  ! "best-effort" (default; a refused point returns the unchecked value with
+  ! status VIRTUAL_BEST_EFFORT and its uncertainty, ierr stays 0), "return"
+  ! (such points stay VIRTUAL_FAILED) or "raise" (a call with such a point
+  ! returns a runtime-error status); another value is an invalid argument.
+  subroutine set_on_failure(self,on_failure,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: on_failure
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(on_failure)
+    call finish(c_set_on_failure(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
   ! Kinematics improvement of later evaluations (the Python API's
   ! kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",
   ! "projection" or "off"; recorded per point in the diagnostics
@@ -910,6 +954,13 @@ contains
         if (size(value%statuses,kind=c_size_t)>0) destination=c_loc(value%statuses)
         status=c_result_copy_statuses(result_handle,destination,size(value%statuses,kind=c_size_t))
       end if
+      if (status==VIRTUAL_OK) then
+        allocate(value%uncertainties(value%shape%requested_points))
+        destination=c_null_ptr
+        if (size(value%uncertainties,kind=c_size_t)>0) destination=c_loc(value%uncertainties)
+        status=c_result_copy_uncertainties(result_handle,destination, &
+          size(value%uncertainties,kind=c_size_t))
+      end if
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,3,status)
       if (status==VIRTUAL_OK) value%decimal_json=read_json(result_handle,9,status)
       if (status==VIRTUAL_OK) value%axes_json=read_json(result_handle,11,status)
@@ -923,6 +974,7 @@ contains
       call move_alloc(value%requested_ids,output%requested_ids)
       call move_alloc(value%successful_ids,output%successful_ids)
       call move_alloc(value%statuses,output%statuses)
+      call move_alloc(value%uncertainties,output%uncertainties)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
       call move_alloc(value%decimal_json,output%decimal_json)
       call move_alloc(value%axes_json,output%axes_json)
@@ -1148,6 +1200,13 @@ contains
         if (size(value%statuses,kind=c_size_t)>0) destination=c_loc(value%statuses)
         status=c_correlated_statuses(result_handle,destination,size(value%statuses,kind=c_size_t))
       end if
+      if (status==VIRTUAL_OK) then
+        allocate(value%uncertainties(value%shape%requested_points))
+        destination=c_null_ptr
+        if (size(value%uncertainties,kind=c_size_t)>0) destination=c_loc(value%uncertainties)
+        status=c_correlated_uncertainties(result_handle,destination, &
+          size(value%uncertainties,kind=c_size_t))
+      end if
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,6,status)
       if (status==VIRTUAL_OK) value%histories_json=read_json(result_handle,5,status)
       if (status==VIRTUAL_OK) value%spin_legs_json=read_json(result_handle,7,status)
@@ -1162,6 +1221,7 @@ contains
       call move_alloc(value%requested_ids,output%requested_ids)
       call move_alloc(value%successful_ids,output%successful_ids)
       call move_alloc(value%statuses,output%statuses)
+      call move_alloc(value%uncertainties,output%uncertainties)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
       call move_alloc(value%histories_json,output%histories_json)
       call move_alloc(value%spin_legs_json,output%spin_legs_json)

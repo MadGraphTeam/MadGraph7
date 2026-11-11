@@ -384,9 +384,13 @@ resolved = true
 # evaluation.orders: Split recurrence tree totals by squared coupling order.
 # Default false; cannot combine with resolved.
 orders = false
-# evaluation.on_failure: Virtual evaluate numerical failures: raise or return.
-# Returned failures are whole-point null rows with diagnostics. Default raise.
-on_failure = "raise"
+# evaluation.on_failure: Virtual points no configured alternative accepts:
+# best-effort returns each with its best available value (the unchecked
+# reduction's), the refusal and its uncertainty (status best-effort, never a
+# success); return keeps them as null rows with diagnostics; raise stops at the
+# first one. Default null = best-effort (since 1.0.3; nothing is printed: the
+# result's statuses and warnings carry it).
+# on_failure = "best-effort"
 # evaluation.correlated_requests: Optional evaluate-only labelled colour/spin
 # request JSON. Default null; cannot combine with resolved or colour-flow axes.
 # correlated_requests = "data/requests.json"

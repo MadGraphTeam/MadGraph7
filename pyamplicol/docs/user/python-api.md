@@ -360,7 +360,8 @@ e.g. `auto: TIRust refused or failed the point (...); the per-point NinjaRS
 fallback's value failed its rotation check: estimate 1.4e2 >
 1e-5 = max(target 1e-5, 1e-5) (double-double)`; `on_failure="raise"`
 raises `EvaluationError` with it, `"return"` returns the point as a failed
-lane (and a rescue stack escalates it). The estimate is recorded in the
+lane (and a rescue stack escalates it), and the default `"best-effort"`
+returns it with its unchecked value as a `"best-effort"` lane. The estimate is recorded in the
 point's `VirtualReduction.guard_estimate` (a rejected point's too); a point
 within the limit keeps the fallback's value unchanged, and the result's
 `stability` stays what the call's own checks give (none without checks).
@@ -654,6 +655,70 @@ option its record reads `{"status": "off"}`: not run. An exact
 colour zero (every colour coefficient of the loop amplitude vanishes at
 N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
 exact 0 and its lanes say so.
+
+### Best-effort values of refused points
+
+Since 1.0.3 a per-point refusal never interrupts a run by default. A point
+that no configured alternative accepts (the reduction backend's own
+acceptance checks, `"auto"`'s per-point NinjaRS fallback, the last level of
+a rescue policy) is evaluated again, from its original exact inputs and on
+that point only, without the backends' own acceptance and refusal checks:
+exactly what `reduction_unchecked=True` gives for that point and backend
+(TIRust's method choice and last resort as computed, NinjaRS with zero
+stability thresholds). Where that yields a value, the lane is returned with
+it under status `"best-effort"`: never `valid`, `has_value` true, its
+refusal kept, and an uncertainty. A point without any value stays a
+`"failed"` lane (value `None`).
+
+```python
+result = runtime.evaluate(points, mu_r2=scales, reduction="tirust")
+result.statuses        # ("success", "best-effort", ...): one per point
+result.has_warnings    # True when a point has no accepted value
+for warning in result.warnings:  # ResultWarning: one per kind
+    print(warning.kind, warning.count, warning.points, warning.message)
+lane = result.diagnostics[1]
+lane.best_effort.refusal      # e.g. "TIRust Unstable: ill-conditioned Gram ..."
+lane.best_effort.uncertainty  # relative uncertainty, or None
+lane.best_effort.source       # "stability-checks" | "recommended-checks" | "none"
+```
+
+`VirtualBestEffort` (the lane's `reduction.best_effort`, also
+`lane.best_effort`) holds `refusal` (one message per distinct reason class,
+with the count of the others), `uncertainty` (the relative estimate of the
+value, the `"relative"` metric: each squared-order sector against its own
+magnitude), its `source` (`"stability-checks"`: the call's own checks, which
+then also give the lane's public `stability` estimate;
+`"recommended-checks"`: the recommended checks (a rotation and the rescaled
+reduction-direction check) run on that point alone because the call asked
+for no checks; measured on u u~ > t t~ g g's 219 TIRust best-effort points,
+every true error lay within it, while one rotation alone covered 30 %; `"none"`: no estimate could be formed, `uncertainty` is
+None, said so in the lane's detail, never invented) and
+`backend_deviation` (TIRust's own measure where its refusal states one: the
+largest method-choice deviation between its two frames relative to the
+lane's term scale; None otherwise). The lane's `reduction` records the
+backend whose unchecked reduction gave the value (`unchecked=True`).
+
+`result.warnings` is data, computed from the lanes, never emitted: a tuple
+of `ResultWarning(source, kind, message, count, where, points)` (one entry
+for the best-effort points, one for the failed ones; `"numerical"` source).
+Nothing is printed, logged or warned per point or per call, so Monte-Carlo
+logs cannot be swamped; `result.emit_warnings()` is the opt-in that turns a
+result's warnings into ONE `pyamplicol.NumericalAccuracyWarning` (a
+`UserWarning` subclass, filterable with the standard `warnings` module).
+`Generator.generate` and `pyamplicol.check` return the known, benign
+dependency log events they trigger in their result's `warnings` (source
+`"symbolica"` or `"ufo-model-loader"`) instead of printing them.
+
+`on_failure` selects the policy: `"best-effort"` (the default; `None`
+means it), `"return"` (such points stay failed lanes, no extra evaluation)
+and `"raise"` (the default before 1.0.3: `EvaluationError` at the first such
+point). Accepted points are evaluated exactly as before, bitwise and at the
+same cost; only refused points pay for their best-effort evaluation (one
+unchecked evaluation, plus the recommended checks when the call has no
+checks). A runtime already loaded with `reduction_unchecked=True` has no
+checks to override: its failed points stay failed. Under a rescue policy
+only the last level serves best-effort values (`rescue_counts` counts them
+under `"best-effort"`).
 
 ### Observables of loop-induced processes
 
@@ -1227,8 +1292,9 @@ evaluates, with no estimate. How a batch runs:
    compiles its kernels once.
 3. Accepted points are never evaluated again. At the last level a point that
    evaluates keeps its value with the target marked as not met; a point that
-   failed at every level is a failed lane (raised unless
-   `on_failure="return"`).
+   failed at every level is returned with its best-effort value
+   (`"best-effort"` lane, the default policy), else as a failed lane
+   (raised only under `on_failure="raise"`).
 
 Each lane of the result is the evaluation of the level that returned it: its
 values, pole parts, `stability` estimate and diagnostic carrier

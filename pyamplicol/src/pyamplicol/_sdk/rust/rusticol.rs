@@ -44,6 +44,9 @@ pub mod virtual_amplitudes {
         Rescued,
         Failed,
         AccuracyNotEstablished,
+        /// A point no configured alternative accepted, returned with the
+        /// unchecked reduction's value (never a success; `set_on_failure`).
+        BestEffort,
     }
     /// Owned compact values, with independent order catalogues in runtime metadata.
     /// Resolved axes are point/order/helicity/colour/epsilon; Born omits epsilon.
@@ -52,6 +55,9 @@ pub mod virtual_amplitudes {
         pub requested_point_ids: Vec<u64>,
         pub successful_point_ids: Vec<u64>,
         pub statuses: Vec<PointStatus>,
+        /// Per requested point the relative uncertainty of a best-effort
+        /// point's value (`PointStatus::BestEffort`); NaN otherwise.
+        pub uncertainties: Vec<f64>,
         pub born: Vec<f64>,
         pub virtual_values: Vec<f64>,
         pub diagnostics_json: String,
@@ -106,6 +112,8 @@ pub mod virtual_amplitudes {
         pub requested_point_ids: Vec<u64>,
         pub successful_point_ids: Vec<u64>,
         pub statuses: Vec<PointStatus>,
+        /// Best-effort uncertainties per requested point; NaN otherwise.
+        pub uncertainties: Vec<f64>,
         pub born: Vec<Complex64>,
         pub virtual_values: Vec<Complex64>,
         pub diagnostics_json: String,
@@ -278,6 +286,18 @@ pub mod virtual_amplitudes {
                     self.handle.as_ptr(),
                     c_int::from(unchecked),
                 )
+            })
+        }
+        /// Failure policy of later evaluations, the Python API's
+        /// `on_failure=`: `"best-effort"` (default: a refused point returns
+        /// the unchecked value with `PointStatus::BestEffort` and its
+        /// uncertainty, no error), `"return"` (such points stay `Failed`) or
+        /// `"raise"` (a call with such a point returns an error).
+        pub fn set_on_failure(&mut self, on_failure: &str) -> Result<()> {
+            let text = checked_cstring(on_failure, "on_failure")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_on_failure(self.handle.as_ptr(), text.as_ptr())
             })
         }
         /// Kinematics improvement of later evaluations, the Python API's
@@ -642,6 +662,9 @@ pub mod virtual_amplitudes {
             .into_iter()
             .map(point_status)
             .collect::<Result<Vec<_>>>()?;
+            let uncertainties = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_result_copy_uncertainties(handle, out, len) })?;
             let born = copy_values(shape.born_values, |out, len|
                 // SAFETY: helper allocates len correctly typed writable elements.
                 unsafe { ffi::rusticol_virtual_result_copy_born(handle, out, len) })?;
@@ -671,6 +694,7 @@ pub mod virtual_amplitudes {
                 requested_point_ids,
                 successful_point_ids,
                 statuses,
+                uncertainties,
                 born,
                 virtual_values,
                 diagnostics_json,
@@ -706,6 +730,9 @@ pub mod virtual_amplitudes {
             .into_iter()
             .map(point_status)
             .collect::<Result<Vec<_>>>()?;
+            let uncertainties = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_correlated_result_copy_uncertainties(handle, out, len) })?;
             let born = copy_values(shape.born_values, |out, len|
                 // SAFETY: helper allocates len correctly typed writable elements.
                 unsafe { ffi::rusticol_virtual_correlated_result_copy_born(handle, out, len) })?;
@@ -752,6 +779,7 @@ pub mod virtual_amplitudes {
                 requested_point_ids,
                 successful_point_ids,
                 statuses,
+                uncertainties,
                 born,
                 virtual_values,
                 diagnostics_json,
@@ -776,6 +804,7 @@ pub mod virtual_amplitudes {
             2 => Ok(PointStatus::Rescued),
             3 => Ok(PointStatus::Failed),
             4 => Ok(PointStatus::AccuracyNotEstablished),
+            5 => Ok(PointStatus::BestEffort),
             _ => Err(Error::new(
                 ErrorKind::InvalidResponse,
                 "unknown virtual point status",
@@ -975,6 +1004,20 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_reduction_unchecked(
                 handle: *mut c_void,
                 unchecked: c_int,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_on_failure(
+                handle: *mut c_void,
+                on_failure: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_copy_uncertainties(
+                handle: *const c_void,
+                out: *mut f64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_copy_uncertainties(
+                handle: *const c_void,
+                out: *mut f64,
+                len: usize,
             ) -> c_int;
             pub(super) fn rusticol_virtual_set_kinematics_improvement(
                 handle: *mut c_void,

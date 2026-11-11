@@ -291,6 +291,8 @@ def virtual_evaluation_summary(
         "Evaluation diagnostics",
         color=color,
     )
+    # A long detail (a refusal, a best-effort record) wraps in its column.
+    status._max_width = {"detail": 48}
 
     def order_cell(order: CouplingOrders) -> str:
         return palette.paint(_order(order), palette.ORDER, color=color)
@@ -446,7 +448,20 @@ def virtual_evaluation_summary(
     stability = _stability_table(result, prettytable, color)
     if stability is not None:
         tables.append(stability)
-    return "\n\n".join((header, *(str(table.get_string()) for table in tables)))
+    out = "\n\n".join((header, *(str(table.get_string()) for table in tables)))
+    return out + warnings_line(result, color)
+
+
+def warnings_line(result: Any, color: bool) -> str:
+    """The one dim line under a result's tables that names its captured
+    warnings (``result.warnings``, m-lit ux-besteffort), or nothing."""
+
+    from pyamplicol.api.result_warnings import summary_line
+
+    line = summary_line(tuple(getattr(result, "warnings", ())))
+    return (
+        "" if line is None else "\n" + palette.paint(line, palette.MUTED, color=color)
+    )
 
 
 def virtual_order_summary(result: Any, *, prettytable: Any, color: bool = False) -> str:

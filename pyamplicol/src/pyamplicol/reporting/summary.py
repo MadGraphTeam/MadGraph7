@@ -3366,7 +3366,9 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
     if isinstance(value, CheckReport):
         from .checks import check_report_summary
 
-        return check_report_summary(value, prettytable=prettytable, color=color)
+        return check_report_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
 
     if isinstance(value, Mapping) and value:
         from pyamplicol.correlators import CorrelatedValue
@@ -3397,7 +3399,9 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             )
 
     if isinstance(value, GenerationResult):
-        return _generation_summary(value, prettytable=prettytable, color=color)
+        return _generation_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
     if isinstance(value, ResolvedEvaluation):
         return _resolved_evaluation_summary(
             value,
@@ -3487,3 +3491,13 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
 
 
 __all__ = ["render_summary"]
+
+
+def _captured_line(value: Any, color: bool) -> str:
+    """One dim line naming a result's captured warnings (``warnings``,
+    m-lit ux-besteffort), or nothing."""
+
+    from pyamplicol.api.result_warnings import summary_line
+
+    line = summary_line(tuple(getattr(value, "warnings", ())))
+    return "" if line is None else "\n" + _paint(line, "LIGHTBLACK_EX", enabled=color)

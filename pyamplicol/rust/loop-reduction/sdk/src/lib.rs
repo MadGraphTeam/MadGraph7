@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: 0BSD
 //! Source-only standalone virtual SDK. The safe Rust and C interfaces share the
 //! existing native executor; neither links Python or implements loop reduction.
+mod best_effort;
 mod correlated;
 mod ffi;
+pub use best_effort::{ON_FAILURE, OnFailure, bounded_reasons};
 pub use correlated::{
     Complex64, CorrelatedEvaluation, CorrelatedShape, DecimalComplexValues, SpinSources,
 };
@@ -49,6 +51,11 @@ fn product(values: &[usize]) -> RusticolResult<usize> {
 
 /// Point statuses are independent of function/ABI errors. A failed point has no
 /// numerical row. Ordinary success does not establish numerical accuracy.
+/// `BestEffort` (m-lit ux-besteffort, the default failure policy
+/// [`OnFailure::BestEffort`]): a point no configured alternative accepted,
+/// with the unchecked reduction's value as its row, never a success; its
+/// refusal and uncertainty are in the result (`uncertainties`,
+/// `diagnostics_json` "best_effort").
 /// Plan v4 runtimes return `AccuracyNotEstablished` or `Failed`; `Verified`
 /// and `Rescued` keep their values but are never returned (the stability
 /// rescue is the Python API's).
@@ -60,6 +67,7 @@ pub enum PointStatus {
     Rescued = 2,
     Failed = 3,
     AccuracyNotEstablished = 4,
+    BestEffort = 5,
 }
 
 #[repr(C)]
@@ -93,6 +101,10 @@ pub struct Evaluation {
     pub helicity_ids: Vec<String>,
     pub color_ids: Vec<String>,
     pub diagnostics_json: String,
+    /// Per requested point the relative uncertainty of a `BestEffort`
+    /// point's value (NaN for every other point, and for a best-effort point
+    /// without an estimate; m-lit ux-besteffort).
+    pub uncertainties: Vec<f64>,
     /// Double-double and arbitrary-precision evaluations: the exact values
     /// (the Python API's `Decimal` results) as decimal literals, in the
     /// layout of `born` and `virtual_values` (absent poles `None`); `born`
@@ -399,6 +411,9 @@ pub struct Runtime {
     /// (`reduction_policy::DEFAULT_UNCHECKED`, off, until
     /// [`Runtime::set_reduction_unchecked`]).
     unchecked: bool,
+    /// The failure policy of later evaluations (m-lit ux-besteffort;
+    /// [`Runtime::set_on_failure`], best-effort by default).
+    on_failure: OnFailure,
     /// The stability checks of later binary64 evaluations (none by default:
     /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
     checks: StabilityChecks,
@@ -522,6 +537,7 @@ impl Runtime {
             reduction,
             target,
             unchecked: reduction_policy::DEFAULT_UNCHECKED,
+            on_failure: OnFailure::default(),
             checks: StabilityChecks::default(),
             kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
             kinematics_binary64: kinematics_improvement::DEFAULT_BINARY64,
@@ -937,8 +953,41 @@ impl Runtime {
         )
     }
     /// Decimal literals remain exact input snapshots; the returned carrier is
-    /// binary64.
+    /// binary64. The failure policy ([`Runtime::set_on_failure`]) applies.
     pub fn evaluate_decimal(
+        &mut self,
+        momenta: Vec<String>,
+        point_ids: Vec<u64>,
+        scales: Vec<String>,
+        resolved: bool,
+        strategy: Option<&str>,
+    ) -> RusticolResult<Evaluation> {
+        let base = self.evaluate_decimal_raw(
+            momenta.clone(),
+            point_ids.clone(),
+            scales.clone(),
+            resolved,
+            strategy,
+        )?;
+        let inputs = best_effort::CallInputs {
+            momenta: &momenta,
+            point_ids: &point_ids,
+            scales: &scales,
+            selection: None,
+            sources: None,
+        };
+        self.with_policy(base, inputs, |runtime, subset| {
+            runtime.evaluate_decimal_raw(
+                subset.momenta,
+                subset.point_ids,
+                subset.scales,
+                resolved,
+                strategy,
+            )
+        })
+    }
+    /// [`Runtime::evaluate_decimal`] without the failure policy.
+    fn evaluate_decimal_raw(
         &mut self,
         momenta: Vec<String>,
         point_ids: Vec<u64>,
@@ -1059,8 +1108,45 @@ impl Runtime {
         )
     }
 
-    /// [`Runtime::evaluate_selected`] of exact decimal inputs.
+    /// [`Runtime::evaluate_selected`] of exact decimal inputs. The failure
+    /// policy ([`Runtime::set_on_failure`]) applies.
     pub fn evaluate_selected_decimal(
+        &mut self,
+        momenta: Vec<String>,
+        point_ids: Vec<u64>,
+        scales: Vec<String>,
+        resolved: bool,
+        strategy: Option<&str>,
+        selection: &Selection,
+    ) -> RusticolResult<Evaluation> {
+        let base = self.evaluate_selected_decimal_raw(
+            momenta.clone(),
+            point_ids.clone(),
+            scales.clone(),
+            resolved,
+            strategy,
+            selection,
+        )?;
+        let inputs = best_effort::CallInputs {
+            momenta: &momenta,
+            point_ids: &point_ids,
+            scales: &scales,
+            selection: Some(selection),
+            sources: None,
+        };
+        self.with_policy(base, inputs, |runtime, subset| {
+            runtime.evaluate_selected_decimal_raw(
+                subset.momenta,
+                subset.point_ids,
+                subset.scales,
+                resolved,
+                strategy,
+                subset.selection.as_ref().expect("the call's selection"),
+            )
+        })
+    }
+    /// [`Runtime::evaluate_selected_decimal`] without the failure policy.
+    fn evaluate_selected_decimal_raw(
         &mut self,
         momenta: Vec<String>,
         point_ids: Vec<u64>,
@@ -1125,7 +1211,7 @@ impl Runtime {
                 return self
                     .born_selected(momenta, point_ids, scales, resolved, strategy, selection);
             }
-            return self.evaluate_decimal(momenta, point_ids, scales, resolved, strategy);
+            return self.evaluate_decimal_raw(momenta, point_ids, scales, resolved, strategy);
         }
         // A loop-induced process: the Python API's order (the colour
         // resolution, then the colour flows, then the helicity IDs).
@@ -1174,7 +1260,7 @@ impl Runtime {
         {
             // Nothing selected: the ordinary or resolved call
             // (`rusticol_virtual_evaluate`), its records included.
-            return self.evaluate_decimal(momenta, point_ids, scales, resolved, strategy);
+            return self.evaluate_decimal_raw(momenta, point_ids, scales, resolved, strategy);
         }
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         if let Some(strategy) = strategy {
@@ -1807,7 +1893,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                 let reason = reduction_policy::fallback_rejected(
                     &choice.effective,
                     fallback,
-                    &first.join("; "),
+                    &bounded_reasons(&first).join("; "),
                     arithmetic.name(),
                     estimate,
                     target,
@@ -1831,7 +1917,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                         reason: reduction_policy::fallback_served(
                             &choice.effective,
                             fallback,
-                            &first.join("; "),
+                            &bounded_reasons(&first).join("; "),
                         ),
                         estimate,
                     },
@@ -1845,11 +1931,13 @@ pub(crate) fn with_fallback<P: PointOutcome>(
             .iter()
             .map(|reason| reduction_policy::fallback_failed(fallback, reason))
             .collect();
+        // One message per reason class with the count of the others (the
+        // Python API's bounded reasons, m-lit ux-besteffort F6).
         record.points.insert(
             index,
             FallbackPoint {
                 effective: None,
-                reason: second.join("; "),
+                reason: bounded_reasons(&second).join("; "),
                 estimate: None,
             },
         );
@@ -2022,6 +2110,7 @@ impl Evaluation {
             helicity_ids: Vec::new(),
             color_ids: Vec::new(),
             diagnostics_json,
+            uncertainties: Vec::new(),
             decimal: decimal_values(arithmetic, born, virtual_values),
         })
     }
@@ -2175,6 +2264,7 @@ impl Evaluation {
             helicity_ids: kept.iter().map(|i| format!("h{i}")).collect(),
             color_ids: axes.colour_ids.clone(),
             diagnostics_json,
+            uncertainties: Vec::new(),
             decimal: decimal_values(arithmetic, born, virtual_values),
         })
     }

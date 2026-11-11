@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from contextlib import nullcontext
@@ -1912,6 +1913,37 @@ def point_estimate(
     )
 
 
+# A number in a reason text (an index, a count, a measure): masked to form
+# the reason's class (``bounded_reasons``).
+_NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+
+
+def bounded_reasons(reasons: Sequence[str]) -> list[str]:
+    """``reasons`` (one failed point's, one message per failed lane or
+    check) with one message per distinct reason CLASS, the message with its
+    numbers masked (the family, monomial and lane indices, the measured
+    deviations): the first message of each class in first-seen order, with
+    the count of the other messages of that class appended (``" (+N more
+    like this)"``). Generic and size-bounded by the number of distinct
+    reason texts, not by the lane count (m-lit ux-besteffort F6: a refused
+    g g > z g g point had ~11700 lane messages, ~8.8 MB)."""
+
+    first: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for reason in reasons:
+        reason = str(reason)
+        key = _NUMBER.sub("#", reason)
+        if key in first:
+            counts[key] += 1
+        else:
+            first[key] = reason
+            counts[key] = 0
+    return [
+        message if counts[key] == 0 else f"{message} (+{counts[key]} more like this)"
+        for key, message in first.items()
+    ]
+
+
 class FailedPoints(ArithmeticError):
     """Some points of a native batch failed (a reduction lane's status, an
     ``ImpreciseResult`` master or a non-finite numerator, also in a rotation
@@ -1925,7 +1957,12 @@ class FailedPoints(ArithmeticError):
 
     def __init__(self, results: list[Any], failures: Mapping[int, list[str]]):
         self.results = results
-        self.failures = dict(failures)
+        # One message per distinct reason class, with the count of the
+        # others (``bounded_reasons``; a refused point can fail thousands of
+        # lanes with one reason each, m-lit ux-besteffort F6).
+        self.failures = {
+            index: bounded_reasons(reasons) for index, reasons in failures.items()
+        }
         super().__init__(
             f"{len(self.failures)} of {len(results)} points failed: {self.failures}"
         )
