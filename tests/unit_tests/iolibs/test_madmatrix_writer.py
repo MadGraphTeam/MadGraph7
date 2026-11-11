@@ -68,6 +68,8 @@ class TestRunningHelasParameters(unittest.TestCase):
         self.assertIn('const fptype_sv & running_real', text)
         self.assertIn('const fptype_sv & aS', text)
         self.assertIn('const fptype_sv & G', text)
+        self.assertIn('constexpr fptype_amp PI = M_PI;', text)
+        self.assertNotIn('Parameters::mdl_PI', text)
         self.assertNotIn('Parameters::mdl_running', text)
         self.assertNotIn('Parameters::current->mdl_running', text)
         # Model-specific configuration must not leak into later exports.

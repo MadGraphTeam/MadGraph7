@@ -82,7 +82,8 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
                     # plus direct aS/G references, all with different input values.
                     def factor(alpha):
                         r = (alpha / 0.1)**2
-                        numerator = 1 + complex(0.25, 0.75)*r + alpha + math.sqrt(4*math.pi*alpha)
+                        numerator = (1 + complex(0.25, 0.75)*r + alpha
+                                     + math.sqrt(4*math.pi*alpha)/(2*math.pi))
                         return abs(numerator)**2 / ((200**2 - 91.188**2*(1+r))**2
                                                     + (91.188*2.441404)**2)
                     for actual, value, alpha in zip(baseline, fixed, alphas):

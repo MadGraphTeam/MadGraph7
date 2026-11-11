@@ -33,7 +33,7 @@ class Propagator:
 Hrun = Propagator('Hrun', '(1 + running_real + running_complex)',
     '(P(-1,id)**2 - Mass(id)**2 + complex(0,1)*Mass(id)*Width(id))**2')
 Zrun = Propagator('Zrun',
-    '(-Metric(1,2) + P(1,id)*P(2,id)/Mass(id)**2)*(1 + running_complex + aS + G)',
+    '(-Metric(1,2) + P(1,id)*P(2,id)/Mass(id)**2)*(1 + running_complex + aS + G/(2*cmath.pi))',
     'P(-1,id)**2 - Mass(id)**2*(1 + running_real) + complex(0,1)*Mass(id)*Width(id)')
 ''')
     with open(os.path.join(path, '__init__.py'), 'a') as stream:

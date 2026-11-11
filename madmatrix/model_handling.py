@@ -415,6 +415,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     # compile-time constant, i.e. HRDCOD=1 is required there.
     def get_model_parameter_txt(self, name):
         """Define a model parameter which the routine body uses"""
+        if name == 'PI':
+            return '    constexpr fptype_amp PI = M_PI;\n'
         # ALOHA sees the UFO name ('dWT'), the generated Parameters class uses
         # the prefixed one ('mdl_dWT'), exactly as in the fortran writer
         mdlname = model_parameter_name(name)
@@ -810,6 +812,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             name = match.group()
             if name == 'cI':
                 return 'static_cast<cxtype_denom_sv>(cxsmpl<fptype_denom>(0., 1.))'
+            if name == 'PI':
+                return 'static_cast<fptype_denom>(M_PI)'
             if name in ('one', 'two', 'half', 'quarter'):
                 return name + 'd'
             if name in running:
