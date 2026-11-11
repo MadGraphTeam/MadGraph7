@@ -50,14 +50,12 @@ PROCESS_REQUEST_REFUSALS = (
         "brackets other than the virtual ([real=QCD], [LOonly=QCD]: only the "
         "one-loop virtual is computed), amplitude-level limits other than "
         "QED=2 / QED<=2; and, in a plain ProcessRequest, any MG5_aMC syntax",
-        "request each decay ('t > b w+') as its own process; [QCD], "
-        "[virt=QCD], [QCD QED], [noborn=QCD], [sqrvirt=QCD], QED=2, "
-        "QED<=2, QCD^2<=4 (also ==, <, >, >=) and '/ x' are translated into "
-        "the run-card settings (process.loop_coupling_orders, "
-        "process.loop_induced, process.max_coupling_orders, "
-        "process.squared_coupling_orders, generation.particle_veto) when the "
-        "expression is given as a run-card process entry, with --process, or "
-        "to pyamplicol.generate / Generator.plan / Generator.generate",
+        "the served syntax ([QCD], [virt=QCD], [QCD QED], [noborn=QCD], "
+        "QED=2, QCD^2<=4, '/ x'), which a run-card process entry, --process "
+        "and pyamplicol.generate / Generator translate into "
+        "process.loop_coupling_orders, process.loop_induced, "
+        "process.max_coupling_orders, process.squared_coupling_orders and "
+        "generation.particle_veto; each decay ('t > b w+') as its own process",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in PROCESS_REQUEST_REFUSALS}

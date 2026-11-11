@@ -999,11 +999,24 @@ def _selected_loop_orders(loop_orders, partners, squared, label):
     if not kept:
         from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
+        sectors = sorted(
+            {
+                " ".join(
+                    f"{name}^{power}"
+                    for name, power in sorted(
+                        (n, loop.get(n, 0) + partner.get(n, 0))
+                        for n in {*loop, *partner}
+                    )
+                    if power
+                )
+                for loop in loops
+                for partner in partner_maps
+            }
+        )
         raise LoopRequestUnsupported(
             "squared-order-selection",
-            f"{label}: no squared-order sector of the loop orders "
-            f"{[dict(loop) for loop in loops]} with "
-            f"{[dict(partner) for partner in partner_maps]} passes {list(squared)}",
+            f"{label}: none of its squared-order sectors ({', '.join(sectors)}) "
+            f"passes {', '.join(squared)}",
         )
     return kept[0] if len(kept) == 1 else tuple(kept)
 
@@ -1146,9 +1159,7 @@ def _loop_induced_request(backend, context, index, member, memo):
     if base.squared_orders:
         # Only the loop orders some selected loop x loop sector pairs.
         loops = [orders] if isinstance(orders, Mapping) else list(orders)
-        orders = _selected_loop_orders(
-            orders, loops, base.squared_orders, member.label
-        )
+        orders = _selected_loop_orders(orders, loops, base.squared_orders, member.label)
     request = replace(base, loop_orders=orders)
     zero = tuple(
         dict(loop)
