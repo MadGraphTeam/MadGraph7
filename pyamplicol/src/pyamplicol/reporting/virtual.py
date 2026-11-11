@@ -291,6 +291,8 @@ def virtual_evaluation_summary(
         "Evaluation diagnostics",
         color=color,
     )
+    # A long detail (a refusal, a best-effort record) wraps in its column.
+    status._max_width = {"detail": 48}
 
     def order_cell(order: CouplingOrders) -> str:
         return palette.paint(_order(order), palette.ORDER, color=color)

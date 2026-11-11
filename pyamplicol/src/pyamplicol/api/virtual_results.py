@@ -415,27 +415,15 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
     """The lane detail of a best-effort value (``VirtualBestEffort``): what
     the value is and its uncertainty, or that none could be given."""
 
-    where = {
-        "stability-checks": "the call's stability checks",
-        "rotation": "a rotation re-test of this point",
-    }
-    head = (
-        "best effort: every configured alternative refused or failed the point; "
-        "the value is the unchecked reduction's, accuracy not established"
-    )
+    where = {"stability-checks": "call's checks", "rotation": "rotation re-test"}
+    head = "refused; value of the unchecked reduction (best effort)"
     if record.uncertainty is None:
-        tail = "no uncertainty could be estimated (the re-test gave no number)"
+        tail = "no uncertainty could be estimated"
     else:
-        tail = (
-            f"estimated relative uncertainty {record.uncertainty:.2e} "
-            f"({where[record.source]})"
-        )
+        tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
     if record.backend_deviation is not None:
-        tail += (
-            f"; the backend's own lane deviation {record.backend_deviation:.2e} "
-            "of the lane's term scale"
-        )
-    return f"{head}; {tail}"
+        tail += f"; backend deviation {record.backend_deviation:.2e}"
+    return f"{head}; {tail}; refusal in failures / --json"
 
 
 @dataclass(frozen=True, slots=True)
