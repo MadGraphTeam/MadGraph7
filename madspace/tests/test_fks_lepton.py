@@ -105,7 +105,7 @@ def test_luminosity_matches_generate_x_ee(path):
     ndim = data["ndim"]
     r = np.array([point["x"][ndim - 5 : ndim - 3] for _, point in rows])
     tau = np.array([point["noevpr"]["tau_born_lower_bound"] for _, point in rows])
-    luminosity = ms.LeptonLuminosity(s_lab(data), BETA, s_hat_min_condition=True)
+    luminosity = ms.FKSLeptonLuminosity(s_lab(data), BETA, s_hat_min_condition=True)
     x1, x2, s_hat, omx1, omx2, det = map(
         to_numpy,
         luminosity.map_forward(
@@ -317,7 +317,7 @@ def lepton_mapping(data, cuts_floor=0.0, initial_map="symmetric"):
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
         sqrt_s_hat_condition=True,
     )
-    luminosity = ms.LeptonLuminosity(s_lab(data), BETA, s_hat_min_condition=True)
+    luminosity = ms.FKSLeptonLuminosity(s_lab(data), BETA, s_hat_min_condition=True)
     mapping = fks_configuration_mapping(
         born,
         data["fks_configurations"],
@@ -472,7 +472,7 @@ def test_invalid_lepton_mappings():
             masses, 1000.0, mode=ms.PhaseSpaceMapping.TChannelMode.rambo, **options
         )
 
-    luminosity = ms.LeptonLuminosity(1e6, BETA, s_hat_min_condition=True)
+    luminosity = ms.FKSLeptonLuminosity(1e6, BETA, s_hat_min_condition=True)
     fixed = born(leptonic=True, sqrt_s_hat_condition=True)
     mapping = ms.FKSConfigurationMapping(fixed, configurations, luminosity=luminosity)
     assert mapping.random_dim() == fixed.random_dim() + 5
@@ -481,7 +481,7 @@ def test_invalid_lepton_mappings():
             ms.FKSConfigurationMapping(bad_born, configurations, luminosity=luminosity)
     with pytest.raises(ValueError, match="s_hat_min condition"):
         ms.FKSConfigurationMapping(
-            fixed, configurations, luminosity=ms.LeptonLuminosity(1e6, BETA)
+            fixed, configurations, luminosity=ms.FKSLeptonLuminosity(1e6, BETA)
         )
     with pytest.raises(ValueError, match="needs a lepton luminosity"):
         ms.FKSConfigurationMapping(fixed, configurations)
@@ -490,5 +490,5 @@ def test_invalid_lepton_mappings():
     with pytest.raises(ValueError, match="sqrt_s_hat condition"):
         born(sqrt_s_hat_condition=True)
     for bad in [dict(beta=1.0), dict(s_hat_min=1e6), dict(s_hat_min=-1.0)]:
-        with pytest.raises(ValueError, match="LeptonLuminosity"):
-            ms.LeptonLuminosity(1e6, **{"beta": BETA, **bad})
+        with pytest.raises(ValueError, match="FKSLeptonLuminosity"):
+            ms.FKSLeptonLuminosity(1e6, **{"beta": BETA, **bad})

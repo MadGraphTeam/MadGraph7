@@ -806,7 +806,7 @@ lepton_x_sample:
     - name: det
       type: [float]
       desc: "Jacobian of the mapping"
-  desc: "Maps a random number to the momentum fraction of a lepton beam as generate_x_ee of genps_fks.f, 1 - x = (1 - x_min) r^(1 / (1 - beta)). See @ref LeptonLuminosity."
+  desc: "Maps a random number to the momentum fraction of a lepton beam as generate_x_ee of genps_fks.f, 1 - x = (1 - x_min) r^(1 / (1 - beta)). See @ref FKSLeptonLuminosity."
 
 lepton_x_sample_inverse:
   inputs:
@@ -826,7 +826,7 @@ lepton_x_sample_inverse:
     - name: det
       type: [float]
       desc: "Jacobian of the mapping"
-  desc: "Inverse of lepton_x_sample. See @ref LeptonLuminosity."
+  desc: "Inverse of lepton_x_sample. See @ref FKSLeptonLuminosity."
 
 diff_cross_section:
   inputs:

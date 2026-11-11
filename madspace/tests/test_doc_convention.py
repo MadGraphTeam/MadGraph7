@@ -43,7 +43,7 @@ CASES = {
         mass=0.0,
         width=0.0,
     ),
-    "LeptonLuminosity": dict(
+    "FKSLeptonLuminosity": dict(
         s_lab=1.0e6, beta=0.975, s_hat_min=1.0e4, s_hat_min_condition=False
     ),
     "TwoBodyDecay": dict(com=True),

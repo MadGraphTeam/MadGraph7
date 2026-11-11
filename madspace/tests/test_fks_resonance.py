@@ -440,7 +440,7 @@ def test_lepton_beams():
     born = ms.PhaseSpaceMapping(
         z_topology([0.0] * 4), SQRT_S, leptonic=True, sqrt_s_hat_condition=True
     )
-    luminosity = ms.LeptonLuminosity(SQRT_S**2, 0.975, s_hat_min_condition=True)
+    luminosity = ms.FKSLeptonLuminosity(SQRT_S**2, 0.975, s_hat_min_condition=True)
     pairs = [(6, 0), (6, 2), (6, 4), (6, 5)]
     resonances = [[[]], [[]], [[4, 5, 6]], [[4, 5, 6]]]
     mapping = ms.FKSConfigurationMapping(

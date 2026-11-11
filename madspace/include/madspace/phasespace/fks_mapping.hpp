@@ -47,7 +47,7 @@ namespace madspace {
  * Cuts belong to the real emission and the counter-events, not to the Born, so
  * the Born mapping must have none, except a floor on @f$\sqrt{\hat s}@f$ for
  * a final-state emitter (see fks_sqrt_s_hat_min). Lepton beams need an
- * @ref FKSConfigurationMapping with a @ref LeptonLuminosity.
+ * @ref FKSConfigurationMapping with a @ref FKSLeptonLuminosity.
  *
  * With `mirror_beams` the Born mapping takes leg 1 from beam 2 for
  * `mirror_index` 1, along @f$-z@f$, with its momentum fraction x1. The emission
@@ -264,7 +264,7 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  * alternative, with the configurations as channels, is a
  * @ref MultiChannelMapping of the FKSMappings.
  *
- * **Lepton beams.** With a @ref LeptonLuminosity the momentum fractions come
+ * **Lepton beams.** With a @ref FKSLeptonLuminosity the momentum fractions come
  * from it, and the Born mapping is leptonic with the `sqrt_s_hat` condition,
  * evaluated at the partonic energy that each event needs. This is the mapping
  * of genps_fks.f for lepton PDFs (lpp = +-3, +-4). A final-state emitter
@@ -352,7 +352,7 @@ public:
      *                          fks_sqrt_s_hat_min gives it: the floor of the
      *                          Born for a final-state emitter, and raising
      *                          @p s_hat_min for an incoming one.
-     * @param luminosity        For lepton beams, the @ref LeptonLuminosity of
+     * @param luminosity        For lepton beams, the @ref FKSLeptonLuminosity of
      *                          the momentum fractions, with the `s_hat_min`
      *                          condition. The Born mapping is then leptonic,
      *                          with the `sqrt_s_hat` condition, no beam
@@ -376,7 +376,7 @@ public:
         const std::vector<Configuration>& configurations,
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
-        const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
+        const std::optional<FKSLeptonLuminosity>& luminosity = std::nullopt,
         FKSRadiation::InitialMap initial_map = FKSRadiation::asymmetric,
         const nested_vector3<std::size_t>& resonances = {}
     );
@@ -403,7 +403,7 @@ public:
         const std::vector<FKSConfiguration>& configurations,
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
-        const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
+        const std::optional<FKSLeptonLuminosity>& luminosity = std::nullopt,
         FKSRadiation::InitialMap initial_map = FKSRadiation::asymmetric,
         const nested_vector3<std::size_t>& resonances = {}
     );
@@ -416,7 +416,7 @@ public:
     /// The lower bound on sqrt(s_hat) from the cuts.
     double sqrt_s_hat_floor() const { return _sqrt_s_hat_floor; }
     /// The luminosity of lepton beams, if any.
-    const std::optional<LeptonLuminosity>& luminosity() const { return _luminosity; }
+    const std::optional<FKSLeptonLuminosity>& luminosity() const { return _luminosity; }
     /// The map of an emission off an incoming parton.
     FKSRadiation::InitialMap initial_map() const { return _initial_map; }
     /// The members of the resonances per configuration and permutation, in
@@ -582,7 +582,7 @@ private:
     std::vector<Configuration> _configurations;
     double _s_hat_min;
     double _sqrt_s_hat_floor;
-    std::optional<LeptonLuminosity> _luminosity;
+    std::optional<FKSLeptonLuminosity> _luminosity;
     FKSRadiation::InitialMap _initial_map;
     // per configuration the lower end of the energy squared of the Born of
     // lepton beams

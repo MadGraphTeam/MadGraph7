@@ -49,11 +49,11 @@ Mapping::Result Luminosity::build_inverse_impl(
     return {{{"r_s", result["r"]}, {"r_x", r_x}}, det};
 }
 
-LeptonLuminosity::LeptonLuminosity(
+FKSLeptonLuminosity::FKSLeptonLuminosity(
     double s_lab, double beta, double s_hat_min, bool s_hat_min_condition
 ) :
     Mapping(
-        "LeptonLuminosity",
+        "FKSLeptonLuminosity",
         {{"r1", batch_float}, {"r2", batch_float}},
         {{"x1", batch_float},
          {"x2", batch_float},
@@ -73,19 +73,19 @@ LeptonLuminosity::LeptonLuminosity(
     _s_hat_min(s_hat_min),
     _s_hat_min_condition(s_hat_min_condition) {
     if (!(s_lab > 0.) || !std::isfinite(s_lab)) {
-        throw std::invalid_argument("LeptonLuminosity: s_lab must be positive");
+        throw std::invalid_argument("FKSLeptonLuminosity: s_lab must be positive");
     }
     if (!(beta < 1.) || !std::isfinite(beta)) {
-        throw std::invalid_argument("LeptonLuminosity: beta must be below 1");
+        throw std::invalid_argument("FKSLeptonLuminosity: beta must be below 1");
     }
     if (!(s_hat_min >= 0.) || !(s_hat_min < s_lab)) {
         throw std::invalid_argument(
-            "LeptonLuminosity: s_hat_min must be in [0, s_lab)"
+            "FKSLeptonLuminosity: s_hat_min must be in [0, s_lab)"
         );
     }
 }
 
-Value LeptonLuminosity::tau_min(
+Value FKSLeptonLuminosity::tau_min(
     FunctionBuilder& fb, const NamedVector<Value>& conditions
 ) const {
     if (_s_hat_min_condition) {
@@ -94,7 +94,7 @@ Value LeptonLuminosity::tau_min(
     return _s_hat_min / _s_lab;
 }
 
-Mapping::Result LeptonLuminosity::build_forward_impl(
+Mapping::Result FKSLeptonLuminosity::build_forward_impl(
     FunctionBuilder& fb,
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
@@ -113,7 +113,7 @@ Mapping::Result LeptonLuminosity::build_forward_impl(
     };
 }
 
-Mapping::Result LeptonLuminosity::build_inverse_impl(
+Mapping::Result FKSLeptonLuminosity::build_inverse_impl(
     FunctionBuilder& fb,
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions

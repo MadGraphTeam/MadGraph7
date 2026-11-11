@@ -131,7 +131,7 @@ private:
  * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  */
-class LeptonLuminosity : public Mapping {
+class FKSLeptonLuminosity : public Mapping {
 public:
     /**
      * @param s_lab                Squared collider energy
@@ -145,7 +145,7 @@ public:
      *                             `s_hat_min` condition.
      * @throws std::invalid_argument for parameters out of their range.
      */
-    LeptonLuminosity(
+    FKSLeptonLuminosity(
         double s_lab,
         double beta,
         double s_hat_min = 0.,

@@ -818,8 +818,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Luminosity::Luminosity")
         );
 
-    py::classh<LeptonLuminosity, Mapping>(
-        m, "LeptonLuminosity", pydoc::doc("LeptonLuminosity")
+    py::classh<FKSLeptonLuminosity, Mapping>(
+        m, "FKSLeptonLuminosity", pydoc::doc("FKSLeptonLuminosity")
     )
         .def(
             py::init<double, double, double, bool>(),
@@ -827,19 +827,25 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beta"),
             py::arg("s_hat_min") = 0.,
             py::arg("s_hat_min_condition") = false,
-            pydoc::doc("LeptonLuminosity::LeptonLuminosity")
+            pydoc::doc("FKSLeptonLuminosity::FKSLeptonLuminosity")
         )
-        .def("s_lab", &LeptonLuminosity::s_lab, pydoc::doc("LeptonLuminosity::s_lab"))
-        .def("beta", &LeptonLuminosity::beta, pydoc::doc("LeptonLuminosity::beta"))
+        .def(
+            "s_lab",
+            &FKSLeptonLuminosity::s_lab,
+            pydoc::doc("FKSLeptonLuminosity::s_lab")
+        )
+        .def(
+            "beta", &FKSLeptonLuminosity::beta, pydoc::doc("FKSLeptonLuminosity::beta")
+        )
         .def(
             "s_hat_min",
-            &LeptonLuminosity::s_hat_min,
-            pydoc::doc("LeptonLuminosity::s_hat_min")
+            &FKSLeptonLuminosity::s_hat_min,
+            pydoc::doc("FKSLeptonLuminosity::s_hat_min")
         )
         .def(
             "s_hat_min_condition",
-            &LeptonLuminosity::s_hat_min_condition,
-            pydoc::doc("LeptonLuminosity::s_hat_min_condition")
+            &FKSLeptonLuminosity::s_hat_min_condition,
+            pydoc::doc("FKSLeptonLuminosity::s_hat_min_condition")
         );
 
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
@@ -2003,7 +2009,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<FKSConfigurationMapping::Configuration>&,
                 double,
                 double,
-                const std::optional<LeptonLuminosity>&,
+                const std::optional<FKSLeptonLuminosity>&,
                 FKSRadiation::InitialMap,
                 const nested_vector3<std::size_t>&>(),
             py::arg("born"),
@@ -2021,7 +2027,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<FKSConfiguration>&,
                 double,
                 double,
-                const std::optional<LeptonLuminosity>&,
+                const std::optional<FKSLeptonLuminosity>&,
                 FKSRadiation::InitialMap,
                 const nested_vector3<std::size_t>&>(),
             py::arg("born"),

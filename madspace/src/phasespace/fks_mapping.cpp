@@ -444,7 +444,7 @@ const PhaseSpaceMapping& checked_configuration_born(
     const PhaseSpaceMapping& born,
     const std::vector<FKSConfigurationMapping::Configuration>& configurations,
     double sqrt_s_hat_floor,
-    const std::optional<LeptonLuminosity>& luminosity
+    const std::optional<FKSLeptonLuminosity>& luminosity
 ) {
     if (luminosity &&
         (!born.leptonic() || !born.sqrt_s_hat_condition() ||
@@ -576,7 +576,7 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     const std::vector<FKSConfiguration>& configurations,
     double s_hat_min,
     double sqrt_s_hat_floor,
-    const std::optional<LeptonLuminosity>& luminosity,
+    const std::optional<FKSLeptonLuminosity>& luminosity,
     FKSRadiation::InitialMap initial_map,
     const nested_vector3<std::size_t>& resonances
 ) :
@@ -595,7 +595,7 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     const std::vector<Configuration>& configurations,
     double s_hat_min,
     double sqrt_s_hat_floor,
-    const std::optional<LeptonLuminosity>& luminosity,
+    const std::optional<FKSLeptonLuminosity>& luminosity,
     FKSRadiation::InitialMap initial_map,
     const nested_vector3<std::size_t>& resonances
 ) :
