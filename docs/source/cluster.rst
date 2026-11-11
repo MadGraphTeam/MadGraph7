@@ -82,6 +82,10 @@ training). It adds work compared to an ordinary run, since the gridpacks are mer
 the generation is split into jobs, so use an ordinary run if one process already uses all
 the cores.
 
+The temporary files of the jobs go to a new directory under ``$TMPDIR`` of the node. If the
+environment variable ``MG7_CLUSTER_JOB_ENV`` names a shell file, the jobs read it on the node
+before they start, e.g. to point ``TMPDIR`` to a node-local scratch disk.
+
 The jobs run the code from the MadGraph directory and read and write the process directory,
 so both have to be available on the nodes (a shared file system).
 The ``cpu_mode`` is resolved where you launch from, and the jobs use the libraries built

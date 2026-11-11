@@ -241,6 +241,12 @@ class ClusterRun:
         """Submit the jobs of a pass, ``jobs`` being (directory, arguments,
         required output) and wait until they are done."""
         cluster = self.cluster_objects[name][0]
+        # The batch jobs are found in the queue by a name derived from the path
+        # that wait() is given. Name them all like that: otherwise a job is not
+        # found, taken for finished, and resubmitted once cluster_retry_wait has
+        # passed without its output.
+        identifier = cluster.get_jobs_identifier(self.run_path)
+        cluster.get_jobs_identifier = lambda path, second_path=None: identifier
         for job_dir, arguments, required_output, program in jobs:
             # Batch systems run a copy of the submitted script (slurm: in its
             # spool directory), but bin/generate_events finds the directory it
@@ -248,7 +254,11 @@ class ClusterRun:
             # real file keeps that location.
             launcher = os.path.join(job_dir, "launch.sh")
             with open(launcher, "w") as f:
-                f.write("#!/bin/bash\nexec %s \"$@\"\n" % shlex.quote(program))
+                # MG7_CLUSTER_JOB_ENV: an optional shell file, read on the node
+                # before the job starts (modules, a node-local TMPDIR, ...)
+                f.write('#!/bin/bash\n[ -n "${MG7_CLUSTER_JOB_ENV:-}" ] && '
+                        '. "$MG7_CLUSTER_JOB_ENV"\nexec %s "$@"\n'
+                        % shlex.quote(program))
             os.chmod(launcher, 0o755)
             cluster.submit2(
                 launcher, arguments, cwd=job_dir,
@@ -392,7 +402,7 @@ class ClusterRun:
             arguments = [
                 "--seed", str(job["seed"]), "--events", str(job["events"]),
                 "--output_dir", job_dir, "--done_file", os.path.join(job_dir, "done"),
-                "--verbosity", "log",
+                "--verbosity", "log", "--temp_output_dir", "auto",
                 "--output_format", self.card["run"]["output_format"],
                 "--cpu_thread_pool_size", str(threads),
                 "--device", *self.devices["deploy"],
