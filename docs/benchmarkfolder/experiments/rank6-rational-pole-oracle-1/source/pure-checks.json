@@ -1,0 +1,13 @@
+{
+  "future_fixture_reproduced": true,
+  "new_compiler_calls": 0,
+  "new_native_calls": 0,
+  "owned_read_only_ps_session96188_exit": 0,
+  "owned_source_environment_session9020_exit": 0,
+  "production_changes": false,
+  "pure_test_methods": 9,
+  "python": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+  "retrospective_analysis_reproduced": true,
+  "schema": "rank6-rational-pole-oracle-pure-checks-v1",
+  "status": "pass"
+}

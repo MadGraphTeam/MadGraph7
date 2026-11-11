@@ -262,6 +262,15 @@ COLLIER disagreement remain preserved. This fixture corroboration does not
 qualify physical high-rank amplitudes or general kinematics, stability rescues,
 threshold, soft/collinear or complex-mass stress. Those physical gates remain open.
 
+A separate [exact rational pole oracle](experiments/rank6-rational-pole-oracle-1/README.md)
+corroborates all 210 nonzero UV components of the retained massive two-propagator,
+rank-six fixture. Its 15 full/partial and pole-selection rows pass an independent
+complex symmetric `1e-8` coefficient gate. Nine algebra tests and portable raw
+replay pass. This retrospective audit preserves the inherited IEEE mask 37 and
+all historical failed gates; the massive fixture has zero IR residues. The
+included all-component triangle IR specification remains uncompiled and unrun.
+It changes neither production nor the separately frozen 41-page report.
+
 The [current-source relocated deployment check](experiments/current-source-deployment-runtime-qualification-1/README.md)
 uses actual standalone and FKS/NLO CLI exports at `0fcd2cd873d6`, the installed
 `eb3d67fd…` TIRust library and the unchanged NinjaRS archive. After private

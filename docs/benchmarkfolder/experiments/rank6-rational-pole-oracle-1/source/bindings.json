@@ -1,0 +1,26 @@
+{
+  "ancestor_snapshot_scope": "All30 original parsed rows; actual effective-input/ABI proof belongs to the original portable replay.",
+  "files": {
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/index.json": {
+      "bytes": 955,
+      "copy": "inputs/ancestor-finite-audit-index.json",
+      "sha256": "5c669260ad17e9d1ef2b7991bf90720a7b22190607ea1b82df035da2f6afd3f1"
+    },
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/rows.json.gz": {
+      "bytes": 131918,
+      "copy": "inputs/rows.json.gz",
+      "sha256": "729abf58745f554684eae4e2020c52280bcb3658becf80f2cec85f3540a3f74a"
+    },
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/fixtures.json": {
+      "bytes": 8585,
+      "copy": "inputs/fixtures.json",
+      "sha256": "180cb642d3886dab8055a70a7f4fef6586e2b2c635e998aab0066e95886f53f4"
+    },
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/index.json": {
+      "bytes": 11780,
+      "copy": "inputs/ancestor-runtime-index.json",
+      "sha256": "b25130768bc8a5f8daabbcfe820160755b41b4dd2e558cd0b1a87aa49e1f6ec7"
+    }
+  },
+  "schema": "rank6-rational-poles-input-bindings-v1"
+}
