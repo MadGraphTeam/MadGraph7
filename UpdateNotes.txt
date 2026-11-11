@@ -70,15 +70,24 @@ ANNOUNCEMENT:
          the total width is a DECAY block for the PDG code of the bound state in the
          param_card, whose BR lines, if any, give the branching ratio (else the LO partial
          width does). Density matrices from the Fortran output, decays from madevent.
-         Colour-octet Fock states decay as their hadron, by heavy-quark spin symmetry
-         at LO in v: "decay Jpsi > mu+ mu-" also decays the Jpsi(1|3S18), (1|1S08) and
-         (1|3PJ8) of the events, which become J/psi (status 2, pdg 443) with the
-         branching ratio of the J/psi. The spin of the octet goes to the hadron: kept
-         for 3S1[8] > J/psi, isotropic when the transition flips the heavy-quark spin
-         (1S0[8] > J/psi), the orbital L_z isotropic for 3S1[8] > chi_cJ, and for
-         3PJ[8] > J/psi the trace over L_z of the (L_z, S_z) density of an uncoupled
-         3P[8] matrix element (new "output standalone_fortran --onia_uncoupled=True",
-         used by MadSpin), which has the interference between J = 0, 1, 2. MadSpin warns
+         Colour-octet Fock states decay to their hadron and one soft gluon, as in
+         Pythia8: "decay Jpsi > mu+ mu-" also decays the Jpsi(1|3S18), (1|1S08) and
+         (1|3PJ8) of the events, which stay in the record (status 2) at their own
+         onium_mass, 200 MeV above the hadron by default (the sm_onia masses, as
+         Onia:massSplit of Pythia8), and decay with branching ratio 1 to the J/psi
+         (status 2) and a gluon that carries their colour; the weight has the BR of the
+         J/psi only. The gluon is emitted with the E1 or M1 amplitude of the radiative
+         transitions (MadSpin/onia_radiative.py), or independently of the spins when L
+         and S are unchanged, so that summed over the gluon the spin of the octet goes
+         to the hadron by heavy-quark spin symmetry at LO in v: kept for 3S1[8] >
+         J/psi, isotropic when the transition flips the heavy-quark spin (1S0[8] >
+         J/psi), the orbital L_z isotropic for 3S1[8] > chi_cJ, and for 3PJ[8] > J/psi
+         the trace over L_z of the (L_z, S_z) density. That octet decays in the (L_z,
+         S_z) basis, against an uncoupled 3P[8] production matrix element (new "output
+         standalone_fortran --onia_uncoupled=True", used by MadSpin), which has the
+         interference between J = 0, 1, 2 (spinmode madspin/full/onshell/PA; none is
+         refused for octets). MadSpin stops when an octet is not heavier than its
+         hadron, and warns
          when the 3PJ[8] LDMEs of the events break <O(3PJ[8])> = (2J+1) <O(3P0[8])>, or
          when only some J were generated.
        - Bug fix: MadSpin stopped ("No Lorentz transformation exists: p1^2 != p2^2") on a

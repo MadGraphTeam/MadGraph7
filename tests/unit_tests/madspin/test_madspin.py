@@ -15281,43 +15281,45 @@ class TestOniaSpinTransfer(unittest.TestCase):
         self.assertTrue(np.allclose(out, ref, atol=1e-12))
 
     def test_apply_transfer(self):
-        """The production density of a process with a colour-octet onium:
-        the transfer on the onium leg, packed as GET_DENSITY packs it; with
-        the uncoupled matrix element (helicity codes -4..4 for the (L_z, S_z)
-        pairs) the partial trace, at the trace of the event's own |M|^2."""
+        """The production density of a process with a colour-octet onium. A
+        colour octet decays to its hadron and a soft gluon (onia_radiative) in
+        its own J_z, so its density is the matrix element's, untouched; a 3P
+        octet of an S-wave hadron decays in the uncoupled (L_z, S_z) basis
+        (helicity codes -4..4), whose density, from the uncoupled matrix
+        element, is kept, at the trace of the event's own |M|^2."""
         np = self.np
         reg = self.registry
         self.assertTrue(reg.needs_uncoupled(self.psi_3pj8[2]))
         self.assertFalse(reg.needs_uncoupled(self.psi_3s18))
         self.assertIs(reg.singlet_of(self.psi_3pj8[2]), self.psi)
-        plan = reg.transfer_plan([21, 21, 9945003], [3], [-1, 0, 1])
+        codes = list(range(-4, 5))
+        plan = reg.transfer_plan([21, 21, 9945003], [3], codes)
         self.assertEqual(plan['fock_hels'], [[-2, -1, 0, 1, 2]])
         self.assertEqual(plan['unc_legs'], [0])
-        self.assertEqual(plan['unc_allow'], list(range(-4, 5)))
-        rho = self.random_density(5)
-        out = reg.unpack(reg.apply_transfer(plan, reg.pack(rho)), 3)
-        ref = self.om.spin_transfer(self.psi_3pj8[2], self.psi, rho, [-2, -1, 0, 1, 2], [-1, 0, 1])
-        self.assertTrue(np.allclose(out, ref, atol=1e-12))
+        self.assertEqual(plan['unc_allow'], codes)
         unc = self.random_density(9)
         out = reg.unpack(reg.apply_transfer(plan, reg.pack(unc), uncoupled=True,
-                                            target_trace=2.), 3)
-        # codes h = 3(L_z + 1) + (S_z + 1) - 4: (L_z, S_z) = ((h+4)//3 - 1, (h+4)%3 - 1)
-        ref = np.array([[sum(unc[3 * (Lz + 1) + Sz + 1, 3 * (Lz + 1) + Szp + 1] for Lz in (-1, 0, 1))
-                         for Szp in (-1, 0, 1)] for Sz in (-1, 0, 1)])
-        self.assertTrue(np.allclose(out, ref * 2. / np.trace(ref).real, atol=1e-12))
+                                            target_trace=2.), 9)
+        self.assertTrue(np.allclose(out, unc * 2. / np.trace(unc).real, atol=1e-12))
         # two decaying legs, the octet second: the map acts on that leg only
-        plan = reg.transfer_plan([21, 21, 443, 9942003], [3, 4],
-                                 [h for a in (-1, 0, 1) for b in (-1, 0, 1) for h in (a, b)])
+        plan = reg.transfer_plan([21, 21, 443, 9945003], [3, 4],
+                                 [h for a in (-1, 0, 1) for b in codes for h in (a, b)])
         self.assertIsNone(plan['legs'][0])
-        r1, r2 = self.random_density(3), self.random_density(3)
-        out = reg.unpack(reg.apply_transfer(plan, reg.pack(np.kron(r1, r2))), 9)
-        self.assertTrue(np.allclose(out, np.kron(r1, r2), atol=1e-12))
-        plan = reg.transfer_plan([21, 21, 443, 9941003], [3, 4],
-                                 [h for a in (-1, 0, 1) for b in (-1, 0, 1) for h in (a, b)])
-        self.assertEqual(plan['fock_hels'], [[-1, 0, 1], [0]])
-        r2 = np.array([[1.5]])
-        out = reg.unpack(reg.apply_transfer(plan, reg.pack(np.kron(r1, r2))), 9)
-        self.assertTrue(np.allclose(out, np.kron(r1, np.eye(3) * 1.5 / 3), atol=1e-12))
+        r1, r2 = self.random_density(3), self.random_density(9)
+        out = reg.unpack(reg.apply_transfer(plan, reg.pack(np.kron(r1, r2)), uncoupled=True,
+                                            target_trace=5.), 27)
+        self.assertTrue(np.allclose(out, np.kron(r1, r2) * 5. / np.trace(np.kron(r1, r2)).real,
+                                    atol=1e-12))
+        # an S-wave octet, or a 3P octet of a P-wave hadron: no transfer
+        for octet in (9942003, 9941003):
+            self.assertIsNone(reg.transfer_plan([21, 21, 443, octet], [3, 4],
+                                                [h for a in (-1, 0, 1) for b in (-1, 0, 1)
+                                                 for h in (a, b)]))
+        # the pseudo-particles: the octet's own spin, the uncoupled 3P in nine pairs
+        self.assertEqual(reg.pseudo_particle(self.psi_3s18).get('spin'), 3)
+        self.assertEqual(reg.pseudo_particle(self.psi_1s08).get('spin'), 1)
+        self.assertEqual(reg.pseudo_particle(self.psi_3pj8[2]).get('spin'), 9)
+        self.assertEqual(reg.pseudo_particle(self.psi_3pj8[2]).get('color'), 8)
 
     def test_p_to_s_wave_against_shao_chao(self):
         """The trace over L_z of a 3PJ density (the L = 1 > L_H = 0 transfer) is
@@ -15636,6 +15638,71 @@ DECAY 443 9.26e-05
         self.assertAlmostEqual(br, 9.85e-02 * 0.343 * 5.961e-02, 15)
         self.assertEqual([u[1] for u in used], [9.85e-02, 5.961e-02])
         self.assertRaises(ValueError, R.branching_ratio, chain, card['decay'])
+
+    def test_octet_gluon_transfer(self):
+        """The soft gluon of a colour octet (chromo-E1, chromo-M1, or with the
+        spins kept), integrated over its direction, passes the octet's spin to
+        the hadron as heavy-quark spin symmetry does (spin_transfer); the 3P[8]
+        octet of an S-wave hadron in the uncoupled basis gives the partial
+        trace over L_z of its (L_z, S_z) density, with the interference
+        between J. The decay events of an octet give the gluon its colour."""
+        np, R = self.np, self.R
+        import MadSpin.onia_madspin as onia_madspin
+        F = self.fock
+        o3s1 = F('Jpsi(1|3S18)', 9940003, 1, 0, 1, colour=8)
+        o1s0 = F('Jpsi(1|1S08)', 9941003, 0, 0, 0, colour=8)
+        o1p1 = F('etac(1|1P18)', 9946001, 0, 1, 1, colour=8)
+        o3p = F('Jpsi(1|3P18)', 9944003, 1, 1, 1, colour=8)
+        M = 3.5
+
+        def integrated(parent, daughter, rho, uncoupled=False):
+            m1 = M * (1 - 1e-7)
+            u = np.array([0.3, -0.5, 0.81])
+            P = np.concatenate([[math.sqrt(1e6 + M * M)], 1e3 * u / np.linalg.norm(u)])
+            out = 0.
+            for d, w in self.directions(4):
+                k, p1 = R.two_body(M, 0., m1, d)
+                k, p1 = R.boost(k, P), R.boost(p1, P)
+                A = R.amplitudes(parent, daughter, P, M, k, p1, m1,
+                                 R.transition_type(parent, daughter, R.GLUON), uncoupled)
+                out = out + w * R.daughter_density(A, rho)
+            return out / np.trace(out)
+
+        cases = [(o3s1, c) for c in self.chi] + [(o1s0, self.jpsi), (o3s1, self.etac), (o3s1, self.jpsi),
+                                                 (o1s0, self.etac), (o1s0, self.hc), (o1p1, self.etac)]
+        kinds = []
+        for octet, hadron in cases:
+            kinds.append(R.transition_type(octet, hadron, R.GLUON))
+            n = 2 * octet['J'] + 1
+            a = self.rng.normal(size=(n, n)) + 1j * self.rng.normal(size=(n, n))
+            rho = a @ a.conj().T
+            got = integrated(octet, hadron, rho)
+            ref = onia_madspin.spin_transfer(octet, hadron, rho, list(range(-octet['J'], octet['J'] + 1)),
+                                             list(range(-hadron['J'], hadron['J'] + 1)))
+            self.assertLess(np.abs(got - ref / np.trace(ref)).max(), 1e-5, (octet['name'], hadron['name']))
+        self.assertEqual(kinds, ['E1', 'E1', 'E1', 'M1', 'M1', 'kept', 'kept', 'E1', 'E1'])
+        self.assertIsNone(R.transition_type(o3s1, self.jpsi))          # no photon from an octet
+        self.assertIsNone(R.transition_type(self.chi[1], self.jpsi, R.GLUON))
+        # the uncoupled 3P[8] > J/psi: the partial trace over L_z, interference between J included
+        a = self.rng.normal(size=(9, 9)) + 1j * self.rng.normal(size=(9, 9))
+        unc = a @ a.conj().T
+        got = integrated(o3p, self.jpsi, unc, uncoupled=True)
+        pairs = [R.uncoupled_pair(c) for c in range(-4, 5)]
+        ref = onia_madspin.spin_transfer(o3p, self.jpsi, np.eye(3), [-1, 0, 1], [-1, 0, 1],
+                                         rho_uncoupled=(pairs, unc))
+        self.assertLess(np.abs(got - ref / np.trace(ref)).max(), 1e-5)
+        # decay events of an octet: the gluon takes its colour
+        import random
+        chain = R.Chain(o3s1, self.jpsi, 'kept', None, boson=R.GLUON)
+        evaluator = R.Evaluator(None, {9940003: 3.3, 443: 3.0969})
+        gen = R.PoolGenerator(evaluator, {9940003: 3.3, 443: 3.0969, 21: 0.}, random.Random(2),
+                              colour_of=lambda q: 8 if q == 21 else 1)
+        ev = gen.generate(chain, 5, 3.3, scan=10)[0]
+        lines = [l.split() for l in gen.lhe_event(ev, 3.1).split('\n')[2:-1]]
+        self.assertEqual([l[0] for l in lines], ['9940003', '21', '443'])
+        self.assertEqual(lines[0][4:6], ['501', '502'])
+        self.assertEqual(lines[1][4:6], ['501', '502'])
+        self.assertEqual(lines[2][4:6], ['0', '0'])
 
     def test_decay_events_and_library(self):
         """The decay events of psi(2S) > chi_c1 gamma, chi_c1 > J/psi gamma

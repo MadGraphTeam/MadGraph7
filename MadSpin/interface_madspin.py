@@ -9085,7 +9085,10 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         # Allowed helicities per spin
         # 5: a spin-2 state (a J = 2 bound state: its J_z)
-        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1], 5: [-2, -1, 0, 1, 2]}
+        # 9: a 3P colour octet of an S-wave onium, in the uncoupled (L_z, S_z)
+        # basis, codes 3(L_z+1)+(S_z+1)-4 (onia_madspin)
+        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1], 5: [-2, -1, 0, 1, 2],
+                    9: list(range(-4, 5))}
 
         decaying_pdg = [int(part.pid) for part in init_part]
         decaying_spins = [self.model.get_particle(i).get('spin') for i in decaying_pdg]
@@ -10094,7 +10097,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         exactly the same ``_apply_production_polarization`` the real basis does,
         so the declared ids cannot drift away from the emitted ones."""
         # 5: a spin-2 state (a J = 2 bound state: its J_z)
-        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1], 5: [-2, -1, 0, 1, 2]}
+        # 9: a 3P colour octet of an S-wave onium, in the uncoupled (L_z, S_z)
+        # basis, codes 3(L_z+1)+(S_z+1)-4 (onia_madspin)
+        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1], 5: [-2, -1, 0, 1, 2],
+                    9: list(range(-4, 5))}
         spins = [self.model.get_particle(int(pdg)).get('spin')
                  for pdg in slot_pdgs]
         helicities = [list(hel_dict[spin]) for spin in spins]
@@ -13128,7 +13134,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                   allow_hel=plan['fock_allow'] if plan else allow_hel,
                                                   alphas=event.aqcd,
                                                   scale2=event.scale**2)
-            if plan and plan['unc_allow'] and getattr(self, 'f2py_module_unc', None) is not None:
+            if plan and getattr(self, 'f2py_module_unc', None) is None:
+                # the decay of the octet is written in (L_z, S_z) codes
+                raise madspin.MadSpinError('a 3P colour octet of an S-wave onium decays in the '
+                                   'uncoupled (L_z, S_z) basis, but the uncoupled '
+                                   'production (%s_unc) was not written' % self.ms_me_subdir)
+            if plan and plan['unc_allow']:
                 # a 3P octet of an S-wave hadron: the shape from the uncoupled
                 # production, the trace (the event's |M|^2) from its own
                 import numpy
@@ -13140,8 +13151,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                           scale2=event.scale**2)
                 density_array = onia.apply_transfer(plan, unc, uncoupled=True,
                                                     target_trace=numpy.trace(rho_j).real)
-            elif plan:
-                density_array = onia.apply_transfer(plan, density_array)
 
 
         #print(f"density_array = {density_array}") 

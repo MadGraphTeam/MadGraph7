@@ -31,6 +31,18 @@ is fixed at leading order in v:
 
 Higher multipoles (M2, E3: of order k/m) are not included.
 
+A colour-octet Fock state turns into its hadron in the same way, through a
+soft gluon (chromo-E1 or chromo-M1, the photon replaced by a gluon that takes
+the colour of the octet): 3S1[8] > chi_cJ g, 3PJ[8] > J/psi g (E1), 1S0[8] >
+J/psi g, 3S1[8] > eta_c g (M1), or with L and S unchanged (3S1[8] > J/psi g,
+1S0[8] > eta_c g: two E1 gluons at leading order in v) a gluon independent of
+the spins, which keeps them. Integrated over the gluon, these are the
+transfer rules of heavy-quark spin symmetry (onia_madspin.spin_transfer). The
+octet is heavier than its hadron (0.2 GeV in sm_onia, as Onia:massSplit of
+Pythia8), which gives the gluon its energy. A 3PJ[8] state of an S-wave
+hadron is decayed in the uncoupled (L_z, S_z) basis, whose density has the
+interference between the three J.
+
 The amplitudes are written covariantly with the polarisation vectors of HELAS
 (vxxxxx) that the bound-state matrix elements use, so that they live in the
 same J_z basis as the production density matrix that MadSpin contracts them
@@ -62,6 +74,7 @@ import math
 import numpy
 
 GAMMA = 22
+GLUON = 21
 METRIC = numpy.diag([1., -1., -1., -1.])
 
 
@@ -102,10 +115,26 @@ def quantum_numbers(fock):
     return (fock.get('spin') - 1) // 2, fock.get('orbital'), fock.get('J')
 
 
-def state_tensors(fock, p, mass, nsv):
+def uncoupled_pair(code):
+    """(L_z, S_z) of a helicity code -4..4 of an uncoupled P wave (the
+    template's 3*(L_z+1)+(S_z+1)-4)."""
+    return (code + 4) // 3 - 1, (code + 4) % 3 - 1
+
+
+def helicities(fock, uncoupled=False):
+    """The helicity codes of a bound state, in the order of its densities."""
+    if uncoupled:
+        return list(range(-4, 5))
+    J = fock.get('J')
+    return list(range(-J, J + 1))
+
+
+def state_tensors(fock, p, mass, nsv, uncoupled=False):
     """{J_z: (tensor, labels)} of a bound state of momentum p: labels is the
     list of its vector indices among 'orb' (L = 1) and 'spin' (S = 1), in that
-    order; the tensor is a 0-d array for L = S = 0."""
+    order; the tensor is a 0-d array for L = S = 0. With uncoupled (a 3P
+    state), the keys are the codes -4..4 of the (L_z, S_z) pairs and the
+    tensors eps_L(L_z) x eps_S(S_z)."""
     from MadSpin.onia_madspin import clebsch_gordan
     S, L, J = quantum_numbers(fock)
     if L > 1 or S > 1:
@@ -113,6 +142,11 @@ def state_tensors(fock, p, mass, nsv):
                                   % (fock.get('name'), L, S))
     eps = dict((m, polarisation(p, mass, m, nsv)) for m in (-1, 0, 1))
     out = {}
+    if uncoupled:
+        for code in range(-4, 5):
+            Lz, Sz = uncoupled_pair(code)
+            out[code] = (numpy.outer(eps[Lz], eps[Sz]), ['orb', 'spin'])
+        return out
     for Jz in range(-J, J + 1):
         if L == 0 and S == 0:
             out[Jz] = (numpy.array(1. + 0j), [])
@@ -132,10 +166,15 @@ def state_tensors(fock, p, mass, nsv):
     return out
 
 
-def transition_type(parent, daughter):
-    """'E1' or 'M1' for a radiative transition parent > daughter gamma between
-    colour singlets of the same constituents, else None."""
-    if parent.get('color') != 1 or daughter.get('color') != 1:
+def transition_type(parent, daughter, boson=GAMMA):
+    """The transition parent > daughter boson between bound states of the
+    same constituents: 'E1' (L changed by one, spin kept) or 'M1' (spin
+    changed by one, L kept), else None; a photon between colour singlets, a
+    gluon from a colour octet to a colour singlet, which may also keep L and
+    S ('kept': the gluon does not see the spins)."""
+    if boson == GAMMA and (parent.get('color') != 1 or daughter.get('color') != 1):
+        return None
+    if boson == GLUON and (parent.get('color') != 8 or daughter.get('color') != 1):
         return None
     try:
         same = sorted(parent.get('particles')) == sorted(daughter.get('particles'))
@@ -143,12 +182,14 @@ def transition_type(parent, daughter):
         same = True
     if not same:
         return None
-    Si, Li, _ = quantum_numbers(parent)
-    Sf, Lf, _ = quantum_numbers(daughter)
+    Si, Li, Ji = quantum_numbers(parent)
+    Sf, Lf, Jf = quantum_numbers(daughter)
     if abs(Li - Lf) == 1 and Si == Sf:
         return 'E1'
     if Li == Lf and abs(Si - Sf) == 1:
         return 'M1'
+    if boson == GLUON and Li == Lf and Si == Sf and (Li == 0 or Ji == Jf):
+        return 'kept'
     return None
 
 
@@ -156,7 +197,15 @@ def _contract(tp, lp, td, ld, kind, e_low, w_low):
     subs = [''.join({'orb': 'a', 'spin': 'b'}[x] for x in lp),
             ''.join({'orb': 'c', 'spin': 'd'}[x] for x in ld)]
     ops = [tp, td]
-    if kind == 'E1':
+    if kind == 'kept':
+        # the spins and the orbital state unchanged, the gluon independent
+        if 'orb' in lp:
+            ops.append(METRIC)
+            subs.append('ac')
+        if 'spin' in lp:
+            ops.append(METRIC)
+            subs.append('bd')
+    elif kind == 'E1':
         if 'orb' in lp:
             ops.append(e_low)
             subs.append('a')
@@ -179,29 +228,35 @@ def _contract(tp, lp, td, ld, kind, e_low, w_low):
     return numpy.einsum(','.join(subs) + '->', *ops)
 
 
-def amplitudes(parent, daughter, P, M, k, pf, Mf, kind=None):
-    """R[l, m, h] of parent(P, J_z = l) > daughter(pf, J_z = m) gamma(k,
-    helicity h = -1, +1), l and m from -J to J, h in (-1, +1); P, k, pf are
-    (E, px, py, pz)."""
+def amplitudes(parent, daughter, P, M, k, pf, Mf, kind=None, uncoupled=False):
+    """R[l, m, h] of parent(P, J_z = l) > daughter(pf, J_z = m) boson(k,
+    helicity h = -1, +1), l and m from -J to J (l the codes -4..4 of the
+    (L_z, S_z) pairs of an uncoupled parent), h in (-1, +1); P, k, pf are
+    (E, px, py, pz). The boson's polarisations are those of a massless vector
+    (photon or gluon; the colour is an overall factor)."""
     kind = kind or transition_type(parent, daughter)
-    if kind not in ('E1', 'M1'):
-        raise ValueError('%s > %s a is no E1 or M1 transition'
+    if kind not in ('E1', 'M1', 'kept'):
+        raise ValueError('%s > %s is no E1 or M1 transition'
                          % (parent.get('name'), daughter.get('name')))
     P = numpy.asarray(P, dtype=float)
     k = numpy.asarray(k, dtype=float)
-    tp = state_tensors(parent, P, M, -1)
+    tp = state_tensors(parent, P, M, -1, uncoupled)
     td = state_tensors(daughter, pf, Mf, +1)
-    Jp, Jd = parent.get('J'), daughter.get('J')
-    out = numpy.zeros((2 * Jp + 1, 2 * Jd + 1, 2), dtype=complex)
+    hp = helicities(parent, uncoupled)
+    Jd = daughter.get('J')
+    out = numpy.zeros((len(hp), 2 * Jd + 1, 2), dtype=complex)
     kP = dot(k, P)
     for ih, h in enumerate((-1, 1)):
         eg = polarisation(k, 0., h, +1)
         e = eg - dot(eg, P) / kP * k
         e_low = METRIC @ e
         w_low = numpy.einsum('mnrs,m,n,s->r', LEVI_CIVITA, k, e, P) if kind == 'M1' else None
-        for a, l in enumerate(range(-Jp, Jp + 1)):
+        for a, l in enumerate(hp):
             for b, m in enumerate(range(-Jd, Jd + 1)):
                 out[a, b, ih] = _contract(tp[l][0], tp[l][1], td[m][0], td[m][1], kind, e_low, w_low)
+    if kind == 'kept':
+        # a gluon independent of the spins: its two helicities share the rate
+        out /= math.sqrt(2.)
     return out
 
 
@@ -274,24 +329,32 @@ class Terminal(object):
 
 
 class Chain(object):
-    """parent > daughter gamma (E1 or M1), then sub: the daughter's own decay
-    (a Chain, a Terminal) or None (the daughter is not decayed)."""
+    """parent > daughter boson (E1, M1, or for the gluon of a colour octet
+    'kept'), then sub: the daughter's own decay (a Chain, a Terminal) or None
+    (the daughter is not decayed). boson is the photon of a radiative
+    transition or the soft gluon of a colour octet; uncoupled, a 3P[8] parent
+    in the (L_z, S_z) basis."""
 
-    def __init__(self, parent, daughter, kind, sub, text=''):
+    def __init__(self, parent, daughter, kind, sub, text='', boson=GAMMA, uncoupled=False):
         self.parent = parent
         self.daughter = daughter
         self.kind = kind
         self.sub = sub
         self.text = text
+        self.boson = boson
+        self.uncoupled = uncoupled
         self.parent_pdg = parent.get('pdg_code')
         self.daughter_pdg = daughter.get('pdg_code')
 
+    def parent_helicities(self):
+        return helicities(self.parent, self.uncoupled)
+
     def final_pdgs(self):
-        """The final state of the chain in the order of its events: the photon,
+        """The final state of the chain in the order of its events: the boson,
         then the daughter's decay products (or the daughter itself)."""
         if self.sub is None:
-            return [GAMMA, self.daughter_pdg]
-        return [GAMMA] + self.sub.final_pdgs()
+            return [self.boson, self.daughter_pdg]
+        return [self.boson] + self.sub.final_pdgs()
 
     def steps(self):
         out, c = [], self
@@ -415,13 +478,16 @@ def ambiguous(chains, masses, tolerance=1e-6):
     return out
 
 
-def branching_ratio(chain, decay_block, defaults=None, used=None):
+def branching_ratio(chain, decay_block, defaults=None, used=None, lo_widths=None):
     """The product of the BR lines of the chain's steps in the DECAY blocks of
     the param_card; a step without a BR line takes the default branching
     fraction (defaults: {pdg: (width, {sorted products: fraction})}, the PDG
     values of madgraph/models/onia_decays.py or the model's own), noted in
     used as (what, fraction); raises ValueError naming a line that neither
-    has."""
+    has. The soft gluon of a colour octet has branching ratio 1; the ordinary
+    decay that ends the chain of a colour octet, without a BR line, takes its
+    LO partial width (lo_widths: {process: width}) over the total width, as
+    MadSpin does for the decays of the colour singlet."""
     def line(pdg, ids, what):
         table = decay_block.decay_table.get(abs(pdg))
         if table:
@@ -448,11 +514,29 @@ def branching_ratio(chain, decay_block, defaults=None, used=None):
                 what, abs(pdg), len(ids), '  '.join(str(i) for i in sorted(ids))))
     br = 1.0
     for step in chain.steps():
+        if step.boson == GLUON:
+            continue
         br *= line(step.parent.get('pdg_code'), [step.daughter.get('pdg_code'), GAMMA],
                    '%s > %s a' % (step.parent.get('name'), step.daughter.get('name')))
     term = chain.terminal()
     if isinstance(term, Terminal):
-        br *= line(term.fock.get('pdg_code'), term.products, term.process)
+        pdg = term.fock.get('pdg_code')
+        if lo_widths is not None and term.process in lo_widths:
+            table = decay_block.decay_table.get(abs(pdg))
+            explicit = None
+            if table:
+                for order in (sorted(term.products), list(term.products)):
+                    try:
+                        explicit = table.get(tuple([len(order)] + list(order))).value
+                        break
+                    except KeyError:
+                        continue
+            if explicit is not None:
+                br *= explicit
+            else:
+                br *= lo_widths[term.process] / decay_block.get((abs(pdg),)).value
+        else:
+            br *= line(pdg, term.products, term.process)
     return br
 
 
@@ -508,7 +592,7 @@ class Evaluator(object):
         total = 0.
         for step in chain.steps():
             Mf = self.mass(step.daughter.get('pdg_code'))
-            photons = [i for i, (q, _) in enumerate(finals) if q == GAMMA]
+            photons = [i for i, (q, _) in enumerate(finals) if q == step.boson]
             if not photons:
                 return float('inf')
             best, off = None, None
@@ -528,7 +612,7 @@ class Evaluator(object):
         each step is the one that puts the daughter on its mass shell."""
         P = numpy.asarray(P, dtype=float)
         Mf = self.mass(chain.daughter.get('pdg_code'))
-        photons = [i for i, (q, _) in enumerate(finals) if q == GAMMA]
+        photons = [i for i, (q, _) in enumerate(finals) if q == chain.boson]
 
         def offshell(i):
             q = P - numpy.asarray(finals[i][1], dtype=float)
@@ -546,7 +630,7 @@ class Evaluator(object):
             Df = self.terminal_density(chain.sub, pf, rest)
         M = math.sqrt(max(dot(P, P), 0.))
         mf = math.sqrt(max(dot(pf, pf), 0.))
-        A = amplitudes(chain.parent, chain.daughter, P, M, k, pf, mf, chain.kind)
+        A = amplitudes(chain.parent, chain.daughter, P, M, k, pf, mf, chain.kind, chain.uncoupled)
         return transfer(A, Df)
 
 
@@ -589,8 +673,8 @@ class RadiativeLibrary(object):
             return self._base.py_get_density(pdgs=pdgs, procid=procid, p=p, pos=pos,
                                              allow_hel=allow_hel, alphas=alphas, scale2=scale2)
         chain, D = self._density(chains, p)
-        J = chain.parent.get('J')
-        idx = [int(h) + J for h in allow_hel]
+        hels = chain.parent_helicities()
+        idx = [hels.index(int(h)) for h in allow_hel]
         return pack(D[numpy.ix_(idx, idx)])
 
     def py_get_density_batch(self, pdgs, procid, p, pos, allow_hel, alphas, scale2, nbatch, next):
@@ -623,12 +707,12 @@ class RadiativeLibrary(object):
 
 
 # ------------------------------------------------------------- decay events --
-def _colour_flow(pdgs, colour_of):
+def _colour_flow(pdgs, colour_of, start=500):
     """Colour-singlet flow (ICOLUP pairs) for the products of a colourless
     state: quarks, gluons and antiquarks joined in one line (or a closed loop
-    of gluons)."""
+    of gluons); the tags start after start."""
     cols = [[0, 0] for _ in pdgs]
-    tag = [500]
+    tag = [start]
 
     def new():
         tag[0] += 1
@@ -680,8 +764,7 @@ class PoolGenerator(object):
         if len(pdgs) == 2:
             p1, p2 = two_body(M, ms[0], ms[1], random_direction(self.rng))
             return [p1, p2], 1.0
-        import madgraph.various.rambo as rambo
-        P, lwt = rambo.RAMBO(len(pdgs), M, _MassList(ms))
+        P, lwt = _rambo(M, ms)
         moms = [numpy.array([P[(4, i)], P[(1, i)], P[(2, i)], P[(3, i)]]) for i in range(1, len(pdgs) + 1)]
         return moms, math.exp(lwt)
 
@@ -690,7 +773,7 @@ class PoolGenerator(object):
         parent is entry 0) and the phase-space weight."""
         Mf = self.mass(chain.daughter_pdg)
         k, pf = two_body(M, 0., Mf, random_direction(self.rng))
-        out = [(chain.parent_pdg, -1, -1, numpy.array([M, 0., 0., 0.])), (GAMMA, 1, 0, k)]
+        out = [(chain.parent_pdg, -1, -1, numpy.array([M, 0., 0., 0.])), (chain.boson, 1, 0, k)]
         wt = 1.0
         sub = chain.sub
         if sub is None:
@@ -739,15 +822,22 @@ class PoolGenerator(object):
 
     def lhe_event(self, cand, scale):
         pdgs = [c[0] for c in cand]
-        finals = [i for i, c in enumerate(cand) if c[1] == 1 and abs(self.colour_of(c[0])) > 1]
         cols = {}
+        # a colour octet: its colour goes to the soft gluon it emits (entry 1);
+        # MadSpin maps the parent's tags onto those of the production
+        octet = len(cand) > 1 and cand[1][0] == GLUON and cand[1][2] == 0
+        if octet:
+            cols[0] = (501, 502)
+            cols[1] = (501, 502)
+        finals = [i for i, c in enumerate(cand) if c[1] == 1 and abs(self.colour_of(c[0])) > 1
+                  and i not in cols]
         if finals:
-            flow = _colour_flow([pdgs[i] for i in finals], self.colour_of)
-            cols = dict(zip(finals, flow))
+            flow = _colour_flow([pdgs[i] for i in finals], self.colour_of, start=502 if octet else 500)
+            cols.update(dict(zip(finals, flow)))
         lines = ['<event>', ' %d 0 1.0 %.8e -1.0 0.118' % (len(cand), scale)]
         for i, (pdg, status, mother, p) in enumerate(cand):
-            m = math.sqrt(max(dot(p, p), 0.)) if status != 1 or abs(pdg) != GAMMA else 0.
-            if status == 1 and abs(pdg) != GAMMA:
+            m = math.sqrt(max(dot(p, p), 0.)) if status != 1 or abs(pdg) not in (GAMMA, GLUON) else 0.
+            if status == 1 and abs(pdg) not in (GAMMA, GLUON):
                 m = self.mass(pdg)
             c1, c2 = cols.get(i, (0, 0))
             lines.append(' %d %d %d %d %d %d %+.11e %+.11e %+.11e %.11e %.11e 0.0 9.0' % (
@@ -771,11 +861,45 @@ class PoolGenerator(object):
             f.write('</LesHouchesEvents>\n')
 
 
-class _MassList(list):
-    """RAMBO indexes its masses from 1."""
+def _rambo(M, masses):
+    """RAMBO momenta (dict (k, i), k = 1..3 the components, 4 the energy) and
+    log weight of a decay at rest; the phase space is exp(weight)
+    (2 pi)^(4 - 3n)."""
+    import madgraph.various.rambo as rambo
+    xm = rambo.FortranList(len(masses))
+    for i, m in enumerate(masses):
+        xm[i + 1] = m
+    return rambo.RAMBO(len(masses), M, xm)
 
-    def __getitem__(self, i):
-        return list.__getitem__(self, i - 1)
+
+def lo_width(term, library, M, masses, alphas, rng=None, nsample=4000):
+    """The LO partial width of the ordinary decay of a bound state of mass M
+    (term, a Terminal with its library order), from the helicity-summed |M|^2
+    of the density library (smatrixhel, with its average over the initial
+    helicities and its identical-particle factor): Gamma = |p| <|M|^2> /
+    (8 pi M^2) for two products, the phase-space average with RAMBO for more."""
+    import random
+    rng = rng or random.Random(1)
+    order = list(term.order)
+    ms = [masses.get(abs(q), 0.) for q in order[1:]]
+    n = len(ms)
+
+    def me(moms):
+        P = numpy.asfortranarray(numpy.array([[M, 0., 0., 0.]] + moms, dtype=float).T)
+        return float(library.smatrixhel(order, 0, P, alphas, M * M, -1))
+    if n == 2:
+        q = math.sqrt(max((M * M - (ms[0] + ms[1]) ** 2) * (M * M - (ms[0] - ms[1]) ** 2), 0.)) / (2 * M)
+        vals = []
+        for _ in range(min(nsample, 200)):
+            p1, p2 = two_body(M, ms[0], ms[1], random_direction(rng))
+            vals.append(me([list(p1), list(p2)]))
+        return q * sum(vals) / len(vals) / (8 * math.pi * M * M)
+    total = 0.
+    for _ in range(nsample):
+        P, lwt = _rambo(M, ms)
+        moms = [[P[(4, i)], P[(1, i)], P[(2, i)], P[(3, i)]] for i in range(1, n + 1)]
+        total += me(moms) * math.exp(lwt)
+    return total / nsample * (2 * math.pi) ** (4 - 3 * n) / (2 * M)
 
 
 # ------------------------------------------------------------- the library --
@@ -813,13 +937,21 @@ def build_library(mg5cmd, terminals, path, param_card_text, masses, menum=4, nb_
             procs.append(t.process)
     if not procs:
         return None
+    # ungrouped, as MadSpin's density outputs; the options are put back for
+    # the madevent decays that may follow
+    saved = dict((key, mg5cmd.options.get(key)) for key in ('group_subprocesses', 'apply_flavor_grouping'))
     mg5cmd.exec_cmd('set group_subprocesses False', printcmd=False, precmd=True)
     mg5cmd.exec_cmd('set apply_flavor_grouping False', printcmd=False, precmd=True)
-    mg5cmd.exec_cmd('generate %s' % procs[0], printcmd=False, precmd=True)
-    for proc in procs[1:]:
-        mg5cmd.exec_cmd('add process %s' % proc, printcmd=False, precmd=True)
-    mg5cmd.exec_cmd('output standalone_fortran %s --prefix=int --density=1 -f' % path,
-                    printcmd=False, precmd=True)
+    try:
+        mg5cmd.exec_cmd('generate %s' % procs[0], printcmd=False, precmd=True)
+        for proc in procs[1:]:
+            mg5cmd.exec_cmd('add process %s' % proc, printcmd=False, precmd=True)
+        mg5cmd.exec_cmd('output standalone_fortran %s --prefix=int --density=1 -f' % path,
+                        printcmd=False, precmd=True)
+    finally:
+        for key, value in saved.items():
+            if value is not None:
+                mg5cmd.exec_cmd('set %s %s' % (key, value), printcmd=False, precmd=True)
     cards = os.path.join(path, 'Cards')
     with open(os.path.join(cards, 'param_card.dat'), 'w') as f:
         f.write(param_card_text)

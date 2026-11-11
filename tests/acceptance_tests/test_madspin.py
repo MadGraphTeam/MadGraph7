@@ -148,8 +148,12 @@ class TestMadSpin(unittest.TestCase):
         over L_z, from the uncoupled 3P[8] matrix element. At LO the 3P2[8]
         has J_z = +-2 (S_z = +-1) and the 3P0[8] gives S_z = 0 with 1/3 of its
         rate; sigma_2 / sigma_0 = 4/3, so rho_00 = 1/7 and the mu+ mu- go as
-        1 + cos^2(theta)/2. The octets become J/psi (status 2, pdg 443) in
-        the decayed events, with the branching ratio of the J/psi."""
+        1 + cos^2(theta)/2. Each octet (status 2, at its onium_mass 3.3 GeV,
+        200 MeV above the J/psi as in Pythia8's Onia:massSplit) decays to the
+        J/psi (status 2, 3.1 GeV) and a soft gluon (onia_radiative, E1) that
+        carries the octet's colour; the J/psi spin, summed over the gluon, is
+        the partial trace. The rate is the production one times the BR of the
+        J/psi."""
 
         if not misc.default_f2py():
             raise unittest.SkipTest('no f2py')
@@ -186,12 +190,25 @@ class TestMadSpin(unittest.TestCase):
         cross = events.cross
         cos = []
         for event in events:
-            self.assertFalse([p for p in event if abs(p.pdg) in (9943003, 9944003, 9945003)])
+            octet = [p for p in event if abs(p.pdg) in (9943003, 9944003, 9945003)]
             psi = [p for p in event if p.pdg == 443]
+            gluon = [p for p in event if p.pdg == 21 and p.status == 1]
             mu = [p for p in event if abs(p.pdg) == 13 and p.status == 1]
-            self.assertEqual(len(psi), 1)
-            self.assertEqual(psi[0].status, 2)
-            self.assertEqual(len(mu), 2)
+            self.assertEqual((len(octet), len(psi), len(gluon), len(mu)), (1, 1, 1, 2))
+            self.assertEqual((octet[0].status, psi[0].status), (2, 2))
+            self.assertIs(psi[0].mother1, octet[0])
+            self.assertIs(gluon[0].mother1, octet[0])
+            self.assertLess(abs(octet[0].mass - 3.3), 1e-6)
+            self.assertLess(abs(psi[0].mass - 3.1), 1e-6)
+            # the gluon takes the colour of the octet, the J/psi none
+            self.assertEqual((gluon[0].color1, gluon[0].color2),
+                             (octet[0].color1, octet[0].color2))
+            self.assertNotEqual(octet[0].color1, 0)
+            self.assertEqual((psi[0].color1, psi[0].color2), (0, 0))
+            total = lhe_parser.FourMomentum(psi[0]) + lhe_parser.FourMomentum(gluon[0])
+            for a, b in zip((total.E, total.px, total.py, total.pz),
+                            (octet[0].E, octet[0].px, octet[0].py, octet[0].pz)):
+                self.assertLess(abs(a - b), 1e-5 * octet[0].E)
             pair = lhe_parser.FourMomentum(mu[0]) + lhe_parser.FourMomentum(mu[1])
             self.assertLess(abs(pair.mass - psi[0].mass), 1e-4)
             muon = [p for p in mu if p.pdg == 13][0]

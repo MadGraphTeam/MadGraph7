@@ -246,6 +246,10 @@ class OniaRegistry(object):
             fock = self.by_pdg.get(int(particle.pid))
             if fock is None or fock.get('color') == 1 or particle.status != 2:
                 continue
+            if any(p.pid == 21 and (p.mother1 is particle or p.mother2 is particle) for p in event):
+                # decayed to its hadron and a soft gluon (onia_radiative): it
+                # stays in the record, the gluon carrying its colour
+                continue
             singlet = self.singlet_of(fock)
             if singlet is None:
                 continue
@@ -265,9 +269,12 @@ class OniaRegistry(object):
     # ------------------------------------- production density of an octet --
     def transfer_plan(self, pdgs, position, allow_hel):
         """For a production density whose decaying legs (position) include a
-        colour-octet Fock state: the helicities to ask the matrix element for
-        (the J_z of each Fock state) and what spin_transfer needs. None when no
-        leg needs a transfer."""
+        3P colour octet of an S-wave hadron: it decays (to its hadron and a
+        soft gluon, onia_radiative) in the uncoupled (L_z, S_z) basis, whose
+        density (helicity codes -4..4) has the interference between its J and
+        comes from the uncoupled matrix element, normalised to the |M|^2 of
+        the event's own J (the J_z of the Fock state). None when no leg needs
+        it: every other colour octet decays in its own J_z."""
         n = len(position)
         combos = [tuple(allow_hel[i * n:(i + 1) * n]) for i in range(len(allow_hel) // n)]
         hadron_hels = [sorted(set(c[k] for c in combos), key=[c[k] for c in combos].index)
@@ -275,7 +282,7 @@ class OniaRegistry(object):
         legs, need = [], False
         for k, pos in enumerate(position):
             fock = self.by_pdg.get(int(pdgs[pos - 1]))
-            if fock is None or fock.get('color') == 1:
+            if fock is None or fock.get('color') == 1 or not self.needs_uncoupled(fock):
                 legs.append(None)
                 continue
             need = True
@@ -362,13 +369,12 @@ class OniaRegistry(object):
             dimF, dimH = len(fhel), len(hhel)
             T = numpy.zeros((dimH, dimH, dimF, dimF), dtype=complex)
             if uncoupled_leg:
-                # the codes -4..4 are the (L_z, S_z) pairs; partial trace over L_z
-                pairs = [((h + 4) // 3 - 1, (h + 4) % 3 - 1) for h in fhel]
-                for x, Sz in enumerate(hhel):
-                    for y, Szp in enumerate(hhel):
-                        for Lz in (-1, 0, 1):
-                            if (Lz, Sz) in pairs and (Lz, Szp) in pairs:
-                                T[x, y, pairs.index((Lz, Sz)), pairs.index((Lz, Szp))] = 1.
+                # the codes -4..4 of the (L_z, S_z) pairs, kept: the decay
+                # (onia_radiative) is written in the same basis
+                for x, hx in enumerate(hhel):
+                    for y, hy in enumerate(hhel):
+                        if hx in fhel and hy in fhel:
+                            T[x, y, fhel.index(hx), fhel.index(hy)] = 1.
             else:
               for a in range(dimF):
                 for b in range(dimF):
@@ -419,11 +425,13 @@ class OniaRegistry(object):
     def pseudo_particle(self, fock):
         anti = self.antiparticle(fock)
         neutral = anti is fock
+        # a colour octet decays to its hadron and a soft gluon (onia_radiative)
+        # in its own J_z, or a 3P octet of an S-wave hadron in the nine (L_z,
+        # S_z) pairs of the uncoupled basis
+        uncoupled = self.needs_uncoupled(fock)
         particle = base_objects.Particle({
-            # a colour octet decays as its hadron (spin_transfer): the spin and
-            # colour of the hadron
-            'spin': 2 * (self.singlet_of(fock) or fock).get('J') + 1,
-            'color': (self.singlet_of(fock) or fock).get('color'),
+            'spin': 2 * fock.get('J') + 1,
+            'color': fock.get('color'),
             'charge': float(fock.get('charge')),
             'mass': 'ZERO',
             'width': 'ZERO',
@@ -437,6 +445,10 @@ class OniaRegistry(object):
         # for Particle.set, but MadSpin only looks it up
         dict.__setitem__(particle, 'name', alias(fock.get('name')))
         dict.__setitem__(particle, 'antiname', alias(anti.get('name')))
+        if uncoupled:
+            # nine helicity codes h = 3(L_z+1)+(S_z+1)-4 (interface_madspin's
+            # hel_dict), not a spin Particle.set accepts
+            dict.__setitem__(particle, 'spin', 9)
         return particle
 
     def bookkeeping_model(self, model):
@@ -491,17 +503,21 @@ class OniaRegistry(object):
                     "total width to the param_card of the events (a DECAY block, e.g. 'DECAY %d "
                     "9.26e-05' for the J/psi), with optional BR lines; without BR lines MadSpin "
                     "computes the LO partial width of each decay." % (fock.get('name'), pdg, pdg))
-        # The colour-octet Fock states of a decaying hadron decay as the hadron
-        # (its colour-singlet decay, its width), with the spin density of the
-        # octet carried over by heavy-quark spin symmetry (spin_transfer).
+        # The colour-octet Fock states of a decaying hadron turn into it by
+        # emitting a soft gluon (chromo-E1, chromo-M1, or with its spins kept),
+        # which takes their colour, then decay as the hadron
+        # (onia_radiative): the spin of the octet is passed on as heavy-quark
+        # spin symmetry requires, and the event keeps its colour flow.
         import madgraph.models.check_param_card as check_param_card
         decay_block = ms.banner.param_card['decay']
+        # the octets of the production run (Block onium_mass of its onia card)
+        produced = set(abs(int(p)) for p in self.onia_masses(dict.get(ms.banner, 'mgoniacard', '') or ''))
         for singlet in decaying:
             width = decay_block.get((abs(singlet.get('pdg_code')),)).value
             for octet in self.octets_of(singlet):
-                name = alias(octet.get('name'))
-                if name not in ms.list_branches:
-                    ms.list_branches[name] = list(ms.list_branches[alias(singlet.get('name'))])
+                if produced and abs(octet.get('pdg_code')) not in produced:
+                    continue
+                self.octet_chains(ms, singlet, octet)
                 pdg = abs(octet.get('pdg_code'))
                 try:
                     decay_block.get((pdg,))
@@ -546,6 +562,51 @@ class OniaRegistry(object):
                 ms.options['decay_generator'] = 'madevent'
         except KeyError:
             pass
+
+    # ----------------------------------------------- colour octets --
+    def octet_chains(self, ms, singlet, octet):
+        """The decay lines of a colour-octet Fock state: octet > hadron g (the
+        soft gluon, onia_radiative), then each decay line of the hadron (an
+        ordinary decay, or a radiative chain)."""
+        import MadSpin.onia_radiative as onia_radiative
+        kind = onia_radiative.transition_type(octet, singlet, onia_radiative.GLUON)
+        if kind is None:
+            raise ms.InvalidCmd(
+                "MadSpin: %s cannot turn into %s by one soft gluon (neither chromo-E1, chromo-M1, "
+                "nor with its L and S kept)" % (octet.get('name'), singlet.get('name')))
+        uncoupled = self.needs_uncoupled(octet)
+        name2pdg = ms._bookkeeping_model().get('name2pdg')
+        texts = []
+        for branch in ms.list_branches.get(alias(singlet.get('name')), []):
+            if branch in self.radiative:
+                sub = self.radiative[branch]
+            else:
+                process = ms._split_group_tag(branch)[0] if hasattr(ms, '_split_group_tag') else branch
+                rhs = process.split('>', 1)[1]
+                names = rhs.split()
+                bad = [n for n in names if n not in name2pdg]
+                if bad or ',' in rhs:
+                    raise ms.InvalidCmd(
+                        "MadSpin: %s is produced as a colour octet, which decays through its hadron "
+                        "and a soft gluon; the decay of the hadron then takes particles of the model "
+                        "only, one final state per decay line (not '%s')" % (singlet.get('name'), branch))
+                sub = onia_radiative.Terminal(singlet, process.strip(), [name2pdg[n] for n in names])
+            text = '%s > %s g, %s' % (alias(octet.get('name')), alias(singlet.get('name')), branch)
+            self.radiative[text] = onia_radiative.Chain(octet, singlet, kind, sub, text,
+                                                        boson=onia_radiative.GLUON, uncoupled=uncoupled)
+            texts.append(text)
+        ms.list_branches[alias(octet.get('name'))] = texts
+
+    @staticmethod
+    def alpha_s(param_card, scale):
+        """alpha_s at scale (one loop, 4 flavours) from aS(m_Z) of the param_card."""
+        import math
+        try:
+            a0 = param_card['sminputs'].get((3,)).value
+        except Exception:
+            a0 = 0.118
+        b0 = (33 - 2 * 4) / (12 * math.pi)
+        return a0 / (1 + a0 * b0 * math.log(scale ** 2 / 91.1876 ** 2))
 
     # ------------------------------------------- radiative transitions --
     # the total width given to a parent whose width is not measured (chi_bJ,
@@ -653,9 +714,9 @@ class OniaRegistry(object):
             return
         if ms.options['spinmode'] not in ('madspin', 'full', 'onshell', 'PA'):
             raise ms.InvalidCmd(
-                "MadSpin: radiative transitions of bound states (%s) are decays with spin "
-                "correlations: use spinmode=madspin (or onshell, PA), not %s."
-                % (', '.join(names), ms.options['spinmode']))
+                "MadSpin: radiative transitions of bound states and the decays of colour octets "
+                "(%s) are decays with spin correlations: use spinmode=madspin (or onshell, PA), "
+                "not %s." % (', '.join(names), ms.options['spinmode']))
         for name in names:
             if not all(b in self.radiative for b in ms.list_branches[name]):
                 raise ms.InvalidCmd(
@@ -685,24 +746,23 @@ class OniaRegistry(object):
             logger.info('MadSpin: radiative chains with the masses of the model for %s (a MASS line '
                         'of the param_card of the events sets another)', ', '.join(shown))
         for text, chain in self.radiative.items():
-            used = []
-            onia_radiative.branching_ratio(chain, decay_block, self.default_decays, used)
-            for what, value in used:
-                logger.info('MadSpin: no BR line for %s in the param_card: %g, the PDG 2026 value'
-                            % (what, value))
             for step in chain.steps():
                 mi = masses.get(abs(step.parent.get('pdg_code')))
                 mf = masses.get(abs(step.daughter.get('pdg_code')))
                 if mi is None or mf is None or mi <= mf:
+                    if step.boson == onia_radiative.GLUON:
+                        raise ms.InvalidCmd(
+                            "MadSpin: the colour octet %s (%s GeV) turns into %s (%s GeV) by emitting a "
+                            "soft gluon, which needs it heavier: set its onium_mass above that of the "
+                            "hadron in the onia card of the production run (sm_onia: 0.2 GeV above, "
+                            "as Onia:massSplit of Pythia8)." % (
+                                step.parent.get('name'), mi, step.daughter.get('name'), mf))
                     raise ms.InvalidCmd(
                         "MadSpin: %s > %s a needs the mass of %s (%s GeV) above that of %s (%s GeV): "
                         "give the bound states their physical masses in Block onium_mass of the onia "
                         "card of the production run." % (
                             step.parent.get('name'), step.daughter.get('name'), step.parent.get('name'),
                             mi, step.daughter.get('name'), mf))
-            logger.info('MadSpin: %s, a radiative chain (%s), branching ratio %.4g', text,
-                        ' then '.join(s.kind for s in chain.steps()),
-                        onia_radiative.branching_ratio(chain, decay_block, self.default_decays))
         clash = onia_radiative.ambiguous(list(self.radiative.values()), masses)
         if clash:
             a, b = clash[0]
@@ -720,6 +780,40 @@ class OniaRegistry(object):
             nb_core=ms.mg5cmd.options.get('nb_core') or 1)
         self.radiative_evaluator = onia_radiative.Evaluator(library, masses)
         self.radiative_masses = masses
+        # the ordinary decay that ends the chain of a colour octet: without a
+        # BR line, its LO partial width over the total width, as MadSpin does
+        # for the decays of the colour singlet
+        self.radiative_lo_widths = {}
+        for chain in self.radiative.values():
+            term = chain.terminal()
+            if chain.boson != onia_radiative.GLUON or not isinstance(term, onia_radiative.Terminal) \
+                    or term.process in self.radiative_lo_widths:
+                continue
+            table = decay_block.decay_table.get(abs(term.fock.get('pdg_code')))
+            if table:
+                try:
+                    table.get(tuple([len(term.products)] + sorted(term.products)))
+                    continue
+                except KeyError:
+                    pass
+            products = dict((abs(q), ms.banner.get('param_card', 'mass', abs(q)).value)
+                            for q in term.products if abs(q) not in masses and abs(q) not in (21, 22))
+            M = masses[abs(term.fock.get('pdg_code'))]
+            width = onia_radiative.lo_width(term, library, M, dict(list(masses.items()) + list(products.items())),
+                                            self.alpha_s(ms.banner.param_card, M))
+            self.radiative_lo_widths[term.process] = width
+            logger.info('MadSpin: %s, no BR line: its LO partial width, %.4g GeV' % (term.process, width))
+        for text, chain in self.radiative.items():
+            used = []
+            onia_radiative.branching_ratio(chain, decay_block, self.default_decays, used,
+                                           self.radiative_lo_widths)
+            for what, value in used:
+                logger.info('MadSpin: no BR line for %s in the param_card: %g, the PDG 2026 value'
+                            % (what, value))
+            logger.info('MadSpin: %s, a chain (%s), branching ratio %.4g', text,
+                        ' then '.join(s.kind for s in chain.steps()),
+                        onia_radiative.branching_ratio(chain, decay_block, self.default_decays,
+                                                       lo_widths=self.radiative_lo_widths))
 
     def radiative_events(self, ms, pdg, nb_event, cumul, output_width, run_name, restrict_file):
         """MadSpin's generate_events for a bound state decaying by radiative
@@ -758,7 +852,8 @@ class OniaRegistry(object):
             for q in chain.final_pdgs():
                 masses.setdefault(abs(q), particle_mass(q))
         gen = onia_radiative.PoolGenerator(self.radiative_evaluator, masses, rng, colour_of)
-        brs = [onia_radiative.branching_ratio(chain, decay_block, self.default_decays)
+        brs = [onia_radiative.branching_ratio(chain, decay_block, self.default_decays,
+                                              lo_widths=getattr(self, 'radiative_lo_widths', {}))
                for i, text, chain in chosen]
         groups = [chosen] if cumul else [[c] for c in chosen]
         for group in groups:
@@ -867,7 +962,8 @@ class OniaRegistry(object):
         if branches and all(b in self.radiative for b in branches):
             import MadSpin.onia_radiative as onia_radiative
             return sum(onia_radiative.branching_ratio(self.radiative[b], ms.banner.param_card['decay'],
-                                                      self.default_decays)
+                                                      self.default_decays,
+                                                      lo_widths=getattr(self, 'radiative_lo_widths', {}))
                        for b in branches)
         table = ms.banner.param_card['decay'].decay_table.get(abs(singlet.get('pdg_code')))
         if not table or not branches:
