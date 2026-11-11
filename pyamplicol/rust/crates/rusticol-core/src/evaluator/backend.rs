@@ -2815,9 +2815,21 @@ pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<V
                 // import only maps the evaluator's references, so it reads
                 // them as plain symbols (`whole_state_for_import`); the
                 // evaluator's own references to them are reported below.
-                let (patched, producer_functions) =
-                    whole_state_for_import(state).map_err(|error| incompatible(&error))?;
-                let (len, state_map) = import(&patched)?;
+                //
+                // The copy reads Symbolica's private record layout; a layout
+                // it cannot read (a producer whose records drifted) falls
+                // back to the unpatched import, as before: the same symbols,
+                // only Symbolica's warning per function-bearing record.
+                let (len, state_map, producer_functions) = match whole_state_for_import(state) {
+                    Some((patched, producer_functions)) => {
+                        let (len, state_map) = import(&patched)?;
+                        (len, state_map, producer_functions)
+                    }
+                    None => {
+                        let (len, state_map) = import(state)?;
+                        (len, state_map, std::collections::HashSet::new())
+                    }
+                };
                 (state[..len].to_vec(), state_map, producer_functions)
             }
         };
@@ -3016,10 +3028,22 @@ static LAST_WHOLE_STATE: std::sync::Mutex<
 /// symbols it created before (the flag only selects that warning), and an
 /// evaluator that does reference such a symbol is reported by
 /// `warn_on_referenced_producer_functions` instead.
+///
+/// The record layout read here is Symbolica's private `Symbol::export` of the
+/// serialization ABI `crate::SYMBOLICA_SERIALIZATION_ABI` (3.0.x). None when
+/// the state does not parse as that layout (a short read, or an exportable
+/// byte other than 0 or 1): the caller then imports the unpatched state.
+/// Symbolica with symbolica-dev#163 saves only the referenced symbols, which
+/// makes this copy unnecessary (it then finds nothing to patch).
 #[cfg(feature = "symbolica-runtime")]
-fn whole_state_for_import(
+fn whole_state_for_import(state: &[u8]) -> Option<(Vec<u8>, std::collections::HashSet<String>)> {
+    parse_whole_state(state).ok().flatten()
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn parse_whole_state(
     state: &[u8],
-) -> std::io::Result<(Vec<u8>, std::collections::HashSet<String>)> {
+) -> std::io::Result<Option<(Vec<u8>, std::collections::HashSet<String>)>> {
     use std::io::{Error, ErrorKind, Read};
     use symbolica::atom::UserData;
 
@@ -3056,12 +3080,17 @@ fn whole_state_for_import(
         }
         UserData::read(&mut rest)?;
         let at = state.len() - rest.len();
-        if take::<1>(&mut rest)?[0] == 0 {
-            patched[at] = 1;
-            functions.insert(String::from_utf8_lossy(name).into_owned());
+        match take::<1>(&mut rest)?[0] {
+            0 => {
+                patched[at] = 1;
+                functions.insert(String::from_utf8_lossy(name).into_owned());
+            }
+            1 => {}
+            // Not a boolean: the layout drifted, patch nothing.
+            _ => return Ok(None),
         }
     }
-    Ok((patched, functions))
+    Ok(Some((patched, functions)))
 }
 
 /// The symbols an exported evaluator references: its function heads and
@@ -3417,6 +3446,18 @@ mod canonical_save_tests {
         State::import(&mut copy, None).unwrap();
         assert_eq!(original.len(), copy.len(), "the same section length");
         assert!(canonical_saved_evaluator(&whole).unwrap().is_some());
+        // A layout the copy cannot read is not patched (the caller imports
+        // the unpatched state): a truncated state, and an exportable byte
+        // that is not a boolean.
+        assert!(whole_state_for_import(&state[..STATE_HEADER_LEN + 4]).is_none());
+        let first = state
+            .iter()
+            .zip(&patched)
+            .position(|(before, after)| before != after)
+            .unwrap();
+        let mut drifted = state.to_vec();
+        drifted[first] = 7;
+        assert!(whole_state_for_import(&drifted).is_none());
     }
 
     #[test]
