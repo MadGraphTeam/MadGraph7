@@ -216,6 +216,52 @@ class CppDialect(Dialect):
         # recycling step. The fortran dialect caches for the same reason.
         self._span_cache = {}
         self._args_cache = {}
+        # {flavoured-coupling argument (flvCOUPs[i], flvCOUPs_dep[i]): its
+        # (k1, k2) pairs, or None when unknown}: a group whose P1N current
+        # would have a fermion output is not split when its vertex has a
+        # coupling whose table that current cannot follow (p1n_flavour_safe).
+        # Set by the exporter, which has the tables.
+        self.p1n_flavour_tables = {}
+
+    @staticmethod
+    def p1n_flavour_safe(pairs, several=False):
+        '''Whether a P1N current with a fermion output can follow the flavour
+        coupling made of the (k1, k2) pairs (0-based; k1 the flavour of the
+        table's first fermion, whose slot holds the value).
+
+        A P1N current knows only the flavour x of its fermion input and has to
+        give its output ONE flavour, which the member amplitudes then compare
+        with their peeled leg. The full vertex (_0) is non-zero for the partner
+        y of x whenever k1=x, k2=y or k1=y, k2=x is in the table -- either
+        orientation, since the call can put the table's first fermion second.
+        So every x must have at most one partner over both orientations. With
+        several couplings (one vertex, several Lorentz structures) the _0
+        routine needs partner1[x] == partner2[x] == y, which the P1N current
+        follows only for a symmetric table.'''
+        partners = {}
+        forward, backward = {}, {}
+        for k1, k2 in pairs:
+            partners.setdefault(k1, set()).add(k2)
+            partners.setdefault(k2, set()).add(k1)
+            forward.setdefault(k1, set()).add(k2)
+            backward.setdefault(k2, set()).add(k1)
+        if any(len(ys) > 1 for ys in partners.values()):
+            return False
+        if several and forward != backward:
+            return False
+        return True
+
+    def p1n_follows_flavour(self, args):
+        '''Whether the P1N current with a fermion output of a vertex called
+        with `args` gives every member amplitude its flavour (see
+        p1n_flavour_safe); True when the vertex has no flavoured coupling.'''
+        flavoured = [arg for arg in args if arg in self.p1n_flavour_tables]
+        for arg in flavoured:
+            pairs = self.p1n_flavour_tables[arg]
+            if pairs is None or not self.p1n_flavour_safe(
+                    pairs, several=len(flavoured) > 1):
+                return False
+        return True
 
     # -- taking a call apart -------------------------------------------------
     def called_function(self, line):
@@ -497,6 +543,8 @@ class CppDialect(Dialect):
         if peeled is None:
             return None
         fermion, comps = peeled
+        if fermion and not self.p1n_follows_flavour(group[0].args):
+            return None
         args = list(group[0].args)
         args.pop(peel)
         args[-1] = self.P1N_SCRATCH
