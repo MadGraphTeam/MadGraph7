@@ -1,0 +1,193 @@
+{
+  "derived_root": ".tirust-build/kinematic-provenance-current-executor-1/results/derived",
+  "files": {
+    ".gitignore": {
+      "bytes": 2265,
+      "sha256": "78e2985e87b1b1b30bc2ae8fbff327cf0dd97fe72573b6c29759f51f71d47fa6"
+    },
+    ".tirust-build/current-invariant-fix-design-1/index.json": {
+      "bytes": 802,
+      "sha256": "42a14babb7353e7cd1393e238521d3b339a2aff8748ed37f7f5d08c9261609bd"
+    },
+    ".tirust-build/current-invariant-fix-design-scope-1/CLARIFICATION.md": {
+      "bytes": 816,
+      "sha256": "33cdce95230a3450d9bf55f684feca80e46e867a7f1cdbff0966c1eabe689c3a"
+    },
+    ".tirust-build/current-invariant-fix-design-scope-1/index.json": {
+      "bytes": 432,
+      "sha256": "9c890f637a384ee6c3005347e7eac53689cef2aa5af060809edc76e911b8d8b3"
+    },
+    ".tirust-build/kinematic-projection-replay-executor-1/results/responses.json": {
+      "bytes": 1620,
+      "sha256": "92fadd0cf83974c72135decc2f88de02e1c12016563925c95a112d7fa61ebf01"
+    },
+    ".tirust-build/kinematic-projection-replay-executor-1/results/run-terminal-closure.json": {
+      "bytes": 53489,
+      "sha256": "3a8e13486d4cd26425efefaceb7d6f2099be0a867a80e22fdb00fc3ff1e678d8"
+    },
+    ".tirust-build/kinematic-provenance-current-executor-1/results/derived/cms-source-bindings.json": {
+      "bytes": 60093,
+      "sha256": "bf789c6dd6fa10ed5c1e23c90c54825e5448833da2754aeb37aab1e7b207152e"
+    },
+    ".tirust-build/kinematic-provenance-current-executor-1/results/derived/cms/routing.json": {
+      "bytes": 212109,
+      "sha256": "ca9ee4363075a15a9f0d81e3dc744331064da6f724c449b9125d8d64f2a1d499"
+    },
+    ".tirust-build/kinematic-provenance-current-executor-1/results/derived/index.json": {
+      "bytes": 2703,
+      "sha256": "25c2114756ed3eb968c311945a27d175c5c5a0af54d4ae21158abc8ed42a4184"
+    },
+    "aloha/aloha_writers.py": {
+      "bytes": 138792,
+      "sha256": "86cdb607f5f249e38d90997d930484b1718761658c20a9e5df1491b0f6a90dd1"
+    },
+    "aloha/template_files/aloha_functions_loop.f": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/cms_actual_mp_matrices.dat": {
+      "bytes": 192792,
+      "sha256": "1cd23bdb9c4d10ad560a503ff74e215ed0153240b9c93c3d32acdaf9f9b30ea9"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/specification.json": {
+      "bytes": 963,
+      "sha256": "6fc95a335a41f22f006327857bb5d66c2e5f5de8985798d0b6e499cee7561830"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/summary.json": {
+      "bytes": 1206,
+      "sha256": "a7d6b63f22c07f53ca3675d4decdb12626b05f24946c6f3bf0fda1a3957acb08"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/trace-insertion.f": {
+      "bytes": 561,
+      "sha256": "42192f133cd7d83727e9d17b591e5778d78bf02f8d2dad68394272540bc9925b"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_audit.json": {
+      "bytes": 70967,
+      "sha256": "73774fe4c767f79d99c35e2e238eeccdcdac1a0dee7e3681d9379c9653a7d0c2"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_probe.dat": {
+      "bytes": 201684,
+      "sha256": "c6fe2063ac98c1dd3b95597e8874ce534ec61271d1b9692dfec69b302c3f12ba"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_probe.f": {
+      "bytes": 1629,
+      "sha256": "ac3e285fb275da0dfe71042590a152900ff6d850c344341ea5c27e20653ec2e1"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.dat": {
+      "bytes": 585,
+      "sha256": "bd4ee84764a69fe15501fe877205cb8d008ee364cf577059b6b34919b8e44a6f"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.f": {
+      "bytes": 7251,
+      "sha256": "d2c6ed193369662555a12c38a6cfb506bd95449220bc31aa906b7bab759b8f19"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.json": {
+      "bytes": 927,
+      "sha256": "328c42c7aefce8c11590477e133db97a7a1ab9672d9a44e723ca1811b4692026"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum.dat": {
+      "bytes": 8142,
+      "sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum.json": {
+      "bytes": 22713,
+      "sha256": "e27239fb2ef0e8b136a4c5f9b6d60aa5c6cf58bdd9cbf88a6da68b9b6d69f042"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/CT_interface.f.original": {
+      "bytes": 69917,
+      "sha256": "ac240d6ffc2f7e1a15a72e61a325a53d0acf776f65b9329e4e9518cd85f3da0a"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/selected-inputs.dat": {
+      "bytes": 5481,
+      "sha256": "a357490c15bc615869b3b11677788efb74d1529814056108aa2b57e2c06244e9"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/selected-inputs.json": {
+      "bytes": 59482,
+      "sha256": "6e13ab1cbfbd88e746c83bb725a547343330375acea741ce1caef2fd16822305"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/trace.json": {
+      "bytes": 5122843,
+      "sha256": "03fbfd3795a468661162c0e574a7de6878065efbab79ca9d0f80e743f29e787f"
+    },
+    "docs/benchmarkfolder/experiments/invariant-classification-audit-1/README.md": {
+      "bytes": 5245,
+      "sha256": "131c4d34f0fdd5bd37962f55751d963efa4c9b10c0608279f89e55b72297df75"
+    },
+    "docs/benchmarkfolder/experiments/invariant-classification-audit-1/cms/audit.py": {
+      "bytes": 21118,
+      "sha256": "918b47d26ca110bfcf50d13a8af8ad13690e52ef9d201ce50467fda9248c20ae"
+    },
+    "docs/benchmarkfolder/experiments/invariant-classification-audit-1/cms/summary.json": {
+      "bytes": 101617,
+      "sha256": "876f1c635d6f8f417b496c4b526713d53292b87fbf209af5d9c7bd12d07ef70c"
+    },
+    "docs/benchmarkfolder/experiments/invariant-classification-audit-1/ew/README.md": {
+      "bytes": 3322,
+      "sha256": "4cb7ef6ba000a15e8532eb4e08c4dfd0a0198684bb6d5f7b0682782dd03c12e5"
+    },
+    "docs/benchmarkfolder/experiments/invariant-classification-audit-1/ew/recompute.py": {
+      "bytes": 8790,
+      "sha256": "3979ce55e6289e74b48cb49f84be9501a46f06f8cf1e05128ea70a75c22c376f"
+    },
+    "docs/benchmarkfolder/experiments/invariant-classification-audit-1/ew/summary.json": {
+      "bytes": 49669,
+      "sha256": "474571f992f56c7b3b064d5f49280e075929d9f4f2c26d92f515db5432848762"
+    },
+    "docs/benchmarkfolder/experiments/invariant-classification-audit-1/index.json": {
+      "bytes": 5022,
+      "sha256": "61c547d95fc259227021903dfc8ed9b02150c24d23feb4b1dd80bdc9c1ef114e"
+    },
+    "docs/benchmarkfolder/qualification/benchmark-audit/kinematic-provenance-research.md": {
+      "bytes": 3595,
+      "sha256": "bf3732fe682871f3665de407501107b48dd65060b44fba69ef3453c1d95800f4"
+    },
+    "madgraph/core/helas_objects.py": {
+      "bytes": 380112,
+      "sha256": "7c021bb119282c861821a835c941521d438d27423d68ea7ee3d364585381262d"
+    },
+    "madgraph/iolibs/helas_call_writers.py": {
+      "bytes": 128403,
+      "sha256": "7a267fa78b75fa5b8efc4fc2f595769f938ee59919f55c6fffc3ab86ec5707ea"
+    },
+    "madgraph/iolibs/template_files/loop/improve_ps.inc": {
+      "bytes": 27025,
+      "sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": {
+      "bytes": 34634,
+      "sha256": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": {
+      "bytes": 10645,
+      "sha256": "29dcb05866279d2039676a7fb369c068483fa556767254b15b399b736d289692"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+      "bytes": 14581,
+      "sha256": "ece7c4e855b50f13822f441d7be227631293acbc9ed345a2f1a154f0329757a2"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": {
+      "bytes": 19521,
+      "sha256": "166ac2e2fb6555568bce4865dca462162b7a5af5b6b436fd64fa96ac23b80f89"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc": {
+      "bytes": 7961,
+      "sha256": "3c2925d00c555bba18e24ab6272037c18c29d54947b0ad46a8cb2629e4bd1692"
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "bytes": 218323,
+      "sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74"
+    },
+    "madgraph/loop/loop_helas_objects.py": {
+      "bytes": 138558,
+      "sha256": "3434315c5f90c468092e1a2e6bf449ae0241044f7458b27f1b1c14df60aba0ff"
+    }
+  },
+  "native_executions": 0,
+  "no_fixture_allowlist": true,
+  "production_changes": false,
+  "schema": "general-invariant-proposal-pins-v1"
+}

@@ -1,0 +1,103 @@
+{
+  "compiled": false,
+  "files": {
+    "CONTRACT.md": {
+      "bytes": 9285,
+      "sha256": "2d5c1bb0323de64dd41ec35b66adc1c04437002ac31498fb18192a2d828b5530"
+    },
+    "caller_bounds.f90": {
+      "bytes": 6893,
+      "sha256": "a0f941fc4ea7904bfd1e81880239637ad42e676f3a57ac47879f357a1241f71e"
+    },
+    "cms_bounds_data.inc": {
+      "bytes": 15537,
+      "sha256": "1d5876b9f6de39ed450a661c1465e99f47c60d6827f5f00cc2a9c7ca496f033e"
+    },
+    "dag-metadata.json": {
+      "bytes": 429248,
+      "sha256": "29cfececfd12f6ded67fa6f89ab6de02d2991dfbe41adf0288fc655cc50c50c9"
+    },
+    "derive_dag.py": {
+      "bytes": 12785,
+      "sha256": "04ddf35c5cf1edddb0240e08927162a1e99365f21875a4f3a025f344aabe3120"
+    },
+    "emit_data.py": {
+      "bytes": 2083,
+      "sha256": "a26d963c2afceecc3f9b011c67c87420853ef32042ec45796077585f7accdea5"
+    },
+    "environment_token.c": {
+      "bytes": 688,
+      "sha256": "5b82404bf31bb731e80d63c0187efe3cdc5e7a213373697124a7c888919f4196"
+    },
+    "routing.py": {
+      "bytes": 4592,
+      "sha256": "c3d9088f3507707b4303b832bd925a341861545e677767a85a4e70be1c0e3ca3"
+    },
+    "runtime_reference.py": {
+      "bytes": 3414,
+      "sha256": "22d01423b966e204f813e0969beec6495f2ef56ad085b119cfdead597349d0f8"
+    },
+    "saved_source.py": {
+      "bytes": 17684,
+      "sha256": "37c9134dae35d88f240fcb025ec517b484d2dfe32d1f95ebcc51dd8f472659c4"
+    },
+    "test_factory.py": {
+      "bytes": 8965,
+      "sha256": "60545d9ab4532cf0b8675a0cd5946786a1f73eadbb80753895a1ae3f72326f14"
+    },
+    "tests-attempt1.log": {
+      "bytes": 2635,
+      "sha256": "3cf4292efa6f21d7c63311d893cea50533f58449306f9c792a8b693c5b6e5d7d"
+    },
+    "tests-attempt2.log": {
+      "bytes": 1807,
+      "sha256": "ee7587448c0f97a585c5829de3111fcb761861225caa0d5175fdd5d5f2551a66"
+    },
+    "tests-final.log": {
+      "bytes": 2103,
+      "sha256": "d6e3ff8317f2fd2df2394304cc5b56f24a1a980c5b80d1683ccffce4fa9b614c"
+    },
+    "verify.py": {
+      "bytes": 1348,
+      "sha256": "37096b4b65575b2e404c8b5b0e3ee8acd0ebe97111e543402110cfa071d925ed"
+    }
+  },
+  "input_pins": {
+    ".tirust-build/kinematic-invariant-general-proposal-1/certificate.f90": {
+      "bytes": 3530,
+      "sha256": "0cb41b0c10233027d65c85f63625556eefb819ce2570390447bdceff4d8f7088"
+    },
+    ".tirust-build/kinematic-invariant-general-proposal-1/index.json": {
+      "bytes": 1828,
+      "sha256": "1665eff3188c947f35673b958cd0f02525fd031dc814b708dfdda69160b57964"
+    },
+    ".tirust-build/kinematic-provenance-current-executor-1/results/derived/cms-source-bindings.json": {
+      "bytes": 60093,
+      "sha256": "bf789c6dd6fa10ed5c1e23c90c54825e5448833da2754aeb37aab1e7b207152e"
+    },
+    ".tirust-build/kinematic-provenance-current-executor-1/results/derived/cms/routing.json": {
+      "bytes": 212109,
+      "sha256": "ca9ee4363075a15a9f0d81e3dc744331064da6f724c449b9125d8d64f2a1d499"
+    },
+    ".tirust-build/kinematic-provenance-current-executor-1/results/derived/index.json": {
+      "bytes": 2703,
+      "sha256": "25c2114756ed3eb968c311945a27d175c5c5a0af54d4ae21158abc8ed42a4184"
+    },
+    ".tirust-build/kinematic-provenance-prototype-1/routing.py": {
+      "bytes": 4592,
+      "sha256": "c3d9088f3507707b4303b832bd925a341861545e677767a85a4e70be1c0e3ca3"
+    },
+    ".tirust-build/kinematic-provenance-prototype-1/saved_source.py": {
+      "bytes": 17684,
+      "sha256": "37c9134dae35d88f240fcb025ec517b484d2dfe32d1f95ebcc51dd8f472659c4"
+    }
+  },
+  "native_executions": 0,
+  "payload_bytes": 519067,
+  "payload_files": 15,
+  "production_changes": false,
+  "pure_tests_passed": 14,
+  "runtime_environment_qualified": false,
+  "schema": "private-cms-caller-dag-source-only-v1",
+  "scope": "All26 source routes,4modes, generic integer bounds; no event/input allowlist"
+}

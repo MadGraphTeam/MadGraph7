@@ -1,0 +1,54 @@
+{
+  "budget_seconds": 10,
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit",
+        "--as=4294967296",
+        "--",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/caller-bound-native-qualification-1/build/probe"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/caller-bound-native-qualification-1/run",
+      "log": {
+        "bytes": 108070,
+        "sha256": "0386627e02746d85f16643cbae020b6cb2e6a8e6691e619465370496d18d7dea"
+      },
+      "progress": {
+        "exit_observed_unix": 1794369213.1935642,
+        "pid": 3881551,
+        "process_reaped": true,
+        "process_spawned": true,
+        "process_wall_seconds": 0.021811048034578562,
+        "returncode": 0,
+        "spawn_unix": 1794369213.173287
+      },
+      "returncode": 0
+    }
+  ],
+  "elapsed_seconds": 0.049968425650149584,
+  "executable": {
+    "bytes": 52296,
+    "sha256": "ad7ba1b247cc9d66e2465c00fc2c2ed8dfeefa9b41904894bdd790084738af51"
+  },
+  "passed": true,
+  "qualification": {
+    "actual_environment_read_only_ready": true,
+    "actual_environment_token": "4B4500001F80033F",
+    "amplitude_qualified": false,
+    "base_route_modes": 104,
+    "cases": 174,
+    "kernel_accuracy_requalified": false,
+    "observed_flag_patterns": [
+      "FFFFF"
+    ],
+    "observed_ieee_flag_changes": 0,
+    "passed": true,
+    "reference_mismatches": 0,
+    "scope": "Compiled integer source-DAG bound factory and read-only current-host environment probe only.",
+    "tensor_calls": 0,
+    "token_cases": 11
+  },
+  "source_index_sha256": "8c3639c9412831e369f86bbd4b657818f39aad1aa2f521126e49f544a655a837",
+  "stage": "run",
+  "tensor_calls": 0
+}

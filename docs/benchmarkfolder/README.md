@@ -278,6 +278,14 @@ satisfy the conditional exact error enclosure. The sampled raw values are not
 necessarily produced from their vectors, so this check does not establish
 physical kinematics or qualify the source-DAG bounds and amplitude caller.
 
+The [standalone caller-bound qualification](experiments/caller-bound-native-qualification-1/README.md)
+then checks the compiled Fortran bound factory and read-only environment probe:
+174 cases cover all 104 route/mode combinations plus invalid-input, boundary
+and boost controls; eleven token controls also pass. Actual bounds and table
+orientation match the reference, with unchanged observed flags and controls.
+This qualifies the standalone factory on the present GNU/Linux host. The full
+amplitude's entry-to-use environment and numerical results remain unqualified.
+
 The separate [original-input EW replay](experiments/ew-original-refusal-replay-1/README.md)
 reproduces both point-2, rank-three refusals and retains their complete original
 errors: ill-conditioned Gram subsets `[1,2,3]` in DP and `[0,1,2,3]` in QP.

@@ -1,0 +1,397 @@
+{
+  "compressed_text": {
+    "conditional/results.json": {
+      "path": "compressed/conditional/results.json.gz",
+      "raw_bytes": 264888,
+      "raw_sha256": "7c6e15f1447290968b67c086d39297716063b596307646f24d3a3455f76b066f"
+    },
+    "execution/run/inputs.txt": {
+      "path": "compressed/execution/run/inputs.txt.gz",
+      "raw_bytes": 265197,
+      "raw_sha256": "678b526afaf3ac22d1ef767468a54a0f0e46c424508ea79ebf9b10c626dbc870"
+    },
+    "execution/run/native.log": {
+      "path": "compressed/execution/run/native.log.gz",
+      "raw_bytes": 108070,
+      "raw_sha256": "0386627e02746d85f16643cbae020b6cb2e6a8e6691e619465370496d18d7dea"
+    },
+    "factory/dag-metadata.json": {
+      "path": "compressed/factory/dag-metadata.json.gz",
+      "raw_bytes": 429248,
+      "raw_sha256": "29cfececfd12f6ded67fa6f89ab6de02d2991dfbe41adf0288fc655cc50c50c9"
+    },
+    "factory/saved_source.py": {
+      "path": "compressed/factory/saved_source.py.gz",
+      "raw_bytes": 17684,
+      "raw_sha256": "37c9134dae35d88f240fcb025ec517b484d2dfe32d1f95ebcc51dd8f472659c4"
+    },
+    "kernel/cms-structural-masks.json": {
+      "path": "compressed/kernel/cms-structural-masks.json.gz",
+      "raw_bytes": 84980,
+      "raw_sha256": "33c248049fde973dfc57a00837c67c86a970da4a1052d17d72924cab3dfe7c09"
+    },
+    "proposal/cases.json": {
+      "path": "compressed/proposal/cases.json.gz",
+      "raw_bytes": 335043,
+      "raw_sha256": "92edb54d410d1c08ea5a82e6617023fd053c0a7e1db5e0d78443aaae1fa98411"
+    },
+    "proposal/expected.json": {
+      "path": "compressed/proposal/expected.json.gz",
+      "raw_bytes": 498902,
+      "raw_sha256": "1679e79a7293157f53abc71f3e45e36e688788df3cc87e52c9e501d4f8d57c3f"
+    },
+    "proposal/inputs.txt": {
+      "path": "compressed/proposal/inputs.txt.gz",
+      "raw_bytes": 265197,
+      "raw_sha256": "678b526afaf3ac22d1ef767468a54a0f0e46c424508ea79ebf9b10c626dbc870"
+    },
+    "proposal/mock-tests-attempt3.log": {
+      "path": "compressed/proposal/mock-tests-attempt3.log.gz",
+      "raw_bytes": 223576,
+      "raw_sha256": "d716dd2caa4cac647616a95462b142a9f1ed3fafb5739a1f03e64b703fb1312b"
+    },
+    "provenance/cms-source-bindings.json": {
+      "path": "compressed/provenance/cms-source-bindings.json.gz",
+      "raw_bytes": 60093,
+      "raw_sha256": "bf789c6dd6fa10ed5c1e23c90c54825e5448833da2754aeb37aab1e7b207152e"
+    }
+  },
+  "dependencies": {
+    "current-kinematic-trace-build-qualification-1": "89697913341ecc5fe765fb023cc09bced783eb3eedb85436afe1ca7d4dc6c033",
+    "current-kinematic-trace-runtime-qualification-1": "730f8f220c17676287dda092a19fb24fbca2073d1ecb0e7ceb44a3a16b5402e4"
+  },
+  "external_binary_reads": 0,
+  "original_269_source_reads": 0,
+  "origins": {
+    "conditional/README.md": {
+      "bytes": 2642,
+      "path": ".tirust-build/kinematic-invariant-caller-trace-conditional-1/README.md",
+      "sha256": "e678481eae40e30878357bfcba3dbee6dc47aed4ae8c9bf806c893c3ded0b86a"
+    },
+    "conditional/analysis.log": {
+      "bytes": 5982,
+      "path": ".tirust-build/kinematic-invariant-caller-trace-conditional-1/analysis.log",
+      "sha256": "6069a3b419f4b89ec72c39169d9c2fb61876346ec17af41232c5c6ebdc9e2a8f"
+    },
+    "conditional/analyze.py": {
+      "bytes": 6677,
+      "path": ".tirust-build/kinematic-invariant-caller-trace-conditional-1/analyze.py",
+      "sha256": "4f854641a285d1ea080d302fb17ef661072373b8898afb9b9e0dad70f7d0a065"
+    },
+    "conditional/index.json": {
+      "bytes": 869,
+      "path": ".tirust-build/kinematic-invariant-caller-trace-conditional-1/index.json",
+      "sha256": "a51a685abffb384e9503f2a25703f4fb09a08ba13e07c164081eae52993e081e"
+    },
+    "conditional/results.json": {
+      "bytes": 264888,
+      "path": ".tirust-build/kinematic-invariant-caller-trace-conditional-1/results.json",
+      "sha256": "7c6e15f1447290968b67c086d39297716063b596307646f24d3a3455f76b066f"
+    },
+    "conditional/verify.py": {
+      "bytes": 1022,
+      "path": ".tirust-build/kinematic-invariant-caller-trace-conditional-1/verify.py",
+      "sha256": "ea6b4d7bf16fe0255b35f4e7e9499c6b0e9b34b84daaedb7fbe8cbb669be9b76"
+    },
+    "execution/build/01-c.log": {
+      "bytes": 0,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/01-c.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "execution/build/02-factory.log": {
+      "bytes": 0,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/02-factory.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "execution/build/03-driver.log": {
+      "bytes": 270,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/03-driver.log",
+      "sha256": "b22f95bf94405e3a4ff8f3684d73fdadd6a7112e39441a6f754e228be6626179"
+    },
+    "execution/build/04-link.log": {
+      "bytes": 0,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/04-link.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "execution/build/caller_bounds.f90": {
+      "bytes": 6893,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/caller_bounds.f90",
+      "sha256": "a0f941fc4ea7904bfd1e81880239637ad42e676f3a57ac47879f357a1241f71e"
+    },
+    "execution/build/cms_bounds_data.inc": {
+      "bytes": 15537,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/cms_bounds_data.inc",
+      "sha256": "1d5876b9f6de39ed450a661c1465e99f47c60d6827f5f00cc2a9c7ca496f033e"
+    },
+    "execution/build/driver.f90": {
+      "bytes": 3134,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/driver.f90",
+      "sha256": "c6b3fbe895ac2de166388071eb3f61b7aa4c70fa5936249b61279797d89cec8d"
+    },
+    "execution/build/environment_token.c": {
+      "bytes": 688,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/environment_token.c",
+      "sha256": "5b82404bf31bb731e80d63c0187efe3cdc5e7a213373697124a7c888919f4196"
+    },
+    "execution/build/result.json": {
+      "bytes": 4832,
+      "path": ".tirust-build/caller-bound-native-qualification-1/build/result.json",
+      "sha256": "c5320ab0fe543a6f7bc5b0f081d1266ce382af95a5fdf46948760ca96057eb56"
+    },
+    "execution/run/inputs.txt": {
+      "bytes": 265197,
+      "path": ".tirust-build/caller-bound-native-qualification-1/run/inputs.txt",
+      "sha256": "678b526afaf3ac22d1ef767468a54a0f0e46c424508ea79ebf9b10c626dbc870"
+    },
+    "execution/run/native.log": {
+      "bytes": 108070,
+      "path": ".tirust-build/caller-bound-native-qualification-1/run/native.log",
+      "sha256": "0386627e02746d85f16643cbae020b6cb2e6a8e6691e619465370496d18d7dea"
+    },
+    "execution/run/result.json": {
+      "bytes": 1775,
+      "path": ".tirust-build/caller-bound-native-qualification-1/run/result.json",
+      "sha256": "9e879b960bf34fb9b9d9fa737831d42d43f7940cd75f49956ed9fac8c51ceb8a"
+    },
+    "execution/run/tokens.txt": {
+      "bytes": 190,
+      "path": ".tirust-build/caller-bound-native-qualification-1/run/tokens.txt",
+      "sha256": "b047fec7c1e30dc400c7c21a455a41bb92c6b2bc487088cfe2339e548848d664"
+    },
+    "factory/CONTRACT.md": {
+      "bytes": 9285,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/CONTRACT.md",
+      "sha256": "2d5c1bb0323de64dd41ec35b66adc1c04437002ac31498fb18192a2d828b5530"
+    },
+    "factory/caller_bounds.f90": {
+      "bytes": 6893,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/caller_bounds.f90",
+      "sha256": "a0f941fc4ea7904bfd1e81880239637ad42e676f3a57ac47879f357a1241f71e"
+    },
+    "factory/cms_bounds_data.inc": {
+      "bytes": 15537,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/cms_bounds_data.inc",
+      "sha256": "1d5876b9f6de39ed450a661c1465e99f47c60d6827f5f00cc2a9c7ca496f033e"
+    },
+    "factory/dag-metadata.json": {
+      "bytes": 429248,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/dag-metadata.json",
+      "sha256": "29cfececfd12f6ded67fa6f89ab6de02d2991dfbe41adf0288fc655cc50c50c9"
+    },
+    "factory/derive_dag.py": {
+      "bytes": 12785,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/derive_dag.py",
+      "sha256": "04ddf35c5cf1edddb0240e08927162a1e99365f21875a4f3a025f344aabe3120"
+    },
+    "factory/emit_data.py": {
+      "bytes": 2083,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/emit_data.py",
+      "sha256": "a26d963c2afceecc3f9b011c67c87420853ef32042ec45796077585f7accdea5"
+    },
+    "factory/environment_token.c": {
+      "bytes": 688,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/environment_token.c",
+      "sha256": "5b82404bf31bb731e80d63c0187efe3cdc5e7a213373697124a7c888919f4196"
+    },
+    "factory/index.json": {
+      "bytes": 3791,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/index.json",
+      "sha256": "aba903450f49e0e18ba3fff40dbf6074e1cd67e9af1c67cd83bbd6fd583c1047"
+    },
+    "factory/routing.py": {
+      "bytes": 4592,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/routing.py",
+      "sha256": "c3d9088f3507707b4303b832bd925a341861545e677767a85a4e70be1c0e3ca3"
+    },
+    "factory/runtime_reference.py": {
+      "bytes": 3414,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/runtime_reference.py",
+      "sha256": "22d01423b966e204f813e0969beec6495f2ef56ad085b119cfdead597349d0f8"
+    },
+    "factory/saved_source.py": {
+      "bytes": 17684,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/saved_source.py",
+      "sha256": "37c9134dae35d88f240fcb025ec517b484d2dfe32d1f95ebcc51dd8f472659c4"
+    },
+    "factory/test_factory.py": {
+      "bytes": 8965,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/test_factory.py",
+      "sha256": "60545d9ab4532cf0b8675a0cd5946786a1f73eadbb80753895a1ae3f72326f14"
+    },
+    "factory/tests-attempt1.log": {
+      "bytes": 2635,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/tests-attempt1.log",
+      "sha256": "3cf4292efa6f21d7c63311d893cea50533f58449306f9c792a8b693c5b6e5d7d"
+    },
+    "factory/tests-attempt2.log": {
+      "bytes": 1807,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/tests-attempt2.log",
+      "sha256": "ee7587448c0f97a585c5829de3111fcb761861225caa0d5175fdd5d5f2551a66"
+    },
+    "factory/tests-final.log": {
+      "bytes": 2103,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/tests-final.log",
+      "sha256": "d6e3ff8317f2fd2df2394304cc5b56f24a1a980c5b80d1683ccffce4fa9b614c"
+    },
+    "factory/verify.py": {
+      "bytes": 1348,
+      "path": ".tirust-build/kinematic-invariant-caller-metadata-1/verify.py",
+      "sha256": "37096b4b65575b2e404c8b5b0e3ee8acd0ebe97111e543402110cfa071d925ed"
+    },
+    "kernel/PROPOSAL.md": {
+      "bytes": 14521,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/PROPOSAL.md",
+      "sha256": "9469aac4b044a3c341fc69c3da35c95a9d9f154e6be4a3dc3ab469af84f4a519"
+    },
+    "kernel/certificate.f90": {
+      "bytes": 3530,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/certificate.f90",
+      "sha256": "0cb41b0c10233027d65c85f63625556eefb819ce2570390447bdceff4d8f7088"
+    },
+    "kernel/certificate_reference.py": {
+      "bytes": 3170,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/certificate_reference.py",
+      "sha256": "7b52f707d16b5e248160b8fb7df0a162be41285d02a4cea4d5ae1fe2bac22de1"
+    },
+    "kernel/cms-structural-masks.json": {
+      "bytes": 84980,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/cms-structural-masks.json",
+      "sha256": "33c248049fde973dfc57a00837c67c86a970da4a1052d17d72924cab3dfe7c09"
+    },
+    "kernel/derive_masks.py": {
+      "bytes": 3351,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/derive_masks.py",
+      "sha256": "9d01b84572fd170af4563211e7889b08f3f33b221248d0cead6d3efd979955d6"
+    },
+    "kernel/ew-mass-check.json": {
+      "bytes": 1094,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/ew-mass-check.json",
+      "sha256": "2e412f65a3485eb56f1388d5fd25224a39d96765ad69500683924115c95ab99f"
+    },
+    "kernel/index.json": {
+      "bytes": 1828,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/index.json",
+      "sha256": "1665eff3188c947f35673b958cd0f02525fd031dc814b708dfdda69160b57964"
+    },
+    "kernel/pins.json": {
+      "bytes": 9186,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/pins.json",
+      "sha256": "f2552cedfa32c710600cb92ecc1a7cd28fc28ba795a25756abfb0066acda435d"
+    },
+    "kernel/test_certificate_reference.py": {
+      "bytes": 3854,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/test_certificate_reference.py",
+      "sha256": "b935dd6ed0d44ea408dbbd47cc23ae39b08a7906facc199cbfed5d9e7be48688"
+    },
+    "kernel/tests.log": {
+      "bytes": 1881,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/tests.log",
+      "sha256": "965af588266c253c7596b82a878b4d977d55ff394aba6e2ad9021875a409a43d"
+    },
+    "kernel/verify.py": {
+      "bytes": 1819,
+      "path": ".tirust-build/kinematic-invariant-general-proposal-1/verify.py",
+      "sha256": "62929208c5523c485da3aae73773a14d44a1448b20ef05911084318b6465f148"
+    },
+    "proposal/README.md": {
+      "bytes": 3902,
+      "path": ".tirust-build/caller-bound-native-proposal-1/README.md",
+      "sha256": "005f86ee1a417c8e9fd387bdcc41d97b4a0e01d0e19615e33db7ae6800986323"
+    },
+    "proposal/analyze.py": {
+      "bytes": 2823,
+      "path": ".tirust-build/caller-bound-native-proposal-1/analyze.py",
+      "sha256": "370e8413dd9bb0d65d28eb35224cc331d436e4660599a5c9a2cafe35e2ecd762"
+    },
+    "proposal/cases.json": {
+      "bytes": 335043,
+      "path": ".tirust-build/caller-bound-native-proposal-1/cases.json",
+      "sha256": "92edb54d410d1c08ea5a82e6617023fd053c0a7e1db5e0d78443aaae1fa98411"
+    },
+    "proposal/control.py": {
+      "bytes": 4650,
+      "path": ".tirust-build/caller-bound-native-proposal-1/control.py",
+      "sha256": "4784b4f2f746177575d3fff334aa0b97cc74baa8905b176fd39aac4cd434d7a2"
+    },
+    "proposal/driver.f90": {
+      "bytes": 3134,
+      "path": ".tirust-build/caller-bound-native-proposal-1/driver.f90",
+      "sha256": "c6b3fbe895ac2de166388071eb3f61b7aa4c70fa5936249b61279797d89cec8d"
+    },
+    "proposal/expected.json": {
+      "bytes": 498902,
+      "path": ".tirust-build/caller-bound-native-proposal-1/expected.json",
+      "sha256": "1679e79a7293157f53abc71f3e45e36e688788df3cc87e52c9e501d4f8d57c3f"
+    },
+    "proposal/index.json": {
+      "bytes": 3597,
+      "path": ".tirust-build/caller-bound-native-proposal-1/index.json",
+      "sha256": "8c3639c9412831e369f86bbd4b657818f39aad1aa2f521126e49f544a655a837"
+    },
+    "proposal/inputs.txt": {
+      "bytes": 265197,
+      "path": ".tirust-build/caller-bound-native-proposal-1/inputs.txt",
+      "sha256": "678b526afaf3ac22d1ef767468a54a0f0e46c424508ea79ebf9b10c626dbc870"
+    },
+    "proposal/mock-tests-attempt2.log": {
+      "bytes": 1832,
+      "path": ".tirust-build/caller-bound-native-proposal-1/mock-tests-attempt2.log",
+      "sha256": "84c2a219b70172ea39d2e0707b8c6fc9520351a249532fc2275422e8fd551e62"
+    },
+    "proposal/mock-tests-attempt3.log": {
+      "bytes": 223576,
+      "path": ".tirust-build/caller-bound-native-proposal-1/mock-tests-attempt3.log",
+      "sha256": "d716dd2caa4cac647616a95462b142a9f1ed3fafb5739a1f03e64b703fb1312b"
+    },
+    "proposal/mock-tests-final.log": {
+      "bytes": 850,
+      "path": ".tirust-build/caller-bound-native-proposal-1/mock-tests-final.log",
+      "sha256": "ea98ab921a3a8e23dece0d83036ec207ed93646b954804afa28773f168feea9e"
+    },
+    "proposal/mock-tests.log": {
+      "bytes": 1832,
+      "path": ".tirust-build/caller-bound-native-proposal-1/mock-tests.log",
+      "sha256": "d599d482cea357e71f838cc734cfc119d580bf235bd1522d2dd5d9c21b9458df"
+    },
+    "proposal/prepare.py": {
+      "bytes": 5332,
+      "path": ".tirust-build/caller-bound-native-proposal-1/prepare.py",
+      "sha256": "60a33d30d88c8da2f608974086b99f3448e9e94aaa7ee552bb5aa0334877923b"
+    },
+    "proposal/supervise.py": {
+      "bytes": 9125,
+      "path": ".tirust-build/caller-bound-native-proposal-1/supervise.py",
+      "sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42"
+    },
+    "proposal/test_protocol.py": {
+      "bytes": 2240,
+      "path": ".tirust-build/caller-bound-native-proposal-1/test_protocol.py",
+      "sha256": "48b23ddeac365f955af4af63ec465e951582f531d466d12e668c05dfd04e3bea"
+    },
+    "proposal/tokens.json": {
+      "bytes": 688,
+      "path": ".tirust-build/caller-bound-native-proposal-1/tokens.json",
+      "sha256": "0e999bb487958ead76eb60020f4eb3c35bb0d560eb0706ab1530131cbf002cc1"
+    },
+    "proposal/tokens.txt": {
+      "bytes": 190,
+      "path": ".tirust-build/caller-bound-native-proposal-1/tokens.txt",
+      "sha256": "b047fec7c1e30dc400c7c21a455a41bb92c6b2bc487088cfe2339e548848d664"
+    },
+    "proposal/verify.py": {
+      "bytes": 643,
+      "path": ".tirust-build/caller-bound-native-proposal-1/verify.py",
+      "sha256": "d895c870d02a42e73c4a8785ea99b97769f3b9af361e1fbba4274b6380fe8c90"
+    },
+    "provenance/cms-source-bindings.json": {
+      "bytes": 60093,
+      "path": "docs/benchmarkfolder/experiments/current-kinematic-trace-build-qualification-1/results/derived/cms-source-bindings.json",
+      "sha256": "bf789c6dd6fa10ed5c1e23c90c54825e5448833da2754aeb37aab1e7b207152e"
+    },
+    "provenance/index.json": {
+      "bytes": 2703,
+      "path": "docs/benchmarkfolder/experiments/current-kinematic-trace-build-qualification-1/results/derived/index.json",
+      "sha256": "25c2114756ed3eb968c311945a27d175c5c5a0af54d4ae21158abc8ed42a4184"
+    }
+  }
+}

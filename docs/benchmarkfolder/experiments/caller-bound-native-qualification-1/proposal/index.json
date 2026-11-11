@@ -1,0 +1,102 @@
+{
+  "base_route_modes": 104,
+  "build_seconds": 60,
+  "compiled": false,
+  "compiler_paths": {
+    "gcc": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc",
+    "gfortran": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "prlimit": "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit"
+  },
+  "factory_index_sha256": "aba903450f49e0e18ba3fff40dbf6074e1cd67e9af1c67cd83bbd6fd583c1047",
+  "files": {
+    "README.md": {
+      "bytes": 3902,
+      "sha256": "005f86ee1a417c8e9fd387bdcc41d97b4a0e01d0e19615e33db7ae6800986323"
+    },
+    "analyze.py": {
+      "bytes": 2823,
+      "sha256": "370e8413dd9bb0d65d28eb35224cc331d436e4660599a5c9a2cafe35e2ecd762"
+    },
+    "cases.json": {
+      "bytes": 335043,
+      "sha256": "92edb54d410d1c08ea5a82e6617023fd053c0a7e1db5e0d78443aaae1fa98411"
+    },
+    "control.py": {
+      "bytes": 4650,
+      "sha256": "4784b4f2f746177575d3fff334aa0b97cc74baa8905b176fd39aac4cd434d7a2"
+    },
+    "driver.f90": {
+      "bytes": 3134,
+      "sha256": "c6b3fbe895ac2de166388071eb3f61b7aa4c70fa5936249b61279797d89cec8d"
+    },
+    "expected.json": {
+      "bytes": 498902,
+      "sha256": "1679e79a7293157f53abc71f3e45e36e688788df3cc87e52c9e501d4f8d57c3f"
+    },
+    "inputs.txt": {
+      "bytes": 265197,
+      "sha256": "678b526afaf3ac22d1ef767468a54a0f0e46c424508ea79ebf9b10c626dbc870"
+    },
+    "mock-tests-attempt2.log": {
+      "bytes": 1832,
+      "sha256": "84c2a219b70172ea39d2e0707b8c6fc9520351a249532fc2275422e8fd551e62"
+    },
+    "mock-tests-attempt3.log": {
+      "bytes": 223576,
+      "sha256": "d716dd2caa4cac647616a95462b142a9f1ed3fafb5739a1f03e64b703fb1312b"
+    },
+    "mock-tests-final.log": {
+      "bytes": 850,
+      "sha256": "ea98ab921a3a8e23dece0d83036ec207ed93646b954804afa28773f168feea9e"
+    },
+    "mock-tests.log": {
+      "bytes": 1832,
+      "sha256": "d599d482cea357e71f838cc734cfc119d580bf235bd1522d2dd5d9c21b9458df"
+    },
+    "prepare.py": {
+      "bytes": 5332,
+      "sha256": "60a33d30d88c8da2f608974086b99f3448e9e94aaa7ee552bb5aa0334877923b"
+    },
+    "supervise.py": {
+      "bytes": 9125,
+      "sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42"
+    },
+    "test_protocol.py": {
+      "bytes": 2240,
+      "sha256": "48b23ddeac365f955af4af63ec465e951582f531d466d12e668c05dfd04e3bea"
+    },
+    "tokens.json": {
+      "bytes": 688,
+      "sha256": "0e999bb487958ead76eb60020f4eb3c35bb0d560eb0706ab1530131cbf002cc1"
+    },
+    "tokens.txt": {
+      "bytes": 190,
+      "sha256": "b047fec7c1e30dc400c7c21a455a41bb92c6b2bc487088cfe2339e548848d664"
+    },
+    "verify.py": {
+      "bytes": 643,
+      "sha256": "d895c870d02a42e73c4a8785ea99b97769f3b9af361e1fbba4274b6380fe8c90"
+    }
+  },
+  "memory_bytes": 4294967296,
+  "mock_tests_passed": 8,
+  "native_executions": 0,
+  "production_changes": false,
+  "run_seconds": 10,
+  "schema": "caller-bound-native-source-proposal-v1",
+  "synthetic_cases": 174,
+  "tools": {
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit": {
+      "bytes": 90600,
+      "sha256": "0b352b56a76a2f55653f7da2b9d1d540d7280c08718608f4349f2c95ef9a0964"
+    },
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran": {
+      "bytes": 10951,
+      "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae"
+    },
+    "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc": {
+      "bytes": 10845,
+      "sha256": "3c48a46fb1dc134c0f10c2da6ec1a8d34a381b93c2ac588b7d19dd3e804eeeef"
+    }
+  }
+}

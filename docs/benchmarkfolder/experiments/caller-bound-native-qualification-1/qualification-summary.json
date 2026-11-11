@@ -1,0 +1,47 @@
+{
+  "CLI_script_reconstructed_sha256": "3756fd414746cdf86bfcffc32edec97174061a9375fd300322c1a863e62efbb5",
+  "actual_environment_token": "4B4500001F80033F",
+  "base_route_modes": 104,
+  "closed_build_commands": 4,
+  "closed_standalone_workers": 1,
+  "compiled_cases": 174,
+  "conditional_causal_pair24_cases": 4,
+  "conditional_trace_counts": {
+    "class_1": 240,
+    "class_2": 120,
+    "conditional_certificates": 60,
+    "conditional_zero_vetoes": 40,
+    "ordered_pairs": 360,
+    "original_zero_branches": 280
+  },
+  "environment_token_controls": 11,
+  "external_binary_reads_by_portable_review": 0,
+  "full_amplitude_environment_path_qualified": false,
+  "full_amplitude_qualified": false,
+  "historically_verified_source_hashes": 269,
+  "invalid_boundary_controls": 70,
+  "new_native_calls_by_portable_review": 0,
+  "observed_flag_patterns": [
+    "FFFFF"
+  ],
+  "observed_ieee_flag_changes": 0,
+  "passed": true,
+  "portable_fresh_269_source_reparse": false,
+  "raw_protocol_bytes": 108070,
+  "raw_protocol_counts": {
+    "B": 574,
+    "C": 174,
+    "E": 174,
+    "P": 2066,
+    "T": 11
+  },
+  "recorded_executable": {
+    "bytes": 52296,
+    "sha256": "ad7ba1b247cc9d66e2465c00fc2c2ed8dfeefa9b41904894bdd790084738af51"
+  },
+  "reference_mismatches": 0,
+  "schema": "portable-caller-bound-native-review-v1",
+  "scope": "Integer caller factory/compiler/read-only host environment readiness; retained trace eligibility remains conditional on valid entry-to-use environment and genuine same-kind producer.",
+  "table_orientation_verified": true,
+  "tensor_calls_in_standalone_test": 0
+}
