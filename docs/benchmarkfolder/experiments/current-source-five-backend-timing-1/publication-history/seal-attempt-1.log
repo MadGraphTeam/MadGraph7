@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-five-backend-timing-replay-1/seal.py", line 70, in <module>
+    args=parser.parse_args();print(json.dumps(seal(Path.cwd(),args.report,args.source,args.prepared),indent=2,sort_keys=True))
+                                              ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-five-backend-timing-replay-1/seal.py", line 41, in seal
+    for name,checksum in source['support'].items():
+                         ~~~~~~^^^^^^^^^^^
+TypeError: 'PosixPath' object is not subscriptable

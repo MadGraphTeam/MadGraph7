@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "--list",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-five-backend-timing-work-1/clones/9/outputs/candidate/ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/check"
+  ],
+  "executable_sha256": "4f71bf2e71e5b0ae58021e6ededa286c0f92c1de6e9f8fe296fe2d8b80c93471",
+  "invokes_fortran_main": false
+}

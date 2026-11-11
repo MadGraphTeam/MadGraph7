@@ -1,0 +1,56 @@
+{
+  "ew_n2_epem_mupmum": {
+    "backend": 1,
+    "files": {
+      "candidate-initialization/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "candidate-initialization/warmup.dat": "be7923bf3244b06c640fb037a7190ca29d431866fe645586a81c98306f306d84",
+      "candidate-inputs.json": "7d71ff1e9f878b0bbfda171515308253d49e490acff0a803c4a428bc38e7793f",
+      "candidate-output.txt": "ab36e4dbf1edff8997d57f715bb638077f69d97cd24ecf5ae8ba5316d3378685",
+      "inputs-after.json": "3be0f156c506bb4e4bb521687a8bd3f8c65d272ad094677d8fd88d0b2c4bdc2c",
+      "raw/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "raw/observation.json": "57dd8e5967f7f9dacb22c613d54d246eaa51765983dd352857cc9b1c4660817f",
+      "raw/ready.json": "18b99988c7d41e5013520e8cfbe6b12d82ad8930c46437d4c584d8d2305bc061",
+      "raw/warmup.dat": "be7923bf3244b06c640fb037a7190ca29d431866fe645586a81c98306f306d84",
+      "result.json": "958a33daec63bba6b55e296c9453d17b5a0fa4dcc36bf1ea19d1c7887c2357fe"
+    },
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n2_epem_mupmum-1/candidate-1",
+    "replayed_points": 100,
+    "source_build_points_runtime_matched": true
+  },
+  "qcd_n1_uux_z": {
+    "backend": 1,
+    "files": {
+      "candidate-initialization/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "candidate-initialization/warmup.dat": "48f8c3e1e766d42e368618900f5cfeab1a2bb6b19fd844c4c400308ac40f0be2",
+      "candidate-inputs.json": "884a427831cabd61295bb9d37572fe2ee6dd40b0c8716c2ba8ae6d650b9b9720",
+      "candidate-output.txt": "ab36e4dbf1edff8997d57f715bb638077f69d97cd24ecf5ae8ba5316d3378685",
+      "inputs-after.json": "ecb6924f6b0143c0f4626de8f1dcef6d11e79bfb1574cec9e3bce579bef7e471",
+      "raw/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "raw/observation.json": "f3556917defa0362f13c0d08f6f8721a63e0ff9d41e38447520129778805b9e8",
+      "raw/ready.json": "059832cb3c96f90d47160bcf40f3d191812700a7af6e571b4d6ace6068b40eac",
+      "raw/warmup.dat": "48f8c3e1e766d42e368618900f5cfeab1a2bb6b19fd844c4c400308ac40f0be2",
+      "result.json": "40b6d1a4cb5c1402f6b066d9843f4268012ec2000adbb75572dedb95840a7fa7"
+    },
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n1_uux_z-1/candidate-1",
+    "replayed_points": 100,
+    "source_build_points_runtime_matched": true
+  },
+  "qcd_n2_gg_ttx": {
+    "backend": 1,
+    "files": {
+      "candidate-initialization/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "candidate-initialization/warmup.dat": "3664ba2f9178e9cc743df16cbf12931e51a0c9ecea6ff4c3384cb77d7512b7c3",
+      "candidate-inputs.json": "91b0641f947591ea610e2d1cfdc108a86857b2f0957b9f8907d169fa0af23fc4",
+      "candidate-output.txt": "ab36e4dbf1edff8997d57f715bb638077f69d97cd24ecf5ae8ba5316d3378685",
+      "inputs-after.json": "201b8d23bac4ec065cdbe82d4c367095b41dcb668e60044fd68e2c604e1b6408",
+      "raw/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "raw/observation.json": "0107e059edcb6901e7d4172c4e175166c61b3873c6b394862217c589c610894f",
+      "raw/ready.json": "6dc88f26187d9d1cb753ee992ddc2fb4d6cada62598864b2c2c615dfabf0dbd4",
+      "raw/warmup.dat": "3664ba2f9178e9cc743df16cbf12931e51a0c9ecea6ff4c3384cb77d7512b7c3",
+      "result.json": "cb3af2e6fe21a9d2a7e0a76924f345f71d825db34e8427b97f25eedb5d9efb59"
+    },
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n2_gg_ttx-1/candidate-1",
+    "replayed_points": 100,
+    "source_build_points_runtime_matched": true
+  }
+}

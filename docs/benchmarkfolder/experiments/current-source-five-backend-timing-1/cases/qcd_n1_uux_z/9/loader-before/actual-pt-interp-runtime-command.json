@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "--list",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-five-backend-timing-work-1/clones/9/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/check"
+  ],
+  "executable_sha256": "e2df04037b411dde0d5481997b6c26adabc73b1c629fe07dd099fa513d7a13cb",
+  "invokes_fortran_main": false
+}
