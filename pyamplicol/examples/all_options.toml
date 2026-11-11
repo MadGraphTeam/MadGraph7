@@ -52,6 +52,13 @@ coupling_order_policy = "explicit"
 # mixed multiparticle request, "skip" serves none, "only" serves only them,
 # "include" serves both kinds as separate contributions. Default auto.
 # loop_induced = "auto"
+# process.squared_coupling_orders: One-loop squared-coupling-order sectors
+# served, MG5_aMC constraints "NAME^2<=N" (also ==, <, >, >=; "NAME<=N" and "="
+# for "<=" accepted): a sector is reported and summed only when its power of
+# each named order passes. At one loop the power is that of the Born x loop
+# interference (loop x loop for loop-induced). Default empty (every sector).
+# The MG5_aMC process syntax "u u~ > d d~ QCD^2<=4 [QCD]" sets it.
+# squared_coupling_orders = ["QCD^2<=4", "QED^2<=6"]
 # The following four topology-extraction controls are unstable, developer-only
 # implementation details. Do not rely on them in production run cards.
 # process.max_color_sectors: Optional cap on generated color sectors. Default null.
@@ -104,6 +111,10 @@ r2_strategy = "auto"
 # "ninjars" or "tirust" (refused where it cannot serve a call). Artifacts do
 # not depend on it; evaluation.reduction overrides it per evaluation.
 reduction = "auto"
+# loop.external_widths: "model" (default: the model's widths) or "zero" (stable
+# external states: the width parameter of every external particle of the
+# request fixed to 0 unless loop.preparation.fixed_parameters names it).
+external_widths = "model"
 # loop.alpha_s_parameter: The v2 engine's alpha_s of the QCD IR-pole prediction
 # (an adjustable external model parameter). Default absent: the unique SLHA
 # SMINPUTS 3 parameter, else no QCD pole prediction (the virtual is unchanged).
@@ -472,6 +483,18 @@ reduction_direction = false
 # inputs, evaluating the master integrals again (requires
 # reduction_direction). Default false.
 rescaled = false
+
+[evaluation.phase_space]
+# Flat (RAMBO) phase-space points that evaluate and profile draw when
+# evaluation.momenta is not set, with the external masses of the artifact's
+# validation point; mu_r2 then defaults to s per point.
+# evaluation.phase_space.points: Number of points. Default 2.
+points = 2
+# evaluation.phase_space.seed: Point i is drawn from seed + i. Default 1.
+seed = 1
+# evaluation.phase_space.sqrt_s: Centre-of-mass energy of a 2 -> n scattering.
+# Default null: the artifact's validation-point energy.
+sqrt_s = 1000.0
 
 [benchmark]
 # benchmark.target_runtime: Positive target duration in seconds. Default 10.0.

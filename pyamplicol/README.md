@@ -91,6 +91,21 @@ for current-source development and tests.
 Full installation details are in the
 [documentation](https://madgraph.org/pyamplicol/).
 
+One-loop matrix elements from a checkout, any process in MG5_aMC syntax
+([master card](examples/README.md#one-loop-examples)):
+
+```console
+git clone https://github.com/MadGraphTeam/pyamplicol.git && cd pyamplicol
+just dev-install                                   # build and stage into .venv
+source .venv/bin/activate                          # the pyamplicol command
+pyamplicol examples copy ./pyamplicol-examples     # editable example cards
+cd pyamplicol-examples
+pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output  # generate
+pyamplicol loop_generate.toml check --output=./my_loop_output     # poles and Ward identities
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points, poles, stability
+pyamplicol loop_generate.toml profile --output=./my_loop_output   # time per point and stage
+```
+
 ## Quick start
 
 Copy the installed examples into an editable workspace:

@@ -58,7 +58,6 @@ def test_run_cards_parse_and_resolve_without_domain_backends(card: Path) -> None
         assert config.generation.output is not None
     elif config.action == "evaluate":
         assert config.evaluation.artifact is not None
-        assert config.evaluation.momenta is not None
     elif config.action in {"benchmark", "inspect", "group-processes"}:
         assert config.evaluation.artifact is not None
 
@@ -83,6 +82,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
     {
         "process.loop_coupling_orders",
         "process.loop_induced",
+        "process.squared_coupling_orders",
         "evaluation.arithmetic",
         "evaluation.reduction",
         "evaluation.reduction_target",
