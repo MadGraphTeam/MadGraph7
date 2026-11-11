@@ -389,6 +389,60 @@ example relies on an installation directory.
 
 ## One-Loop Examples
 
+### The master card: any process, the action on the command line
+
+`loop_generate.toml` is one card for any one-loop process: MG5_aMC's
+`loop_qcd_qed_sm` with its default restriction (QCD and QED corrections), the
+complex-mass scheme, stable external states (`[loop] external_widths =
+"zero"`), and the settings of all four actions. Name the process in MG5_aMC
+syntax with `--process` and the artifact with `--output`:
+
+```console
+pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output
+pyamplicol loop_generate.toml check    --output=./my_loop_output  # poles and Ward identities, regenerated in memory
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points: no momenta file needed
+pyamplicol loop_generate.toml profile  --output=./my_loop_output  # time per point and per stage
+```
+
+What each action does:
+
+| Action | What it does | Card section |
+| --- | --- | --- |
+| `generate` | writes the artifact to `--output` (default `generation.output`) | `[model]`, `[process]`, `[loop]`, `[generation]` |
+| `check` | regenerates the artifact's request in memory and checks the poles (Catani; loop-induced: finiteness) and Ward identities at seeded points; exit code 0 iff every check passed | `[check]` |
+| `evaluate` | evaluates the virtual (Born-interfered: 2 Re(B* V) per squared-order sector, with the Born; loop-induced: \|A_loop\|^2) with poles and a rotation stability estimate | `[evaluation]` |
+| `profile` | times batches of points per stage (trees, dressing, scatter, reduction) | `[benchmark]` |
+
+Steering:
+
+* **The process** (`--process`, repeatable; without it the card's entry,
+  the example above): MG5_aMC syntax. `[QCD]`, `[virt=QCD]`, `[QCD QED]` is
+  the one-loop virtual (only the virtual is computed; `[real=QCD]` is
+  refused), `[noborn=QCD]` a loop-induced |A_loop|^2 (`g g > h [noborn=QCD]`;
+  a process without a Born, `g g > h [QCD]`, is served loop-induced too),
+  `QED=2` an amplitude-order limit, `QCD^2<=4` a squared-order sector
+  selection (only the selected sectors are reported and summed), `/ z h` a
+  particle veto. Decay chains, `$` and `@N` are refused.
+  [Command-line guide](../docs/user/command-line-interface.md#mg5_amc-process-syntax).
+* **The artifact** (`--output DIR`): written by `generate`, read by the
+  other three (relative to the working directory).
+* **Any setting** (`--set PATH=VALUE`, repeatable), for example
+  `--set loop.model.scheme.mass_scheme=real-on-shell`,
+  `--set evaluation.reduction=ninjars` or `--set check.points=4`.
+* **Points**: `evaluate` and `profile` draw flat (RAMBO) phase-space points
+  when no momenta file is given: `[evaluation.phase_space] points` (2),
+  `seed` (1; point i from seed + i) and `sqrt_s` (default: the artifact's
+  validation-point energy), with mu_r^2 = s per point; `--momenta FILE`
+  evaluates given points instead. Example:
+  `pyamplicol loop_generate.toml evaluate --output=./my_loop_output --set
+  evaluation.phase_space.points=5 --set evaluation.phase_space.sqrt_s=2000`.
+* **Widths**: an unstable external particle (a top, a Higgs) is stable in the
+  process: its width is fixed to zero by `external_widths = "zero"`; the
+  widths of particles that only propagate stay (complex masses).
+
+The four cards per process below stay as they are; the master card is the
+quickest way to try another process.
+
 Four one-loop walkthroughs, two Born-interfered virtuals and two loop-induced
 processes, each with one pure-QCD and one mixed QCD/electroweak case in the
 complex-mass scheme. Each has a generate, a check, an evaluate and a profile

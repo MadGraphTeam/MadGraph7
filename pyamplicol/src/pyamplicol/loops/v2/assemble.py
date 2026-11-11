@@ -1794,6 +1794,13 @@ class SliceRequest:
     # names none. The generated slice does not depend on it (artifacts are
     # backend-independent).
     reduction: str = "auto"
+    # The squared-coupling-order sectors served (``[process]
+    # squared_coupling_orders``, MG5_aMC's ``QCD^2<=4``; canonical texts by
+    # the model's declared names, ``processes.mg5_syntax``): empty (the
+    # default, not recorded) serves every sector; otherwise the slice keeps
+    # the sectors that pass every constraint, and the request's loop orders
+    # are those some kept sector pairs (``loop_service``).
+    squared_orders: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.contribution not in CONTRIBUTIONS:
@@ -1851,6 +1858,37 @@ class SliceRequest:
             for name, power in orders.items():
                 bounds[name] = max(bounds.get(name, 0), power)
         return bounds
+
+
+def selected_sectors(
+    sectors: Mapping[Orders, set[tuple[Orders, Orders]]],
+    constraints: Sequence[str],
+    process: str,
+) -> dict[Orders, set[tuple[Orders, Orders]]]:
+    """The squared-order ``sectors`` (order -> its (Born or loop, loop)
+    pairs) that pass every squared-order constraint (``constraints``, texts
+    such as ``QCD^2<=4``); refused (``squared-order-selection``) when none
+    does."""
+
+    from pyamplicol.processes.mg5_syntax import (
+        parse_squared_order_constraint,
+        squared_orders_admit,
+    )
+
+    parsed = [parse_squared_order_constraint(text) for text in constraints]
+    kept = {
+        order: pairs
+        for order, pairs in sectors.items()
+        if squared_orders_admit(parsed, order)
+    }
+    if not kept:
+        raise LoopRequestUnsupported(
+            "squared-order-selection",
+            f"{process!r}: no squared-order sector of "
+            f"{[dict(order) for order in sorted(sectors)]} passes "
+            f"{list(constraints)}",
+        )
+    return kept
 
 
 def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
@@ -2757,6 +2795,12 @@ class LoopSlice:
         for a in born_orders:
             for b in selection.loop_orders:
                 sectors[add_orders(a, b)].add((a, b))
+        if request.squared_orders:
+            # The squared-order selection (``SliceRequest.squared_orders``):
+            # the sectors outside it are not served.
+            sectors = defaultdict(
+                set, selected_sectors(sectors, request.squared_orders, request.process)
+            )
         incoming = [leg.pdg for leg in process.legs if leg.is_initial]
         outgoing = [leg.pdg for leg in process.legs if leg.is_final]
         from .fields import field_definitions

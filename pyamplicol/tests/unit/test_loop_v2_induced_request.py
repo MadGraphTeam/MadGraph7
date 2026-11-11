@@ -299,15 +299,18 @@ def test_loop_induced_refusals_are_listed_and_name_the_key():
     assert "color.accuracy = 'full'" in refusal_text(
         "loop-induced-colour-accuracy", "m"
     )
+    # MG5_aMC's brackets are translated by the card, the CLI and the API
+    # (``processes.mg5_syntax``); a plain ProcessRequest names the
+    # translation.
     with pytest.raises(ProcessRequestUnsupported) as refused:
         refuse_madloop_syntax("g g > h [noborn=QCD]")
     message = str(refused.value)
     assert refused.value.key == "madloop-syntax"
-    assert "a loop-induced NLO bracket ('[noborn=QCD]' style" in message
-    assert 'process.loop_induced = "auto"' in message
+    assert 'process.loop_induced = "only"' in message
+    assert 'process.loop_coupling_orders = ["QCD"]' in message
     with pytest.raises(ProcessRequestUnsupported) as refused:
         refuse_madloop_syntax("u u~ > d d~ [virt=QCD]")
-    assert "an NLO bracket ('[virt=QCD]' style)" in str(refused.value)
+    assert "a ProcessRequest takes a plain expression" in str(refused.value)
 
 
 # ------------------------------------------------------------ order table

@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: 0BSD
+# Master one-loop card: one card, any process, the action on the command line.
+#
+#   pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output
+#   pyamplicol loop_generate.toml check    --output=./my_loop_output
+#   pyamplicol loop_generate.toml evaluate --output=./my_loop_output
+#   pyamplicol loop_generate.toml profile  --output=./my_loop_output
+#
+# --process takes MG5_aMC syntax: [QCD] / [virt=QCD] / [QCD QED] (the one-loop
+# virtual), [noborn=QCD] (loop-induced |A_loop|^2), QED=2 (amplitude limit),
+# QCD^2<=4 (squared-order sectors), / z (particle veto). Without --process the
+# entry below is generated; without --output, generation.output below.
+# README "One-loop examples" and docs/user/command-line-interface.md.
+
+schema_version = 1
+action = "generate"
+
+[model]
+# MG5_aMC's loop_qcd_qed_sm (QCD and QED corrections, alpha(M_Z) scheme),
+# default restriction.
+source = "loop_qcd_qed_sm"
+restriction = "default"
+
+[process]
+entries = [{ expression = "u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" }]
+
+[loop]
+# Stable external states: the width of every external particle is fixed to
+# zero (the widths of particles that only propagate are kept).
+external_widths = "zero"
+
+[loop.model.scheme]
+# Complex masses for every unstable particle in tree and loop propagators,
+# gauge invariant with widths in any process.
+mass_scheme = "complex-mass"
+
+[generation]
+output = "artifacts/loop_generate"
+
+[evaluation]
+# check / evaluate / profile read this artifact (or --output).
+artifact = "artifacts/loop_generate"
+# No momenta file: flat (RAMBO) phase-space points, mu_r^2 = s per point.
+poles = "all"
+
+[evaluation.phase_space]
+points = 2
+seed = 1
+# sqrt_s = 1000.0  # default: the artifact's validation-point energy
+
+[evaluation.stability_checks]
+rotation_count = 1
+
+[check]
+points = 2
+
+[benchmark]
+batch_size = 32
+warmup_runs = 1
+minimum_samples = 3

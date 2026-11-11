@@ -650,6 +650,21 @@ LOOP_ADMISSION_REFUSALS = (
 # listed by the dry run as ``loop_configuration_refusals``.
 LOOP_CONFIGURATION_REFUSALS = (
     LoopAdmissionRefusal(
+        "squared-order-selection",
+        "a squared-coupling-order selection (process.squared_coupling_orders, "
+        "MG5_aMC's QCD^2<=4 style constraints) that keeps none of a "
+        "process's squared-order sectors (Born x loop interference sectors, "
+        "loop x loop sectors of a loop-induced process), or names a coupling "
+        "order the model does not declare",
+        "the selection only removes sectors; a process none of whose sectors "
+        "passes would be an empty result",
+        "constraints some sector of the process passes (the dry run lists the "
+        "loop orders; a sector's power of an order is the Born's plus the "
+        "loop's, or the two loops')",
+        "post-close UX (ux-process)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
         "loop-model-declaration",
         "a loop request on a model with no [loop.model] declaration: none in "
         "the card, none in the source's metadata, and the source is not one "

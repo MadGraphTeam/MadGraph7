@@ -308,6 +308,26 @@ class Generator:
             self._backend = _get_generator_factory()(self._config, self._progress)
         return self._backend
 
+    def _translate(
+        self,
+        processes: ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str],
+    ) -> ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str]:
+        """MG5_aMC syntax in process strings: the plain expressions, with
+        their settings merged into this generator's configuration
+        (``mg5_syntax.translate_api_request``; a conflict with a setting the
+        configuration states is a typed error)."""
+
+        from pyamplicol.processes.mg5_syntax import translate_api_request
+
+        translated, config = translate_api_request(processes, self._config)
+        if config is not self._config:
+            self._config = config
+            self._backend = None
+        return cast(
+            "ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str]",
+            translated,
+        )
+
     def _resolve_generation_resources(self) -> None:
         resource_config = _generation_resource_resolution(self._config)
         if resource_config != self._config:
@@ -320,8 +340,12 @@ class Generator:
         *,
         model: ModelSource | _pyamplicol.CompiledModel | None = None,
     ) -> GenerationPlan:
-        """Resolve concrete processes and coverage without writing an artifact."""
+        """Resolve concrete processes and coverage without writing an artifact.
+        A process string may use MG5_aMC syntax (``"u u~ > d d~ [QCD]"``,
+        ``processes.mg5_syntax``): its settings merge into the generator's
+        configuration."""
 
+        processes = self._translate(processes)
         process_set = _process_set(processes)
         self._resolve_generation_resources()
         result = self._implementation().plan(process_set, model=model)
@@ -340,10 +364,12 @@ class Generator:
         mode: Literal["error", "append", "replace"] = "error",
         correlators: _pyamplicol.CorrelatorConfig | None = None,
     ) -> GenerationResult:
-        """Generate an artifact in ``error``, ``append``, or ``replace`` mode."""
+        """Generate an artifact in ``error``, ``append``, or ``replace`` mode.
+        A process string may use MG5_aMC syntax, as in :meth:`plan`."""
 
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
+        processes = self._translate(processes)
         process_set = _process_set(processes)
         destination = Path(os.fspath(output)).expanduser().resolve(strict=False)
         if destination.exists() and not destination.is_dir():

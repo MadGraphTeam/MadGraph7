@@ -545,6 +545,10 @@ def resolve_config(
     _raise_errors(card_errors)
     for path, value in card_flat.items():
         _apply_value(values, path, value, base_dir=root)
+    # The paths the user states (card, dedicated options, overrides): a
+    # setting translated from a process's MG5_aMC syntax must agree with them
+    # (``processes.mg5_syntax``).
+    explicit_paths: set[str] = set(card_flat)
 
     if action is not None:
         action_item = FIELD_REGISTRY["action"]
@@ -561,6 +565,7 @@ def resolve_config(
         _raise_errors(dedicated_errors)
         for path, value in dedicated_flat.items():
             _apply_value(values, path, value, base_dir=root)
+        explicit_paths.update(dedicated_flat)
 
     override_errors: list[str] = []
     for raw_override in overrides:
@@ -573,13 +578,25 @@ def resolve_config(
             item, _dynamic_key = _field_for_path(parsed_override.path)
             normalized = _coerce(item, parsed_override.value, base_dir=root)
             _apply_value(values, parsed_override.path, normalized, base_dir=root)
+            explicit_paths.add(parsed_override.path)
         except ConfigurationError as exc:
             _extend_errors(override_errors, exc)
     _raise_errors(override_errors)
 
+    # MG5_aMC process syntax (``[QCD]``, ``QCD^2<=4``, ``/ x``, ...) becomes
+    # run-card settings here, for cards, CLI options and overrides alike.
+    # The requested configuration keeps the expressions as written (with the
+    # translated settings, so that it is valid on its own); the effective one
+    # holds the plain expressions.
+    from pyamplicol.processes.mg5_syntax import apply_to_values
+
+    translated_values = dict(values)
+    apply_to_values(translated_values, explicit_paths)
+    if translated_values.get("process.entries") != values.get("process.entries"):
+        values = {**translated_values, "process.entries": values["process.entries"]}
     requested = _make_run_config(values)
 
-    effective_values = dict(values)
+    effective_values = dict(translated_values)
     records: list[ConfigClamp] = []
     clamp_errors: list[str] = []
     for clamp in clamps:
