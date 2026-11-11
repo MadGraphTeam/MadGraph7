@@ -2843,6 +2843,70 @@ def test_report_builder_missing_box_labels_a_cross_backend_difference_once():
     )
 
 
+def test_report_builder_missing_box_other_cell_and_born_note():
+    """The Missing box names the other backend's cell without a value when
+    no accuracy line names its failures (g g > z z z z's NinjaRS), and a
+    Born-interfered TIRust-vs-NinjaRS difference above the lax precision
+    (Table 3), labelled cross-backend."""
+
+    builder = _report_builder()
+    row = {
+        "math": "g g -> z z z z",
+        "label": "li_gg_zzzz",
+        "generation": {"status": "measured"},
+        "timing": {
+            "status": "measured",
+            "backend_label": "TIRust",
+            "other_backend": {
+                "backend_label": "NinjaRS",
+                "status": "failed closed",
+                "label": "16/128 failed closed, lane status Unstable",
+                "accuracy": {
+                    "cross_backend": True,
+                    "note": False,
+                    "failed": None,
+                },
+            },
+        },
+        "providers": {"status": "no reference"},
+        "validation": {"status": "pass"},
+    }
+    born = {
+        "rows": [
+            {
+                "math": "g g -> g g g",
+                "agreement": {
+                    "max_relative": 2.1e-3,
+                    "points": 128,
+                    "lax": 1e-5,
+                    "note": True,
+                },
+            },
+            {
+                "math": "u u~ -> g g g",
+                "agreement": {
+                    "max_relative": 1.8e-9,
+                    "points": 128,
+                    "lax": 1e-5,
+                    "note": False,
+                },
+            },
+        ]
+    }
+    loop_induced = {
+        "groups": [{"rows": [row]}],
+        "backends": {"born_interfered": born},
+    }
+    missing = builder.build_missing({"groups": []}, loop_induced)
+    texts = {(e["table"], e["kind"], e["text"]): e["rows"] for e in missing}
+    other = "NinjaRS time: failed closed (16/128 failed closed, lane status Unstable)"
+    assert texts[("2", "no value", other)] == ["g g -> z z z z"]
+    born_lines = [e for e in missing if e["table"] == "3"]
+    assert len(born_lines) == 1 and born_lines[0]["rows"] == ["g g -> g g g"]
+    assert "cross-backend, not a truth" in born_lines[0]["text"]
+    assert "2.1e-03" in born_lines[0]["text"]
+
+
 def test_report_builder_accuracy_line_without_a_truth_is_the_labelled_cross_backend_difference():
     """A row whose 256-bit truth is not obtainable within its row budget
     (lit-report R2) carries the two backends' difference at the timed
