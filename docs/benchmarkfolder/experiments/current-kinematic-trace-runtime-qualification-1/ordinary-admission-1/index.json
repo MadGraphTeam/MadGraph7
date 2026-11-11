@@ -1,0 +1,26 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 4206,
+      "sha256": "496ec5a871b14505e5b722a96bf68692df54ee25b87ac2130ae8a51fb5fdb12e"
+    },
+    "closed-build-bindings.json": {
+      "bytes": 4209,
+      "sha256": "f2e0673468a91a63e7bb06f8e0b8be18dfe558ef28dbb0f29e215c5ff46b1055"
+    },
+    "guard.py": {
+      "bytes": 7896,
+      "sha256": "e36a4f441de3eae1898ffd14296d5d60dc295f584b6229254ca8f7b8e715e1c3"
+    },
+    "test_guard.py": {
+      "bytes": 5043,
+      "sha256": "82b41b5da19f4515b8aff278c572e5f73aefc89a747036847a4bb0d7275be4bb"
+    },
+    "tests.txt": {
+      "bytes": 800,
+      "sha256": "4c5a2cddb1b488bc71ff4d1bce5324c5386711e41533f958b3df8b7f27e257b0"
+    }
+  },
+  "schema": "current-trace-ordinary-admission-index-v1",
+  "status": "Source-only reviewed packet; ordinary execution not yet admitted"
+}

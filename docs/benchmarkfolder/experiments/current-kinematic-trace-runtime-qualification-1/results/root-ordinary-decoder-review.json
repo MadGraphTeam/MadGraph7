@@ -1,0 +1,34 @@
+{
+  "schema": "root-ordinary-kinematic-decode-replay-v1",
+  "decoder_sha256": "6a44cfd35294692f401b9be0d28458b2631f15fca1d80021d7e72a7fabbe2a7b",
+  "analysis_index_sha256": "5842fea99e508654bf9f032f371530943cc80cb4cd188aab0bb914281537a453",
+  "checks": [
+    {
+      "id": "cms-point1-mode1-enabled",
+      "trace_sha256": "e8c500fc9cdd0e0cbfa454912f8feed96cf9f6a65816701aed2c30fd500a60ab",
+      "calls": 5,
+      "all_native_status_zero": true
+    },
+    {
+      "id": "cms-point1-mode4-enabled",
+      "trace_sha256": "dab1e3c5d8e06e69ab991f8ea54952eec7f06d1db2811e0a1d8fd73148db095f",
+      "calls": 5,
+      "all_native_status_zero": true
+    },
+    {
+      "id": "ew-point1-mode1-enabled",
+      "trace_sha256": "583a2980da9d126e1a3a59067661da67da1f950605da2e74566ed45319d55f15",
+      "calls": 1,
+      "all_native_status_zero": true
+    },
+    {
+      "id": "ew-point1-mode4-enabled",
+      "trace_sha256": "2be733866a556e814c500dfbde8cc759e5646c44560705463196a49a258a4294",
+      "calls": 1,
+      "all_native_status_zero": true
+    }
+  ],
+  "recomputed_outputs_exact": true,
+  "independent_accuracy_qualified": false,
+  "native_executions": 0
+}

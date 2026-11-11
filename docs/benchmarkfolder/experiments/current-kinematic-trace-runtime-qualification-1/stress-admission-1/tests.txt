@@ -1,0 +1,11 @@
+test_exact_saved_requests_and_ordinary_excluded (test_guard.StressRequestTests.test_exact_saved_requests_and_ordinary_excluded) ... ok
+test_extra_bootstrap_rejected (test_guard.StressRequestTests.test_extra_bootstrap_rejected) ... ok
+test_failed_postcheck_retains_original_error_after_module_replacement (test_guard.StressRequestTests.test_failed_postcheck_retains_original_error_after_module_replacement) ... ok
+test_missing_or_duplicate_worker_rejected (test_guard.StressRequestTests.test_missing_or_duplicate_worker_rejected) ... ok
+test_other_point_or_mode_rejected (test_guard.StressRequestTests.test_other_point_or_mode_rejected) ... ok
+test_unrequested_trace_or_measurement_rejected (test_guard.StressRequestTests.test_unrequested_trace_or_measurement_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.009s
+
+OK

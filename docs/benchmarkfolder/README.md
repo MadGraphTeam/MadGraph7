@@ -249,6 +249,17 @@ inputs and clean process shutdown. This closed packet contains zero amplitude
 evaluations and qualifies compilation and library resolution only. Later
 observational and physical checks remain separate from this build record.
 
+The separate [current-source trace runtime packet](experiments/current-kinematic-trace-runtime-qualification-1/README.md)
+retains 30 fresh fixed-mode workers: four ordinary CMS/EW DP/QP comparisons
+pass exact tracing parity, while all six stress point/precision comparisons
+retain failed-contribution flags despite identical variant observations. The
+failed stress stage exits 1. Its CMS traces show spacelike invariants near
+`-2.5e-7` and `-2.5e-11 GeV²` projected to zero before native refusals; EW traces
+retain the mass-shell projection and photon control. These observations do not
+establish refusal causation or an accuracy fix. All ten input/status analyses
+replay from retained bytes; no failed tensor output supplies an accuracy claim.
+The 35-page PDF remains its separately frozen ordinary-campaign snapshot.
+
 The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
 index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
 passes exact parity across four workers, 76 checked native-DP physical calls

@@ -1,0 +1,32 @@
+{
+  "analysis_indices": {
+    "decoder": "df0c1113bee8a88bc6e9a85b6770faa17820e66707ff9d33e45776e69a939040",
+    "ordinary": "5842fea99e508654bf9f032f371530943cc80cb4cd188aab0bb914281537a453",
+    "stress": "66fab0dde170020c83840364845d4413f7130f1c09dab1105fd2e95a0f13611d"
+  },
+  "build_sibling": "../current-kinematic-trace-build-qualification-1",
+  "build_sibling_sha256": "89697913341ecc5fe765fb023cc09bced783eb3eedb85436afe1ca7d4dc6c033",
+  "capture_native_executions": 0,
+  "closed_inputs": {
+    "ordinary-admission-1/index.json": "325eb3205b7990e5e8ec367b25ef0af48b41d7271e227dbbd15bdc878be560cf",
+    "results/ordinary-terminal-closure.json": "56d4249509bbda4d1aa3c328b18b42176c7419f4805a1d4454a73a7fa3608fcf",
+    "results/root-ordinary-decoder-review.json": "3940ef665c827a2bebcec72a3f5bc9b879432880be25540a62a33bd5c9e19d8c",
+    "results/root-ordinary-review.json": "4834a317fbe400d60a0515f184985dc07deb2107afccb7bbcc98015ec4a25da1",
+    "results/root-stress-review.json": "2954d77a73bf5a31ff97b4e8b4f52b39989b5a62be17fd0e301c8a157c2b2484",
+    "results/stress-terminal-closure.json": "df0987b3f0c20dd26c4a903ff7c4acc7fb6cce4e433a50071a82918194553e9e",
+    "stress-admission-1/index.json": "9c81ae01f16c4e9a02493a3fac49198c59f0540c2f079c0a4d2aafee2a004735"
+  },
+  "external_binary_bytes_read_or_retained": false,
+  "independent_accuracy_qualified": false,
+  "ordinary_observation_parity_groups": 4,
+  "ordinary_outer_entries": 24,
+  "ordinary_workers": 12,
+  "performance_qualified": false,
+  "schema": "current-kinematic-trace-runtime-summary-v1",
+  "stability_qualified": false,
+  "stress_equal_observation_bytes_promoted_to_success": false,
+  "stress_failed_contribution_groups": 6,
+  "stress_outer_entries": 36,
+  "stress_terminal_exit_code": 1,
+  "stress_workers": 18
+}
