@@ -101,14 +101,10 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
 ) -> None:
     repo = tmp_path / "repo"
     _seed_template(repo)
-    template_state = (
-        repo / ".artifacts/performance-report/canonical/cells/attempt"
-    )
+    template_state = repo / ".artifacts/performance-report/canonical/cells/attempt"
     template_state.mkdir(parents=True)
     (template_state / "worker.log").write_text("private\n", encoding="ascii")
-    coordination = (
-        repo / ".artifacts/performance-report-coordination/canonical"
-    )
+    coordination = repo / ".artifacts/performance-report-coordination/canonical"
     coordination.mkdir(parents=True, exist_ok=True)
     (coordination / "writer.lock").write_text("", encoding="ascii")
 
@@ -141,10 +137,7 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
     assert (profile / TABLE_FILLING_RUNBOOK).is_file()
     assert manifest["measurement_state"] == "copied"
     assert manifest["initialized_environment"]["profile"] == "macbook_M3"
-    assert (
-        manifest["initialized_environment"]["status"]
-        == "pending_exact_runtime"
-    )
+    assert manifest["initialized_environment"]["status"] == "pending_exact_runtime"
     assert manifest["environment_json"] == ENVIRONMENT_JSON
     assert "result_tables.py" in manifest["tracked_content"]
     assert manifest["initialized_source_identity"] == {
@@ -154,9 +147,7 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
         "clean": False,
         "dirty_paths": [],
     }
-    assert manifest["artifact_root"] == (
-        ".artifacts/performance-report/macbook_M3"
-    )
+    assert manifest["artifact_root"] == (".artifacts/performance-report/macbook_M3")
     runbook = (profile / TABLE_FILLING_RUNBOOK).read_text(encoding="utf-8")
     assert (
         "30 GB authenticated memory guard defined as max(process-tree RSS, "
@@ -164,9 +155,9 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
     ) in runbook
     assert "Legacy v2 RSS-only censor evidence remains readable" in runbook
     assert "30 GB hard RSS" not in runbook
-    assert ReportService(
-        ReportPaths.from_repo(repo, profile="macbook_M3")
-    ).audit()["cache_render_match"]
+    assert ReportService(ReportPaths.from_repo(repo, profile="macbook_M3")).audit()[
+        "cache_render_match"
+    ]
 
     with pytest.raises(ReportWorkspaceError, match="already exists"):
         initialize_profile(repo, "macbook_M3")
@@ -192,9 +183,7 @@ def test_initialize_x86_epyc_profile_binds_parallel_resource_policy(
     assert "80 GB authenticated process-tree memory guard per worker" in runbook
     assert "Legacy v2 RSS-only censor evidence remains readable" in runbook
     assert "80 GB hard RSS" not in runbook
-    assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (
-        readme
-    )
+    assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (readme)
     assert "populate" not in readme
     assert "export-profile x86_EPYC" in readme
 
@@ -208,9 +197,7 @@ def test_profile_readme_requires_full_audited_five_second_campaign(
     profile = initialize_profile(repo, "macbook_M3")
     readme = (profile / "README.md").read_text(encoding="utf-8")
 
-    assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (
-        readme
-    )
+    assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (readme)
     assert "populate" not in readme
     assert "render --compile" in readme
     assert "result_tables.py audit" in readme
@@ -220,9 +207,7 @@ def test_profile_readme_requires_full_audited_five_second_campaign(
 def test_documentation_index_links_the_report_workflows_without_stored_pdfs() -> None:
     docs = Path(__file__).resolve().parents[2] / "docs"
     root_readme = (docs / "README.md").read_text(encoding="utf-8")
-    report_readme = (docs / "performance_reports/README.md").read_text(
-        encoding="utf-8"
-    )
+    report_readme = (docs / "performance_reports/README.md").read_text(encoding="utf-8")
 
     assert "performance_reports/README.md" in root_readme
     assert "loop/README.md" in report_readme
@@ -380,12 +365,15 @@ def test_active_runtime_accepts_only_processor_display_label_drift(
     )
 
     assert recorded["processor"] == "Apple M3 Pro"
-    assert require_active_profile_environment(
-        repo,
-        "macbook_M3",
-        expected_source_revision=measured,
-        runtime_auditor=lambda _revision, _root: _test_runtime(measured),
-    ) == recorded
+    assert (
+        require_active_profile_environment(
+            repo,
+            "macbook_M3",
+            expected_source_revision=measured,
+            runtime_auditor=lambda _revision, _root: _test_runtime(measured),
+        )
+        == recorded
+    )
 
 
 @pytest.mark.parametrize(
@@ -508,17 +496,23 @@ def test_environment_refresh_authenticates_runtime_without_dirtying_source(
     assert environment["python_package_tree_sha256"] == "c" * 64
     assert environment["candidate_fingerprint"] == "candidate-aarch64"
     assert "source checkout" not in json.dumps(environment)
-    assert require_authenticated_profile_environment(
-        repo,
-        "macbook_M3",
-        expected_source_revision=measured,
-    ) == environment
-    assert require_active_profile_environment(
-        repo,
-        "macbook_M3",
-        expected_source_revision=measured,
-        runtime_auditor=runtime_auditor,
-    ) == environment
+    assert (
+        require_authenticated_profile_environment(
+            repo,
+            "macbook_M3",
+            expected_source_revision=measured,
+        )
+        == environment
+    )
+    assert (
+        require_active_profile_environment(
+            repo,
+            "macbook_M3",
+            expected_source_revision=measured,
+            runtime_auditor=runtime_auditor,
+        )
+        == environment
+    )
     source = inspect_report_source(repo)
     assert source.eligible
     assert source.revision == measured
@@ -757,8 +751,7 @@ def test_export_profile_contains_only_fresh_publication_workspace(
     fresh_pdf = b"%PDF-1.4\n% fresh exported PDF\n%%EOF\n"
     (profile / "pyAmpliCol.pdf").write_bytes(stale_pdf)
     local_state = (
-        repo
-        / ".artifacts/performance-report/macbook_M3/cells/private/worker.log"
+        repo / ".artifacts/performance-report/macbook_M3/cells/private/worker.log"
     )
     local_state.parent.mkdir(parents=True)
     local_state.write_text("private\n", encoding="ascii")
