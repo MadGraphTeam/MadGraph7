@@ -279,7 +279,32 @@ class TestPropagatorDenominators(unittest.TestCase):
             found = re.search(
                 r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
                 r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
-                r' / \( \((dTMP\d+) \* (dTMP\d+)\) \) \);', body)
+                r' / \( (dTMP\d+) \* (dTMP\d+) \) \);', body)
             self.assertTrue(found, name)
             for tmp in found.groups():
                 self.assertIn('const fptype_denom_sv %s = ' % tmp, body, name)
+
+    def test_polarised_propagator_denominator(self):
+        """The polarised propagators of a massive vector ('w+{0}', 'w+{T}',
+        'w+{A}', ...: the P1L, P1T, P1A, ... forms of aloha/create_aloha.py)
+        carry a custom denominator with the pole q^2 - M^2 + i M Gamma. It is
+        written by write_obj like every other expression (cI, one), not by
+        str(), which printed the Python literal '(-0+1j)' and did not
+        compile; with the mass and the width in it, it is not moved to
+        denominator precision."""
+        routines = self.routines([(('FFV2',), ['P1L'], 3),
+                                  (('FFV2',), ['P1T'], 3),
+                                  (('FFV2',), ['P1A'], 3)])
+        for name in ('FFV2P1L_3', 'FFV2P1T_3', 'FFV2P1A_3'):
+            body = routines[name]
+            self.assertNotIn('1j', body, name)
+            self.assertNotIn('madmatrix::denom', body, name)
+            found = re.search(
+                r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
+                r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
+                r' / \( (.*) \) \);', body)
+            self.assertTrue(found, name)
+            denominator = found.group(1)
+            for piece in ('cI', 'M3', 'W3'):
+                self.assertIn(piece, denominator, name)
+            self.assertNotIn('dTMP', denominator, name)

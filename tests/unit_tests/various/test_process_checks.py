@@ -238,6 +238,59 @@ class TestMatrixElementChecker(unittest.TestCase):
             max(abs(values['unitary']), abs(values['FD']))
         self.assertLess(relative_difference, 5e-2)
 
+    def test_external_polarisation_in_every_gauge(self):
+        """An external polarised massive vector is supported in every gauge.
+
+        At one phase-space point and with the widths at zero, |M|^2 of
+        't t~ > w+{0} w-' and of 't t~ > w+{T} w-' is the same in the unitary,
+        Feynman, axial and FD gauges (the FD gauge builds the longitudinal
+        polarisation vector with its fifth, Goldstone component), and the two
+        add up to the unpolarised |M|^2 in each gauge. The top quark makes the
+        s-channel current non-conserved, so the Feynman gauge has a Goldstone
+        diagram and the qq/M^2 piece of the Z propagator matters."""
+
+        import madgraph.interface.master_interface as interface
+        import madgraph.core.helas_objects as helas_objects
+
+        processes = {'0': 't t~ > w+{0} w-', 'T': 't t~ > w+{T} w-',
+                     'all': 't t~ > w+ w-'}
+        gauges = ['unitary', 'Feynman', 'axial', 'FD']
+        values = {}
+        p = None
+        for gauge in gauges:
+            cmd = interface.MasterCmd()
+            cmd.no_notification()
+            cmd.exec_cmd('set gauge %s' % gauge)
+            cmd.exec_cmd('import model sm')
+            evaluator = process_checks.MatrixElementEvaluator(
+                cmd._curr_model, cmd=cmd, reuse=False)
+            for particle in evaluator.full_model.get('particles'):
+                if particle.get('width') != 'ZERO':
+                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            for pol, line in processes.items():
+                cmd.exec_cmd('generate %s' % line)
+                me = helas_objects.HelasMatrixElement(cmd._curr_amps[0])
+                if p is None:
+                    # the same point for the three processes and four gauges
+                    # (the external masses are the same): the RAMBO point of
+                    # the check_sa drivers
+                    with process_checks._seeded_rambo_rng():
+                        p, _ = evaluator.get_momenta(
+                            me.get('processes')[0],
+                            {'energy': 1000., 'events': None, 'skip_evt': 0})
+                values[gauge, pol], _ = evaluator.evaluate_matrix_element(me, p=p)
+
+        for gauge in gauges:
+            self.assertGreater(values[gauge, '0'], 0.)
+            self.assertGreater(values[gauge, 'T'], 0.)
+            self.assertAlmostEqual(
+                (values[gauge, '0'] + values[gauge, 'T']) / values[gauge, 'all'],
+                1., places=10, msg='sum over the polarisations in the %s gauge' % gauge)
+            for pol in processes:
+                self.assertAlmostEqual(
+                    values[gauge, pol] / values['unitary', pol], 1., places=9,
+                    msg='%s: %s gauge vs unitary' % (processes[pol], gauge))
+
     def test_failed_process(self):
         """Test that check process fails for wrong color-Lorentz."""
 

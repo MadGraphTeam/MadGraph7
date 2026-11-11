@@ -900,8 +900,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         if str(self.routine.denominator) == '1':
                             out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
                         else:
+                            # written by write_obj, as every other expression:
+                            # str() prints a complex coefficient as a Python
+                            # literal ('(-0+1j)'), which does not compile
                             mydict['denom'] = self.denominator_in_denom_precision(
-                                                   str(self.routine.denominator))
+                                                   self.write_obj(self.routine.denominator))
                             out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                     else:
                         if arith_doubleexpansion:

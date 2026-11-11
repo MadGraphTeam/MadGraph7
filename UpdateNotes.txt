@@ -5,6 +5,12 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: the polarised propagators of a massive vector (w+{0}, w+{T}, w+{A}, w+{S}, ...
+       on a particle decayed further) are refused outside the unitary and axial gauges:
+       they are pieces of the unitary-gauge numerator, the Feynman-gauge output crashed
+       and the FD-gauge one was wrong (SIGBUS in the Fortran standalone).
+   OM: madmatrix: a custom propagator denominator with a width term (the polarised
+       propagators) was written as a Python complex literal and did not compile.
    OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).
    OM: madevent/MadSpin: polarised beams with a mirror process gave beam 1's polarisation
        to the particle of beam 2 (#394).

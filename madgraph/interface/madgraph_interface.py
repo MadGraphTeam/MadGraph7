@@ -1219,6 +1219,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
         logger.info(" > '{G}','{H}','{Q}','{W}','{S}' select a piece of the *propagator* of a massive vector")
         logger.info("   and are only valid on a particle that is decayed further (an internal line).")
+        logger.info(" > A polarised propagator (any '{X}' on a massive vector that is decayed further) is a piece")
+        logger.info("   of the unitary-gauge propagator: it is only available in the unitary and axial gauges.")
+        logger.info("   An external polarised particle is supported in every gauge.")
         logger.info(" > At LO, polarized processes work with any 'group_subprocesses' setting. 'me_frame' (run_card)")
         logger.info("   defaults to the rest frame of the massive final-state particles (or their")
         logger.info("   decay products) in p p collisions, [1,2] (the partonic c.m.) in e+ e-.")
@@ -4339,6 +4342,9 @@ This implies that with decay chains:
             # and {S} name a piece of a propagator numerator and are valid on
             # an internal line only.
             self.validate_propagator_polarization(myprocdef)
+            # and a polarised propagator of a massive vector only exists in the
+            # unitary gauge (and the axial gauge, which keeps that propagator)
+            self.validate_polarized_propagator_gauge(myprocdef)
 
             #Check that we do not have situation like z{T} z
             if not myprocdef.check_polarization():
@@ -6365,6 +6371,85 @@ This implies that with decay chains:
 
         for decay in procdef.get('decay_chains'):
             self.validate_propagator_polarization(decay)
+
+    # The gauges in which ALOHA writes the propagator of a massive vector in
+    # its unitary form -i(g - qq/M^2)/(q^2 - M^2 + iM Gamma), the one that
+    # the polarised propagators decompose (aloha.unitary_gauge: True is the
+    # unitary gauge, 2 the axial gauge, which only changes the propagator of
+    # the massless vectors; False is the Feynman gauge and 3 the FD gauge).
+    ALOHA_GAUGE_NAMES = {True: 'unitary', 2: 'axial', False: 'Feynman', 3: 'FD'}
+    POLARIZED_PROPAGATOR_GAUGES = (True, 2)
+
+    @staticmethod
+    def polarization_brace(polarization):
+        """The brace content of a leg 'polarization' list as the user types
+        it: 'T' for the transverse pair, the letters of the propagator pieces
+        ('A', 'S', 'G', ...), the helicities otherwise."""
+        if sorted(polarization) == [-1, 1]:
+            return 'T'
+        return base_objects.polarization_to_string(polarization)
+
+    def validate_polarized_propagator_gauge(self, procdef):
+        """Refuse a polarised propagator of a massive vector outside the
+        unitary and axial gauges.
+
+        The braces on a massive vector that is decayed further -- 'w+{0}',
+        'w+{T}', 'w+{A}', 'w+{S}', 'w+{0S}', 'w+{G}', ... in
+        't > w+{0} b, w+ > ta+ vt' -- replace its propagator by one piece of
+        the unitary-gauge numerator -g + qq/M^2 (aloha/create_aloha.py,
+        get_custom_propa), over the pole 1/(q^2 - M^2 + iM Gamma). That
+        decomposition only makes sense where the full propagator is the
+        unitary one: in the unitary gauge, and in the axial gauge, which only
+        changes the propagator of the massless vectors. In the Feynman gauge
+        the propagator is -ig/(q^2 - M^2) with the qq/M^2 piece carried by
+        separate Goldstone diagrams, and the output crashed on the way
+        ('particle with custom propagator can not have polarization'); in the
+        FD gauge the vector and its Goldstone boson share one five-component
+        propagator, and the unitary numerator was silently projected on the
+        FD gauge, which has no such decomposition. An *external* polarised
+        massive vector is fine in every gauge (its helicity amplitudes are
+        gauge invariant) and is not touched here.
+
+        Raises InvalidCmd; returns None."""
+
+        if procdef is None or aloha.unitary_gauge in self.POLARIZED_PROPAGATOR_GAUGES:
+            return
+        model = procdef.get('model')
+        if not model:
+            return
+        gauge = self.ALOHA_GAUGE_NAMES.get(aloha.unitary_gauge, str(aloha.unitary_gauge))
+
+        decayed_ids = set()
+        for decay in procdef.get('decay_chains'):
+            for leg in decay.get('legs'):
+                if not leg.get('state'):
+                    decayed_ids.update(leg.get('ids'))
+
+        for leg in procdef.get('legs'):
+            if not leg.get('polarization'):
+                continue
+            for pdg in decayed_ids.intersection(leg.get('ids')):
+                particle = model.get_particle(pdg)
+                if particle is None or particle.get('spin') != 3 or \
+                        particle.get('mass').lower() == 'zero':
+                    continue
+                raise self.InvalidCmd(
+                    "The polarised propagator of a massive vector "
+                    "('%(name)s{%(pol)s}' decayed further) is only "
+                    "implemented in the unitary gauge (and in the axial gauge, "
+                    "which keeps the unitary propagator of the massive "
+                    "vectors), not in the %(gauge)s gauge: the braces select "
+                    "a piece of the unitary-gauge numerator -g + qq/M^2, "
+                    "which is not how the propagator of a massive vector is "
+                    "written in that gauge. Use 'set gauge unitary', or "
+                    "polarise an external particle instead (that is "
+                    "supported in every gauge)." % {
+                        'name': particle.get_name(),
+                        'pol': self.polarization_brace(leg.get('polarization')),
+                        'gauge': gauge})
+
+        for decay in procdef.get('decay_chains'):
+            self.validate_polarized_propagator_gauge(decay)
 
     def extract_process(self, line, proc_number = 0, overall_orders = {},
                         avoid_squared_orders=False):

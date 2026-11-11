@@ -1400,6 +1400,60 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
+    def test_polarised_propagator_madmatrix_vs_fortran(self):
+        """A polarised propagator of a massive vector -- 'w+{0}' decayed
+        further, the P1L form of aloha/create_aloha.py, and the auxiliary
+        'w+{A}' -- builds and gives the Fortran value in the standalone
+        (madmatrix) output, which is what the mg7 output runs. Its custom
+        denominator carries the width term i M Gamma, which madmatrix used to
+        write as the Python literal '(-0+1j)': the output did not compile.
+        Both drivers evaluate the same RAMBO point, and the mixed-precision
+        madmatrix build is within 1e-6 of the double-precision Fortran one."""
+        devnull = open(os.devnull, 'w')
+        energy = '1000'
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def get_value(output_format, check_exe, build_source=False):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if build_source:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = sorted(d for d in os.listdir(proc_root)
+                          if d.startswith('P') and
+                          os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(dirs), 1, 'one subprocess expected for %s'
+                             % output_format)
+            proc_dir = pjoin(proc_root, dirs[0])
+            target = ['make', 'check'] if output_format == 'standalone_fortran' \
+                else ['make']
+            self.assertEqual(0, subprocess.call(target, stdout=devnull,
+                                                stderr=devnull, cwd=proc_dir),
+                             '%s did not build' % output_format)
+            log = pjoin(proc_dir, 'check.log')
+            subprocess.call('%s %s' % (check_exe, energy),
+                            stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                            cwd=proc_dir, shell=True)
+            found = me_re.findall(open(log).read())
+            self.assertEqual(len(found), 1, '%s produced no matrix element '
+                             '(see %s)' % (output_format, log))
+            return float(found[0])
+
+        self.do('import model sm')
+        for proc in ('e+ e- > w+{0} w-, w+ > mu+ vm',
+                     't > w+{A} b, w+ > ta+ vt'):
+            self.do('generate %s' % proc)
+            madmatrix = get_value('standalone', './check_sa.exe')
+            fortran = get_value('standalone_fortran', './check',
+                                build_source=True)
+            self.assertNotEqual(fortran, 0., proc)
+            self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-6,
+                                   msg='%s: madmatrix %r vs Fortran %r'
+                                   % (proc, madmatrix, fortran))
+
     def test_standalone_split_orders_interference(self):
         """standalone (madmatrix) must return the squared-order contribution asked for.
 

@@ -655,6 +655,56 @@ class TestValidCmd(unittest.TestCase):
         finally:
             cmd.exec_cmd('generate p p > t t~')
 
+    @test_aloha.set_global()
+    def test_polarised_propagator_needs_unitary_gauge(self):
+        """A polarised propagator of a massive vector ('t > w+{0} b, w+ > ...')
+        is a piece of the unitary-gauge numerator -g + qq/M^2 over the pole.
+        It is refused in the Feynman gauge (the output used to crash with
+        'particle with custom propagator can not have polarization', the
+        massive vectors having the massless-type propagator there) and in the
+        FD gauge (the unitary numerator was projected on the FD gauge and the
+        Fortran standalone crashed at run time), and stays allowed in the
+        unitary and axial gauges (the axial gauge only changes the propagator
+        of the massless vectors). An external polarisation and a polarised
+        fermion propagator are not touched: they are fine in every gauge."""
+        cmd = self.cmd
+        self.do('import model sm')
+        try:
+            for gauge in ('Feynman', 'FD'):
+                self.do('set gauge %s' % gauge)
+                for brace in ('0', 'T', 'A', 'S', '0S', 'G'):
+                    proc = 'generate t > w+{%s} b, w+ > ta+ vt' % brace
+                    try:
+                        self.do(proc)
+                    except madgraph.InvalidCmd as error:
+                        self.assertIn('w+{%s}' % brace, str(error))
+                        self.assertIn('%s gauge' % gauge, str(error))
+                        self.assertIn('unitary gauge', str(error))
+                        self.assertIn('set gauge unitary', str(error))
+                    else:
+                        self.fail('%s accepted in the %s gauge' % (proc, gauge))
+                # the walk recurses into the decay chains
+                self.assertRaises(
+                    madgraph.InvalidCmd, self.do,
+                    'generate p p > t t~, (t > w+{0} b, w+ > ta+ vt)')
+                # an external polarised massive vector is supported in every
+                # gauge (its helicity amplitudes are gauge invariant)
+                self.do('generate t t~ > w+{0} w-')
+                self.assertTrue(cmd._curr_amps)
+                self.do('generate t t~ > w+{T} w-')
+                self.assertTrue(cmd._curr_amps)
+                # a polarised fermion propagator has no gauge dependence
+                self.do('generate e+ e- > t{+} t~, t > w+ b')
+                self.assertTrue(cmd._curr_amps)
+            for gauge in ('axial', 'unitary'):
+                self.do('set gauge %s' % gauge)
+                for brace in ('0', 'T', 'A', 'S', '0S'):
+                    self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                    self.assertTrue(cmd._curr_amps)
+        finally:
+            self.do('set gauge unitary')
+            cmd.exec_cmd('generate p p > t t~')
+
 
 class TestExtendedCmd(unittest.TestCase):
     """test the extension of cmd interface"""
