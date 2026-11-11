@@ -6,6 +6,7 @@ source = "loop_sm"
 restriction = "no_b_mass"
 simplify = true
 cache = true
+loop_preparation_cache = true
 
 [process]
 entries = [{ expression = "g g > h", name = "selftest_virtual_li" }]
@@ -66,8 +67,10 @@ workers = 1
 emit_api_bundle = false
 particle_veto = []
 allow_anomalous_veto = false
+loop_induced_probes = false
 allow_failed_probes = false
 helicity_filter_failure_probability = 1e-12
+loop_induced_folding = false
 
 [generation.validation]
 enabled = true
@@ -124,6 +127,7 @@ resolved = false
 orders = false
 on_failure = "raise"
 poles = "all"
+reduction_unchecked = false
 helicity_ids = []
 color_flow_ids = []
 
@@ -145,6 +149,10 @@ warmup_runs = 2
 minimum_samples = 5
 helicity_ids = []
 color_flow_ids = []
+
+[check]
+points = 3
+precision = "auto"
 
 [output]
 format = "human"

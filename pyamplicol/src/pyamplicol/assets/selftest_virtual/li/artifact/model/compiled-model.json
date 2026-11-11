@@ -123762,7 +123762,7 @@
     "model_compiler_sha256": "ec44b06f12e041b6e0c0a38fef9db3097cde0f01516f59d85f66ddc8abb55ecf",
     "model_compiler_version": 17,
     "model_environment_policy": "sanitize-historical-scalar-options-v1",
-    "pyamplicol": "1.0.2",
+    "pyamplicol": "1.0.3",
     "symbol_namespace_policy": "model-name-and-pyamplicol-registry-v1",
     "symbolica": "3.0.3",
     "symbolica_serialization_abi": "symbolica-bincode2-v2",
