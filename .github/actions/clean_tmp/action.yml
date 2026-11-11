@@ -8,6 +8,8 @@ description: >
   `if: always()`. One runner per machine, so nothing else is using these files.
   Fails (before any test runs) when /tmp itself is missing or not writable:
   the tests cannot work then, and the machine needs fixing as root.
+  It also points XDG_CONFIG_HOME at a per-job directory, so MadGraph7's
+  per-user configuration (~/.mg7) does not persist from one job to the next.
 runs:
   using: composite
   steps:
@@ -21,6 +23,13 @@ runs:
           exit 1
         fi
         df -h /tmp
+        # MadGraph7 records a `set ... --global` and the tool paths of an
+        # `install` into an external prefix (the HEPTools build of
+        # selfhosted_heptools) in its per-user config, ~/.mg7. HOME persists on
+        # this machine, so without this the next jobs would inherit them; a
+        # GitHub-hosted job starts without one. RUNNER_TEMP is emptied per job.
+        mkdir -p "$RUNNER_TEMP/xdg-config"
+        echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
         # Tests can leave read-only trees behind: make them writable first.
         find /tmp -mindepth 1 -maxdepth 1 -user "$(id -u)" \
           -exec chmod -R u+w {} + -exec rm -rf {} + 2>/dev/null || true

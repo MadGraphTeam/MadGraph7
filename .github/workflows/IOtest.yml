@@ -127,9 +127,10 @@ jobs:
     # merged jobs, run one after the other: IOtest_bundle_2 IOtest_bundle_3
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -174,6 +175,10 @@ jobs:
             cd $GITHUB_WORKSPACE
             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
             ./tests/test_manager.py testIO_loop_induced_standalone_output -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   # Gnuplot histogram output IOTest (from acceptancetest_100)
   IOtest_gnuplot:
