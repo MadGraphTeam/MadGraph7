@@ -270,7 +270,9 @@ class MadgraphSubprocess:
         n_in = len(self.incoming_masses)
 
         def cut_pids(observable_kwargs):
-            pids = observable_pids(self.meta, observable_kwargs, self.unmerged_meta)
+            pids = observable_pids(
+                self.meta, observable_kwargs, self.unmerged_meta, strict=True
+            )
             # pdg id 0 is in no group, so the particle is never selected
             return [0 if i - n_in in uncut else pid for i, pid in enumerate(pids)]
 
