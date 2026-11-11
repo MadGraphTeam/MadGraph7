@@ -382,15 +382,11 @@ def _cputimer(d):
 
 
 def _kpoint_line(name, c, isTex):
-    if not isTex:
-        return ('mode %s: %d kpoints = %d virt + %d novi -> %d events (%d virt + %d novi)'
-                % (name, c['ncand'], c['cand_virt'], c['cand_novi'],
-                   c['ev_novi'] + c['ev_virt'] + c['ev_born'], c['ev_virt'],
-                   c['ev_novi'] + c['ev_born']))
-    else:
-        return ('mode %s: %d kpoints -> %d events'
-                % (name, c['ncand'],
-                   c['ev_novi'] + c['ev_virt'] + c['ev_born'] ))
+    # The same line in tex as in txt/stdout (virt and novi back in tex since --branch)
+    return ('mode %s: %d kpoints = %d virt + %d novi -> %d events (%d virt + %d novi)'
+            % (name, c['ncand'], c['cand_virt'], c['cand_novi'],
+               c['ev_novi'] + c['ev_virt'] + c['ev_born'], c['ev_virt'],
+               c['ev_novi'] + c['ev_born']))
 
 
 def _rescale_factors(cbase, cref):
