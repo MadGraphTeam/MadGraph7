@@ -3385,6 +3385,35 @@ mod canonical_save_tests {
             .unwrap()
     }
 
+    /// A whole-state save (PyPI Symbolica 3.0.3) carries the producer's
+    /// function-bearing symbols as not exportable; the import copy marks them
+    /// exportable (Symbolica's per-symbol import warning) and names them,
+    /// changing nothing else, and the save stays canonicalisable.
+    #[test]
+    fn whole_state_import_copy_reads_function_bearing_symbols_as_plain() {
+        let _unlock = crate::licence::unlock();
+        let (f,) = symbol!("pyamplicol_function_bearing::f"; norm = |_view, _out| {});
+        assert!(!f.is_exportable());
+        let evaluator = evaluator();
+        let whole = whole_state_save(&evaluator);
+        let state = &whole[SAVED_EVALUATOR_MAGIC.len() + 1..];
+        let (patched, functions) = whole_state_for_import(state).unwrap();
+        assert!(functions.contains("pyamplicol_function_bearing::f"));
+        assert_eq!(patched.len(), state.len());
+        let changed = state
+            .iter()
+            .zip(&patched)
+            .filter(|(before, after)| before != after)
+            .map(|(before, after)| (*before, *after))
+            .collect::<Vec<_>>();
+        assert_eq!(changed, vec![(0, 1); functions.len()]);
+        let (mut original, mut copy) = (state, patched.as_slice());
+        State::import(&mut original, None).unwrap();
+        State::import(&mut copy, None).unwrap();
+        assert_eq!(original.len(), copy.len(), "the same section length");
+        assert!(canonical_saved_evaluator(&whole).unwrap().is_some());
+    }
+
     #[test]
     fn stored_saves_depend_only_on_their_evaluator() {
         let _unlock = crate::licence::unlock();
