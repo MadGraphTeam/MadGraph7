@@ -50,6 +50,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
+      # numpy (madgraph needs it) comes with the pip cache: a fresh self-hosted
+      # machine has none in ~/.local until some other job installs it there
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- IOtest_iotest_examples ----
       - name: "IOtest_iotest_examples: test IOTest framework examples"
@@ -112,6 +116,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
+      # numpy (madgraph needs it) comes with the pip cache: a fresh self-hosted
+      # machine has none in ~/.local until some other job installs it there
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
       - name: test loop squared order IO test
         run: |
