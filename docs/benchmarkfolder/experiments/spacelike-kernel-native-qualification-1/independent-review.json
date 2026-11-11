@@ -1,0 +1,102 @@
+{
+  "amplitude_accuracy_qualified": false,
+  "external_binary_reads": 0,
+  "findings": [
+    "Sealed source 1665eff3 names the exact local kernel 0cb41b0c and reference 7b52f707; historical source-only flags remain accurate for that earlier proposal.",
+    "Integer kernel term capacity is 10; allowed exponent ranges keep default-integer intermediate bounds within range; fr>b is a strict sufficient enclosure test.",
+    "Independent exact IEEE bit decoding and rational bound reconstruction agree with retained native decisions and the sealed pure reference on all 4287 cases; all 1572 accepted cases satisfy the exact conditional error enclosure.",
+    "Qualifier checks output line count, sequential IDs and flag comparison on every case, closing the Fortran driver permissive negative-iostat EOF handling.",
+    "Both DP and QP accepted controls exercise all 32 sticky-flag seeds. The observation is limited to the IEEE_ALL sticky exception flags."
+  ],
+  "independent_source_reviewer": "delivery_scope_audit/relocation_source_review",
+  "limitations": [
+    "Random raw values are independent of q: accepted decisions establish an algebraic sufficient condition given the caller contract, not an independently verified physical spacelike vector.",
+    "The caller must prove raw-to-q provenance and component/source-DAG error bounds; source DAG construction, actual caller environment, tensor coefficients and amplitudes remain unqualified.",
+    "The driver uses IEEE_ALL (the five standard exception flags: invalid, divide-by-zero, overflow, underflow and inexact), but stdout does not emit flag count/support metadata or a readback immediately before the kernel call. The recorded claim is 32 desired sticky-flag seed combinations matched after the call.",
+    "No rounding-mode, halting/trap, FTZ/DAZ or complete floating-point environment preservation is tested.",
+    "Randomized normal inputs use powers of two. This is finite synthetic coverage, not exhaustive bit-pattern validation or a proof of every possible compiler execution.",
+    "qualify.py imports the reference before checking a source seal and the original summary does not pin the qualifier/driver/reference. This review binds their currently retained bytes and exact source-manifest match; it does not invent a pre-execution oracle seal.",
+    "Native executable and compiler hashes are recorded historical identities only; this pure review did not reopen those external binary bytes."
+  ],
+  "material_blockers": [],
+  "native_compilations_or_executions_by_review": 0,
+  "performance_qualified": false,
+  "pure_replay": {
+    "accepted": 1572,
+    "accepted_controls_cover_32_seeds_per_width": true,
+    "accepted_exact_enclosures": 1572,
+    "amplitude_accuracy_qualified": false,
+    "cases": 4287,
+    "exact_enclosure_false_positives": 0,
+    "external_binary_reads": 0,
+    "native_executions": 0,
+    "reference_mismatches": 0,
+    "rejected": 2715,
+    "retained_sticky_flag_comparison_failures": 0,
+    "source_dag_or_caller_qualified": false,
+    "valid_finite_contract_inputs": 4252,
+    "width_128": 2142,
+    "width_32": 1,
+    "width_64": 2144
+  },
+  "pure_verifier_source_sha256": "c8c3de46f22a161755a17216fddcca2ef1ef2c3b906e14f2c9fe83b85eeff591",
+  "reviewed_files": {
+    "build.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "certificate.f90": {
+      "bytes": 3530,
+      "sha256": "0cb41b0c10233027d65c85f63625556eefb819ce2570390447bdceff4d8f7088"
+    },
+    "check.f90": {
+      "bytes": 719,
+      "sha256": "7e5d5c159276801f93bdd575d0fba05978033b87074d41442564628475a892ee"
+    },
+    "commands.json": {
+      "bytes": 1347,
+      "sha256": "3654112cc0263cd136147d3aaa15eac4197c7d95b325d96b67366ebaa6ad9c7b"
+    },
+    "compiler-version.txt": {
+      "bytes": 227,
+      "sha256": "ce5c82b1d51b8e2d727a945fab540ae918b3a8b87659de2713be2fadad1442da"
+    },
+    "inputs.txt": {
+      "bytes": 694850,
+      "sha256": "113eabdab9699b62b64652658e9127710f6891a49ca0186079dfac0c8d9aa5ef"
+    },
+    "qualify.py": {
+      "bytes": 7249,
+      "sha256": "0ab21bebd3b9b0ec56cc5a74326e1d4444ea9dfc85520ab7991572201ed520b0"
+    },
+    "run.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "run.stdout": {
+      "bytes": 37476,
+      "sha256": "ae80c33b30558e54f93968a3a0cf086d0a1b5acd51e587e7b70a5ec58d0f7612"
+    },
+    "summary.json": {
+      "bytes": 886,
+      "sha256": "027b26e8af248eead19ae5e954c36cc226020bcbfd4c0001cbb5aac3954c3b0f"
+    }
+  },
+  "reviewer": "delivery_scope_audit",
+  "schema": "independent-spacelike-kernel-synthetic-review-v1",
+  "source_provenance": {
+    "certificate_reference.py": {
+      "bytes": 3170,
+      "sha256": "7b52f707d16b5e248160b8fb7df0a162be41285d02a4cea4d5ae1fe2bac22de1"
+    },
+    "index.json": {
+      "bytes": 1828,
+      "sha256": "1665eff3188c947f35673b958cd0f02525fd031dc814b708dfdda69160b57964"
+    }
+  },
+  "tensor_calls": 0
+}

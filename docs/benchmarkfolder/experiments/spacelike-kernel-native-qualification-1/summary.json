@@ -1,0 +1,23 @@
+{
+  "scope": "compiled integer certificate, synthetic bits only",
+  "cases": 4287,
+  "accepted": 1572,
+  "rejected": 2715,
+  "exact_enclosure_false_positives": 0,
+  "reference_mismatches": 0,
+  "ieee_flag_changes": 0,
+  "widths": [
+    64,
+    128
+  ],
+  "all_32_flag_combinations": true,
+  "compiler": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+  "compiler_sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+  "input_sha256": "113eabdab9699b62b64652658e9127710f6891a49ca0186079dfac0c8d9aa5ef",
+  "kernel_sha256": "0cb41b0c10233027d65c85f63625556eefb819ce2570390447bdceff4d8f7088",
+  "executable_sha256": "fd0b02c41d7c5b0dbc234e2b5e2246dd44064f064bf5d64ed125580b0d3b3110",
+  "source_dag_bound_factory_qualified": false,
+  "amplitude_accuracy_qualified": false,
+  "tensor_calls": 0,
+  "performance_measurement": false
+}

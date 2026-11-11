@@ -1,0 +1,39 @@
+[
+  {
+    "argv": [
+      "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "--version"
+    ],
+    "returncode": 0,
+    "elapsed_accountability_seconds": 0.011891258880496025,
+    "stdout_sha256": "ce5c82b1d51b8e2d727a945fab540ae918b3a8b87659de2713be2fadad1442da",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-fcheck=all",
+      "-fno-fast-math",
+      "certificate.f90",
+      "check.f90",
+      "-o",
+      "check"
+    ],
+    "returncode": 0,
+    "elapsed_accountability_seconds": 0.5880074370652437,
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/spacelike-kernel-native-qualification-1/check"
+    ],
+    "returncode": 0,
+    "elapsed_accountability_seconds": 0.05853189807385206,
+    "stdout_sha256": "ae80c33b30558e54f93968a3a0cf086d0a1b5acd51e587e7b70a5ec58d0f7612",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

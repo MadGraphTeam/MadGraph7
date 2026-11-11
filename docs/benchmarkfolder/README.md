@@ -271,6 +271,13 @@ replay, so a general Fortran correction, amplitude accuracy and performance
 remain unqualified. Its portable verifier checks the retained inputs, ten raw
 protocols and twenty loader maps without running native code.
 
+The [compiled integer-certificate check](experiments/spacelike-kernel-native-qualification-1/README.md)
+passes 4,287 synthetic DP/QP and malformed-input cases, including all 32
+combinations of the five standard sticky IEEE flags. All 1,572 accepted cases
+satisfy the conditional exact error enclosure. The sampled raw values are not
+necessarily produced from their vectors, so this check does not establish
+physical kinematics or qualify the source-DAG bounds and amplitude caller.
+
 The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
 index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
 passes exact parity across four workers, 76 checked native-DP physical calls

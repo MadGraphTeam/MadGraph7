@@ -1,0 +1,54 @@
+{
+  "Fortran_compiled": false,
+  "accuracy_qualified": false,
+  "files": {
+    "PROPOSAL.md": {
+      "bytes": 14521,
+      "sha256": "9469aac4b044a3c341fc69c3da35c95a9d9f154e6be4a3dc3ab469af84f4a519"
+    },
+    "certificate.f90": {
+      "bytes": 3530,
+      "sha256": "0cb41b0c10233027d65c85f63625556eefb819ce2570390447bdceff4d8f7088"
+    },
+    "certificate_reference.py": {
+      "bytes": 3170,
+      "sha256": "7b52f707d16b5e248160b8fb7df0a162be41285d02a4cea4d5ae1fe2bac22de1"
+    },
+    "cms-structural-masks.json": {
+      "bytes": 84980,
+      "sha256": "33c248049fde973dfc57a00837c67c86a970da4a1052d17d72924cab3dfe7c09"
+    },
+    "derive_masks.py": {
+      "bytes": 3351,
+      "sha256": "9d01b84572fd170af4563211e7889b08f3f33b221248d0cead6d3efd979955d6"
+    },
+    "ew-mass-check.json": {
+      "bytes": 1094,
+      "sha256": "2e412f65a3485eb56f1388d5fd25224a39d96765ad69500683924115c95ab99f"
+    },
+    "pins.json": {
+      "bytes": 9186,
+      "sha256": "f2552cedfa32c710600cb92ecc1a7cd28fc28ba795a25756abfb0066acda435d"
+    },
+    "test_certificate_reference.py": {
+      "bytes": 3854,
+      "sha256": "b935dd6ed0d44ea408dbbd47cc23ae39b08a7906facc199cbfed5d9e7be48688"
+    },
+    "tests.log": {
+      "bytes": 1881,
+      "sha256": "965af588266c253c7596b82a878b4d977d55ff394aba6e2ad9021875a409a43d"
+    },
+    "verify.py": {
+      "bytes": 1819,
+      "sha256": "62929208c5523c485da3aae73773a14d44a1448b20ef05911084318b6465f148"
+    }
+  },
+  "fixture_or_point_allowlist": false,
+  "native_executions": 0,
+  "payload_bytes": 127386,
+  "payload_files": 10,
+  "pure_reference_tests_passed": 12,
+  "runtime_caller_integration_complete": false,
+  "schema": "general-invariant-source-only-proposal-v1",
+  "scope": "General mathematical certificate/kernel and structural metadata source proposal; no production patch"
+}
