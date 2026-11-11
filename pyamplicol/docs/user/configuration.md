@@ -914,13 +914,15 @@ runs a rotation re-test (the recommended checks' rotation of the evaluated
 point) in the call's arithmetic
 and fails typed when the check's relative estimate exceeds
 `reduction_target`, never below 1e-5 (a binary64 fallback point is served
-unguarded), recorded per point
+unguarded; the guard's estimate is an estimate, not a bound: strongly
+suppressed helicity rows near exactly forward kinematics can be served
+beyond their own 1e-5), recorded per point
 (`VirtualReduction.guard_estimate`; [Python API](python-api.md): NinjaRS can
 return badly wrong values as success at near-planar 2 -> 3 points of rank-n
 pentagon families in every arithmetic, the "Near-planar NinjaRS hazard",
-with the measured windows). An explicit `"ninjars"` or `"tirust"` has no
-fallback and no guard (explicit `"ninjars"` without stability checks was
-exposed to that hazard until NinjaRS's conditioning bound, 71eddb15), and neither has a
+with the measured windows, which NinjaRS's conditioning bound now refuses
+typed). An explicit `"ninjars"` or `"tirust"` has no fallback and no guard,
+and neither has a
 TIR-only artifact. An explicitly requested backend that cannot serve
 the call is refused before any point is evaluated (`ReductionUnavailable`, a
 `CompatibilityError` with key `reduction-unavailable`), never switched
@@ -1126,6 +1128,12 @@ kinematics_improvement_binary64 = false  # true: also improve binary64 evaluatio
   (on its refusal the point is evaluated as given, typed); it is also the
   finish of both MadLoop selections.
 * `"off"`: no improvement in any carrier (each result records `"off"`).
+  Leave the improvement on above binary64: switched off there, a
+  near-forward point given in binary64 can be served far off **without any
+  flag** (measured 2026-11-10, development host: g g > z z at theta = 1e-4,
+  double-double, `"auto"`: a relative error of 5.25, no stability check or guard
+  flagging it; correct with the default improvement), because the rotation
+  checks and the fallback guard act on the same inexact point.
 
 The shells are exactly the masses the evaluation binds for the external
 states (a leg without a bound mass keeps its own p^2). The improvement runs

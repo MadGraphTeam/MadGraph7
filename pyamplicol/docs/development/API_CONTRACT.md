@@ -18,8 +18,9 @@ review.
   `CompiledModelSource`, `CompiledModelCapabilities`,
   `ModelCompilationIssue`, `ModelCompilationPhase`, `ProcessRequest`, and
   `ProcessSet`.
-- Configuration: `RunConfig`, `GenerationConfig`, `EvaluationConfig`, and
-  `BenchmarkConfig`.
+- Configuration: `RunConfig`, `GenerationConfig`, `EvaluationConfig`,
+  `BenchmarkConfig`, `ColorConfig`, `ColorFFTBasis`, `LoopConfig`,
+  `R2Strategy`, and `ReductionBackend`.
 - Correlation declarations: `CorrelatorConfig`, `ColorCorrelator`, `EmitGluon`,
   and `SplitGluon`.
 - Services: `Generator`, `Runtime`, and `BenchmarkRunner`.
@@ -28,16 +29,28 @@ review.
   `BenchmarkTimingBreakdown`, `BenchmarkProfileCounters`, `ProcessPhysics`, `ExternalParticle`,
   `HelicityConfiguration`, `ColorComponent`, `ColorFlow`,
   `ContractedColorComponent`, `PhysicsReduction`, `ReductionGroup`,
-  `ModelParameter`, `ResolvedEvaluation`, and `CorrelatedValue`.
+  `ModelParameter`, `ResolvedEvaluation`, `CorrelatedValue`,
+  `CorrelatedRequest`, `BornAnchoredColorComponent`, `TreeGradedEvaluation`,
+  `TreeOrderEvaluation`, `GradedCorrelatedEvaluation`, and `WarmUpResult`.
+- One-loop results and settings: `VirtualEvaluation`,
+  `ResolvedVirtualEvaluation`, `LaurentCoefficients`, `VirtualArithmeticSpec`,
+  `VirtualColorContraction`, `VirtualLaneDiagnostic`,
+  `VirtualFailureDiagnostic`, `VirtualReduction`, `VirtualRescuePolicy`,
+  `VirtualRescueLevel`, `VirtualRescueRecord`, `VirtualRescueAttempt`,
+  `VirtualVerificationAttempt`, and `VirtualVerificationDiagnostic`
+  (`VirtualStabilityChecks` and the other one-loop types are exported by
+  `pyamplicol.api`).
 - Process metadata: `ProcessAlias`.
-- Helpers: `generate`, `load`, and `benchmark`.
+- Helpers: `generate`, `load`, `benchmark`, and `group_processes`.
 - Package metadata: `__version__`.
 - Errors: `PyAmpliColError`, `ConfigurationError`, `ModelError`,
   `GenerationError`, `ArtifactError`, `CompatibilityError`,
   `EvaluationError`, `DependencyError`, and `NativePlatformError` (a
   `DependencyError`: the running glibc lacks a version a native library
   needs; raised before the library is loaded, or in place of the dynamic
-  loader's missing-version error).
+  loader's missing-version error), and `ReductionUnavailable` (a
+  `CompatibilityError` with key `reduction-unavailable`: an explicitly
+  requested one-loop reduction backend cannot serve the call).
 
 No DAG, evaluator, stage, color-sector, Symbolica, or legacy-reference class is
 exported from the package root.
@@ -293,6 +306,15 @@ vectors. The next correlated call reloads that state; use
 `set_spin_correlation_vectors(None)` to reset the vectors themselves.
 
 `load(...)` is an alias for `Runtime.load(...)`.
+
+A one-loop artifact (Born-interfered virtual or loop-induced |A_loop|^2)
+loads through the same `Runtime.load`, which also takes the one-loop
+settings `reduction=`, `reduction_target=`, `reduction_unchecked=`,
+`kinematics_improvement=`, `kinematics_improvement_binary64=` and
+`stability=` (a `VirtualRescuePolicy`); its `evaluate*` calls return
+`VirtualEvaluation` / `ResolvedVirtualEvaluation` results (a loop-induced
+one with `contribution = "loop-induced"` and empty Born fields). See
+[Python API](../user/python-api.md#one-loop-virtuals-and-loop-induced-processes).
 
 ## Benchmarking
 

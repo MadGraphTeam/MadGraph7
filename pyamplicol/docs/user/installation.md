@@ -174,6 +174,103 @@ or invoke its executable by absolute path.
 
 Continue with [Quick Start](quick-start.md).
 
+## Build a wheel from a checkout and run the loop examples
+
+These commands build the platform wheel from a checkout with the release
+tooling, install that wheel alone in a fresh virtual environment outside the
+repository, and run every shipped one-loop example. They are the commands the
+release check runs.
+
+**1. Build the wheel.** The toolchain is Rust 1.97.1 (`rust-toolchain.toml`),
+a C/C++ compiler, `make` and `m4`, and `gfortran` for the Fortran SDK; the
+build also needs network access for the locked Python and Cargo inputs. On
+Linux x86-64 the release build runs in the pinned manylinux 2.28 image, as
+the release workflow (`.github/workflows/release-artifacts.yml`) does: the
+source distribution first, then the wheel built from it (an audited
+`cp311-abi3` wheel at most 95,000,000 bytes, below PyPI's default 100 MB
+file limit):
+
+```console
+git clone https://github.com/MadGraphTeam/pyamplicol.git
+cd pyamplicol
+docker run --rm -v "$PWD:/io" -w /io -e PYAMPLICOL_BUILD_MODE=release \
+  quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614 \
+  /bin/bash -euxo pipefail -c '
+    git config --global --add safe.directory /io
+    yum install -y gcc-c++ gcc-gfortran make
+    curl --proto "=https" --tlsv1.2 -sSf -o /tmp/rustup-init \
+      https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init
+    chmod +x /tmp/rustup-init
+    /tmp/rustup-init -y --profile minimal --default-toolchain 1.97.1
+    source "$HOME/.cargo/env"
+    PY311=/opt/python/cp311-cp311/bin/python
+    "$PY311" -m pip install "build>=1.2,<2" "maturin==1.15.0"
+    "$PY311" tools/release/build_release_artifacts.py --sdist-only --output-dir dist/sdist
+    "$PY311" tools/release/build_release_artifacts.py \
+      --retained-sdist dist/sdist/pyamplicol-*.tar.gz --output-dir dist
+  '
+```
+
+The build takes about an hour on a large host. The files in `dist/` belong to
+the container's root user. On macOS, and on a Linux host that provides
+`patchelf` and the toolchain above, run the two
+`tools/release/build_release_artifacts.py` commands directly with
+`PYAMPLICOL_BUILD_MODE=release` and a Python 3.11 that has `build` and
+`maturin==1.15.0` installed.
+
+**2. Install the wheel alone in a fresh environment** outside the repository
+(Python 3.11 or newer). Only the wheel comes from the checkout; its
+dependencies (Symbolica 3.0.3, ufo-model-loader 1.0.1, NumPy, ...) come from
+PyPI:
+
+```console
+python3.11 -m venv ~/pyamplicol-1.0.3-venv
+. ~/pyamplicol-1.0.3-venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "$PWD"/dist/pyamplicol-1.0.3-*.whl
+```
+
+On NixOS, PyPI's manylinux wheels of the dependencies (NumPy) need
+`libstdc++.so.6` on the loader path, which NixOS does not provide by default:
+use `nix-ld`, or export `LD_LIBRARY_PATH` with your GCC runtime library
+directory before running `pyamplicol`.
+
+**3. Check the installation and run the loop examples** from a directory
+outside the repository. Generation uses Symbolica: pyAmpliCol registers its
+package key at import; if you hold a personal Symbolica license, export it as
+`SYMBOLICA_LICENSE` first (see [Symbolica and Licensing](symbolica-and-licensing.md)).
+
+```console
+mkdir -p ~/pyamplicol-run && cd ~/pyamplicol-run
+python -c 'import pyamplicol; print(pyamplicol.__version__)'
+pyamplicol self-test
+pyamplicol examples copy ./pyamplicol-examples --force
+cd pyamplicol-examples
+make -C native loop
+for example in loop_uux_ttxgg loop_uux_ddxepem loop_gg_zgg loop_gg_epemmpmm; do
+  pyamplicol "${example}_generate.toml"
+  pyamplicol check "${example}_generate.toml"
+  pyamplicol "${example}_check.toml"
+  pyamplicol "${example}_evaluate.toml"
+  pyamplicol "${example}_profile.toml"
+  python python/loop_walkthrough.py "${example}_generate.toml" --points 2 --regenerate \
+    --native-client native/loop_client
+done
+```
+
+Each step is described in [the examples guide](../../examples/README.md#one-loop-examples);
+`--regenerate` makes the walkthrough generate its artifact again with the
+example's correlator declaration (the card's generation above writes it
+without one).
+Measured from the wheel (2026-11-11, an AMD EPYC host shared with other
+jobs, the four examples run side by side): `loop_uux_ttxgg` and
+`loop_gg_zgg` generate in under a minute and run their whole sequence in
+about 6 minutes (peak 4.2 and 10.8 GiB); the complex-mass examples
+`loop_gg_epemmpmm` and `loop_uux_ddxepem` generate in 5 and 7 minutes and
+take about 21 and 36 minutes for the whole sequence (peak 5.7 and 19.6 GiB,
+the latter in the walkthrough). Each walkthrough generates its artifact again
+in a child process.
+
 ## Install a tagged source release
 
 Use a tagged snapshot when your platform has no compatible wheel or when you
@@ -219,8 +316,8 @@ python -m pip install .
 
 For development from a checkout, `just dev-install` creates a repository-managed
 environment with published Python dependencies from `pyproject.toml`, including
-Symbolica 3.0.0 and ufo-model-loader 1.0.0, and the release-mode native build with
-published SymJIT 2.26.4. It does not use an editable installation. Building a new
+Symbolica 3.0.3 and ufo-model-loader 1.0.1, and the release-mode native build with
+SymJIT 2.28.3 (see `dependencies/README.md` for the native pins). It does not use an editable installation. Building a new
 release wheel requires a clean Git checkpoint and complete release assets;
 published-dependency mode does not relax these publication guards.
 
