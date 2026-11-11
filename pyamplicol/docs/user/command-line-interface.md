@@ -601,9 +601,24 @@ with the reason. v2 evaluations return stability estimates
 (`--stability-rotations`, `--stability-reduction-direction`,
 `--stability-rescaled`) and leave escalating `--arithmetic` to the caller.
 
-`--on-failure raise` is the default. `--on-failure return` preserves successful
-points and returns an unavailable whole-point row for each numerical failure:
-`null` in JSON, with its failure diagnostics. An actual zero remains a
+`--on-failure best-effort` is the default (since 1.0.3): a point that no
+configured alternative accepts (the reduction backend's own acceptance
+checks, `auto`'s per-point fallback, the last rescue level) is returned with
+its best available value, the unchecked reduction's, its refusal and its
+uncertainty, status `best-effort` (never a success; yellow in the status
+column of the evaluation diagnostics), and a point without any value as an
+unavailable row. Nothing is printed per point: the human tables end with one
+dim summary line (`N captured warning(s) (...); see --json /
+result.warnings`), and `--json` carries `statuses` and `warnings` (per kind:
+source, kind, first message, count, where, point indices; each lane's
+`reduction.best_effort` record holds `refusal`, `uncertainty`, `source` and
+`backend_deviation`). `--on-failure return` preserves successful
+points and returns an unavailable whole-point row for each numerical failure
+(no best-effort evaluation): `null` in JSON, with its failure diagnostics.
+`--on-failure raise` (the default before 1.0.3) stops at the first such
+point. `generate` and `check` return the known, benign dependency log
+events they trigger (see the release notes) in their result's `warnings`,
+shown as the same one dim line, instead of printing them. An actual zero remains a
 numerical zero. A scale at which a counterterm coupling is not finite in the
 chosen arithmetic (e.g. `1e-400` in binary64) is such a failure of its own
 points. Malformed inputs (a non-positive `--mu-r2`) and unsupported
@@ -757,9 +772,13 @@ range [0, 15.95]:
 - **estimated digits**: the binary64 call's own stability estimate (its
   absolute finite-part errors summed over the sectors, over |total|).
 
-**Failed points are part of the distribution.** A point the backend refuses
-or fails in binary64 has no value: it counts 0 true digits (the worst end of
-the ranking) and has no estimate. A point with a binary64 value whose
+**Refused and failed points are part of the distribution.** A point the
+backend's own checks refuse in binary64 is measured with its best-effort
+value (the unchecked reduction's, what the default `on_failure` returns,
+status best-effort; since 1.0.3) at its true digits, its estimate being the
+call's checks' estimate of that value; it is never accepted, so it always
+counts as flagged. A point with no binary64 value at all ("no value") counts
+0 true digits (the worst end of the ranking) and has no estimate. A point with a binary64 value whose
 double-double reference failed has an unknown truth and is left out (shown as
 "no ref."). The measured points (N in what follows) are all others.
 
@@ -775,13 +794,18 @@ small N a class can be empty (`-`; the table prints the N a populated class
 needs: 1000 measured points for the 1 per mil class, 2 for the median).
 
 A second table compares the default checks with the truth, per backend: the
-measured points, those failed in binary64, the points flagged unstable
+measured points, those served best-effort / without a value in binary64, the points flagged unstable
 (estimate above the default target 1e-5, per sector, the metric the rescue
 reads, or a binary64 failure, which the result reports and so detects), the
 flagged points that are truly inaccurate (true relative error above the
 target, or no binary64 value) and the truly inaccurate points not flagged
 ("missed"). No rescue runs: the statistics are those of pure binary64; the
-double-double re-run is the reference only. Digits are coloured red below the
+double-double re-run is the reference only. When a backend served points
+best-effort, a third table shows how accurate those values and their
+uncertainties are: per backend the number of best-effort points, their true
+digits (min / median / max), the median digits of their uncertainty, the
+median |uncertainty - true| digits and how many uncertainties cover the
+true error (true relative error within the uncertainty). Digits are coloured red below the
 target's digits (5 for 1e-5), yellow in the lower half of the margin between
 the target's digits and binary64's 15.95 (a display convention) and green
 above. The footnotes under the tables state these definitions; every table

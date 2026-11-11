@@ -37,6 +37,36 @@ dependency source patches or unpublished wheels are needed.
 
 ## 1.0.3 release
 
+**Changed default: a refused point no longer interrupts a run.** A one-loop
+evaluation now returns, by default (`on_failure="best-effort"`; CLI
+`--on-failure best-effort`; SDK `set_on_failure("best-effort")`), every point
+of the batch: a point that no configured alternative accepts (the reduction
+backend's own acceptance checks, `"auto"`'s per-point fallback, the last
+rescue level) is evaluated again without the backends' own acceptance checks
+(the `reduction_unchecked` machinery) and, where that yields a finite value,
+returned with lane status `"best-effort"` (SDK `RUSTICOL_VIRTUAL_BEST_EFFORT`
+= 5): never a success, with its refusal and an uncertainty (the call's own
+stability estimate, else a rotation re-test of that point; if none can be
+formed the record says so). A point with no value at all is a failed lane.
+Nothing is printed, logged or raised for such points: the result carries it
+as data (`result.statuses`, `result.warnings`, `result.has_warnings`; the
+SDKs' statuses, `uncertainties` and the diagnostics' `"best_effort"` and
+`"warnings"`), so Monte-Carlo logs cannot be swamped. Points the configured
+alternatives accept are evaluated exactly as before (bitwise, same cost).
+`on_failure="return"` keeps such points as failed lanes without computing a
+best-effort value; `on_failure="raise"` is the previous behaviour (raise at
+the first such point; the SDKs return `RUSTICOL_VIRTUAL_RUNTIME_ERROR`);
+`result.emit_warnings()` turns a result's warnings into one filterable
+`NumericalAccuracyWarning`. Failure reasons are bounded to one message per
+reason class with the count of the others. Known, benign dependency log
+events of `generate` and `check` (Symbolica's "Created infinity by raising 0
+to the power of -1" from loop_qcd_qed_sm's unused `aEW0` conditional, the UFO
+loader's exact float-to-rational notice) are returned in the result's
+`warnings` instead of printed. See
+[Python API](python-api.md#best-effort-values-of-refused-points),
+[Command-line interface](command-line-interface.md) and
+[Native APIs](native-apis.md#runtime-and-precision-boundary).
+
 Version `1.0.3` adds loop-induced one-loop processes: processes without a
 Born amplitude within their coupling-order limits (`g g > h`, `g g > z z`,
 `h > g g`), served as |A_loop|^2 at full colour and evaluated as
