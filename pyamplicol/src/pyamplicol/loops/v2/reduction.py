@@ -858,7 +858,15 @@ def _best_effort(
             else checks
         )
     else:
-        own = _guard_check(checks if checks is not None else None)
+        # The recommended checks (the guard's rotation and the rescaled
+        # reduction-direction check): one rotation alone under-states the
+        # error of an unchecked TIRust value (ux-besteffort measurement:
+        # 220 of 722 u u~ > t t~ g g points within it; 219 of 219 with both).
+        own = replace(
+            _guard_check(checks if checks is not None else None),
+            reduction_direction=True,
+            rescaled=True,
+        )
 
     def again(chosen: list[int] | None, with_checks: Any) -> Any:
         return run(
@@ -887,7 +895,7 @@ def _best_effort(
         else:
             uncertainty, source = (
                 estimate,
-                ("stability-checks" if enabled else "rotation"),
+                ("stability-checks" if enabled else "recommended-checks"),
             )
         record = served.get(local)
         effective = choice.effective if record is None else record.effective

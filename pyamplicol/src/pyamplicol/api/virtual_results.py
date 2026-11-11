@@ -352,7 +352,7 @@ REDUCTION_CHECKS = ("none", "reversed", "rescaled")
 RESCUE_METRICS = ("relative", "finite", "scale")
 
 
-BEST_EFFORT_SOURCES = ("stability-checks", "rotation", "none")
+BEST_EFFORT_SOURCES = ("stability-checks", "recommended-checks", "none")
 
 
 @dataclass(frozen=True, slots=True)
@@ -374,9 +374,13 @@ class VirtualBestEffort:
     sector against its own magnitude, an output that vanishes against the
     largest returned output) from ``source``: ``"stability-checks"``, the
     call's own checks, run on the best-effort evaluation as on any other
-    point; ``"rotation"``, the recommended rotation re-test run on the
+    point; ``"recommended-checks"``, the recommended checks (the guard's
+    rotation and the rescaled reduction-direction check,
+    ``VirtualStabilityChecks(1, True, rescaled=True)``'s kind) run on the
     best-effort point alone when the call requested no checks (the public
-    result then carries no estimate, as the call asked); ``"none"``, no
+    result then carries no estimate, as the call asked; measured on
+    u u~ > t t~ g g's 219 TIRust best-effort points: every one within its
+    uncertainty, where one rotation alone covers 30 %); ``"none"``, no
     estimate could be formed (the re-test failed or was not a number), and
     ``uncertainty`` is None. ``backend_deviation`` is the backend's own
     accuracy measure where its refusal states one: the largest deviation
@@ -387,7 +391,7 @@ class VirtualBestEffort:
 
     refusal: str
     uncertainty: float | None
-    source: Literal["stability-checks", "rotation", "none"]
+    source: Literal["stability-checks", "recommended-checks", "none"]
     backend_deviation: float | None = None
 
     def __post_init__(self) -> None:
@@ -415,7 +419,10 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
     """The lane detail of a best-effort value (``VirtualBestEffort``): what
     the value is and its uncertainty, or that none could be given."""
 
-    where = {"stability-checks": "call's checks", "rotation": "rotation re-test"}
+    where = {
+        "stability-checks": "call's checks",
+        "recommended-checks": "recommended checks",
+    }
     head = "refused; value of the unchecked reduction (best effort)"
     if record.uncertainty is None:
         tail = "no uncertainty could be estimated"

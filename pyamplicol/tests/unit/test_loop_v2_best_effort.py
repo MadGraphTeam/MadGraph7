@@ -74,14 +74,14 @@ def test_a_best_effort_record_states_its_refusal_and_uncertainty():
         best_effort_detail,
     )
 
-    record = VirtualBestEffort("TIRust Unstable: x", 3e-4, "rotation", 2e-3)
+    record = VirtualBestEffort("TIRust Unstable: x", 3e-4, "recommended-checks", 2e-3)
     assert "3.00e-04" in best_effort_detail(record)
     none = VirtualBestEffort("TIRust Unstable: x", None, "none")
     assert "no uncertainty could be estimated" in best_effort_detail(none)
     with pytest.raises(ValueError):
-        VirtualBestEffort("x", None, "rotation")
+        VirtualBestEffort("x", None, "recommended-checks")
     with pytest.raises(ValueError):
-        VirtualBestEffort("", 1e-3, "rotation")
+        VirtualBestEffort("", 1e-3, "recommended-checks")
     reduction = VirtualReduction(
         "tirust", "tirust", "best effort", unchecked=True, best_effort=record
     )
@@ -116,7 +116,7 @@ def test_numerical_warnings_summarise_the_lanes_and_emit_only_on_request():
         "tirust",
         "r",
         unchecked=True,
-        best_effort=VirtualBestEffort("refused A", 1e-3, "rotation"),
+        best_effort=VirtualBestEffort("refused A", 1e-3, "recommended-checks"),
     )
     lanes = (
         VirtualLaneDiagnostic("success", "double", 53, False, "ok"),
@@ -203,7 +203,7 @@ def test_refused_points_carry_the_unchecked_value_by_default(aag, capfd):
         if record.uncertainty is None:
             assert record.source == "none"
         else:
-            assert record.source == "rotation"
+            assert record.source == "recommended-checks"
             assert math.isfinite(record.uncertainty) and record.uncertainty >= 0
         assert lane.failures and lane.failures[0].detail == record.refusal
     # The call ran no checks: the public result carries no estimate.
@@ -508,7 +508,9 @@ def test_every_sdk_returns_refused_points_with_their_best_effort_value(
         record = found["diagnostics"]
         assert sorted(int(k) for k in record["best_effort"]) == refused
         for entry in record["best_effort"].values():
-            assert "TIRust" in entry["refusal"] and entry["source"] == "rotation"
+            assert (
+                "TIRust" in entry["refusal"] and entry["source"] == "recommended-checks"
+            )
             assert math.isfinite(entry["uncertainty"])
         (warning,) = record["warnings"]
         assert warning["kind"] == "best-effort" and warning["count"] == len(refused)

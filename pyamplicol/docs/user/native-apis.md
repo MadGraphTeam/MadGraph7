@@ -963,8 +963,8 @@ that yields a value, returned as a numerical row with status
 a value (`successful_point_ids`): check the statuses. Its relative
 uncertainty is `rusticol_virtual_result_copy_uncertainties` (C++ / Rust
 `uncertainties`, Fortran `%uncertainties`; NaN for every other point): the
-call's own binary64 stability estimate, else one default rotation re-test of
-that point, else none (NaN; the record says so). `diagnostics_json` carries
+call's own binary64 stability estimate, else one default rotation and the
+rescaled reduction-direction check of that point, else none (NaN; the record says so). `diagnostics_json` carries
 `"best_effort"` per point id (`refusal`, `uncertainty`, `source`, `detail`,
 `reduction`), `"warnings"` (the Python API's `ResultWarning` records),
 `"on_failure"`, and `"failures"` with one message per reason class plus the

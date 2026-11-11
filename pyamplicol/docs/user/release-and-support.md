@@ -46,7 +46,8 @@ rescue level) is evaluated again without the backends' own acceptance checks
 (the `reduction_unchecked` machinery) and, where that yields a finite value,
 returned with lane status `"best-effort"` (SDK `RUSTICOL_VIRTUAL_BEST_EFFORT`
 = 5): never a success, with its refusal and an uncertainty (the call's own
-stability estimate, else a rotation re-test of that point; if none can be
+stability estimate, else the recommended checks (a rotation and the rescaled
+reduction-direction check) on that point; if none can be
 formed the record says so). A point with no value at all is a failed lane.
 Nothing is printed, logged or raised for such points: the result carries it
 as data (`result.statuses`, `result.warnings`, `result.has_warnings`; the

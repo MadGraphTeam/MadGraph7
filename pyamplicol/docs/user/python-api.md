@@ -679,7 +679,7 @@ for warning in result.warnings:  # ResultWarning: one per kind
 lane = result.diagnostics[1]
 lane.best_effort.refusal      # e.g. "TIRust Unstable: ill-conditioned Gram ..."
 lane.best_effort.uncertainty  # relative uncertainty, or None
-lane.best_effort.source       # "stability-checks" | "rotation" | "none"
+lane.best_effort.source       # "stability-checks" | "recommended-checks" | "none"
 ```
 
 `VirtualBestEffort` (the lane's `reduction.best_effort`, also
@@ -687,9 +687,11 @@ lane.best_effort.source       # "stability-checks" | "rotation" | "none"
 with the count of the others), `uncertainty` (the relative estimate of the
 value, the `"relative"` metric: each squared-order sector against its own
 magnitude), its `source` (`"stability-checks"`: the call's own checks, which
-then also give the lane's public `stability` estimate; `"rotation"`: the
-recommended rotation re-test run on that point alone because the call asked
-for no checks; `"none"`: no estimate could be formed, `uncertainty` is
+then also give the lane's public `stability` estimate;
+`"recommended-checks"`: the recommended checks (a rotation and the rescaled
+reduction-direction check) run on that point alone because the call asked
+for no checks; measured on u u~ > t t~ g g's 219 TIRust best-effort points,
+every true error lay within it, while one rotation alone covered 30 %; `"none"`: no estimate could be formed, `uncertainty` is
 None, said so in the lane's detail, never invented) and
 `backend_deviation` (TIRust's own measure where its refusal states one: the
 largest method-choice deviation between its two frames relative to the
@@ -712,7 +714,7 @@ means it), `"return"` (such points stay failed lanes, no extra evaluation)
 and `"raise"` (the default before 1.0.3: `EvaluationError` at the first such
 point). Accepted points are evaluated exactly as before, bitwise and at the
 same cost; only refused points pay for their best-effort evaluation (one
-unchecked evaluation, plus one rotation re-test when the call has no
+unchecked evaluation, plus the recommended checks when the call has no
 checks). A runtime already loaded with `reduction_unchecked=True` has no
 checks to override: its failed points stay failed. Under a rescue policy
 only the last level serves best-effort values (`rescue_counts` counts them
