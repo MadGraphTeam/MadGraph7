@@ -168,6 +168,39 @@ def _read_json(
         raise ConfigurationError(f"invalid JSON in {path}: {exc}") from exc
 
 
+def _log_process_syntax(resolution: ConfigResolution | None) -> None:
+    """Log what each process entry's MG5_aMC syntax was translated to (the
+    requested configuration keeps the expressions as written;
+    ``processes.mg5_syntax``)."""
+
+    if resolution is None:
+        return
+    from pyamplicol.processes.mg5_syntax import translate_process_expression
+    from pyamplicol.reporting import get_logger
+
+    for entry in resolution.requested.process.entries:
+        translation = translate_process_expression(entry.expression)
+        if translation.translated:
+            get_logger("cli").info("process %s", translation.describe())
+
+
+def _flat_points(config: RunConfig):
+    """The flat phase-space points of ``[evaluation.phase_space]`` for the
+    configured artifact (``cli.flat_points``)."""
+
+    from .flat_points import draw_flat_points
+
+    assert config.evaluation.artifact is not None
+    space = config.evaluation.phase_space
+    return draw_flat_points(
+        config.evaluation.artifact,
+        process=config.evaluation.process,
+        points=space.points,
+        seed=space.seed,
+        sqrt_s=space.sqrt_s,
+    )
+
+
 def _virtual_artifact_hint(path: Path) -> bool:
     """Choose CLI ingress only; the native loader checks the artifact itself
     (``benchmarking.is_virtual_artifact``)."""
@@ -380,6 +413,7 @@ class DefaultCliServices:
         if config.generation.output is None:
             raise ConfigurationError("generate requires generation.output")
         processes = _process_set(config)
+        _log_process_syntax(self._resolution)
         return Generator(
             config=self._generation_config(config), progress=progress
         ).generate(
@@ -403,6 +437,7 @@ class DefaultCliServices:
         if not config.process.entries:
             raise ConfigurationError("generate --dry-run requires a process request")
         processes = _process_set(config)
+        _log_process_syntax(self._resolution)
         return Generator(
             config=self._generation_config(config), progress=progress
         ).plan(
@@ -415,8 +450,6 @@ class DefaultCliServices:
 
         if config.evaluation.artifact is None:
             raise ConfigurationError("evaluate requires evaluation.artifact")
-        if config.evaluation.momenta is None:
-            raise ConfigurationError("evaluate requires evaluation.momenta")
         artifact = config.evaluation.artifact
         virtual = _virtual_artifact_hint(artifact)
         evaluation = config.evaluation
@@ -462,10 +495,19 @@ class DefaultCliServices:
             if not isinstance(raw_parameters, Mapping):
                 raise ConfigurationError("model parameter JSON must be an object")
             parameters = cast("ModelParameters", raw_parameters)
-        momenta = _read_json(config.evaluation.momenta, exact=exact_inputs)
+        flat = None
+        if config.evaluation.momenta is None:
+            # Flat phase-space points ([evaluation.phase_space]).
+            flat = _flat_points(config)
+            momenta: object = flat.as_inputs(exact=exact_inputs)
+        else:
+            momenta = _read_json(config.evaluation.momenta, exact=exact_inputs)
         if not isinstance(momenta, list):
             raise ConfigurationError("momenta JSON must be a point list")
         scales: ScalarInput | list[ScalarInput] | None = evaluation.mu_r2
+        if flat is not None and scales is None and evaluation.mu_r2_file is None:
+            # The flat points' default scale: s of each point.
+            scales = cast("list[ScalarInput]", flat.mu_r2())
         if evaluation.mu_r2_file is not None:
             raw_scales = _read_json(evaluation.mu_r2_file, exact=True)
             if not isinstance(raw_scales, list):
@@ -591,6 +633,9 @@ class DefaultCliServices:
             if not isinstance(raw_points, list):
                 raise ConfigurationError("momenta JSON must be a point list")
             points = raw_points
+        else:
+            # Flat phase-space points ([evaluation.phase_space]).
+            points = _flat_points(config).as_inputs(exact=False)
         if _virtual_artifact_hint(config.evaluation.artifact):
             # A loop artifact: both reduction backends side by side, the
             # runtime and/or the stability statistics (``loop_profile``).

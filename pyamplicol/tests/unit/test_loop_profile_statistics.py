@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import json
 import math
+from dataclasses import replace
 from decimal import Decimal
 from fractions import Fraction
 
@@ -111,27 +112,103 @@ class _Estimate:
 
 
 def test_backend_statistics_from_values_estimates_and_references():
-    # Two sectors per point; the reference in Decimal.
-    plain = [((1.0, None, None), (1.0, None, None)), ((2.0, None, None),), None]
+    # Two sectors per point; the reference in Decimal. Point 2 failed in
+    # binary64 (no value, no estimate), point 3 has no reference.
+    plain = [
+        ((1.0, None, None), (1.0, None, None)),
+        ((2.0, None, None),),
+        None,
+        ((3.0, None, None),),
+    ]
     reference = [
         ((Decimal("1.0000001"), None, None), (Decimal(1), None, None)),
         ((Decimal(2), None, None),),
-        ((Decimal(1), None, None),),
+        None,
+        None,
     ]
-    estimates = [_Estimate(1e-3, (1e-8, 1e-8)), _Estimate(1e-9, (2e-9,)), None]
-    row = _backend_statistics("ninjars", plain, estimates, reference, 1e-5, 0.5)
-    assert row.points == 2 and row.failed == 1
+    estimates = [
+        _Estimate(1e-3, (1e-8, 1e-8)),
+        _Estimate(1e-9, (2e-9,)),
+        None,
+        _Estimate(1e-9, (3e-9,)),
+    ]
+    row = _backend_statistics(
+        "ninjars",
+        plain,
+        estimates,
+        reference,
+        1e-5,
+        0.5,
+        reasons=[None, None, "unsupported: rank 7", None],
+        reference_reasons=[None, None, "unsupported: rank 7", "failed: dd"],
+    )
+    # The binary64 failure is measured at 0 digits (whatever its reference);
+    # the point without a reference is left out.
+    assert (row.points, row.failed_binary64, row.failed_reference) == (3, 1, 1)
     assert row.true_digits[0] == pytest.approx(-math.log10(1e-7 / 2.0000001))
     assert row.true_digits[1] == BINARY64_DIGITS
+    assert row.true_digits[2] == 0.0
     # Estimated: absolute finite errors summed over sectors over |total|.
     assert row.estimated_digits[0] == pytest.approx(-math.log10(2e-8 / 2.0))
     assert row.estimated_digits[1] == pytest.approx(9.0)
-    # Point 0 flagged (relative 1e-3 > 1e-5) but accurate; nothing missed.
-    assert (row.flagged, row.flagged_inaccurate, row.unflagged_inaccurate) == (
+    assert row.estimated_digits[2] is None
+    # Point 0 flagged (relative 1e-3 > 1e-5) but accurate; the failure is
+    # flagged (detected) and truly inaccurate; nothing missed.
+    assert (
+        row.flagged,
+        row.flagged_inaccurate,
+        row.unflagged_inaccurate,
+        row.truly_inaccurate,
+    ) == (2, 1, 0, 1)
+    assert [(p.index, p.status, p.reason) for p in row.per_point] == [
+        (0, "measured", None),
+        (1, "measured", None),
+        (2, "binary64-failed", "unsupported: rank 7"),
+        (3, "reference-failed", "failed: dd"),
+    ]
+    # The failure ranks at the worst end: the 50 % class (rank floor(3/2)
+    # = 1) holds it alone, without an estimate.
+    median = row.percentiles[3]
+    assert (median.rank, median.digits, median.count, median.failed) == (
         1,
-        0,
-        0,
+        0.0,
+        1,
+        1,
     )
+    assert median.deviation_median is None and median.signed_median is None
+
+
+def test_failed_points_rank_worst_and_classes_skip_their_estimates():
+    true = [0.0, 0.0, 12.0, 13.0, 14.0, 15.0]
+    estimated = [None, None, 10.0, 12.0, 11.0, 15.0]
+    rows = percentile_table(true, estimated)
+    # N = 6: only the 50 % class (ranks 1..3) is populated: both failures
+    # and the 12-digit point, whose deviation is the class's only one.
+    assert [row.rank for row in rows] == [0, 0, 0, 3]
+    assert (rows[3].digits, rows[3].count, rows[3].failed) == (12.0, 3, 2)
+    assert rows[3].deviation_min == rows[3].deviation_max == pytest.approx(2.0)
+    assert rows[3].signed_median == pytest.approx(-2.0)
+
+
+def test_failure_reason_reads_the_first_failed_channel():
+    from pyamplicol.api.virtual_results import (
+        VirtualFailureDiagnostic,
+        VirtualLaneDiagnostic,
+    )
+    from pyamplicol.benchmarking import failure_reason
+
+    lane = VirtualLaneDiagnostic(
+        "unsupported",
+        "double",
+        53,
+        False,
+        "no TIRust reduction",
+        failures=(VirtualFailureDiagnostic(0, None, None, 2, "reduction", "rank 7"),),
+    )
+    assert failure_reason(lane) == "unsupported: reduction: rank 7"
+    plain = VirtualLaneDiagnostic("failed", "double", 53, False, "nan value")
+    assert failure_reason(plain) == "failed: nan value"
+    assert failure_reason(None) == "failed"
 
 
 def _report(stability_rows, runtime_rows=None):
@@ -166,8 +243,6 @@ def test_rendering_both_backends_a_refusal_and_json():
         true_digits=digits,
         estimated_digits=(2.0, 3.0, 4.0, 9.0),
         percentiles=percentile_table(digits, (2.0, 3.0, 4.0, 9.0)),
-        median_true_digits=4.0,
-        median_estimated_digits=3.5,
         flagged=1,
         flagged_inaccurate=1,
         unflagged_inaccurate=1,
@@ -185,82 +260,18 @@ def test_rendering_both_backends_a_refusal_and_json():
     write_result(report, format="json", stream=machine, color=True)
     text = plain.getvalue()
     assert "\x1b[" not in text and "\x1b[" in coloured.getvalue()
-    assert "TIRust true digits" in text and "NinjaRS cannot serve rank 7" in text
-    assert "- (N >= 1000)" in text and "50 % (median)" in text
-    assert "A populated 1 per mil class needs N >= 1000" in text
+    assert "true digits" in text and "NinjaRS cannot serve rank 7" in text
+    assert "- (N >= 1000)" in text and "50 %" in text
+    flat = " ".join(text.split())
+    assert "A populated 1 per mil class needs N >= 1000 measured points" in flat
+    # Laptop terminal: no line wider than the report's width.
+    assert max(len(line) for line in text.splitlines()) <= 100
     assert "refused" in text and "no TIRust in this build" in text
     payload = json.loads(machine.getvalue())
     assert "\x1b[" not in machine.getvalue()
     assert payload["stability"][0]["percentiles"][3]["digits"] == 3.0
     assert payload["stability"][1]["refusal"] == "NinjaRS cannot serve rank 7"
     assert payload["runtime"][0]["refusal"].startswith("refused")
-
-
-def test_flat_points_conserve_momentum_and_keep_the_masses(tmp_path):
-    from pyamplicol.runtime.flat_points import (
-        artifact_kinematics,
-        external_masses,
-        flat_points,
-    )
-
-    process = tmp_path / "processes" / "p"
-    process.mkdir(parents=True)
-    point = [
-        {"momentum": ["500", "0", "0", "500"], "pdg": 2},
-        {"momentum": ["500", "0", "0", "-500"], "pdg": -2},
-        {
-            "momentum": [
-                "195.6991336459694",
-                "-54.456572281957435",
-                "38.451662872088697",
-                "-62.650636608530753",
-            ],
-            "pdg": 6,
-        },
-        {
-            "momentum": [
-                "361.07092884968853",
-                "-251.34762331697158",
-                "171.4440017739098",
-                "-88.738617123742969",
-            ],
-            "pdg": -6,
-        },
-        {
-            "momentum": [
-                "314.37354247181827",
-                "192.74843324930768",
-                "-230.27422748757118",
-                "93.019061708983159",
-            ],
-            "pdg": 21,
-        },
-        {
-            "momentum": [
-                "128.85639503252366",
-                "113.05576234962132",
-                "20.378562841572641",
-                "58.370192023290549",
-            ],
-            "pdg": 21,
-        },
-    ]
-    (process / "validation-momenta.json").write_text(
-        json.dumps({"available": True, "points": [point]})
-    )
-    kinematics = artifact_kinematics(tmp_path, "p")
-    assert kinematics.incoming == 2 and kinematics.sqrt_s == pytest.approx(1000.0)
-    masses = kinematics.masses
-    assert masses[:2] == (0.0, 0.0) and masses[4:] == (0.0, 0.0)
-    assert masses[2] == pytest.approx(173.0, rel=1e-9) == masses[3]
-    points = flat_points(kinematics, 3, seed=7, sqrt_s=2000.0)
-    assert flat_points(kinematics, 1, seed=8, sqrt_s=2000.0)[0] == points[1]
-    for item in points:
-        total = [sum(p[k] for p in item[2:]) for k in range(4)]
-        assert total == pytest.approx([2000.0, 0.0, 0.0, 0.0], abs=1e-9)
-        assert external_masses(item) == pytest.approx(masses, abs=1e-6)
-    with pytest.raises(ValueError, match="must exceed"):
-        flat_points(kinematics, 1, seed=1, sqrt_s=300.0)
 
 
 def test_runtime_tables_compare_served_backends_only():
@@ -290,8 +301,18 @@ def test_runtime_tables_compare_served_backends_only():
     )
     text = render_summary(_report(None, rows), color=False)
     assert "fastest" in text and "x3.00" in text and "NinjaRS / TIRust" in text
-    assert "NinjaRS 2 (per-point fallback)" in text and "0 of 8" in text
-    failed = (rows[0], BackendRuntime("ninjars", profile(3e-3, 8), ratio=None))
+    assert "NinjaRS 2 (fallback)" in text and "0 of 8" in text
+    assert max(len(line) for line in text.splitlines()) <= 100
+    failed = (
+        rows[0],
+        BackendRuntime(
+            "ninjars",
+            replace(profile(3e-3, 8), failure_reasons=(("unsupported: rank 7", 8),)),
+            ratio=None,
+        ),
+    )
     text = render_summary(_report(None, failed), color=False)
     assert "all points failed" in text and "8 of 8" in text
+    assert "NinjaRS failed 8 of 8: unsupported: rank 7" in " ".join(text.split())
+    assert "only one served" in text and "failing" in text
     assert "NinjaRS / TIRust" not in text

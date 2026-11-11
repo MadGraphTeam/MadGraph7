@@ -1148,8 +1148,12 @@ def _default_lc_profile_selectors(
     color_flows = tuple(selected_color_ids)
     if physics.color_accuracy != "lc" or lc_flow_layout is None:
         return helicities or None, color_flows or None
-    complete_helicities = _is_complete_selector_set(helicities, physics.helicity_ids)
-    complete_color_flows = _is_complete_selector_set(color_flows, physics.color_ids)
+    complete_helicities = _is_complete_selector_set(
+        helicities, physics.helicity_ids
+    )
+    complete_color_flows = _is_complete_selector_set(
+        color_flows, physics.color_ids
+    )
     if lc_flow_layout == _LC_TOPOLOGY_REPLAY_LAYOUT:
         normalized_helicities = None if complete_helicities else helicities or None
         normalized_color_flows = (
@@ -2779,6 +2783,9 @@ class VirtualProfileResult:
     unchecked: bool
     failed_points: int
     label: str | None = None
+    # The failed timed points per reason (``failure_reason``), most frequent
+    # first.
+    failure_reasons: tuple[tuple[str, int], ...] = ()
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2895,6 +2902,7 @@ def profile_virtual(
     walls: list[float] = []
     totals: dict[str, float] = {}
     failed = 0
+    reasons: dict[str, int] = {}
     contribution = runtime.contribution_kind
     reductions: list[Any] = []
     for _ in range(max(bench.minimum_samples, 1)):
@@ -2903,7 +2911,11 @@ def profile_virtual(
             result = runtime.evaluate(batch, **options)
             wall = time.perf_counter() - begin
         walls.append(wall)
-        failed += sum(1 for valid in result.valid if not valid)
+        for valid, lane in zip(result.valid, result.diagnostics, strict=True):
+            if not valid:
+                failed += 1
+                reason = failure_reason(lane)
+                reasons[reason] = reasons.get(reason, 0) + 1
         for group, value in profile_stages(seconds or {}, wall, contribution).items():
             totals[group] = totals.get(group, 0.0) + value
         reductions.extend(
@@ -2926,7 +2938,26 @@ def profile_virtual(
         _reduction_record(reductions),
         any(bool(getattr(r, "unchecked", False)) for r in reductions),
         failed,
+        failure_reasons=tuple(
+            sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        ),
     )
+
+
+def failure_reason(diagnostic: Any) -> str:
+    """A failed point's reason from its ``VirtualLaneDiagnostic``: the status
+    and the first failed channel's stage and detail (else the lane's
+    detail)."""
+
+    if diagnostic is None:
+        return "failed"
+    status = str(getattr(diagnostic, "status", "failed"))
+    failures = getattr(diagnostic, "failures", ()) or ()
+    if failures:
+        first = failures[0]
+        return f"{status}: {first.stage}: {first.detail}"
+    detail = str(getattr(diagnostic, "detail", "") or "")
+    return f"{status}: {detail}" if detail else status
 
 
 def _reduction_record(reductions: Sequence[Any]) -> dict[str, object]:

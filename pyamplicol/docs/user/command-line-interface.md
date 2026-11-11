@@ -76,6 +76,68 @@ pyamplicol generate --card qq_z6g_recurrence_jit_o2.toml
 pyamplicol profile --card qq_z6g_recurrence_jit_o2.toml
 ```
 
+### One card, the action on the command line
+
+`pyamplicol CARD ACTION [options]` runs `ACTION` (`generate`, `check`,
+`evaluate`, `profile`, `inspect`) with `CARD` as its card: one card can carry
+the settings of every action, and the card's own `action` is what
+`pyamplicol CARD` alone runs. `--output DIR` names the artifact, relative to
+the working directory: the directory `generate` writes
+(`generation.output`) and the one `check`, `evaluate`, `profile` and
+`inspect` read (`evaluation.artifact`). Every other option is the action's
+own, for example `--process` (one or more process expressions, MG5_aMC syntax
+accepted, replacing the card's entries) and `--set PATH=VALUE`. The shipped
+master card `loop_generate.toml` is made for this
+([One-loop examples](../../examples/README.md#one-loop-examples)):
+
+```console
+pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output
+pyamplicol loop_generate.toml check    --output=./my_loop_output
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output
+pyamplicol loop_generate.toml profile  --output=./my_loop_output
+```
+
+It is the same as `pyamplicol ACTION --card CARD --set
+generation.output=DIR` (or `evaluation.artifact=DIR`); the forms
+`pyamplicol CARD`, `pyamplicol check CARD` and `pyamplicol ACTION --card CARD`
+are unchanged.
+
+### MG5_aMC process syntax
+
+A process expression (`--process`, a card's `process.entries`, or a string
+given to `pyamplicol.generate` / `Generator.plan` / `Generator.generate`) may
+be written as on an MG5_aMC `generate` line. The annotations are translated
+into the run-card settings that express them, in one place for all three
+entry points; the generation log names the translation (`INFO pyamplicol.cli:
+process 'u u~ > d d~ [QCD]' (MG5_aMC syntax) -> 'u u~ > d d~' with
+process.loop_coupling_orders = ["QCD"]`), `config resolve` shows it in the
+effective configuration, and the requested configuration keeps the
+expression as written.
+
+| MG5_aMC | pyAmpliCol setting |
+| --- | --- |
+| `[QCD]`, `[virt=QCD]`, `[all=QCD]`, `[QCD QED]` | `process.loop_coupling_orders` (only the one-loop virtual is computed: `[QCD]` means the virtual) |
+| `[noborn=QCD]`, `[sqrvirt=QCD]` | `process.loop_coupling_orders` and `process.loop_induced = "only"` (loop-induced \|A_loop\|^2; processes with a Born are not served this way) |
+| `QED=2`, `QED<=2` | `process.max_coupling_orders` (Born amplitude orders) |
+| `QCD^2<=4`, `QED^2==6`, `QED^2>2` (also `<`, `>=`) | `process.squared_coupling_orders` ([sector selection](configuration.md#squared-order-sector-selection)) |
+| `/ z h` | `generation.particle_veto` |
+
+An amplitude- or squared-order constraint also sets
+`process.coupling_order_policy = "explicit"`, as MG5_aMC drops its WEIGHTED
+minimisation when coupling orders are named: every Born amplitude order within
+the limits is generated. The NLO bracket comes last; a trailing bracket is
+MG5_aMC's when it holds `=` or names coupling orders in MG5_aMC's upper-case
+spelling, otherwise it is an anonymous multiparticle (`u u~ > d [d g]`).
+Refused with the typed `madloop-syntax` error: `[real=QCD]` and
+`[LOonly=QCD]` (only the virtual is served), decay chains (`t t~, t > b w+`:
+request each decay as its own process), `$` / `$$` s-channel exclusions,
+`@N` tags and amplitude-level `==` / `>`. A translated setting that the card,
+an option or `--set` also states with another value is a typed error naming
+both (`ProcessSyntaxConflict`); several process entries must carry the same
+annotations, since the settings are run-wide. A plain `ProcessRequest` takes
+plain expressions and refuses MG5_aMC syntax with the translation it would
+have.
+
 Override one leaf without editing the card:
 
 ```console
@@ -428,6 +490,27 @@ pyamplicol evaluate artifacts/pp_zjj \
 by `inspect`. Flow selection is LC-only; NLC and full-color artifacts expose a
 contracted color output and accept helicity selection only. More examples are
 in [Runtime and Selectors](runtime-and-selectors.md).
+
+### Evaluate without a momenta file
+
+Without `--momenta` (`evaluation.momenta`), `evaluate` and `profile` draw flat
+phase-space points (RAMBO, the product's flat generator) set by
+`[evaluation.phase_space]`: `points` points (default 2), point i from seed
+`seed + i` (default seed 1), at the centre-of-mass energy `sqrt_s` of a 2 -> n
+scattering (default: the energy of the artifact's own validation point, so
+any process the artifact holds is above threshold). A 1 -> n decay is drawn in
+the rest frame of the decaying particle, a 2 -> 1 process at its single point
+(its energy is fixed by the masses). The external masses are those of the
+artifact's validation point (massless and massive legs alike; nothing is read
+from the model). A virtual evaluation then takes mu_r^2 = s per point unless
+`evaluation.mu_r2` is set:
+
+```console
+pyamplicol evaluate artifacts/loop_generate \
+  --set evaluation.phase_space.points=4 --set evaluation.phase_space.sqrt_s=2000
+```
+
+`check` draws its own points (`[check] points`, `seed`, `sqrt_s`).
 
 ### Saved virtual artifacts
 

@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 """``pyamplicol profile`` options of loop artifacts: what the profile
-measures (``--runtime``, ``--stability``; neither: the runtime only) and the
-flat points of the stability statistics. The reduction backends compared are
-both by default; ``--loop-reduction`` selects one (``auto``: the
-process type's default)."""
+measures (``--runtime``, ``--stability``; neither: the runtime only), the
+number of flat points of the stability statistics and the seed and energy of
+the flat points (``evaluation.phase_space``, ``cli.flat_points``). The
+reduction backends compared are both by default; ``--loop-reduction``
+selects one (``auto``: the process type's default)."""
 
 from __future__ import annotations
 
@@ -41,25 +42,26 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         help="loop artifacts: number of flat points of --stability",
     )
     parser.add_argument(
-        "--stability-seed",
-        dest="benchmark.stability_seed",
+        "--seed",
+        dest="evaluation.phase_space.seed",
         type=int,
         default=argparse.SUPPRESS,
         metavar="SEED",
         help=(
-            "loop artifacts: seed of the first flat point of --stability "
-            "(default: generation.validation.seed)"
+            "seed of the first flat phase-space point (evaluation.phase_space."
+            "seed): the timed points without --momenta and the --stability points"
         ),
     )
     parser.add_argument(
         "--sqrt-s",
-        dest="benchmark.sqrt_s",
+        dest="evaluation.phase_space.sqrt_s",
         type=float,
         default=argparse.SUPPRESS,
         metavar="ENERGY",
         help=(
-            "loop artifacts: centre-of-mass energy of the flat points of "
-            "--stability (default: the artifact's generation energy)"
+            "centre-of-mass energy of the flat phase-space points "
+            "(evaluation.phase_space.sqrt_s; default: the artifact's "
+            "validation-point energy)"
         ),
     )
 

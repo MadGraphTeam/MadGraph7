@@ -72,15 +72,18 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # generation.loop_induced_folding (USER ~22:39), lit-examples' check
     # section, lit-ew-blocks' check.sqrt_s, lit-check's check.arbitrary_digits
     # and lit-psimprove's evaluation.kinematics_improvement /
-    # evaluation.kinematics_improvement_binary64; 147: ux-profile's
-    # benchmark.runtime, stability, stability_points, stability_seed and
-    # sqrt_s (`pyamplicol profile --runtime / --stability` of loop artifacts).
-    assert len(FIELD_REGISTRY) == 147
+    # evaluation.kinematics_improvement_binary64; 147: ux-process's
+    # process.squared_coupling_orders, loop.external_widths and the
+    # evaluation.phase_space section (points, seed, sqrt_s); 150: ux-profile's
+    # benchmark.runtime, stability and stability_points (`pyamplicol profile
+    # --runtime / --stability` of loop artifacts).
+    assert len(FIELD_REGISTRY) == 150
+    assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
+    assert FIELD_REGISTRY["loop.external_widths"].default == "model"
+    assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
     assert FIELD_REGISTRY["benchmark.runtime"].default is False
     assert FIELD_REGISTRY["benchmark.stability"].default is False
     assert FIELD_REGISTRY["benchmark.stability_points"].default == 100
-    assert FIELD_REGISTRY["benchmark.stability_seed"].nullable
-    assert FIELD_REGISTRY["benchmark.sqrt_s"].kind == "float"
     # m-lit lit-examples: `pyamplicol check` (the check action's section).
     assert FIELD_REGISTRY["check.points"].default == 3
     assert FIELD_REGISTRY["check.seed"].nullable

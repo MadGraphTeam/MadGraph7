@@ -8,32 +8,41 @@ finite part, the checked reduction, no stability checks and no rescue), and
 the ratio to the fastest backend.
 
 STABILITY (``--stability``): per backend, over N flat (RAMBO) phase-space
-points (``runtime.flat_points``), the accuracy of the pure binary64 result
-and of its own stability estimate, measured as in sect. 3.4 of
-arXiv:1103.0621 (MadLoop) and the section "Checks, stability, and recovery
-of numerically-unstable integral reductions" of arXiv:1405.0301
-(MadGraph5_aMC@NLO): the number of stable digits of a value v against a
-reference r is -log10(|v - r| / |r|).
+points (``cli.flat_points``, ``evaluation.phase_space``'s seed and energy),
+the accuracy of the pure binary64 result and of its own stability estimate,
+measured as in sect. 3.4 of arXiv:1103.0621 (MadLoop) and the section
+"Checks, stability, and recovery of numerically-unstable integral
+reductions" of arXiv:1405.0301 (MadGraph5_aMC@NLO): the number of stable
+digits of a value v against a reference r is -log10(|v - r| / |r|).
 
 - TRUE digits: the binary64 value against a double-double re-run of the same
-  point on the same backend (the reference only: no automatic rescue).
+  point on the same backend (the reference only: no automatic rescue). A
+  point the backend refused or failed in binary64 has no value: 0 true
+  digits (it ranks at the worst end) and no estimate.
 - ESTIMATED digits: the binary64 call's own stability estimate with the
   default rotation test (``VirtualStabilityChecks(1)``: one default
-  rotation; ``evaluation.stability_checks`` replaces it when set), its
-  absolute finite-part errors summed over the sectors relative to the total.
+  rotation, what an evaluation's ``evaluation.stability_checks`` default
+  gives; the rescue's own check set is stronger), its absolute finite-part
+  errors summed over the sectors relative to the total.
 
-Both are read on the finite part of the total (the sum over the squared-order
-sectors; the poles are not computed) and capped to binary64's range
-[0, -log10(2^-53)] (``stable_digits``). The points are sorted by true digits
-from worst to best; at each percentile p of ``PERCENTILES`` the true digits of
-the point of rank floor(p N) are reported, with the deviation |estimated -
-true| (min, median, max) and the signed median (estimated - true: positive
-when the estimate is optimistic) over the class of the points of rank
-floor(p' N) < rank <= floor(p N), p' the previous percentile (0 for the
-first). A class may be empty at small N (``needed_points``). The default
-checks flag a point unstable when its estimate exceeds the default target
-(the relative metric of the rescue, per sector); a point is truly inaccurate
-when its true relative error exceeds the same target.
+Both are read on the finite part of the total (the sum over the
+squared-order sectors; the poles are not computed) and capped to binary64's
+range [0, -log10(2^-53)] (``stable_digits``). The MEASURED points are those
+whose double-double reference exists and those that failed in binary64 (no
+value, whatever the reference); a binary64 value without a reference leaves
+the truth unknown and is counted apart. They are sorted by true digits from
+worst to best; at each percentile p of ``PERCENTILES`` the true digits of
+the point of rank floor(p N) (1-based, N measured points; 50 %: the lower
+middle point) are reported, with the deviation |estimated - true| (min,
+median, max) and the signed median (estimated - true: positive when the
+estimate is optimistic) over the points with an estimate in the class of the
+points of rank floor(p' N) < rank <= floor(p N), p' the previous percentile
+(0 for the first). A class may be empty at small N (``needed_points``). The
+default checks flag a point unstable when its estimate exceeds the default
+target (the relative metric of the rescue, per sector) or when it failed in
+binary64 (a failure is reported, so detected); a point is truly inaccurate
+when its true relative error exceeds the same target or it has no binary64
+value.
 
 Every evaluation goes through the public ``Runtime.evaluate`` with explicit
 ``reduction=``; a backend that refuses the process (``ReductionUnavailable``)
@@ -93,9 +102,10 @@ def relative_error(value: float, reference: Decimal | float) -> float:
 @dataclass(frozen=True, slots=True)
 class StabilityPercentile:
     """One percentile row: ``rank`` = floor(p N) (0: below resolution, no
-    point), the true digits at that rank, the class's point count and its
-    deviations |estimated - true| (min, median, max) and signed median
-    (estimated - true)."""
+    point), the true digits at that rank, the class's point count (``failed``
+    of them without a binary64 value) and the deviations |estimated - true|
+    (min, median, max) and signed median (estimated - true) over its points
+    with an estimate."""
 
     percentile: float
     rank: int
@@ -106,6 +116,7 @@ class StabilityPercentile:
     deviation_max: float | None
     signed_median: float | None
     needed_points: int
+    failed: int = 0
 
 
 def needed_points(index: int, percentiles: Sequence[Fraction] = PERCENTILES) -> int:
@@ -124,12 +135,13 @@ def needed_points(index: int, percentiles: Sequence[Fraction] = PERCENTILES) -> 
 
 def percentile_table(
     true_digits: Sequence[float],
-    estimated_digits: Sequence[float],
+    estimated_digits: Sequence[float | None],
     percentiles: Sequence[Fraction] = PERCENTILES,
 ) -> tuple[StabilityPercentile, ...]:
     """The percentile rows of points with ``true_digits`` and
-    ``estimated_digits`` (aligned), sorted by true digits from worst to best
-    (ties keep the point order)."""
+    ``estimated_digits`` (aligned; None: a point without an estimate, a
+    binary64 failure), sorted by true digits from worst to best (ties keep
+    the point order)."""
 
     if len(true_digits) != len(estimated_digits):
         raise ValueError("true and estimated digits are aligned per point")
@@ -140,7 +152,11 @@ def percentile_table(
     for index, p in enumerate(percentiles):
         rank = math.floor(p * n)
         members = order[previous:rank]
-        signed = [estimated_digits[k] - true_digits[k] for k in members]
+        signed = [
+            estimated - true_digits[k]
+            for k in members
+            if (estimated := estimated_digits[k]) is not None
+        ]
         deviations = [abs(value) for value in signed]
         rows.append(
             StabilityPercentile(
@@ -153,6 +169,7 @@ def percentile_table(
                 max(deviations) if deviations else None,
                 statistics.median(signed) if signed else None,
                 needed_points(index, percentiles),
+                len(members) - len(signed),
             )
         )
         previous = max(previous, rank)
@@ -174,33 +191,47 @@ class BackendRuntime:
 
 
 @dataclass(frozen=True, slots=True)
+class StabilityPoint:
+    """One flat point of a backend's stability run: its ``index`` among the
+    flat points (point i from seed + i), ``status`` ("measured"; "binary64-
+    failed": refused or failed in binary64, 0 true digits and no estimate;
+    "reference-failed": no double-double reference, not measured), the
+    digits and the failure ``reason``."""
+
+    index: int
+    status: str
+    true_digits: float | None
+    estimated_digits: float | None
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class BackendStability:
     """One backend's stability statistics (``LoopProfileReport``), or its
-    refusal. ``true_digits`` and ``estimated_digits`` per evaluated point
-    (the flat points' order, failed points left out: ``failed``);
-    ``flagged``: points whose default checks exceed ``target``;
-    ``flagged_inaccurate``: of those, the truly inaccurate ones;
-    ``unflagged_inaccurate``: truly inaccurate points not flagged."""
+    refusal. ``points``: the measured points (a reference exists; binary64
+    failures included at 0 digits), ``failed_binary64`` of them failed in
+    binary64; ``failed_reference``: points without a reference (left out);
+    ``true_digits`` and ``estimated_digits`` per measured point (the flat
+    points' order; None: no estimate), ``per_point`` every flat point;
+    ``flagged``: measured points the default checks flag (estimate above
+    ``target``, or a binary64 failure); ``flagged_inaccurate``: of those, the
+    truly inaccurate ones; ``unflagged_inaccurate``: truly inaccurate points
+    not flagged; ``truly_inaccurate``: all truly inaccurate ones."""
 
     backend: str
     refusal: str | None = None
     points: int = 0
-    failed: int = 0
+    failed_binary64: int = 0
+    failed_reference: int = 0
     true_digits: tuple[float, ...] = ()
-    estimated_digits: tuple[float, ...] = ()
+    estimated_digits: tuple[float | None, ...] = ()
     percentiles: tuple[StabilityPercentile, ...] = ()
-    median_true_digits: float | None = None
-    median_estimated_digits: float | None = None
     flagged: int = 0
     flagged_inaccurate: int = 0
     unflagged_inaccurate: int = 0
     truly_inaccurate: int = 0
     seconds: float = 0.0
-    # Of ``failed``: the points without a binary64 value or estimate (the
-    # backend refused or failed them; no rescue runs) and those whose
-    # double-double reference failed.
-    failed_binary64: int = 0
-    failed_reference: int = 0
+    per_point: tuple[StabilityPoint, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,14 +268,6 @@ def _validation_points(artifact: Path, process_id: str) -> list[Any]:
         (artifact / "processes" / process_id / "validation-momenta.json").read_text()
     )
     return [[entry["momentum"] for entry in point] for point in record["points"]]
-
-
-def _scales(points: Sequence[Any], initial: int, mu_r2: str | None) -> Any:
-    from pyamplicol.benchmarking import _initial_invariant
-
-    if mu_r2 is not None:
-        return mu_r2
-    return [_initial_invariant(point, initial) for point in points]
 
 
 def _total_finite(row: Any) -> Any:
@@ -391,19 +414,20 @@ def _stability(
 ) -> tuple[tuple[BackendStability, ...], Mapping[str, object]]:
     from pyamplicol.api.errors import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.reduction import default_target
-    from pyamplicol.runtime.flat_points import artifact_kinematics, flat_points
 
     bench = config.benchmark
     evaluation = config.evaluation
-    kinematics = artifact_kinematics(artifact, physics.process_id)
-    seed = (
-        bench.stability_seed
-        if bench.stability_seed is not None
-        else config.generation.validation.seed
+    space = evaluation.phase_space
+    flat = draw_flat_points(
+        artifact,
+        process=physics.process_id,
+        points=bench.stability_points,
+        seed=space.seed,
+        sqrt_s=space.sqrt_s,
     )
-    sqrt_s = kinematics.sqrt_s if bench.sqrt_s is None else bench.sqrt_s
-    points = flat_points(kinematics, bench.stability_points, seed=seed, sqrt_s=sqrt_s)
+    points = flat.as_inputs(exact=False)
     configured = evaluation.stability_checks.to_checks()
     checks = configured if configured is not None else VirtualStabilityChecks(1)
     target = (
@@ -411,7 +435,7 @@ def _stability(
         if evaluation.reduction_target is not None
         else default_target()
     )
-    scales = _scales(points, kinematics.incoming, evaluation.mu_r2)
+    scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
     chunk = max(bench.batch_size, 1)
     rows = []
     for backend in backends:
@@ -419,11 +443,15 @@ def _stability(
         try:
             plain: list[Any] = []
             estimates: list[Any] = []
+            reasons: list[str | None] = []
             reference: list[Any] = []
+            reference_reasons: list[str | None] = []
             for start in range(0, len(points), chunk):
                 batch = points[start : start + chunk]
                 mu = (
-                    scales if isinstance(scales, str) else scales[start : start + chunk]
+                    scales
+                    if not isinstance(scales, list)
+                    else scales[start : start + chunk]
                 )
                 common = {
                     "mu_r2": mu,
@@ -434,8 +462,10 @@ def _stability(
                 checked = runtime.evaluate(batch, stability_checks=checks, **common)
                 plain.extend(checked.values)
                 estimates.extend(checked.stability)
+                reasons.extend(_reasons(checked))
                 exact = runtime.evaluate(batch, arithmetic="double-double", **common)
                 reference.extend(exact.values)
+                reference_reasons.extend(_reasons(exact))
         except ReductionUnavailable as error:
             rows.append(BackendStability(backend, refusal=str(error)))
             continue
@@ -447,12 +477,14 @@ def _stability(
                 reference,
                 target,
                 time.perf_counter() - begin,
+                reasons=reasons,
+                reference_reasons=reference_reasons,
             )
         )
     setup = {
         "points": len(points),
-        "seed": seed,
-        "sqrt_s": sqrt_s,
+        "seed": flat.seed,
+        "sqrt_s": flat.sqrt_s,
         "generator": "flat (RAMBO), beams along +-z in the centre-of-mass frame",
         "measured": "finite part of the total (sum over the squared-order sectors)",
         "reference": "double-double re-run of the same point on the same backend",
@@ -461,7 +493,8 @@ def _stability(
             + (
                 "evaluation.stability_checks"
                 if configured is not None
-                else "the default rotation test (one default rotation)"
+                else "the default rotation test (one default rotation; "
+                "the rescue's check set is not measured)"
             )
         ),
         "target": target,
@@ -472,6 +505,15 @@ def _stability(
     return tuple(rows), setup
 
 
+def _reasons(result: Any) -> list[str | None]:
+    from pyamplicol.benchmarking import failure_reason
+
+    return [
+        None if valid else failure_reason(lane)
+        for valid, lane in zip(result.valid, result.diagnostics, strict=True)
+    ]
+
+
 def _backend_statistics(
     backend: str,
     plain: Sequence[Any],
@@ -479,23 +521,63 @@ def _backend_statistics(
     reference: Sequence[Any],
     target: float,
     seconds: float,
+    *,
+    reasons: Sequence[str | None] | None = None,
+    reference_reasons: Sequence[str | None] | None = None,
 ) -> BackendStability:
     true_digits: list[float] = []
-    estimated_digits: list[float] = []
+    estimated_digits: list[float | None] = []
+    per_point: list[StabilityPoint] = []
     flagged = flagged_inaccurate = unflagged_inaccurate = inaccurate = 0
-    failed = failed_binary64 = failed_reference = 0
-    for value, estimate, exact in zip(plain, estimates, reference, strict=True):
-        if value is None or estimate is None or exact is None:
-            failed += 1
-            if value is None or estimate is None:
-                failed_binary64 += 1
-            else:
-                failed_reference += 1
+    failed_binary64 = failed_reference = 0
+    count = len(plain)
+    reasons = reasons if reasons is not None else [None] * count
+    reference_reasons = (
+        reference_reasons if reference_reasons is not None else [None] * count
+    )
+    for index, (value, estimate, exact, reason, reference_reason) in enumerate(
+        zip(plain, estimates, reference, reasons, reference_reasons, strict=True)
+    ):
+        if value is None or estimate is None:
+            # Refused or failed in binary64: no value (0 true digits, the
+            # worst end, whatever the reference) and no estimate; the
+            # failure is reported, so the default checks detect it.
+            failed_binary64 += 1
+            true_digits.append(0.0)
+            estimated_digits.append(None)
+            flagged += 1
+            inaccurate += 1
+            flagged_inaccurate += 1
+            per_point.append(
+                StabilityPoint(
+                    index,
+                    "binary64-failed",
+                    0.0,
+                    None,
+                    reason or "no binary64 value or estimate",
+                )
+            )
+            continue
+        if exact is None:
+            # No reference: the truth is unknown, the point is not measured.
+            failed_reference += 1
+            per_point.append(
+                StabilityPoint(
+                    index,
+                    "reference-failed",
+                    None,
+                    None,
+                    reference_reason or "no double-double value",
+                )
+            )
             continue
         total = float(_total_finite(value))
         true_relative = relative_error(total, _total_finite(exact))
-        true_digits.append(stable_digits(true_relative))
-        estimated_digits.append(stable_digits(_estimated_relative(estimate, total)))
+        digits = stable_digits(true_relative)
+        estimated = stable_digits(_estimated_relative(estimate, total))
+        true_digits.append(digits)
+        estimated_digits.append(estimated)
+        per_point.append(StabilityPoint(index, "measured", digits, estimated))
         flag = float(estimate.relative) > target
         wrong = true_relative > target
         flagged += flag
@@ -506,19 +588,17 @@ def _backend_statistics(
         backend,
         None,
         len(true_digits),
-        failed,
+        failed_binary64,
+        failed_reference,
         tuple(true_digits),
         tuple(estimated_digits),
         percentile_table(true_digits, estimated_digits),
-        statistics.median(true_digits) if true_digits else None,
-        statistics.median(estimated_digits) if estimated_digits else None,
         flagged,
         flagged_inaccurate,
         unflagged_inaccurate,
         inaccurate,
         seconds,
-        failed_binary64,
-        failed_reference,
+        tuple(per_point),
     )
 
 
@@ -529,6 +609,7 @@ __all__ = [
     "BackendStability",
     "LoopProfileReport",
     "StabilityPercentile",
+    "StabilityPoint",
     "needed_points",
     "percentile_table",
     "profile_loop",

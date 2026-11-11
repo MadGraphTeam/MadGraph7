@@ -24,6 +24,31 @@ def _backend_label(backend: str, default: str | None, color: bool) -> str:
     return text + (" (default)" if backend == default else "")
 
 
+# The widest line of the human report: the terminal's width, at most this
+# many columns (a readable line on a laptop terminal; a display constant).
+_LINE_WIDTH = 100
+
+
+def _width() -> int:
+    import shutil
+
+    return max(
+        min(shutil.get_terminal_size((_LINE_WIDTH, 24)).columns, _LINE_WIDTH), 60
+    )
+
+
+def _notes(notes: list[str]) -> str:
+    """The footnotes wrapped to the terminal width (``_width``)."""
+
+    import textwrap
+
+    width = _width()
+    return "\n".join(
+        textwrap.fill(note, width=width, initial_indent="  ", subsequent_indent="    ")
+        for note in notes
+    )
+
+
 def _header(report: Any, prettytable: Any, color: bool) -> str:
     setup = (
         (("runtime setup", report.runtime_setup),)
@@ -33,7 +58,7 @@ def _header(report: Any, prettytable: Any, color: bool) -> str:
     table = palette.table(
         prettytable, ("field", "value"), "pyAmpliCol loop profile", color=color
     )
-    table.max_width = 100
+    table.max_width = _width() - 24
     table.add_rows(
         (
             (
@@ -60,36 +85,45 @@ def _header(report: Any, prettytable: Any, color: bool) -> str:
     return str(table.get_string())
 
 
+def _served(row: Any) -> bool:
+    """A profiled backend that served at least one timed point."""
+
+    profile = row.profile
+    return (
+        profile is not None and profile.failed_points < profile.batch * profile.samples
+    )
+
+
+# The width of a stage bar (a display constant).
+_BAR = 8
+
+
 def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     from .summary import _seconds_text
     from .virtual import _STAGE_COLOURS
 
     rows = report.runtime
-    served = [row for row in rows if row.profile is not None]
-    fastest = min(
-        (row.profile.seconds_per_point for row in served if row.ratio is not None),
-        default=None,
-    )
+    compared = [row for row in rows if _served(row) and row.ratio is not None]
+    fastest = min((row.profile.seconds_per_point for row in compared), default=None)
     summary = palette.table(
         prettytable,
         (
             "backend",
-            "time per point",
-            "fastest - slowest call",
+            "time / point",
+            "fastest - slowest",
             "vs fastest",
-            "lanes per effective backend",
-            "failed points",
+            "lanes",
+            "failed",
         ),
         "Runtime per reduction backend (the setup above)",
         color=color,
     )
-    summary.max_width = 60
+    summary.max_width = 26
+    reasons: list[str] = []
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
         if row.requested == "auto":
-            label += "\n" + palette.paint(
-                "as auto: per-point fallback", palette.MUTED, color=color
-            )
+            label += "\n" + palette.paint("as auto", palette.MUTED, color=color)
         if row.profile is None:
             summary.add_row(
                 (
@@ -97,45 +131,62 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     palette.paint("refused", palette.BAD, color=color, bold=True),
                     "",
                     "",
-                    palette.paint(row.refusal or "", palette.BAD, color=color),
+                    "",
                     "",
                 )
             )
+            reasons.append(f"{_name(row.backend)} refused: {row.refusal}")
             continue
         profile = row.profile
-        compared = sum(1 for other in served if other.ratio is not None)
-        best = row.ratio is not None and profile.seconds_per_point == fastest
-        time_text = _seconds_text(profile.seconds_per_point)
         timed = profile.batch * profile.samples
-        ratio = (
-            palette.paint("all points failed", palette.BAD, color=color, bold=True)
-            if row.ratio is None
-            else palette.paint("fastest", palette.GOOD, color=color, bold=True)
-            if best and compared > 1
-            else ""
-            if compared < 2
-            else palette.paint(f"x{row.ratio:.2f}", palette.RECOVERED, color=color)
-        )
+        for reason, count in profile.failure_reasons[:3]:
+            reasons.append(f"{_name(row.backend)} failed {count} of {timed}: {reason}")
+        if not _served(row):
+            # Every timed point failed: the time is that of failing.
+            summary.add_row(
+                (
+                    label,
+                    palette.paint(
+                        f"({_seconds_text(profile.seconds_per_point)} failing)",
+                        palette.MUTED,
+                        color=color,
+                    ),
+                    "",
+                    palette.paint(
+                        "all points failed", palette.BAD, color=color, bold=True
+                    ),
+                    "-",
+                    palette.paint(
+                        f"{profile.failed_points} of {timed}", palette.BAD, color=color
+                    ),
+                )
+            )
+            continue
+        best = profile.seconds_per_point == fastest
+        if len(compared) < 2:
+            ratio = palette.paint(
+                "only one served" if len(rows) > 1 else "-", palette.MUTED, color=color
+            )
+        elif best:
+            ratio = palette.paint("fastest", palette.GOOD, color=color, bold=True)
+        else:
+            ratio = palette.paint(f"x{row.ratio:.2f}", palette.RECOVERED, color=color)
         lanes = profile.reduction.get("lanes") or {}
-        lane_text = ", ".join(
+        lane_text = "\n".join(
             palette.paint(
                 f"{_name(name)} {count}",
                 palette.BACKEND.get(name) if name == row.backend else palette.RECOVERED,
                 color=color,
             )
-            + ("" if name == row.backend else " (per-point fallback)")
+            + ("" if name == row.backend else " (fallback)")
             for name, count in sorted(lanes.items(), key=lambda i: i[0] != row.backend)
         )
         summary.add_row(
             (
                 label,
                 palette.paint(
-                    time_text,
-                    palette.GOOD
-                    if best and compared > 1
-                    else palette.BAD
-                    if row.ratio is None
-                    else None,
+                    _seconds_text(profile.seconds_per_point),
+                    palette.GOOD if best and len(compared) > 1 else None,
                     color=color,
                     bold=True,
                 ),
@@ -150,13 +201,21 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             )
         )
     blocks = [str(summary.get_string())]
+    notes = [
+        "lanes: the timed points per effective backend (as auto, the default "
+        "backend's per-point fallback serves the points it refuses)."
+    ]
+    notes += reasons
+    blocks.append(_notes(notes))
+    served = [row for row in rows if _served(row)]
     if not served:
         return blocks
     groups = list(dict.fromkeys(g for row in served for g in row.profile.stages))
     fields = ["stage"]
     for row in served:
-        fields += [f"{_name(row.backend)} time", f"{_name(row.backend)} share"]
-    pair = len(served) == 2 and all(row.ratio is not None for row in served)
+        name = _name(row.backend)
+        fields += [name, f"{name} share"]
+    pair = len(served) == 2
     if pair:
         fields.append(f"{_name(served[1].backend)} / {_name(served[0].backend)}")
     stages = palette.table(
@@ -167,9 +226,8 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     )
     totals = [sum(row.profile.stages.values()) or 1.0 for row in served]
     for group in [*groups, "total"]:
-        cells = [
-            palette.paint(group, _STAGE_COLOURS.get(group), color=color, bold=True)
-        ]
+        colour = _STAGE_COLOURS.get(group)
+        cells = [palette.paint(group, colour, color=color, bold=True)]
         seconds = []
         for row, total in zip(served, totals, strict=True):
             value = (
@@ -179,7 +237,12 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             )
             seconds.append(value)
             share = 1.0 if group == "total" else value / total
-            cells += [_seconds_text(value), f"{100 * share:5.1f} %"]
+            bar = "#" * max(round(share * _BAR), 1 if value else 0)
+            cells += [
+                _seconds_text(value),
+                f"{100 * share:5.1f} % "
+                + palette.paint(bar.ljust(_BAR), colour, color=color),
+            ]
         if pair:
             first, second = seconds
             if first > 0.0 and second > 0.0:
@@ -199,14 +262,15 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
 
 
 def _digits_colour(digits: float, target_digits: float) -> str:
-    """Red below the target's digits, yellow below half of binary64's digits
-    (half the precision lost), green above."""
+    """Red below the target's digits, yellow below the target's digits plus
+    half of binary64's remaining ones (a display convention: less than half
+    of the margin above the target is left), green above."""
 
     from pyamplicol.loop_profile import BINARY64_DIGITS
 
     if digits < target_digits:
         return palette.BAD
-    if digits < BINARY64_DIGITS / 2:
+    if digits < (target_digits + BINARY64_DIGITS) / 2:
         return palette.RECOVERED
     return palette.GOOD
 
@@ -229,79 +293,96 @@ def _percent(part: int, whole: int) -> str:
     return f"{part} ({100 * part / whole:.1f} %)" if whole else str(part)
 
 
+_LABELS = {0.001: "1 per mil", 0.01: "1 %", 0.1: "10 %", 0.5: "50 %"}
+
+
 def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     setup = report.stability_setup
     target = float(setup["target"])
     target_digits = -math.log10(target)
     rows = report.stability
     served = [row for row in rows if row.refusal is None and row.points]
-    fields = ["percentile (worst first)", "class points (per backend)"]
-    for row in served:
-        name = _name(row.backend)
-        fields += [
-            f"{name} true digits",
-            f"{name} |est - true| min / median / max",
-            f"{name} signed median",
-        ]
     title = (
-        f"Stability over {setup['points']} flat points (sqrt(s) = "
-        f"{setup['sqrt_s']:g}, seed {setup['seed']}): stable digits of the "
-        "pure binary64 finite part of the total vs a double-double re-run"
+        f"Stable digits of pure binary64 vs double-double, {setup['points']} flat "
+        f"points (sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']})"
     )
-    table = palette.table(prettytable, tuple(fields), title, color=color)
-    table.max_width = 40
-    labels = {0.001: "1 per mil", 0.01: "1 %", 0.1: "10 %", 0.5: "50 % (median)"}
-    if served:
-        for index, first in enumerate(served[0].percentiles):
-            counts = [row.percentiles[index].count for row in served]
-            cells = [
-                labels.get(first.percentile, f"{100 * first.percentile:g} %"),
-                " / ".join(str(count) for count in counts),
-            ]
-            for row in served:
-                item = row.percentiles[index]
-                digits = (
-                    _number(
-                        item.digits,
-                        color,
-                        _digits_colour(item.digits, target_digits),
-                    )
-                    if item.digits is not None
-                    else palette.paint(
-                        f"- (N >= {item.needed_points})", palette.MUTED, color=color
+    table = palette.table(
+        prettytable,
+        (
+            "percentile",
+            "backend",
+            "true digits",
+            "class",
+            "|est-true| min/med/max",
+            "est-true med",
+        ),
+        title,
+        color=color,
+    )
+    table.max_width = 30
+    count = len(served[0].percentiles) if served else 0
+    for index in range(count):
+        for position, row in enumerate(served):
+            item = row.percentiles[index]
+            digits = (
+                _number(item.digits, color, _digits_colour(item.digits, target_digits))
+                if item.digits is not None
+                else palette.paint(
+                    f"- (N >= {item.needed_points})", palette.MUTED, color=color
+                )
+            )
+            spread = (
+                palette.paint("-", palette.MUTED, color=color)
+                if item.deviation_min is None
+                else " / ".join(
+                    _number(value, color, palette.ESTIMATE)
+                    for value in (
+                        item.deviation_min,
+                        item.deviation_median,
+                        item.deviation_max,
                     )
                 )
-                spread = (
-                    palette.paint("-", palette.MUTED, color=color)
-                    if item.count == 0
-                    else " / ".join(
-                        _number(value, color, palette.ESTIMATE)
-                        for value in (
-                            item.deviation_min,
-                            item.deviation_median,
-                            item.deviation_max,
-                        )
-                    )
-                )
-                cells += [digits, spread, _signed(item.signed_median, color)]
-            table.add_row(tuple(cells))
+            )
+            points = str(item.count) + (
+                palette.paint(f" ({item.failed} failed)", palette.BAD, color=color)
+                if item.failed
+                else ""
+            )
+            table.add_row(
+                (
+                    _LABELS.get(item.percentile, f"{100 * item.percentile:g} %")
+                    if position == 0
+                    else "",
+                    palette.paint(
+                        _name(row.backend),
+                        palette.BACKEND.get(row.backend),
+                        color=color,
+                    ),
+                    digits,
+                    points,
+                    spread,
+                    _signed(item.signed_median, color),
+                ),
+                divider=position == len(served) - 1 and index < count - 1,
+            )
     blocks = [str(table.get_string())]
     verdicts = palette.table(
         prettytable,
         (
             "backend",
-            "points (failed: binary64 / reference)",
-            "median digits true / estimated",
-            f"flagged unstable (estimate > {target:g})",
-            "of which truly inaccurate",
-            "truly inaccurate, not flagged",
-            "seconds",
+            "measured",
+            "failed b64",
+            "flagged",
+            "flagged, inaccurate",
+            "missed",
+            "time",
         ),
-        "Default checks against the truth (target "
-        f"{target:g} = {target_digits:.2f} digits)",
+        f"Default checks against the truth (target {target:g} = "
+        f"{target_digits:.2f} digits)",
         color=color,
     )
-    verdicts.max_width = 32
+    verdicts.max_width = 14
+    refusals = []
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
         if row.refusal is not None:
@@ -309,80 +390,96 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 (
                     label,
                     palette.paint("refused", palette.BAD, color=color, bold=True),
-                    palette.paint(row.refusal, palette.BAD, color=color),
+                    "",
                     "",
                     "",
                     "",
                     "",
                 )
             )
+            refusals.append(f"{_name(row.backend)} refused: {row.refusal}")
             continue
+        measured = str(row.points) + (
+            palette.paint(
+                f" (+{row.failed_reference} no ref.)", palette.MUTED, color=color
+            )
+            if row.failed_reference
+            else ""
+        )
         verdicts.add_row(
             (
                 label,
-                f"{row.points} ("
-                + palette.paint(
-                    f"{row.failed_binary64} / {row.failed_reference}",
-                    palette.GOOD if row.failed == 0 else palette.BAD,
-                    color=color,
-                )
-                + ")",
-                _number(
-                    row.median_true_digits,
-                    color,
-                    None
-                    if row.median_true_digits is None
-                    else _digits_colour(row.median_true_digits, target_digits),
-                )
-                + " / "
-                + _number(row.median_estimated_digits, color, palette.ESTIMATE),
-                _percent(row.flagged, row.points),
+                measured,
                 palette.paint(
-                    f"{row.flagged_inaccurate} of {row.flagged}",
-                    None,
+                    _percent(row.failed_binary64, row.points),
+                    palette.GOOD if row.failed_binary64 == 0 else palette.BAD,
                     color=color,
+                    bold=row.failed_binary64 > 0,
                 ),
+                _percent(row.flagged, row.points),
+                f"{row.flagged_inaccurate} of {row.flagged}",
                 palette.paint(
                     _percent(row.unflagged_inaccurate, row.points),
                     palette.GOOD if row.unflagged_inaccurate == 0 else palette.BAD,
                     color=color,
                     bold=row.unflagged_inaccurate > 0,
                 ),
-                f"{row.seconds:.1f}",
+                f"{row.seconds:.1f} s",
             )
         )
     blocks.append(str(verdicts.get_string()))
     first = served[0].percentiles if served else ()
     notes = [
-        "Digits: -log10(|ME_b64 - ME_dd| / |ME_dd|) of the finite part of the "
+        "Digits: -log10(|ME_b64 - ME_dd| / |ME_dd|) on the finite part of the "
         "total (summed over the squared-order sectors; poles not computed), "
-        f"capped to [0, {setup['binary64_digits']:.2f}] (binary64); estimated: "
-        f"{setup['estimate']}, its absolute finite-part errors summed over the "
-        "sectors over |total|, capped the same way (MadLoop, arXiv:1103.0621 "
-        "sect. 3.4; arXiv:1405.0301).",
-        "Points sorted by true digits, worst first. The row of percentile p "
-        "shows the true digits of the point of rank floor(p N); its class holds "
-        "the points of rank floor(p' N) < rank <= floor(p N) (p' the previous "
-        "percentile, 0 for the first), over which |est - true| (min / median / "
-        "max) and the signed median of est - true are taken: positive (red) = "
-        "the estimate is optimistic, negative (blue) = pessimistic.",
+        f"capped to [0, {setup['binary64_digits']:.2f}] (binary64). Estimated: "
+        f"{setup['estimate']}; its absolute finite-part errors summed over the "
+        "sectors over |total|, capped the same way. Measure of MadLoop, "
+        "arXiv:1103.0621 sect. 3.4, and arXiv:1405.0301.",
+        "Measured points: those with a double-double reference, plus the points "
+        "the backend failed or refused in binary64, which count 0 true digits "
+        "(worst end) and have no estimate. Points with a binary64 value but no "
+        "reference are left out (no ref.).",
+        "Sorted by true digits, worst first; N = measured points. The row of "
+        "percentile p shows the true digits of the point of rank floor(p N) "
+        "(50 %: the median, the lower middle point for even N). Its class "
+        "holds the points of rank floor(p' N) < rank <= floor(p N), p' the "
+        "previous percentile (0 for the first). |est - true| (min / med / max) "
+        "and the median of est - true are over the class's points with an "
+        "estimate: positive (red) = the estimate is optimistic, negative "
+        "(blue) = pessimistic.",
     ]
     if first:
         notes.append(
-            "Class points: "
+            "Class points ("
+            + _name(served[0].backend)
+            + "): "
             + ", ".join(
-                f"{labels.get(item.percentile, item.percentile)} {item.count}"
+                f"{_LABELS.get(item.percentile, item.percentile)} {item.count}"
                 for item in first
             )
-            + f". A populated 1 per mil class needs N >= {first[0].needed_points}."
+            + f" of N = {served[0].points}. A populated 1 per mil class needs "
+            f"N >= {first[0].needed_points} measured points."
         )
     notes.append(
-        "Flagged: the binary64 call's estimate (relative, per sector) above the "
-        "target, as the default rescue reads it; truly inaccurate: the true "
-        "relative error above the target. No rescue ran: the statistics are "
-        "those of pure binary64; the double-double re-run is the reference only."
+        "Failed b64: points the backend refused or failed in binary64 (no rescue "
+        "ran). Flagged: flagged unstable by the default checks; flagged, "
+        "inaccurate: of those, the truly inaccurate ones; missed: truly "
+        "inaccurate points the checks did not flag; time: the backend's "
+        "binary64 and double-double calls. Percentages of the measured points."
     )
-    blocks.append("\n".join(f"  {note}" for note in notes))
+    notes.append(
+        "Flagged: the binary64 call's estimate (relative, per sector) above the "
+        "target with the check set named above (one default rotation unless "
+        "evaluation.stability_checks is set; the default rescue runs a "
+        "stronger set), or a binary64 failure (reported, so detected). Truly "
+        "inaccurate: the true relative error above the target, or no binary64 "
+        "value. No rescue ran: pure binary64 statistics; the double-double "
+        "re-run is the reference only. Digits: red below the target's digits, "
+        "yellow in the lower half of the margin above it, green above."
+    )
+    notes += refusals
+    blocks.append(_notes(notes))
     return blocks
 
 

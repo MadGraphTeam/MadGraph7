@@ -246,6 +246,8 @@ OPTIONAL_REQUEST_DEFAULTS: dict[str, object] = {
     # m-lit LIT-API: the generation default of the reduction backend (Q17),
     # named only when not "auto".
     "reduction": "auto",
+    # ux-process: the squared-order selection, named only when set.
+    "squared_orders": (),
 }
 
 

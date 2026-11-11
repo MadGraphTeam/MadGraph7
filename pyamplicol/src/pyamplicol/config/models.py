@@ -536,6 +536,13 @@ class ProcessConfig:
         default=LoopInducedPolicy.AUTO,
         metadata=_setting("str", choices=tuple(LoopInducedPolicy)),
     )
+    # The squared-coupling-order sectors a one-loop request serves (MG5_aMC's
+    # squared-order constraints, ``QCD^2<=4``; ``processes.mg5_syntax``):
+    # empty serves every sector; otherwise a sector is reported and summed
+    # only when its powers pass every constraint. Stored canonical and sorted.
+    squared_coupling_orders: tuple[str, ...] = field(
+        default=(), metadata=_setting("list_str")
+    )
     max_color_sectors: int | None = field(
         default=None, metadata=_setting("int", nullable=True)
     )
@@ -623,6 +630,19 @@ class ProcessConfig:
             "loop_induced",
             _enum(self.loop_induced, LoopInducedPolicy, "process.loop_induced"),
         )
+        from pyamplicol.processes.mg5_syntax import canonical_squared_orders
+
+        try:
+            squared = canonical_squared_orders(
+                _tuple_of_strings(
+                    self.squared_coupling_orders, "process.squared_coupling_orders"
+                )
+            )
+        except ValueError as exc:
+            if isinstance(exc, ConfigurationError):
+                raise
+            raise ConfigurationError(f"process.squared_coupling_orders: {exc}") from exc
+        object.__setattr__(self, "squared_coupling_orders", squared)
         object.__setattr__(
             self,
             "max_color_sectors",
@@ -1385,6 +1405,44 @@ class EvaluationStabilityChecksConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationPhaseSpaceConfig:
+    """The flat phase-space points ``evaluate`` and ``profile`` draw when no
+    ``evaluation.momenta`` file is given (``cli.flat_points``): ``points``
+    of them from ``seed`` (point i from seed + i), RAMBO-flat in the
+    centre-of-mass frame of a 2 -> n scattering at ``sqrt_s`` (None: the
+    artifact's own validation point's energy) or in the rest frame of a
+    decaying particle (1 -> n, at its mass), with the external masses of
+    the artifact's validation point."""
+
+    points: int = field(default=2, metadata=_setting("int"))
+    seed: int = field(default=1, metadata=_setting("int"))
+    sqrt_s: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "points", _integer(self.points, "evaluation.phase_space.points")
+        )
+        object.__setattr__(
+            self,
+            "seed",
+            _integer(self.seed, "evaluation.phase_space.seed", minimum=0),
+        )
+        if self.sqrt_s is not None:
+            object.__setattr__(
+                self,
+                "sqrt_s",
+                _finite_float(
+                    self.sqrt_s,
+                    "evaluation.phase_space.sqrt_s",
+                    minimum=0.0,
+                    exclusive=True,
+                ),
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationConfig:
     artifact: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
@@ -1454,6 +1512,10 @@ class EvaluationConfig:
         default=None, metadata=_setting("path", nullable=True)
     )
     momenta: Path | None = field(default=None, metadata=_setting("path", nullable=True))
+    # The flat points drawn without ``momenta`` (``EvaluationPhaseSpaceConfig``).
+    phase_space: EvaluationPhaseSpaceConfig = field(
+        default_factory=EvaluationPhaseSpaceConfig, metadata=_section()
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1577,19 +1639,12 @@ class BenchmarkConfig:
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     # Loop artifacts (``pyamplicol profile --runtime / --stability``): what
-    # the profile measures (neither set: the runtime only) and the flat
-    # points of the stability statistics (their count, first seed, None:
-    # ``generation.validation.seed``, and centre-of-mass energy, None: the
-    # artifact's generation energy).
+    # the profile measures (neither set: the runtime only) and the number of
+    # flat points of the stability statistics (drawn as
+    # ``evaluation.phase_space`` sets: its seed and energy).
     runtime: bool = field(default=False, metadata=_setting("bool"))
     stability: bool = field(default=False, metadata=_setting("bool"))
     stability_points: int = field(default=100, metadata=_setting("int"))
-    stability_seed: int | None = field(
-        default=None, metadata=_setting("int", nullable=True)
-    )
-    sqrt_s: float | None = field(
-        default=None, metadata=_setting("float", nullable=True)
-    )
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability"):
@@ -1600,20 +1655,6 @@ class BenchmarkConfig:
             "stability_points",
             _integer(self.stability_points, "benchmark.stability_points"),
         )
-        if self.stability_seed is not None:
-            object.__setattr__(
-                self,
-                "stability_seed",
-                _integer(self.stability_seed, "benchmark.stability_seed", minimum=0),
-            )
-        if self.sqrt_s is not None:
-            object.__setattr__(
-                self,
-                "sqrt_s",
-                _finite_float(
-                    self.sqrt_s, "benchmark.sqrt_s", minimum=0.0, exclusive=True
-                ),
-            )
         object.__setattr__(
             self,
             "target_runtime",
@@ -1951,6 +1992,13 @@ class LoopConfig:
     )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
+    # External states' widths (``loops.external_widths``): "model" (the
+    # default) keeps the model's widths, "zero" fixes the width parameter of
+    # every external particle of the request to zero (stable external
+    # states) unless ``preparation.fixed_parameters`` names it.
+    external_widths: str = field(
+        default="model", metadata=_setting("str", choices=("model", "zero"))
+    )
     # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
     # adjustable external model parameter); None: the unique SLHA SMINPUTS 3
     # one, else no QCD pole prediction.
@@ -1996,6 +2044,7 @@ class LoopConfig:
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
         )
+        _choice(self.external_widths, ("model", "zero"), "loop.external_widths")
         object.__setattr__(
             self,
             "reduction",
@@ -2095,6 +2144,12 @@ class RunConfig:
                 f"loop.reduction = {str(self.loop.reduction)!r} requires one-loop "
                 "generation (process.loop_coupling_orders); an evaluation "
                 "overrides an artifact's backend with evaluation.reduction"
+            )
+        if not virtual and self.process.squared_coupling_orders:
+            raise ConfigurationError(
+                "process.squared_coupling_orders selects the squared-order "
+                "sectors of a one-loop request and requires "
+                "process.loop_coupling_orders"
             )
         if not virtual and self.process.loop_induced in (
             LoopInducedPolicy.ONLY,

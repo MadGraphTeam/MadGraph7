@@ -228,6 +228,52 @@ the default; other user labels are merged over model defaults.
 Broad products such as `p p > all all` can expand combinatorially. Prefer a
 narrow user-defined label for production scans.
 
+A process expression may use MG5_aMC syntax (`u u~ > d d~ QCD^2<=4 [QCD QED]`,
+`g g > h [noborn=QCD]`, `/ z`, `QED=2`): it is translated into the settings
+below (`process.loop_coupling_orders`, `process.loop_induced`,
+`process.max_coupling_orders`, `process.squared_coupling_orders`,
+`generation.particle_veto`); see
+[MG5_aMC process syntax](command-line-interface.md#mg5_amc-process-syntax) for
+the table, the conflict rule and what stays refused.
+
+### Squared-order sector selection
+
+`process.squared_coupling_orders` selects the squared-coupling-order sectors a
+one-loop request serves, with MG5_aMC's constraints (`QCD^2<=4`, `QED^2==6`,
+`QED^2>2`, also `<` and `>=`; written in the process as on an MG5_aMC line,
+or in the card):
+
+```toml
+[process]
+entries = [{ expression = "u u~ > d d~" }]
+loop_coupling_orders = ["QCD", "QED"]
+coupling_order_policy = "explicit"
+squared_coupling_orders = ["QCD^2<=4", "QED^2<=6"]
+```
+
+A sector is served when its power of every named order passes (a missing
+order has power 0; powers count the fundamental couplings, g_s and e, as
+MG5_aMC's do). Only the virtual is computed, so the constraints read the
+squared orders of the virtual's sectors, as MadLoop's `[virt=...]` reads
+them: a Born-interfered sector is the Born x one-loop interference
+2 Re(B* V) at the order Born + loop, a loop-induced sector the
+loop x loop order l + l'. For the user example `u u~ > d d~ QCD^2<=4
+QED^2<=6 [QCD QED]` the four interference sectors QCD^6, QCD^4 QED^2,
+QCD^2 QED^4 and QED^6 become the last three (QCD^6, the QCD correction to the
+QCD Born squared, is dropped). The served sectors are the only ones reported
+and summed in the total, alike in Python (`sectors`, `values`,
+`evaluate_orders` and its sums), in the CLI tables, in `--json` and in the
+native SDK records (the artifact holds only them). The Born squared orders
+are reported as before. Generation skips the loop amplitude orders that no
+served sector pairs (a loop order every one of whose Born or loop partners
+lands outside the selection); the Born and the loop orders some served sector
+reads are generated as without the selection, so a served sector equals the
+same sector of the unrestricted run. A selection keeping no sector of a
+process is refused (`squared-order-selection`). Note: MG5_aMC's full NLO
+mode (aMC@NLO, `[QCD]` with reals) applies squared-order constraints to the
+Born-level orders; pyAmpliCol computes the virtual only and follows MadLoop's
+reading above.
+
 A process has one initial particle (a 1 -> n decay, `t > b w+`) or two. A
 decay is averaged over the decaying particle's helicities and colours only;
 its momenta are usually those of its rest frame. With
@@ -1650,6 +1696,15 @@ electroweak request refuses any width in its trees, `electroweak-width`):
 fixed_parameters = {MB = "0", WT = "0"}
 ```
 
+`[loop] external_widths = "zero"` fixes the width parameter of every external
+particle of the request to zero (stable external states; the widths of
+particles that only propagate are kept), unless `fixed_parameters` names it;
+the generation log names the widths it fixed. It reads the model's particle
+records and the requested legs, for any process: in the complex-mass scheme it
+is the generic remedy of `cms-external-width`, in the real on-shell scheme of
+the external particles' own `coloured-width` / `electroweak-width`. The
+default `"model"` keeps the model's widths.
+
 A resonant particle needs the complex-mass scheme, MG5_aMC's `set
 complex_mass_scheme True`:
 
@@ -1829,9 +1884,15 @@ point the squared invariant mass of its initial state). The loop settings of
 runtime = false          # --runtime: time per point and stage
 stability = true         # --stability (neither set: the runtime only)
 stability_points = 20    # --stability-points: flat (RAMBO) points
-stability_seed = 12345   # --stability-seed (null: generation.validation.seed)
-sqrt_s = 1000.0          # --sqrt-s (null: the artifact's generation energy)
+
+[evaluation.phase_space]
+seed = 1                 # --seed: point i from seed + i
+sqrt_s = 1000.0          # --sqrt-s (null: the artifact's validation-point energy)
 ```
+
+The flat points (the timed points without a momenta file, and the stability
+points) are those of [`[evaluation.phase_space]`](command-line-interface.md#evaluate-without-a-momenta-file):
+`profile --seed` and `--sqrt-s` set its seed and energy.
 
 See the [command-line guide](command-line-interface.md#profile) for the
 definitions of the tables.

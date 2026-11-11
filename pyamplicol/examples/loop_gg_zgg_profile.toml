@@ -15,9 +15,10 @@ momenta = "data/loop_gg_zgg_momenta.json"
 batch_size = 32
 warmup_runs = 1
 minimum_samples = 3
-# The flat points of --stability: few, so that it runs in about ten seconds
-# here (NinjaRS's double-double reference of this loop-induced process costs
-# about 30 s per point, TIRust's about 0.3 s, so even two points, the fewest
-# with a median, take about a minute; add --loop-reduction tirust for larger
-# counts); raise with --stability-points.
+# The flat points of --stability: two, the fewest with a median row. This
+# cannot reach the ten seconds of the other cards: NinjaRS's double-double
+# reference of this loop-induced process costs about 30 s per point (TIRust's
+# about 0.3 s), so --stability takes about a minute here. For larger counts
+# profile TIRust alone (--loop-reduction tirust --stability-points 30 runs in
+# about ten seconds); raise with --stability-points.
 stability_points = 2
