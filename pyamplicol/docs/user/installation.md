@@ -265,7 +265,7 @@ without one).
 Measured from the wheel (2026-11-11, an AMD EPYC host shared with other
 jobs, the four examples run side by side): `loop_uux_ttxgg` and
 `loop_gg_zgg` generate in under a minute and run their whole sequence in
-about 6 minutes (peak 2.6 and 10.8 GiB); the complex-mass examples
+about 6 minutes (peak 4.2 and 10.8 GiB); the complex-mass examples
 `loop_gg_epemmpmm` and `loop_uux_ddxepem` generate in 5 and 7 minutes and
 take about 21 and 36 minutes for the whole sequence (peak 5.7 and 19.6 GiB,
 the latter in the walkthrough). Each walkthrough generates its artifact again
