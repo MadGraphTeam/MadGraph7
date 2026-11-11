@@ -1,0 +1,251 @@
+{
+  "campaign": "entry-latch-cache-guard-1",
+  "case": "ew_n4_epem_mupmumaa",
+  "checkpoint_created": false,
+  "classification": "interrupted-incomplete; no numerical failure inferred from user stop",
+  "cleanup": {
+    "events": [
+      {
+        "controller": 21713,
+        "signal": "SIGINT"
+      }
+    ],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 21713,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238144893,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 21723,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238145014,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 21773,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238145539,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 21799,
+        "process_group": 21799,
+        "session": 21799,
+        "start_time_ticks": 238145586,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 21861,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238188775,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 21886,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238189278,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 21914,
+        "process_group": 21914,
+        "session": 21914,
+        "start_time_ticks": 238189335,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 21990,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238231495,
+        "state": "S"
+      },
+      {
+        "parent_pid": 21990,
+        "pid": 21995,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238231497,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 22029,
+        "process_group": 22029,
+        "session": 22029,
+        "start_time_ticks": 238231843,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 22039,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238247502,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 22070,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238247683,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 22144,
+        "process_group": 22144,
+        "session": 22144,
+        "start_time_ticks": 238248268,
+        "state": "S"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 22259,
+        "process_group": 22259,
+        "session": 22259,
+        "start_time_ticks": 238266405,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 22322,
+        "process_group": 21713,
+        "session": 21713,
+        "start_time_ticks": 238282511,
+        "state": "R"
+      },
+      {
+        "parent_pid": 21713,
+        "pid": 22374,
+        "process_group": 22374,
+        "session": 22374,
+        "start_time_ticks": 238282826,
+        "state": "Z"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "completed_lanes": [
+    {
+      "lane": "baseline-1",
+      "path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/baseline-1/result.json",
+      "performance_eligible": false,
+      "sha256": "3919cc5870a6d9b31b05e8d09bba8ebafb90fba943ad3d2ef79b5a31ab8b4647",
+      "status": "complete"
+    },
+    {
+      "lane": "candidate-1",
+      "path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/candidate-1/result.json",
+      "performance_eligible": false,
+      "sha256": "94614cdde192b0290696a42e25b1d2d4c7d2cd91bba90bf269fd65766f4f1231",
+      "status": "complete"
+    },
+    {
+      "lane": "candidate-6",
+      "path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/candidate-6/result.json",
+      "performance_eligible": false,
+      "sha256": "6fc34be8848519cb2be87364cad999430bcc115b7c9bd1e17051f417572dc2ba",
+      "status": "complete"
+    },
+    {
+      "lane": "candidate-7",
+      "path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/candidate-7/result.json",
+      "performance_eligible": false,
+      "sha256": "2fa7778070ef17eb28132c946271c2e7cf6dcaeda3df530248b3eff4c165ef03",
+      "status": "complete"
+    },
+    {
+      "lane": "candidate-8",
+      "path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/candidate-8/result.json",
+      "performance_eligible": false,
+      "sha256": "ba9f05c42ceb621ee75ea840cf24deaba42841d1de3dbc07f6bef16c7af12fa4",
+      "status": "complete"
+    }
+  ],
+  "created_utc": "2026-11-10T23:03:45.272522+00:00",
+  "files": {
+    ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/daemon-update-interruption-1/case-status.json": {
+      "bytes": 106472,
+      "original": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/ew_n4_epem_mupmumaa/status.json",
+      "sha256": "ae6c8c9dafdce18cef64bbe70a199c76bbecddeae73ea13f08564ad9feff605c"
+    },
+    ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/daemon-update-interruption-1/console.log": {
+      "bytes": 1740,
+      "original": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/ew_n4_epem_mupmumaa/numerical-ew_n4_epem_mupmumaa/console.log",
+      "sha256": "01feb85195ed950e42cd4e97b2563a77b587989a59957323f62c137aa615b2ef"
+    },
+    ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/daemon-update-interruption-1/retained-candidate-9/candidate-inputs.json": {
+      "bytes": 705024,
+      "original": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/candidate-9/candidate-inputs.json",
+      "sha256": "b1a263bcc41b2b07a39729eac4225ec434af13c8b3e9ac1ad36a28c1c8245e40"
+    },
+    ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/daemon-update-interruption-1/retained-candidate-9/candidate-output.txt": {
+      "bytes": 4054,
+      "original": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/candidate-9/candidate-output.txt",
+      "sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315"
+    },
+    ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/daemon-update-interruption-1/supervisor-status.json": {
+      "bytes": 655666,
+      "original": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/status.json",
+      "sha256": "777046a513c2f579b13ec44181bb822f342bcda54915fcdccbce78acca6f3dfe"
+    },
+    ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/daemon-update-interruption-1/worker-raw/dimensions.dat": {
+      "bytes": 37,
+      "original": ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/daemon-update-interruption-1/worker-raw/warmup.dat": {
+      "bytes": 26911,
+      "original": ".benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/warmup.dat",
+      "sha256": "60977fb2c12342ebf3a8e609ee6ca852902c53afd76be46d8c669ab93f8cf496"
+    }
+  },
+  "full_case_qualified": false,
+  "host_process_check": {
+    "all_original_pids_absent": true,
+    "matching_campaign_processes": [],
+    "original_identities": {
+      "2927573": "236668026",
+      "3024336": "238144893",
+      "574356": "238282826"
+    },
+    "scope": "read-only host /proc check after terminal; recorded tool result"
+  },
+  "last_raw_saved_point": 74,
+  "no_automatic_retry": true,
+  "no_new_native_workloads": true,
+  "partial_raw_lines": 151,
+  "performance_acceptance_eligible": false,
+  "reason": "User requested clean shutdown so Codex daemon can be updated",
+  "resume_instructions": [
+    "Do not rerun the append-only original supervisor --execute.",
+    "Preserve this administrative interruption and five complete lanes plus partial TIRust data.",
+    "After daemon update, review and authorize a separate append-only continuation/retry plan if needed.",
+    "Do not promote the partial stream to a complete 100-point pass.",
+    "The ten previously audited process checkpoints and published commits remain valid."
+  ],
+  "schema": "madloop-tirust-administrative-interruption-v1",
+  "session_id": 17999,
+  "signal": "SIGINT sent only to identity-verified supervisor 2927573",
+  "supervisor_error": "InterruptedError('Supervisor received signal 2')",
+  "supervisor_finished_utc": "2026-11-10T23:02:29.402811+00:00",
+  "supervisor_terminal_exit_code": 1
+}

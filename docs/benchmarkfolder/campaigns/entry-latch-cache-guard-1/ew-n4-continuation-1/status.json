@@ -1,0 +1,68 @@
+{
+  "case": "ew_n4_epem_mupmumaa",
+  "finished_utc": "2026-11-11T00:12:58.267877+00:00",
+  "performance_acceptance_eligible": false,
+  "stages": [
+    {
+      "cap_seconds": 28800.0,
+      "case": "ew_n4_epem_mupmumaa",
+      "child_pid": 936918,
+      "cleanup": {
+        "events": [],
+        "observed_owned_processes": [
+          {
+            "parent_pid": 868438,
+            "pid": 936918,
+            "process_group": 936918,
+            "session": 936918,
+            "start_time_ticks": 238625729,
+            "state": "R"
+          },
+          {
+            "parent_pid": 936918,
+            "pid": 938593,
+            "process_group": 936918,
+            "session": 936918,
+            "start_time_ticks": 238625869,
+            "state": "R"
+          },
+          {
+            "parent_pid": 936918,
+            "pid": 948758,
+            "process_group": 948758,
+            "session": 948758,
+            "start_time_ticks": 238626421,
+            "state": "R"
+          },
+          {
+            "parent_pid": 936918,
+            "pid": 3154487,
+            "process_group": 936918,
+            "session": 936918,
+            "start_time_ticks": 238966522,
+            "state": "R"
+          }
+        ],
+        "scope": "Only observed descendants with matching process-start/session identities",
+        "survivors": []
+      },
+      "command": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/ew-n4-continuation-1/run.py",
+        "--lane"
+      ],
+      "console_sha256": "d7e8dbbd3b86843dc6c77c11bd018c0745a45f422146878b3dbb087e492ff32a",
+      "deadline_monotonic": 2415043.865786016,
+      "finished_utc": "2026-11-11T00:12:58.263418+00:00",
+      "id": "numerical-ew_n4_epem_mupmumaa",
+      "label": "fresh-full100-candidate9-after-user-stop",
+      "publication_scope": "administrative status; unavailable stages are not numerical passes",
+      "returncode": 0,
+      "started_utc": "2026-11-10T23:15:42.746062+00:00",
+      "status": "passed"
+    }
+  ],
+  "started_utc": "2026-11-10T23:15:42.745353+00:00",
+  "status": "passed"
+}
