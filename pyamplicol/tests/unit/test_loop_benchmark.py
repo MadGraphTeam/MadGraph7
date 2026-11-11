@@ -105,6 +105,23 @@ def test_streams_are_exact_distinct_and_start_with_the_campaign(key):
             assert [float(Fraction(x)) for x in leg] == [float(x) for x in values]
 
 
+@pytest.mark.parametrize(
+    "key",
+    [k for k in streams.keys() if "two-body construction" in streams.load(k)["construction"]],
+)
+def test_pair_streams_hold_no_beam_collinear_point(key):
+    """lit-report: the exact centre-of-mass points of a massive 2 -> 2 pair
+    never put a final momentum exactly along the beam (zero transverse
+    momentum: the boxes' Gram determinants vanish exactly there; both
+    backends failed such points of g g > z z in binary64)."""
+
+    stream = streams.load(key)
+    prefix = stream["campaign_prefix"]
+    for index in range(prefix, len(stream["points"])):
+        point = streams.exact(stream, index)
+        assert all(p[1] or p[2] for p in point[2:]), index
+
+
 def test_gate_verdict():
     times = {"madloop": 1.0, "openloops": 0.5, "recola": 0.8}
     passed = gate.gate_verdict(0.65, times)
@@ -3694,3 +3711,78 @@ def test_blocks_without_their_core_are_left_out():
     assert marked["below_min_cpu_share"] == gate.MIN_CPU_SHARE
     del summary["cpu_share"]
     assert gate.valid_blocks(summary, gate.MIN_CPU_SHARE) is summary
+
+
+def test_report_builder_pairs_providers_of_a_row_without_a_fixture_record():
+    """lit-report: a loop-induced row whose providers were timed only in its
+    unchecked re-time unit (no lit-ref fixture timing record) takes the
+    paired times; each provider is matched when the row's lit.json validation
+    agrees with it within 1e-5, else shown unmatched with the reason."""
+
+    builder = _report_builder()
+    prov = {"status": "not run", "reason": "no record", "expected": ["ML", "OL", "Rc"]}
+    rec = {
+        "key": "gg_zz",
+        "backend": "tirust",
+        "revision": "524e6cfaa78c",
+        "host": "test host",
+        "providers": {
+            "times": {
+                "madloop": {"seconds_per_point": 3e-3, "rounds": [1, 2]},
+                "openloops": {"seconds_per_point": 2e-3, "rounds": [1, 2]},
+                "recola": {"seconds_per_point": 1e-3, "rounds": [1, 2]},
+            }
+        },
+    }
+    validation = {
+        "references": [
+            {"key": "madloop", "short": "ML", "max_relative": 1e-13},
+            {"key": "openloops", "short": "OL", "max_relative": 2e-4},
+        ]
+    }
+    out = builder._li_paired(prov, rec, validation)
+    assert out["status"] == "recorded" and out["paired"]
+    assert not out["providers"]["madloop"].get("match")
+    assert "2.0e-04" in out["providers"]["openloops"]["match"]
+    assert "no agreement" in out["providers"]["recola"]["match"]
+    # The fastest matched provider is MadLoop (the faster two are unmatched).
+    assert out["fastest"]["key"] == "madloop"
+    assert out["fastest_unmatched"]["key"] == "recola"
+    # A row with a fixture record keeps its entries' match status.
+    kept = builder._li_paired(
+        {"status": "recorded", "providers": {"recola": {"match": "x"}}}, rec, validation
+    )
+    assert kept["providers"]["recola"]["match"] == "x"
+
+
+def test_report_builder_states_the_unchecked_runs_host_state():
+    """lit-report: Table 2's provenance line carries the runs' concurrency,
+    load, MemAvailable, smallest median CPU share and the re-timed rows."""
+
+    builder = _report_builder()
+    state = {"loadavg": ["300.5", "1", "1"], "mem_available_gib": 250.0}
+    recs = [
+        {
+            "configuration": "unchecked",
+            "revision": "524e6cfaa78c",
+            "key": "a",
+            "concurrency": "40 rows in parallel units",
+            "host_state": {"start": state, "end": dict(state, loadavg=["350.0"])},
+            "cpu_share": {"min": 0.9, "median": 0.97},
+            "retimed": {"reason": "disturbed"},
+        },
+        {
+            "configuration": "unchecked",
+            "revision": "0000000",
+            "key": "b",
+            "host_state": {"start": dict(state, loadavg=["999"])},
+        },
+    ]
+    hs = builder._li_host_state({"records": recs}, {"524e6cfa"})
+    assert hs == {
+        "concurrency_max": 40,
+        "load_1min": [300.5, 350.0],
+        "mem_available_gib_min": 250.0,
+        "cpu_share_min": 0.97,
+        "re_timed": 1,
+    }
