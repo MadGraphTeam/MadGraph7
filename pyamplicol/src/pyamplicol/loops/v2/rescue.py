@@ -156,7 +156,7 @@ def rescue(
     count: int,
     evaluate: LevelEvaluator,
     *,
-    on_failure: str = "best-effort",
+    on_failure: str = "raise",
 ) -> VirtualEvaluation:
     """Run ``policy`` on a batch of ``count`` points through ``evaluate``
     (module docstring); one ``VirtualEvaluation`` in the batch order with

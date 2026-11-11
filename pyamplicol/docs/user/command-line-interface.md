@@ -720,7 +720,7 @@ succeeds. What is measured:
 pyamplicol profile artifacts/loop_gg_zgg                      # runtime, both backends
 pyamplicol profile --card loop_gg_zgg_profile.toml --stability
 pyamplicol loop_gg_zgg_profile.toml --stability               # the same (the card's action)
-pyamplicol loop_generate.toml profile --runtime --stability   # the master card
+pyamplicol loop_generate.toml profile --output=./my_loop_output --runtime --stability  # the master card
 pyamplicol profile artifacts/loop_uux_ttxgg --runtime --stability \
   --stability-points 200 --seed 7 --sqrt-s 2000 --loop-reduction tirust
 ```
