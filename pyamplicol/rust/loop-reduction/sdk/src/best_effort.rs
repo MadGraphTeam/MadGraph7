@@ -384,6 +384,20 @@ impl Runtime {
             .filter(|&i| base.statuses_mut()[i] == PointStatus::Failed)
             .collect();
         *base.uncertainties_mut() = vec![f64::NAN; requested.len()];
+        if failed.is_empty() {
+            // Nothing to serve or report: the record's policy fields are
+            // appended without re-reading the diagnostics (the cost of a
+            // call whose points are all accepted stays the call's own).
+            let diagnostics = base.diagnostics_mut();
+            if diagnostics.ends_with('}') {
+                diagnostics.pop();
+                diagnostics.push_str(&format!(
+                    ",\"best_effort\":{{}},\"warnings\":[],\"on_failure\":\"{}\"}}",
+                    self.on_failure.name()
+                ));
+                return Ok(base);
+            }
+        }
         let mut diagnostics: serde_json::Value =
             serde_json::from_str(base.diagnostics_mut()).map_err(crate::serialization)?;
         // Bounded failure reasons (F6), in every policy.
