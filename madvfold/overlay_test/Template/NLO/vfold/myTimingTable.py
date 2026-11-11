@@ -13,6 +13,7 @@ Example:
     ./vfold/myTimingTable.py -g ctmc Events/REF3/n200f111k32/step9h
     ./vfold/myTimingTable.py --skip nonstd -f tex2 Events/REF7/GOLD/n200f841k64g1/step15d
     ./vfold/myTimingTable.py --skip nonstd --vecsizes 64,512,1024 -f tex2 Events/REF7/CUDA/n200f841k64g1/step15d
+    ./vfold/myTimingTable.py --branch vfold5363 -f tex2 Events/REF2/CUDA/n200f841k64g1/step10b
 
 PREFIX is the common path prefix of the per-mode run directories, e.g.
 Events/REF3/n200f111k32/step9h for step9hZ, step9hS, ..., step9hCavx2.
@@ -21,7 +22,9 @@ format writes the same table only to <dir>/timingTable_<step>.txt, e.g.
 Events/REF3/n200f111k32/timingTable_step9h.txt, without printing it (only
 errors and warnings are printed); the tex formats (tex1, tex2) are written
 to a .tex file in Events/TEXn for a prefix in Events/REFn
-(TEX/TEX2/TEX3 for REF/REF2/REF3).
+(TEX/TEX2/TEX3 for REF/REF2/REF3). With --branch, e.g. vfold5363 (the code
+branch of the runs), the branch is printed first in the title (underlined in
+tex) and it prefixes the tex file name, e.g. vfold5363_CUDA_..._step10b.tex.
 
 The script has two independent parts:
     1. READING: read_step(prefix) parses the logs into plain dictionaries;
@@ -572,7 +575,8 @@ def render_text(table, fmt='%7.3f', prefix=None):
     llen = max([len(modebknd)] + [len(label) for label, values in table['headrows']])
     for label, values in table['rows']: llen = max(llen, len(label))
     lfmt = '%%-%is'%llen
-    out = ['', '='*20 + ' ' + prefix + ' ' + '='*20, '### ' + table['title']]
+    title = table['title'] if not table.get('branch') else table['branch'] + ' | ' + table['title']
+    out = ['', '='*20 + ' ' + prefix + ' ' + '='*20, '### ' + title]
     out += ['- ' + s for s in table['subtitles']]
     # Column width: as many as needed for the header rows (e.g. 7 for 'collier' as of step 14h)
     width = max([6] + [len(str(v)) for label, values in table['headrows'] for v in values])
@@ -616,10 +620,13 @@ def render_tex(table, fmt='%.2f', prefix=None):
     # right-aligned box of width \tmtwidth, so that a '-' takes as much space as
     # a '409.2'. \tmtwidth is NOT defined here: set it in the main tex file, e.g.
     # \newlength{\tmtwidth}\setlength{\tmtwidth}{8mm}
-    out = [r'% ' + table['title']]
+    title = esc(table['title'])
+    if table.get('branch'):  # --branch: the branch first in the title, underlined
+        title = r'\underline{%s} $|$ %s' % (esc(table['branch']), title)
+    out = [r'% ' + ((table['branch'] + ' | ') if table.get('branch') else '') + table['title']]
     out += [r'\providecommand{\tmtcell}[1]{\makebox[\tmtwidth][r]{#1}}',
             r'\begin{tabular}{l' + 'r' * ncol + '}',
-            span(esc('{\\bf %s}'%table['title']))]
+            span('{\\bf %s}'%title)]
     for sub in table['subtitles']:
         out.append(span(r'\footnotesize ' + esc('{\\em %s}'%sub)))
     cell = lambda x: r'\tmtcell{%s}' % x
@@ -662,8 +669,13 @@ def main():
     ap.add_argument('--vecsizes', default=None,
                     help='cudacpp_vecsize values to keep in the GPU scans, comma-separated, '
                     'e.g. 64,512,1024 (not with -f txt, to keep the full table)')
+    ap.add_argument('--branch', default=None,
+                    help='code branch of the runs, e.g. vfold5363: printed first in the title, '
+                    'and a prefix of the tex file name')
     args = ap.parse_args()
     prefix = args.prefix.rstrip('/')
+    if args.branch is not None and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', args.branch):
+        sys.exit('ERROR! invalid --branch (letters, digits, dots, dashes, underscores): %s' % args.branch)
     skip = set()
     for s in filter(None, args.skip.split(',')):
         if s == 'nonstd':
@@ -690,12 +702,15 @@ def main():
     table = build_table(data, os.path.basename(prefix), args.grouping,
                         rescale=RESCALE_BASELINE and not args.raw_baseline, isTex=isTex)
     table['title'] = proc + ' | ' + table['title']
+    table['branch'] = args.branch
     if isTex:
         m = re.match(r'^Events/REF(\d*)/(.*)$', prefix)  # Events/REF<n>/... -> Events/TEX<n>/...
         if not m:
             sys.exit('ERROR! tex output needs a prefix in Events/REF, Events/REF2 or Events/REF3: %s' % prefix)
         os.makedirs('Events/TEX'+m.group(1), exist_ok=True)  # step 15e
-        with open('Events/TEX'+m.group(1)+'/'+m.group(2).replace('/','_')+'.tex', 'w') as f:
+        texname = m.group(2).replace('/','_')+'.tex'
+        if args.branch: texname = args.branch + '_' + texname  # e.g. vfold5363_CUDA_n200f841k64g1_step10b.tex
+        with open('Events/TEX'+m.group(1)+'/'+texname, 'w') as f:
             f.write(RENDERERS[args.format](table, prefix=prefix))
     elif args.format == 'txt':
         # Write <dir>/timingTable_<step>.txt, e.g. for prefix Events/REF3/GOLD/n200f841k1/step8r
