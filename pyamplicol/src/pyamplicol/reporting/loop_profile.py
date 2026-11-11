@@ -400,10 +400,9 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         (
             "backend",
             "measured",
-            "best-effort",
-            "no value",
+            "best-effort /\nno value",
             "flagged",
-            "flagged, inaccurate",
+            "flagged,\ninaccurate",
             "missed",
             "time",
         ),
@@ -425,7 +424,6 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     "",
                     "",
                     "",
-                    "",
                 )
             )
             refusals.append(f"{_name(row.backend)} refused: {row.refusal}")
@@ -442,12 +440,13 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 label,
                 measured,
                 palette.paint(
-                    _percent(row.best_effort, row.points),
+                    str(row.best_effort),
                     palette.GOOD if row.best_effort == 0 else palette.RECOVERED,
                     color=color,
-                ),
-                palette.paint(
-                    _percent(row.failed_binary64, row.points),
+                )
+                + " / "
+                + palette.paint(
+                    str(row.failed_binary64),
                     palette.GOOD if row.failed_binary64 == 0 else palette.BAD,
                     color=color,
                     bold=row.failed_binary64 > 0,
@@ -540,16 +539,16 @@ def _best_effort_table(served: Any, prettytable: Any, color: bool) -> str | None
         prettytable,
         (
             "backend",
-            "best-effort",
-            "true digits min/med/max",
-            "unc. digits med",
-            "|unc-true| med",
-            "unc. covers truth",
+            "points",
+            "true digits\nmin/med/max",
+            "unc. digits\nmedian",
+            "|unc-true|\nmedian",
+            "unc. covers\ntruth",
         ),
         "Best-effort values (refused in binary64) against the truth",
         color=color,
     )
-    table.max_width = 24
+    table.max_width = 14
     for row in rows:
         points = [item for item in row.per_point if item.status == "best-effort"]
         true = sorted(float(item.true_digits) for item in points)

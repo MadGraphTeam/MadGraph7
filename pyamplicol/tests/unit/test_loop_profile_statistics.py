@@ -20,6 +20,7 @@ from pyamplicol.loop_profile import (
     BackendRuntime,
     BackendStability,
     LoopProfileReport,
+    StabilityPoint,
     _backend_statistics,
     needed_points,
     percentile_table,
@@ -260,6 +261,14 @@ def test_rendering_both_backends_a_refusal_and_json():
         unflagged_inaccurate=1,
         truly_inaccurate=2,
         seconds=1.5,
+        per_point=(
+            StabilityPoint(0, "best-effort", 1.0, 2.0, "TIRust Unstable: x"),
+            StabilityPoint(1, "measured", 3.0, 3.0),
+            StabilityPoint(2, "measured", 5.0, 4.0),
+            StabilityPoint(3, "measured", 9.0, 9.0),
+        ),
+        best_effort=1,
+        best_effort_covered=0,
     )
     refused = BackendStability("ninjars", refusal="NinjaRS cannot serve rank 7")
     report = _report(
@@ -279,6 +288,9 @@ def test_rendering_both_backends_a_refusal_and_json():
     # Laptop terminal: no line wider than the report's width.
     assert max(len(line) for line in text.splitlines()) <= 100
     assert "refused" in text and "no TIRust in this build" in text
+    # The best-effort points (m-lit ux-besteffort): counted apart and their
+    # accuracy against the truth in their own table.
+    assert "best-effort" in text and "unc. covers" in text
     payload = json.loads(machine.getvalue())
     assert "\x1b[" not in machine.getvalue()
     assert payload["stability"][0]["percentiles"][3]["digits"] == 3.0

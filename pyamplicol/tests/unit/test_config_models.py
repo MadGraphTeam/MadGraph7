@@ -267,7 +267,7 @@ def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:
     )
     assert "evaluation.stability" in CONFIG_SECTIONS
     assert FIELD_REGISTRY["evaluation.stability.higher"].kind == "list_str"
-    assert FIELD_REGISTRY["evaluation.on_failure"].default == "raise"
+    assert FIELD_REGISTRY["evaluation.on_failure"].default is None
     assert "generation.umami_grouping" not in FIELD_REGISTRY
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
