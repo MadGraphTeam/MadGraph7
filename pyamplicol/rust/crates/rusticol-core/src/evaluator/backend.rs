@@ -3392,7 +3392,12 @@ mod canonical_save_tests {
     #[test]
     fn whole_state_import_copy_reads_function_bearing_symbols_as_plain() {
         let _unlock = crate::licence::unlock();
-        let (f,) = symbol!("pyamplicol_function_bearing::f"; norm = |_view, _out| {});
+        let f = symbolica::atom::SymbolBuilder::new(symbolica::wrap_symbol!(
+            "pyamplicol_function_bearing::f"
+        ))
+        .with_normalization_function(|_view, _out| {})
+        .build()
+        .unwrap();
         assert!(!f.is_exportable());
         let evaluator = evaluator();
         let whole = whole_state_save(&evaluator);
