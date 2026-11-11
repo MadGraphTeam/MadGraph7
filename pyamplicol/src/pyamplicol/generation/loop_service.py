@@ -272,6 +272,12 @@ def _prepare(
     preparation = resolve_loop_preparation(
         compiled.raw_loop_model, run.loop.preparation
     )
+    if str(run.loop.external_widths) == "zero":
+        # Stable external states (``loops.external_widths``): the external
+        # particles' widths fixed to zero before the mass scheme reads them.
+        preparation = _with_stable_externals(
+            backend, processes, resolved, compiled, preparation
+        )
     compiled = with_loop_preparation(compiled, preparation)
     # The mass scheme of the declaration (M-SM MS-CMS): real on-shell, or
     # MG5_aMC's complex-mass model of the source at the card of the fixed
@@ -347,6 +353,29 @@ def _prepare(
         color_data,
         tuple(entry_limits),
         explicit=dict(explicit),
+    )
+
+
+def _with_stable_externals(backend, processes, resolved, compiled, preparation):
+    """``preparation`` with the width parameters of every external particle
+    of ``processes`` fixed to zero (``loops.external_widths``), logged."""
+
+    from pyamplicol.loops.external_widths import stable_external_widths
+
+    pdgs: set[int] = set()
+    for request in processes.requests:
+        for process_ir in backend._expand_request(request, resolved):
+            pdgs.update(int(pdg) for pdg in process_ir.initial_pdgs)
+            pdgs.update(int(pdg) for pdg in process_ir.final_pdgs)
+    widths = stable_external_widths(compiled, pdgs, preparation.fixed_parameters)
+    if not widths:
+        return preparation
+    _LOGGER.info(
+        "loop.external_widths = 'zero': fixed %s (external particles)",
+        ", ".join(f"{name} = 0" for name in widths),
+    )
+    return replace(
+        preparation, fixed_parameters={**preparation.fixed_parameters, **widths}
     )
 
 
@@ -852,11 +881,18 @@ def _v2_request(backend, context, index, born_dags=None, member=None):
         if _leading_colour(run)
         else None
     )
+    squared = _squared_orders(backend, context)
+    loop_orders = v2_loop_orders(member.born, context.corrections, limits)
+    if squared:
+        # Only the loop orders some selected Born x loop sector pairs.
+        loop_orders = _selected_loop_orders(
+            loop_orders, member.born, squared, member.label
+        )
     request = _slice_request(
         backend,
         context,
         member,
-        v2_loop_orders(member.born, context.corrections, limits),
+        loop_orders,
         accuracy=accuracy,
         colour_declaration=context.color_declaration if accuracy != "full" else None,
         selection=selection,
@@ -896,8 +932,80 @@ def _slice_request(backend, context, member, loop_orders, **fields):
         alpha0_conversion=run.loop.alpha0_conversion_parameter,
         alpha0_inverse=run.loop.alpha0_inverse_parameter,
         reduction=str(run.loop.reduction),
+        squared_orders=_squared_orders(backend, context),
         **fields,
     )
+
+
+def _squared_orders(backend, context) -> tuple[str, ...]:
+    """``process.squared_coupling_orders`` by the model's declared names
+    (canonical texts; refused, ``squared-order-selection``, for a name the
+    model does not declare)."""
+
+    from pyamplicol.processes.mg5_syntax import (
+        SquaredOrderConstraint,
+        parse_squared_order_constraint,
+    )
+
+    values = backend._run_config.process.squared_coupling_orders
+    if not values:
+        return ()
+    names = _order_names(context.resolved.compiled)
+    out = []
+    for text in values:
+        constraint = parse_squared_order_constraint(text)
+        try:
+            (declared,) = names.resolve_all(
+                (constraint.name,), what="process.squared_coupling_orders"
+            )
+        except CouplingOrderNameError as error:
+            from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "squared-order-selection", str(error)
+            ) from error
+        out.append(
+            SquaredOrderConstraint(declared, constraint.operator, constraint.value).text
+        )
+    return tuple(sorted(set(out)))
+
+
+def _selected_loop_orders(loop_orders, partners, squared, label):
+    """The loop orders (``v2_loop_orders`` or ``loop_induced_orders`` form)
+    that pair with one of ``partners`` (Born amplitude orders, or the loop
+    orders themselves for a loop-induced request) into a squared-order
+    sector passing ``squared``: generation skips the others, which no
+    selected sector reads. Refused (``squared-order-selection``) when none
+    is left."""
+
+    from pyamplicol.processes.mg5_syntax import (
+        parse_squared_order_constraint,
+        squared_orders_admit,
+    )
+
+    constraints = [parse_squared_order_constraint(text) for text in squared]
+    loops = [loop_orders] if isinstance(loop_orders, Mapping) else list(loop_orders)
+    partner_maps = [dict(partner) for partner in partners]
+
+    def admitted(loop) -> bool:
+        for partner in partner_maps:
+            names = {*loop, *partner}
+            total = {n: loop.get(n, 0) + partner.get(n, 0) for n in names}
+            if squared_orders_admit(constraints, total):
+                return True
+        return False
+
+    kept = [loop for loop in loops if admitted(loop)]
+    if not kept:
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "squared-order-selection",
+            f"{label}: no squared-order sector of the loop orders "
+            f"{[dict(loop) for loop in loops]} with "
+            f"{[dict(partner) for partner in partner_maps]} passes {list(squared)}",
+        )
+    return kept[0] if len(kept) == 1 else tuple(kept)
 
 
 def _order_hierarchy(context) -> dict[str, int]:
@@ -1035,6 +1143,12 @@ def _loop_induced_request(backend, context, index, member, memo):
         hierarchy=_order_hierarchy(context),
         names=(*_order_names(compiled).declared, *bounds, *context.corrections),
     )
+    if base.squared_orders:
+        # Only the loop orders some selected loop x loop sector pairs.
+        loops = [orders] if isinstance(orders, Mapping) else list(orders)
+        orders = _selected_loop_orders(
+            orders, loops, base.squared_orders, member.label
+        )
     request = replace(base, loop_orders=orders)
     zero = tuple(
         dict(loop)
@@ -1278,6 +1392,11 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "engine": "v2",
                         "born_orders": dict(request.born_orders),
                         "loop_orders": _loop_orders_record(request),
+                        **(
+                            {"squared_coupling_orders": list(request.squared_orders)}
+                            if request.squared_orders
+                            else {}
+                        ),
                         "corrections": list(request.corrections),
                         "color_accuracy": request.accuracy,
                         "scale_parameter": request.scale_parameter,
@@ -1354,6 +1473,20 @@ def _loop_induced_sectors(request) -> list[dict[str, object]]:
             key = tuple(sorted(order.items()))
             sector = sectors.setdefault(key, {"order": order, "pairs": []})
             sector["pairs"].append([left, right])
+    if request.squared_orders:
+        from pyamplicol.processes.mg5_syntax import (
+            parse_squared_order_constraint,
+            squared_orders_admit,
+        )
+
+        constraints = [
+            parse_squared_order_constraint(t) for t in request.squared_orders
+        ]
+        sectors = {
+            key: value
+            for key, value in sectors.items()
+            if squared_orders_admit(constraints, key)
+        }
     return [sectors[key] for key in sorted(sectors)]
 
 
@@ -1383,6 +1516,11 @@ def _loop_induced_coverage(
         "loop_orders": _loop_orders_record(request),
         "loop_order_policy": str(run.process.coupling_order_policy),
         "sectors": _loop_induced_sectors(request),
+        **(
+            {"squared_coupling_orders": list(request.squared_orders)}
+            if request.squared_orders
+            else {}
+        ),
         "colour_zero_loop_orders": [dict(orders) for orders in colour_zero],
         "exact_colour_zero": len(colour_zero) == len(request.exact_loop_orders),
         "corrections": list(request.corrections),

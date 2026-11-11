@@ -1405,6 +1405,44 @@ class EvaluationStabilityChecksConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationPhaseSpaceConfig:
+    """The flat phase-space points ``evaluate`` and ``profile`` draw when no
+    ``evaluation.momenta`` file is given (``cli.flat_points``): ``points``
+    of them from ``seed`` (point i from seed + i), RAMBO-flat in the
+    centre-of-mass frame of a 2 -> n scattering at ``sqrt_s`` (None: the
+    artifact's own validation point's energy) or in the rest frame of a
+    decaying particle (1 -> n, at its mass), with the external masses of
+    the artifact's validation point."""
+
+    points: int = field(default=2, metadata=_setting("int"))
+    seed: int = field(default=1, metadata=_setting("int"))
+    sqrt_s: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "points", _integer(self.points, "evaluation.phase_space.points")
+        )
+        object.__setattr__(
+            self,
+            "seed",
+            _integer(self.seed, "evaluation.phase_space.seed", minimum=0),
+        )
+        if self.sqrt_s is not None:
+            object.__setattr__(
+                self,
+                "sqrt_s",
+                _finite_float(
+                    self.sqrt_s,
+                    "evaluation.phase_space.sqrt_s",
+                    minimum=0.0,
+                    exclusive=True,
+                ),
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationConfig:
     artifact: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
@@ -1474,6 +1512,10 @@ class EvaluationConfig:
         default=None, metadata=_setting("path", nullable=True)
     )
     momenta: Path | None = field(default=None, metadata=_setting("path", nullable=True))
+    # The flat points drawn without ``momenta`` (``EvaluationPhaseSpaceConfig``).
+    phase_space: EvaluationPhaseSpaceConfig = field(
+        default_factory=EvaluationPhaseSpaceConfig, metadata=_section()
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1935,6 +1977,13 @@ class LoopConfig:
     )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
+    # External states' widths (``loops.external_widths``): "model" (the
+    # default) keeps the model's widths, "zero" fixes the width parameter of
+    # every external particle of the request to zero (stable external
+    # states) unless ``preparation.fixed_parameters`` names it.
+    external_widths: str = field(
+        default="model", metadata=_setting("str", choices=("model", "zero"))
+    )
     # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
     # adjustable external model parameter); None: the unique SLHA SMINPUTS 3
     # one, else no QCD pole prediction.
@@ -1980,6 +2029,7 @@ class LoopConfig:
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
         )
+        _choice(self.external_widths, ("model", "zero"), "loop.external_widths")
         object.__setattr__(
             self,
             "reduction",

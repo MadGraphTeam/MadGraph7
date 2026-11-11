@@ -1490,6 +1490,10 @@ def parse_cli(
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0] in _UTILITY_COMMANDS:
         return parse_utility(arguments)
+    # ``pyamplicol CARD ACTION [--output DIR] ...`` (``card_actions``).
+    from .card_actions import rewrite_card_action
+
+    arguments = rewrite_card_action(arguments) or arguments
     if any(argument in _REMOVED_FLAT_MODEL_COMMANDS for argument in arguments):
         return _namespace_to_invocation(build_parser().parse_args(arguments))
     command_index = next(
