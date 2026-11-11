@@ -3642,6 +3642,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # process-dependent defaults (mirrors the LO run_card.dat logic).
         self.create_run_card(matrix_elements, history)
 
+        # The dressed-lepton densities beam.lepton_density selects from. Also
+        # reads self.proc_characteristic, so it comes after the call above.
+        self.copy_lepton_densities()
+
         self.write_me5_configuration()
 
         # MadAnalysis5 default analysis cards, tailored to this process. This
@@ -3777,6 +3781,51 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except Exception as error:
             logger.debug('could not record the model: %s', error)
 
+    def copy_lepton_densities(self):
+        """Ship Source/PDF/lep_densities, but only for charged-lepton beams.
+
+        A dressed-lepton run resolves `beam.lepton_density` against this
+        directory (template_files/mg7/lepton_density.py), re-tabulating
+        `eepdf.f` into an LHAPDF grid the first time it is needed. Nothing
+        else in an mg7 output has a Source/ tree, so without this a run with
+        a density set stops at startup with "unknown lepton density", and a
+        gridpack could not carry one at all.
+
+        The whole set directory is copied although only `eepdf.f` is read:
+        `bstrahl_pars.inc` is what a cross-check against the Fortran needs, and
+        3.5 MB next to a compiled madspace is not worth a partial copy that
+        someone later has to debug.
+
+        Beams that cannot use it -- hadronic, photon-initiated, a decay --
+        get nothing.
+        """
+        pc = self.proc_characteristic
+        try:
+            if pc['ninitial'] != 2:
+                return
+            beams = set(pc['pdg_initial1']) | set(pc['pdg_initial2'])
+        except (KeyError, TypeError):
+            return
+        # what MadEvent's 'dressed' pdlabel accepts (lpp = +-3 / +-4), plus
+        # the composite lepton-beam code
+        dressed = set([11, -11, 13, -13, 82, -82])
+        if not beams or not beams <= dressed:
+            return
+
+        source = pjoin(MG5DIR, 'Template', 'Common', 'Source', 'PDF',
+                       'lep_densities')
+        if not os.path.isdir(source):
+            return
+        target = pjoin(self.dir_path, 'Source', 'PDF', 'lep_densities')
+        if os.path.exists(target):
+            return
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copytree(source, target)
+        except Exception as error:
+            logger.warning('could not ship the dressed-lepton densities: %s',
+                           error)
+
     def create_run_card(self, matrix_elements, history):
         """Write Cards/run_card.toml from the run_card.toml template via
         banner.RunCardMG7, applying process-dependent defaults."""
@@ -3902,6 +3951,15 @@ class ProcessExporterMG7(ProcessExporterCPP):
                                 for pid in pc['pdg_initial1'] + pc['pdg_initial2'])
             pc['has_fsr'] = any(abs(fid) in colored
                                 for p in procs for fid in p.get_final_ids())
+            # the max_jet_flavor the MLM clustering needs (enforced at launch,
+            # RunCardMG7.check_mlm_max_jet_flavor): the same value as the
+            # run_card default, unknown (0) for a model with no flavour scheme
+            beam_ids = set(pc['pdg_initial1'] + pc['pdg_initial2'])
+            nflav = model.get_flavour_scheme()
+            hadronic = set([1, 2, 3, 4, 5, 21, 22, 81])
+            if nflav and set(abs(i) for i in beam_ids) & hadronic:
+                pc['max_jet_flavor'] = banner_mod.default_max_jet_flavor(
+                    nflav, beam_ids)
 
         pc.write(pjoin(self.dir_path, 'SubProcesses', 'proc_characteristics'))
 

@@ -808,6 +808,86 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Luminosity::Luminosity")
         );
 
+    py::classh<LeptonLuminosity, Mapping>(
+        m, "LeptonLuminosity", pydoc::doc("LeptonLuminosity")
+    )
+        .def(
+            py::init<double, double, double>(),
+            py::arg("s_lab"),
+            py::arg("s_hat_min"),
+            py::arg("sampling_power") = 0.96,
+            pydoc::doc("LeptonLuminosity::LeptonLuminosity")
+        );
+
+    py::enum_<BeamstrahlungQTerm>(m, "BeamstrahlungQTerm")
+        .value("sqrt_u", BeamstrahlungQTerm::sqrt_u)
+        .value("u_three_halves", BeamstrahlungQTerm::u_three_halves)
+        .value("y_minus_three_halves", BeamstrahlungQTerm::y_minus_three_halves);
+
+    py::classh<BeamstrahlungParameters>(
+        m, "BeamstrahlungParameters", pydoc::doc("BeamstrahlungParameters")
+    )
+        .def(
+            py::init([](double a, double p, double q, bool has) {
+                return BeamstrahlungParameters{a, p, q, has};
+            }),
+            py::arg("a") = 0.,
+            py::arg("p") = 0.,
+            py::arg("q") = 0.,
+            py::arg("has") = false
+        )
+        .def_readwrite("a", &BeamstrahlungParameters::a)
+        .def_readwrite("p", &BeamstrahlungParameters::p)
+        .def_readwrite("q", &BeamstrahlungParameters::q)
+        .def_readwrite("has", &BeamstrahlungParameters::has);
+
+    py::classh<BeamstrahlungSampler>(
+        m, "BeamstrahlungSampler", pydoc::doc("BeamstrahlungSampler")
+    )
+        .def(
+            py::init<
+                const std::vector<BeamstrahlungParameters>&,
+                const std::vector<BeamstrahlungParameters>&,
+                BeamstrahlungQTerm,
+                double,
+                double,
+                std::size_t>(),
+            py::arg("beam1"),
+            py::arg("beam2"),
+            py::arg("q_term"),
+            py::arg("alpha_em") = 0.007562397,
+            py::arg("lepton_mass") = 0.511e-3,
+            py::arg("grid_points") = 128,
+            pydoc::doc("BeamstrahlungSampler::BeamstrahlungSampler")
+        )
+        .def(
+            "has_beamstrahlung",
+            &BeamstrahlungSampler::has_beamstrahlung,
+            pydoc::doc("BeamstrahlungSampler::has_beamstrahlung")
+        )
+        .def(
+            "sample",
+            &BeamstrahlungSampler::sample,
+            py::arg("x1"), py::arg("x2"), py::arg("q2"), py::arg("component"),
+            py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"),
+            pydoc::doc("BeamstrahlungSampler::sample")
+        );
+
+    py::classh<LeptonLuminosityInvariant, Mapping>(
+        m, "LeptonLuminosityInvariant", pydoc::doc("LeptonLuminosityInvariant")
+    )
+        .def(
+            py::init<double, double, double, double, double, double, double>(),
+            py::arg("s_lab"),
+            py::arg("s_hat_min"),
+            py::arg("s_hat_max") = 0.,
+            py::arg("sampling_power") = 0.96,
+            py::arg("mass") = 0.,
+            py::arg("width") = 0.,
+            py::arg("invariant_power") = 1.,
+            pydoc::doc("LeptonLuminosityInvariant::LeptonLuminosityInvariant")
+        );
+
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
         .def(
             py::init<bool, double, double, double>(),
@@ -1534,7 +1614,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<ColorOrderedMapping::Options>&,
                 double,
                 bool,
-                std::optional<double>>(),
+                std::optional<double>,
+                double>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1546,6 +1627,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
+            py::arg("lepton_sampling_power") = 0.,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1559,7 +1641,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<ColorOrderedMapping::Options>&,
                 double,
                 bool,
-                std::optional<double>>(),
+                std::optional<double>,
+                double>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1570,6 +1653,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
+            py::arg("lepton_sampling_power") = 0.,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(
@@ -2348,6 +2432,56 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("PartonDensity::PartonDensity#2")
         );
 
+    py::classh<EEPartonDensity, FunctionGenerator>(
+        m, "EEPartonDensity", pydoc::doc("EEPartonDensity")
+    )
+        .def(
+            py::init<
+                const PdfGrid&,
+                const std::vector<int>&,
+                const std::vector<double>&,
+                double,
+                double,
+                const std::string&>(),
+            py::arg("grid"),
+            py::arg("pids"),
+            py::arg("exponent_offsets"),
+            py::arg("alpha_em") = 0.007562397,
+            py::arg("lepton_mass") = 0.511e-3,
+            py::arg("prefix") = "",
+            pydoc::doc("EEPartonDensity::EEPartonDensity")
+        )
+        .def(
+            "initialize_globals",
+            &EEPartonDensity::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("EEPartonDensity::initialize_globals")
+        );
+
+    py::classh<EELuminosity, FunctionGenerator>(
+        m, "EELuminosity", pydoc::doc("EELuminosity")
+    )
+        .def(
+            py::init<
+                const PdfGrid&,
+                const std::vector<int>&,
+                const std::vector<int>&,
+                const std::vector<double>&,
+                const std::vector<double>&,
+                double,
+                double,
+                const std::string&>(),
+            py::arg("grid"),
+            py::arg("pids1"),
+            py::arg("pids2"),
+            py::arg("exponent_offsets1"),
+            py::arg("exponent_offsets2"),
+            py::arg("alpha_em") = 0.007562397,
+            py::arg("lepton_mass") = 0.511e-3,
+            py::arg("prefix") = "",
+            pydoc::doc("EELuminosity::EELuminosity")
+        );
+
     py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
         .def(
             py::init<const std::string&>(),
@@ -2576,7 +2710,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<CustomFunction>&,
                 const std::optional<PdfGrid>&,
                 const std::optional<MappingChannelWeights>&,
-                int>(),
+                int,
+                const std::optional<EELuminosity>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -2609,6 +2744,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdf_grid2") = std::nullopt,
             py::arg("mapping_chan_weights") = std::nullopt,
             py::arg("mlm_history_qcd_power") = -1,
+            py::arg("lepton_luminosity") = std::nullopt,
             pydoc::doc("Integrand::Integrand")
         )
         .def(
@@ -3403,6 +3539,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "rwgt_ids", &LHEEvent::rwgt_ids, pydoc::doc("LHEEvent::rwgt_ids")
         )
         .def_readwrite("rwgt", &LHEEvent::rwgt, pydoc::doc("LHEEvent::rwgt"))
+        .def_readwrite(
+            "beamstrahlung",
+            &LHEEvent::beamstrahlung,
+            pydoc::doc("LHEEvent::beamstrahlung")
+        )
         .def_readwrite(
             "has_cluster_scales",
             &LHEEvent::has_cluster_scales,

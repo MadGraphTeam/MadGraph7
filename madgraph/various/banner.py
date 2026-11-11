@@ -2105,6 +2105,11 @@ class ProcCharacteristic(ConfigFile):
         # output written with --density (spin-density matrix): like a
         # polarisation, the matrix element is then not Lorentz invariant
         self.add_param('density_matrix', False)
+        # the max_jet_flavor the MLM clustering needs for this output: the
+        # flavour scheme of the model, raised to the heaviest quark taken from
+        # a beam (default_max_jet_flavor). 0: no hadronic beam, or a model
+        # with no flavour scheme, and then nothing is enforced.
+        self.add_param('max_jet_flavor', 0)
 
     def read(self, finput):
         """Read the input file, this can be a path to a file, 
@@ -4686,6 +4691,14 @@ def get_model_flavour_scheme(proc_def):
         if isinstance(item, (list, tuple)):
             todo = list(item) + todo
     return None
+
+
+def default_max_jet_flavor(nflav, beam_ids):
+    """The heaviest quark flavour that is a jet, as madevent sets maxjetflavor:
+    the flavour scheme ``nflav`` of the model (4 when unknown), raised to the
+    heaviest quark that is taken from a beam (a b-initiated process in a
+    4-flavour model)."""
+    return max([nflav or 4] + [abs(i) for i in beam_ids if -7 < i < 7])
 
 
 def default_me_frame_for_process(proc_def, density=False, radiates=None):
@@ -7375,6 +7388,13 @@ class RunCardMG7(RunCard):
             comment="energy of beam 2 (moving along -z) in GeV; units are accepted", energy=True)
         self.add_toml_param('beam', 'leptonic', False,
             comment="lepton collider: no PDFs, beam energy fixed")
+        # 'leptonic' alone cannot express a dressed-lepton beam: it means "no
+        # parton luminosity at all", i.e. monochromatic beams, which is a
+        # legitimate setup and not the same as a lepton collider with ISR and,
+        # for the collider-specific sets, beamstrahlung.
+        self.add_toml_param('beam', 'lepton_density', "",
+            comment="dressed-lepton density (a directory of Source/PDF/lep_densities) "
+                    "or \"\" for none: ISR and, for the collider-specific sets, beamstrahlung")
         self.add_toml_param('beam', 'pdf1', "NNPDF40_lo_as_01180",
             comment="LHAPDF set name of beam 1; set beam.pdf X sets both beams")
         self.add_toml_param('beam', 'pdf2', "NNPDF40_lo_as_01180",
@@ -7913,6 +7933,35 @@ class RunCardMG7(RunCard):
                 and not bool(beam['leptonic'])
                 and float(self['phasespace']['xqcut']) > 0)
 
+    def check_mlm_max_jet_flavor(self, expected):
+        """With the MLM clustering (dynamical_scale_choice = "mlm") on hadronic
+        beams, max_jet_flavor has to be ``expected``, the flavour scheme of the
+        model (proc_characteristics max_jet_flavor): the clustering decides
+        from it which partons are jets, and the shower's jet matching
+        (JetMatching:nQmatch) uses the same number. A massless b that is not a
+        jet gets no clustering scale and is never matched, so the sample
+        double counts; a massive b that is a jet is matched as if it were
+        massless. Any other scale choice uses max_jet_flavor for nothing but
+        the default jet list, so the user is free to set it.
+        ``expected`` 0 (unknown) checks nothing."""
+        beam = self['beam']
+        try:
+            expected = int(expected)
+        except (TypeError, ValueError):
+            return
+        if not expected or beam['dynamical_scale_choice'] != 'mlm' \
+                or bool(beam['leptonic']):
+            return
+        if int(beam['max_jet_flavor']) != expected:
+            raise InvalidRunCard(
+                "beam.max_jet_flavor = %s is not supported with "
+                "dynamical_scale_choice = \"mlm\": the MLM clustering and jet "
+                "matching need the flavour scheme of the model, "
+                "max_jet_flavor = %s (the quarks up to %s are massless jets). "
+                "Set beam.max_jet_flavor = %s, or use another "
+                "dynamical_scale_choice." % (beam['max_jet_flavor'], expected,
+                                             expected, expected))
+
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
@@ -8057,8 +8106,22 @@ class RunCardMG7(RunCard):
                     raise
 
     def read_data(self, data, unknown_warning=True):
-        """Fill the card from a parsed TOML mapping (section -> {key: value})."""
-        for section, content in data.items():
+        """Fill the card from a parsed TOML mapping (section -> {key: value}).
+
+        The free-form sections ([multiparticles], [cuts], ...) are read last:
+        setting beam.max_jet_flavor updates a standard jet multiparticle
+        (_sync_jet_group), and the jet list the card writes has to win over
+        that."""
+        self._reading = True
+        try:
+            items = sorted(data.items(), key=lambda item:
+                           item[0].lower() in self.dynamic_sections)
+            self._read_items(items, unknown_warning)
+        finally:
+            self._reading = False
+
+    def _read_items(self, items, unknown_warning):
+        for section, content in items:
             sl = section.lower()
             if sl in self.dynamic_sections:
                 self.dynamic_sections[sl] = collections.OrderedDict(content)
@@ -8145,7 +8208,53 @@ class RunCardMG7(RunCard):
                 # function matches the parameter name as written, case included
                 self.set_custom_parameter(parts[1], name.split('.')[2], value)
                 return
+            if lname == 'beam.max_jet_flavor':
+                old = self['beam']['max_jet_flavor']
+                out = super(RunCardMG7, self).set(name, value, *args, **opts)
+                self._sync_jet_group(old, self['beam']['max_jet_flavor'],
+                                     verbose=not getattr(self, '_reading', False))
+                return out
         return super(RunCardMG7, self).set(name, value, *args, **opts)
+
+    def _sync_jet_group(self, old, new, verbose=False):
+        """Make the ``jet`` multiparticle follow a change of
+        ``beam.max_jet_flavor`` from ``old`` to ``new``, as madevent's
+        maxjetflavor does: the jet cuts (pt, eta, delta_r) then apply to the
+        same quarks the MLM clustering treats as jets. In a 5-flavour model the
+        b is a jet; with the 4-flavour list a final-state b would get no cut
+        at all, and a massless one makes g b > X b collinear divergent.
+
+        Only a jet list that is the standard group of ``old`` (the quarks up
+        to that flavour, their antiquarks and the gluon) is replaced: a list
+        the user wrote is kept, with a warning. Returns whether the list was
+        changed."""
+        try:
+            old, new = int(old), int(new)
+        except (TypeError, ValueError):
+            return False
+        multiparticles = self.dynamic_sections['multiparticles']
+        current = multiparticles.get('jet')
+        if old == new or current is None:
+            return False
+        try:
+            current_set = set(int(p) for p in current)
+        except (TypeError, ValueError):
+            current_set = None
+        if current_set == set(self._lo_jet_group(new)):
+            return False
+        if current_set != set(self._lo_jet_group(old)):
+            if verbose:
+                logger.warning(
+                    "beam.max_jet_flavor is now %s but the jet multiparticle %s "
+                    "is not the standard one of max_jet_flavor = %s: it is kept "
+                    "as it is. Edit [multiparticles] jet if the jet cuts should "
+                    "apply to other quark flavours.", new, list(current), old)
+            return False
+        multiparticles['jet'] = self._lo_jet_group(new)
+        if verbose:
+            logger.info("multiparticles.jet follows beam.max_jet_flavor = %s: %s",
+                        new, multiparticles['jet'])
+        return True
 
     custom_function_kinds = ('cut', 'scale', 'pdf', 'bias')
 
@@ -8904,9 +9013,13 @@ class RunCardMG7(RunCard):
             # the heaviest quark the MLM clustering treats as a jet follows the
             # flavour scheme of the model, as madevent's maxjetflavor does: 5
             # once the b is massless and in the proton
-            nflav = get_model_flavour_scheme(proc_def) or 4
-            self['beam']['max_jet_flavor'] = max(
-                [nflav] + [abs(i) for i in beam_id if -7 < i < 7])
+            old = self['beam']['max_jet_flavor']
+            self['beam']['max_jet_flavor'] = default_max_jet_flavor(
+                get_model_flavour_scheme(proc_def), beam_id)
+            # and so do the jet cuts: in a 5-flavour model a final-state b is
+            # a jet (madevent applies ptj/etaj/drjj to it), not an uncut
+            # particle
+            self._sync_jet_group(old, self['beam']['max_jet_flavor'])
 
         if beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy. The jet cuts stay,
@@ -9490,10 +9603,19 @@ class RunCardMG7(RunCard):
         return None
 
     @classmethod
-    def _resolve_pdf(cls, lo, dropped):
+    def _resolve_pdf(cls, lo, dropped, dressed=False):
         """Map the LO pdlabel/lhaid to an LHAPDF set name per beam, (pdf1,
         pdf2), None keeping the MG7 default of that beam. pdlabel1/pdlabel2
-        are only read when they differ: pdlabel holds the common value."""
+        are only read when they differ: pdlabel holds the common value.
+
+        ``dressed`` says the beams select a dressed-lepton density, in which
+        case the label is one of Source/PDF/lep_densities and there is nothing
+        to map: from_LO has already carried the density (or reported it gone),
+        and mg7 uses no PDF at all for such a run."""
+        if dressed:
+            # not "unknown label, keeping the mg7 default": the label is known,
+            # and no default is kept
+            return None, None
         lhaid = lo['lhaid'] if 'lhaid' in lo else None
         labels = [str(lo['pdlabel%d' % i]).lower() if 'pdlabel%d' % i in lo else ''
                   for i in (1, 2)]
@@ -9527,16 +9649,52 @@ class RunCardMG7(RunCard):
         # --- beams ---
         lpps = [lo['lpp1'], lo['lpp2']]
         is_lep = lambda l: isinstance(l, int) and abs(l) in (3, 4)
+        is_had = lambda l: isinstance(l, int) and abs(l) == 1
+        dressed = [i for i, l in ((1, lpps[0]), (2, lpps[1])) if is_lep(l)]
+        # carry the density across when the label names one we ship
+        density = ''
+        if dressed:
+            label = str(lo['pdlabel']) if 'pdlabel' in lo else ''
+            if label in sum(RunCardLO.allowed_lep_densities.values(), []):
+                density = label
+                mg7.set('beam.lepton_density', density)
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
         mg7.set('beam.leptonic',
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
         for i, lpp in ((1, lpps[0]), (2, lpps[1])):
             if isinstance(lpp, int) and abs(lpp) not in (0, 1, 3, 4):
                 dropped.append('lpp%d=%s (beam type not representable in mg7)' % (i, lpp))
+            elif is_lep(lpp):
+                # Tested before the sign check below, which would otherwise
+                # call lpp=-3 an antiparticle-PDF question. It is not: mg7 has
+                # no dressed-lepton density at all, and beam.leptonic means
+                # "no parton luminosity", so the ISR -- and the beamstrahlung
+                # that the collider-specific sets fold in -- is simply absent
+                # from the generated events. Saying nothing here (the previous
+                # behaviour for lpp=+3) reports a clean conversion for a run
+                # whose physics has changed.
+                if density:
+                    # the density carries over; only the beam-type sign and
+                    # the flavour (electron vs muon) are not representable
+                    if abs(lpp) == 4:
+                        dropped.append(
+                            'lpp%d=%s (muon beam: the dressed-lepton densities '
+                            'are fitted for electrons)' % (i, lpp))
+                else:
+                    dropped.append(
+                        'lpp%d=%s (dressed-lepton beam: no density named %s in '
+                        'Source/PDF/lep_densities, so the beam becomes '
+                        'monochromatic)' % (i, lpp, lo['pdlabel']))
             elif isinstance(lpp, int) and lpp < 0:
                 dropped.append('lpp%d=%s (antiparticle beam: mg7 keeps the particle PDF)' % (i, lpp))
             elif lpp == 0:
                 dropped.append('lpp%d=0 (no-PDF fixed-energy beam: check beam.leptonic/beam.pdf1/beam.pdf2)' % i)
+        if dressed and any(is_had(l) for l in lpps):
+            # beam.leptonic is a single flag for both beams, so one dressed
+            # lepton beam also switches off the other beam's PDF.
+            dropped.append(
+                'lpp1=%s, lpp2=%s (lepton-hadron beams: beam.leptonic is a '
+                'single flag, so the hadron PDF is dropped too)' % tuple(lpps))
 
         # --- scales ---
         if 'fixed_fac_scale' in lo:
@@ -9598,7 +9756,8 @@ class RunCardMG7(RunCard):
             mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
-        for beam, pdf_name in zip((1, 2), cls._resolve_pdf(lo, dropped)):
+        pdf_names = cls._resolve_pdf(lo, dropped, dressed=bool(dressed))
+        for beam, pdf_name in zip((1, 2), pdf_names):
             if pdf_name:
                 mg7.set('beam.pdf%d' % beam, pdf_name)
 

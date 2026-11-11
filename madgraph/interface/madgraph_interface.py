@@ -9277,6 +9277,14 @@ This implies that with decay chains:
         if tool in ['pythia8', 'pythia8_hepmc3']:
             self.options['pythia8_path'] = pjoin(prefix,'pythia8')
             self.exec_cmd('save options %s pythia8_path' % config_file, printcmd=False, log=False)
+            # Build the beamstrahlung main against this Pythia8 while we know
+            # it is fresh. It has to be rebuilt whenever Pythia8 changes, and
+            # a process directory cannot build it itself. Failing here is not
+            # fatal: only dressed-lepton runs with beamstrahlung need it, and
+            # those refuse to shower without it rather than silently using
+            # another main.
+            import madgraph.various.py8_bstrahl as py8_bstrahl
+            py8_bstrahl.build(MG5DIR, self.options['pythia8_path'], force=True)
             self.install_pythia8_main164(prefix, config_file, add_options)
         elif tool == 'lhapdf6':
                 self.options['lhapdf_py3'] = pjoin(prefix,'lhapdf6_py3','bin', 'lhapdf-config')

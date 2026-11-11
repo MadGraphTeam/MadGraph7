@@ -27,6 +27,9 @@ ANNOUNCEMENT:
        conjugate mass. Outputs in one gauge are otherwise unchanged. The multiparticles of the
        user survive the reload of the model behind 'set gauge'. While an 'output
        --postpone_model' waits for its model, the gauge of the processes written in it is kept.
+   OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).
+   OM: madevent/MadSpin: polarised beams with a mirror process gave beam 1's polarisation
+       to the particle of beam 2 (#394).
    RF: Preserve the legacy scalar-scale fallback for MC@NLO-Delta events
        with an unspecified mur when reading MadGraph7 scale metadata.
    RF: Remove UNLOPS merging and NNLL+NLO jet-veto resummation, including their
