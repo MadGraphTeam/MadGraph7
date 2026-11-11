@@ -10,7 +10,8 @@ description: >
   the tests cannot work then, and the machine needs fixing as root.
   It also points XDG_CONFIG_HOME at a per-job directory, so MadGraph7's
   per-user configuration (~/.mg7) does not persist from one job to the next,
-  and makes sure numpy and scipy are importable (see below).
+  makes sure numpy, scipy and matplotlib are importable, and warns about
+  missing system commands (see below).
 runs:
   using: composite
   steps:
@@ -35,10 +36,17 @@ runs:
         # unittest jobs (`pip install --user`), and several jobs (unittest
         # bundles, IOTests) import them without installing them. A new or
         # reinstalled machine gets the same, once, instead of failing those
-        # jobs with "No module named 'numpy'".
-        python3 -c 'import numpy, scipy' 2> /dev/null \
-          || python3 -m pip install --user --quiet numpy scipy \
-          || echo "::warning::could not install numpy/scipy into ~/.local on $RUNNER_NAME"
+        # jobs with "No module named 'numpy'". matplotlib is what Rivet 4's
+        # rivet-mkhtml plots with (test_rivet_from_file).
+        python3 -c 'import numpy, scipy, matplotlib' 2> /dev/null \
+          || python3 -m pip install --user --quiet numpy scipy matplotlib \
+          || echo "::warning::could not install numpy/scipy/matplotlib into ~/.local on $RUNNER_NAME"
+        # system commands the tests need and this user cannot install (no
+        # sudo): without bc MadGraph refuses to run the parton shower
+        for c in bc; do
+          command -v "$c" > /dev/null \
+            || echo "::warning::$RUNNER_NAME ($(hostname)) has no '$c': install it as root (dnf install -y $c), the shower tests fail without it"
+        done
         # Tests can leave read-only trees behind: make them writable first.
         find /tmp -mindepth 1 -maxdepth 1 -user "$(id -u)" \
           -exec chmod -R u+w {} + -exec rm -rf {} + 2>/dev/null || true

@@ -92,8 +92,19 @@ build_looptools() {
     mkdir -p "$HEP/IREGI/src" "$HEP/CutTools/lib"
     cp "$SRC/vendor/IREGI/src/libiregi.a" "$HEP/IREGI/src/"
     cp "$SRC/vendor/CutTools/includects/libcts.a" "$SRC/vendor/CutTools/includects/mpmodule.mod" "$HEP/CutTools/lib"
-    mg_install "install collier" "install ninja"
+    compgen -G "$HEP/collier/lib*/libcollier.*" > /dev/null \
+        || compgen -G "$HEP/collier/libcollier.*" > /dev/null \
+        || mg_install "install collier"
+    # ninja serially too: with -j, src/Makefile asks for quadninjago_module.mod
+    # before the compile that writes it ("No rule to make target"). Drop what a
+    # failed attempt left: its installer untars over an existing tree.
+    if ! compgen -G "$HEP/ninja/lib*/libninja.*" > /dev/null; then
+        rm -rf "$HEP/ninja"
+        (export MAKEFLAGS=; mg_install "install ninja")
+    fi
 }
+
+recipe=$(sha1sum "${BASH_SOURCE[0]}" | cut -c1-12)
 
 # dependency order: emela needs boost, contur needs pythia8 (hepmc)
 requested=" ${*:-lhapdf boost pythia8 emela contur looptools} "
@@ -107,8 +118,10 @@ for tool in lhapdf boost pythia8 emela contur looptools; do
     # rivet/contur alone takes the better part of an hour, and every job of
     # this machine would pay it again until the cause (typically a missing
     # system package) is fixed. Delete ~/.cache/HEPtools.failed to retry now.
+    # A change to this script (a fixed recipe) retries at once: the marker
+    # records the script's hash.
     marker="$HEP.failed/$tool"
-    if [ -n "$(find "$marker" -mmin -720 2>/dev/null)" ]; then
+    if [ -n "$(find "$marker" -mmin -720 2>/dev/null)" ] && grep -qs "recipe $recipe" "$marker"; then
         echo "::warning::HEPTools $tool failed to build on $RUNNER_NAME less than 12 h ago, not retrying (see $marker)"
         continue
     fi
@@ -120,7 +133,7 @@ for tool in lhapdf boost pythia8 emela contur looptools; do
         rm -f "$marker"
     else
         mkdir -p "$HEP.failed"
-        echo "$(date -u) $GITHUB_REPOSITORY run $GITHUB_RUN_ID" > "$marker"
+        echo "$(date -u) $GITHUB_REPOSITORY run $GITHUB_RUN_ID recipe $recipe" > "$marker"
         echo "::warning::HEPTools $tool could not be built on $RUNNER_NAME"
     fi
 done
