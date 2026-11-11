@@ -49,8 +49,9 @@ check_lhapdf() {
     need_glob "libLHAPDF" "$HEP/lhapdf6_py3/lib/libLHAPDF.*" "$HEP/lhapdf6_py3/lib64/libLHAPDF.*"
     # the two PDF sets the NLO acceptance tests need are unpacked by the
     # warm_cache lhapdf job itself, not by the installer
-    need_dir "$HEP/lhapdf6_py3/share/LHAPDF/cteq6l1"
-    need_dir "$HEP/lhapdf6_py3/share/LHAPDF/NNPDF23_nlo_as_0118_qed"
+    # (their .info file: an interrupted unpack leaves the directory without it)
+    need_file "$HEP/lhapdf6_py3/share/LHAPDF/cteq6l1/cteq6l1.info"
+    need_file "$HEP/lhapdf6_py3/share/LHAPDF/NNPDF23_nlo_as_0118_qed/NNPDF23_nlo_as_0118_qed.info"
 }
 
 check_boost() {

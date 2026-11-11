@@ -61,19 +61,17 @@ mg_install() {
     (cd "$SRC" && XDG_CONFIG_HOME="$HEP.build-config" ./bin/madgraph cmd)
 }
 
+# the same sets as warm_cache.yml (lhapdf_cache)
+PDFSETS="NNPDF23_nlo_as_0118_qed cteq6l1 NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180
+         NNPDF40_nlo_as_01180_nf_4 NNPDF40_nlo_as_01180_qed NNPDF40MC_lo_as_01180
+         NNPDF23_lo_as_0130_qed"
+fetch_pdfsets() {
+    bash "$GITHUB_WORKSPACE/.github/actions/restore_heptools_lhapdf/fetch_pdfsets.sh" \
+        "$HEP/lhapdf6_py3/share/LHAPDF" $PDFSETS
+}
 build_lhapdf() {
     mg_install "install lhapdf6"
-    cd "$HEP/lhapdf6_py3/share/LHAPDF" || return 1
-    # the same sets as warm_cache.yml (lhapdf_cache)
-    for SET in NNPDF23_nlo_as_0118_qed cteq6l1 NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180 \
-               NNPDF40_nlo_as_01180_nf_4 NNPDF40_nlo_as_01180_qed NNPDF40MC_lo_as_01180 \
-               NNPDF23_lo_as_0130_qed; do
-        [ -d "$SET" ] && continue
-        url="https://lhapdfsets.web.cern.ch/current/$SET.tar.gz"
-        [ "$SET" = cteq6l1 ] && url="https://lhapdfsets.web.cern.ch/lhapdfsets/current/$SET.tar.gz"
-        curl -fsSL -o "$SET.tar.gz" "$url" \
-            && tar -xzpf "$SET.tar.gz" && rm -f "$SET.tar.gz"
-    done
+    fetch_pdfsets
 }
 build_boost()   { mg_install "install boost"; }
 build_pythia8() { mg_install "install pythia8"; }
@@ -112,6 +110,9 @@ for tool in lhapdf boost pythia8 emela contur looptools; do
     [[ "$requested" == *" $tool "* ]] || continue
     if complete "$tool"; then
         echo "$tool: already built on $RUNNER_NAME"
+        # the PDF sets are checked every time: a build cancelled while
+        # fetching them still passes the check above
+        [ "$tool" = lhapdf ] && fetch_pdfsets
         continue
     fi
     # A component that failed to build is not retried for 12 h: the build of

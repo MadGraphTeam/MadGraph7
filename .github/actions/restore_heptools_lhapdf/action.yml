@@ -78,16 +78,11 @@ runs:
     # on the set being present and would all self-skip (test_manager.py counts a
     # skip as a failure). Fetching them here is a no-op once the cache carries
     # them. Non-fatal on failure: the tests skip as they did before.
+    # fetch_pdfsets.sh also repairs a set a cancelled job left half-unpacked.
     - name: ensure the default PDF sets are present
       run: |
-        DATADIR=$HOME/.cache/HEPtools/lhapdf6_py3/share/LHAPDF
-        for SET in NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180 NNPDF40_nlo_as_01180_nf_4 \
-                   NNPDF40_nlo_as_01180_qed; do
-          if [ -d "$DATADIR" ] && [ ! -d "$DATADIR/$SET" ]; then
-            ( cd "$DATADIR" \
-              && curl -fsSL -o $SET.tar.gz https://lhapdfsets.web.cern.ch/current/$SET.tar.gz \
-              && tar -xzpf $SET.tar.gz \
-              && rm -f $SET.tar.gz ) || echo "::warning::could not fetch $SET"
-          fi
-        done
+        bash "${{ github.action_path }}/fetch_pdfsets.sh" \
+          "$HOME/.cache/HEPtools/lhapdf6_py3/share/LHAPDF" \
+          NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180 NNPDF40_nlo_as_01180_nf_4 \
+          NNPDF40_nlo_as_01180_qed
       shell: bash
