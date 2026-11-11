@@ -1,0 +1,6 @@
+# mode 2
+# clock_rate 1000000000
+# stage ct count ticks; stage3 contains stage4
+# requests/native/valid/failed 0 0 0 0 0
+# requests/native/valid/failed 1 0 0 0 0
+# requests/native/valid/failed 2 0 0 0 0

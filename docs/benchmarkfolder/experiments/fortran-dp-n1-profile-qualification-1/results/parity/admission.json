@@ -1,0 +1,32 @@
+{
+  "cap_seconds": 300.0,
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "docs/benchmarkfolder/experiments/fortran-dp-n1-profile-proposal-2/controller.py",
+    "--child",
+    "parity",
+    "--source",
+    "e633405b99d782ad6cf021be875b258f13e5669a7113c3890c40fa36eca6160f",
+    "--reviewed-build",
+    "16b15cc8db66880abf1fbf127ec0c2ceef2c9226446e30bd7fd6ab61b85c7470"
+  ],
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2439722.776614702,
+  "parent_pid": 2,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "reviewed_build_sha256": "16b15cc8db66880abf1fbf127ec0c2ceef2c9226446e30bd7fd6ab61b85c7470",
+  "reviewed_parity_sha256": null,
+  "source_index_sha256": "e633405b99d782ad6cf021be875b258f13e5669a7113c3890c40fa36eca6160f",
+  "stage": "parity",
+  "status": "running"
+}

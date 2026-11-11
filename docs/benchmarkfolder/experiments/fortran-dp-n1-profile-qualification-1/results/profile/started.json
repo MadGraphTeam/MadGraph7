@@ -1,0 +1,16 @@
+{
+  "cap_seconds": 600.0,
+  "cleanup_reserve_seconds": 60.0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2440437.473616009,
+  "pid": 3,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "source_index_sha256": "e633405b99d782ad6cf021be875b258f13e5669a7113c3890c40fa36eca6160f",
+  "stage": "profile",
+  "status": "running"
+}

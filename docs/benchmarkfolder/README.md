@@ -233,6 +233,21 @@ build, learning, parity, wire and timing observation. These shared-host anchor
 measurements qualify neither whole-process performance nor local acceptance.
 The separately frozen 41-page PDF is unchanged.
 
+The [current-source small-process DP profile](experiments/fortran-dp-n1-profile-qualification-1/README.md)
+uses `u u~ > z [virt=QCD]`, four instrumentation modes and eight fresh full100
+learning traversals. All 28 timed batches, covering 358,400 amplitudes, return
+checked TIRust status 219. Exact-word checks cover every pre-timing point and
+each batch's final100 traversal; status and counter checks cover every call.
+The clock mode adds a median paired `1.94%` overhead. Its median scopes per
+amplitude are `2.195 us` for kinematic preprocessing, `1.425 us` for mapping,
+and `9.131 us` for the combined primary/check C-call scope. The latter is nested
+inside the `9.720 us` complete module scope and must not be added to it.
+Empty-probe estimates are retained without subtraction. The ordinary Fortran
+interface recipes lack optimization flags; this profile motivates a separate
+controlled compiler experiment. It establishes no optimization gain, current
+NinjaRS comparison or local performance acceptance. Portable replay preserves
+the initial missing-tool build failure and all subsequent qualification records.
+
 The experimental adaptive-precision bridge is an isolated development build,
 not a private repository or the installed backend used in this campaign. It
 tries 256-bit MPFR first and retries an eligible conditioning refusal once at
