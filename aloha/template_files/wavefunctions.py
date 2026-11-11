@@ -318,6 +318,102 @@ def vxxxxx(p,vmass,nhel,nsv):
     
     return vc
 
+def vxxxxxr(p, vmass, nhel, nsv, r):
+    """A vector wavefunction in the axial gauge of the reference momentum r,
+    r.epsilon = 0: vxxxxx followed by eps - (r.eps)/(r.p) p (see vxxxxxr in
+    aloha_functions.f). r is ignored for a massive vector, for nhel = 0 or 4
+    and whenever r.p vanishes."""
+
+    vc = vxxxxx(p, vmass, nhel, nsv)
+    if vmass != 0. or abs(nhel) != 1:
+        return vc
+    q = vc.momenta
+    rdotp = r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3]
+    if rdotp == 0.:
+        return vc
+    rdote = r[0]*vc[2] - r[1]*vc[3] - r[2]*vc[4] - r[3]*vc[5]
+    if rdote == 0.:
+        return vc
+    cfac = rdote/rdotp
+    for i in range(4):
+        vc[2+i] = vc[2+i] - cfac*q[i]
+    return vc
+
+def _hlspxx(p, pp):
+    """The two-component spinor of helicity +1 along the three-momentum of p
+    (of norm pp), normalised to one, with a real first component; the one of
+    helicity -1 is (-conjugate(chi[1]), chi[0]). Along +z for pp = 0."""
+
+    if pp == 0.:
+        return [complex(1.), complex(0.)]
+    # light-cone identity, as in ixxxxx: no |p|+p3 cancellation
+    if p[3] < 0.:
+        pp3 = max((p[1]**2 + p[2]**2)/(pp - p[3]), 0.)
+    else:
+        pp3 = max(pp + p[3], 0.)
+    if pp3 == 0.:
+        return [complex(0.), complex(1.)]
+    return [complex(sqrt(pp3*0.5/pp)), complex(p[1], p[2])/sqrt(2.*pp*pp3)]
+
+def ixxxxxr(p, fmass, nhel, nsf, r, flavor=-1):
+    """A massive inflow fermion whose spin is quantised along the axis fixed
+    by the reference momentum r instead of its own momentum (Kleiss-Stirling
+    spinors, u(p,h;r) = (pslash + m) u0(r,-h)/sqrt(2 p.r)): see ixxxxxr in
+    aloha_functions.f for the numerically stable form used here. ixxxxx for
+    a massless fermion or a reference without direction."""
+
+    rr = sqrt(r[1]**2 + r[2]**2 + r[3]**2)
+    if fmass == 0. or rr == 0.:
+        return ixxxxx(p, fmass, nhel, nsf, flavor)
+    fi = WaveFunction(2)
+    fi[0] = complex(-p[0]*nsf, -p[3]*nsf)
+    fi[1] = complex(-p[1]*nsf, -p[2]*nsf)
+    fi.momenta = [-p[0]*nsf, -p[1]*nsf, -p[2]*nsf, -p[3]*nsf]
+    fi.flavor = flavor
+    pp = min(p[0], sqrt(p[1]**2 + p[2]**2 + p[3]**2))
+    xi = _hlspxx(p, pp)
+    rho = _hlspxx(r, rr)
+    c = xi[0]*rho[0] + xi[1].conjugate()*rho[1]
+    d = xi[0]*rho[1] - xi[1]*rho[0]
+    omp2 = p[0] + pp
+    omm2 = fmass**2/omp2
+    rn = 1./sqrt(omp2*abs(d)**2 + omm2*abs(c)**2)
+    fm = nsf*fmass*rn
+    omp2 = omp2*rn
+    omm2 = omm2*rn
+    if nhel*nsf == 1:
+        fi[2] = -fm*rho[1].conjugate()
+        fi[3] = fm*rho[0]
+        fi[4] = -omm2*(c*xi[1]).conjugate() - omp2*d.conjugate()*xi[0]
+        fi[5] = omm2*c.conjugate()*xi[0] - omp2*d.conjugate()*xi[1]
+    else:
+        fi[2] = omm2*c*xi[0] - omp2*d*xi[1].conjugate()
+        fi[3] = omm2*c*xi[1] + omp2*d*xi[0]
+        fi[4] = fm*rho[0]
+        fi[5] = fm*rho[1]
+    return fi
+
+def oxxxxxr(p, fmass, nhel, nsf, r, flavor=-1):
+    """The Dirac conjugate of ixxxxxr: a massive outflow fermion whose spin
+    is quantised along the axis fixed by the reference momentum r. oxxxxx
+    for a massless fermion or a reference without direction."""
+
+    if fmass == 0. or (r[1] == 0. and r[2] == 0. and r[3] == 0.):
+        return oxxxxx(p, fmass, nhel, nsf, flavor)
+    fi = ixxxxxr(p, fmass, nhel, nsf, r, flavor)
+    fo = WaveFunction(2)
+    fo[0] = complex(p[0]*nsf, p[3]*nsf)
+    fo[1] = complex(p[1]*nsf, p[2]*nsf)
+    fo.momenta = [p[0]*nsf, p[1]*nsf, p[2]*nsf, p[3]*nsf]
+    fo.flavor = flavor
+    # fo = fi^dagger gamma0: the complex conjugate, with the upper and the
+    # lower two components exchanged
+    fo[2] = complex(fi[4]).conjugate()
+    fo[3] = complex(fi[5]).conjugate()
+    fo[4] = complex(fi[2]).conjugate()
+    fo[5] = complex(fi[3]).conjugate()
+    return fo
+
 def sign(x,y):
     """Fortran's sign transfer function"""
     try:

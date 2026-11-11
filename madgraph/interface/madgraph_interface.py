@@ -876,12 +876,18 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Check that processes are gauge invariant by ")
         logger.info("   comparing Feynman and unitary gauges. For tree-level")
         logger.info("   processes the axial gauge (and, if the model has a Feynman")
-        logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well.")
+        logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well,")
+        logger.info("   and so are the external wavefunctions of output")
+        logger.info("   --axial_gauge=True (column Reference): the massless vectors")
+        logger.info("   in the axial gauge of a reference momentum, the massive")
+        logger.info("   fermions quantised along it.")
         logger.info("   This check is, for now, not available for loop processes.")
         logger.info("o brs:",'$MG:color:GREEN')
         logger.info("   Check that the Ward identities are satisfied if the ")
         logger.info("   process has at least one massless gauge boson as an")
-        logger.info("   external particle.")
+        logger.info("   external particle. For tree-level processes, the matrix")
+        logger.info("   element with the reference momenta of output")
+        logger.info("   --axial_gauge=True is compared as well (column Reference).")
         logger.info("o lorentz_invariance:",'$MG:color:GREEN')
         logger.info("   Check that the amplitude is lorentz invariant by")
         logger.info("   comparing the amplitiude in different frames")
@@ -6005,6 +6011,12 @@ This implies that with decay chains:
             nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
             if nb_part_feyn == nb_part_unit:
                 logger_check.error('No Goldstone present for this check!!')
+            # tree level: the external wavefunctions of output
+            # --axial_gauge=True (reference momenta), in the unitary gauge
+            if myprocdef.get('perturbation_couplings') == []:
+                myprocdef_ref = myprocdef_unit
+            else:
+                myprocdef_ref = None
             gauge_result_no_brs = process_checks.check_unitary_feynman(
                                                 myprocdef_unit, myprocdef_feyn,
                                                 myprocdef_axial,
@@ -6015,7 +6027,8 @@ This implies that with decay chains:
                                                 tir=TIR_dir,
                                                 reuse = options['reuse'],
                                                 output_path = output_path,
-                                                cmd = self)
+                                                cmd = self,
+                                                processes_reference = myprocdef_ref)
             
             # restore previous settings
             self.do_set('gauge %s' % gauge, log=False)
@@ -6206,6 +6219,8 @@ This implies that with decay chains:
                 gauge_labels.append('Axial')
             if any('value_fd' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('FD')
+            if any('value_ref' in res for res in gauge_result_no_brs[1:]):
+                gauge_labels.append('Reference')
             text += 'Gauge results (switching between %s gauge):\n' % '/'.join(gauge_labels)
             text += process_checks.output_unitary_feynman(gauge_result_no_brs) + '\n'
         if cms_results:

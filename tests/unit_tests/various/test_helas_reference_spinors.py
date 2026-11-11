@@ -270,5 +270,99 @@ class TestReferenceSpinors(unittest.TestCase):
         self.assertEqual(self.results['MOMENTUM'], 0.)
 
 
+
+class TestPythonReferenceSpinors(unittest.TestCase):
+    """The Python ixxxxxr / oxxxxxr / vxxxxxr (aloha/template_files/
+    wavefunctions.py), used by check gauge and check brs: the same
+    properties as the Fortran routines."""
+
+    @staticmethod
+    def momentum(rng, m, pp):
+        import math
+        ct = rng.uniform(-1, 1)
+        ph = rng.uniform(0, 2 * math.pi)
+        st = math.sqrt(1 - ct * ct)
+        return [math.sqrt(pp * pp + m * m), pp * st * math.cos(ph),
+                pp * st * math.sin(ph), pp * ct]
+
+    @staticmethod
+    def slash(p):
+        ps = [[0j] * 4 for _ in range(4)]
+        ps[0][2], ps[0][3] = p[0] - p[3], -(p[1] - 1j * p[2])
+        ps[1][2], ps[1][3] = -(p[1] + 1j * p[2]), p[0] + p[3]
+        ps[2][0], ps[2][1] = p[0] + p[3], p[1] - 1j * p[2]
+        ps[3][0], ps[3][1] = p[1] + 1j * p[2], p[0] - p[3]
+        return ps
+
+    def test_spinors(self):
+        """Dirac equation, normalisation, completeness, Dirac conjugate,
+        helicity basis for r = (|p|,-p), and ixxxxx / oxxxxx without a
+        reference or for a massless fermion"""
+
+        import math
+        import random
+        from aloha.template_files.wavefunctions import ixxxxx, oxxxxx, \
+                                                       ixxxxxr, oxxxxxr
+        rng = random.Random(4242)
+        worst = dict.fromkeys(('dirac', 'norm', 'complete', 'conj', 'hel'), 0.)
+        for _ in range(300):
+            m = 173. if rng.random() < 0.7 else 4.7
+            p = self.momentum(rng, m, 10 ** rng.uniform(-2, 4))
+            r = self.momentum(rng, 0., 10 ** rng.uniform(-2, 4))
+            ps = self.slash(p)
+            for nsf in (-1, 1):
+                fi = dict((h, ixxxxxr(p, m, h, nsf, r)) for h in (-1, 1))
+                fo = dict((h, oxxxxxr(p, m, h, nsf, r)) for h in (-1, 1))
+                for h in (-1, 1):
+                    w = [fi[h][2 + i] for i in range(4)]
+                    for i in range(4):
+                        res = sum(ps[i][j] * w[j] for j in range(4)) - nsf * m * w[i]
+                        worst['dirac'] = max(worst['dirac'], abs(res) / p[0] ** 1.5)
+                        j = (i + 2) % 4
+                        worst['conj'] = max(worst['conj'], abs(fo[h][2 + i] -
+                                            complex(fi[h][2 + j]).conjugate()))
+                    for h2 in (-1, 1):
+                        s = sum(fo[h][2 + i] * fi[h2][2 + i] for i in range(4))
+                        s -= 2 * m * nsf if h == h2 else 0
+                        worst['norm'] = max(worst['norm'], abs(s) / (2 * m))
+                for i in range(4):
+                    for j in range(4):
+                        s = sum(fi[h][2 + i] * fo[h][2 + j] for h in (-1, 1))
+                        s -= ps[i][j] + (nsf * m if i == j else 0)
+                        worst['complete'] = max(worst['complete'], abs(s) / p[0])
+            k = [math.sqrt(sum(x * x for x in p[1:]))] + [-x for x in p[1:]]
+            for h in (-1, 1):
+                a, b = ixxxxxr(p, m, h, 1, k), oxxxxx(p, m, h, 1)
+                s = sum(b[2 + i] * a[2 + i] for i in range(4))
+                worst['hel'] = max(worst['hel'], abs(abs(s) - 2 * m) / (2 * m))
+            for h in (-1, 1):
+                self.assertEqual(list(ixxxxxr(p, m, h, 1, [0., 0., 0., 0.])),
+                                 list(ixxxxx(p, m, h, 1)))
+                self.assertEqual(list(oxxxxxr(r, 0., h, 1, p)),
+                                 list(oxxxxx(r, 0., h, 1)))
+        for key, value in worst.items():
+            self.assertLess(value, 1e-12, key)
+
+    def test_vector(self):
+        """vxxxxxr: r.epsilon = 0 and p.epsilon = 0 for a massless vector,
+        vxxxxx for a massive one and for the BRS polarisation (nhel = 4)"""
+
+        import random
+        from aloha.template_files.wavefunctions import vxxxxx, vxxxxxr
+        rng = random.Random(7)
+        dot = lambda a, b: a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
+        for _ in range(100):
+            k = self.momentum(rng, 0., rng.uniform(1, 1000))
+            r = self.momentum(rng, 0., rng.uniform(1, 1000))
+            for h in (-1, 1):
+                for nsv in (-1, 1):
+                    vc = vxxxxxr(k, 0., h, nsv, r)
+                    eps = [vc[2 + i] for i in range(4)]
+                    self.assertLess(abs(dot(r, eps)) / r[0], 1e-12)
+                    self.assertLess(abs(dot(k, eps)) / k[0], 1e-12)
+            w = self.momentum(rng, 80.4, rng.uniform(1, 1000))
+            self.assertEqual(list(vxxxxxr(w, 80.4, 1, 1, r)), list(vxxxxx(w, 80.4, 1, 1)))
+            self.assertEqual(list(vxxxxxr(k, 0., 4, 1, r)), list(vxxxxx(k, 0., 4, 1)))
+
 if __name__ == '__main__':
     unittest.main()

@@ -122,6 +122,10 @@ ANNOUNCEMENT:
        The gluons of a process with an initial-state quark now all share the momentum of
        that quark rather than of the initial gluon (u g > u g g: 132 non vanishing pairs
        instead of 168).
+       check gauge and check brs compare these external wavefunctions (reference momenta of
+       the massless vectors and spin axis of the massive fermions) with the standard ones
+       as well, in a new column Reference (tree level; new Python routines vxxxxxr, ixxxxxr
+       and oxxxxxr).
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

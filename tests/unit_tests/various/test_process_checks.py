@@ -280,6 +280,99 @@ class TestMatrixElementChecker(unittest.TestCase):
         #self.assertNotAlmostEqual(max(comparison[0][1]), min(comparison[0][1]))
 
 #===============================================================================
+# TestReferenceMomentaChecks
+#===============================================================================
+class TestReferenceMomentaChecks(unittest.TestCase):
+    """check gauge and check brs compare the matrix element with the external
+    wavefunctions of output --axial_gauge=True (column Reference): the
+    massless vectors in the axial gauge of a reference momentum, the massive
+    fermions quantised along it."""
+
+    def setUp(self):
+        self.base_model = import_ufo.import_model('sm',
+                                    options={'apply_flavor_grouping': False})
+
+    def process(self, ids):
+        legs = base_objects.LegList()
+        for i, pid in enumerate(ids):
+            legs.append(base_objects.Leg({'id': pid, 'state': i >= 2}))
+        return base_objects.Process({'legs': legs, 'model': self.base_model})
+
+    def test_brs_compares_the_reference_momenta(self):
+        """g g > t t~ g: the reference value equals the standard one, and the
+        output table has the column and passes"""
+
+        process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+        comparison = process_checks.check_gauge(self.process([21, 21, 6, -6, 21]))
+        self.assertEqual(len(comparison), 1)
+        one = comparison[0]
+        self.assertIn('ref', one)
+        self.assertLess(abs(one['ref']['m2'] / one['value']['m2'] - 1), 1e-12)
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 0)
+        self.assertIn('Reference', process_checks.output_gauge(comparison))
+
+    def test_reference_evaluator_uses_the_reference_routines(self):
+        """the Python matrix element of the reference evaluator calls
+        vxxxxxr / ixxxxxr / oxxxxxr: the helicity sum is unchanged, the
+        helicity amplitudes are not, and four helicity configurations of
+        g g > t t~ g vanish"""
+
+        import madgraph.core.diagram_generation as diagram_generation
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.iolibs.export_python as export_python
+        process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+        proc = self.process([21, 21, 6, -6, 21])
+        amplitude = diagram_generation.Amplitude(proc)
+        standard = process_checks.MatrixElementEvaluator(self.base_model,
+                                        auth_skipping=False, reuse=False)
+        for particle in standard.full_model.get('particles'):
+            if particle.get('width') != 'ZERO':
+                standard.full_model.get('parameter_dict')[particle.get('width')] = 0.
+        reference = process_checks.reference_momenta_evaluator(
+                     self.base_model, None, False, process_checks.FakeInterface())
+        p, _ = standard.get_momenta(proc)
+        me = lambda: helas_objects.HelasMatrixElement(amplitude, gen_color=False)
+        code = list(export_python.ProcessExporterPython(me(),
+                       reference.helas_writer).get_python_matrix_methods().values())[0]
+        self.assertEqual(sorted(set(re.findall(r'\b[iov]xxxxxr\(', code))),
+                         ['ixxxxxr(', 'oxxxxxr(', 'vxxxxxr('])
+        a = standard.evaluate_matrix_element(me(), p=p, output='jamp')
+        b = reference.evaluate_matrix_element(me(), p=p, output='jamp')
+        self.assertLess(abs(a['m2'] / b['m2'] - 1), 1e-12)
+        per_hel = lambda value: [sum(abs(x)**2 for x in row) for row in value['jamp']]
+        ha, hb = per_hel(a), per_hel(b)
+        self.assertGreater(max(abs(x - y) / max(x, y) for x, y in zip(ha, hb)), 0.1)
+        zeros = lambda h: sum(1 for x in h if x < 1e-12 * max(h))
+        self.assertEqual(zeros(hb) - zeros(ha), 4)
+
+    def test_output_gauge_fails_on_the_reference(self):
+        """a reference value away from the standard one fails"""
+
+        value = {'m2': 1.0, 'jamp': [[1.0]]}
+        comparison = [{'process': self.process([21, 21, 6, -6, 21]),
+                       'value': value, 'brs': {'m2': 0., 'jamp': [[0.]]},
+                       'ref': {'m2': 1.0 + 1e-5, 'jamp': [[1.0]]}}]
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 1)
+        comparison[0]['ref'] = {'m2': 1.0, 'jamp': [[1.0]]}
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 0)
+
+    def test_output_unitary_feynman_reference_column(self):
+        """check gauge: the Reference column, and its failure"""
+
+        def result(ref):
+            value = lambda m2: {'m2': m2, 'jamp': [[1.0]]}
+            return [{'perturbation_couplings': []},
+                    {'process': 'g g > t t~ g', 'value_unit': value(1.0),
+                     'value_feynm': value(1.0), 'value_ref': value(ref)}]
+        text = process_checks.output_unitary_feynman(result(1.0))
+        self.assertIn('Reference', text.splitlines()[0])
+        self.assertEqual(process_checks.output_unitary_feynman(result(1.0),
+                                                               output='fail'), 0)
+        self.assertEqual(process_checks.output_unitary_feynman(result(1.1),
+                                                               output='fail'), 1)
+
+
+#===============================================================================
 # TestLorentzInvariance
 #===============================================================================
 class TestLorentzInvariance(unittest.TestCase):

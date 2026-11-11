@@ -284,6 +284,11 @@ class HelasCallWriter(base_objects.PhysicsObject):
         # matrix element.
         self.axial_gauge = False
         self.axial_gauge_refs = {}
+        # with axial_gauge, whether the massive fermions get a spin reference
+        # too (fermion_reference_requested); the output writers get their
+        # references from the exporters, the Python writer of the checks
+        # computes them itself (PythonUFOHelasCallWriter)
+        self.fermion_reference = True
 
     def has_axial_gauge_ref(self, wf):
         """Whether this external is written as vxxxxxr, ixxxxxr or oxxxxxr: a
@@ -2656,6 +2661,12 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
         me = matrix_element.get('diagrams')
         matrix_element.reuse_outdated_wavefunctions(me)
 
+        # the reference momenta of --axial_gauge (check gauge / brs compare
+        # them with the standard wavefunctions): those of this matrix element
+        self.axial_gauge_refs = get_axial_gauge_refs(matrix_element,
+                    massive_fermions=self.fermion_reference) \
+                    if self.axial_gauge and aloha.unitary_gauge != 3 else {}
+
         res = []
         for diagram in matrix_element.get('diagrams'):
             wfs = diagram.get('wavefunctions')
@@ -2806,6 +2817,24 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
             routine_name = aloha_writers.combine_name(
                                         '%s' % l[0], l[1:], outgoing, flag)
         
+        if isinstance(argument, helas_objects.HelasWavefunction) and \
+               not argument.get('mothers') and not gauge_check and \
+               argument.get('spin') in (2, 3):
+            # --axial_gauge: a leg with a reference (get_axial_gauge_refs) is
+            # vxxxxxr / ixxxxxr / oxxxxxr, the momentum of the reference leg
+            # after nsv / nsf. The template is cached per call key, which legs
+            # with and without a reference share: decided per leg.
+            plain_function = call_function
+            def call_function(wf, plain=plain_function):
+                text = plain(wf)
+                if not self.has_axial_gauge_ref(wf):
+                    return text
+                ref = 'p[%d]' % (self.get_axial_gauge_ref(wf) - 1)
+                text = text.replace('xxxxx(', 'xxxxxr(', 1)
+                if wf.get('spin') == 3:
+                    return text[:-1] + ',%s)' % ref
+                return text.replace(', flavor[', ',%s, flavor[' % ref, 1)
+
         # Add the constructed function to wavefunction or amplitude dictionary
         if isinstance(argument, helas_objects.HelasWavefunction):
             if not gauge_check:

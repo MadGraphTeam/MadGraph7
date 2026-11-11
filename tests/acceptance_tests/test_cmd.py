@@ -5503,7 +5503,7 @@ C
             self.do('check gauge e+ e- > ve ve~ w+ w-')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_pp_wpwm(self):
@@ -5521,7 +5521,7 @@ C
             self.do('check p p > w+ w-')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
         self.assertIn('Q Qx > w+ w-', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
         # the four flavors (both orderings) are still checked, here:
@@ -5539,9 +5539,29 @@ C
             self.do('check gauge p p > w+ w-')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
         self.assertIn('Q Qx > w+ w-', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+    def test_check_gauge_and_brs_reference_momenta(self):
+        """`check gauge` and `check brs` compare the external wavefunctions of
+        output --axial_gauge=True (column Reference: the gluons in the axial
+        gauge of a reference momentum, the top quarks quantised along it)
+        with the standard ones, for massive and massless fermions."""
+
+        self.do('import model sm')
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check gauge g g > t t~ g')
+        log = '\n'.join(cm.output)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+        for process in ('u u~ > t t~ g g', 'g g > g g g'):
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check brs %s' % process)
+            log = '\n'.join(cm.output)
+            header = [line for line in log.splitlines() if 'BRS' in line][0]
+            self.assertIn('Reference', header)
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""
@@ -5551,7 +5571,7 @@ C
             self.do('check gauge e+ e- > a a')
 
         log = '\n'.join(cm.output)
-        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD/Reference gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
          
 

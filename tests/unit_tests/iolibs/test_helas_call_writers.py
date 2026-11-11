@@ -1525,6 +1525,30 @@ class AxialGaugeReferenceTest(unittest.TestCase):
              'CALL VXXXXX(P(0,5),ZERO,NHEL(5),+1,W(5))',
              'CALL VXXXXX(P(0,6),ZERO,NHEL(6),+1,W(6))'])
 
+    def test_python_reference_calls(self):
+        """the Python writer of check gauge / brs: the reference leg after
+        nsv / nsf when axial_gauge is set (references computed per matrix
+        element), the momentum-replaced BRS leg left as it is"""
+
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.PythonUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:6],
+            ['w[0] = ixxxxx(p[0],ZERO,hel[0],+1, flavor[0] if flavor is not None else -1)',
+             'w[1] = oxxxxx(p[1],ZERO,hel[1],-1, flavor[1] if flavor is not None else -1)',
+             'w[2] = oxxxxxr(p[2],mdl_MT,hel[2],+1,p[0], flavor[2] if flavor is not None else -1)',
+             'w[3] = ixxxxxr(p[3],mdl_MT,hel[3],-1,p[0], flavor[3] if flavor is not None else -1)',
+             'w[4] = vxxxxxr(p[4],ZERO,hel[4],+1,p[0])',
+             'w[5] = vxxxxxr(p[5],ZERO,hel[5],+1,p[0])'])
+        calls = writer.get_matrix_element_calls(me, gauge_check=True)
+        self.assertEqual(calls[0], 'w[4] = vxxxxx(p[4],ZERO, 4,+1)')
+        self.assertIn('w[5] = vxxxxxr(p[5],ZERO,hel[5],+1,p[0])', calls)
+        # (the BRS call consumed the replaced leg of me: a new one)
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.PythonUFOHelasCallWriter(self.model)
+        self.assertNotIn('xxxxxr(', ' '.join(writer.get_matrix_element_calls(me)))
+
     def test_madmatrix_ixxxxxr_call(self):
         """madmatrix: the 0-based particle number of the reference comes
         last, after the one of the leg"""
