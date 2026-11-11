@@ -51,7 +51,7 @@ def strip_banner(file_text, banner_mark):
 
 def model_parameter_name(name):
     """Match the UFO importer's parameters that deliberately keep their names."""
-    if name.lower() in ('as', 'g', 'mu_r', 'aewm1', 'zero'):
+    if name.startswith(aloha.aloha_prefix) or name.lower() in ('as', 'g', 'mu_r', 'aewm1', 'zero'):
         return name
     return aloha.aloha_prefix + name
 
@@ -1761,7 +1761,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         hrd_params_indep = [ line.replace('constexpr','//constexpr') + ' // now retrieved event-by-event (as G) from Fortran (running alphas #373)' if 'aS =' in line else line for line in self.write_hardcoded_parameters(self.params_indep, {**bsmparam_indep_real_used, **bsmparam_indep_complex_used}).split('\n') if line != '' ] # use bsmparam_indep_real_used + bsmparam_indep_complex_used as deviceparams (dictionary merge as in https://stackoverflow.com/a/26853961)
         replace_dict['hardcoded_independent_parameters'] = '\n'.join( hrd_params_indep ) + self.super_write_set_parameters_onlyfixMajorana( hardcoded=True ) # add fixes for Majorana particles only in the aS-indep parameters #622
         ###misc.sprint(self.coups_indep) # for debugging
-        replace_dict['hardcoded_independent_couplings'] = self.write_hardcoded_parameters(self.coups_indep).replace('cxsmpl<double>', 'cxtype')
+        # GPU cxtype may be thrust::complex, whose constructor is not constexpr.
+        # Keep compile-time arithmetic in cxsmpl and convert on buffer setup.
+        replace_dict['hardcoded_independent_couplings'] = self.write_hardcoded_parameters(self.coups_indep).replace('cxsmpl<double>', 'cxsmpl<fptype>')
         ###misc.sprint(self.params_dep) # for debugging
         hrd_params_dep = [ line.replace('constexpr ','//constexpr ') + ' // now computed event-by-event (running alphas #373)' if line != '' else line for line in self.write_hardcoded_parameters(self.params_dep).split('\n') ]
         replace_dict['hardcoded_dependent_parameters'] = '\n'.join( hrd_params_dep )
@@ -2196,8 +2198,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                            '    cxtype tIPC[nIPC];\n'
                                            '    gatherCxtype( m_pars, cIPC_members, tIPC );\n'
                                            '    setIndependentCouplings( tIPC );')
-            coup_str_hrd = 'const cxtype tIPC[nIPC] = { cxmake( Parameters::%s ) };\n    setIndependentCouplings( tIPC );'\
-                                         % ( ' ), cxmake( Parameters::'.join(coupling_indep) )
+            coup_str_hrd = ('const cxtype tIPC[nIPC] = { %s };\n    setIndependentCouplings( tIPC );' %
+                           ', '.join('cxmake( (fptype)Parameters::%s.real(), '
+                                     '(fptype)Parameters::%s.imag() )' % (coup, coup)
+                                     for coup in coupling_indep))
             replace_dict['cipchrdassign'] = coup_str_hrd
         else:
             replace_dict['cipcassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'

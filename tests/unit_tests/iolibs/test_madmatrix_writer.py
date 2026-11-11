@@ -46,6 +46,8 @@ class TestRunningHelasParameters(unittest.TestCase):
             wanted_couplings=['GC_1'])
 
     def test_parameter_buffer_and_dependency_closure(self):
+        from madmatrix.model_handling import model_parameter_name
+        self.assertEqual(model_parameter_name('mdl_running'), 'mdl_running')
         converter = self.converter(['PZrun'])
         self.assertEqual(list(converter.coups_dep),
                          ['HP_G', 'HP_aS', 'HP_mdl_running_complex', 'HP_mdl_running_real'])
@@ -144,6 +146,7 @@ class TestRunningHelasParameters(unittest.TestCase):
         self.assertIn('out.HP_mdl_running_complex = mdl_running_complex;',
                       definitions['dcoupsetdcoup'])
         self.assertNotIn('HP_(cxtype)', definitions['dcoupsetdcoup'])
+        self.assertIn('constexpr cxsmpl<fptype>', definitions['hardcoded_independent_couplings'])
 
 
 class TestMomentaInDenomPrecision(unittest.TestCase):
