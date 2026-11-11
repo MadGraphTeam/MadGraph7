@@ -43,11 +43,12 @@ PCH_MIN_SUBPROCESSES = 4
 
 
 class GenerationControl:
-    """While the events are generated, `kill -USR1 <pid>` opens a menu on the
-    terminal of the run to stop early, or to change the number of requested
-    events or of CPU threads. The generation pauses while the menu is open (the
-    batches in flight finish), and goes on after MENU_TIMEOUT seconds without an
-    answer.
+    """While the events are generated, Ctrl-C opens a menu on the terminal of
+    the run to stop early, or to change the number of requested events or of
+    CPU threads. The generation pauses while the menu is open (the batches in
+    flight finish), and goes on after MENU_TIMEOUT seconds without an answer.
+    Ctrl-C again, in the menu or once a stop is requested, aborts the run as
+    Ctrl-C always did (KeyboardInterrupt, no events written).
 
     Stopping early keeps the events generated so far: every channel keeps its
     share of the integral, so the channel with the fewest events for its share
@@ -55,13 +56,13 @@ class GenerationControl:
     estimate of that total.
 
     Without a terminal in the foreground (nohup, a background job, a cluster),
-    write the commands into <run dir>/control before sending the signal, one per
-    line: `stop`, `nevents <n>`, `nb_core <n>`. Without that file either, the
-    signal stops the generation.
+    write the commands into <run dir>/control, one per line: `stop`,
+    `nevents <n>`, `nb_core <n>`, then `kill -INT <pid>`. Without that file
+    either, the signal stops the generation.
 
-    The handler is installed for the whole `with` block, so that a signal sent a
-    bit late (while the events are written) is ignored instead of killing the
-    run with the default action; only while `armed` does it do anything."""
+    Outside the generation (while the events are written, ...), Ctrl-C keeps
+    its usual meaning; only while `armed` does it open the menu. A run started
+    with SIGINT ignored (a background job of a script) keeps ignoring it."""
 
     MENU_TIMEOUT = 60
 
@@ -69,35 +70,50 @@ class GenerationControl:
         self.event_generator = event_generator
         self.control_path = os.path.join(run_path, "control")
         self.armed = False
-        self.sigusr1 = None
+        self.installed = False
         self.previous = None
+        # a second Ctrl-C while the menu is open, or after a stop, aborts
+        self.in_menu = False
+        self.stopping = False
         # changes not applied yet, shown by the menu
         self.pending_events = None
         self.pending_threads = None
 
     def __enter__(self):
-        sigusr1 = getattr(signal, "SIGUSR1", None)
         # signal handlers can only be installed from the main thread
-        if sigusr1 is None or threading.current_thread() is not threading.main_thread():
+        if threading.current_thread() is not threading.main_thread():
             return self
-        self.sigusr1 = sigusr1
+        previous = signal.getsignal(signal.SIGINT)
+        # ignored on purpose (a background job of a script) or not set from
+        # Python: leave it alone
+        if previous is None or previous == signal.SIG_IGN:
+            return self
         ms.EventGenerator.request_stop(False)
-        self.previous = signal.signal(sigusr1, self.handle)
-        logger.info("to stop early or change the number of events or threads: "
-                    "kill -USR1 %d (see %s for runs without a terminal)",
-                    os.getpid(), self.control_path)
+        self.previous = signal.signal(signal.SIGINT, self.handle)
+        self.installed = True
+        logger.info("Ctrl-C: menu to stop early or change the number of events or threads "
+                    "(without a terminal: commands in %s, then kill -INT %d)",
+                    self.control_path, os.getpid())
         return self
 
     def __exit__(self, *exc):
-        if self.sigusr1 is not None:
-            signal.signal(self.sigusr1, self.previous)
+        if self.installed:
+            signal.signal(signal.SIGINT, self.previous)
             ms.EventGenerator.request_stop(False)
+            self.installed = False
         return False
 
+    def abort(self, signum, frame):
+        """What Ctrl-C did before this handler: by default KeyboardInterrupt."""
+        if callable(self.previous):
+            return self.previous(signum, frame)
+        if self.previous == signal.SIG_IGN:
+            return None
+        raise KeyboardInterrupt
+
     def handle(self, signum, frame):
-        if not self.armed:
-            logger.info("SIGUSR1 ignored: no events are being generated")
-            return
+        if not self.armed or self.in_menu or self.stopping:
+            return self.abort(signum, frame)
         # an error here would abort the generation it is meant to steer
         try:
             if os.path.exists(self.control_path):
@@ -107,18 +123,22 @@ class GenerationControl:
             if tty is None:
                 self.stop()
                 return
+            self.in_menu = True
             try:
                 self.menu(*tty)
             finally:
+                self.in_menu = False
                 for stream in tty:
                     stream.close()
             self.event_generator.redraw_progress()
         except Exception as error:
-            logger.warning("SIGUSR1 ignored, it failed with %s: %s",
+            logger.warning("Ctrl-C ignored, it failed with %s: %s",
                            type(error).__name__, error)
 
     def stop(self):
-        logger.info("stopping the generation, the events generated so far will be written")
+        logger.info("stopping the generation, the events generated so far will be written "
+                    "(Ctrl-C again to abort)")
+        self.stopping = True
         ms.EventGenerator.request_stop()
 
     def set_events(self, count):
@@ -233,6 +253,7 @@ class GenerationControl:
                 "  2) change the number of requested events\n"
                 "  3) change the number of CPU threads\n"
                 f"  0) continue (default, also after {self.MENU_TIMEOUT} s)\n"
+                "  Ctrl-C) abort the run, no events written\n"
             )
             answer = self.ask(reader, writer, "choice: ")
             if answer == "1":
