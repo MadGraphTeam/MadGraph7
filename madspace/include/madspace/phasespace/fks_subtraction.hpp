@@ -414,4 +414,174 @@ private:
     nested_vector2<double> _pair_factor;
 };
 
+/**
+ * The weights of the FKS integrand from the outputs of @ref FKSKinematics,
+ * @ref FKSSubtraction and @ref FKSSoftVirtual, as sigint of driver_mintFO.f
+ * sums the weight lines of MadFKS [2]. The matrix elements and the
+ * subtraction come without the strong coupling, as the weight lines (the
+ * real, Born and virtual blocks per order at @f$g_s = 1@f$ and the
+ * subtraction at @f$\alpha_s = 1 / (4 \pi)@f$), and each contribution takes
+ * @f$g_s^p@f$ of its orders at its own kinematics. Each is
+ * @f[
+ *   w = c \, L \, F \, \frac{\det}{2 \hat s} \sum_o g_s^{p_o} C_o,
+ * @f]
+ * with the conversion @f$c@f$ from GeV@f$^{-2}@f$ to pb, the parton
+ * luminosity @f$L@f$ and the Jacobian of its kinematics, @f$\hat s@f$ of its
+ * momenta, its coefficients @f$C_o@f$ and the factor @f$F@f$: the channel
+ * weight, for the real emission and its counterterms times the weight of the
+ * sampled FKS configuration (one over its probability). The real emission
+ * takes the coupling of the event, the soft and soft-collinear counterterms
+ * and the n-body part that of the Born and the collinear counterterm that of
+ * its counter-event, as sigint. The n-body part is the Born per Born order
+ * plus soft_virtual and the virtual per NLO order at the Born (the virtual
+ * trick of MadFKS, if any, is the caller's: it passes the virtual it
+ * estimates at the event). The luminosities are those of the incoming
+ * partons of each contribution at its momentum fractions, of the real
+ * process at the event and the counter-events and of the Born for the n-body
+ * part, at the factorization scales of its remnants and soft-virtual part.
+ *
+ * `batch` is the leading batch dimension, `n` the number of particles of the
+ * real processes, incoming included, `b` the number of Born orders and `o`
+ * that of NLO orders.
+ *
+ * **Arguments**
+ * - `momenta`, `soft_momenta`, `collinear_momenta`, `soft_collinear_momenta`
+ *   – `float`, shape `(batch, n, 4)` – the event and the counter-events.
+ * - `weight`, `soft_det`, `collinear_det`, `soft_collinear_det` – `float`,
+ *   shape `(batch,)` – their Jacobians.
+ * - `born_momenta` – `float`, shape `(batch, n - 1, 4)` – the Born.
+ * - `born_weight` – `float`, shape `(batch,)` – its Jacobian.
+ * - `real`, `soft`, `collinear`, `soft_collinear` – `float`, shape
+ *   `(batch, o)` – the outputs of @ref FKSSubtraction.
+ * - `born` – `float`, shape `(batch, b)` – the Born per Born order.
+ * - `soft_virtual` – `float`, shape `(batch, o)` – the output of
+ *   @ref FKSSoftVirtual.
+ * - `virtual` – `float`, shape `(batch, o)` – the finite part of the virtual
+ *   in the conventions of MadFKS per NLO order, at the renormalization scale
+ *   of soft_virtual.
+ * - `event_alpha_s`, `born_alpha_s`, `collinear_alpha_s` – `float`, shape
+ *   `(batch,)` – the strong coupling at the event, the Born and the collinear
+ *   counter-event.
+ * - `event_luminosity`, `soft_luminosity`, `collinear_luminosity`,
+ *   `soft_collinear_luminosity`, `born_luminosity` – `float`, shape
+ *   `(batch,)` – the parton luminosities, @f$f_1(x_1) f_2(x_2)@f$ summed over
+ *   the flavors each stands for (one per flavor for lepton beams).
+ * - `channel_weight` – `float`, shape `(batch,)` – the channel weight, as the
+ *   multichannel factor of include_multichannel_enhance.
+ * - `configuration_weight` – `float`, shape `(batch,)` – the weight of the
+ *   sampled FKS configuration, one over its probability.
+ *
+ * **Returns**
+ * - `cross_section` – `float`, shape `(batch,)` – the sum of the others, the
+ *   integrand in pb.
+ * - `event_weight` – `float`, shape `(batch,)` – the real emission, at
+ *   `momenta`.
+ * - `soft_weight`, `collinear_weight`, `soft_collinear_weight` – `float`,
+ *   shape `(batch,)` – the counterterms, at their counter-events.
+ * - `nbody_weight` – `float`, shape `(batch,)` – the n-body part, at
+ *   `born_momenta`.
+ * - `lo_weight` – `float`, shape `(batch,)` – the Born alone, part of
+ *   nbody_weight.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
+ */
+class FKSWeights : public FunctionGenerator {
+public:
+    /**
+     * @param configurations  The FKS configurations of the Born, for the
+     *                        number of particles.
+     * @param orders          The coupling orders of the Born and of the
+     *                        real emission, for the powers of @f$g_s@f$.
+     * @throws std::invalid_argument for configurations that
+     *         check_fks_configurations rejects.
+     */
+    FKSWeights(
+        const std::vector<FKSConfiguration>& configurations,
+        const FKSCouplingOrders& orders
+    );
+    /// Number of particles of the real processes, incoming included.
+    std::size_t particle_count() const { return _particle_count; }
+    /// Number of Born orders.
+    std::size_t born_order_count() const { return _born_power.size(); }
+    /// Number of NLO orders.
+    std::size_t nlo_order_count() const { return _nlo_power.size(); }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    std::size_t _particle_count;
+    std::vector<me_int_t> _born_power, _nlo_power;
+};
+
+/**
+ * The FKS integrand from the kinematics of @ref FKSKinematics and the
+ * matrix-element blocks: @ref FKSSubtraction for the real emission and its
+ * counterterms, @ref FKSSoftVirtual for the n-body part and @ref FKSWeights
+ * for the weights in pb, with the couplings and the luminosity of each
+ * kinematics. The blocks come without the strong coupling, the real, the
+ * Born and its correlated versions and the virtual per order at
+ * @f$g_s = 1@f$, as the weight lines of MadFKS, so that each contribution
+ * takes @f$g_s^p@f$ at its own kinematics (the subtraction and the n-body
+ * part run at @f$\alpha_s = 1 / (4 \pi)@f$). The electroweak couplings are in
+ * the blocks and `alpha`.
+ *
+ * **Arguments**
+ * - those of the subtraction without `alpha_s`, with `ren_scale` the
+ *   renormalization scale of the Born (also the Ellis-Sexton scale of the
+ *   n-body part and of the UPC scheme), `fact_scale1` and `fact_scale2` the
+ *   factorization scales of the Born for the n-body part and
+ *   `collinear_fact_scale1` and `collinear_fact_scale2` those of the
+ *   collinear remnants.
+ * - those of the weights that the subtraction does not take: `born_momenta`,
+ *   `born_weight`, `virtual` (at `ren_scale`), the couplings, the
+ *   luminosities, `channel_weight` and `configuration_weight`. The Born of
+ *   the subtraction gives that of the n-body part, its first Born orders
+ *   where the subtraction also takes the Borns of extra counterterms.
+ * - `fks_index` last, as for the subtraction.
+ *
+ * **Returns**
+ * - those of @ref FKSWeights.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ */
+class FKSCrossSection : public FunctionGenerator {
+public:
+    /**
+     * @param subtraction   The real emission and its counterterms.
+     * @param soft_virtual  The n-body part without the Born and the virtual.
+     * @param weights       The weights of the contributions.
+     * @throws std::invalid_argument if the three do not have the same numbers
+     *         of particles and orders.
+     */
+    FKSCrossSection(
+        const FKSSubtraction& subtraction,
+        const FKSSoftVirtual& soft_virtual,
+        const FKSWeights& weights
+    );
+    /// The real emission and its counterterms.
+    const FKSSubtraction& subtraction() const { return _subtraction; }
+    /// The n-body part without the Born and the virtual.
+    const FKSSoftVirtual& soft_virtual() const { return _soft_virtual; }
+    /// The weights of the contributions.
+    const FKSWeights& weights() const { return _weights; }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    FKSSubtraction _subtraction;
+    FKSSoftVirtual _soft_virtual;
+    FKSWeights _weights;
+};
+
 } // namespace madspace

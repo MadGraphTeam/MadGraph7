@@ -144,6 +144,21 @@ CASES = {
         n_f=5.0,
         n_l=3.0,
     ),
+    "FKSWeights": dict(
+        configurations=FKS_CONFIGURATIONS,
+        orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
+    ),
+    "FKSCrossSection": dict(
+        subtraction=ms.FKSSubtraction(
+            FKS_CONFIGURATIONS, ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS)
+        ),
+        soft_virtual=ms.FKSSoftVirtual(
+            FKS_CONFIGURATIONS, ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS)
+        ),
+        weights=ms.FKSWeights(
+            FKS_CONFIGURATIONS, ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS)
+        ),
+    ),
     "FKSPrefactors": dict(
         configurations=FKS_CONFIGURATIONS,
         xicut=0.5,

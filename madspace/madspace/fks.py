@@ -68,9 +68,11 @@ limits, fks_splitting_kernels the factors of their collinear limits,
 fks_prefactors the prefactors of the real emission and its counterterms,
 fks_limits the soft and collinear limits of the real matrix element from the
 Born and its correlated versions, fks_subtraction the real emission with
-its counterterms and fks_soft_virtual the n-body part of the subtraction
-without the virtual. ew_sudakov builds the EWSudakov of the Sudakov
-approximation of the EW corrections from the ewsudakov entry.
+its counterterms, fks_soft_virtual the n-body part of the subtraction
+without the virtual, fks_weights the weights of the integrand from them and
+the couplings and luminosities of each kinematics, and fks_cross_section all
+three from the matrix-element blocks. ew_sudakov builds the EWSudakov of the
+Sudakov approximation of the EW corrections from the ewsudakov entry.
 """
 
 import json
@@ -87,6 +89,7 @@ from ._madspace_py import (
     FKSConfiguration,
     FKSConfigurationMapping,
     FKSCouplingOrders,
+    FKSCrossSection,
     FKSEikonals,
     FKSLimits,
     FKSMapping,
@@ -95,6 +98,7 @@ from ._madspace_py import (
     FKSSoftVirtual,
     FKSSplittingKernels,
     FKSSubtraction,
+    FKSWeights,
     Observable,
     fks_sqrt_s_hat_min,
 )
@@ -720,6 +724,53 @@ def fks_soft_virtual(born, configurations, **parameters):
         fks_configurations(born, configurations),
         fks_coupling_orders(configurations),
         **parameters,
+    )
+
+
+def fks_weights(born, configurations):
+    """The FKSWeights of the FKS configurations of a Born, the weights of the
+    FKS integrand from the outputs of FKSKinematics, fks_subtraction and
+    fks_soft_virtual.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, for its masses, its
+            momenta in the order of born_pdgs.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+
+    Raises:
+        ValueError: as fks_configurations.
+    """
+    return FKSWeights(
+        fks_configurations(born, configurations),
+        fks_coupling_orders(configurations),
+    )
+
+
+def fks_cross_section(born, configurations, n_l=3.0, **parameters):
+    """The FKSCrossSection of the FKS configurations of a Born, the FKS
+    integrand from the kinematics of FKSKinematics and the matrix-element
+    blocks without the strong coupling.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, for its masses, its
+            momenta in the order of born_pdgs.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        n_l: the number of massless leptons, for the n-body part.
+        parameters: those of fks_subtraction, of which xicut, delta_o and n_f
+            also go to the n-body part.
+
+    Raises:
+        ValueError: as fks_subtraction and fks_soft_virtual.
+    """
+    shared = {
+        key: parameters[key] for key in ("xicut", "delta_o", "n_f") if key in parameters
+    }
+    return FKSCrossSection(
+        fks_subtraction(born, configurations, **parameters),
+        fks_soft_virtual(born, configurations, n_l=n_l, **shared),
+        fks_weights(born, configurations),
     )
 
 

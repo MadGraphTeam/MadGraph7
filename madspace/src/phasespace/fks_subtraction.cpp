@@ -559,3 +559,276 @@ NamedVector<Value> FKSSoftVirtual::build_function_impl(
         {"fact_coefficients", fact}
     };
 }
+
+namespace {
+
+// the powers of g_s of the orders, zero without a QCD split order
+std::vector<me_int_t>
+qcd_powers(const FKSCouplingOrders& orders, const nested_vector2<int>& order_powers) {
+    auto split = std::find(
+        orders.split_orders.begin(), orders.split_orders.end(), std::string("QCD")
+    );
+    std::vector<me_int_t> powers;
+    for (const auto& order : order_powers) {
+        powers.push_back(
+            split == orders.split_orders.end()
+                ? 0
+                : order.at(split - orders.split_orders.begin())
+        );
+    }
+    return powers;
+}
+
+} // namespace
+
+FKSWeights::FKSWeights(
+    const std::vector<FKSConfiguration>& configurations, const FKSCouplingOrders& orders
+) :
+    FunctionGenerator(
+        "FKSWeights",
+        [&] {
+            auto n = static_cast<int>(
+                check_fks_configurations(configurations, "FKSWeights")
+            );
+            auto b = static_cast<int>(orders.born_count());
+            auto o = static_cast<int>(orders.nlo_count());
+            return NamedVector<Type>{
+                {"momenta", batch_four_vec_array(n)},
+                {"weight", batch_float},
+                {"soft_momenta", batch_four_vec_array(n)},
+                {"soft_det", batch_float},
+                {"collinear_momenta", batch_four_vec_array(n)},
+                {"collinear_det", batch_float},
+                {"soft_collinear_momenta", batch_four_vec_array(n)},
+                {"soft_collinear_det", batch_float},
+                {"born_momenta", batch_four_vec_array(n - 1)},
+                {"born_weight", batch_float},
+                {"real", batch_float_array(o)},
+                {"soft", batch_float_array(o)},
+                {"collinear", batch_float_array(o)},
+                {"soft_collinear", batch_float_array(o)},
+                {"born", batch_float_array(b)},
+                {"soft_virtual", batch_float_array(o)},
+                {"virtual", batch_float_array(o)},
+                {"event_alpha_s", batch_float},
+                {"born_alpha_s", batch_float},
+                {"collinear_alpha_s", batch_float},
+                {"event_luminosity", batch_float},
+                {"soft_luminosity", batch_float},
+                {"collinear_luminosity", batch_float},
+                {"soft_collinear_luminosity", batch_float},
+                {"born_luminosity", batch_float},
+                {"channel_weight", batch_float},
+                {"configuration_weight", batch_float},
+            };
+        }(),
+        NamedVector<Type>{
+            {"cross_section", batch_float},
+            {"event_weight", batch_float},
+            {"soft_weight", batch_float},
+            {"collinear_weight", batch_float},
+            {"soft_collinear_weight", batch_float},
+            {"nbody_weight", batch_float},
+            {"lo_weight", batch_float},
+        }
+    ),
+    _particle_count(check_fks_configurations(configurations, "FKSWeights")),
+    _born_power(qcd_powers(orders, orders.born)),
+    _nlo_power(qcd_powers(orders, orders.nlo)) {}
+
+NamedVector<Value> FKSWeights::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value channel = args.at("channel_weight");
+    // the real emission and its counterterms come with the configuration
+    Value emission = fb.mul(channel, args.at("configuration_weight"));
+    auto weight =
+        [&](Value coefficients,
+            const std::string& kinematics,
+            const std::string& det,
+            const std::string& coupling,
+            const std::string& luminosity,
+            Value factor,
+            const std::vector<me_int_t>& powers) {
+            return fb.fks_contribution_weight(
+                coefficients,
+                args.at(det),
+                args.at(kinematics + "momenta"),
+                args.at(coupling + "_alpha_s"),
+                args.at(luminosity + "luminosity"),
+                factor,
+                powers
+            );
+        };
+    Value event =
+        weight(args.at("real"), "", "weight", "event", "event_", emission, _nlo_power);
+    Value soft = weight(
+        args.at("soft"), "soft_", "soft_det", "born", "soft_", emission, _nlo_power
+    );
+    Value collinear = weight(
+        args.at("collinear"),
+        "collinear_",
+        "collinear_det",
+        "collinear",
+        "collinear_",
+        emission,
+        _nlo_power
+    );
+    Value soft_collinear = weight(
+        args.at("soft_collinear"),
+        "soft_collinear_",
+        "soft_collinear_det",
+        "born",
+        "soft_collinear_",
+        emission,
+        _nlo_power
+    );
+    Value lo = weight(
+        args.at("born"), "born_", "born_weight", "born", "born_", channel, _born_power
+    );
+    Value nbody_nlo = weight(
+        fb.add(args.at("soft_virtual"), args.at("virtual")),
+        "born_",
+        "born_weight",
+        "born",
+        "born_",
+        channel,
+        _nlo_power
+    );
+    Value nbody = fb.add(lo, nbody_nlo);
+    Value total =
+        fb.add(fb.add(fb.add(event, soft), fb.add(collinear, soft_collinear)), nbody);
+    return {
+        {"cross_section", total},
+        {"event_weight", event},
+        {"soft_weight", soft},
+        {"collinear_weight", collinear},
+        {"soft_collinear_weight", soft_collinear},
+        {"nbody_weight", nbody},
+        {"lo_weight", lo},
+    };
+}
+
+namespace {
+
+// the arguments of FKSCrossSection: those of the subtraction without alpha_s
+// and with the factorization scales of the Born and of the remnants, then
+// those of the weights that the subtraction and the n-body part do not give,
+// fks_index last
+NamedVector<Type> cross_section_args(
+    const FKSSubtraction& subtraction,
+    const FKSSoftVirtual& soft_virtual,
+    const FKSWeights& weights
+) {
+    if (subtraction.particle_count() != weights.particle_count() ||
+        soft_virtual.particle_count() + 1 != weights.particle_count() ||
+        soft_virtual.born_order_count() != weights.born_order_count() ||
+        soft_virtual.nlo_order_count() != weights.nlo_order_count()) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the subtraction, the soft-virtual part and the "
+            "weights need the same numbers of particles and orders"
+        );
+    }
+    NamedVector<Type> args;
+    for (auto [type, name] :
+         zip(subtraction.arg_types(), subtraction.arg_types().keys())) {
+        if (name == "alpha_s" || name == "fact_scale2" || name == "fks_index") {
+            continue;
+        }
+        if (name == "fact_scale1") {
+            for (auto scale :
+                 {"fact_scale1",
+                  "fact_scale2",
+                  "collinear_fact_scale1",
+                  "collinear_fact_scale2"}) {
+                args.push_back(scale, batch_float);
+            }
+            continue;
+        }
+        args.push_back(name, type);
+    }
+    for (auto [type, name] : zip(weights.arg_types(), weights.arg_types().keys())) {
+        if (name == "real" || name == "soft" || name == "collinear" ||
+            name == "soft_collinear" || name == "soft_virtual" || name == "born") {
+            continue;
+        }
+        bool present = false;
+        for (const auto& key : args.keys()) {
+            present = present || key == name;
+        }
+        if (!present) {
+            args.push_back(name, type);
+        }
+    }
+    args.push_back("fks_index", subtraction.arg_types().at("fks_index"));
+    return args;
+}
+
+} // namespace
+
+FKSCrossSection::FKSCrossSection(
+    const FKSSubtraction& subtraction,
+    const FKSSoftVirtual& soft_virtual,
+    const FKSWeights& weights
+) :
+    FunctionGenerator(
+        "FKSCrossSection",
+        cross_section_args(subtraction, soft_virtual, weights),
+        weights.return_types()
+    ),
+    _subtraction(subtraction),
+    _soft_virtual(soft_virtual),
+    _weights(weights) {}
+
+NamedVector<Value> FKSCrossSection::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    // the subtraction and the n-body part at g_s = 1
+    Value alpha_s = fb.full({1. / (4. * PI), fb.batch_size({args.at("born_weight")})});
+    ValueVec subtraction_args;
+    for (const auto& name : _subtraction.arg_types().keys()) {
+        if (name == "alpha_s") {
+            subtraction_args.push_back(alpha_s);
+        } else if (name == "fact_scale1" || name == "fact_scale2") {
+            subtraction_args.push_back(args.at("collinear_" + name));
+        } else {
+            subtraction_args.push_back(args.at(name));
+        }
+    }
+    auto subtraction = _subtraction.build_function(fb, subtraction_args);
+    // the Born orders among the Borns of the subtraction
+    Value born = args.at("born"), color_correlated = args.at("color_correlated");
+    std::size_t born_orders = _weights.born_order_count();
+    if (_subtraction.arg_types().at("born").shape.at(0) !=
+        static_cast<int>(born_orders)) {
+        auto borns = fb.unstack(born), colors = fb.unstack(color_correlated);
+        born = fb.stack(ValueVec(borns.begin(), borns.begin() + born_orders));
+        color_correlated =
+            fb.stack(ValueVec(colors.begin(), colors.begin() + born_orders));
+    }
+    auto soft_virtual = _soft_virtual.build_function(
+        fb,
+        {args.at("born_momenta"),
+         born,
+         color_correlated,
+         alpha_s,
+         args.at("alpha"),
+         args.at("ren_scale"),
+         args.at("fact_scale1"),
+         args.at("fact_scale2")}
+    );
+    ValueVec weight_args;
+    for (const auto& name : _weights.arg_types().keys()) {
+        if (name == "real" || name == "soft" || name == "collinear" ||
+            name == "soft_collinear") {
+            weight_args.push_back(subtraction.at(name));
+        } else if (name == "soft_virtual") {
+            weight_args.push_back(soft_virtual.at("soft_virtual"));
+        } else if (name == "born") {
+            weight_args.push_back(born);
+        } else {
+            weight_args.push_back(args.at(name));
+        }
+    }
+    return _weights.build_function(fb, weight_args);
+}

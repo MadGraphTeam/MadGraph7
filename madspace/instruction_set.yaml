@@ -4065,6 +4065,36 @@ fks_soft_virtual:
   vectorized: False
   desc: "The n-body part of bornsoftvirtual in fks_singular.f without the virtual per NLO order, for QCD and QED and with the Ellis-Sexton scale at mu_R. With a = alpha_s / (2 pi) for QCD and alpha / (2 pi) for QED and the Born B of the order of the counterterms, each is a B sum_j Q_j over the massless particles with Q terms plus a sum_(m, n) f_mn L_mn I_mn over the pairs of linked particles, with L_mn = <T_m . T_n> B for QCD and B for QED and the integrated eikonals I_mn of eikonal_Ireg. Q_j = gamma'_j - log(s deltaO / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j / sqrt_s) for a final-state particle with its energy in the partonic center-of-mass frame, -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) for an incoming one with the factorization scale of its beam. The coefficients of log mu_R^2 and log mu_F^2 of the weight lines of MadFKS are a b gamma_g B of QCD and the sum of -a (gamma_j + 2 C_j log xicut) B over QCD and QED."
 
+fks_contribution_weight:
+  inputs:
+    - name: coefficients
+      type: [float, o]
+      desc: "the contribution per order without the strong coupling, per unit det"
+    - name: det
+      type: [float]
+      desc: "Jacobian of its kinematics"
+    - name: momenta
+      type: [float, n, 4]
+      desc: "momenta of its kinematics, the incoming two first"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling at its kinematics"
+    - name: luminosity
+      type: [float]
+      desc: "parton luminosity at its kinematics, the product of the parton densities f(x) of the two beams (summed over the flavors it stands for)"
+    - name: factor
+      type: [float]
+      desc: "further factor, as the channel weight and the weight of the sampled FKS configuration"
+    - name: powers
+      type: [int, single, o]
+      desc: "power of g_s of each order"
+  outputs:
+    - name: weight
+      type: [float]
+      desc: "the weight in pb, zero where det is zero"
+  vectorized: False
+  desc: "The weight of one contribution of the FKS integrand at its own kinematics, INV_GEV2_TO_PB luminosity factor det / (2 s) sum_o g_s^powers[o] coefficients[o] with g_s = sqrt(4 pi alpha_s) and s = (p_1 + p_2)^2 of its momenta. As sigint of driver_mintFO.f, which multiplies the weight lines without the strong coupling by g_strong^QCDpower at the scales of their own kinematics and by the luminosity of their momentum fractions. See @ref FKSWeights."
+
 ew_sudakov:
   inputs:
     - name: momenta

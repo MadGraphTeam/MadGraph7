@@ -1502,5 +1502,44 @@ KERNELSPEC void kernel_fks_soft_virtual(
     }
 }
 
+// The weight in pb of one contribution of the FKS integrand at its own
+// kinematics: INV_GEV2_TO_PB luminosity factor det / (2 s) sum_o g_s^p_o c_o
+// with g_s = sqrt(4 pi alpha_s), the power p_o of g_s of order o and
+// s = (p_1 + p_2)^2, as sigint of driver_mintFO.f multiplies the weight lines
+// (without g_s) by g_strong^QCDpower and the luminosity of their kinematics.
+// Zero where det is zero, where the kinematics may be unset.
+template <typename T>
+KERNELSPEC void kernel_fks_contribution_weight(
+    FIn<T, 1> coefficients,
+    FIn<T, 0> det,
+    FIn<T, 2> momenta,
+    FIn<T, 0> alpha_s,
+    FIn<T, 0> luminosity,
+    FIn<T, 0> factor,
+    IIn<T, 1> powers,
+    FOut<T, 0> weight
+) {
+    constexpr double pi = 3.14159265358979323846;
+    auto p1 = load_mom<T>(momenta[0]), p2 = load_mom<T>(momenta[1]);
+    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    FVal<T> s = lsquare<T>(p_tot);
+    FVal<T> g_s = sqrt(4. * pi * FVal<T>(alpha_s));
+    FVal<T> sum = 0.;
+    for (std::size_t o = 0; o < coefficients.size(); ++o) {
+        FVal<T> coupling = 1.;
+        for (int k = 0; k < int(powers[o]); ++k) {
+            coupling = coupling * g_s;
+        }
+        sum = sum + coupling * FVal<T>(coefficients[o]);
+    }
+    FVal<T> d = det;
+    FVal<T> safe_s = where(d == 0., 1., s);
+    weight = where(
+        d == 0.,
+        0.,
+        INV_GEV2_TO_PB * FVal<T>(luminosity) * FVal<T>(factor) * d * sum / (2. * safe_s)
+    );
+}
+
 } // namespace kernels
 } // namespace madspace

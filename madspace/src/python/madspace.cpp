@@ -768,6 +768,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FunctionGenerator::function")
         )
         .def(
+            "arg_types",
+            &FunctionGenerator::arg_types,
+            pydoc::doc("FunctionGenerator::arg_types")
+        )
+        .def(
+            "return_types",
+            &FunctionGenerator::return_types,
+            pydoc::doc("FunctionGenerator::return_types")
+        )
+        .def(
             "build_function",
             py::overload_cast<FunctionBuilder&, const ValueVec&>(
                 &FunctionGenerator::build_function, py::const_
@@ -2425,6 +2435,53 @@ PYBIND11_MODULE(_madspace_py, m) {
             "nlo_order_count",
             &FKSSoftVirtual::nlo_order_count,
             pydoc::doc("FKSSoftVirtual::nlo_order_count")
+        );
+
+    py::classh<FKSWeights, FunctionGenerator>(m, "FKSWeights", pydoc::doc("FKSWeights"))
+        .def(
+            py::init<const std::vector<FKSConfiguration>&, const FKSCouplingOrders&>(),
+            py::arg("configurations"),
+            py::arg("orders"),
+            pydoc::doc("FKSWeights::FKSWeights")
+        )
+        .def(
+            "particle_count",
+            &FKSWeights::particle_count,
+            pydoc::doc("FKSWeights::particle_count")
+        )
+        .def(
+            "born_order_count",
+            &FKSWeights::born_order_count,
+            pydoc::doc("FKSWeights::born_order_count")
+        )
+        .def(
+            "nlo_order_count",
+            &FKSWeights::nlo_order_count,
+            pydoc::doc("FKSWeights::nlo_order_count")
+        );
+
+    py::classh<FKSCrossSection, FunctionGenerator>(
+        m, "FKSCrossSection", pydoc::doc("FKSCrossSection")
+    )
+        .def(
+            py::init<const FKSSubtraction&, const FKSSoftVirtual&, const FKSWeights&>(),
+            py::arg("subtraction"),
+            py::arg("soft_virtual"),
+            py::arg("weights"),
+            pydoc::doc("FKSCrossSection::FKSCrossSection")
+        )
+        .def(
+            "subtraction",
+            &FKSCrossSection::subtraction,
+            pydoc::doc("FKSCrossSection::subtraction")
+        )
+        .def(
+            "soft_virtual",
+            &FKSCrossSection::soft_virtual,
+            pydoc::doc("FKSCrossSection::soft_virtual")
+        )
+        .def(
+            "weights", &FKSCrossSection::weights, pydoc::doc("FKSCrossSection::weights")
         );
 
     py::classh<EWSudakovAmplitude>(

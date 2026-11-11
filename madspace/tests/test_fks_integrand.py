@@ -36,6 +36,10 @@ mappings. MadFKS spreads the n-body part over the random numbers of the
 radiation with the soft counter-event of the configuration of the n-body part
 over its volume, and halves it where the configurations of the channel have
 emitters in the initial and in the final state (ini_fin_fks).
+
+With the couplings and luminosities of MadFKS at each kinematics, FKSWeights
+then gives the final weights of MadFKS in pb, and FKSCrossSection gives the
+same from the blocks directly.
 """
 
 import functools
@@ -46,10 +50,16 @@ import os
 import numpy as np
 import pytest
 import torch
-from fks_testing import evaluate, reference
+from fks_testing import evaluate, reference, reference_born_mapping
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping, fks_soft_virtual, fks_subtraction
+from madspace.fks import (
+    fks_configuration_mapping,
+    fks_cross_section,
+    fks_soft_virtual,
+    fks_subtraction,
+    fks_weights,
+)
 
 DATA = sorted(
     glob.glob(
@@ -68,6 +78,19 @@ COUNTERTERMS = {
 # the factors 1 - stiny and 1 - ctiny of the radiation of a final-state
 # emitter that MadFKS divides f_b by (fsr_born_cutoff_factor)
 FSR_BORN_CUTOFF_FACTOR = (1 - 1e-6) * (1 - 5e-7)
+# GeV^-2 to pb, of madspace (INV_GEV2_TO_PB) and of MadFKS (conv of
+# include_PDF_and_alphas)
+MADSPACE_CONV = 0.38937937217186e9
+MADFKS_CONV = 389379660.0
+# the outputs of FKSWeights and the contributions of add_wgt they sum
+WEIGHTS = {
+    "event_weight": {1},
+    "soft_weight": {4},
+    "collinear_weight": {5},
+    "soft_collinear_weight": {6},
+    "nbody_weight": {2, 3, 14, 15},
+    "lo_weight": {2},
+}
 # The Born of a hadron collision comes back through the boost into the lab
 # and the round trip of the Born mapping, at rapidities up to 6. The largest
 # deviation is 3e-12 (1e-14 for lepton beams).
@@ -151,6 +174,7 @@ class Channel:
         self.nbody_jac = 0.5 if len(set(emitters)) == 2 else 1.0
         self.final_state = [not e for e in emitters]
         self.n_f = data["n_f"]
+        self.run_card = run
         self.alpha = 1 / data["param_card"]["sminputs"]["1"]
 
     def field(self, *keys):
@@ -328,6 +352,142 @@ class Channel:
         }[kind]
         return jacobian * point["vegas_wgt"] * point["blocks"]["channel"]["enhance"]
 
+    def born_jacobian_ratio(self, k):
+        """madspace's Born weight over the Born Jacobian of MadFKS, xjac xpswgt
+        (2 pi)^(4 - 3 n) with n final-state particles."""
+        point = self.points[k]
+        out, _ = self.event
+        final = len(self.configurations["born_pdgs"]) - 2
+        fortran = point["born"]["xjac"] * point["born"]["xpswgt"]
+        return out["born_weight"][k] / (fortran * (2 * math.pi) ** (4 - 3 * final))
+
+    def nbody_spread(self, k):
+        """The factor by which MadFKS spreads its n-body part over the random
+        numbers of the radiation: the soft counter-event of the configuration
+        of the n-body part over its volume xi_max s_hat / (16 pi^2), over
+        fsr_born_cutoff_factor for a final-state emitter, times the factor of
+        ini_fin_fks."""
+        out, _ = self.event
+        nbody, index = self.nbody
+        radiation = nbody["soft_det"][k] / nbody["born_weight"][k]
+        volume = nbody["soft_xi_max"][k] * s_hat(out["born_momenta"][k : k + 1])[0]
+        spread = radiation / (volume / (16 * math.pi**2)) * self.nbody_jac
+        if self.final_state[index[k]]:
+            spread /= FSR_BORN_CUTOFF_FACTOR
+        return spread
+
+    def couplings_and_luminosities(self):
+        """The strong coupling at the event, the Born and the collinear
+        counter-event and the luminosity of each kinematics, from the
+        contributions of MadFKS (g_strong and the weight over its value
+        without PDFs), one where a point has no contribution there."""
+        count = len(self.points)
+        g = {name: np.ones(count) for name in ("event", "born", "collinear")}
+        luminosity = {
+            name: np.ones(count)
+            for name in ("event", "soft", "collinear", "soft_collinear", "born")
+        }
+        coupling_of = {1: "event", 2: "born", 3: "born", 4: "born", 5: "collinear"}
+        coupling_of[6] = "born"
+        luminosity_of = {1: "event", 4: "soft", 5: "collinear", 6: "soft_collinear"}
+        luminosity_of[2] = "born"
+        for k, point in enumerate(self.points):
+            for c in point["contributions"]:
+                if c["type"] in coupling_of:
+                    g[coupling_of[c["type"]]][k] = c["g_strong"]
+                bare = scale_coefficient(c) * c["g_strong"] ** c["qcd_power"]
+                if c["type"] in luminosity_of and bare != 0:
+                    value = c["weight"] / (MADFKS_CONV * bare)
+                    luminosity[luminosity_of[c["type"]]][k] = value
+        alpha_s = {name: value**2 / (4 * math.pi) for name, value in g.items()}
+        return alpha_s, luminosity
+
+    @functools.cached_property
+    def inputs(self):
+        """The inputs of FKSWeights and FKSCrossSection by name: the
+        kinematics, the outputs of the subtraction, the blocks, the n-body part
+        with the scale logs of MadFKS and its virtual (both terms of the
+        virtual trick), the couplings and luminosities of MadFKS, the
+        multichannel factor and one over the probability of the picked
+        configuration."""
+        out, _ = self.event
+        real, born, color, spin, _ = self.blocks
+        soft_virtual, ren, fact = self.soft_virtual
+        q, mu_f = self.scales()
+        nbody = soft_virtual.copy()
+        virtual = np.zeros_like(soft_virtual)
+        for k, point in enumerate(self.points):
+            f_nb = point["prefactors"]["f_nb"]
+            for c in point["contributions"]:
+                if c["type"] == 3:
+                    order = self.nlo.index(c["amp_pos"] - 1)
+                    q2, mu_r2, mu_f2 = c["scales2"]
+                    nbody[k, order] += ren[k, order] * math.log(mu_r2 / q2)
+                    nbody[k, order] += fact[k, order].sum() * math.log(mu_f2 / q2)
+                elif c["type"] in (14, 15):
+                    order = self.nlo.index(c["amp_pos"] - 1)
+                    virtual[k, order] += scale_coefficient(c) / f_nb
+        alpha_s, luminosity = self.couplings_and_luminosities()
+        inputs = dict(out, **self.subtraction)
+        inputs.update(
+            matrix_element=real,
+            born=born,
+            color_correlated=color,
+            spin_correlated=spin,
+            soft_virtual=nbody,
+            virtual=virtual,
+            alpha=np.full(len(q), self.alpha),
+            ren_scale=q,
+            fact_scale1=q,
+            fact_scale2=q,
+            collinear_fact_scale1=mu_f,
+            collinear_fact_scale2=mu_f,
+            channel_weight=self.field("blocks", "channel", "enhance"),
+            configuration_weight=1 / self.field("vol"),
+        )
+        inputs.update({f"{k}_alpha_s": v for k, v in alpha_s.items()})
+        inputs.update(
+            {f"{k}_luminosity": v * self.passes_cuts(k) for k, v in luminosity.items()}
+        )
+        return inputs
+
+    def passes_cuts(self, kinematics):
+        """Where a kinematics passes the cuts of the run, as a stand-in for
+        the cuts of the integrand: mll_sf on the lepton pair of p p > e+ e-,
+        the only cut of these runs that any of their points fails (the jets of
+        e+ e- > j j pass ptj everywhere, as test_weights finds)."""
+        out, _ = self.event
+        prefix = {"event": "", "born": "born_"}.get(kinematics, kinematics + "_")
+        p = out[prefix + "momenta"]
+        mll = float(self.run_card.get("mll_sf", 0))
+        pdgs = self.configurations["born_pdgs"]
+        leptons = [k for k, pdg in enumerate(pdgs) if abs(pdg) == 11]
+        if mll <= 0 or len(leptons) != 2:
+            return np.ones(len(p))
+        if kinematics != "born":
+            # the leptons keep their positions in front of i
+            i_fks = self.field("blocks", "i_fks") - 1
+            assert (i_fks > max(leptons)).all()
+        pair = p[:, leptons[0]] + p[:, leptons[1]]
+        m2 = pair[:, 0] ** 2 - (pair[:, 1:] ** 2).sum(-1)
+        return (m2 >= mll**2).astype(float)
+
+    def run(self, function):
+        """The outputs of a generator on the inputs of its arguments, by
+        name."""
+        _, index = self.event
+        names = list(function.arg_types().keys())
+        args = [self.inputs[name] for name in names if name != "fks_index"]
+        outputs = evaluate(
+            function, *args, fks_index=index if "fks_index" in names else None
+        )
+        return dict(zip(function.return_types().keys(), outputs))
+
+    @functools.cached_property
+    def weights(self):
+        """The outputs of FKSWeights."""
+        return self.run(fks_weights(self.born, self.configurations))
+
 
 @functools.lru_cache(maxsize=None)
 def channels(path):
@@ -486,14 +646,10 @@ def test_densities(path):
     factor of ini_fin_fks."""
     for channel in channels(path):
         out, _ = channel.event
-        nbody, nbody_index = channel.nbody
         _, born, _, _, _ = channel.blocks
         ours = channel.subtraction
-        final = len(channel.configurations["born_pdgs"]) - 2
         for k, point in enumerate(channel.points):
-            fortran_born = point["born"]["xjac"] * point["born"]["xpswgt"]
-            fortran_born *= (2 * math.pi) ** (4 - 3 * final)
-            expected = out["born_weight"][k] / fortran_born
+            expected = channel.born_jacobian_ratio(k)
             per_unit = point["vegas_wgt"] * point["blocks"]["channel"]["enhance"]
             for c in point["contributions"]:
                 if c["type"] in COUNTERTERMS:
@@ -505,19 +661,101 @@ def test_densities(path):
                     np.testing.assert_allclose(madspace / madfks, expected, rtol=RTOL)
                 elif c["type"] == 2:
                     order = channel.born_power.index(c["qcd_power"])
-                    sqrt_flux = 1 / (2 * s_hat(out["born_momenta"][k : k + 1])[0])
-                    madspace = born[k, order] * out["born_weight"][k] * sqrt_flux
-                    madfks = c["wgt"][0] / per_unit
-                    # MadFKS's n-body part per unit Born phase space
-                    radiation = nbody["soft_det"][k] / nbody["born_weight"][k]
-                    volume = (
-                        nbody["soft_xi_max"][k]
-                        * s_hat(out["born_momenta"][k : k + 1])[0]
-                    )
-                    spread = radiation / (volume / (16 * math.pi**2))
-                    if channel.final_state[nbody_index[k]]:
-                        spread /= FSR_BORN_CUTOFF_FACTOR
-                    spread *= channel.nbody_jac
-                    np.testing.assert_allclose(
-                        madspace / madfks * spread, expected, rtol=RTOL
-                    )
+                    flux = 1 / (2 * s_hat(out["born_momenta"][k : k + 1])[0])
+                    madspace = born[k, order] * out["born_weight"][k] * flux
+                    madfks = c["wgt"][0] / per_unit / channel.nbody_spread(k)
+                    np.testing.assert_allclose(madspace / madfks, expected, rtol=RTOL)
+
+
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_weights(path):
+    """FKSWeights gives the weights of MadFKS in pb (wgts(1) of the weight
+    lines, summed over the orders and the contributions at each kinematics),
+    per unit weight of vegas, up to the ratio of the Jacobians of the two Born
+    mappings, MadFKS's spread of the n-body part and the two conversions to
+    pb. A kinematics without contributions of MadFKS has zero weight, and the
+    cross section is the sum."""
+    seen = set()
+    for channel in channels(path):
+        ours = channel.weights
+        # to the rounding of the parts, which cancel
+        parts = [ours[name] for name in WEIGHTS if name != "lo_weight"]
+        difference = np.abs(ours["cross_section"] - sum(parts))
+        assert (difference <= 1e-14 * np.abs(parts).sum(0)).all()
+        for k, point in enumerate(channel.points):
+            ratio = channel.born_jacobian_ratio(k) * MADSPACE_CONV / MADFKS_CONV
+            for name, types in WEIGHTS.items():
+                lines = [c for c in point["contributions"] if c["type"] in types]
+                if not lines:
+                    assert ours[name][k] == 0, (name, k)
+                    continue
+                seen.add(name)
+                madfks = sum(c["weight"] for c in lines) / point["vegas_wgt"]
+                if name in ("nbody_weight", "lo_weight"):
+                    madfks /= channel.nbody_spread(k)
+                np.testing.assert_allclose(ours[name][k] / madfks, ratio, rtol=RTOL)
+    assert seen == set(WEIGHTS)
+
+
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_cross_section(path):
+    """FKSCrossSection from the blocks is FKSSubtraction, FKSSoftVirtual and
+    FKSWeights in turn, so it gives the weights of test_weights."""
+    for channel in channels(path):
+        function = fks_cross_section(
+            channel.born, channel.configurations, n_f=channel.n_f
+        )
+        ours = channel.run(function)
+        for name, value in channel.weights.items():
+            np.testing.assert_allclose(ours[name], value, rtol=1e-13, atol=0)
+
+
+def test_cross_section_with_extra_counterterms():
+    """Where the subtraction also takes the Borns of extra counterterms (a u >
+    u a with a gluon and a photon as mothers of the quark), the n-body part
+    of FKSCrossSection takes the Born orders alone: its Born weight is that of
+    the first Born at the Born."""
+    path = os.path.join(
+        os.path.dirname(__file__), "test_data", "fks", "pp_aj_mix_P0_gu_ua.json"
+    )
+    data = reference(path)
+    born = reference_born_mapping(data)
+    configurations = data["fks_configurations"]
+    function = fks_cross_section(born, configurations)
+    types = function.arg_types()
+    weights = fks_weights(born, configurations)
+    assert types["born"].shape[0] == weights.born_order_count() + 1
+    mapping = fks_configuration_mapping(born, configurations, 0.0)
+    kinematics = ms.FKSKinematics(mapping)
+    count = 64
+    rng = np.random.default_rng(4711)
+    r = rng.random((count, born.random_dim() + 3))
+    index = rng.integers(len(configurations["configurations"]), size=count)
+    names = list(mapping.counter_event_types().keys())
+    inputs = dict(zip(names, evaluate(kinematics, r, fks_index=index)))
+    args = []
+    for name in types.keys():
+        if name == "fks_index":
+            continue
+        if name in inputs:
+            args.append(inputs[name])
+        else:
+            shape = [count, *types[name].shape]
+            args.append(rng.random(shape) + 0.5)
+    outputs = dict(
+        zip(
+            function.return_types().keys(),
+            evaluate(function, *args, fks_index=index),
+        )
+    )
+    values = dict(zip([n for n in types.keys() if n != "fks_index"], args))
+    orders = configurations["orders"]
+    power = orders["born"][0][orders["split_orders"].index("QCD")]
+    g = np.sqrt(4 * math.pi * values["born_alpha_s"])
+    expected = MADSPACE_CONV * values["born_luminosity"] * values["channel_weight"]
+    expected *= values["born_weight"] / (2 * s_hat(values["born_momenta"]))
+    expected *= g**power * values["born"][:, 0]
+    # s_hat of the momenta in the lab rounds to exp(2 |y|) eps at the
+    # rapidities y of the random Borns
+    np.testing.assert_allclose(outputs["lo_weight"], expected, rtol=1e-9)
+    assert np.isfinite(outputs["cross_section"]).all()
