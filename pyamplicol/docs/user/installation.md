@@ -262,10 +262,14 @@ Each step is described in [the examples guide](../../examples/README.md#one-loop
 `--regenerate` makes the walkthrough generate its artifact again with the
 example's correlator declaration (the card's generation above writes it
 without one).
-`loop_uux_ttxgg` and `loop_gg_zgg` generate in seconds, the electroweak and
-complex-mass examples (`loop_uux_ddxepem`, `loop_gg_epemmpmm`) in a few
-minutes with up to about 8.4 GiB of memory; each walkthrough generates its
-artifact again in a child process.
+Measured from the wheel (2026-11-11, an AMD EPYC host shared with other
+jobs, the four examples run side by side): `loop_uux_ttxgg` and
+`loop_gg_zgg` generate in under a minute and run their whole sequence in
+about 6 minutes (peak 2.6 and 10.8 GiB); the complex-mass examples
+`loop_gg_epemmpmm` and `loop_uux_ddxepem` generate in 5 and 7 minutes and
+take about 21 and 36 minutes for the whole sequence (peak 5.7 and 19.6 GiB,
+the latter in the walkthrough). Each walkthrough generates its artifact again
+in a child process.
 
 ## Install a tagged source release
 

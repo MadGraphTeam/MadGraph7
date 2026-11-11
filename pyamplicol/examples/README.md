@@ -533,7 +533,9 @@ virtual equals Recola 2.3.0 (the smoke test reads the fixture
 finite parts within the two codes' complex-mass counterterm prescriptions
 (2e-6 to 5e-4 relative; the difference falls as the widths squared). The
 whole walkthrough at two points: 586 s (`check` 241 s, generation 315 s on
-the loaded host), peak 8.0 GiB.
+the loaded host), peak 8.0 GiB; from the 1.0.3 wheel (2026-11-11, the four
+examples side by side): 868 s (`check` 435 s, generation 360 s), peak 19.6 GiB
+in the walkthrough's own process, reached in its evaluation steps 5 to 8.
 
 ### `g g > z g g`, loop-induced (every quark loop)
 
