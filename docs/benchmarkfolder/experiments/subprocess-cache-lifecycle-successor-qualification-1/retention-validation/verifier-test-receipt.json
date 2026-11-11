@@ -1,0 +1,31 @@
+{
+  "first_failure": "One inherited test expected the older integrity error label; the new all83command log check correctly rejected corruption earlier. Only expected-message regex changed. Scientific verifier unchanged.",
+  "independent_source_review": {
+    "basis": "Trusted collaboration message; raw scientific audit receipt is retained separately.",
+    "capture_sha256": "1a914339845831dd56d55441a69ed2ba2f5236609e43448d8b96ba3a477d4e70",
+    "result": "clear",
+    "reviewer": "/root/acceptance_audit",
+    "verifier_sha256": "20ef270af5c544d8377f37c9059184be79c23d2910902a1e4725817977b4e1be"
+  },
+  "log": {
+    "bytes": 2516,
+    "sha256": "4cac473e495ff4326e6ca315f8448dca11aa5ab33d0624bbf6b9078bb781d8f2"
+  },
+  "native_execution": false,
+  "preserved_attempt1_log": {
+    "bytes": 3393,
+    "sha256": "1b9a8f19adf9e776d265ae79eb35c9e07c5020f3547d92f875f5b12314a9fa1a"
+  },
+  "schema": "successor-cache-portable-verifier-tests-v1",
+  "status": "pass",
+  "test_source": {
+    "bytes": 11691,
+    "sha256": "723c899ee78851be4ad605d9c4045020ee8d08683657b199fbf6bcd7e2abf814"
+  },
+  "tests": 19,
+  "trial_index_sha256": "53feaa8fbc6ac451ece8afeed0808670f7bce551beb630468478e54e7990db88",
+  "verifier": {
+    "bytes": 28844,
+    "sha256": "20ef270af5c544d8377f37c9059184be79c23d2910902a1e4725817977b4e1be"
+  }
+}

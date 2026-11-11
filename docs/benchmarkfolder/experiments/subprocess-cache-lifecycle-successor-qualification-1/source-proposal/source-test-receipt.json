@@ -1,0 +1,16 @@
+{
+  "compiler_execution": false,
+  "log": {
+    "bytes": 8025,
+    "sha256": "214573f8c066a94380250d80cf95ed22f6694cbcc9c032d73c1682f453162cdb"
+  },
+  "log_path": ".tirust-build/subprocess-cache-successor-source2-tests-1.log",
+  "native_execution": false,
+  "result": "pass",
+  "source1_correction": {
+    "bytes": 329,
+    "sha256": "dd942ea98a60839a0c7ec2087c75938e22a94df3dde21d65fb5382cb38e15319"
+  },
+  "source_only": true,
+  "tests": 55
+}

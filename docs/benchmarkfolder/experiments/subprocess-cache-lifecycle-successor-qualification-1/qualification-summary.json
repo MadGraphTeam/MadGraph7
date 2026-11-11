@@ -1,0 +1,282 @@
+{
+  "backend": 9,
+  "campaign": "entry-latch-cache-guard-1",
+  "campaign_manifest_sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+  "card_smoke": {
+    "actual_reader_calls": 3,
+    "context_generations": [
+      -1,
+      -1,
+      -1
+    ],
+    "mass_sequence_GeV": [
+      91.188,
+      92,
+      91.188
+    ],
+    "native_exports": 0,
+    "passed": true
+  },
+  "closed_external_commands": 83,
+  "compute_finite": true,
+  "coverage": {
+    "generated_propagator_max": 3,
+    "generated_rank_max": 2,
+    "measured_physical_calls_total": 76,
+    "physical_workers": 4,
+    "tensor_key_calls_total": 112,
+    "tensor_keys_per_worker_per_precision": 14,
+    "warmup_calls_total": 8
+  },
+  "implementation_revision": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "independent_review_path": "independent-review.json",
+  "independent_review_status": "PASS",
+  "installed_artifacts": {
+    "libmadloop_tirust.so": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+      "size": 69094528
+    },
+    "libtirust.a": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a",
+      "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+      "size": 26118
+    },
+    "mtirust.f90": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/mtirust.f90",
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+      "size": 15997
+    },
+    "mtirust.mod": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/mtirust.mod",
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+      "size": 3432
+    },
+    "tirust-NOTICES.txt": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-NOTICES.txt",
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+      "size": 717
+    },
+    "tirust-config.json": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json",
+      "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9",
+      "size": 3055
+    },
+    "tirust-dependency-notices.tar.gz": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-dependency-notices.tar.gz",
+      "sha256": "edd742d13608a107e1a19fd1502b4553382def731de9f39727827345520428fa",
+      "size": 849506
+    },
+    "tirust-dependency-provenance.json": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-dependency-provenance.json",
+      "sha256": "5a328ed1a6cab615b5afc9952e758e3417f705578186d7914258d885f6851f78",
+      "size": 539682
+    },
+    "tirust-link-before.txt": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-link-before.txt",
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "size": 8
+    },
+    "tirust-native-libs.txt": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-native-libs.txt",
+      "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62",
+      "size": 17
+    },
+    "tirust.h": {
+      "recorded_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/tirust.h",
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+      "size": 5742
+    }
+  },
+  "kind": "tirust-generated-subprocess-cache-lifecycle",
+  "limitations": [
+    "Untimed two-subprocess real-SM lifecycle qualification; no performance acceptance.",
+    "N<=3/rank<=2; no physical-QP rescue, rank-six, EW, loop-induced or poles-only qualification.",
+    "QP key probes use DP values promoted exactly; no binary128-only input perturbation.",
+    "Portable replay reads retained text only; actual runtime validation is bound to the executed controller.",
+    "The preceding-source proof remains distinct. Source1 was an unexecuted proposal corrected before this SOURCE2 execution."
+  ],
+  "model": "loop_sm",
+  "observed_lifecycle": {
+    "absent_context_entry_clear_skipped": true,
+    "all_native_evaluation_statuses_zero": true,
+    "automatic_clears_per_measured_physical_call": {
+      "fresh_after_finalize": 1,
+      "live_context": 2
+    },
+    "cache_disabled_nonempty_final_clears": 0,
+    "cache_enabled_nonempty_final_clears": 19,
+    "check_bypasses_per_precision": 1,
+    "context_generations_per_worker": 2,
+    "context_recreated_before_first_reduction": true,
+    "disabled_qp_bypasses_per_worker": 14,
+    "evaluations_per_measured_physical_call": 2,
+    "key_cold_requests_per_precision": 5,
+    "key_repeats_per_precision": 8,
+    "prefix_registrations_per_worker": 4,
+    "primary_and_stability_check_stores_distinguished": true,
+    "registered_topology_rank": [
+      3,
+      2
+    ],
+    "seeded_entry_after_automatic_clear": {
+      "bytes": 0,
+      "entries": 0
+    },
+    "seeded_entry_before_automatic_clear": {
+      "bytes": 144,
+      "entries": 1
+    }
+  },
+  "parity": {
+    "bitwise_coefficients_status_accuracy_inputs_ieee": true,
+    "cache_enabled_disabled_parity": true,
+    "physical_precision": "native double precision; no QP rescue occurred",
+    "physical_status": 219,
+    "plain_observed_parity": true,
+    "qp_scope": "Separate genuine-QP generated tensor diagnostics; DP inputs promoted exactly."
+  },
+  "passed": true,
+  "performance_eligible": false,
+  "pole_mode": 0,
+  "processes": [
+    {
+      "id": 101,
+      "prefix": "ML5_101_",
+      "process": "u u~ > z [virt=QCD]"
+    },
+    {
+      "id": 202,
+      "prefix": "ML5_202_",
+      "process": "d d~ > z [virt=QCD]"
+    }
+  ],
+  "results_sha256": "ba66b9bd6015bd29c22242f227f4404582d42eee6123f198b4b157e225b69770",
+  "runtime_files": {
+    "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53",
+    "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+    "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194",
+    "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+  },
+  "runtime_maps_captured": true,
+  "schema_version": 1,
+  "software_failure_latches": {
+    "active_prefix_reset": true,
+    "clean_reference_calls": 4,
+    "other_prefix_preserved": true,
+    "poisoned_physical_calls": 72
+  },
+  "source_and_build_evidence": {
+    "build.json": "6f9e246f3c23ac09c788ec4f0a5a2a9e6f800182ebaee4ae8fd1e0febe249e11",
+    "card-smoke-result.json": "e42468f71a06ae443b5836808fbed4cb1494ad95edf3135b46675d187c0f3a7f",
+    "generated-source-freeze.json": "0ec633b0cb48ad0f5072e78b7184becf7623b298a1cae3589df21d3a4ab7bba2",
+    "generation.json": "f28c60d394dbbb228805f8281484d7d805fcb7f26b72ce9e321529f52a7f2739",
+    "independent-review.json": "3f69db7ebf5815a90847a76dfcaf62ef893e0ae42a74bed3e1762edd515d570f",
+    "link-map-resolution.json": "3fdc5f7d4ea2204682835dade4415074e254fad72a4d4e0c1bf80d6dc5c3dd4b",
+    "linker-prebinding.json": "dc5e47d3edf200e9b69b0589ce56a983348d3286689afbaa64f1cf2b2d141d17",
+    "materialized-source.json": "5f6ecb82e3c594039c5937ddde52065286a81937b4cecd4c0d0177c84e2af848",
+    "non-elf-map-classification.json": "e8e1428e9788cf146b64fcaa0230f2efb8aa29a4392c23e04fc4627f32e52fc6",
+    "retained-generated-index.json": "cd5d994bd7703865303bfc61638dfc16f44e9861f9798a37d8b0622e98dc02cd",
+    "retention-binding.json": "313dc154d1a26b0dd404317cd87d06f538f7352fd859ea9ee1e1481fcaae1f28",
+    "source-freeze.json": "19cca160825d29ea75e37d244e1037ed676755871ae0c59d6743c34d61cef6a3",
+    "stage-build.json": "ae949894fc1627391d1f2ab3e479e2ac3ba8b1b8536dc154026343619079d338",
+    "stage-freeze.json": "de3dd6fb49c092db335911e712aeefec58c96e4b559b5842dceab9c58203a1d8",
+    "stage-generate.json": "89f68a5d2bab35b7c5fec242d3723fea961040a80fcb0bd035f1c39924a95e76",
+    "stage-materialize.json": "79bc8ca9d4c0b281596f664cc724bb41ebedff5e1958a9ae0e0b75ba6e2ebd70",
+    "stage-prepare-build.json": "14d748e9273e6ac4cc33183e7dee53efba3ae9188b0291dfc82d658b3396a6f5",
+    "stage-run.json": "f75d427238fef17c3da59c652179fbad92c93aeb862cdfd42d477dbb56abb581",
+    "stage-smoke.json": "3919b2ebdd7fd7ac3a3a29151d6f86d076729676fed2066c3cb95a548c015970"
+  },
+  "source_index_sha256": "3d1f787bae4d5af45c2a34119f46b3235e64087224c698fca3eb0eb66816ada7",
+  "workers": {
+    "observed-cache-all": {
+      "all_physical_calls_including_warmup": 21,
+      "maximum_reported_accuracy": 1.2269907815852879e-15,
+      "measured_physical_calls": 19,
+      "native_event_counts": {
+        "2": 2,
+        "3": 2,
+        "4": 41,
+        "5": 4,
+        "6": 57,
+        "7": 14
+      },
+      "status_counts_including_warmup": {
+        "219": 21
+      },
+      "tensor_key_calls": 28,
+      "trace_flushes": 54,
+      "trace_rows": 173,
+      "warmup_calls": [
+        1,
+        1
+      ]
+    },
+    "observed-cache0": {
+      "all_physical_calls_including_warmup": 21,
+      "maximum_reported_accuracy": 1.2269907815852879e-15,
+      "measured_physical_calls": 19,
+      "native_event_counts": {
+        "2": 2,
+        "3": 2,
+        "4": 41,
+        "5": 4,
+        "6": 57,
+        "7": 14
+      },
+      "status_counts_including_warmup": {
+        "219": 21
+      },
+      "tensor_key_calls": 28,
+      "trace_flushes": 54,
+      "trace_rows": 173,
+      "warmup_calls": [
+        1,
+        1
+      ]
+    },
+    "plain-cache-all": {
+      "all_physical_calls_including_warmup": 21,
+      "maximum_reported_accuracy": 1.2269907815852879e-15,
+      "measured_physical_calls": 19,
+      "native_event_counts": {},
+      "status_counts_including_warmup": {
+        "219": 21
+      },
+      "tensor_key_calls": 28,
+      "trace_flushes": 54,
+      "trace_rows": 53,
+      "warmup_calls": [
+        1,
+        1
+      ]
+    },
+    "plain-cache0": {
+      "all_physical_calls_including_warmup": 21,
+      "maximum_reported_accuracy": 1.2269907815852879e-15,
+      "measured_physical_calls": 19,
+      "native_event_counts": {},
+      "status_counts_including_warmup": {
+        "219": 21
+      },
+      "tensor_key_calls": 28,
+      "trace_flushes": 54,
+      "trace_rows": 53,
+      "warmup_calls": [
+        1,
+        1
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "build_sha256": "6f9e246f3c23ac09c788ec4f0a5a2a9e6f800182ebaee4ae8fd1e0febe249e11",
+  "closed_commands_zero": 68,
+  "executables": 3,
+  "generated_sources": 201,
+  "independent_source_oracle_audit": "clear",
+  "native_physical_calls": 0,
+  "numerical_objects": 37,
+  "prebound_link_inputs": 225,
+  "previous_review_attempts": "1aa3da/a37f43 stopped on metadata schema assumptions; corrected file-only review, no native execution",
+  "smoke_and_run_not_launched": true,
+  "source_index_sha256": "3d1f787bae4d5af45c2a34119f46b3235e64087224c698fca3eb0eb66816ada7",
+  "status": "pass"
+}

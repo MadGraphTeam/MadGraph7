@@ -1,0 +1,108 @@
+{
+  "copied_files": {
+    "card_smoke.f.in": {
+      "bytes": 3995,
+      "sha256": "ef4a4f6b23d647d1bc931c51fd33fa624e0db17136533431817490a70b671b1d"
+    },
+    "generate.mg5.in": {
+      "bytes": 460,
+      "sha256": "89d2886b11336b4b060ff003035b3ca4abff04479c6dcf901b1a0aa275814023"
+    },
+    "legacy_qualify.py": {
+      "bytes": 31845,
+      "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a"
+    },
+    "linker_bind.py": {
+      "bytes": 8865,
+      "sha256": "b54528ebf6b9847f134a7d8ad927c7394607e927397e45169cb644479c8452c6"
+    },
+    "observer-maps.patch": {
+      "bytes": 1269,
+      "sha256": "e3d8efed3f152e048a7d580f2eb069eafdc2933fef443014e041bbf41b175341"
+    },
+    "observer-original.c": {
+      "bytes": 18182,
+      "sha256": "ed5971b3e186d81df65395355f6a3aa9dfd34336802f4df688004948a973ae34"
+    },
+    "observer.c": {
+      "bytes": 18963,
+      "sha256": "9f17df85f04efa2d181100bf4b7326fed6cdf5ef2e5e0c4b13cf773dd638dd3e"
+    },
+    "process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "smoke.py": {
+      "bytes": 2692,
+      "sha256": "a651c23461f27acb51e15b8b5fd5c46ab06199b2e76e8fef5aab5dbe047c56de"
+    },
+    "test_linker_bind.py": {
+      "bytes": 5821,
+      "sha256": "140e13f636cded3a0f16f24132f467f49d25ff52a667d1427a3f9de223486814"
+    }
+  },
+  "modified_files": {
+    "analyze.py": {
+      "after": {
+        "bytes": 44469,
+        "sha256": "ebeb6592620c06f4c87b94853441a91a0c3f508d10bbefe36834af483bb0dd3c"
+      },
+      "before": {
+        "bytes": 42482,
+        "sha256": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b"
+      }
+    },
+    "driver.f.in": {
+      "after": {
+        "bytes": 12450,
+        "sha256": "a25fe78cca6a05e1fc5f41f5dfcd397eb95267e8348b799e8b2b9759eb799720"
+      },
+      "before": {
+        "bytes": 11765,
+        "sha256": "3cdc9d1780f92b8a8adeb18ba8b3ae3e70db685908eb5d8a7a923bfac298db84"
+      }
+    },
+    "run.py": {
+      "after": {
+        "bytes": 32472,
+        "sha256": "c2dff9a2201c063d11201ca5eea4545881bb369c1457960053473a0ee91454f6"
+      },
+      "before": {
+        "bytes": 32408,
+        "sha256": "be6212d7e93f698b551eee35ec577132c0ebb6db73d07cc203262be6319ce861"
+      }
+    },
+    "test_analyze.py": {
+      "after": {
+        "bytes": 16355,
+        "sha256": "b1b0ebfabdb3134d65d024315b60f892b392dfdcc5153ae381d7164435baf0a0"
+      },
+      "before": {
+        "bytes": 15838,
+        "sha256": "68db1e6261b02bdfdfed5814a6015b9dfa67278c6a61c3b734178fcd77384613"
+      }
+    },
+    "test_controller.py": {
+      "after": {
+        "bytes": 11863,
+        "sha256": "63716190ba3be35423efce681e15b1d0dbd1c94f5a2370908ac257428700b59c"
+      },
+      "before": {
+        "bytes": 11858,
+        "sha256": "bb227dacbd3762c318123619a200634f73e3d0d51c5fa8abcdf24fabc49d4bac"
+      }
+    }
+  },
+  "new_files": {
+    "README.md": {
+      "bytes": 4403,
+      "sha256": "cc75493fadb3b5ce8434d385e61f14413fbf04566ce9caeca4e5dea27aa22018"
+    },
+    "test_successor.py": {
+      "bytes": 3862,
+      "sha256": "dca9921e9f98866145b079aa20557b7bc2f875939b0538c9dfd4751946519134"
+    }
+  },
+  "predecessor_index_sha256": "212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964",
+  "predecessor_packet": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle-current-qualification-2"
+}

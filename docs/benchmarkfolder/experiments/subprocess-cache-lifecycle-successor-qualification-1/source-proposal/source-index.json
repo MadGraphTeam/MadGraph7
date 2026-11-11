@@ -1,0 +1,97 @@
+{
+  "compiler_execution": false,
+  "execution_performed": false,
+  "files": {
+    "README.md": {
+      "bytes": 4503,
+      "sha256": "4c85d915168deaa8d3907f6eda7ab1b5fd938860a91964c47b6af82abf5c79dd"
+    },
+    "analyze.py": {
+      "bytes": 44482,
+      "sha256": "43b16c1da49ab62eafa32be30cd027c5cde3d2ce3c1fa77962f6d2db569bff3d"
+    },
+    "campaign-manifest.json": {
+      "bytes": 398114,
+      "sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076"
+    },
+    "card_smoke.f.in": {
+      "bytes": 3995,
+      "sha256": "ef4a4f6b23d647d1bc931c51fd33fa624e0db17136533431817490a70b671b1d"
+    },
+    "driver.f.in": {
+      "bytes": 12465,
+      "sha256": "5229fb89dbcd9e2488ab1dccb98acc0b314c774f0cf36a7a7f1618e6ba07e23b"
+    },
+    "generate.mg5.in": {
+      "bytes": 460,
+      "sha256": "89d2886b11336b4b060ff003035b3ca4abff04479c6dcf901b1a0aa275814023"
+    },
+    "legacy_qualify.py": {
+      "bytes": 31845,
+      "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a"
+    },
+    "lineage.json": {
+      "bytes": 3217,
+      "sha256": "7b73bf66530058eec58852de735f44dc1c8f88791f267a17a19c0621fcfc5e23"
+    },
+    "linker_bind.py": {
+      "bytes": 8865,
+      "sha256": "b54528ebf6b9847f134a7d8ad927c7394607e927397e45169cb644479c8452c6"
+    },
+    "observer-maps.patch": {
+      "bytes": 1269,
+      "sha256": "e3d8efed3f152e048a7d580f2eb069eafdc2933fef443014e041bbf41b175341"
+    },
+    "observer-original.c": {
+      "bytes": 18182,
+      "sha256": "ed5971b3e186d81df65395355f6a3aa9dfd34336802f4df688004948a973ae34"
+    },
+    "observer.c": {
+      "bytes": 18963,
+      "sha256": "9f17df85f04efa2d181100bf4b7326fed6cdf5ef2e5e0c4b13cf773dd638dd3e"
+    },
+    "process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "run.py": {
+      "bytes": 32472,
+      "sha256": "1f4dc8069d9832c3f77912d969eb8b3489aaf52aaf7c98f23585e77d710cd9b3"
+    },
+    "smoke.py": {
+      "bytes": 2692,
+      "sha256": "a651c23461f27acb51e15b8b5fd5c46ab06199b2e76e8fef5aab5dbe047c56de"
+    },
+    "source-test-receipt.json": {
+      "bytes": 445,
+      "sha256": "3582a87d6d96da5cebd1669e8969a364e80e7ccb5908f6a759b12a5a6428e1b7"
+    },
+    "source1-correction.json": {
+      "bytes": 329,
+      "sha256": "dd942ea98a60839a0c7ec2087c75938e22a94df3dde21d65fb5382cb38e15319"
+    },
+    "successor.patch": {
+      "bytes": 22242,
+      "sha256": "ce5d4bd700d79c5cfebee5998124e9f3c5c0800239e3020e52cf1f2a4949492a"
+    },
+    "test_analyze.py": {
+      "bytes": 16368,
+      "sha256": "16f2811c195352b1358747a0b97304d5f48e41801c61e525271f427322d0c863"
+    },
+    "test_controller.py": {
+      "bytes": 11863,
+      "sha256": "63716190ba3be35423efce681e15b1d0dbd1c94f5a2370908ac257428700b59c"
+    },
+    "test_linker_bind.py": {
+      "bytes": 5821,
+      "sha256": "140e13f636cded3a0f16f24132f467f49d25ff52a667d1427a3f9de223486814"
+    },
+    "test_successor.py": {
+      "bytes": 3862,
+      "sha256": "dca9921e9f98866145b079aa20557b7bc2f875939b0538c9dfd4751946519134"
+    }
+  },
+  "physics_evaluations": 0,
+  "schema": "madloop-successor-cache-lifecycle-source-v1",
+  "total_bytes": 648008
+}

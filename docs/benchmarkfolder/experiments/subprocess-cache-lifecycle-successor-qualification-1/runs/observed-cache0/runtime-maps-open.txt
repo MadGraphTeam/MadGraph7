@@ -1,0 +1,95 @@
+55f0595ba000-55f059687000 r--p 00000000 00:2c 73457369                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-successor-work-2/export/SubProcesses/lifecycle_observed
+55f059687000-55f05d15f000 r-xp 000cd000 00:2c 73457369                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-successor-work-2/export/SubProcesses/lifecycle_observed
+55f05d15f000-55f05d8b2000 r--p 03ba5000 00:2c 73457369                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-successor-work-2/export/SubProcesses/lifecycle_observed
+55f05d8b2000-55f05d94c000 r--p 042f8000 00:2c 73457369                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-successor-work-2/export/SubProcesses/lifecycle_observed
+55f05d94c000-55f05d958000 rw-p 04392000 00:2c 73457369                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-successor-work-2/export/SubProcesses/lifecycle_observed
+55f05d958000-55f05ecd7000 rw-p 00000000 00:00 0 
+55f066652000-55f066695000 rw-p 00000000 00:00 0                          [heap]
+7b641f8bc000-7b641f8c5000 rw-p 00000000 00:00 0 
+7b641f8c5000-7b641f8c8000 r--p 00000000 00:21 3529861                    /nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+7b641f8c8000-7b641f8f4000 r-xp 00003000 00:21 3529861                    /nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+7b641f8f4000-7b641f90b000 r--p 0002f000 00:21 3529861                    /nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+7b641f90b000-7b641f90c000 r--p 00045000 00:21 3529861                    /nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+7b641f90c000-7b641f90d000 rw-p 00046000 00:21 3529861                    /nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+7b641f90d000-7b641f9b7000 r--p 00000000 00:21 205227                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34
+7b641f9b7000-7b641faeb000 r-xp 000aa000 00:21 205227                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34
+7b641faeb000-7b641fb79000 r--p 001de000 00:21 205227                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34
+7b641fb79000-7b641fb8a000 r--p 0026b000 00:21 205227                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34
+7b641fb8a000-7b641fb8b000 rw-p 0027c000 00:21 205227                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34
+7b641fb8b000-7b641fb8f000 rw-p 00000000 00:00 0 
+7b641fb8f000-7b641fbf1000 r--p 00000000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so
+7b641fbf1000-7b642339a000 r-xp 00062000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so
+7b642339a000-7b6423918000 r--p 0380b000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so
+7b6423918000-7b6423965000 r--p 03d89000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so
+7b6423965000-7b642396a000 rw-p 03dd6000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so
+7b642396a000-7b642396b000 rw-p 00000000 00:00 0 
+7b642396b000-7b6423993000 r--p 00000000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+7b6423993000-7b6423b15000 r-xp 00028000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+7b6423b15000-7b6423b64000 r--p 001aa000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+7b6423b64000-7b6423b68000 r--p 001f8000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+7b6423b68000-7b6423b6a000 rw-p 001fc000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+7b6423b6a000-7b6423b77000 rw-p 00000000 00:00 0 
+7b6423b77000-7b6423b7d000 r--p 00000000 00:21 196683                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+7b6423b7d000-7b6423ba0000 r-xp 00006000 00:21 196683                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+7b6423ba0000-7b6423c6f000 r--p 00029000 00:21 196683                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+7b6423c6f000-7b6423c70000 r--p 000f8000 00:21 196683                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+7b6423c70000-7b6423c71000 rw-p 000f9000 00:21 196683                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+7b6423c71000-7b6423c73000 rw-p 00000000 00:00 0 
+7b6423c73000-7b6423c83000 r--p 00000000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+7b6423c83000-7b6423cff000 r-xp 00010000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+7b6423cff000-7b6423d59000 r--p 0008c000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+7b6423d59000-7b6423d5a000 r--p 000e5000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+7b6423d5a000-7b6423d5b000 rw-p 000e6000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+7b6423d5b000-7b6423d7f000 r--p 00000000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+7b6423d7f000-7b6424079000 r-xp 00024000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+7b6424079000-7b64240b0000 r--p 0031e000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+7b64240b0000-7b64240b2000 r--p 00355000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+7b64240b2000-7b64240b3000 rw-p 00357000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+7b64240b3000-7b64240b4000 r--p 00000000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+7b64240b4000-7b64240b5000 r-xp 00001000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+7b64240b5000-7b64240b6000 r--p 00002000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+7b64240b6000-7b64240b7000 r--p 00002000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+7b64240b7000-7b64240b8000 rw-p 00003000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+7b64240b8000-7b64240b9000 r--p 00000000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+7b64240b9000-7b64240ba000 r-xp 00001000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+7b64240ba000-7b64240bb000 r--p 00002000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+7b64240bb000-7b64240bc000 r--p 00002000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+7b64240bc000-7b64240bd000 rw-p 00003000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+7b64240bd000-7b64240be000 r--p 00000000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+7b64240be000-7b64240bf000 r-xp 00001000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+7b64240bf000-7b64240c0000 r--p 00002000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+7b64240c0000-7b64240c1000 r--p 00002000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+7b64240c1000-7b64240c2000 rw-p 00003000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+7b64240c2000-7b64240c4000 rw-p 00000000 00:00 0 
+7b64240c4000-7b64240c5000 r--p 00000000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+7b64240c5000-7b64240c6000 r-xp 00001000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+7b64240c6000-7b64240c7000 r--p 00002000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+7b64240c7000-7b64240c8000 r--p 00002000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+7b64240c8000-7b64240c9000 rw-p 00003000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+7b64240c9000-7b64240cd000 r--p 00000000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+7b64240cd000-7b64240f0000 r-xp 00004000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+7b64240f0000-7b64240f4000 r--p 00027000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+7b64240f4000-7b64240f5000 r--p 0002b000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+7b64240f5000-7b64240f6000 rw-p 0002c000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+7b64240f6000-7b6424112000 r--p 00000000 00:2c 16457068                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so
+7b6424112000-7b6424448000 r-xp 0001c000 00:2c 16457068                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so
+7b6424448000-7b6424476000 r--p 00352000 00:2c 16457068                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so
+7b6424476000-7b6424478000 r--p 0037f000 00:2c 16457068                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so
+7b6424478000-7b6424479000 rw-p 00381000 00:2c 16457068                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so
+7b6424479000-7b6424484000 rw-p 00000000 00:00 0 
+7b6424484000-7b64244a6000 r--p 00000000 00:2c 16343959                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0
+7b64244a6000-7b64247e9000 r-xp 00022000 00:2c 16343959                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0
+7b64247e9000-7b64247fa000 r--p 00365000 00:2c 16343959                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0
+7b64247fa000-7b64247fb000 r--p 00376000 00:2c 16343959                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0
+7b64247fb000-7b64247fd000 rw-p 00377000 00:2c 16343959                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0
+7b64247fd000-7b6424801000 rw-p 00000000 00:00 0 
+7b6424801000-7b6424805000 r--p 00000000 00:00 0                          [vvar]
+7b6424805000-7b6424807000 r--p 00000000 00:00 0                          [vvar_vclock]
+7b6424807000-7b6424809000 r-xp 00000000 00:00 0                          [vdso]
+7b6424809000-7b642480a000 r--p 00000000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+7b642480a000-7b6424834000 r-xp 00001000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+7b6424834000-7b642483e000 r--p 0002b000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+7b642483e000-7b6424840000 r--p 00035000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+7b6424840000-7b6424842000 rw-p 00037000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+7ffe62bb2000-7ffe62bd5000 rwxp 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

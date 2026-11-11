@@ -1,0 +1,350 @@
+C     Actual two-prefix generated amplitude/cache qualification driver.
+      PROGRAM SUBPROCESS_CACHE_LIFECYCLE
+      USE MTIRUST
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT,C_INT64_T
+      USE, INTRINSIC :: IEEE_ARITHMETIC
+      USE, INTRINSIC :: IEEE_EXCEPTIONS
+      IMPLICIT NONE
+      INCLUDE 'coupl.inc'
+      INCLUDE 'MadLoopParams.inc'
+      INTEGER ND(2),NS(2),I,J,K,PROC,SEQ,ID,CACHE,MODE,PHASE
+      INTEGER CODE,NWARM(2),G0,G1,STATUS,NC,N,R,KEY,PREC
+      INTEGER*8 BITS(8),CB(9),CA(9),QB(6),QA(6)
+      REAL*8 P(0:3,3),BETA,GAMMA,E,SIGNZ,SCALE_FACTOR
+      REAL*8, ALLOCATABLE :: ANS(:,:),ACC(:)
+      REAL*8 PL(0:3,3),SCALE0
+      REAL*16 QPL(0:3,3)
+      COMPLEX*16 MASS(3),COEF(0:@CAPACITY@-1,3),SEED(1,4)
+      COMPLEX*32 QCOEF(0:@CAPACITY@-1,3)
+      LOGICAL STABLE,FB(5),FA(5),AUTOA,AUTOB
+      LOGICAL AFAILDP,AFAILQP,BFAILDP,BFAILQP
+      COMMON/@PREFIX_A@FPE_IN_REDUCTION/AFAILDP,AFAILQP
+      COMMON/@PREFIX_B@FPE_IN_REDUCTION/BFAILDP,BFAILQP
+      COMMON/@PREFIX_A@RUNTIME_OPTIONS/AUTOA
+      COMMON/@PREFIX_B@RUNTIME_OPTIONS/AUTOB
+      CHARACTER*512 RESOURCE,ARG
+      INTERFACE
+        SUBROUTINE LC_OPEN() BIND(C,NAME='lc_open')
+        END SUBROUTINE
+        SUBROUTINE LC_BEGIN(A,P) BIND(C,NAME='lc_begin')
+          IMPORT C_INT
+          INTEGER(C_INT),VALUE :: A,P
+        END SUBROUTINE
+        SUBROUTINE LC_FLUSH() BIND(C,NAME='lc_flush')
+        END SUBROUTINE
+        SUBROUTINE LC_CLOSE() BIND(C,NAME='lc_close')
+        END SUBROUTINE
+        FUNCTION LC_HEALTH() BIND(C,NAME='lc_health') RESULT(H)
+          IMPORT C_INT
+          INTEGER(C_INT) H
+        END FUNCTION
+      END INTERFACE
+      CALL GET_COMMAND_ARGUMENT(1,ARG)
+      READ(ARG,*) CACHE
+      IF(CACHE.NE.0.AND.CACHE.NE.-1) STOP 11
+      RESOURCE='resources'
+      CALL SETMADLOOPPATH(RESOURCE)
+      CALL SETPARA('nominal/param_card.dat')
+      CALL @PREFIX_A@GET_ANSWER_DIMENSION(ND(1))
+      CALL @PREFIX_B@GET_ANSWER_DIMENSION(ND(2))
+      CALL @PREFIX_A@GET_NSQSO_LOOP(NS(1))
+      CALL @PREFIX_B@GET_NSQSO_LOOP(NS(2))
+      ALLOCATE(ANS(0:3,0:MAXVAL(ND)),ACC(0:MAXVAL(NS)))
+      OPEN(72,FILE='records.txt',STATUS='NEW')
+      WRITE(72,*) 'HEADER',CACHE,ND,NS
+      WRITE(72,*) 'CAP',@CAPACITY@
+      CALL LC_OPEN()
+      IF(.NOT.AUTOA.OR..NOT.AUTOB) STOP 12
+      CALL @PREFIX_A@FORCE_STABILITY_CHECK(.TRUE.)
+      CALL @PREFIX_B@FORCE_STABILITY_CHECK(.TRUE.)
+      SEQ=0
+      BETA=0D0
+      SCALE_FACTOR=1D0
+      PHASE=0
+C     Card files already freeze MLReductionLib=9 and this CACHE setting.
+C     Do not initialize or mutate the generated process filter COMMONs.
+      DO PROC=1,2
+        DO K=1,32
+          ID=100*PROC+K
+          CALL PHYSICAL_CALL(ID,PROC,0,0D0,1D0)
+          IF(CODE/100.EQ.4) STOP 13
+          IF((CODE.EQ.219).OR.(CODE.EQ.229).OR.
+     $       (CODE.EQ.313).OR.(CODE.EQ.323)) EXIT
+        ENDDO
+        IF(K.GT.32) STOP 14
+        NWARM(PROC)=K
+      ENDDO
+      WRITE(72,*) 'WARM',NWARM
+      IF(MLReductionLib(1).NE.9.OR.MLReductionLib(2).NE.0) STOP 15
+      IF(TIRustGlobalCache.NE.CACHE) STOP 16
+      IF(.NOT.TIRustComputeFinite.OR.LoopPoleMode.NE.0) STOP 17
+      IF(CTModeRun.NE.-1.OR.CTModeInit.NE.1) STOP 18
+C     Five identical prescribed A/B/A sequences in every fresh worker.
+      DO PHASE=1,5
+        BETA=0D0
+        SCALE_FACTOR=1D0
+        IF(PHASE.EQ.2) SCALE_FACTOR=2D0
+        IF(PHASE.EQ.3) BETA=0.25D0
+        IF(PHASE.EQ.4) CALL SETPARA('alternate/param_card.dat')
+        IF(PHASE.EQ.5) CALL SETPARA('nominal/param_card.dat')
+        DO J=1,3
+          PROC=1
+          IF(J.EQ.2) PROC=2
+          ID=300+3*(PHASE-1)+J
+          CALL PHYSICAL_CALL(ID,PROC,PHASE,BETA,SCALE_FACTOR)
+          CALL REQUIRE_CHECKED()
+        ENDDO
+      ENDDO
+C     Real cached seed is a separately tagged diagnostic, also in cache0.
+      CALL LC_BEGIN(350_C_INT,0_C_INT)
+      CALL SEED_CACHE()
+      CALL LC_FLUSH()
+      IF(LC_HEALTH().NE.0) STOP 19
+      CALL PHYSICAL_CALL(316,1,6,0D0,1D0)
+      CALL REQUIRE_CHECKED()
+C     Finalization only affects TIRust. Do not finalize other reducers.
+      CALL LC_BEGIN(360_C_INT,1_C_INT)
+      G0=TIRUST_CONTEXT_GENERATION()
+      CALL @PREFIX_A@FINALIZE_TIRUST()
+      G1=TIRUST_CONTEXT_GENERATION()
+      WRITE(72,*) 'FINALIZE',G0,G1
+      IF(G0.LT.1.OR.G1.NE.-1) STOP 20
+      CALL LC_FLUSH()
+      DO J=1,3
+        PROC=2
+        IF(J.EQ.2) PROC=1
+        CALL PHYSICAL_CALL(316+J,PROC,7,0D0,1D0)
+        CALL REQUIRE_CHECKED()
+        IF(TIRUST_CONTEXT_GENERATION().LE.G0) STOP 21
+      ENDDO
+C     Standalone key tests begin after complete physical event boundaries.
+C     These do not use or replace physical amplitude event clearing.
+      CALL LC_BEGIN(900_C_INT,1_C_INT)
+      CALL @PREFIX_A@CLEAR_CACHES()
+      CALL LC_FLUSH()
+      DO PREC=1,2
+        DO KEY=1,14
+          CALL KEY_CALL(PREC,KEY)
+        ENDDO
+      ENDDO
+      CALL LC_BEGIN(1900_C_INT,1_C_INT)
+      G0=TIRUST_CONTEXT_GENERATION()
+      CALL @PREFIX_A@FINALIZE_TIRUST()
+      G1=TIRUST_CONTEXT_GENERATION()
+      WRITE(72,*) 'FINALIZE_END',G0,G1
+      IF(G0.LT.1.OR.G1.NE.-1) STOP 33
+      CALL LC_FLUSH()
+      WRITE(72,*) 'DONE',NWARM,19,28,LC_HEALTH()
+      CALL LC_CLOSE()
+      WRITE(72,*) 'CLOSED',LC_HEALTH()
+      CLOSE(72)
+      IF(LC_HEALTH().NE.0) STOP 22
+      CONTAINS
+
+      SUBROUTINE GET_FLAGS(F)
+      LOGICAL F(5)
+      CALL IEEE_GET_FLAG(IEEE_INVALID,F(1))
+      CALL IEEE_GET_FLAG(IEEE_DIVIDE_BY_ZERO,F(2))
+      CALL IEEE_GET_FLAG(IEEE_OVERFLOW,F(3))
+      CALL IEEE_GET_FLAG(IEEE_UNDERFLOW,F(4))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,F(5))
+      END SUBROUTINE
+
+      SUBROUTINE PHYSICAL_CALL(ACTION,IPROC,IPHASE,BOOST,SF)
+      INTEGER ACTION,IPROC,IPHASE,L,COL,GEN_BEFORE,GEN_AFTER
+      REAL*8 BOOST,SF,P_BEFORE(0:3,3),MODEL_BEFORE(2)
+      LOGICAL BEFORE_FLAGS(5),AFTER_FLAGS(5),LATCHI(4),LATCH(4)
+      E=MDL_MZ/2D0
+      GAMMA=1D0/SQRT(1D0-BOOST*BOOST)
+      P=0D0
+      DO L=1,2
+        SIGNZ=1D0
+        IF(L.EQ.2) SIGNZ=-1D0
+        P(0,L)=GAMMA*E*(1D0+BOOST*SIGNZ)
+        P(3,L)=GAMMA*E*(SIGNZ+BOOST)
+      ENDDO
+      P(:,3)=P(:,1)+P(:,2)
+      MU_R=MDL_MZ*SF
+      CALL UPDATE_AS_PARAM()
+      P_BEFORE=P
+      MODEL_BEFORE=(/MDL_MZ,MU_R/)
+      GEN_BEFORE=TIRUST_CONTEXT_GENERATION()
+      CALL GET_FLAGS(BEFORE_FLAGS)
+      ANS=0D0
+      ACC=-1D0
+C     Deliberate prior-call software-failure state, never hardware flags.
+      IF(ACTION.GT.301.AND.ACTION.LE.319) THEN
+        AFAILDP=.TRUE.
+        AFAILQP=.TRUE.
+        BFAILDP=.TRUE.
+        BFAILQP=.TRUE.
+      ENDIF
+      LATCHI=(/AFAILDP,AFAILQP,BFAILDP,BFAILQP/)
+      CALL LC_BEGIN(INT(ACTION,C_INT),INT(IPROC,C_INT))
+      IF(IPROC.EQ.1) THEN
+        CALL @PREFIX_A@SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+      ELSE
+        CALL @PREFIX_B@SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+      ENDIF
+      LATCH=(/AFAILDP,AFAILQP,BFAILDP,BFAILQP/)
+      CALL GET_FLAGS(AFTER_FLAGS)
+      GEN_AFTER=TIRUST_CONTEXT_GENERATION()
+      WRITE(72,*) 'AMP',ACTION,IPROC,IPHASE,CODE,ND(IPROC),
+     $ NS(IPROC),GEN_BEFORE,GEN_AFTER
+      WRITE(72,'(A,1X,I6,2(1X,Z16.16))') 'MODELI',ACTION,
+     $ TRANSFER(MODEL_BEFORE,BITS(1:2))
+      WRITE(72,'(A,1X,I6,2(1X,Z16.16))') 'MODEL',ACTION,
+     $ TRANSFER(MDL_MZ,0_8),TRANSFER(MU_R,0_8)
+      WRITE(72,*) 'LATCHI',ACTION,LATCHI
+      WRITE(72,*) 'LATCH',ACTION,LATCH
+      WRITE(72,*) 'FLAGS',ACTION,BEFORE_FLAGS,AFTER_FLAGS
+      DO L=1,3
+        WRITE(72,'(A,2I6,4(1X,Z16.16))') 'PI',ACTION,L,
+     $    TRANSFER(P_BEFORE(:,L),BITS(1:4))
+        WRITE(72,'(A,2I6,4(1X,Z16.16))') 'P',ACTION,L,
+     $    TRANSFER(P(:,L),BITS(1:4))
+      ENDDO
+      DO COL=0,ND(IPROC)
+        WRITE(72,'(A,2I6,5(1X,Z16.16))') 'V',ACTION,COL,
+     $    TRANSFER(ANS(:,COL),BITS(1:4)),
+     $    TRANSFER(ACC(MIN(COL,NS(IPROC))),0_8)
+      ENDDO
+      CALL LC_FLUSH()
+      FLUSH(72)
+      IF(LC_HEALTH().NE.0) STOP 23
+      END SUBROUTINE
+
+      SUBROUTINE REQUIRE_CHECKED()
+      IF(CODE.NE.219.AND.CODE.NE.229.AND.CODE.NE.313.AND.
+     $ CODE.NE.323) STOP 24
+      IF(.NOT.ALL(IEEE_IS_FINITE(ANS))) STOP 25
+      END SUBROUTINE
+
+      SUBROUTINE SEED_CACHE()
+      REAL*8 SP(0:3,1),SS(1,1)
+      COMPLEX*16 SM(1)
+      SP=0D0
+      SS=0D0
+      SM(1)=CMPLX(4D0,-0.25D0,KIND=8)
+      CALL TIRUST_TENSOR_EVALUATE(1,0,SP,SS,SM,7D0,SEED,
+     $ STATUS,0,.TRUE.,.FALSE.,.TRUE.)
+      WRITE(72,*) 'SEED',STATUS
+      IF(STATUS.NE.TIRUST_SUCCESS) STOP 26
+      DO I=1,4
+        WRITE(72,'(A,I6,2(1X,Z16.16))') 'SEEDVALUE',I,
+     $    TRANSFER(SEED(1,I),BITS(1:2))
+      ENDDO
+      END SUBROUTINE
+
+      SUBROUTINE KEY_CALL(IPREC,IKEY)
+      INTEGER IPREC,IKEY,L,COL,IPROC,ACTION,CT,MODEKEY
+      REAL*8 FACTOR,PL_BEFORE(0:3,3),SCALE_BEFORE
+      REAL*16 QPL_BEFORE(0:3,3)
+      COMPLEX*16 MASS_BEFORE(3)
+      ACTION=1000+100*IPREC+IKEY
+      IPROC=1+MOD(IKEY,2)
+      CT=1
+      IF(IPREC.EQ.2) CT=4
+C     Key13 independently recomputes a cached primary; key14 must still hit.
+      IF(IKEY.EQ.13) CT=CT+1
+      N=1
+      R=0
+      PL=0D0
+      MASS=CMPLX(4D0,-0.25D0,KIND=8)
+      MU_R=SQRT(7D0)
+      IF(IKEY.EQ.3.OR.IKEY.EQ.4)
+     $ MASS=CMPLX(9D0,-0.5D0,KIND=8)
+      IF(IKEY.EQ.5.OR.IKEY.EQ.6) MU_R=SQRT(11D0)
+      IF(IKEY.GE.8) THEN
+        N=3
+        R=2
+        MASS=0D0
+        FACTOR=1D0
+        IF(IKEY.EQ.10.OR.IKEY.EQ.11) FACTOR=1.2D0
+        PL(:,1)=(/5D0,0D0,0D0,5D0/)*FACTOR
+        PL(:,2)=(/5D0,0D0,0D0,-5D0/)*FACTOR
+        PL(:,3)=(/-10D0,0D0,0D0,0D0/)*FACTOR
+      ENDIF
+      NC=(R+1)*(R+2)*(R+3)*(R+4)/24
+      QPL=REAL(PL,KIND=16)
+C     M2L and MU_R are DP in the generated MP adapter; only PL is QP.
+C     This exact-key exercise does not claim binary128 mass/scale inputs.
+      CALL UPDATE_AS_PARAM()
+      CALL LC_BEGIN(INT(ACTION,C_INT),INT(IPROC,C_INT))
+C     Host cache clear is the actual generated routine (dummy for these
+C     Born exports). No native clear is permitted in a key action trace.
+      IF(IPROC.EQ.1) THEN
+        CALL @PREFIX_A@CLEAR_TIR_CACHE()
+      ELSE
+        CALL @PREFIX_B@CLEAR_TIR_CACHE()
+      ENDIF
+      CALL TIRUST_CACHE_STATISTICS(CB,STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) STOP 27
+      CALL TIRUST_QP_CACHE_STATISTICS(QB,STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) STOP 28
+      PL_BEFORE=PL
+      QPL_BEFORE=QPL
+      MASS_BEFORE=MASS
+      SCALE_BEFORE=MU_R
+      COEF=0D0
+      QCOEF=0D0
+      IF(IPREC.EQ.1) THEN
+        IF(IPROC.EQ.1) THEN
+          CALL @PREFIX_A@TIRUST_TENSOR_DIAGNOSTIC(CT,N,R,
+     $       PL(:,1:N),MASS(1:N),COEF,STABLE)
+        ELSE
+          CALL @PREFIX_B@TIRUST_TENSOR_DIAGNOSTIC(CT,N,R,
+     $       PL(:,1:N),MASS(1:N),COEF,STABLE)
+        ENDIF
+      ELSE
+        IF(IPROC.EQ.1) THEN
+          CALL @PREFIX_A@MP_TIRUST_TENSOR_DIAGNOSTIC(CT,N,R,
+     $       QPL(:,1:N),MASS(1:N),QCOEF,STABLE)
+        ELSE
+          CALL @PREFIX_B@MP_TIRUST_TENSOR_DIAGNOSTIC(CT,N,R,
+     $       QPL(:,1:N),MASS(1:N),QCOEF,STABLE)
+        ENDIF
+      ENDIF
+      WRITE(72,*) 'KEY',ACTION,IPROC,IPREC,IKEY,N,R,NC,STABLE
+      IF(.NOT.STABLE) STOP 29
+      CALL TIRUST_CACHE_STATISTICS(CA,STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) STOP 30
+      CALL TIRUST_QP_CACHE_STATISTICS(QA,STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) STOP 31
+      WRITE(72,*) 'BEFORE',ACTION,CB,QB
+      WRITE(72,*) 'AFTER',ACTION,CA,QA
+      WRITE(72,'(A,I6,1X,Z16.16)') 'SCALEI',ACTION,
+     $ TRANSFER(SCALE_BEFORE,0_8)
+      WRITE(72,'(A,I6,1X,Z16.16)') 'SCALE',ACTION,
+     $ TRANSFER(MU_R,0_8)
+      DO L=1,N
+        WRITE(72,'(A,2I6,4(1X,Z16.16))') 'KPI',ACTION,L,
+     $    TRANSFER(PL_BEFORE(:,L),BITS(1:4))
+        WRITE(72,'(A,2I6,2(1X,Z16.16))') 'KMI',ACTION,L,
+     $    TRANSFER(MASS_BEFORE(L),BITS(1:2))
+        IF(IPREC.EQ.2) THEN
+          WRITE(72,'(A,2I6,8(1X,Z16.16))') 'KQPI',ACTION,L,
+     $      TRANSFER(QPL_BEFORE(:,L),BITS)
+          WRITE(72,'(A,2I6,8(1X,Z16.16))') 'KQP',ACTION,L,
+     $      TRANSFER(QPL(:,L),BITS)
+        ENDIF
+        WRITE(72,'(A,2I6,4(1X,Z16.16))') 'KP',ACTION,L,
+     $    TRANSFER(PL(:,L),BITS(1:4))
+        WRITE(72,'(A,2I6,2(1X,Z16.16))') 'KM',ACTION,L,
+     $    TRANSFER(MASS(L),BITS(1:2))
+      ENDDO
+      DO COL=1,3
+        DO L=0,NC-1
+          IF(IPREC.EQ.1) THEN
+            WRITE(72,'(A,3I6,2(1X,Z16.16))') 'D',ACTION,
+     $       COL,L,TRANSFER(COEF(L,COL),BITS(1:2))
+          ELSE
+            WRITE(72,'(A,3I6,4(1X,Z16.16))') 'Q',ACTION,
+     $       COL,L,TRANSFER(QCOEF(L,COL),BITS(1:4))
+          ENDIF
+        ENDDO
+      ENDDO
+      CALL LC_FLUSH()
+      IF(LC_HEALTH().NE.0) STOP 32
+      END SUBROUTINE
+      END PROGRAM

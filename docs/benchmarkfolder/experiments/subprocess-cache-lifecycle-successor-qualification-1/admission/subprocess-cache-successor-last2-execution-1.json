@@ -1,0 +1,32 @@
+{
+  "build_sha256": "6f9e246f3c23ac09c788ec4f0a5a2a9e6f800182ebaee4ae8fd1e0febe249e11",
+  "scope": "root-admitted SOURCE2 smoke then run only",
+  "source_index_sha256": "3d1f787bae4d5af45c2a34119f46b3235e64087224c698fca3eb0eb66816ada7",
+  "stages": [
+    {
+      "argv": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        ".tirust-build/subprocess-cache-successor-proposal-2/run.py",
+        "smoke",
+        "--execute"
+      ],
+      "elapsed_seconds": 5.5223182258196175,
+      "returncode": 0,
+      "stage": "smoke"
+    },
+    {
+      "argv": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        ".tirust-build/subprocess-cache-successor-proposal-2/run.py",
+        "run",
+        "--execute"
+      ],
+      "elapsed_seconds": 14.322462019976228,
+      "returncode": 0,
+      "stage": "run"
+    }
+  ],
+  "status": "passed"
+}

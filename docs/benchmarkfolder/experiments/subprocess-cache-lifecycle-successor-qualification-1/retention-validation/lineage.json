@@ -1,0 +1,27 @@
+{
+  "adapted": {
+    "retention-capture.py": {
+      "after": {
+        "bytes": 10893,
+        "sha256": "1a914339845831dd56d55441a69ed2ba2f5236609e43448d8b96ba3a477d4e70"
+      },
+      "before": {
+        "bytes": 9041,
+        "sha256": "b2a2e2a1030e57ea616e2a516475b2cca2af6a05bd890a12e6a371e5a505e3aa"
+      }
+    },
+    "verify_evidence.py": {
+      "after": {
+        "bytes": 28844,
+        "sha256": "20ef270af5c544d8377f37c9059184be79c23d2910902a1e4725817977b4e1be"
+      },
+      "before": {
+        "bytes": 24315,
+        "sha256": "f972cf33e455df9ca2d2bc24e9bed50c6ba582b59dd41c099c92fa2f4d94122a"
+      }
+    }
+  },
+  "native_execution": false,
+  "predecessor_index_sha256": "212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964",
+  "predecessor_packet": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle-current-qualification-2"
+}

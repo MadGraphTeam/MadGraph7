@@ -375,16 +375,26 @@ The inputs, original adapter and library are unchanged. This identifies the
 reported refusal conditions; it establishes neither their numerical cause nor
 a mass-projection fix or amplitude accuracy. Both failed results remain open.
 
-The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
-index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
-passes exact parity across four workers, 76 checked native-DP physical calls
-and 96 separate DP/QP tensor-key requests. Its registered source is
-`2c13246ffa63` in `invariant-symmetry-1`; the native DSO is the unchanged
-`eb3d67fd…` installation. It has not been rerun for the successor's entry-latch
-reset and cache guard. The successor's promotion tests, fixed-mode parity and
-guard-only lifecycle measurements retain their narrower scopes. Physical-QP
-rescues, rank-six, EW, loop-induced, poles-only and runtime remain outside the
-preceding study's lifecycle scope.
+The [current-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-successor-qualification-1/README.md),
+index SHA-256 `e9df673cf450c07a9d28ee8aa50f31c075abfb8dc8fdc13f98b28bb6d13c4a57`,
+uses fresh CLI exports and full numerical builds at `0fcd2cd873d6` with the
+unchanged `eb3d67fd…` native DSO. Four cache-disabled/enabled, plain/observed
+workers agree exactly across 76 checked native-DP physical calls, eight warmup
+calls and 112 separate DP/QP tensor-key requests. Seventy-two physical calls
+enter with deliberately poisoned software failure latches; the called prefix
+resets its own latches and preserves the other prefix. Raw traces require
+successful primary/independent-check DP passes, event invalidation, distinct
+subprocess registrations and guarded context recreation. Independent tensor
+checks bypass primary stores, whose following primary requests still hit.
+All 83 external commands close successfully; portable raw replay and 19
+integrity/relocation tests pass.
+
+The [preceding-source proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json)
+remains unchanged at `2c13246ffa63` with 96 tensor-key requests. The new proof's
+physical scope remains real-SM N≤3/rank≤2, while QP coverage uses exactly promoted
+DP tensor inputs. Physical-QP rescues, rank six, EW, loop-induced, poles-only,
+general stress accuracy and performance remain separate qualifications. The
+41-page PDF is a separately frozen snapshot preceding this lifecycle replay.
 Native-DP/rescued timing cohorts and all precise performance gates remain
 unqualified. Complete delivery remains false.
 

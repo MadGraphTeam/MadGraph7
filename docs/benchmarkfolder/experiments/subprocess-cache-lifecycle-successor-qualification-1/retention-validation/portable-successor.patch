@@ -1,0 +1,311 @@
+--- preceding/verify_evidence.py
++++ successor/verify_evidence.py
+@@ -10,10 +10,10 @@
+ import struct
+ import types
+ 
+-ANALYZER_SHA = '0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b'
+-SOURCE_INDEX_SHA = '95046dc54616a48266020d9b43d81f953c6374140017cd87eaf8bbfb011aedd6'
+-MANIFEST_SHA = 'ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0'
+-REVISION = '2c13246ffa63aa357ad1e29e5e79aff63d88dc7e'
++ANALYZER_SHA = '43b16c1da49ab62eafa32be30cd027c5cde3d2ce3c1fa77962f6d2db569bff3d'
++SOURCE_INDEX_SHA = '3d1f787bae4d5af45c2a34119f46b3235e64087224c698fca3eb0eb66816ada7'
++MANIFEST_SHA = '4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076'
++REVISION = '0fcd2cd873d61d134837e1d9e87afb13a47824fd'
+ STAGES = ('freeze', 'materialize', 'generate', 'prepare-build', 'build', 'smoke', 'run')
+ 
+ 
+@@ -38,6 +38,7 @@
+         root = Path(root or Path(__file__).resolve().parent).absolute()
+         require(all(not path.is_symlink() for path in (root, *root.parents)), 'Symlink evidence root')
+         def local_read(name):
++            safe(name)
+             path = root
+             for part in PurePosixPath(name).parts:
+                 path /= part
+@@ -71,6 +72,11 @@
+         raise ValueError('Nonfinite JSON value: ' + value)
+     def load(name):
+         return json.loads(read(name), parse_constant=invalid)
++    for name in index['files']:
++        safe(name)
++    for name, item in packed.items():
++        safe(name)
++        safe(item['path'])
+     compressed_paths = [item['path'] for item in packed.values()]
+     require(len(set(compressed_paths)) == len(compressed_paths), 'Aliased compressed payload')
+     for name in index['files']:
+@@ -89,11 +95,26 @@
+         def read_text(self, encoding='utf-8'): return self.read_bytes().decode(encoding)
+         def stat(self): return types.SimpleNamespace(st_size=len(self.read_bytes()))
+ 
++    logical_names = (set(index['files']) - set(compressed_paths)) | set(packed)
++    command_names = sorted(name for name in logical_names
++                           if name.startswith('execution/') and name.endswith('.json'))
++    require(len(command_names) == 83, 'Incomplete closed command registry')
++    for name in command_names:
++        command = load(name)
++        require(command['returncode'] == 0 and command['exception'] is None and
++                command['cleanup_exception'] is None and command['cleanup']['survivors'] == [],
++                'Unclosed/failed external command: ' + name)
++        require(command['cpu'] == 12 and command['cpu_exclusive'] is False and
++                command['environment']['OMP_NUM_THREADS'] == '1' and
++                command['environment']['OPENBLAS_NUM_THREADS'] == '1',
++                'Different command CPU/thread policy')
++        log = name[:-5] + '.txt'
++        require(sha(read(log)) == command['log_sha256'], 'Closed command log changed')
+     source_index = read('source-proposal/source-index.json')
+     require(sha(source_index) == SOURCE_INDEX_SHA, 'Different executed source protocol')
+     for name, item in json.loads(source_index)['files'].items():
+         raw = read('source-proposal/' + safe(name))
+-        require(sha(raw) == item['sha256'] and len(raw) == item['size'], 'Protocol source changed')
++        require(sha(raw) == item['sha256'] and len(raw) == item['bytes'], 'Protocol source changed')
+     manifest_raw = read('source-proposal/campaign-manifest.json')
+     require(sha(manifest_raw) == MANIFEST_SHA, 'Different current campaign')
+     manifest = json.loads(manifest_raw)
+@@ -102,9 +123,18 @@
+     generated = load('generated-source-freeze.json')
+     build = load('build.json')
+     retention = load('retention-binding.json')
++    require(retention['source1_unexecuted_index_sha256'] ==
++            '62b2af837f5192555a2258035a352a2e65e4d37dce4fe13b8935ed451fd39779' and
++            sha(read('source1-unexecuted/source-index.json')) == retention['source1_unexecuted_index_sha256'],
++            'Unexecuted proposal history differs')
++    old_source = json.loads(read('source1-unexecuted/source-index.json'))
++    for name, item in old_source['files'].items():
++        raw = read('source1-unexecuted/' + safe(name))
++        require(len(raw) == item['bytes'] and sha(raw) == item['sha256'],
++                'Unexecuted proposal source changed')
+     require(retention['schema'] == 1 and retention['no_native_execution'] is True
+-            and retention['failed_predecessor_index_sha256'] ==
+-                '22deeb09e727fb4f687e3c78c2bc215afd86cca81a933b74cf259597453c296b'
++            and retention['preceding_lifecycle_index_sha256'] ==
++                '212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964'
+             and retention['capture_sha256'] == sha(read('retention-capture.py')),
+             'Closed retention provenance differs')
+     for name, checksum in retention['closed_original_files'].items():
+@@ -149,7 +179,8 @@
+                 and item['source_index_sha256'] == SOURCE_INDEX_SHA
+                 and item['campaign_manifest_sha256'] == MANIFEST_SHA
+                 and item['cap_seconds'] == cap and 0 <= item['elapsed_seconds'] <= cap
+-                and item['native_execution'] == (name in ('smoke', 'run'))
++                and item['native_execution'] == (name in ('build', 'smoke', 'run'))
++                and item['native_physics_evaluations_permitted'] == (name == 'run')
+                 and item['performance_eligible'] is False, 'Stage did not close successfully: ' + name)
+     require(build['source_freeze_sha256'] == sha(read('source-freeze.json'))
+             and build['generated_source_freeze_sha256'] == sha(read('generated-source-freeze.json'))
+@@ -231,7 +262,7 @@
+         require(inputs['build_sha256'] == sha(read('build.json')) and inputs['executable'] == binary
+                 and (inputs['label'], inputs['variant'], inputs['cache']) == (label, variant, cache), 'Run input role/build differs')
+         require(execution['argv'] == ['taskset', '-c', '12', binary['path'], str(cache)]
+-                and execution['cwd'].endswith('/subprocess-cache-lifecycle-current-2/runs/' + label)
++                and execution['cwd'].endswith('/subprocess-cache-successor-work-2/runs/' + label)
+                 and execution['returncode'] == 0 and execution['exception'] is None
+                 and execution['cleanup_exception'] is None and execution['cleanup']['survivors'] == [],
+                 'Unsuccessful or different native invocation')
+@@ -288,31 +319,67 @@
+             'status_counts_including_warmup': dict(Counter(str(frame['status']) for frame in data['amplitudes'].values())),
+             'maximum_reported_accuracy': maximum, 'trace_rows': len(trace['records']), 'trace_flushes': len(trace['flushes']),
+             'native_event_counts': dict(Counter(str(row['kind']) for row in trace['records'] if row['kind'] != 1))}
++    require(sum(sum(data['warm']) for data in parsed.values()) == 8 and
++            all(len(data['amplitudes']) == 21 and len(data['keys']) == 28 for data in parsed.values()),
++            'Actual physical/key/warmup coverage differs')
++    require(smoke['native_exports_observed'] == 0 and smoke['context_generations'] == [-1, -1, -1],
++            'Card reader unexpectedly initialized native state')
+     for label in ('observed-cache0', 'observed-cache-all'):
+         evaluations = [row for action in analysis.PHYSICAL for row in traces[label]['groups'][action] if row['kind'] in (6, 7)]
+         require(len(evaluations) == 38 and all(row['kind'] == 6 for row in evaluations), 'Physical precision differs')
++        for action in analysis.PHYSICAL:
++            rows = traces[label]['groups'][action]
++            native = [row for row in rows if row['kind'] in (6, 7)]
++            require([row['check'] for row in native] == [0, 1] and
++                    all(row['status'] == 0 for row in native),
++                    'Missing independent successful DP stability pass')
++            require(sum(row['kind'] == 4 for row in rows) == (1 if action == 317 else 2),
++                    'Automatic cache boundary count differs')
++        for precision in (1, 2):
++            base = 1000 + 100 * precision
++            probe = parsed[label]['keys'][base + 13]
++            repeat = parsed[label]['keys'][base + 14]
++            require(probe['n'] == repeat['n'] == 1 and probe['rank'] == repeat['rank'] == 0 and
++                    analysis.key_inputs(probe) == analysis.key_inputs(repeat) and
++                    probe['values'] == repeat['values'], 'Stability bypass/repeat key differs')
++    require(sha(read('independent-review.json')) ==
++            '3f69db7ebf5815a90847a76dfcaf62ef893e0ae42a74bed3e1762edd515d570f',
++            'Independent review receipt changed')
+     review = load('independent-review.json')
+-    require(review['status'] == 'PASS' and review['results_sha256'] == sha(read('results.json'))
+-            and review['analyzer_sha256'] == ANALYZER_SHA and review['build_sha256'] == sha(read('build.json')),
+-            'Independent review missing or bound to other results')
+-    locale = review['non_elf_mapping']
+-    require(set(data_mappings['files']) == {locale['path']}, 'Supplemental non-ELF mapping scope differs from independent review')
+-    for key in ('sha256', 'size', 'inode', 'map_device'):
+-        require(data_mappings['files'][locale['path']][key] == locale[key], 'Non-ELF classification differs from independent review')
++    require(review['passed'] is True and review['replay_exact'] is True and
++            review['forbidden_api_attempts'] == [], 'Independent replay did not pass')
++    for recorded, item in review['read_inputs'].items():
++        if recorded.startswith('.tirust-build/subprocess-cache-successor-proposal-2/'):
++            rel = 'source-proposal/' + recorded.split('/subprocess-cache-successor-proposal-2/', 1)[1]
++        elif recorded.startswith('.tirust-build/subprocess-cache-successor-results-2/'):
++            rel = recorded.split('/subprocess-cache-successor-results-2/', 1)[1]
++        else:
++            require(recorded == '.tirust-build/subprocess-cache-successor-independent-audit-1/review.py',
++                    'Unknown independent audit input')
++            rel = 'independent-review.py'
++        raw = read(rel)
++        require(sha(raw) == item['sha256'] and len(raw) == item['bytes'], 'Independent audit input changed')
++    extras = {path for observation in review['observations']
++              for mapping in observation['runtime_map_text']
++              for path in mapping['nonexecuting_extra_paths']}
++    require(set(data_mappings['files']) == extras,
++            'Supplemental non-ELF map scope differs from independent text audit')
++    # The separate independent receipt deliberately did not read locale bytes.
++    # Hash/header/device/inode classification is the capture's distinct check.
+     references = ['source-freeze.json', 'materialized-source.json', 'generated-source-freeze.json',
+                   'generation.json', 'build.json', 'linker-prebinding.json', 'card-smoke-result.json',
+                   'independent-review.json', 'link-map-resolution.json', 'non-elf-map-classification.json',
+                   'retention-binding.json', 'retained-generated-index.json'] + ['stage-' + name + '.json' for name in STAGES]
+     summary = {'schema_version': 1, 'kind': 'tirust-generated-subprocess-cache-lifecycle', 'passed': True,
+-        'implementation_revision': REVISION, 'campaign': 'invariant-symmetry-1', 'campaign_manifest_sha256': MANIFEST_SHA,
++        'implementation_revision': REVISION, 'campaign': 'entry-latch-cache-guard-1', 'campaign_manifest_sha256': MANIFEST_SHA,
+         'source_index_sha256': SOURCE_INDEX_SHA, 'results_sha256': sha(read('results.json')),
+         'source_and_build_evidence': {name: sha(read(name)) for name in references},
+         'independent_review_path': 'independent-review.json', 'independent_review_status': 'PASS',
+         'installed_artifacts': {PurePosixPath(name).name: {'recorded_path': name, **item} for name, item in installed.items()},
+         'runtime_files': runtimes[0], 'workers': workers,
+         'coverage': {'physical_workers': 4, 'warmup_calls_total': sum(sum(data['warm']) for data in parsed.values()),
+-                     'measured_physical_calls_total': 76, 'tensor_key_calls_total': 96,
+-                     'tensor_keys_per_worker_per_precision': 12, 'generated_rank_max': 2, 'generated_propagator_max': 3},
++                     'measured_physical_calls_total': 76, 'tensor_key_calls_total': 112,
++                     'tensor_keys_per_worker_per_precision': 14, 'generated_rank_max': 2, 'generated_propagator_max': 3},
+         'processes': [{'id': 101, 'process': 'u u~ > z [virt=QCD]', 'prefix': 'ML5_101_'},
+                       {'id': 202, 'process': 'd d~ > z [virt=QCD]', 'prefix': 'ML5_202_'}],
+         'model': 'loop_sm', 'backend': 9, 'pole_mode': 0, 'compute_finite': True,
+@@ -322,24 +389,27 @@
+                    'qp_scope': 'Separate genuine-QP generated tensor diagnostics; DP inputs promoted exactly.'},
+         'card_smoke': {'passed': True, 'actual_reader_calls': 3, 'mass_sequence_GeV': [91.188, 92, 91.188],
+                        'context_generations': [-1, -1, -1], 'native_exports': 0},
++        'software_failure_latches': {'clean_reference_calls': 4, 'poisoned_physical_calls': 72,
++             'active_prefix_reset': True, 'other_prefix_preserved': True},
++        'closed_external_commands': 83,
+         'observed_lifecycle': {'context_generations_per_worker': 2, 'prefix_registrations_per_worker': 4,
+-            'registered_topology_rank': [3, 2], 'automatic_clears_per_measured_physical_call': 2,
++            'registered_topology_rank': [3, 2], 'automatic_clears_per_measured_physical_call': {'live_context': 2, 'fresh_after_finalize': 1},
+             'evaluations_per_measured_physical_call': 2, 'primary_and_stability_check_stores_distinguished': True,
+             'seeded_entry_before_automatic_clear': {'entries': 1, 'bytes': 144},
+             'seeded_entry_after_automatic_clear': {'entries': 0, 'bytes': 0},
+             'cache_enabled_nonempty_final_clears': 19, 'cache_disabled_nonempty_final_clears': 0,
+-            'recreated_context_precedes_automatic_entry_clear': True, 'key_cold_requests_per_precision': 5,
+-            'key_repeats_per_precision': 7, 'disabled_qp_bypasses_per_worker': 12, 'all_native_evaluation_statuses_zero': True},
++            'absent_context_entry_clear_skipped': True, 'context_recreated_before_first_reduction': True, 'key_cold_requests_per_precision': 5,
++            'key_repeats_per_precision': 8, 'check_bypasses_per_precision': 1, 'disabled_qp_bypasses_per_worker': 14, 'all_native_evaluation_statuses_zero': True},
+         'limitations': ['Untimed two-subprocess real-SM lifecycle qualification; no performance acceptance.',
+             'N<=3/rank<=2; no physical-QP rescue, rank-six, EW, loop-induced or poles-only qualification.',
+             'QP key probes use DP values promoted exactly; no binary128-only input perturbation.',
+             'Portable replay reads retained text only; actual runtime validation is bound to the executed controller.',
+-            'The failed predecessor remains separate and does not provide a successful build or numerical result.'],
++            'The preceding-source proof remains distinct. Source1 was an unexecuted proposal corrected before this SOURCE2 execution.'],
+         'runtime_maps_captured': True, 'performance_eligible': False}
+     if not derive_summary:
+         require(load('qualification-summary.json') == summary, 'Saved qualification summary differs from raw derivation')
+     return {'passed': True, 'index_sha256': sha(index_raw), 'results_sha256': summary['results_sha256'],
+-            'physical_workers': 4, 'measured_physical_calls': 76, 'tensor_key_calls': 96,
++            'physical_workers': 4, 'measured_physical_calls': 76, 'tensor_key_calls': 112,
+             'card_smoke_passed': True, 'historical_symlinks_are_metadata_only': True,
+             'summary': summary, 'scope': 'Portable current-source retained-text/runtime-map replay; no live binary requalification.'}
+ 
+--- preceding/retention-capture.py
++++ successor/retention-capture.py
+@@ -11,9 +11,11 @@
+ 
+ ROOT = Path('/shared/external/madloop_tirust/madgraph7_madloop_tirust')
+ HERE = Path(__file__).resolve().parent
+-REPORT = ROOT / 'docs/benchmarkfolder/experiments/subprocess-cache-lifecycle-current-qualification-2'
+-SOURCE = ROOT / 'docs/benchmarkfolder/experiments/subprocess-cache-lifecycle-current-source-proposal-2'
+-OUTPUT = ROOT / '.tirust-build/subprocess-cache-lifecycle-current-2/export'
++CLOSED = ROOT / '.tirust-build/subprocess-cache-successor-results-2'
++REPORT = ROOT / '.tirust-build/subprocess-cache-successor-retention-1/capsule'
++SOURCE = ROOT / '.tirust-build/subprocess-cache-successor-proposal-2'
++SOURCE1 = ROOT / '.tirust-build/subprocess-cache-successor-proposal-1'
++OUTPUT = ROOT / '.tirust-build/subprocess-cache-successor-work-2/export'
+ KEEP_PLAIN = {'materialized-source.json', 'source-freeze.json', 'qualification-summary.json', 'verify_evidence.py', 'README.md'}
+ 
+ 
+@@ -38,11 +40,12 @@
+         print(json.dumps({'source_only_default': True, 'report': str(REPORT), 'requires_closed_stages': 7,
+                           'native_execution': False}, indent=2))
+         return
+-    assert not (REPORT / 'evidence-index.json').exists()
++    assert not REPORT.exists(), 'Fresh private capture required'
++    shutil.copytree(CLOSED, REPORT)
+     stages = {name: json.loads((REPORT / ('stage-' + name + '.json')).read_text())
+               for name in ('freeze', 'materialize', 'generate', 'prepare-build', 'build', 'smoke', 'run')}
+     assert all(item['status'] == 'passed' for item in stages.values())
+-    assert sha((SOURCE / 'source-index.json').read_bytes()) == '95046dc54616a48266020d9b43d81f953c6374140017cd87eaf8bbfb011aedd6'
++    assert sha((SOURCE / 'source-index.json').read_bytes()) == '3d1f787bae4d5af45c2a34119f46b3235e64087224c698fca3eb0eb66816ada7'
+     assert json.loads((REPORT / 'results.json').read_text())['passed']
+     # Save the closed initial file set before appending any retention files.
+     original = {str(p.relative_to(REPORT)): file_sha(p) for p in REPORT.rglob('*') if p.is_file()}
+@@ -57,7 +60,21 @@
+             stream.write(raw)
+     def save(name, value):
+         append(name, (json.dumps(value, sort_keys=True, indent=2) + '\n').encode())
+-    shutil.copytree(SOURCE, REPORT / 'source-proposal')
++    def copy_sealed_source(source, target):
++        index = json.loads((source/'source-index.json').read_text())
++        for name in [*index['files'], 'source-index.json']:
++            raw = (source/name).read_bytes()
++            if name != 'source-index.json':
++                assert len(raw) == index['files'][name]['bytes']
++                assert sha(raw) == index['files'][name]['sha256']
++            append(target + '/' + name, raw)
++    copy_sealed_source(SOURCE, 'source-proposal')
++    copy_sealed_source(SOURCE1, 'source1-unexecuted')
++    for rel in ('subprocess-cache-successor-source2-tests-1.log',
++                'subprocess-cache-successor-first5-execution-1.json',
++                'subprocess-cache-successor-last2-execution-1.json',
++                'subprocess-cache-successor-root-build-review-1.json'):
++        append('admission/' + rel, (ROOT/'.tirust-build'/rel).read_bytes())
+     for name in generated['rendered']:
+         raw = (OUTPUT / 'SubProcesses' / name).read_bytes()
+         assert sha(raw) == generated['rendered'][name]
+@@ -113,12 +130,18 @@
+             assert spelling not in classification['files'] or classification['files'][spelling] == item
+             classification['files'][spelling] = item
+     save('non-elf-map-classification.json', classification)
+-    for name in ('verify_evidence.py', 'independent-review.json', 'README.md'):
++    for name in ('verify_evidence.py', 'independent-review.json', 'independent-review.py', 'README.md'):
+         append(name, (HERE / name).read_bytes())
++    for name in ('lineage.json', 'portable-successor.patch', 'test_verify.py',
++                 'verifier-tests.log', 'verifier-test-receipt.json',
++                 'test_verify.attempt1.py', 'verifier-tests-attempt1.log'):
++        if (HERE / name).is_file():
++            append('retention-validation/' + name, (HERE / name).read_bytes())
+     append('retention-capture.py', Path(__file__).read_bytes())
+     save('retention-binding.json', {'schema': 1, 'closed_original_files': original,
+          'capture_sha256': file_sha(Path(__file__)), 'no_native_execution': True,
+-         'failed_predecessor_index_sha256': '22deeb09e727fb4f687e3c78c2bc215afd86cca81a933b74cf259597453c296b'})
++         'preceding_lifecycle_index_sha256': '212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964',
++          'source1_unexecuted_index_sha256': '62b2af837f5192555a2258035a352a2e65e4d37dce4fe13b8935ed451fd39779'})
+     for name, checksum in original.items():
+         assert file_sha(REPORT / name) == checksum, 'Closed evidence changed during retention'
+     files, compressed = {}, {}
+@@ -133,6 +156,7 @@
+             destination.parent.mkdir(parents=True, exist_ok=True)
+             with destination.open('xb') as stream: stream.write(packed)
+             compressed[name] = {'path': packed_name, 'raw_sha256': sha(raw), 'raw_bytes': len(raw)}
++            path.unlink()  # Only this fresh private capture; closed originals stay untouched.
+             name, raw = packed_name, packed
+         files[name] = {'kind': 'file', 'sha256': sha(raw), 'size': len(raw)}
+     index = {'schema_version': 1, 'files': files, 'compressed_text': compressed,
+@@ -147,6 +171,10 @@
+     raw = (REPORT / 'qualification-summary.json').read_bytes()
+     index['files']['qualification-summary.json'] = {'kind': 'file', 'sha256': sha(raw), 'size': len(raw)}
+     verifier.verify(read_bytes=reader)
++    physical_files = {str(path.relative_to(REPORT)) for path in REPORT.rglob('*') if path.is_file()}
++    assert physical_files == set(index['files']), 'Unindexed payload before seal'
++    for name, checksum in original.items():
++        assert file_sha(CLOSED/name) == checksum, 'Closed source changed during capture'
+     save('evidence-index.json', index)
+     proof = verifier.verify(REPORT)
+     print(json.dumps({name: value for name, value in proof.items() if name != 'summary'}, sort_keys=True, indent=2))

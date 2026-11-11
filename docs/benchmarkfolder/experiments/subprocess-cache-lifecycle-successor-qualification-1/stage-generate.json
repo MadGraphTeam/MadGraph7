@@ -1,0 +1,14 @@
+{
+  "campaign_manifest_sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+  "cap_seconds": 600,
+  "elapsed_seconds": 31.164821868296713,
+  "exception": null,
+  "finished_utc": "2026-11-11T10:57:43.999451+00:00",
+  "native_execution": false,
+  "native_physics_evaluations_permitted": false,
+  "performance_eligible": false,
+  "source_index_sha256": "3d1f787bae4d5af45c2a34119f46b3235e64087224c698fca3eb0eb66816ada7",
+  "stage": "generate",
+  "started_utc": "2026-11-11T10:57:12.834654+00:00",
+  "status": "passed"
+}

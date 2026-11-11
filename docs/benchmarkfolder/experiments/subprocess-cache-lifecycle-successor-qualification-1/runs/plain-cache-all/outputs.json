@@ -1,0 +1,98 @@
+{
+  "declared_outputs": {
+    "param.log": {
+      "kind": "file",
+      "sha256": "be4f6e35689b72abfac86e059a082186507abda44cc52248392d3a5b8ef44d8c",
+      "size": 1248
+    },
+    "records.txt": {
+      "kind": "file",
+      "sha256": "725cbda735c3196901f288352ef541f953e68ad5b0daf02aa292d1a75b2101f9",
+      "size": 99938
+    },
+    "runtime-maps-close.txt": {
+      "kind": "file",
+      "sha256": "a666a85ff8ab39d65e84fee6a90bd4cadb3803b92d6b26b9a81f810178e3c2af",
+      "size": 13918
+    },
+    "runtime-maps-open.txt": {
+      "kind": "file",
+      "sha256": "60a086389dee352664589a1a85314f29b35f2746fd3ce303d7c684e093665946",
+      "size": 13753
+    },
+    "trace.txt": {
+      "kind": "file",
+      "sha256": "0d36c7c11243de338da545c724ac0bfcd0eaae945e6f3811228ba957a403ed51",
+      "size": 12647
+    }
+  },
+  "execution_exception": null,
+  "input_files_after": {
+    "alternate/ident_card.dat": {
+      "kind": "file",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "size": 460
+    },
+    "alternate/param_card.dat": {
+      "kind": "file",
+      "sha256": "fcabdea53b657d04ced8e0ee157b51aab59e85dc893a3257581ba504efe20e63",
+      "size": 3489
+    },
+    "nominal/ident_card.dat": {
+      "kind": "file",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "size": 460
+    },
+    "nominal/param_card.dat": {
+      "kind": "file",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "size": 3470
+    },
+    "resources/ML5_101_ColorDenomFactors.dat": {
+      "kind": "file",
+      "sha256": "ad0fadf63cc7cd779ce475e345bf4063565b63a3c2efef1eebc89790aaa6acba",
+      "size": 4
+    },
+    "resources/ML5_101_ColorNumFactors.dat": {
+      "kind": "file",
+      "sha256": "1ddb914da9135a2d6dfcc0ff179d68d23e7fd1e5364c088c183234d04a41bece",
+      "size": 4
+    },
+    "resources/ML5_101_HelConfigs.dat": {
+      "kind": "file",
+      "sha256": "4598f48b6b2ac00343f20c274f536e95cd7ccbd56b035f7292a9387e40b0f035",
+      "size": 88
+    },
+    "resources/ML5_202_ColorDenomFactors.dat": {
+      "kind": "file",
+      "sha256": "ad0fadf63cc7cd779ce475e345bf4063565b63a3c2efef1eebc89790aaa6acba",
+      "size": 4
+    },
+    "resources/ML5_202_ColorNumFactors.dat": {
+      "kind": "file",
+      "sha256": "1ddb914da9135a2d6dfcc0ff179d68d23e7fd1e5364c088c183234d04a41bece",
+      "size": 4
+    },
+    "resources/ML5_202_HelConfigs.dat": {
+      "kind": "file",
+      "sha256": "4598f48b6b2ac00343f20c274f536e95cd7ccbd56b035f7292a9387e40b0f035",
+      "size": 88
+    },
+    "resources/MadLoopParams.dat": {
+      "kind": "file",
+      "sha256": "c03dc4a85cde9081b4656d7e8482d13f8434b1f0adc8236cb0a5385f8d7dc262",
+      "size": 14618
+    },
+    "resources/ident_card.dat": {
+      "kind": "file",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "size": 460
+    },
+    "resources/param_card.dat": {
+      "kind": "file",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "size": 3470
+    }
+  },
+  "inputs_unchanged": true
+}
