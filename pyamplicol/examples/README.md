@@ -392,7 +392,9 @@ example relies on an installation directory.
 Four one-loop walkthroughs, two Born-interfered virtuals and two loop-induced
 processes, each with one pure-QCD and one mixed QCD/electroweak case in the
 complex-mass scheme. Each has a generate, a check, an evaluate and a profile
-card, and `python/loop_walkthrough.py` runs every step from the generate card:
+card, and `python/loop_walkthrough.py` runs every step from the generate card (to run them
+from a wheel built from a checkout, in a fresh environment, see
+[Build a wheel from a checkout and run the loop examples](../docs/user/installation.md#build-a-wheel-from-a-checkout-and-run-the-loop-examples)):
 
 ```console
 pyamplicol loop_gg_zgg_generate.toml        # or: pyamplicol examples run loop_gg_zgg_generate

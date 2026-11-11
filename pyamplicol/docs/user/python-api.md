@@ -301,7 +301,8 @@ loop orders, and the pole selections `"all"` and `"none"` only; its computed
 poles vanish, a necessary-only finiteness cross-check.
 
 ```python
-from pyamplicol import Runtime, VirtualStabilityChecks
+from pyamplicol import Runtime
+from pyamplicol.api import VirtualStabilityChecks
 
 runtime = Runtime.load("artifacts/gg_h", model_parameters={"MT": "173"})
 value = runtime.evaluate(
