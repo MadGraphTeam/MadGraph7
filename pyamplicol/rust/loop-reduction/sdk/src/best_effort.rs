@@ -340,17 +340,33 @@ impl Runtime {
     }
 
     /// The checks of the best-effort re-evaluation and the source they give
-    /// the uncertainty: the call's own checks, else the recommended checks
-    /// (the first default rotation and the rescaled reduction direction).
+    /// the uncertainty (m-lit ux-polish item 2): the call's checks (less the
+    /// cross-backend check) together with the recommended checks (the first
+    /// default rotation and the rescaled reduction-direction check; one
+    /// default rotation alone under-covered the true error of unchecked
+    /// TIRust values, ux-besteffort FINDING B1): one set when the two
+    /// combine (no reduction check, or the rescaled one), else the call's
+    /// and the recommended set as two runs whose larger estimate counts.
     fn best_effort_checks(&self) -> RusticolResult<(Vec<StabilityChecks>, &'static str)> {
-        if self.checks.enabled() {
-            return Ok((vec![self.checks.clone()], "stability-checks"));
+        let recommended = StabilityChecks::with_default_rotations(1, true, true, false)?;
+        let call = self.checks.without_cross_backend();
+        if !call.enabled() {
+            return Ok((vec![recommended], "recommended-checks"));
+        }
+        let rotation = &recommended.rotations()[0];
+        if call.rescaled() && call.rotations().contains(rotation) {
+            return Ok((vec![call], "stability-checks"));
+        }
+        if call.reduction_direction() && !call.rescaled() {
+            return Ok((vec![call, recommended], "stability-and-recommended-checks"));
+        }
+        let mut rotations = call.rotations().to_vec();
+        if !rotations.contains(rotation) {
+            rotations.push(rotation.clone());
         }
         Ok((
-            vec![StabilityChecks::with_default_rotations(
-                1, true, true, false,
-            )?],
-            "recommended-checks",
+            vec![StabilityChecks::new(rotations, true, true, false)?],
+            "stability-and-recommended-checks",
         ))
     }
 

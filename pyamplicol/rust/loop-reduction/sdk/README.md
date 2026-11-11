@@ -329,10 +329,15 @@ inputs without those checks (as `set_reduction_unchecked(true)`) and, where
 that yields a value, returned as a numerical row with status `BestEffort`
 (`RUSTICOL_VIRTUAL_BEST_EFFORT` = 5; never a success). Its relative uncertainty
 is `uncertainties` (`rusticol_virtual_result_copy_uncertainties`; NaN for every
-other point): the call's own binary64 stability estimate, else one default
-rotation and the rescaled reduction-direction check of that point, else none (NaN, said so in the record). The
+other point): the binary64 stability estimate of the call's checks together
+with the recommended checks (the first default rotation and the rescaled
+reduction-direction check), run on the refused points alone (at least the
+larger of the two estimates; one rotation alone under-states the error of an
+unchecked TIRust value), else none (NaN, said so in the record). The
 diagnostics carry `"best_effort"` per point id (`refusal`, `uncertainty`,
-`source`: `"stability-checks"` | `"recommended-checks"` | `"none"`, `detail`,
+`source`: `"stability-and-recommended-checks"` | `"stability-checks"` (the
+call's checks already include the recommended ones) | `"recommended-checks"`
+(the call runs none) | `"none"`, `detail`,
 `reduction`) and `"warnings"` (per kind `best-effort` / `failed`: the first
 reason, the count and the point ids; the Python API's `ResultWarning`);
 `"failures"` keeps one message per reason class with the count of the others.

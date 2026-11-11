@@ -214,11 +214,13 @@ int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
  * RUSTICOL_VIRTUAL_BEST_EFFORT, its refusal in the diagnostics'
  * "best_effort" {"<id>": {"refusal","uncertainty","source","detail",
  * "reduction"}} and its relative uncertainty
- * (rusticol_virtual_result_copy_uncertainties): the call's own binary64
- * stability estimate ("source": "stability-checks"), else one default
- * rotation and the rescaled reduction-direction check of that point
- * ("recommended-checks"), else none ("none", NaN, said
- * so in "detail"); a point without any value stays RUSTICOL_VIRTUAL_FAILED.
+ * (rusticol_virtual_result_copy_uncertainties): the binary64 stability
+ * estimate of the call's checks together with the recommended checks (the
+ * first default rotation and the rescaled reduction-direction check), run
+ * on the refused points alone ("source":
+ * "stability-and-recommended-checks"; "stability-checks" when the call's
+ * checks include the recommended ones; "recommended-checks" when the call
+ * runs none), else none ("none", NaN, said so in "detail"); a point without any value stays RUSTICOL_VIRTUAL_FAILED.
  * The diagnostics' "warnings" list the best-effort and failed points (kind,
  * first reason, count, point ids); "failures" keeps one message per reason
  * class with the count of the others. Nothing is printed. "return": such
