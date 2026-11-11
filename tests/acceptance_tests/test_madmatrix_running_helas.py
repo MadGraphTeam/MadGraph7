@@ -51,7 +51,10 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
             gpu_backend = os.environ.get('MG7_TEST_GPU_BACKEND')
             if gpu_backend:
                 self.assertIn(gpu_backend, ('cuda', 'hip'))
-                configurations += [(gpu_backend, 'd', 0), (gpu_backend, 'v', 1)]
+                # GPU CI needs its scalar reference, while SIMD variants are
+                # already covered by CPU CI.
+                configurations = [('scalar', 'd', 0), (gpu_backend, 'd', 0),
+                                  (gpu_backend, 'v', 1)]
             for backend, precision, hardcoded in configurations:
                 self.errors = []
                 self.run_command(['make', 'cleanall'], cdir)
