@@ -255,43 +255,48 @@ def test_matches_genps_fks(data, conf, points, prefix):
         np.testing.assert_array_equal(det > 0, valid)
         if not valid.any():
             continue
-        p_cnt = field("rad_p_cnt")[:, pos]
-        cnt = boost_z(out[name + "_momenta"], masses, -y_born)
+        # only the rows of the counter-events that the Fortran generates, the
+        # others have no momenta and no partonic energy
+        v = valid
+        p_cnt = field("rad_p_cnt")[v, pos]
+        cnt = boost_z(out[name + "_momenta"][v], masses, -y_born[v])
         # in units of its hardest particle: in the frame of the Born, the
         # collinear counter-event of an incoming emitter has energies up to
         # 1 / (1 - xi) times those of the Born at its own xi (that at y = 1),
         # far above those of the event (1393 GeV against 60 GeV on one point)
         scale_cnt = p_cnt[..., 0].max(1)
         diff = np.abs(cnt - p_cnt).max((1, 2)) / scale_cnt
-        assert (diff <= 1e-13 + 10 * born_dev)[valid].all()
+        assert (diff <= 1e-13 + 10 * born_dev[v]).all()
         # i per unit xi, finite where i is soft (p_i_fks_cnt). Its direction is
         # set relative to the Born emitter, whose own direction carries the
         # deviation of the Born divided by its energy (a soft emitter amplifies
         # it). With a resonance i comes out of the rest frame of the
         # resonance, by a boost that stretches the rounding of both.
-        hat = boost_z(out[name + "_p_i_hat"][:, None], [0.0], -y_born)[:, 0]
-        hat_scale_cnt = np.sqrt(field("rad_shat_cnt")[:, pos]) / 2
-        diff = np.abs(hat - field("rad_p_i_hat_cnt")[:, pos]).max(1) / hat_scale_cnt
-        bound = (1e-13 + 10 * born_dev * direction_dev) * resonance_stretch(points)
-        assert (diff <= bound)[valid].all()
+        hat = boost_z(out[name + "_p_i_hat"][v, None], [0.0], -y_born[v])[:, 0]
+        hat_scale_cnt = np.sqrt(field("rad_shat_cnt")[v, pos]) / 2
+        diff = np.abs(hat - field("rad_p_i_hat_cnt")[v, pos]).max(1) / hat_scale_cnt
+        stretch = resonance_stretch(points)[v]
+        assert (diff <= (1e-13 + 10 * born_dev[v] * direction_dev[v]) * stretch).all()
         # its xi and the upper end of the range of xi at its y
         for key, fortran_key in [("_xi", "rad_xi_cnt"), ("_xi_max", "rad_xiimax_cnt")]:
-            theirs = field(fortran_key)[:, pos]
-            close = np.abs(out[name + key] - theirs) <= (
-                1e-12 * np.abs(theirs) + 10 * born_dev
+            theirs = field(fortran_key)[v, pos]
+            close = np.abs(out[name + key][v] - theirs) <= (
+                1e-12 * np.abs(theirs) + 10 * born_dev[v]
             )
-            assert close[valid].all(), key
+            assert close.all(), key
         if not leptonic:
-            x_cnt = field("rad_xbjrk_cnt")[:, pos]
-            dx1 = np.abs(out[name + "_x1"] / x_cnt[:, 0] - 1)
-            dx2 = np.abs(out[name + "_x2"] / x_cnt[:, 1] - 1)
-            assert (np.maximum(dx1, dx2) <= 1e-12 + 10 * born_dev)[valid].all()
+            x_cnt = field("rad_xbjrk_cnt")[v, pos]
+            dx1 = np.abs(out[name + "_x1"][v] / x_cnt[:, 0] - 1)
+            dx2 = np.abs(out[name + "_x2"][v] / x_cnt[:, 1] - 1)
+            assert (np.maximum(dx1, dx2) <= 1e-12 + 10 * born_dev[v]).all()
         width_cnt = width
         if j_fks < 2:
             width_cnt = field("rad_xiimax_cnt")[:, pos] - xi_min
-        fortran_cnt = jac_cnt[:, pos] / flux_factor(field("rad_shat_cnt")[:, pos], nex)
-        deviation = np.abs(det / (fortran_cnt * width_cnt * units) - 1)
-        assert (deviation <= rtol_jac)[valid].all()
+        shat_cnt = field("rad_shat_cnt")[v, pos]
+        fortran_cnt = jac_cnt[v, pos] / flux_factor(shat_cnt, nex)
+        ratio = fortran_cnt * width_cnt[v] * np.broadcast_to(units, (batch,))[v]
+        deviation = np.abs(det[v] / ratio - 1)
+        assert (deviation <= rtol_jac[v]).all()
 
 
 def test_counter_events_of_each_emitter():

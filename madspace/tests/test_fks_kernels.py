@@ -652,10 +652,11 @@ def test_final_massive_matches_genps_fks(name, nfks, data, conf, points):
         rtol=0,
         atol=1e-13,
     )
-    fortran_cnt = jac_cnt[:, 2] / flux_factor(field("rad_shat_cnt")[:, 2], nex)
-    np.testing.assert_allclose(
-        (det_soft / xi_norm * units)[valid], fortran_cnt[valid], rtol=1e-12
-    )
+    # where the Fortran generates it (the others have no partonic energy)
+    shat_cnt = field("rad_shat_cnt")[valid, 2]
+    fortran_cnt = jac_cnt[valid, 2] / flux_factor(shat_cnt, nex)
+    ours_cnt = det_soft / xi_norm * np.broadcast_to(units, det_soft.shape)
+    np.testing.assert_allclose(ours_cnt[valid], fortran_cnt, rtol=1e-12)
 
     # and back from the momenta of genps_fks.f
     p_jbar, xi_hat2, y2, r_phi2, _, _, _, det_inv = massive_cluster(
