@@ -1,0 +1,135 @@
+{
+  "source": ".tirust-build/kinematic-invariant-amplitude-executor-2/results/root-point20-comparison.json",
+  "source_sha256": "7b2390b98193dd11c66ae8eae64ec7b36f5497accd9e2e355de03ccfacda5d6d",
+  "rows": [
+    {
+      "worker": "cms-p20-mode4-lib1-original",
+      "eligible": true,
+      "phase": 0,
+      "call": 1,
+      "point": 1,
+      "order": 0,
+      "code": 120,
+      "words": [
+        "3F8DEBD13FD143D8",
+        "3F3455ADEBC86A84",
+        "BF22E00D0C16FD8E",
+        "BF1268CD20D74FC4",
+        "BFF0000000000000"
+      ]
+    },
+    {
+      "worker": "cms-p20-mode4-lib1-original",
+      "eligible": true,
+      "phase": 0,
+      "call": 1,
+      "point": 1,
+      "order": 1,
+      "code": 120,
+      "words": [
+        "3F8DEBD13FD143D8",
+        "3F3455ADEBC86A84",
+        "BF22E00D0C16FD8E",
+        "BF1268CD20D74FC4",
+        "BFF0000000000000"
+      ]
+    },
+    {
+      "worker": "cms-p20-mode4-lib1-original",
+      "eligible": true,
+      "phase": 1,
+      "call": 2,
+      "point": 20,
+      "order": 0,
+      "code": 120,
+      "words": [
+        "3FA156A8E9E8E5C7",
+        "3F80C6FE92651DEA",
+        "BF6321D44A051B21",
+        "BF1555FCF14D863A",
+        "BFF0000000000000"
+      ]
+    },
+    {
+      "worker": "cms-p20-mode4-lib1-original",
+      "eligible": true,
+      "phase": 1,
+      "call": 2,
+      "point": 20,
+      "order": 1,
+      "code": 120,
+      "words": [
+        "3FA156A8E9E8E5C7",
+        "3F80C6FE92651DEA",
+        "BF6321D44A051B21",
+        "BF1555FCF14D863A",
+        "BFF0000000000000"
+      ]
+    },
+    {
+      "worker": "cms-p20-mode4-lib9-candidate",
+      "eligible": true,
+      "phase": 0,
+      "call": 1,
+      "point": 1,
+      "order": 0,
+      "code": 120,
+      "words": [
+        "3F8DEBD13FD143D8",
+        "3F3455ADEBC86A89",
+        "BF22E00D0C16FD8F",
+        "BF1268CD20D74FC2",
+        "BFF0000000000000"
+      ]
+    },
+    {
+      "worker": "cms-p20-mode4-lib9-candidate",
+      "eligible": true,
+      "phase": 0,
+      "call": 1,
+      "point": 1,
+      "order": 1,
+      "code": 120,
+      "words": [
+        "3F8DEBD13FD143D8",
+        "3F3455ADEBC86A89",
+        "BF22E00D0C16FD8F",
+        "BF1268CD20D74FC2",
+        "BFF0000000000000"
+      ]
+    },
+    {
+      "worker": "cms-p20-mode4-lib9-candidate",
+      "eligible": true,
+      "phase": 1,
+      "call": 2,
+      "point": 20,
+      "order": 0,
+      "code": 120,
+      "words": [
+        "3FA156A8E9E8E5C7",
+        "BFA1A4B0DE963B63",
+        "BF7458D0989C220C",
+        "BF2555E29E1E385E",
+        "BFF0000000000000"
+      ]
+    },
+    {
+      "worker": "cms-p20-mode4-lib9-candidate",
+      "eligible": true,
+      "phase": 1,
+      "call": 2,
+      "point": 20,
+      "order": 1,
+      "code": 120,
+      "words": [
+        "3FA156A8E9E8E5C7",
+        "BFA1A4B0DE963B63",
+        "BF7458D0989C220C",
+        "BF2555E29E1E385E",
+        "BFF0000000000000"
+      ]
+    }
+  ],
+  "scope": "Retained Born and Laurent word rows from eligible fixed-QP workers; no independent checked accuracy qualification"
+}

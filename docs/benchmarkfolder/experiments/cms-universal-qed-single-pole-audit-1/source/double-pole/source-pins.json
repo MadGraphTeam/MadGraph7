@@ -1,0 +1,50 @@
+{
+  "Template/NLO/SubProcesses/fks_singular.f": {
+    "bytes": 318675,
+    "sha256": "65c9ba67697b697deac3d626cb425ee0dbc747afba5abefbd0808a0a8fba26a7"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/Source/MODEL/intparam_definition.inc": {
+    "bytes": 188989,
+    "sha256": "e8744fb849eb21dce9f6a8d7629a148847e7466f31876f0c6a83b5c997e09556"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/Source/MODEL/mp_intparam_definition.inc": {
+    "bytes": 243415,
+    "sha256": "963f549a42ab87d578200de1804e6e9447b03ffd79463faf973e9e1694787285"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/pmass.inc": {
+    "bytes": 80,
+    "sha256": "06db41947565eaf70f2b7c304d0337d49dcee653a2aa31cd1b0b5febb2c0dd33"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/CT_interface.f": {
+    "bytes": 55172,
+    "sha256": "c785122bf5fb865b6e489026430922ad8af950147c306c3ce7aa5c1bc02d5138"
+  },
+  "vendor/CutTools/src/cts/cts_cuttools.f90": {
+    "bytes": 3881,
+    "sha256": "7c6cb8d037a93cfacb7ada5d54d078838ae6d26b3ef8ec2af52a00d7de3e8fab"
+  },
+  "vendor/CutTools/src/avh/avh_olo.f90": {
+    "bytes": 1047157,
+    "sha256": "36bf719ce28a2b3fa15bc6e53a2b9963eb8b48a6c7a27be8be5c246d251e1c9b"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/TIRUST_interface.f": {
+    "bytes": 14360,
+    "sha256": "942de1ee0f5e19bed6055fec00a1162106e561dcd87422e1d9469b956de55ca5"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/Cards/param_card.dat": {
+    "bytes": 4397,
+    "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/results/root-point20-comparison.json": {
+    "bytes": 88044,
+    "sha256": "7b2390b98193dd11c66ae8eae64ec7b36f5497accd9e2e355de03ccfacda5d6d"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/Source/MODEL/couplings.f": {
+    "bytes": 3242,
+    "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/born_matrix.f": {
+    "bytes": 36866,
+    "sha256": "b5d6b6675ededd0acf2767f9f9ac9ccc519e178d35e27c7cd7c8e1a2ce0df9bf"
+  }
+}

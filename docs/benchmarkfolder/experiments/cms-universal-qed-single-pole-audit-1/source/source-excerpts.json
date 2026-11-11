@@ -1,0 +1,121 @@
+{
+  "FKS_IR_poles": {
+    "path": "Template/NLO/SubProcesses/fks_singular.f",
+    "ranges": [
+      {
+        "first_line": 7743,
+        "last_line": 7755,
+        "text": "      call fks_inc_chooser()\n\n      double=0.d0\n      single=0.d0\n      ! reset the amp_split_poles_FKS\n      do i=1,amp_split_size\n        amp_split_poles_FKS(i,1)=0d0\n        amp_split_poles_FKS(i,2)=0d0\n      enddo\n      aso2pi=g**2/(8d0*pi**2)\n      aeo2pi=dble(gal(1))**2/(8d0*pi**2)\n      call sborn_frame(p_born,wgt1)\nc QCD Born terms\n",
+        "sha256": "542d59cb053627ade03aebe1b1342617def3c984bead4fb43159e21263995b4c"
+      },
+      {
+        "first_line": 7785,
+        "last_line": 7809,
+        "text": "c QED Born terms\n      contr1 = 0d0\n      contr2 = 0d0\n      born=dble(ans_cnt(1,qed_pos))\n      do i=1,nexternal\n        if(i.ne.i_fks.and.(particle_charge(i).ne.0d0.or.pdg_type(i).eq.22))then\n          if(pmass(i).eq.ZERO)then\n            if (pdg_type(i).ne.22) then\n              contr2=contr2-particle_charge(i)**2\n              contr1=contr1-3d0/2d0*particle_charge(i)**2\n            elseif (.not.particle_tag(i)) then\n              contr1=contr1-gamma_ph\n            endif\n          else\n            contr1=contr1-particle_charge(i)**2\n          endif\n        endif\n      enddo\n\n      double=double+contr2*born*aeo2pi\n      single=single+contr1*born*aeo2pi\n\n      do i=1,amp_split_size\n        amp_split_poles_FKS(i,1) = amp_split_poles_FKS(i,1)+\n     %      dble(amp_split_cnt(i,1,qed_pos))*contr1*aeo2pi\n",
+        "sha256": "c1ee801406fd93109d226469ac1d69699b85504ccd11b2dd5ab227c351cf986f"
+      },
+      {
+        "first_line": 7814,
+        "last_line": 7885,
+        "text": "c Colour and charge-linked Born terms\n      nFKSprocess_save = nFKSprocess\n      do ilink = 1, 2\n        if (ilink.eq.1) then\n          if (.not. need_color_links_used) cycle\n          need_color_links = .true.\n          need_charge_links = .false.\n          nFKSprocess=nFKSprocess_col\n        else\n          if (.not. need_charge_links_used) cycle\n          need_color_links = .false.\n          need_charge_links = .true.\n          nFKSprocess=nFKSprocess_chg\n        endif\n\nC setup the fks i/j info\n        call fks_inc_chooser()\nC the following call to born is to setup the goodhel(nfksprocess)\n        call sborn_frame(p_born,wgt1)\n\n        contr1=0d0\n        do i=1,fks_j_from_i(i_fks,0)\n          do j=1,i\n            m=fks_j_from_i(i_fks,i)\n            n=fks_j_from_i(i_fks,j)\n            if( m.ne.n .and. n.ne.i_fks .and. m.ne.i_fks )then\nC wgt includes the gs/w^2 factor\n              call sborn_sf_frame(p_born,m,n,wgt)\nc The factor -2 compensate for that missing in sborn_sf\n              wgt=-2d0*wgt\n              if(wgt.ne.0.d0)then\n                if(pmass(m).eq.zero.and.pmass(n).eq.zero)then\n                  kikj=dot(p(0,n),p(0,m))\n                  soft_fact=dlog(2d0*kikj/QES2)\n                elseif(pmass(m).ne.zero.and.pmass(n).eq.zero)then\n                  kikj=dot(p(0,n),p(0,m))\n                  soft_fact=-0.5d0*dlog(pmass(m)**2/QES2)+dlog(2d0*kikj/QES2)\n                elseif(pmass(m).eq.zero.and.pmass(n).ne.zero)then\n                  kikj=dot(p(0,n),p(0,m))\n                  soft_fact=-0.5d0*dlog(pmass(n)**2/QES2)+dlog(2d0*kikj/QES2)\n                elseif(pmass(m).ne.zero.and.pmass(n).ne.zero)then\n                  kikj=dot(p(0,n),p(0,m))\n                  vij=dsqrt(1d0-(pmass(n)*pmass(m)/kikj)**2)\n                  if (vij .gt. 1d-6) then\n                    soft_fact=0.5d0*1/vij*log((1+vij)/(1-vij))\n                  else\n                    soft_fact=(1d0+vij**2/3d0+vij**4/5d0)\n                  endif\n                else\n                  write(*,*)'Error in getpoles',i,j,n,m,pmass(n),pmass(m)\n                  stop\n                endif\n                contr1=contr1+soft_fact*wgt\n                do k=1,amp_split_size\n                  amp_split_poles_FKS(k,1)=amp_split_poles_FKS(k,1)+\n     $             amp_split_soft(k)*(-2d0)*soft_fact*oneo8pi2\n                enddo\n              endif\n            endif\n          enddo\n        enddo\n        single=single+contr1*oneo8pi2\n      enddo\n\nC restore need_color/charge_links\n      nFKSprocess = nFKSprocess_save\n      call fks_inc_chooser()\n\n      if(.not.fksprefact)single=single+double*dlog(xmu2/QES2)\nc\n      return\n      end\n",
+        "sha256": "8328061347a6a36776818b129caf797670c75d6d58ad5c30573cef60c985bd3c"
+      }
+    ]
+  },
+  "charge_link": {
+    "path": "madgraph/iolibs/template_files/sborn_sf_fks.inc",
+    "ranges": [
+      {
+        "first_line": 35,
+        "last_line": 50,
+        "text": "C check if need color or charge links, and include the gs/w**2 term here\n      if (need_color_links) then\n%(iflines_col)s\n      wgt = wgt_col * g**2\nC update the amp_split_soft, which is summed in sbornsoft\n      amp_split_soft(1:amp_split_size) = dble(amp_split_cnt(1:amp_split_size,1,qcd_pos)) * g**2\n\n      else if (need_charge_links) then\n      chargeprod = charges_born(m) * charges_born(n)\n      if ((m.le.nincoming.and.n.gt.nincoming) .or. (n.le.nincoming.and.m.gt.nincoming)) chargeprod = - chargeprod\nC add a factor 1/2 for the self-eikonal soft link\n      if (m.eq.n) chargeprod = chargeprod / 2d0\n      wgt = dble(ans_cnt(1, qed_pos)) * chargeprod * dble(gal(1))**2\nC update the amp_split_soft, which is summed in sbornsoft\n      amp_split_soft(1:amp_split_size) = dble(amp_split_cnt(1:amp_split_size,1,qed_pos)) * chargeprod * dble(gal(1))**2\n      endif\n",
+        "sha256": "ea0a8178816a9a0e87ebda42e641e7b52b77daab0779afc7749ad8d4d3eadce5"
+      }
+    ]
+  },
+  "charge_export": {
+    "path": "madgraph/iolibs/export_fks.py",
+    "ranges": [
+      {
+        "first_line": 5900,
+        "last_line": 5920,
+        "text": "        \"\"\"Write born_charges.inc: fixed-form assignments filling the\n        /c_charges_born/ common with the electric charge of each Born leg.\n\n        sborn_sf's charge ([QED]) branch builds the charge-linked Born as\n        born * charges_born(m) * charges_born(n) * gal**2, so the driver needs\n        these charges; the colour ([QCD]) branch ignores them.\"\"\"\n        model = matrix_element.born_me.get('base_amplitude').\\\n            get('process').get('model')\n        born_legs = matrix_element.born_me.get('processes')[0].get('legs')\n        fks_legs = fks_common.to_fks_legs(born_legs, model)\n        lines = []\n        for i, leg in enumerate(fks_legs):\n            lines.append(\"      particle_charge_born(%d) = %19.15fd0\" %\n                         (i + 1, leg.get('charge')))\n        out = open(filename, 'w')\n        out.write(\"\\n\".join(lines))\n        out.write(\"\\n\")\n        out.close()\n\n    def finalize(self, matrix_elements, history, mg5options, flaglist):\n        \"\"\"Regular FKS finalize, plus a marker file so that 'launch' routes\n",
+        "sha256": "449191dfd4649df245b1be33021075d4f598bf802e54e7669ae64418ba9b3b3a"
+      }
+    ]
+  },
+  "MP_external_and_UV": {
+    "path": ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/mp_helas_calls_ampb_1.f",
+    "ranges": [
+      {
+        "first_line": 84,
+        "last_line": 118,
+        "text": "      ENDIF\n\n      CALL MP_OXXXXX(P(0,1),ZERO,NHEL(1),-1, FLAVOR(1),W(1))\n      CALL MP_IXXXXX(P(0,2),ZERO,NHEL(2),+1, FLAVOR(2),W(2))\n      CALL MP_IXXXXX(P(0,3),ZERO,NHEL(3),-1, FLAVOR(3),W(3))\n      CALL MP_OXXXXX(P(0,4),ZERO,NHEL(4),+1, FLAVOR(4),W(4))\n      CALL MP_FFV1P0_3(W(2),W(1),GC_3,CMPLX(ZERO,KIND=16),W(5))\nC     Amplitude(s) for born diagram with ID 1\n      CALL MP_FFV1_0(W(3),W(4),W(5),GC_3,AMP(1))\n      CALL MP_FFV2_4P0_3(W(2),W(1),GC_68,GC_77,CMPLX(CMASS_MDL_MZ\n     $ ,KIND=16),W(6))\nC     Amplitude(s) for born diagram with ID 2\n      CALL MP_FFV2_4_0(W(3),W(4),W(6),GC_68,GC_77,AMP(2))\nC     Counter-term amplitude(s) for loop diagram number 3\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(3),W(4),W(5),C_UVEPEMA1EW_1EPS\n     $ ,C_UVEPEMA2EW_1EPS,AMPL(2,1))\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(3),W(4),W(5),C_UVEPEMA1EW\n     $ ,C_UVEPEMA2EW,AMPL(1,2))\nC     Counter-term amplitude(s) for loop diagram number 4\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(3),W(4),W(6),C_UVEPEMZ1EW_1EPS\n     $ ,C_UVEPEMZ2EW_1EPS,AMPL(2,3))\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(3),W(4),W(6),C_UVEPEMZ1EW\n     $ ,C_UVEPEMZ2EW,AMPL(1,4))\n      CALL MP_FFV1P0_3(W(3),W(4),GC_3,CMPLX(ZERO,KIND=16),W(7))\nC     Counter-term amplitude(s) for loop diagram number 5\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(2),W(1),W(7),C_UVEPEMA1EW_1EPS\n     $ ,C_UVEPEMA2EW_1EPS,AMPL(2,5))\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(2),W(1),W(7),C_UVEPEMA1EW\n     $ ,C_UVEPEMA2EW,AMPL(1,6))\n      CALL MP_FFV2_4P0_3(W(3),W(4),GC_68,GC_77,CMPLX(CMASS_MDL_MZ\n     $ ,KIND=16),W(8))\nC     Counter-term amplitude(s) for loop diagram number 6\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(2),W(1),W(8),C_UVEPEMZ1EW_1EPS\n     $ ,C_UVEPEMZ2EW_1EPS,AMPL(2,7))\n      CALL MP_L_VEXVEA21_L_VEXVEA22_0(W(2),W(1),W(8),C_UVEPEMZ1EW\n",
+        "sha256": "ed85d8452a221f86ee72573fce8449fe7b32cb5f1426a843c34d851bc0200103"
+      },
+      {
+        "first_line": 129,
+        "last_line": 146,
+        "text": "      CALL MP_R2_GG_1_R2_GG_2_R2_GG_3_0(W(6),W(8),R2_ZZBOSON1\n     $ ,R2_ZZBOSON2,R2_ZZBOSON3,AMPL(1,13))\n      CALL MP_L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(6),W(8)\n     $ ,C_UVZMASS1EW_1EPS,C_UVZMASS2EW_1EPS,C_UVZMASS3EW_1EPS,AMPL(2\n     $ ,14))\n      CALL MP_L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(6),W(8)\n     $ ,C_UVZMASS1EW,C_UVZMASS2EW,C_UVZMASS3EW,AMPL(1,15))\nC     Counter-term amplitude(s) for loop diagram number 23\n      CALL MP_R2_GG_1_R2_GG_2_R2_GG_3_0(W(5),W(7),R2_AABOSON1\n     $ ,R2_AABOSON2,R2_AABOSON3,AMPL(1,16))\nC     Counter-term amplitude(s) for loop diagram number 27\n      CALL MP_R2_GG_1_R2_GG_2_R2_GG_3_0(W(5),W(8),R2_AZBOSON1\n     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,17))\n      CALL MP_L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(5),W(8)\n     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS\n     $ ,AMPL(2,18))\n      CALL MP_L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(5),W(8)\n     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,19))\n",
+        "sha256": "0c00b1d0fe81c6ba84e6dccf14b6557636a43ab9cfcd3b4a9828b56de471ebde"
+      }
+    ]
+  },
+  "MP_counterterm_sum": {
+    "path": ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/mp_compute_loop_coefs.f",
+    "ranges": [
+      {
+        "first_line": 350,
+        "last_line": 368,
+        "text": "          IF (COMPUTE_INTEGRAND_IN_QP) THEN\n\n            DO J=1,NBORNAMPS\n              CTEMP = HEL_MULT*2.0E0_16*CONJG(AMP(J))\n              DO I=1,NCTAMPS\n                CFTOT=CMPLX(CF_N(I,J)/REAL(ABS(CF_D(I,J)),KIND=16)\n     $           ,0.0E0_16,KIND=16)\n                IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1\n                ITEMP =\n     $            ML5_0_ML5SQSOINDEX(ML5_0_ML5SOINDEX_FOR_LOOP_AMP(I)\n     $           ,ML5_0_ML5SOINDEX_FOR_BORN_AMP(J))\n                IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.ITEMP) THEN\n                  DO K=1,3\n                    TEMP2 = REAL(CFTOT*AMPL(K,I)*CTEMP,KIND=16)\n                    ANS(K,ITEMP)=ANS(K,ITEMP)+TEMP2\n                    ANS(K,0)=ANS(K,0)+TEMP2\n                  ENDDO\n                ENDIF\n              ENDDO\n",
+        "sha256": "bb8176456a9ce95e27cbdbb80ec27a1e81111453d829e650576cd07ba2a152a9"
+      },
+      {
+        "first_line": 441,
+        "last_line": 450,
+        "text": "\nC     If we were not computing the integrand in QP, then we were\nC      already updating ANSDP all along, so that fetching it here from\nC      the QP ANS(:,:) should not be done.\n      IF (COMPUTE_INTEGRAND_IN_QP) THEN\n        DO I=1,3\n          DO J=0,NSQUAREDSO\n            ANSDP(I,J)=REAL(ANS(I,J),KIND=8)\n          ENDDO\n        ENDDO\n",
+        "sha256": "fbfc2eafe35a9f4268bff81b38b1f38d43ffdbeeb62a2aa6d5db120b5ec879ce"
+      }
+    ]
+  },
+  "full_amplitude_sum": {
+    "path": ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/loop_matrix.f",
+    "ranges": [
+      {
+        "first_line": 1012,
+        "last_line": 1027,
+        "text": "C     Check if we directly go to multiple precision\n      IF (CTMODE.GE.4) THEN\n        IF (.NOT.MP_DONE) THEN\n          CALL ML5_0_MP_COMPUTE_LOOP_COEFS(MP_P,BUFFR_BIS)\nC         It should be safe to directly set MP_DONE to true already\nC          here. But maybe I overlooked something.\n          MP_DONE=.TRUE.\n        ENDIF\nC       Even if MP_DONE is .TRUE. we should anyway skip the\nC       double precision evaluation as it as already been\nC       computed in quadruple precision.\n        GOTO 300\n      ENDIF\n\n      DO H=1,NCOMB\n        IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1)\n",
+        "sha256": "d1030e91eda62a94378544ffbe63bc09365b7d954c58759c5d8883dace880199"
+      },
+      {
+        "first_line": 1119,
+        "last_line": 1157,
+        "text": "\n\n\n      DO I=0,NSQUAREDSO\n        DO J=1,3\n          ANS(J,I)=BUFFR_BIS(J,I)\n        ENDDO\n      ENDDO\n\n\n      IF(SKIPLOOPEVAL.OR.(.NOT.LOOP_REQ_SO_DONE.AND..NOT.MP_LOOP_REQ_SO\n     $_DONE)) THEN\n        GOTO 1226\n      ENDIF\n\n      DO I_SO=1,NSQUAREDSO\n        DO J=1,NLOOPGROUPS\n          S(I_SO,J)=.TRUE.\n        ENDDO\n        IF (FILTER_SO.AND.SQSO_TARGET.NE.I_SO) GOTO 5001\n        CALL ML5_0_LOOP_CT_CALLS_1(P,NHEL,H,IC)\n        GOTO 5001\n 5000   CONTINUE\n        CTCALL_REQ_SO_DONE=.TRUE.\n 5001   CONTINUE\n      ENDDO\n\n      DO I=1,NLOOPGROUPS\n        LTEMP=.TRUE.\n        DO K=1,NSQUAREDSO\n          IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.K) THEN\n            IF (.NOT.S(K,I)) LTEMP=.FALSE.\n            DO J=1,3\n              ANS(J,K)=ANS(J,K)+LOOPRES(J,K,I)\n              ANS(J,0)=ANS(J,0)+LOOPRES(J,K,I)\n            ENDDO\n          ENDIF\n        ENDDO\n        IF((CTMODERUN.NE.-1).AND..NOT.CHECKPHASE.AND.(.NOT.LTEMP)) THEN\n",
+        "sha256": "bf9bfbce61473770ce2bf163e8bde98fae4220c6c9062b41ccbe8bd82d250027"
+      },
+      {
+        "first_line": 2130,
+        "last_line": 2158,
+        "text": "      SUBROUTINE ML5_0_SET_MP_PS(P)\n\n      INTEGER    NEXTERNAL\n      PARAMETER (NEXTERNAL=4)\n      REAL*16 MP_PS(0:3,NEXTERNAL),MP_P(0:3,NEXTERNAL)\n      COMMON/ML5_0_MP_PSPOINT/MP_PS,MP_P\n      REAL*8 P(0:3,NEXTERNAL)\n      LOGICAL KEEP_OFFSHELL_MASS(NEXTERNAL)\n\n      KEEP_OFFSHELL_MASS(1) = .FALSE.\n      KEEP_OFFSHELL_MASS(2) = .FALSE.\n      KEEP_OFFSHELL_MASS(3) = .FALSE.\n      KEEP_OFFSHELL_MASS(4) = .FALSE.\n\n\n\n      DO I=1,NEXTERNAL\n        DO J=0,3\n          MP_PS(J,I)=P(J,I)\n        ENDDO\n      ENDDO\n      CALL ML5_0_MP_IMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS\n     $ ,MP_PS)\n      DO I=1,NEXTERNAL\n        DO J=0,3\n          MP_P(J,I)=MP_PS(J,I)\n        ENDDO\n      ENDDO\n\n",
+        "sha256": "9cacb7aa55007c8393c82bf512e7e86e4fb770fe36f5fa8b955b8d7880cb3c70"
+      }
+    ]
+  },
+  "MP_external_momentum_copy": {
+    "path": ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/Source/DHELAS/aloha_functions.f",
+    "ranges": [
+      {
+        "first_line": 358,
+        "last_line": 388,
+        "text": "      subroutine mp_ixxxxx(p, fmass, nhel, nsf, flavor ,fi)\nc\nc This subroutine computes a fermion wavefunction with the flowing-IN\nc fermion number, in QUADRUPLE PRECISIOn\nc\nc input:\nc       real    p(0:3)         : four-momentum of fermion\nc       real    fmass          : mass          of fermion\nc       integer nhel = -1 or 1 : helicity      of fermion\nc       integer nsf  = -1 or 1 : +1 for particle, -1 for anti-particle\nc\nc output:\nc       type(mp_aloha) fi      : fermion wavefunction               |fi>\nc\n      use ALOHA_OBJECT\n      implicit none\n      type(mp_aloha) fi\n      complex*32 chi(2)\n      real*16 p(0:3),sf(2),sfomeg(2),omega(2),fmass,\n     &     pp,pp3,sqp0p3,sqm(0:1)\n      integer nhel,nsf,ip,im,nh,flavor\n\n      real*16 rZero, rHalf, rTwo\n      parameter( rZero = 0.0e0_16, rHalf = 0.5e0_16, rTwo = 2.0e0_16 )\nc     Convention for loop computations\n      fi%P(0) = p(0)*(-nsf)\n      fi%P(1) = p(1)*(-nsf)\n      fi%P(2) = p(2)*(-nsf)\n      fi%P(3) = p(3)*(-nsf)\n      fi%flv_index = flavor\n\n",
+        "sha256": "0353cdc1fa9c70281566d167678f026d5a57ccd5b3eda919bd8b50e45d7d80ff"
+      },
+      {
+        "first_line": 754,
+        "last_line": 785,
+        "text": "      subroutine mp_oxxxxx(p,fmass,nhel,nsf, flavor , fo)\nc\nc This subroutine computes a fermion wavefunction with the flowing-OUT\nc fermion number in quadruple precision.\nc\nc input:\nc       real    p(0:3)         : four-momentum of fermion\nc       real    fmass          : mass          of fermion\nc       integer nhel = -1 or 1 : helicity      of fermion\nc       integer nsf  = -1 or 1 : +1 for particle, -1 for anti-particle\nc\nc output:\nc       type(mp_aloha) fo      : fermion wavefunction               <fo|\nc\n      use ALOHA_OBJECT\n      implicit none\n      type(mp_aloha) fo\n      complex*32 chi(2)\n      real*16 p(0:3),sf(2),sfomeg(2),omega(2),fmass,\n     &     pp,pp3,sqp0p3,sqm(0:1)\n      integer nhel,nsf,nh,ip,im,flavor\n\n      real*16 rZero, rHalf, rTwo\n      parameter( rZero = 0.0e0_16, rHalf = 0.5e0_16, rTwo = 2.0e0_16 )\n\nc     Convention for loop computations\n      fo%P(0) = p(0)*nsf\n      fo%P(1) = p(1)*nsf\n      fo%P(2) = p(2)*nsf\n      fo%P(3) = p(3)*nsf\n      fo%flv_index = flavor\n\n",
+        "sha256": "3a02ee454bd2aeb7d572c497667f074187210288b525682a978738af63777dcc"
+      }
+    ]
+  }
+}

@@ -300,6 +300,19 @@ This checks one coefficient under the documented reconstruction assumptions.
 Finite and single-pole truth require further adjudication, including the
 reducers' different kinematic and scalar-classification policies.
 
+The subsequent [single-IR-pole audit](experiments/cms-universal-qed-single-pole-audit-1/README.md)
+also supports the candidate QP coefficient, within `5.23e-16` of the FKS
+prediction. It explicitly relies on the retained restored QP inputs and the
+intended UV-renormalized amplitude; runtime coupling bits and UV cancellation
+were not independently measured. The finite term remains unadjudicated.
+
+The [legacy Ninja/NinjaRS reference probe](experiments/kinematic-legacy-reference-adjudication-1/README.md)
+completes both workers but obtains no valid reference: NinjaRS reports five
+failed box reductions, while Ninja's final Laurent coefficients are nonfinite.
+The logs establish QP interface use and preserve every blocked comparison.
+A separate comparison must establish matched native inputs before attributing
+the remaining disagreement to a reduction algorithm.
+
 The separate [original-input EW replay](experiments/ew-original-refusal-replay-1/README.md)
 reproduces both point-2, rank-three refusals and retains their complete original
 errors: ill-conditioned Gram subsets `[1,2,3]` in DP and `[0,1,2,3]` in QP.

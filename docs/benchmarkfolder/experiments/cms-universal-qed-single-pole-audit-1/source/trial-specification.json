@@ -1,0 +1,62 @@
+{
+  "bootstrap_file": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/kinematic-invariant-amplitude-executor-2/work/workers/cms-p20-mode4-lib9-candidate/SubProcesses/P0_epem_mupmum/bootstrap-input.dat",
+  "bootstrap_pin": {
+    "bytes": 390,
+    "sha256": "ed760e231007f76fa0f6b80aad72be2291a5e5cef8343e14c69e40dd6a50233b"
+  },
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/kinematic-invariant-amplitude-executor-2/work/workers/cms-p20-mode4-lib9-candidate/SubProcesses/P0_epem_mupmum",
+  "evidence": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/kinematic-invariant-amplitude-executor-2/results/runs/cms-p20-mode4-lib9-candidate",
+  "executable": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/kinematic-invariant-amplitude-executor-2/work/workers/cms-p20-mode4-lib9-candidate/SubProcesses/P0_epem_mupmum/check",
+  "executable_pin": {
+    "bytes": 86876000,
+    "sha256": "ba78f0141b3502c61c572886af8bd2ed56893612bf2e7df18d6c40bc1ec8319d"
+  },
+  "expected_runtime": {
+    "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53",
+    "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+    "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194",
+    "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/kinematic-invariant-amplitude-executor-2/work/workers/cms-p20-mode4-lib9-candidate/SubProcesses/P0_epem_mupmum/check": "ba78f0141b3502c61c572886af8bd2ed56893612bf2e7df18d6c40bc1ec8319d",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+  },
+  "numerical_card": {
+    "bytes": 14621,
+    "sha256": "da15522d1ddae9df385fa80b27e32000b78bf9f3b9c243ff92d19056edc2ac77"
+  },
+  "physical_card": {
+    "bytes": 4397,
+    "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+  },
+  "point_file": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/kinematic-invariant-amplitude-executor-2/work/workers/cms-p20-mode4-lib9-candidate/SubProcesses/P0_epem_mupmum/measurement-input.dat",
+  "point_pin": {
+    "bytes": 389,
+    "sha256": "57d7f677e925d7bc258e65fe440880d2876f0317de3904c348060e08c48edd1d"
+  },
+  "request": {
+    "backend": 9,
+    "bootstrap": "inputs/cms-point1.dat",
+    "bootstrap_calls": 1,
+    "card": "inputs/cms-backend9-mode4-MadLoopParams.dat",
+    "expected_fixed_unchecked_return": 120,
+    "id": "cms-p20-mode4-lib9-candidate",
+    "measurement": "inputs/cms-point20.dat",
+    "measurement_calls": 1,
+    "outer_entries_max": 2,
+    "physical_card": "inputs/cms-param_card.dat",
+    "point": 20,
+    "requested_mode": 4,
+    "stage": "stress",
+    "variant": "candidate"
+  },
+  "source_index_sha256": "ccbb3dff88f673043251dac5d5099d184f709fdffdba1e5f2c3c1dc0aca37a74"
+}

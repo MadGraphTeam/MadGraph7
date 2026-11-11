@@ -1,0 +1,38 @@
+{
+  "Template/NLO/SubProcesses/fks_singular.f": {
+    "bytes": 318675,
+    "sha256": "65c9ba67697b697deac3d626cb425ee0dbc747afba5abefbd0808a0a8fba26a7"
+  },
+  "madgraph/iolibs/template_files/sborn_sf_fks.inc": {
+    "bytes": 2175,
+    "sha256": "0d3eb0aa3af5adb5e15c33a184a430b7f03da3ebdc9e2ce99a6ee19434bc0260"
+  },
+  "madgraph/iolibs/export_fks.py": {
+    "bytes": 278277,
+    "sha256": "6ff8453986cbde8053b7d79616fe6dcef07c6823fdc807080c4cd655894467f2"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/mp_helas_calls_ampb_1.f": {
+    "bytes": 10184,
+    "sha256": "e9c4cac8a715e61317417c64d50d503ab5426a92a879579bab8b23ada6dc6046"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/mp_compute_loop_coefs.f": {
+    "bytes": 13375,
+    "sha256": "c5d9b6304687707420e0caa8c02e01f9dc5ece8e605f4bd9f5d2a11aaf709afd"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/SubProcesses/P0_epem_mupmum/loop_matrix.f": {
+    "bytes": 95506,
+    "sha256": "5b1e5e22f84c2b2b6106523f1322f06264a119661aa2dd94b9a139cb5e710667"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/work/builds/cms/original/Source/DHELAS/aloha_functions.f": {
+    "bytes": 87869,
+    "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+  },
+  ".tirust-build/kinematic-invariant-amplitude-executor-2/results/runs/cms-p20-mode4-lib9-candidate/specification.json": {
+    "bytes": 4912,
+    "sha256": "7479267abd0a400a62caa277fe4a411c2f85b7c3284689220dd18d472f0b4064"
+  },
+  "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/kinematic-invariant-amplitude-executor-2/work/workers/cms-p20-mode4-lib9-candidate/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+    "bytes": 14621,
+    "sha256": "da15522d1ddae9df385fa80b27e32000b78bf9f3b9c243ff92d19056edc2ac77"
+  }
+}
