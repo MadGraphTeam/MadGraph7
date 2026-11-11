@@ -61,6 +61,7 @@ class TestSudakovWeightIds(unittest.TestCase):
         driver.flag_density_matrix = False
         driver.new_param_card = check_param_card.ParamCard(driver.banner['slha'].splitlines())
         driver.has_nlo = False
+        driver.is_decay = False
         driver.rwgt_mode = 'LO'
         driver.output_type = 'default'
         driver.f2pylib = {}
