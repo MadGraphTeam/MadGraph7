@@ -307,6 +307,34 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction(
         Ok(())
     })
 }
+/// The failure policy of the handle's later evaluations, the Python API's
+/// `on_failure=` (m-lit ux-besteffort; additive, ABI version 2 kept):
+/// `"best-effort"` (the default, also for NULL) returns OK with every point:
+/// a point no configured alternative accepts carries the unchecked
+/// reduction's value as its row with status `RUSTICOL_VIRTUAL_BEST_EFFORT`
+/// (never a success), its refusal (diagnostics "best_effort") and its
+/// uncertainty (`rusticol_virtual_result_copy_uncertainties`); a point
+/// without any value stays `RUSTICOL_VIRTUAL_FAILED`; nothing is printed.
+/// `"return"` keeps such points failed without a best-effort evaluation;
+/// `"raise"` (opt-in strict mode) returns `RUSTICOL_VIRTUAL_RUNTIME_ERROR`
+/// for a call with such a point. Another value is an invalid argument.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `on_failure` is NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_on_failure(
+    handle: *mut VirtualHandle,
+    on_failure: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        let policy = crate::OnFailure::parse(text(on_failure)?.unwrap_or("best-effort"))
+            .map_err(|error| bad(error.to_string()))?;
+        mutable(handle)?.0.set_on_failure(policy);
+        Ok(())
+    })
+}
 /// The target accuracy of the handle's later evaluations, the Python API's
 /// `reduction_target=` (m-lit F3 (a); additive, ABI version 2 kept): the
 /// relative accuracy of each point's result (every squared-order sector
@@ -751,6 +779,54 @@ pub unsafe extern "C" fn rusticol_virtual_result_copy_statuses(
             capacity,
         )
     })
+}
+/// Per requested point the relative uncertainty of a best-effort point's
+/// value (`RUSTICOL_VIRTUAL_BEST_EFFORT`), NaN for every other point and for
+/// a best-effort point without an estimate (m-lit ux-besteffort).
+///
+/// # Safety
+///
+/// `result` is a live result; `output` holds `capacity` doubles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_result_copy_uncertainties(
+    result: *const VirtualResult,
+    output: *mut f64,
+    capacity: usize,
+) -> c_int {
+    guard(|| unsafe {
+        let result = &reference(result)?.0;
+        copy(
+            &uncertainties(&result.uncertainties, result.statuses.len()),
+            output,
+            capacity,
+        )
+    })
+}
+/// [`rusticol_virtual_result_copy_uncertainties`] of a correlated result.
+///
+/// # Safety
+///
+/// `result` is a live result; `output` holds `capacity` doubles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_copy_uncertainties(
+    result: *const CorrelatedResult,
+    output: *mut f64,
+    capacity: usize,
+) -> c_int {
+    guard(|| unsafe {
+        let result = &reference(result)?.0;
+        copy(
+            &uncertainties(&result.uncertainties, result.statuses.len()),
+            output,
+            capacity,
+        )
+    })
+}
+/// One uncertainty per requested point (NaN where none was recorded).
+fn uncertainties(values: &[f64], points: usize) -> Vec<f64> {
+    (0..points)
+        .map(|i| values.get(i).copied().unwrap_or(f64::NAN))
+        .collect()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_result_diagnostics_json(
