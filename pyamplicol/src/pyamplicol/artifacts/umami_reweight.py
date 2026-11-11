@@ -184,16 +184,13 @@ def switch_catalogue(
     color_index = {json.dumps(flow): i for i, flow in enumerate(color_flows)}
     evaluations: dict[tuple, int] = {}
     orderings, targets, target_pdgs, seen = [], [], [], set()
-    # the slots of the outgoing non-partons, the same in every row
-    fixed = {
-        slot: pdg
-        for slot, pdg in enumerate(reference["pdg_ids"][0])
-        if slot >= incoming and not _is_parton(pdg)
-    }
-    if any(
-        {s: p for s, p in enumerate(row) if s >= incoming and not _is_parton(p)} != fixed
-        for row in reference["pdg_ids"]
-    ):
+    # the outgoing non-partons of every row, in the same slots in every row;
+    # their flavours may differ between rows (e+ ve and mu+ vm of l+ vl)
+    row_fixed = {}
+    for row in reference["pdg_ids"]:
+        fixed = {s: p for s, p in enumerate(row) if s >= incoming and not _is_parton(p)}
+        row_fixed.setdefault(tuple(sorted(fixed.values())), fixed)
+    if len({tuple(fixed) for fixed in row_fixed.values()}) > 1:
         raise ValueError("the flavour switch needs the non-partons in fixed slots")
     parton_slots = [
         slot for slot in range(incoming, len(reference["pdg_ids"][0])) if slot not in fixed
@@ -217,7 +214,8 @@ def switch_catalogue(
             lines = quark_lines(pdgs)
             final = pdgs[incoming:]
             partons = [p for p in final if _is_parton(p)]
-            if sorted(p for p in final if not _is_parton(p)) != sorted(fixed.values()):
+            fixed = row_fixed.get(tuple(sorted(p for p in final if not _is_parton(p))))
+            if fixed is None:
                 raise ValueError(f"flavour {pdgs} has other non-partons than the events")
             weight = factor * math.prod(
                 math.factorial(partons.count(p)) for p in set(partons)
