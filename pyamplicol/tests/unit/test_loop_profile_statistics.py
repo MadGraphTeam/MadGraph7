@@ -33,7 +33,7 @@ def test_stable_digits_are_capped_to_binary64():
     assert stable_digits(1e-7) == pytest.approx(7.0)
     assert stable_digits(1.0) == 0.0 and stable_digits(3.0) == 0.0
     assert stable_digits(math.inf) == 0.0 and stable_digits(math.nan) == 0.0
-    assert BINARY64_DIGITS == pytest.approx(15.954589770191003)
+    assert abs(BINARY64_DIGITS - 15.954589770191003) < 1e-12
 
 
 def test_relative_error_against_a_decimal_reference():
