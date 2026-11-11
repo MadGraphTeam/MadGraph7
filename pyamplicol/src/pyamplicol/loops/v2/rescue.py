@@ -18,7 +18,7 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
    marked as not met; a point that failed at every level is a failed lane,
    or, under ``on_failure="best-effort"``, a best-effort lane when the last
    level's unchecked reduction gives it a value (only the last level runs
-   the best-effort evaluation: ``reduction.serving_best_effort``).
+   the best-effort evaluation, ``reduction.with_fallback``).
 
 A level compares the public estimate's field named by its ``metric`` with
 its target. An integrated zero (a Landau-Yang |A|^2 of a loop-induced

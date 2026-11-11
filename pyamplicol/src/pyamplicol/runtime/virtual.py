@@ -468,7 +468,7 @@ def v2_options(
     runs it before, ``loops.v2.rescue``)."""
 
     if on_failure not in ON_FAILURE:
-        raise ValueError("on_failure must be 'raise', 'return' or 'best-effort'")
+        raise ValueError("on_failure must be 'best-effort', 'return' or 'raise'")
     if helicities or color_flows:
         # ``evaluate`` and ``evaluate_resolved`` take them (Born-interfered:
         # helicities at every colour accuracy, colour flows at leading
@@ -726,6 +726,7 @@ class V2ObservablesRuntime:
         spins: Sequence[Any],
         options: Mapping[str, Any],
         reduction: VirtualReduction | None = None,
+        best_effort: bool = False,
     ) -> tuple[list[Any], dict[int, list[str]], dict[int, VirtualReduction]]:
         """Per-point outputs (``None`` for a failed point), the failures and
         the per-point fallback's records; ``reduction`` is the call's backend
@@ -794,7 +795,12 @@ class V2ObservablesRuntime:
             # fallback's evaluation of those outputs alone (DECISIONS
             # 2026-11-09 14:30 Q7; the selected rows only are dressed).
             return with_fallback(
-                run, reduction, len(points), checks, self._carrier(options)
+                run,
+                reduction,
+                len(points),
+                checks,
+                self._carrier(options),
+                best_effort=best_effort,
             )
         if effective is not None:
             # The Python reference executor reduces on the backends the
@@ -1242,7 +1248,7 @@ class V2ObservablesRuntime:
         arithmetic: str | None,
         helicities: Sequence[str] | None,
         color_flows: Sequence[str] | None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] = "best-effort",
         # Keyed by the call's carrier, or under a rescue policy by each
         # ``VirtualRescueLevel`` (``V2VirtualRuntime._reduction_choices``).
         reductions: Mapping[Any, VirtualReduction | None] | None = None,
@@ -1307,7 +1313,13 @@ class V2ObservablesRuntime:
                 helicities=helicities,
                 color_flows=color_flows,
                 stability_checks=rung.checks,
-                on_failure="return",
+                # Only the last level serves best-effort values; the earlier
+                # ones return their refused points to the next level.
+                on_failure=(
+                    "best-effort"
+                    if on_failure == "best-effort" and rung is policy.levels[-1]
+                    else "return"
+                ),
                 # The level's own backend (the artifact runtime resolves one
                 # per level, ``V2VirtualRuntime._reduction_choices``).
                 reductions=None if chosen is None else {rung.arithmetic: chosen},
@@ -1398,7 +1410,7 @@ class V2ObservablesRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] = "best-effort",
         reductions: Mapping[str, VirtualReduction] | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
@@ -1453,6 +1465,7 @@ class V2ObservablesRuntime:
             [None] * len(points),
             settings,
             None if reductions is None else reductions[arithmetic],
+            best_effort=on_failure == "best-effort",
         )
         self._failed(failures, on_failure)
         return with_kinematics(
@@ -1488,7 +1501,7 @@ class V2ObservablesRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] = "best-effort",
         _correlated: bool = True,
         reductions: Mapping[str, VirtualReduction] | None = None,
         kinematics_improvement: str | None = None,
@@ -1531,6 +1544,7 @@ class V2ObservablesRuntime:
                 spins,
                 settings,
                 reduction,
+                best_effort=on_failure == "best-effort",
             )
             self._failed(failures, on_failure)
             for label, output in labels:
@@ -1639,7 +1653,7 @@ class V2ObservablesRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] = "best-effort",
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
@@ -1708,6 +1722,7 @@ class V2ObservablesRuntime:
             [None] * len(points),
             settings,
             None if reductions is None else reductions[arithmetic],
+            best_effort=on_failure == "best-effort",
         )
         self._failed(failures, on_failure)
         born_orders = self._default_born_orders()

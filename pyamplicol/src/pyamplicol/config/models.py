@@ -228,14 +228,20 @@ def reduction_target(value: object) -> float:
     raise ValueError(policy()["target"]["refusal"])
 
 
-# The failure policies of a virtual evaluation (``evaluation.on_failure``,
-# the CLI's ``--on-failure``, ``evaluate(..., on_failure=)``): "raise" (the
-# default) raises at the first point no configured alternative serves;
-# "return" returns such points as failed lanes without a value; "best-effort"
-# returns them, where the backends' unchecked reduction gives a finite value,
-# as "best-effort" lanes with that value and its uncertainty (m-lit
-# ux-besteffort), the others as failed lanes.
-ON_FAILURE = ("raise", "return", "best-effort")
+# The failure policies of a virtual evaluation (``evaluate(..., on_failure=)``,
+# ``evaluation.on_failure``, the CLI's ``--on-failure``, the native SDKs'
+# ``set_on_failure``; m-lit ux-besteffort, USER-NOTES 2026-11-11 items 8-9):
+# "best-effort" (the default since 1.0.3) never raises for a point: a point
+# no configured alternative accepts is returned with its best available value
+# where one exists (lane status "best-effort": the unchecked reduction's
+# value, the refusal and its uncertainty), else as a failed lane, and the
+# result's ``warnings`` metadata says so (nothing is printed or logged);
+# "return" returns such points as failed lanes without computing a
+# best-effort value (the cheapest mode); "raise" raises at the first point
+# without an accepted value (the default before 1.0.3). ``None`` in a
+# config or a call means the default.
+ON_FAILURE = ("best-effort", "return", "raise")
+DEFAULT_ON_FAILURE = "best-effort"
 
 
 def reduction_unchecked(value: object) -> bool:
@@ -1474,8 +1480,8 @@ class EvaluationConfig:
     correlated_requests: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
-    on_failure: Literal["raise", "return", "best-effort"] = field(
-        default="raise", metadata=_setting("str", choices=ON_FAILURE)
+    on_failure: Literal["best-effort", "return", "raise"] | None = field(
+        default=None, metadata=_setting("str", nullable=True, choices=ON_FAILURE)
     )
     stability: EvaluationStabilityConfig = field(
         default_factory=EvaluationStabilityConfig, metadata=_section()
@@ -1565,9 +1571,9 @@ class EvaluationConfig:
             "correlated_requests",
             _path(self.correlated_requests, "evaluation.correlated_requests"),
         )
-        if self.on_failure not in ON_FAILURE:
+        if self.on_failure is not None and self.on_failure not in ON_FAILURE:
             raise ConfigurationError(
-                "evaluation.on_failure must be 'raise', 'return' or 'best-effort'"
+                "evaluation.on_failure must be 'best-effort', 'return' or 'raise'"
             )
         if not isinstance(self.stability, EvaluationStabilityConfig):
             raise ConfigurationError(

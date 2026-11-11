@@ -2227,7 +2227,7 @@ class V2VirtualRuntime:
         stability: VirtualRescuePolicy | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] = "best-effort",
         reduction: str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
@@ -2387,7 +2387,7 @@ class V2VirtualRuntime:
                         r2,
                         selection,
                         rung.checks,
-                        # The last level serves the best-effort values
+                        # Only the last level serves best-effort values
                         # (``on_failure="best-effort"``); the earlier ones
                         # return their refused points to the next level.
                         (
@@ -2591,7 +2591,7 @@ class V2VirtualRuntime:
         recorded per point; a fallback point's cross-backend check is not
         run, m-lit R6)."""
 
-        from .reduction import serving_best_effort, with_fallback
+        from .reduction import with_fallback
 
         def run(
             indices: list[int] | None, own: VirtualStabilityChecks
@@ -2607,10 +2607,14 @@ class V2VirtualRuntime:
                 own,
             )
 
-        with serving_best_effort(on_failure == "best-effort"):
-            results, failures, served = with_fallback(
-                run, reduction, len(points), checks, carrier
-            )
+        results, failures, served = with_fallback(
+            run,
+            reduction,
+            len(points),
+            checks,
+            carrier,
+            best_effort=on_failure == "best-effort",
+        )
         if failures and on_failure == "raise":
             index = min(failures)
             raise EvaluationError(

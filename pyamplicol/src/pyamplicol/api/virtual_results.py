@@ -30,6 +30,9 @@ from pyamplicol.loops.v2.stability import (
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
 
+from .result_warnings import LaneWarnings
+from .result_warnings import NumericalAccuracyWarning as NumericalAccuracyWarning
+from .result_warnings import ResultWarning as ResultWarning
 from .results import _exact_decimal_sum
 
 VirtualScalar: TypeAlias = float | complex | Decimal | CorrelatedValue
@@ -1482,7 +1485,7 @@ def _rescue(
 
 
 @dataclass(frozen=True, slots=True)
-class VirtualEvaluation:
+class VirtualEvaluation(LaneWarnings):
     """Born [point, order] and interference [point, order, epsilon].
 
     Ordinary interference is real and directed correlations may be complex.
@@ -1766,7 +1769,7 @@ def _order_index(orders: Sequence[CouplingOrders], order: CouplingOrders) -> int
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedVirtualEvaluation:
+class ResolvedVirtualEvaluation(LaneWarnings):
     """Interference [point, order, helicity, virtual colour component, epsilon].
 
     Born colour components have their own independent axis. LC components are

@@ -305,10 +305,6 @@ _EFFECTIVE: ContextVar[str] = ContextVar("pyamplicol_v2_reduction", default="nin
 _TARGET: ContextVar[float | None] = ContextVar("pyamplicol_v2_target", default=None)
 # The unchecked setting of the current context (off by default).
 _UNCHECKED: ContextVar[bool] = ContextVar("pyamplicol_v2_unchecked", default=False)
-# Whether the current context serves the points every configured
-# alternative refused by their best-effort value (``serving_best_effort``;
-# ``on_failure="best-effort"``, m-lit ux-besteffort).
-_BEST_EFFORT: ContextVar[bool] = ContextVar("pyamplicol_v2_best_effort", default=False)
 _KEEP: Any = object()
 
 
@@ -338,21 +334,6 @@ def running(
         if held is not None:
             _TARGET.reset(held)
         _EFFECTIVE.reset(token)
-
-
-@contextmanager
-def serving_best_effort(on: bool) -> Iterator[None]:
-    """Serve, in this context, the points every configured alternative of a
-    call refused or failed by their best-effort value (``with_fallback``;
-    ``on_failure="best-effort"``): the caller's evaluation without a rescue
-    policy, or a rescue policy's LAST level only (its earlier levels'
-    refused points climb to the next level as before)."""
-
-    token = _BEST_EFFORT.set(bool(on))
-    try:
-        yield
-    finally:
-        _BEST_EFFORT.reset(token)
 
 
 def current() -> str:
@@ -777,18 +758,19 @@ def with_fallback(
     count: int,
     checks: Any,
     carrier: str,
+    *,
+    best_effort: bool = False,
 ) -> tuple[list[_R | None], dict[int, list[str]], dict[int, VirtualReduction]]:
     """``run`` of a batch on the call's backend with its per-point fallback
-    (``_with_fallback``: the arguments, the guard and the records), then, in
-    a context serving best-effort values (``serving_best_effort``,
-    ``on_failure="best-effort"``) of a call reduced WITH the backends' own
-    checks, the BEST-EFFORT evaluation of every point still failed
-    (``_best_effort``). Without that context nothing else runs: the
-    points every alternative serves, and every call outside it, are
-    evaluated exactly as before (bitwise, at the same cost)."""
+    (``_with_fallback``: the arguments, the guard and the records), then,
+    with ``best_effort`` (``on_failure="best-effort"``, the default, of a call
+    reduced WITH the backends' own checks), the BEST-EFFORT evaluation of
+    every point still failed (``_best_effort``). Otherwise nothing else
+    runs, and in every case the points the configured alternatives serve
+    are evaluated exactly as before (bitwise, at the same cost)."""
 
     results, failures, records = _with_fallback(run, choice, count, checks, carrier)
-    if failures and _BEST_EFFORT.get() and not choice.unchecked:
+    if failures and best_effort and not choice.unchecked:
         _best_effort(run, choice, checks, carrier, results, failures, records)
     return results, failures, records
 
@@ -866,7 +848,8 @@ def _best_effort(
 
     indices = sorted(failures)
     enabled = checks is not None and bool(
-        getattr(checks, "rotations", ()) or getattr(checks, "reduction_direction", False)
+        getattr(checks, "rotations", ())
+        or getattr(checks, "reduction_direction", False)
     )
     if enabled:
         own = (
@@ -883,9 +866,7 @@ def _best_effort(
         )
 
     unchecked = replace(choice, unchecked=True)
-    values, still, served = _with_fallback(
-        again, unchecked, len(indices), own, carrier
-    )
+    values, still, served = _with_fallback(again, unchecked, len(indices), own, carrier)
     for local, index in enumerate(indices):
         refusal = bounded_reasons(failures[index])
         if local in still or values[local] is None:
@@ -904,8 +885,9 @@ def _best_effort(
         if math.isnan(estimate):
             uncertainty, source = None, "none"
         else:
-            uncertainty, source = estimate, (
-                "stability-checks" if enabled else "rotation"
+            uncertainty, source = (
+                estimate,
+                ("stability-checks" if enabled else "rotation"),
             )
         record = served.get(local)
         effective = choice.effective if record is None else record.effective
@@ -933,12 +915,12 @@ def _best_effort(
 
 __all__ = [
     "BACKENDS",
-    "backend_deviation",
     "CARRIERS",
     "DEFAULTS",
     "ReductionUnavailable",
     "Route",
     "auto_default",
+    "backend_deviation",
     "cross",
     "current",
     "current_target",
@@ -955,7 +937,6 @@ __all__ = [
     "resolve",
     "route",
     "running",
-    "serving_best_effort",
     "text",
     "with_fallback",
 ]

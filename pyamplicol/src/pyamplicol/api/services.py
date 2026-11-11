@@ -21,8 +21,7 @@ from pyamplicol.config import (
     ReductionBackend,
     RunConfig,
 )
-from pyamplicol.config.models import ON_FAILURE
-from pyamplicol.config.models import reduction_request
+from pyamplicol.config.models import ON_FAILURE, reduction_request
 from pyamplicol.config.models import reduction_target as reduction_target_value
 from pyamplicol.config.models import reduction_unchecked as reduction_unchecked_value
 from pyamplicol.reporting import ProgressSink
@@ -693,7 +692,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
@@ -867,18 +866,24 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None,
         r2_strategy: R2Strategy | str | None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
     ) -> dict[str, object]:
         """Forward explicit options without changing old backend call signatures."""
         options: dict[str, object] = {}
-        if on_failure not in ON_FAILURE:
-            raise ValueError("on_failure must be 'raise', 'return' or 'best-effort'")
-        if on_failure != "raise":
-            if not self._virtual:
-                raise CompatibilityError(
-                    "partial-value return requires a virtual runtime"
+        if on_failure is not None:
+            # None: the virtual runtime's default ("best-effort", m-lit
+            # ux-besteffort); a tree runtime has no per-point failure policy.
+            if on_failure not in ON_FAILURE:
+                raise ValueError(
+                    "on_failure must be 'best-effort', 'return' or 'raise'"
                 )
-            options["on_failure"] = on_failure
+            if not self._virtual:
+                if on_failure != "raise":
+                    raise CompatibilityError(
+                        "partial-value return requires a virtual runtime"
+                    )
+            else:
+                options["on_failure"] = on_failure
         if arithmetic is not None:
             if arithmetic not in {"double", "double-double", "arbitrary"}:
                 raise ValueError("unknown evaluation arithmetic")
@@ -1033,7 +1038,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
@@ -1072,7 +1077,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
@@ -1167,7 +1172,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
@@ -1466,7 +1471,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
@@ -1612,7 +1617,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return", "best-effort"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
