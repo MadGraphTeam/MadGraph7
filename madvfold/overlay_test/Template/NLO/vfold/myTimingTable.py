@@ -24,7 +24,9 @@ errors and warnings are printed); the tex formats (tex1, tex2) are written
 to a .tex file in Events/TEXn for a prefix in Events/REFn
 (TEX/TEX2/TEX3 for REF/REF2/REF3). With --branch, e.g. vfold5363 (the code
 branch of the runs), the branch is printed first in the title (underlined in
-tex) and it prefixes the tex file name, e.g. vfold5363_CUDA_..._step10b.tex.
+tex) and, after the short process name (the process directory name without
+_vfgen, _vfalt or _stock), it prefixes the tex file name, e.g. in eebbbb_vfgen
+eebbbb_vfold5363_CUDA_..._step10b.tex.
 
 The script has two independent parts:
     1. READING: read_step(prefix) parses the logs into plain dictionaries;
@@ -709,7 +711,9 @@ def main():
             sys.exit('ERROR! tex output needs a prefix in Events/REF, Events/REF2 or Events/REF3: %s' % prefix)
         os.makedirs('Events/TEX'+m.group(1), exist_ok=True)  # step 15e
         texname = m.group(2).replace('/','_')+'.tex'
-        if args.branch: texname = args.branch + '_' + texname  # e.g. vfold5363_CUDA_n200f841k64g1_step10b.tex
+        if args.branch:  # e.g. in ggttg_vfgen: ggttg_vfold7cg_CUDA_n20f111k512g1_step15d.tex
+            procdir = re.sub(r'_(vfgen|vfalt|stock)$', '', os.path.basename(os.getcwd()))
+            texname = procdir + '_' + args.branch + '_' + texname
         with open('Events/TEX'+m.group(1)+'/'+texname, 'w') as f:
             f.write(RENDERERS[args.format](table, prefix=prefix))
     elif args.format == 'txt':
