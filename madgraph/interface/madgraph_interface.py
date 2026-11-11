@@ -8303,10 +8303,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if warnings:
             logger.warning(warnings)
 
-        # Check for the minimal required gcc version
-        warnings = misc.check_gcc_version('13')
-        if warnings:
-            logger.warning(warnings)
+        # Check for the minimal required compiler version (C++20 with
+        # std::format, needed by madspace): gcc 13, LLVM clang 17,
+        # Apple clang 15
+        for warnings in [misc.check_gcc_version('13'),
+                         misc.check_clang_version('17', '15')]:
+            if warnings:
+                logger.warning(warnings)
 
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
