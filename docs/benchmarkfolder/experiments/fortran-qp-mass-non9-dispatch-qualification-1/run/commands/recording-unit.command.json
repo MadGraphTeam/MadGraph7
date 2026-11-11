@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/unit_mass_check"
+  ],
+  "controller_pid": 578599,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run",
+  "process_group": 578599,
+  "session": 578599,
+  "subprocess_new_session": false
+}

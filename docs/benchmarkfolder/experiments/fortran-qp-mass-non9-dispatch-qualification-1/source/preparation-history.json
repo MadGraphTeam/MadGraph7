@@ -1,0 +1,19 @@
+{
+  "schema": "non9-source-only-preparation-history-v1",
+  "native_commands": 0,
+  "compiler_commands": 0,
+  "initial_pure_test_run": {
+    "tests": 8,
+    "failures": 1,
+    "failure": "Case-sensitive textual guard assertion expected MLREDUCTIONLIB; exact copied private helper spells MLReductionLib.",
+    "correction": "Make only the source assertion case-insensitive; preserve exact helper bytes."
+  },
+  "source1": {
+    "source_index_sha256": "e5ad27c3cd698f25c74b38711f98e9e90c2c12de7da259ef414aafc8dc725f44",
+    "admitted": false,
+    "native_executions": 0,
+    "source_review_blocker": "Successful Popen followed by OwnedChild-constructor failure could skip cleanup in the reused parent dispatcher.",
+    "source2_correction": "Use qualified captured raw identity and deadline-bounded fallback cleanup; retain source1 unchanged."
+  },
+  "deadline_wording_correction": "180s total including60s cleanup, not180s plus60s."
+}

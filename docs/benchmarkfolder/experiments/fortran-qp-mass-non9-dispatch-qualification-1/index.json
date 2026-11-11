@@ -1,0 +1,1867 @@
+{
+  "claims": {
+    "EW_complex_mass_physical_qualification": false,
+    "UseQPIntegrandFalse_physical_qualification": false,
+    "actual_chooser_helper_calls": 196,
+    "actual_physical_reducers": 0,
+    "build_commands": 30,
+    "chooser_only_controls": 2,
+    "compiled_dispatch_input_parity": true,
+    "compiled_sources": 6,
+    "controlled_selector_helper_calls": 56,
+    "excluded_native_identities": 16,
+    "helper_families": 7,
+    "helper_pairs": 126,
+    "local_performance_acceptance": false,
+    "loop_induced_physical_qualification": false,
+    "native_binaries_packaged": 0,
+    "new_native_executions": 0,
+    "observed_IEEE_rows_zero": 507,
+    "physical_amplitudes": 0,
+    "production_promotion": false,
+    "real_COLLIER_initialization": false,
+    "recorded_LOAD_bindings": 23,
+    "recorded_rows": 6425,
+    "recorded_runtime_providers": 5,
+    "recording_helper_calls": 252,
+    "recording_target_input_signatures": {
+      "1": {
+        "DP_input_signature": 84,
+        "DP_signature_with_requested_QP_mode": 56
+      },
+      "6": {
+        "DP_input_signature": 28,
+        "QP_input_signature": 28
+      },
+      "7": {
+        "DP_input_signature": 28
+      },
+      "8": {
+        "DP_input_signature": 28,
+        "QP_input_signature": 56
+      }
+    },
+    "requested_CTMODE_counts": {
+      "1": 56,
+      "2": 56,
+      "4": 70,
+      "5": 70
+    },
+    "source1_pre_native_rejection_retained": true,
+    "unique_helper_definitions": 14
+  },
+  "excluded_binaries": {
+    "build/chooser.o": {
+      "bytes": 4096,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/chooser.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "3e4b14b00bcf58a73b5e02c006ee21e18b45eab0bc34cc430f3b73c93e233f14"
+    },
+    "build/detectors.o": {
+      "bytes": 3168,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/detectors.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "90fe4c73803eda21a90762c5f543343a3b79fb9168441006c067209acc9bee2f"
+    },
+    "build/driver.o": {
+      "bytes": 49584,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/driver.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "208018a7a96e3b147f89cfacd333610fb100b01c15ddd9ba719fe0c64735c049"
+    },
+    "build/helpers.o": {
+      "bytes": 70632,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/helpers.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "daa6a59e0cd5fa3912e45343faf95c178ee5558bdb7fed3d4a8cc45842a4bb93"
+    },
+    "build/non9_records.mod": {
+      "bytes": 16622,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/non9_records.mod",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "7947f320d97f65f99e0a78bdea670b64a392feeed7524048a0eabb5d919ddfd3"
+    },
+    "build/records.o": {
+      "bytes": 13328,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/records.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "8e66c4986ec1325a1063ca391cc96f5dfea6165a03df42f422067e87ceaa02ed"
+    },
+    "build/stubs.o": {
+      "bytes": 8552,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/stubs.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "b96a60f32967d29dbb5fc51c5bde587985763f5421c812b39f8d333d2643a687"
+    },
+    "build/unit_mass_check": {
+      "bytes": 90544,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/unit_mass_check",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "f2c9b5eb5f6c27c21d8b28aad652613bffcf4cd9d969cef1d530594648a2cf60"
+    },
+    "run/chooser.o": {
+      "bytes": 4096,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/chooser.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "3e4b14b00bcf58a73b5e02c006ee21e18b45eab0bc34cc430f3b73c93e233f14"
+    },
+    "run/detectors.o": {
+      "bytes": 3168,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/detectors.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "90fe4c73803eda21a90762c5f543343a3b79fb9168441006c067209acc9bee2f"
+    },
+    "run/driver.o": {
+      "bytes": 49584,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/driver.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "208018a7a96e3b147f89cfacd333610fb100b01c15ddd9ba719fe0c64735c049"
+    },
+    "run/helpers.o": {
+      "bytes": 70632,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/helpers.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "daa6a59e0cd5fa3912e45343faf95c178ee5558bdb7fed3d4a8cc45842a4bb93"
+    },
+    "run/non9_records.mod": {
+      "bytes": 16622,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/non9_records.mod",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "7947f320d97f65f99e0a78bdea670b64a392feeed7524048a0eabb5d919ddfd3"
+    },
+    "run/records.o": {
+      "bytes": 13328,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/records.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "8e66c4986ec1325a1063ca391cc96f5dfea6165a03df42f422067e87ceaa02ed"
+    },
+    "run/stubs.o": {
+      "bytes": 8552,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/stubs.o",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "b96a60f32967d29dbb5fc51c5bde587985763f5421c812b39f8d333d2643a687"
+    },
+    "run/unit_mass_check": {
+      "bytes": 90544,
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/run/unit_mass_check",
+      "reason": "Excluded native executable/object/compiler module; identity only",
+      "sha256": "f2c9b5eb5f6c27c21d8b28aad652613bffcf4cd9d969cef1d530594648a2cf60"
+    }
+  },
+  "files": {
+    "README.md": {
+      "bytes": 3904,
+      "sha256": "7bc3003b03d19a0b30feedb6f08c9369992a4595b6972ed7a9a96a6943ab045d"
+    },
+    "admissions/root-build.json": {
+      "bytes": 1345,
+      "sha256": "ed318f9e4fcac92c87f9884b2a481c5fa8267b32face2468259efee6d28f1ce6"
+    },
+    "admissions/root-run.json": {
+      "bytes": 1552,
+      "sha256": "58d0e3263caa40eff8517beb93038a5c2ce7df0125d4d416e9b798de98a540f8"
+    },
+    "build/actual-limits.json": {
+      "bytes": 236,
+      "sha256": "ba98aabcd9e902806868bc358794424bef18ef46fc3df615677e7fd6fff1e87a"
+    },
+    "build/admission.json": {
+      "bytes": 1021,
+      "sha256": "9851d4f000addb065dfa9ef9d06f909457bae9311b196589bf1f88fb5e0bfabb"
+    },
+    "build/commands/compile-chooser.command.json": {
+      "bytes": 1477,
+      "sha256": "86163036c8a0c9fb1067a11f7fedbd349ac4bbd305fe9d3ef31c879b68e56b74"
+    },
+    "build/commands/compile-chooser.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-chooser.terminal.json": {
+      "bytes": 109,
+      "sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-detectors.command.json": {
+      "bytes": 1481,
+      "sha256": "e654d7b597f0b617b7e66ea4e3304d619512efa2e012b08cbf71821c192c06ba"
+    },
+    "build/commands/compile-detectors.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-detectors.terminal.json": {
+      "bytes": 109,
+      "sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-driver.command.json": {
+      "bytes": 1475,
+      "sha256": "d311d8222e80b5bfbf562a3f4837583e87154f23a6b7467e0ea87365b0e20e09"
+    },
+    "build/commands/compile-driver.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-driver.terminal.json": {
+      "bytes": 109,
+      "sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-helpers.command.json": {
+      "bytes": 1477,
+      "sha256": "03649c74eabdafb2af9b79c9af025248e77a492c117e9a0db3945e11c7194c3c"
+    },
+    "build/commands/compile-helpers.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-helpers.terminal.json": {
+      "bytes": 109,
+      "sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-records.command.json": {
+      "bytes": 1479,
+      "sha256": "b85ecf999cc22c7d500daac7cca4f14952be34f4cb5941f7ca9171b2a448204c"
+    },
+    "build/commands/compile-records.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-records.terminal.json": {
+      "bytes": 109,
+      "sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-stubs.command.json": {
+      "bytes": 1473,
+      "sha256": "b265f29bb0eb1a4d83b166cb3ad75773117012e69031a5e56e044de3938c4185"
+    },
+    "build/commands/compile-stubs.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-stubs.terminal.json": {
+      "bytes": 109,
+      "sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/link.command.json": {
+      "bytes": 1292,
+      "sha256": "334f10665a5b9c1b0551353d30ff23dcac3a66a6a3fb30c2a8a2ca8ef58dee65"
+    },
+    "build/commands/link.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/link.terminal.json": {
+      "bytes": 109,
+      "sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/prelink-query-000.command.json": {
+      "bytes": 376,
+      "sha256": "df3208846cfb07230040c2f2f756f1e020c101a2cdeeb99a86dffabf7daccf68"
+    },
+    "build/commands/prelink-query-000.stdout.txt": {
+      "bytes": 70,
+      "sha256": "cf52944f2944faeeb1fade9ad74f3de3d847022b1eaafd16d4c4e57404ad2596"
+    },
+    "build/commands/prelink-query-000.terminal.json": {
+      "bytes": 109,
+      "sha256": "7124be4f78e443ee7374b928c56c50458299258770650694f11d65e6c672598f"
+    },
+    "build/commands/prelink-query-001.command.json": {
+      "bytes": 375,
+      "sha256": "97941c11c0a5b2784e7992c4e947b09c5467e297b0843d7d05997bdd775ef808"
+    },
+    "build/commands/prelink-query-001.stdout.txt": {
+      "bytes": 69,
+      "sha256": "91082fd494fa5986e9bf296d30d4a7bfab72441019d81567e1cd2d35d1c7a599"
+    },
+    "build/commands/prelink-query-001.terminal.json": {
+      "bytes": 109,
+      "sha256": "35e5c1e90e81642cd6f378c6d229b7fc1633e0c4a076a4b5ebac7b17801ca743"
+    },
+    "build/commands/prelink-query-002.command.json": {
+      "bytes": 379,
+      "sha256": "998ed93b38ea1939e82e59a57741031b6709748c6a962b5e58586a7d732aea09"
+    },
+    "build/commands/prelink-query-002.stdout.txt": {
+      "bytes": 111,
+      "sha256": "d9fb4d6bb7e4dda7b41f57036106de137e583561d69d070b1d378255ce14472f"
+    },
+    "build/commands/prelink-query-002.terminal.json": {
+      "bytes": 109,
+      "sha256": "359504294a75916b8b23a7fd7594b181eae9c8091864311430973d6decd1894d"
+    },
+    "build/commands/prelink-query-003.command.json": {
+      "bytes": 380,
+      "sha256": "d55460b9c9e4d8ee16dec540d6125108cbd1f0b9fb78727b4a6f3728ca05a9e7"
+    },
+    "build/commands/prelink-query-003.stdout.txt": {
+      "bytes": 112,
+      "sha256": "2af436950c4d5ed055cc409e31c09aa055ed77eb66abb7d2acd06c600f5c1d4a"
+    },
+    "build/commands/prelink-query-003.terminal.json": {
+      "bytes": 109,
+      "sha256": "43663add244048ef6ea37a50e94a08f954efc4c4e98d4693621c7c0f11d9ca5f"
+    },
+    "build/commands/prelink-query-004.command.json": {
+      "bytes": 377,
+      "sha256": "a51ba082ea7324d6145a234ab9329ae50765f4b12d7b1a5d56d048e6fa68fa67"
+    },
+    "build/commands/prelink-query-004.stdout.txt": {
+      "bytes": 109,
+      "sha256": "036c5334c3e8ee24a1efa36b3266b499179ebc96460f2bd7727095c478b371cb"
+    },
+    "build/commands/prelink-query-004.terminal.json": {
+      "bytes": 109,
+      "sha256": "0646e046a5839abf436d36b763bf8847da8fb7ccca1ac7eea6700597bb35e85c"
+    },
+    "build/commands/prelink-query-005.command.json": {
+      "bytes": 378,
+      "sha256": "40e852f850b00055290c6665b12070e7962b877458934a606c9bb408c87fad3a"
+    },
+    "build/commands/prelink-query-005.stdout.txt": {
+      "bytes": 110,
+      "sha256": "6eaea6db272ce6f46c3b5c8bb620282c8178f717d21b90a6ffb5a6b2742e624f"
+    },
+    "build/commands/prelink-query-005.terminal.json": {
+      "bytes": 109,
+      "sha256": "ce3610c4b084cf6193b9cb2ada203b52a46a88c0146a29e8d4f5c7401ac2b9b1"
+    },
+    "build/commands/prelink-query-006.command.json": {
+      "bytes": 375,
+      "sha256": "4aa377ab36e3c3cdfc8d33dba0ef8264c84c785ad36cba45425437e8e493931a"
+    },
+    "build/commands/prelink-query-006.stdout.txt": {
+      "bytes": 69,
+      "sha256": "28eb5fc8c51744356e0792711f2a7df4ebadc0de7b0a5a66adb08d9694243d83"
+    },
+    "build/commands/prelink-query-006.terminal.json": {
+      "bytes": 109,
+      "sha256": "dabf2e38e8b8bd75d34bc94e51f0eb70d33fe98741cc0bffe9572d5b509a9508"
+    },
+    "build/commands/prelink-query-007.command.json": {
+      "bytes": 375,
+      "sha256": "38f6cc9f434873a477ca2e9a08c1f3cc13203fd0f865c16df2db2702b447814f"
+    },
+    "build/commands/prelink-query-007.stdout.txt": {
+      "bytes": 69,
+      "sha256": "e37d7c6a19d795a6fd66617719d8866ce42d232d3449083da18e5eac43502218"
+    },
+    "build/commands/prelink-query-007.terminal.json": {
+      "bytes": 109,
+      "sha256": "c5c7862c6584220d8cfe1d1ce2f8f0fe8936bd2ac7beac3b1263cdfa79508ae5"
+    },
+    "build/commands/prelink-query-008.command.json": {
+      "bytes": 375,
+      "sha256": "638da01c16126943bafbad2ccdd70d5bbe2e56ae8dcddb97eeb46093f4aac9b6"
+    },
+    "build/commands/prelink-query-008.stdout.txt": {
+      "bytes": 7,
+      "sha256": "713a271138985e017f75503a8130367573863a74c3ca7bfbada8b7064501ad96"
+    },
+    "build/commands/prelink-query-008.terminal.json": {
+      "bytes": 109,
+      "sha256": "7f7fc081961f758e3799601fac2bbba69fcade9301439217fe4347ab6270151b"
+    },
+    "build/commands/prelink-query-009.command.json": {
+      "bytes": 376,
+      "sha256": "df6d4b6febd3449061e534be179ea2537a51b5d11ed4d9ba9ca92031c839a5ca"
+    },
+    "build/commands/prelink-query-009.stdout.txt": {
+      "bytes": 70,
+      "sha256": "fba048b9d3522f0f5befd986187037b9895915aa458541408838400eb1ac16b9"
+    },
+    "build/commands/prelink-query-009.terminal.json": {
+      "bytes": 109,
+      "sha256": "e907cc435ec22e9dd2ceb84dbf636ab2d764f443df12a9fa9694f980d640a29f"
+    },
+    "build/commands/prelink-query-010.command.json": {
+      "bytes": 377,
+      "sha256": "99150408ec42a6ddc9447b6ef0004bb3a38e98f10989a62a2c9ecd5b6793f61e"
+    },
+    "build/commands/prelink-query-010.stdout.txt": {
+      "bytes": 109,
+      "sha256": "c99f178b67faf91ae3012adfecf8ade95091af4deaf11bf3a13611ee5180d553"
+    },
+    "build/commands/prelink-query-010.terminal.json": {
+      "bytes": 109,
+      "sha256": "9d1ae9d27382318959a52823d807f733381f01e49624fb3a38702c7db8cfb17f"
+    },
+    "build/commands/prelink-query-011.command.json": {
+      "bytes": 378,
+      "sha256": "1792ae32150c33efee864347829cb7cc1708c8025dff0ac40fb50ad5f37e422e"
+    },
+    "build/commands/prelink-query-011.stdout.txt": {
+      "bytes": 10,
+      "sha256": "d60f7d6ea23082be41cc88ddff25c3fc4becfdcfcfbc621f58a6641c1a0c6966"
+    },
+    "build/commands/prelink-query-011.terminal.json": {
+      "bytes": 109,
+      "sha256": "2a1e019a2b33c6f77df3ea6a6aa54b68df3ae829945f747e87739591d32ec640"
+    },
+    "build/commands/prelink-query-012.command.json": {
+      "bytes": 379,
+      "sha256": "93c2eaf11484429ee7478bc0bd5ee5dbb560bfd3a9a305426b261d005d2da4f0"
+    },
+    "build/commands/prelink-query-012.stdout.txt": {
+      "bytes": 11,
+      "sha256": "6644c9a83a340add4039489c842e0222586d5f4a43fa6ce3c0bd349e3bf1a2f0"
+    },
+    "build/commands/prelink-query-012.terminal.json": {
+      "bytes": 109,
+      "sha256": "8d2a98eb4a03b5e82bfde6466a9f8eebf16e33c3b2f7fde90a255634f1ca751d"
+    },
+    "build/commands/prelink-query-013.command.json": {
+      "bytes": 380,
+      "sha256": "1e65f35c2b8567575b11270b75b5ba38d95e2044a81369da07441f44dbedef2c"
+    },
+    "build/commands/prelink-query-013.stdout.txt": {
+      "bytes": 80,
+      "sha256": "838207b3ef8c55046f56842b22b47d6a27ba235fe3a597181dada30f50bea434"
+    },
+    "build/commands/prelink-query-013.terminal.json": {
+      "bytes": 109,
+      "sha256": "bf9066a710a7763700d145d18226bb96b143c129b2a8130c65cc5441dda1535f"
+    },
+    "build/commands/prelink-query-014.command.json": {
+      "bytes": 382,
+      "sha256": "b468cc07f92bda80c075b22eb638642e5fdccbe14ab265eeff616c14d1189d87"
+    },
+    "build/commands/prelink-query-014.stdout.txt": {
+      "bytes": 123,
+      "sha256": "33d5801afdfe59930161b1de7bf7f79ed50413e3f94b30e59002b3e65ffc5c33"
+    },
+    "build/commands/prelink-query-014.terminal.json": {
+      "bytes": 109,
+      "sha256": "5f808538660f5ede2eeaac6a9bb663aa991295b6d01eda3994c25b40d3b7590a"
+    },
+    "build/commands/prelink-query-015.command.json": {
+      "bytes": 383,
+      "sha256": "5ba1a611540af794b77155d059c6671d11f81c1f8ae92bc517db40e4f4388e8e"
+    },
+    "build/commands/prelink-query-015.stdout.txt": {
+      "bytes": 83,
+      "sha256": "a2385ed5117bf0b396049d0f75f46c6206666257aff1fb7fc72e88c157e47001"
+    },
+    "build/commands/prelink-query-015.terminal.json": {
+      "bytes": 109,
+      "sha256": "c762c688c257ab03e8107bb69d5141c6b199ab82f060ad8bec0016f980f227e3"
+    },
+    "build/commands/prelink-query-016.command.json": {
+      "bytes": 375,
+      "sha256": "44c9e7efbcaaa9592dc39331cd464ba335eacb3f2af2cd4342a7e6688b44d745"
+    },
+    "build/commands/prelink-query-016.stdout.txt": {
+      "bytes": 7,
+      "sha256": "d2c2618db4bb8c631173b6b0486d06a511a0200690480b23471747fa1c6e6c6d"
+    },
+    "build/commands/prelink-query-016.terminal.json": {
+      "bytes": 109,
+      "sha256": "f45d05bcaaf84c6f2eda37933bd06fe1f6a0cce121f29f25153845a8f7f902dc"
+    },
+    "build/commands/prelink-query-017.command.json": {
+      "bytes": 376,
+      "sha256": "6e795182faf2aad87b66153f6f91f7ffe284857bd3954129bea6862b082d21ea"
+    },
+    "build/commands/prelink-query-017.stdout.txt": {
+      "bytes": 70,
+      "sha256": "695c12859d35d283798e6e80d48d54db68ed25dec4e2254bf1f169de8ccc8667"
+    },
+    "build/commands/prelink-query-017.terminal.json": {
+      "bytes": 109,
+      "sha256": "9e2d6efe5181781b4fc9a338a6ccd35935d6cd9c388c92c2590dd6ef91812b05"
+    },
+    "build/commands/prelink-query-018.command.json": {
+      "bytes": 382,
+      "sha256": "45781684ce15bb81299fc88d6e003d60033d7fa23ec1ea9915a626eb9f3704ab"
+    },
+    "build/commands/prelink-query-018.stdout.txt": {
+      "bytes": 123,
+      "sha256": "6fc44501b99fea606e32421a57fac538745c1c1b8039669dc1eb1b3c05347908"
+    },
+    "build/commands/prelink-query-018.terminal.json": {
+      "bytes": 109,
+      "sha256": "5ec5927790888eda00f0ab096afbc122617fe33797e08dc052e9660dbf5e6a22"
+    },
+    "build/commands/prelink-query-019.command.json": {
+      "bytes": 383,
+      "sha256": "ad5f9d389a9ebc4bd214a3c6053960e878d774191973dc0659d3cde1fd46d937"
+    },
+    "build/commands/prelink-query-019.stdout.txt": {
+      "bytes": 83,
+      "sha256": "6f259f6a65c43c01cca2f6522bcf97066ec937915d322c2778c3973db75f23c0"
+    },
+    "build/commands/prelink-query-019.terminal.json": {
+      "bytes": 109,
+      "sha256": "0f9ed1b0bdd08684f3e486aeca311d747167fece1ca1703cd6d0da3c07b012d6"
+    },
+    "build/commands/prelink-query-020.command.json": {
+      "bytes": 370,
+      "sha256": "9a49510cb695e7f4ced97bd8b5171495753647c1cbdcaba5edc731c6ef6f7c79"
+    },
+    "build/commands/prelink-query-020.terminal.json": {
+      "bytes": 109,
+      "sha256": "5a6a1acd2635f83332bdb44b17c85357ff28f75bb79c0e6eec2846db465f10bf"
+    },
+    "build/commands/symbols.command.json": {
+      "bytes": 484,
+      "sha256": "66005c70dcf6af6ff46b9abd17da8191e0e10be6dcc334353980df092c1cc4a6"
+    },
+    "build/commands/symbols.terminal.json": {
+      "bytes": 109,
+      "sha256": "a75bd2f7c27ddd045516ff14dd05624f72f8e798a89d1245060e058fcc17f293"
+    },
+    "build/commands/unit-actual-runtime.command.json": {
+      "bytes": 494,
+      "sha256": "8bc2a04501ef028fcaa04a9e75d506be921ac3873ec12df5201d6bc4a8bd9c91"
+    },
+    "build/commands/unit-actual-runtime.stdout.txt": {
+      "bytes": 600,
+      "sha256": "ea5aa4837e1ea410a4d5be853fa900c4a7edcc19edf9202556d744ca718f95d8"
+    },
+    "build/commands/unit-actual-runtime.terminal.json": {
+      "bytes": 109,
+      "sha256": "a175d140a5eb28d3adff87a8afaa99de6ff82bec773a44875908282d965203c5"
+    },
+    "build/console.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/started.json": {
+      "bytes": 512,
+      "sha256": "379fba03e8135a5b0c61268993148dd090392266b67b538ef4c52858ac8e95db"
+    },
+    "compressed/ancestor/source1/README.md.gz": {
+      "bytes": 2660,
+      "sha256": "264030a5e4a0cb7b0119fe3863975fbf225151c4940b524925c34145c41a8838"
+    },
+    "compressed/ancestor/source1/build-spec.json.gz": {
+      "bytes": 2079,
+      "sha256": "760292c3fe9dece6cad0f0e7c1489f08d64959cb30a275ed462a2a0c34f3aa3f"
+    },
+    "compressed/ancestor/source1/controller.py.gz": {
+      "bytes": 3729,
+      "sha256": "5bc3076b7a55ede3f3870668f61e22367c6bb3adcc1ce11c4464812f6b4c031b"
+    },
+    "compressed/ancestor/source1/review-diff.md.gz": {
+      "bytes": 1153,
+      "sha256": "9352ee036e152060c85a5a480e6b5389417d1ec780896c3f3c5aaf6b0a1c292d"
+    },
+    "compressed/ancestor/source1/source-index.json.gz": {
+      "bytes": 1200,
+      "sha256": "1b029cf5abb25f91b0d71a474c2224988cd10f9241c4b00ac1cbc940e32b3d5f"
+    },
+    "compressed/build/commands/prelink-query-020.stdout.txt.gz": {
+      "bytes": 293,
+      "sha256": "0d91d3a252ba0f850164a8dbe93e11e5dd374f55d22202ea38a7d6464215ba48"
+    },
+    "compressed/build/commands/symbols.stdout.txt.gz": {
+      "bytes": 986,
+      "sha256": "c1e31d12d9ad8626acab3d1d37fd425ff555a4bb524449405a4f35d3305d7fe2"
+    },
+    "compressed/build/prelink.json.gz": {
+      "bytes": 5854,
+      "sha256": "a33ca232259319572ffc558d031f1d2770bdad7d790e565c2fba5cd13154a1a0"
+    },
+    "compressed/build/result.json.gz": {
+      "bytes": 7130,
+      "sha256": "507615eb6956f1e78e77aa53e07c2bf52166d24009f65385637d2a58305b21e1"
+    },
+    "compressed/build/terminal.json.gz": {
+      "bytes": 601,
+      "sha256": "b95c0b763c168e6ce12c1a2f17bb5d32383c56de540f08ad7161c950eeed489a"
+    },
+    "compressed/build/unit-link.map.gz": {
+      "bytes": 31632,
+      "sha256": "061cb078bb1f7a7617200966951353e36ca634e363fb4bb52ac1b9d43243f193"
+    },
+    "compressed/derivation/MadLoopCommons.inc.gz": {
+      "bytes": 5011,
+      "sha256": "a0550b3fc504fa9bed1021e5d3af3a91ced620241dbfe6c66cb015d0d8f08646"
+    },
+    "compressed/parent-subset/index.json.gz": {
+      "bytes": 198858,
+      "sha256": "9d5c2079ff2b6f674912ea13aa42168416663b2900e0302603e5166e1a40ce58"
+    },
+    "compressed/parent-subset/original-cli/SubProcesses/P0_uux_zgg/TIR_interface.f.gz": {
+      "bytes": 5063,
+      "sha256": "cab2011a4c4a8bf3b966863ce639cee00d3002ea0dfcfe711e5378a9dd4ffd1d"
+    },
+    "compressed/parent-subset/source-2/controller.py.gz": {
+      "bytes": 12826,
+      "sha256": "31561b0a7cfa6cff1945e33fc235dc043fbe323ad3f63aed7a9b23b800f7deb2"
+    },
+    "compressed/parent-subset/source-2/source-index.json.gz": {
+      "bytes": 5201,
+      "sha256": "4a508a7b2e24305f9592d13803c94988763c97bd879bbea1cab55a5bc8c2da31"
+    },
+    "compressed/parent-subset/source-2/source-preview/candidate/CT_interface.f.gz": {
+      "bytes": 8375,
+      "sha256": "6b3bfcd52626ecb3edd6ac1ebd5a7ede90ac14b292443fc8d13137c3a8950e0f"
+    },
+    "compressed/parent-subset/source-2/source-preview/candidate/loop_CT_calls_1.f.gz": {
+      "bytes": 3889,
+      "sha256": "21e3e9959cca84e26ffc02a3c0b315b9d08bdc00c3fa278d65f779b252889d37"
+    },
+    "compressed/parent-subset/source-2/source-preview/original/CT_interface.f.gz": {
+      "bytes": 7558,
+      "sha256": "21181c8ac13600f9045c6cf39734a6814a11c1cdb40430159ab20a21fe87b9dc"
+    },
+    "compressed/reviews/build.json.gz": {
+      "bytes": 4140,
+      "sha256": "ed586d3568bffeb0d98077d8330b8460ea415d0d55bdb8abd46490897e9892f9"
+    },
+    "compressed/reviews/run.json.gz": {
+      "bytes": 1882,
+      "sha256": "1532db68b7bb8da88af5c61d47a453b8890c02074a29eb62a1374ff09d42795a"
+    },
+    "compressed/reviews/source1.json.gz": {
+      "bytes": 1222,
+      "sha256": "c7b0090f2677934b67910f6834d433874cc75f0ef590ff330ef3ad42ff81fb18"
+    },
+    "compressed/reviews/source2.json.gz": {
+      "bytes": 1156,
+      "sha256": "e623f36c8cbfb2fab87711a10e008cd65583c50d6e25e1da3ae5cc835dde19fa"
+    },
+    "compressed/run/commands/recording-unit.stdout.txt.gz": {
+      "bytes": 21611,
+      "sha256": "6a43304dc4b4e1cb2fa5c07f70226bd67b1984150633fe181f5dca0022a1fd4d"
+    },
+    "compressed/run/result.json.gz": {
+      "bytes": 1045,
+      "sha256": "88684021c5a40271198afe38c4225d3127678bf1665f8c9a3a85ec655f468183"
+    },
+    "compressed/source/README.md.gz": {
+      "bytes": 2892,
+      "sha256": "560e26d58931074daf4219b54d61c9eaeed6997702b576b0f4914eb3d70247a8"
+    },
+    "compressed/source/build-spec.json.gz": {
+      "bytes": 2211,
+      "sha256": "b8a895b6228d6e8ebc68a8a235334d5de8f1ee1367425400f14d54d7a42c4834"
+    },
+    "compressed/source/cases.json.gz": {
+      "bytes": 2222,
+      "sha256": "2d4d68ffc7ccc38ddd657c86f8789db667fe14ee1e378e4510b889a583c78347"
+    },
+    "compressed/source/chooser.f.gz": {
+      "bytes": 1272,
+      "sha256": "d8c87523311d89696d9d6849ec5e77652b7e58fda907568ec6498d4d9556598a"
+    },
+    "compressed/source/controller.py.gz": {
+      "bytes": 4795,
+      "sha256": "2402e43ba15fce269811a6c1106359ec4ecf5e1a975b942ea383afdb6c57ce78"
+    },
+    "compressed/source/detectors.f.gz": {
+      "bytes": 1084,
+      "sha256": "0126a8620b2fb497553aaa88868bd4960711e5b02bfd3af78d7ba3e1ede3c949"
+    },
+    "compressed/source/driver.f.gz": {
+      "bytes": 2034,
+      "sha256": "2b76e946d3a2129b5550949f349e45674c7c059fd485f6366e68f82162b1aeaa"
+    },
+    "compressed/source/driver.f.in.gz": {
+      "bytes": 1163,
+      "sha256": "5897d9904f5f776a82bbc4e6e71f6230530a1e4ffbb858e1dde21ef4dc4414a5"
+    },
+    "compressed/source/helpers.f.gz": {
+      "bytes": 2671,
+      "sha256": "a139bef0276287e2f68ee7c3632f6d5771e6963bcd48ea002be8b6898aa2396f"
+    },
+    "compressed/source/ownership.py.gz": {
+      "bytes": 1301,
+      "sha256": "550a5863c4239ba2cdc4a4831ac904ce307067af76a9f1fa315367ade55b180b"
+    },
+    "compressed/source/parser.py.gz": {
+      "bytes": 2044,
+      "sha256": "4691ac83118a9d69751fcdb1da3b445a24f9ae8c2c4c9f88b5bbef9ff5e9c159"
+    },
+    "compressed/source/prepare.py.gz": {
+      "bytes": 3844,
+      "sha256": "1b721fec00af2057a07729765b23b9906a5870b518c73c69b934954dd0b9ed57"
+    },
+    "compressed/source/records.f90.gz": {
+      "bytes": 1439,
+      "sha256": "6bccf0ff5d8e2739850603ccdf6675e591783029f398a22af1ebe40bc2f11b34"
+    },
+    "compressed/source/review-diff.md.gz": {
+      "bytes": 1282,
+      "sha256": "5c7fac163f3fbe44d76b040da3159db6956c6868c9eb54bf7341ec51a4b4365f"
+    },
+    "compressed/source/source-index.json.gz": {
+      "bytes": 1389,
+      "sha256": "c86577a3a397846d5aa0a9ca9707fdfc1f89e4ef8ecdc8b0d6f9176317ccea3c"
+    },
+    "compressed/source/source2-diff.patch.gz": {
+      "bytes": 6728,
+      "sha256": "70e9699f512e441764827a6f7c4bd02dce0ffa3515c19519e3ad58bbf82d6bd3"
+    },
+    "compressed/source/stubs.f.gz": {
+      "bytes": 907,
+      "sha256": "b7dcf8c50375745d7a31566d137df724812ad8559a750eb2af8b1f044a592d4a"
+    },
+    "compressed/source/test_source.py.gz": {
+      "bytes": 3386,
+      "sha256": "94a0acf334ef579f642f2cbc14d11e08c1b9064a695f7f657dfc4f3017613f73"
+    },
+    "replay.py": {
+      "bytes": 18995,
+      "sha256": "b712b48f3ef6f8fb2883d9ae8f8df441b17c868a3f85bc8bcd743c627137bdf1"
+    },
+    "reviews/logs/qp-mass-non9-independent-source1-normal.log": {
+      "bytes": 1734,
+      "sha256": "c39266a8ed1246ca48c43f70fa6bd94898bf82d782002a1a2210695fee60ae6b"
+    },
+    "reviews/logs/qp-mass-non9-independent-source1-optimized.log": {
+      "bytes": 1403,
+      "sha256": "501a7db8738699b65eab518a748df611b3f6b7eebf922074c92209019bc50e44"
+    },
+    "reviews/logs/qp-mass-non9-independent-source2-normal.log": {
+      "bytes": 1835,
+      "sha256": "2ae168b9af300a9b0c0289ae889b593726d627e16cc06bf6eda21053c3fcf615"
+    },
+    "reviews/logs/qp-mass-non9-independent-source2-optimized.log": {
+      "bytes": 1835,
+      "sha256": "d81de80b52f1667b65296bab1ca19b0fc6095f5caafb91c0cfd132d8361a6c84"
+    },
+    "reviews/logs/qp-mass-non9-independent-source2-preflight-1.log": {
+      "bytes": 331,
+      "sha256": "8e87314dd586491c54ced5f43878a25288bb21f7b17d0df812d7941d6397e413"
+    },
+    "run/actual-limits.json": {
+      "bytes": 234,
+      "sha256": "9344a43f7c8f192e91686ae78309cefc6c28eebbaa1a42f57df98de025f93147"
+    },
+    "run/admission.json": {
+      "bytes": 1174,
+      "sha256": "6a1a4f73ea9a94cfa2ae863e8c272e50b2f45de8f0affc21df1017bcfe8ef298"
+    },
+    "run/commands/recording-unit.command.json": {
+      "bytes": 383,
+      "sha256": "d14907ccbfa27bbd7b167e273067d4258d7aff87f870621ca26a9803bb58a818"
+    },
+    "run/commands/recording-unit.terminal.json": {
+      "bytes": 109,
+      "sha256": "f29f2365d0765675cfa4b1780676b18ea44230157a0edc69d5b7c3ab8969172f"
+    },
+    "run/console.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "run/parsed.json": {
+      "bytes": 796,
+      "sha256": "df672e4ad989e93fff53be1ccd9107caad7ff7bf42c8310cf1623a491aac1174"
+    },
+    "run/started.json": {
+      "bytes": 509,
+      "sha256": "b809dd3e7a89d06357884babf879cab3e8f2cb47d6c99ac73e4d65738824152d"
+    },
+    "run/terminal.json": {
+      "bytes": 991,
+      "sha256": "c0bd0cce2541e8ba09447d9b2d4f1d95a75b2aa92afbebd1ed9ed668d1a3daba"
+    },
+    "source/preparation-history.json": {
+      "bytes": 933,
+      "sha256": "51fa2ce604837f6aa67cee8cabe69e3f799c79864e0d660e40781aa293f2a239"
+    },
+    "source/tests-normal.log": {
+      "bytes": 1799,
+      "sha256": "1b5ffa9e4a25f257da9cbff78f9b2d355d83d739da95fac5ddd0909b12da4e7c"
+    },
+    "source/tests-optimized.log": {
+      "bytes": 1799,
+      "sha256": "ab6f744f2e0ac09c7c360426362637eff0ffde98a48183afe432d16f8f80718e"
+    },
+    "test_replay.py": {
+      "bytes": 5204,
+      "sha256": "e5353f473033a4963e67f5430183f1a810c3bb7015d901b8d1ecfc9fa108eec5"
+    }
+  },
+  "logical_files": {
+    "admissions/root-build.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-root-build-admission-2.json",
+      "path": "admissions/root-build.json",
+      "raw_bytes": 1345,
+      "raw_sha256": "ed318f9e4fcac92c87f9884b2a481c5fa8267b32face2468259efee6d28f1ce6"
+    },
+    "admissions/root-run.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-root-run-admission-2.json",
+      "path": "admissions/root-run.json",
+      "raw_bytes": 1552,
+      "raw_sha256": "58d0e3263caa40eff8517beb93038a5c2ce7df0125d4d416e9b798de98a540f8"
+    },
+    "ancestor/source1/README.md": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-1/README.md",
+      "path": "compressed/ancestor/source1/README.md.gz",
+      "raw_bytes": 5534,
+      "raw_sha256": "a2764fdefc83ac837ec18ceb7853fd61f9462909000491d578d237640b15bd20"
+    },
+    "ancestor/source1/build-spec.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-1/build-spec.json",
+      "path": "compressed/ancestor/source1/build-spec.json.gz",
+      "raw_bytes": 10860,
+      "raw_sha256": "577642ee8aae00f2d6eeef94821dd036d60a1fe56665c84c8876b2f52c4707d6"
+    },
+    "ancestor/source1/controller.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-1/controller.py",
+      "path": "compressed/ancestor/source1/controller.py.gz",
+      "raw_bytes": 10500,
+      "raw_sha256": "95ebda2744641cfe6e180217dada8897453869b27a2fb55782791ff1971485c3"
+    },
+    "ancestor/source1/review-diff.md": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-1/review-diff.md",
+      "path": "compressed/ancestor/source1/review-diff.md.gz",
+      "raw_bytes": 2097,
+      "raw_sha256": "232e668b3f5cec257d35e4921473d3b3cb827302862ec12fec26e672fd06f79e"
+    },
+    "ancestor/source1/source-index.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-1/source-index.json",
+      "path": "compressed/ancestor/source1/source-index.json.gz",
+      "raw_bytes": 2691,
+      "raw_sha256": "e5ad27c3cd698f25c74b38711f98e9e90c2c12de7da259ef414aafc8dc725f44"
+    },
+    "build/actual-limits.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/actual-limits.json",
+      "path": "build/actual-limits.json",
+      "raw_bytes": 236,
+      "raw_sha256": "ba98aabcd9e902806868bc358794424bef18ef46fc3df615677e7fd6fff1e87a"
+    },
+    "build/admission.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/admission.json",
+      "path": "build/admission.json",
+      "raw_bytes": 1021,
+      "raw_sha256": "9851d4f000addb065dfa9ef9d06f909457bae9311b196589bf1f88fb5e0bfabb"
+    },
+    "build/commands/compile-chooser.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-chooser.command.json",
+      "path": "build/commands/compile-chooser.command.json",
+      "raw_bytes": 1477,
+      "raw_sha256": "86163036c8a0c9fb1067a11f7fedbd349ac4bbd305fe9d3ef31c879b68e56b74"
+    },
+    "build/commands/compile-chooser.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-chooser.stdout.txt",
+      "path": "build/commands/compile-chooser.stdout.txt",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-chooser.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-chooser.terminal.json",
+      "path": "build/commands/compile-chooser.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-detectors.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-detectors.command.json",
+      "path": "build/commands/compile-detectors.command.json",
+      "raw_bytes": 1481,
+      "raw_sha256": "e654d7b597f0b617b7e66ea4e3304d619512efa2e012b08cbf71821c192c06ba"
+    },
+    "build/commands/compile-detectors.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-detectors.stdout.txt",
+      "path": "build/commands/compile-detectors.stdout.txt",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-detectors.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-detectors.terminal.json",
+      "path": "build/commands/compile-detectors.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-driver.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-driver.command.json",
+      "path": "build/commands/compile-driver.command.json",
+      "raw_bytes": 1475,
+      "raw_sha256": "d311d8222e80b5bfbf562a3f4837583e87154f23a6b7467e0ea87365b0e20e09"
+    },
+    "build/commands/compile-driver.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-driver.stdout.txt",
+      "path": "build/commands/compile-driver.stdout.txt",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-driver.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-driver.terminal.json",
+      "path": "build/commands/compile-driver.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-helpers.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-helpers.command.json",
+      "path": "build/commands/compile-helpers.command.json",
+      "raw_bytes": 1477,
+      "raw_sha256": "03649c74eabdafb2af9b79c9af025248e77a492c117e9a0db3945e11c7194c3c"
+    },
+    "build/commands/compile-helpers.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-helpers.stdout.txt",
+      "path": "build/commands/compile-helpers.stdout.txt",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-helpers.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-helpers.terminal.json",
+      "path": "build/commands/compile-helpers.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-records.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-records.command.json",
+      "path": "build/commands/compile-records.command.json",
+      "raw_bytes": 1479,
+      "raw_sha256": "b85ecf999cc22c7d500daac7cca4f14952be34f4cb5941f7ca9171b2a448204c"
+    },
+    "build/commands/compile-records.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-records.stdout.txt",
+      "path": "build/commands/compile-records.stdout.txt",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-records.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-records.terminal.json",
+      "path": "build/commands/compile-records.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/compile-stubs.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-stubs.command.json",
+      "path": "build/commands/compile-stubs.command.json",
+      "raw_bytes": 1473,
+      "raw_sha256": "b265f29bb0eb1a4d83b166cb3ad75773117012e69031a5e56e044de3938c4185"
+    },
+    "build/commands/compile-stubs.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-stubs.stdout.txt",
+      "path": "build/commands/compile-stubs.stdout.txt",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/compile-stubs.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/compile-stubs.terminal.json",
+      "path": "build/commands/compile-stubs.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/link.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/link.command.json",
+      "path": "build/commands/link.command.json",
+      "raw_bytes": 1292,
+      "raw_sha256": "334f10665a5b9c1b0551353d30ff23dcac3a66a6a3fb30c2a8a2ca8ef58dee65"
+    },
+    "build/commands/link.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/link.stdout.txt",
+      "path": "build/commands/link.stdout.txt",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/commands/link.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/link.terminal.json",
+      "path": "build/commands/link.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8fb77996c5410001d7255e1463f43cdbbbc4649973e56a5af58fd3fcf82a835a"
+    },
+    "build/commands/prelink-query-000.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-000.command.json",
+      "path": "build/commands/prelink-query-000.command.json",
+      "raw_bytes": 376,
+      "raw_sha256": "df3208846cfb07230040c2f2f756f1e020c101a2cdeeb99a86dffabf7daccf68"
+    },
+    "build/commands/prelink-query-000.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-000.stdout.txt",
+      "path": "build/commands/prelink-query-000.stdout.txt",
+      "raw_bytes": 70,
+      "raw_sha256": "cf52944f2944faeeb1fade9ad74f3de3d847022b1eaafd16d4c4e57404ad2596"
+    },
+    "build/commands/prelink-query-000.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-000.terminal.json",
+      "path": "build/commands/prelink-query-000.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "7124be4f78e443ee7374b928c56c50458299258770650694f11d65e6c672598f"
+    },
+    "build/commands/prelink-query-001.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-001.command.json",
+      "path": "build/commands/prelink-query-001.command.json",
+      "raw_bytes": 375,
+      "raw_sha256": "97941c11c0a5b2784e7992c4e947b09c5467e297b0843d7d05997bdd775ef808"
+    },
+    "build/commands/prelink-query-001.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-001.stdout.txt",
+      "path": "build/commands/prelink-query-001.stdout.txt",
+      "raw_bytes": 69,
+      "raw_sha256": "91082fd494fa5986e9bf296d30d4a7bfab72441019d81567e1cd2d35d1c7a599"
+    },
+    "build/commands/prelink-query-001.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-001.terminal.json",
+      "path": "build/commands/prelink-query-001.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "35e5c1e90e81642cd6f378c6d229b7fc1633e0c4a076a4b5ebac7b17801ca743"
+    },
+    "build/commands/prelink-query-002.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-002.command.json",
+      "path": "build/commands/prelink-query-002.command.json",
+      "raw_bytes": 379,
+      "raw_sha256": "998ed93b38ea1939e82e59a57741031b6709748c6a962b5e58586a7d732aea09"
+    },
+    "build/commands/prelink-query-002.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-002.stdout.txt",
+      "path": "build/commands/prelink-query-002.stdout.txt",
+      "raw_bytes": 111,
+      "raw_sha256": "d9fb4d6bb7e4dda7b41f57036106de137e583561d69d070b1d378255ce14472f"
+    },
+    "build/commands/prelink-query-002.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-002.terminal.json",
+      "path": "build/commands/prelink-query-002.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "359504294a75916b8b23a7fd7594b181eae9c8091864311430973d6decd1894d"
+    },
+    "build/commands/prelink-query-003.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-003.command.json",
+      "path": "build/commands/prelink-query-003.command.json",
+      "raw_bytes": 380,
+      "raw_sha256": "d55460b9c9e4d8ee16dec540d6125108cbd1f0b9fb78727b4a6f3728ca05a9e7"
+    },
+    "build/commands/prelink-query-003.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-003.stdout.txt",
+      "path": "build/commands/prelink-query-003.stdout.txt",
+      "raw_bytes": 112,
+      "raw_sha256": "2af436950c4d5ed055cc409e31c09aa055ed77eb66abb7d2acd06c600f5c1d4a"
+    },
+    "build/commands/prelink-query-003.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-003.terminal.json",
+      "path": "build/commands/prelink-query-003.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "43663add244048ef6ea37a50e94a08f954efc4c4e98d4693621c7c0f11d9ca5f"
+    },
+    "build/commands/prelink-query-004.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-004.command.json",
+      "path": "build/commands/prelink-query-004.command.json",
+      "raw_bytes": 377,
+      "raw_sha256": "a51ba082ea7324d6145a234ab9329ae50765f4b12d7b1a5d56d048e6fa68fa67"
+    },
+    "build/commands/prelink-query-004.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-004.stdout.txt",
+      "path": "build/commands/prelink-query-004.stdout.txt",
+      "raw_bytes": 109,
+      "raw_sha256": "036c5334c3e8ee24a1efa36b3266b499179ebc96460f2bd7727095c478b371cb"
+    },
+    "build/commands/prelink-query-004.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-004.terminal.json",
+      "path": "build/commands/prelink-query-004.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "0646e046a5839abf436d36b763bf8847da8fb7ccca1ac7eea6700597bb35e85c"
+    },
+    "build/commands/prelink-query-005.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-005.command.json",
+      "path": "build/commands/prelink-query-005.command.json",
+      "raw_bytes": 378,
+      "raw_sha256": "40e852f850b00055290c6665b12070e7962b877458934a606c9bb408c87fad3a"
+    },
+    "build/commands/prelink-query-005.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-005.stdout.txt",
+      "path": "build/commands/prelink-query-005.stdout.txt",
+      "raw_bytes": 110,
+      "raw_sha256": "6eaea6db272ce6f46c3b5c8bb620282c8178f717d21b90a6ffb5a6b2742e624f"
+    },
+    "build/commands/prelink-query-005.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-005.terminal.json",
+      "path": "build/commands/prelink-query-005.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "ce3610c4b084cf6193b9cb2ada203b52a46a88c0146a29e8d4f5c7401ac2b9b1"
+    },
+    "build/commands/prelink-query-006.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-006.command.json",
+      "path": "build/commands/prelink-query-006.command.json",
+      "raw_bytes": 375,
+      "raw_sha256": "4aa377ab36e3c3cdfc8d33dba0ef8264c84c785ad36cba45425437e8e493931a"
+    },
+    "build/commands/prelink-query-006.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-006.stdout.txt",
+      "path": "build/commands/prelink-query-006.stdout.txt",
+      "raw_bytes": 69,
+      "raw_sha256": "28eb5fc8c51744356e0792711f2a7df4ebadc0de7b0a5a66adb08d9694243d83"
+    },
+    "build/commands/prelink-query-006.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-006.terminal.json",
+      "path": "build/commands/prelink-query-006.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "dabf2e38e8b8bd75d34bc94e51f0eb70d33fe98741cc0bffe9572d5b509a9508"
+    },
+    "build/commands/prelink-query-007.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-007.command.json",
+      "path": "build/commands/prelink-query-007.command.json",
+      "raw_bytes": 375,
+      "raw_sha256": "38f6cc9f434873a477ca2e9a08c1f3cc13203fd0f865c16df2db2702b447814f"
+    },
+    "build/commands/prelink-query-007.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-007.stdout.txt",
+      "path": "build/commands/prelink-query-007.stdout.txt",
+      "raw_bytes": 69,
+      "raw_sha256": "e37d7c6a19d795a6fd66617719d8866ce42d232d3449083da18e5eac43502218"
+    },
+    "build/commands/prelink-query-007.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-007.terminal.json",
+      "path": "build/commands/prelink-query-007.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "c5c7862c6584220d8cfe1d1ce2f8f0fe8936bd2ac7beac3b1263cdfa79508ae5"
+    },
+    "build/commands/prelink-query-008.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-008.command.json",
+      "path": "build/commands/prelink-query-008.command.json",
+      "raw_bytes": 375,
+      "raw_sha256": "638da01c16126943bafbad2ccdd70d5bbe2e56ae8dcddb97eeb46093f4aac9b6"
+    },
+    "build/commands/prelink-query-008.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-008.stdout.txt",
+      "path": "build/commands/prelink-query-008.stdout.txt",
+      "raw_bytes": 7,
+      "raw_sha256": "713a271138985e017f75503a8130367573863a74c3ca7bfbada8b7064501ad96"
+    },
+    "build/commands/prelink-query-008.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-008.terminal.json",
+      "path": "build/commands/prelink-query-008.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "7f7fc081961f758e3799601fac2bbba69fcade9301439217fe4347ab6270151b"
+    },
+    "build/commands/prelink-query-009.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-009.command.json",
+      "path": "build/commands/prelink-query-009.command.json",
+      "raw_bytes": 376,
+      "raw_sha256": "df6d4b6febd3449061e534be179ea2537a51b5d11ed4d9ba9ca92031c839a5ca"
+    },
+    "build/commands/prelink-query-009.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-009.stdout.txt",
+      "path": "build/commands/prelink-query-009.stdout.txt",
+      "raw_bytes": 70,
+      "raw_sha256": "fba048b9d3522f0f5befd986187037b9895915aa458541408838400eb1ac16b9"
+    },
+    "build/commands/prelink-query-009.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-009.terminal.json",
+      "path": "build/commands/prelink-query-009.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "e907cc435ec22e9dd2ceb84dbf636ab2d764f443df12a9fa9694f980d640a29f"
+    },
+    "build/commands/prelink-query-010.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-010.command.json",
+      "path": "build/commands/prelink-query-010.command.json",
+      "raw_bytes": 377,
+      "raw_sha256": "99150408ec42a6ddc9447b6ef0004bb3a38e98f10989a62a2c9ecd5b6793f61e"
+    },
+    "build/commands/prelink-query-010.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-010.stdout.txt",
+      "path": "build/commands/prelink-query-010.stdout.txt",
+      "raw_bytes": 109,
+      "raw_sha256": "c99f178b67faf91ae3012adfecf8ade95091af4deaf11bf3a13611ee5180d553"
+    },
+    "build/commands/prelink-query-010.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-010.terminal.json",
+      "path": "build/commands/prelink-query-010.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "9d1ae9d27382318959a52823d807f733381f01e49624fb3a38702c7db8cfb17f"
+    },
+    "build/commands/prelink-query-011.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-011.command.json",
+      "path": "build/commands/prelink-query-011.command.json",
+      "raw_bytes": 378,
+      "raw_sha256": "1792ae32150c33efee864347829cb7cc1708c8025dff0ac40fb50ad5f37e422e"
+    },
+    "build/commands/prelink-query-011.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-011.stdout.txt",
+      "path": "build/commands/prelink-query-011.stdout.txt",
+      "raw_bytes": 10,
+      "raw_sha256": "d60f7d6ea23082be41cc88ddff25c3fc4becfdcfcfbc621f58a6641c1a0c6966"
+    },
+    "build/commands/prelink-query-011.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-011.terminal.json",
+      "path": "build/commands/prelink-query-011.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "2a1e019a2b33c6f77df3ea6a6aa54b68df3ae829945f747e87739591d32ec640"
+    },
+    "build/commands/prelink-query-012.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-012.command.json",
+      "path": "build/commands/prelink-query-012.command.json",
+      "raw_bytes": 379,
+      "raw_sha256": "93c2eaf11484429ee7478bc0bd5ee5dbb560bfd3a9a305426b261d005d2da4f0"
+    },
+    "build/commands/prelink-query-012.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-012.stdout.txt",
+      "path": "build/commands/prelink-query-012.stdout.txt",
+      "raw_bytes": 11,
+      "raw_sha256": "6644c9a83a340add4039489c842e0222586d5f4a43fa6ce3c0bd349e3bf1a2f0"
+    },
+    "build/commands/prelink-query-012.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-012.terminal.json",
+      "path": "build/commands/prelink-query-012.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "8d2a98eb4a03b5e82bfde6466a9f8eebf16e33c3b2f7fde90a255634f1ca751d"
+    },
+    "build/commands/prelink-query-013.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-013.command.json",
+      "path": "build/commands/prelink-query-013.command.json",
+      "raw_bytes": 380,
+      "raw_sha256": "1e65f35c2b8567575b11270b75b5ba38d95e2044a81369da07441f44dbedef2c"
+    },
+    "build/commands/prelink-query-013.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-013.stdout.txt",
+      "path": "build/commands/prelink-query-013.stdout.txt",
+      "raw_bytes": 80,
+      "raw_sha256": "838207b3ef8c55046f56842b22b47d6a27ba235fe3a597181dada30f50bea434"
+    },
+    "build/commands/prelink-query-013.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-013.terminal.json",
+      "path": "build/commands/prelink-query-013.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "bf9066a710a7763700d145d18226bb96b143c129b2a8130c65cc5441dda1535f"
+    },
+    "build/commands/prelink-query-014.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-014.command.json",
+      "path": "build/commands/prelink-query-014.command.json",
+      "raw_bytes": 382,
+      "raw_sha256": "b468cc07f92bda80c075b22eb638642e5fdccbe14ab265eeff616c14d1189d87"
+    },
+    "build/commands/prelink-query-014.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-014.stdout.txt",
+      "path": "build/commands/prelink-query-014.stdout.txt",
+      "raw_bytes": 123,
+      "raw_sha256": "33d5801afdfe59930161b1de7bf7f79ed50413e3f94b30e59002b3e65ffc5c33"
+    },
+    "build/commands/prelink-query-014.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-014.terminal.json",
+      "path": "build/commands/prelink-query-014.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "5f808538660f5ede2eeaac6a9bb663aa991295b6d01eda3994c25b40d3b7590a"
+    },
+    "build/commands/prelink-query-015.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-015.command.json",
+      "path": "build/commands/prelink-query-015.command.json",
+      "raw_bytes": 383,
+      "raw_sha256": "5ba1a611540af794b77155d059c6671d11f81c1f8ae92bc517db40e4f4388e8e"
+    },
+    "build/commands/prelink-query-015.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-015.stdout.txt",
+      "path": "build/commands/prelink-query-015.stdout.txt",
+      "raw_bytes": 83,
+      "raw_sha256": "a2385ed5117bf0b396049d0f75f46c6206666257aff1fb7fc72e88c157e47001"
+    },
+    "build/commands/prelink-query-015.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-015.terminal.json",
+      "path": "build/commands/prelink-query-015.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "c762c688c257ab03e8107bb69d5141c6b199ab82f060ad8bec0016f980f227e3"
+    },
+    "build/commands/prelink-query-016.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-016.command.json",
+      "path": "build/commands/prelink-query-016.command.json",
+      "raw_bytes": 375,
+      "raw_sha256": "44c9e7efbcaaa9592dc39331cd464ba335eacb3f2af2cd4342a7e6688b44d745"
+    },
+    "build/commands/prelink-query-016.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-016.stdout.txt",
+      "path": "build/commands/prelink-query-016.stdout.txt",
+      "raw_bytes": 7,
+      "raw_sha256": "d2c2618db4bb8c631173b6b0486d06a511a0200690480b23471747fa1c6e6c6d"
+    },
+    "build/commands/prelink-query-016.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-016.terminal.json",
+      "path": "build/commands/prelink-query-016.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "f45d05bcaaf84c6f2eda37933bd06fe1f6a0cce121f29f25153845a8f7f902dc"
+    },
+    "build/commands/prelink-query-017.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-017.command.json",
+      "path": "build/commands/prelink-query-017.command.json",
+      "raw_bytes": 376,
+      "raw_sha256": "6e795182faf2aad87b66153f6f91f7ffe284857bd3954129bea6862b082d21ea"
+    },
+    "build/commands/prelink-query-017.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-017.stdout.txt",
+      "path": "build/commands/prelink-query-017.stdout.txt",
+      "raw_bytes": 70,
+      "raw_sha256": "695c12859d35d283798e6e80d48d54db68ed25dec4e2254bf1f169de8ccc8667"
+    },
+    "build/commands/prelink-query-017.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-017.terminal.json",
+      "path": "build/commands/prelink-query-017.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "9e2d6efe5181781b4fc9a338a6ccd35935d6cd9c388c92c2590dd6ef91812b05"
+    },
+    "build/commands/prelink-query-018.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-018.command.json",
+      "path": "build/commands/prelink-query-018.command.json",
+      "raw_bytes": 382,
+      "raw_sha256": "45781684ce15bb81299fc88d6e003d60033d7fa23ec1ea9915a626eb9f3704ab"
+    },
+    "build/commands/prelink-query-018.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-018.stdout.txt",
+      "path": "build/commands/prelink-query-018.stdout.txt",
+      "raw_bytes": 123,
+      "raw_sha256": "6fc44501b99fea606e32421a57fac538745c1c1b8039669dc1eb1b3c05347908"
+    },
+    "build/commands/prelink-query-018.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-018.terminal.json",
+      "path": "build/commands/prelink-query-018.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "5ec5927790888eda00f0ab096afbc122617fe33797e08dc052e9660dbf5e6a22"
+    },
+    "build/commands/prelink-query-019.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-019.command.json",
+      "path": "build/commands/prelink-query-019.command.json",
+      "raw_bytes": 383,
+      "raw_sha256": "ad5f9d389a9ebc4bd214a3c6053960e878d774191973dc0659d3cde1fd46d937"
+    },
+    "build/commands/prelink-query-019.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-019.stdout.txt",
+      "path": "build/commands/prelink-query-019.stdout.txt",
+      "raw_bytes": 83,
+      "raw_sha256": "6f259f6a65c43c01cca2f6522bcf97066ec937915d322c2778c3973db75f23c0"
+    },
+    "build/commands/prelink-query-019.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-019.terminal.json",
+      "path": "build/commands/prelink-query-019.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "0f9ed1b0bdd08684f3e486aeca311d747167fece1ca1703cd6d0da3c07b012d6"
+    },
+    "build/commands/prelink-query-020.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-020.command.json",
+      "path": "build/commands/prelink-query-020.command.json",
+      "raw_bytes": 370,
+      "raw_sha256": "9a49510cb695e7f4ced97bd8b5171495753647c1cbdcaba5edc731c6ef6f7c79"
+    },
+    "build/commands/prelink-query-020.stdout.txt": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-020.stdout.txt",
+      "path": "compressed/build/commands/prelink-query-020.stdout.txt.gz",
+      "raw_bytes": 2547,
+      "raw_sha256": "f73719882c02bf576da330c06a00e856e29c10563167b495d592dad9ab8fc7dd"
+    },
+    "build/commands/prelink-query-020.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/prelink-query-020.terminal.json",
+      "path": "build/commands/prelink-query-020.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "5a6a1acd2635f83332bdb44b17c85357ff28f75bb79c0e6eec2846db465f10bf"
+    },
+    "build/commands/symbols.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/symbols.command.json",
+      "path": "build/commands/symbols.command.json",
+      "raw_bytes": 484,
+      "raw_sha256": "66005c70dcf6af6ff46b9abd17da8191e0e10be6dcc334353980df092c1cc4a6"
+    },
+    "build/commands/symbols.stdout.txt": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/symbols.stdout.txt",
+      "path": "compressed/build/commands/symbols.stdout.txt.gz",
+      "raw_bytes": 3488,
+      "raw_sha256": "b6b60ca4f87d8bb62960a8de57eb70f6cd7edebf85c3f2686f82a89fd33de33e"
+    },
+    "build/commands/symbols.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/symbols.terminal.json",
+      "path": "build/commands/symbols.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "a75bd2f7c27ddd045516ff14dd05624f72f8e798a89d1245060e058fcc17f293"
+    },
+    "build/commands/unit-actual-runtime.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/unit-actual-runtime.command.json",
+      "path": "build/commands/unit-actual-runtime.command.json",
+      "raw_bytes": 494,
+      "raw_sha256": "8bc2a04501ef028fcaa04a9e75d506be921ac3873ec12df5201d6bc4a8bd9c91"
+    },
+    "build/commands/unit-actual-runtime.stdout.txt": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/unit-actual-runtime.stdout.txt",
+      "path": "build/commands/unit-actual-runtime.stdout.txt",
+      "raw_bytes": 600,
+      "raw_sha256": "ea5aa4837e1ea410a4d5be853fa900c4a7edcc19edf9202556d744ca718f95d8"
+    },
+    "build/commands/unit-actual-runtime.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/commands/unit-actual-runtime.terminal.json",
+      "path": "build/commands/unit-actual-runtime.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "a175d140a5eb28d3adff87a8afaa99de6ff82bec773a44875908282d965203c5"
+    },
+    "build/console.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/console.log",
+      "path": "build/console.log",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/prelink.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/prelink.json",
+      "path": "compressed/build/prelink.json.gz",
+      "raw_bytes": 38101,
+      "raw_sha256": "f83b7441ff99fdcff30ce866d4a9fe2cd2fb3eb87f827bbac1f4e20d9cf70d6e"
+    },
+    "build/result.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/result.json",
+      "path": "compressed/build/result.json.gz",
+      "raw_bytes": 21959,
+      "raw_sha256": "4ea6b651397709ad4821b09dfca4fca5927147593537557d8ed0e441033f2e10"
+    },
+    "build/started.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/started.json",
+      "path": "build/started.json",
+      "raw_bytes": 512,
+      "raw_sha256": "379fba03e8135a5b0c61268993148dd090392266b67b538ef4c52858ac8e95db"
+    },
+    "build/terminal.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/build/terminal.json",
+      "path": "compressed/build/terminal.json.gz",
+      "raw_bytes": 2356,
+      "raw_sha256": "fb947cbd00843ab18c4971a3927b6d9fe66be02f78fe949c359794920ba7c5b5"
+    },
+    "build/unit-link.map": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/unit-link.map",
+      "path": "compressed/build/unit-link.map.gz",
+      "raw_bytes": 767987,
+      "raw_sha256": "d45669a2d16b754cda05d396622273ea1aaeaa099f3b26891de7a38a1fa216b2"
+    },
+    "derivation/MadLoopCommons.inc": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc",
+      "path": "compressed/derivation/MadLoopCommons.inc.gz",
+      "raw_bytes": 19753,
+      "raw_sha256": "2c45aae1b048204c679eca303def57e2c2be9c512a405ac08465adedeecf5232"
+    },
+    "parent-subset/index.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-mass-current-qualification-1/index.json",
+      "path": "compressed/parent-subset/index.json.gz",
+      "raw_bytes": 1506163,
+      "raw_sha256": "893c51f75dedbb6bbb1a70f78bed84b00d97b958ac678c194dc28cbb3aaa6b0b"
+    },
+    "parent-subset/original-cli/SubProcesses/P0_uux_zgg/TIR_interface.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-mass-current-qualification-1/compressed/original-cli/SubProcesses/P0_uux_zgg/TIR_interface.f.gz",
+      "path": "compressed/parent-subset/original-cli/SubProcesses/P0_uux_zgg/TIR_interface.f.gz",
+      "raw_bytes": 23310,
+      "raw_sha256": "2a1dffb507f359a9e0c0fe5ff4f597aa752306284e027a2d8c6231acb2b15241"
+    },
+    "parent-subset/source-2/controller.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-mass-current-qualification-1/compressed/source-2/controller.py.gz",
+      "path": "compressed/parent-subset/source-2/controller.py.gz",
+      "raw_bytes": 43407,
+      "raw_sha256": "f5c0fc7352289a0a2e4c34cae4837f88c8047817b506c910ec067e4f1d387d5a"
+    },
+    "parent-subset/source-2/source-index.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-mass-current-qualification-1/compressed/source-2/source-index.json.gz",
+      "path": "compressed/parent-subset/source-2/source-index.json.gz",
+      "raw_bytes": 14005,
+      "raw_sha256": "3c0f53a6e5526535b6fae98b0f055466b429a9a9cfc863fb22fb999a5c8a0815"
+    },
+    "parent-subset/source-2/source-preview/candidate/CT_interface.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-mass-current-qualification-1/compressed/source-2/source-preview/candidate/CT_interface.f.gz",
+      "path": "compressed/parent-subset/source-2/source-preview/candidate/CT_interface.f.gz",
+      "raw_bytes": 107092,
+      "raw_sha256": "dce7d75cda18fe1d70f52987d76a5824d241a5177f86c4323c00610453561151"
+    },
+    "parent-subset/source-2/source-preview/candidate/loop_CT_calls_1.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-mass-current-qualification-1/compressed/source-2/source-preview/candidate/loop_CT_calls_1.f.gz",
+      "path": "compressed/parent-subset/source-2/source-preview/candidate/loop_CT_calls_1.f.gz",
+      "raw_bytes": 46985,
+      "raw_sha256": "ecf113dbdb83e31b95c9b30592e57d48450b5a0168db00b750a5c63f81f2eeb6"
+    },
+    "parent-subset/source-2/source-preview/original/CT_interface.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-qp-mass-current-qualification-1/compressed/source-2/source-preview/original/CT_interface.f.gz",
+      "path": "compressed/parent-subset/source-2/source-preview/original/CT_interface.f.gz",
+      "raw_bytes": 70163,
+      "raw_sha256": "091cd7efe6ab18b2eb8cd5d31c834a48ceee9c69875834eaca9da3d5b3809363"
+    },
+    "reviews/build.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-build-independent-review-2.json",
+      "path": "compressed/reviews/build.json.gz",
+      "raw_bytes": 22588,
+      "raw_sha256": "51c0e7526ec07163889cefb211c23954d31d1c757d0507d7b879edecefa545b2"
+    },
+    "reviews/logs/qp-mass-non9-independent-source1-normal.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-independent-source1-normal.log",
+      "path": "reviews/logs/qp-mass-non9-independent-source1-normal.log",
+      "raw_bytes": 1734,
+      "raw_sha256": "c39266a8ed1246ca48c43f70fa6bd94898bf82d782002a1a2210695fee60ae6b"
+    },
+    "reviews/logs/qp-mass-non9-independent-source1-optimized.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-independent-source1-optimized.log",
+      "path": "reviews/logs/qp-mass-non9-independent-source1-optimized.log",
+      "raw_bytes": 1403,
+      "raw_sha256": "501a7db8738699b65eab518a748df611b3f6b7eebf922074c92209019bc50e44"
+    },
+    "reviews/logs/qp-mass-non9-independent-source2-normal.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-independent-source2-normal.log",
+      "path": "reviews/logs/qp-mass-non9-independent-source2-normal.log",
+      "raw_bytes": 1835,
+      "raw_sha256": "2ae168b9af300a9b0c0289ae889b593726d627e16cc06bf6eda21053c3fcf615"
+    },
+    "reviews/logs/qp-mass-non9-independent-source2-optimized.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-independent-source2-optimized.log",
+      "path": "reviews/logs/qp-mass-non9-independent-source2-optimized.log",
+      "raw_bytes": 1835,
+      "raw_sha256": "d81de80b52f1667b65296bab1ca19b0fc6095f5caafb91c0cfd132d8361a6c84"
+    },
+    "reviews/logs/qp-mass-non9-independent-source2-preflight-1.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-independent-source2-preflight-1.log",
+      "path": "reviews/logs/qp-mass-non9-independent-source2-preflight-1.log",
+      "raw_bytes": 331,
+      "raw_sha256": "8e87314dd586491c54ced5f43878a25288bb21f7b17d0df812d7941d6397e413"
+    },
+    "reviews/run.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-run-independent-review-2.json",
+      "path": "compressed/reviews/run.json.gz",
+      "raw_bytes": 4110,
+      "raw_sha256": "f41ac18474f94243fa1098f0e31f76cfd73a669bc41ee691194c646419017ad4"
+    },
+    "reviews/source1.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-source-independent-review-1.json",
+      "path": "compressed/reviews/source1.json.gz",
+      "raw_bytes": 2607,
+      "raw_sha256": "f77fda1eb2cd9daaa29bbe002a148ebb2c01a3bd8a532283cebad0bdec0fbfa8"
+    },
+    "reviews/source2.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-source-independent-review-2.json",
+      "path": "compressed/reviews/source2.json.gz",
+      "raw_bytes": 2695,
+      "raw_sha256": "8e7da5e9776897169841cf2518206d641591ea9ddfed4d636dfd18aaf52dc374"
+    },
+    "run/actual-limits.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/actual-limits.json",
+      "path": "run/actual-limits.json",
+      "raw_bytes": 234,
+      "raw_sha256": "9344a43f7c8f192e91686ae78309cefc6c28eebbaa1a42f57df98de025f93147"
+    },
+    "run/admission.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/admission.json",
+      "path": "run/admission.json",
+      "raw_bytes": 1174,
+      "raw_sha256": "6a1a4f73ea9a94cfa2ae863e8c272e50b2f45de8f0affc21df1017bcfe8ef298"
+    },
+    "run/commands/recording-unit.command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/commands/recording-unit.command.json",
+      "path": "run/commands/recording-unit.command.json",
+      "raw_bytes": 383,
+      "raw_sha256": "d14907ccbfa27bbd7b167e273067d4258d7aff87f870621ca26a9803bb58a818"
+    },
+    "run/commands/recording-unit.stdout.txt": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/commands/recording-unit.stdout.txt",
+      "path": "compressed/run/commands/recording-unit.stdout.txt.gz",
+      "raw_bytes": 238802,
+      "raw_sha256": "39ec847eff89ca9e8780085702826357c6e47922846a4d667f5427866da5f109"
+    },
+    "run/commands/recording-unit.terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/commands/recording-unit.terminal.json",
+      "path": "run/commands/recording-unit.terminal.json",
+      "raw_bytes": 109,
+      "raw_sha256": "f29f2365d0765675cfa4b1780676b18ea44230157a0edc69d5b7c3ab8969172f"
+    },
+    "run/console.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/console.log",
+      "path": "run/console.log",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "run/parsed.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/parsed.json",
+      "path": "run/parsed.json",
+      "raw_bytes": 796,
+      "raw_sha256": "df672e4ad989e93fff53be1ccd9107caad7ff7bf42c8310cf1623a491aac1174"
+    },
+    "run/result.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/result.json",
+      "path": "compressed/run/result.json.gz",
+      "raw_bytes": 2101,
+      "raw_sha256": "bdb454efa243c617b8ec5161f5b76558f8efdd69dacfd615acd7a4153896edfd"
+    },
+    "run/started.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/started.json",
+      "path": "run/started.json",
+      "raw_bytes": 509,
+      "raw_sha256": "b809dd3e7a89d06357884babf879cab3e8f2cb47d6c99ac73e4d65738824152d"
+    },
+    "run/terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-execution-2/run/terminal.json",
+      "path": "run/terminal.json",
+      "raw_bytes": 991,
+      "raw_sha256": "c0bd0cce2541e8ba09447d9b2d4f1d95a75b2aa92afbebd1ed9ed668d1a3daba"
+    },
+    "source/README.md": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/README.md",
+      "path": "compressed/source/README.md.gz",
+      "raw_bytes": 6080,
+      "raw_sha256": "b9ac0388db535434f215f84cdef46ce305db906ae5c494fe51fdf1ebd53bb4d4"
+    },
+    "source/build-spec.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/build-spec.json",
+      "path": "compressed/source/build-spec.json.gz",
+      "raw_bytes": 11245,
+      "raw_sha256": "44fbb4318478541996e15f823b93ec79de0754064f156ff29cca79aec796ff35"
+    },
+    "source/cases.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/cases.json",
+      "path": "compressed/source/cases.json.gz",
+      "raw_bytes": 27516,
+      "raw_sha256": "6ab985a6f58f5632e39a6ab7443c14108f6038b621c181269a4229dd1065ee85"
+    },
+    "source/chooser.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/chooser.f",
+      "path": "compressed/source/chooser.f.gz",
+      "raw_bytes": 5054,
+      "raw_sha256": "8ced94bd79069e8663df9c3f2d5d4d5ba5fa4be3efdf84d7a0bb21f3c6c50b43"
+    },
+    "source/controller.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/controller.py",
+      "path": "compressed/source/controller.py.gz",
+      "raw_bytes": 14190,
+      "raw_sha256": "8c2cd14f884e18d70d52c604c3f035223cc6fbb931e2de7749d6899a39232408"
+    },
+    "source/detectors.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/detectors.f",
+      "path": "compressed/source/detectors.f.gz",
+      "raw_bytes": 3751,
+      "raw_sha256": "13eccbec45746658e904daee444b409df02654a437c6fdc5996580a7c403254a"
+    },
+    "source/driver.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/driver.f",
+      "path": "compressed/source/driver.f.gz",
+      "raw_bytes": 9312,
+      "raw_sha256": "6451cdafa1e93535fa8cf4da848e23ffc1c5668795f5ba60d7ad575a25ff3296"
+    },
+    "source/driver.f.in": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/driver.f.in",
+      "path": "compressed/source/driver.f.in.gz",
+      "raw_bytes": 3481,
+      "raw_sha256": "ae3af95f288057eacc3dfda5a8e0f786efcb7f5afac6324c8b23406c0c46d79e"
+    },
+    "source/helpers.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/helpers.f",
+      "path": "compressed/source/helpers.f.gz",
+      "raw_bytes": 71505,
+      "raw_sha256": "b775685711311d8bde6f6e076b7973901704f6d19825a0c2802900bbe92263be"
+    },
+    "source/ownership.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/ownership.py",
+      "path": "compressed/source/ownership.py.gz",
+      "raw_bytes": 3446,
+      "raw_sha256": "51ca38f0621c3d57a15b8ac08b7c37be1e6023843af9a1fca1b48dd4242a2b97"
+    },
+    "source/parser.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/parser.py",
+      "path": "compressed/source/parser.py.gz",
+      "raw_bytes": 4775,
+      "raw_sha256": "4737acc14102e56a9f02125e0b486a0e7c100ce1680409756143eadbe46e137d"
+    },
+    "source/preparation-history.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/preparation-history.json",
+      "path": "source/preparation-history.json",
+      "raw_bytes": 933,
+      "raw_sha256": "51fa2ce604837f6aa67cee8cabe69e3f799c79864e0d660e40781aa293f2a239"
+    },
+    "source/prepare.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/prepare.py",
+      "path": "compressed/source/prepare.py.gz",
+      "raw_bytes": 11016,
+      "raw_sha256": "7bb3c1bfd8028e3704bf22c0f8e0efcf6ec1be2e183e34fd13c1a3c17e309cba"
+    },
+    "source/records.f90": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/records.f90",
+      "path": "compressed/source/records.f90.gz",
+      "raw_bytes": 4901,
+      "raw_sha256": "599752743122852a7b249cff98098d429fef5bb0b334101f18746f435e08a336"
+    },
+    "source/review-diff.md": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/review-diff.md",
+      "path": "compressed/source/review-diff.md.gz",
+      "raw_bytes": 2396,
+      "raw_sha256": "f1dae6ecd8eee238bfab83d65e52406d0f8f11ed7810ad975e87210998e522d8"
+    },
+    "source/source-index.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/source-index.json",
+      "path": "compressed/source/source-index.json.gz",
+      "raw_bytes": 3097,
+      "raw_sha256": "4de119d2c61ab208f6f32b950920fb1ef992bb1a69506c852fe0b836c3ba2fd1"
+    },
+    "source/source2-diff.patch": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/source2-diff.patch",
+      "path": "compressed/source/source2-diff.patch.gz",
+      "raw_bytes": 20306,
+      "raw_sha256": "664441d08b70a1d1b55c95e30a9e14f10471fcfc7596973632a3ddc3633e68ba"
+    },
+    "source/stubs.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/stubs.f",
+      "path": "compressed/source/stubs.f.gz",
+      "raw_bytes": 4143,
+      "raw_sha256": "fc1a19d18c6b217e2900578e23b8f37422c554e9d9afd95890590fbe065a7af2"
+    },
+    "source/test_source.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/test_source.py",
+      "path": "compressed/source/test_source.py.gz",
+      "raw_bytes": 10187,
+      "raw_sha256": "ba43319b43f91014432af147f8ce87a7fc7cf1be3d9d97c2e8762f21ba521784"
+    },
+    "source/tests-normal.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/tests-normal.log",
+      "path": "source/tests-normal.log",
+      "raw_bytes": 1799,
+      "raw_sha256": "1b5ffa9e4a25f257da9cbff78f9b2d355d83d739da95fac5ddd0909b12da4e7c"
+    },
+    "source/tests-optimized.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/tests-optimized.log",
+      "path": "source/tests-optimized.log",
+      "raw_bytes": 1799,
+      "raw_sha256": "ab6f744f2e0ac09c7c360426362637eff0ffde98a48183afe432d16f8f80718e"
+    }
+  },
+  "new_native_executions": 0,
+  "parent_members": [
+    "source-2/source-index.json",
+    "source-2/controller.py",
+    "source-2/source-preview/candidate/CT_interface.f",
+    "source-2/source-preview/original/CT_interface.f",
+    "source-2/source-preview/candidate/loop_CT_calls_1.f",
+    "original-cli/SubProcesses/P0_uux_zgg/TIR_interface.f"
+  ],
+  "public_writes": false,
+  "review_receipt_sha256": {
+    "build": "51c0e7526ec07163889cefb211c23954d31d1c757d0507d7b879edecefa545b2",
+    "run": "f41ac18474f94243fa1098f0e31f76cfd73a669bc41ee691194c646419017ad4",
+    "source1": "f77fda1eb2cd9daaa29bbe002a148ebb2c01a3bd8a532283cebad0bdec0fbfa8",
+    "source2": "8e7da5e9776897169841cf2518206d641591ea9ddfed4d636dfd18aaf52dc374"
+  },
+  "schema": "non9-unit-portable-qualification-v1"
+}

@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/nix/store/s2946bl9ciwzhafd66jhansrmxq9xhqm-binutils-2.46/bin/nm",
+    "--defined-only",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/unit_mass_check"
+  ],
+  "controller_pid": 3989453,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build",
+  "process_group": 3989453,
+  "session": 3989453,
+  "subprocess_new_session": false
+}

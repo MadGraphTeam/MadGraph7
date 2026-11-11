@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libgcc.so"
+  ],
+  "controller_pid": 3989453,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build",
+  "process_group": 3989453,
+  "session": 3989453,
+  "subprocess_new_session": false
+}

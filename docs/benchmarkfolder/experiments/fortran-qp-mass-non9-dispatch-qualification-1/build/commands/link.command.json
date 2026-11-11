@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-Wl,-Map,unit-link.map,--cref",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/records.o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/helpers.o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/chooser.o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/detectors.o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/stubs.o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/driver.o",
+    "-o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build/unit_mass_check"
+  ],
+  "controller_pid": 3989453,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-work-2/build",
+  "process_group": 3989453,
+  "session": 3989453,
+  "subprocess_new_session": false
+}

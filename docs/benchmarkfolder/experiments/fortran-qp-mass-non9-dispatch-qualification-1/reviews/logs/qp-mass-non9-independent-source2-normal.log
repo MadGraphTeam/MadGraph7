@@ -1,0 +1,19 @@
+test_actual_non9_branches_and_private_actual_index_guard (__main__.SourceTests.test_actual_non9_branches_and_private_actual_index_guard) ... ok
+test_backend_precision_mass_status_and_FP_mutations (__main__.SourceTests.test_backend_precision_mass_status_and_FP_mutations) ... ok
+test_closed_supervisor_reuse_is_unit_only_and_bounded (__main__.SourceTests.test_closed_supervisor_reuse_is_unit_only_and_bounded) ... ok
+test_constructor_raise_never_signals_a_mismatched_identity (__main__.SourceTests.test_constructor_raise_never_signals_a_mismatched_identity) ... ok
+test_constructor_raise_uses_captured_identity_and_bounded_raw_cleanup (__main__.SourceTests.test_constructor_raise_uses_captured_identity_and_bounded_raw_cleanup) ... ok
+test_exact_source_derivation_and_original_public_identity (__main__.SourceTests.test_exact_source_derivation_and_original_public_identity) ... ok
+test_matrix_and_explicit_controlled_scope (__main__.SourceTests.test_matrix_and_explicit_controlled_scope) ... ok
+test_missing_duplicate_reordered_extra_rows (__main__.SourceTests.test_missing_duplicate_reordered_extra_rows) ... ok
+test_missing_execute_cannot_launch_a_stage (__main__.SourceTests.test_missing_execute_cannot_launch_a_stage) ... ok
+test_original_flags_and_finite_poison (__main__.SourceTests.test_original_flags_and_finite_poison) ... ok
+test_positive_synthetic_is_not_execution_attestation (__main__.SourceTests.test_positive_synthetic_is_not_execution_attestation) ... ok
+test_qualified_ownership_source_unchanged (__main__.SourceTests.test_qualified_ownership_source_unchanged) ... ok
+test_source_syntax_and_no_FP_state_setters (__main__.SourceTests.test_source_syntax_and_no_FP_state_setters) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 2.434s
+
+OK
+INDEPENDENT_OUTER_EFFECT_ATTEMPTS 0

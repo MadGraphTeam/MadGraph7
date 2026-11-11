@@ -1,0 +1,35 @@
+{
+  "cap_seconds": 180.0,
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-non9-qualification-proposal-2/controller.py",
+    "--child",
+    "run",
+    "--source",
+    "4de119d2c61ab208f6f32b950920fb1ef992bb1a69506c852fe0b836c3ba2fd1",
+    "--reviewed-build",
+    "fb947cbd00843ab18c4971a3927b6d9fe66be02f78fe949c359794920ba7c5b5"
+  ],
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2463751.365667973,
+  "original_end_monotonic": 2463751.365667973,
+  "original_start_monotonic": 2463571.365667973,
+  "parent_pid": 578478,
+  "resource_limits": {
+    "address_space_bytes": 4294967296,
+    "core_bytes": 0,
+    "file_bytes": 268435456
+  },
+  "reviewed": {
+    "build": "fb947cbd00843ab18c4971a3927b6d9fe66be02f78fe949c359794920ba7c5b5"
+  },
+  "source_index_sha256": "4de119d2c61ab208f6f32b950920fb1ef992bb1a69506c852fe0b836c3ba2fd1",
+  "stage": "run",
+  "status": "running"
+}

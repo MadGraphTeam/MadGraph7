@@ -222,6 +222,15 @@ reviews qualify this successful chain. This uses genuine QP integrands and
 cache disabled. The five-file patch remains unapplied; other models, backends,
 loop-induced processes and performance acceptance remain open.
 
+The [compiled legacy-dispatch unit](experiments/fortran-qp-mass-non9-dispatch-qualification-1/README.md)
+checks all fourteen generated public/private helpers through 126 paired cases,
+252 helper calls and two separate chooser controls. Non9 momenta, cyclic mass
+squares, outputs and observed IEEE states agree, including controlled cases
+that request backend 9 but select 8 or 1. All 507 observed IEEE records retain
+zero flags, nearest-rounding tags and disabled halting. These are recording
+reducer tests; real reducer evaluation, COLLIER initialization and the broader
+physical comparisons remain unqualified. The production patch is unchanged.
+
 A [closed ordinary-QP transport profile](experiments/fortran-qp-transport-profile-qualification-1/README.md)
 retains three fresh workers, each with the unchanged 100-point learning traversal
 and the same DP and automatically rescued QP anchors. All coefficient, status,

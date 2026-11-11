@@ -1,0 +1,22 @@
+{
+  "COLLIER_initialization_qualified": false,
+  "COLLIER_recording_only_DP_detector_calls": 28,
+  "DP_and_QP_momenta_distinguished": true,
+  "actual_chooser_helper_calls_required": 196,
+  "actual_helper_calls_required": 252,
+  "all_observed_IEEE_states_zero": true,
+  "controlled_selector_helper_calls_required": 56,
+  "execution_attested_by_parser": false,
+  "finite_overflow_poison_and_source_guard_checked": true,
+  "helper_families": 7,
+  "independent_integer_dyadic_oracle": true,
+  "legacy_DP_squared_masses_unchanged": true,
+  "paired_cases": 126,
+  "performance_qualified": false,
+  "physical_accuracy_qualified": false,
+  "raw_records": 6425,
+  "real_chooser_only_controls": 2,
+  "real_reducers_executed": false,
+  "schema": "non9-dyadic-recording-unit-parser-v1",
+  "verified": true
+}
