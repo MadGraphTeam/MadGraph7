@@ -1,0 +1,78 @@
+{
+  "compiler_calls": 0,
+  "file_count": 16,
+  "files": {
+    "README.md": {
+      "bytes": 5550,
+      "sha256": "0e19a594b4aa90a01bc0f60eac69bcd6cd3b0d4ed649a4c7782b311e43c0532e"
+    },
+    "analyze.py": {
+      "bytes": 10216,
+      "sha256": "d3440834a1862ec16bf8455f91706ce056473d932a86aef567f294a3884bc291"
+    },
+    "controller.py": {
+      "bytes": 21122,
+      "sha256": "b0415c03e87b56601f769c501b545cdc387b707a17ebbc44e4d8f6c7c1335c4f"
+    },
+    "driver.f": {
+      "bytes": 5092,
+      "sha256": "62a855d5ba51e2f4076dd6535dc5b5c8137f11d8f374d574a874c7d82612aa8a"
+    },
+    "future-scaleless-fixture.json": {
+      "bytes": 54080,
+      "sha256": "8ce208d385c9d22e977745dac939f453c4568b81f94bedacd92f375ba79c20c3"
+    },
+    "future-triangle-fixture.json": {
+      "bytes": 55196,
+      "sha256": "49ff99eadbfd699b9f6b946ca936186f1096122623669ef93cb322677431a254"
+    },
+    "input-pins-initial.json": {
+      "bytes": 83463,
+      "sha256": "d254911368d66dea4520747ff30386259cd0b80a755c33675dcfa371fff9a26b"
+    },
+    "input-pins.json": {
+      "bytes": 84749,
+      "sha256": "a3bbf3d3ee4f34cfefba241ea74326cef4059575dee99bcf53c20e1253682a2a"
+    },
+    "legacy_parser.py": {
+      "bytes": 24696,
+      "sha256": "724448779653bf70978521de78bc8201486e5e832973e5de9ffc24065fa08053"
+    },
+    "oracle.py": {
+      "bytes": 5886,
+      "sha256": "127b7fb3916e3dc97d1b2e748cc3497021e35febc2ebcac2caafba205f5a34d2"
+    },
+    "prepare.py": {
+      "bytes": 5840,
+      "sha256": "49802ed2d0abbe3fb6fc6c81331291c87f6d2fd243f3c4bd759f8f8d46529a62"
+    },
+    "pure-checks.json": {
+      "bytes": 359,
+      "sha256": "2a85705015c1c7ff96a58ae9dd4cf0568b3bce0b76afcc48cd2749d4dc438fc3"
+    },
+    "pure-tests.txt": {
+      "bytes": 1357,
+      "sha256": "f848f5e68f5fc4746338eb6cbbe7e1e5d18bab5f905957de63f240004c8839c8"
+    },
+    "schedule.dat": {
+      "bytes": 843,
+      "sha256": "05692a75044a8300ab5a73e36c227a621af516c6e7acc9510002d8597bce46cb"
+    },
+    "schedule.json": {
+      "bytes": 4683,
+      "sha256": "6e9a9af5e79dfa1c06049a6f4cfb0ebfdbfa7d771433694f346bd8905ec8b6bd"
+    },
+    "test_source.py": {
+      "bytes": 7561,
+      "sha256": "39e360e6c067c2f4369eae12f47f88bb716b3a697cbd6d0c51ace54a8a99d124"
+    }
+  },
+  "loader_calls": 0,
+  "native_calls": 0,
+  "oracle_source_index_sha256": "9f866cc001a47cda221d6be4183ed135cb61af2ad6b48536012bce00b6e7587d",
+  "performance_acceptance": false,
+  "row_count": 24,
+  "schema": "rank6-two-fixture-source-index-v1",
+  "status": "source-only; no compiler/loader/native execution",
+  "total_bytes": 370693
+}

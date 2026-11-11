@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libavh_olo.so"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "finished_utc": "2026-11-11T11:44:04.554421+00:00",
+  "returncode": 0,
+  "started_utc": "2026-11-11T11:44:04.545546+00:00",
+  "stdout_sha256": "295981bb4cf4c593f3a265b95064dd437639b5f9c47d59e3eb1cffd7b33a7a22",
+  "timeout_seconds": 30.0
+}

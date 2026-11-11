@@ -1,0 +1,10 @@
+{
+  "numerical_body_change": "One provenance field rename only; validated-build and amended-runtime callbacks supplied by this reviewed glue.",
+  "original_failed_BUILD_preserved": true,
+  "owner_source_sha256": "1d1642c77d698afd8f0a4f8fa3c0db361733fa6ca6d9b1c1e1e44cbdd8be30cf",
+  "result_sha256": "bebe528042cd59d26e97605e84da3d5b53fc90f218bc93c92f16af420debcec9",
+  "scientific_source_sha256": "4f496ebf3071e8d405e1e2e72b4bcff3ab7b210ef2338740cdbe314b0cfcb2b0",
+  "scope": "Two standalone historical generated rank6 tensor fixtures; no physical amplitude/stress/performance claim.",
+  "validation_source_sha256": "73f311c041c176fe80c00b53f51935d8283521672717247ee73d26c855ee0640",
+  "validation_terminal_sha256": "9c6d48c1db7e725db8a7579d9d6dc1ea623c5f22f4603232ebf3540042f4715c"
+}

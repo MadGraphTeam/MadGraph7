@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libiregi.a"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "finished_utc": "2026-11-11T11:44:04.721172+00:00",
+  "returncode": 0,
+  "started_utc": "2026-11-11T11:44:04.711877+00:00",
+  "stdout_sha256": "f1dfdee49e64b9bdd56ca265b8d13daa66bf13b41a4c1e10f9cf3def5d4e82ad",
+  "timeout_seconds": 30.0
+}

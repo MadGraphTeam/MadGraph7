@@ -279,8 +279,22 @@ rank-six fixture. Its 15 full/partial and pole-selection rows pass an independen
 complex symmetric `1e-8` coefficient gate. Nine algebra tests and portable raw
 replay pass. This retrospective audit preserves the inherited IEEE mask 37 and
 all historical failed gates; the massive fixture has zero IR residues. The
-included all-component triangle IR specification remains uncompiled and unrun.
-It changes neither production nor the separately frozen 41-page report.
+included all-component triangle IR specification was uncompiled and unrun at
+that packet's freeze; its subsequent qualification is recorded separately below.
+
+The [independent rational UV/IR qualification](experiments/rank6-rational-ir-poles-qualification-1/README.md)
+passes 24 DP/QP, full/partial and pole-selection requests for synthetic massless
+triangle and scaleless bubble fixtures, each covering all 210 Cartesian
+components through rank six. All 12 full/partial pairs have identical pole
+words. The triangle has nonzero double-pole witnesses in every component;
+the scaleless bubble retains separated, cancelling UV and IR residues.
+Maximum scaled errors are `3.698e-15` in DP and `1.258e-34` in QP. Fresh initial
+IEEE flags are zero; model initialization raises only inexact. Portable replay
+preserves the original failed build and separate successful validation, and
+independently joins recorded native outputs to Fortran words. Scope remains
+the historical generated adapter with caching disabled; physical amplitudes,
+checked rescues, general stress and performance acceptance remain open.
+Production and the separately frozen 41-page report are unchanged.
 
 The [current-source relocated deployment check](experiments/current-source-deployment-runtime-qualification-1/README.md)
 uses actual standalone and FKS/NLO CLI exports at `0fcd2cd873d6`, the installed

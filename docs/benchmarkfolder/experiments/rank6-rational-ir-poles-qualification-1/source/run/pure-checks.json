@@ -1,0 +1,13 @@
+{
+  "compiler_calls": 0,
+  "execution_admitted": false,
+  "loader_queries": 0,
+  "native_tensor_calls": 0,
+  "numerical_body_bytecode_unchanged_except_owner_field": true,
+  "original_failed_BUILD_preserved": true,
+  "rows_pending": 24,
+  "schema": "rank6-RUN-only-glue-pure-checks-v1",
+  "status": "passed",
+  "tests": 8,
+  "validation_preserved": true
+}

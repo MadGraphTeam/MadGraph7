@@ -1,0 +1,12 @@
+{
+  "actual_execution_stages_admitted": false,
+  "compiler_calls": 0,
+  "historical_full_partial_cap_preserved": "180s build/180s run;120s work +60s cleanup",
+  "loader_calls": 0,
+  "native_reducer_calls": 0,
+  "owned_pending_sessions": false,
+  "schema": "rank6-two-fixture-source-pure-checks-v1",
+  "status": "pass",
+  "synthetic_rows": 24,
+  "tests": 10
+}

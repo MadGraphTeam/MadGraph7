@@ -1,0 +1,21 @@
+{
+  "cap_seconds": 180.0,
+  "child_pid": 3,
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/rank6-ir-triangle-controller-1/controller.py",
+    "--child",
+    "build",
+    "--source",
+    "4f496ebf3071e8d405e1e2e72b4bcff3ab7b210ef2338740cdbe314b0cfcb2b0"
+  ],
+  "deadline_monotonic": 2431322.767428495,
+  "stage": "build",
+  "started_utc": "2026-11-11T11:44:01.647708+00:00",
+  "status": "running"
+}

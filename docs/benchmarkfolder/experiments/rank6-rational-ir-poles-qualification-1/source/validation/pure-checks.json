@@ -1,0 +1,10 @@
+{
+  "compiler_calls": 0,
+  "execution_admitted": false,
+  "loader_queries": 0,
+  "native_main_calls": 0,
+  "original_failed_BUILD_unchanged": true,
+  "schema": "rank6-validation-only-source-pure-checks-v1",
+  "status": "passed",
+  "tests": 7
+}

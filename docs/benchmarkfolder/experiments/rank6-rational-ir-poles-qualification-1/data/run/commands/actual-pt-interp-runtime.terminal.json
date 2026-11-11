@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "--list",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/rank6-ir-triangle-work-1/build/check"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "finished_utc": "2026-11-11T12:19:25.474191+00:00",
+  "returncode": 0,
+  "started_utc": "2026-11-11T12:19:25.468891+00:00",
+  "stdout_sha256": "379451d07196c7edb34028cef78423576800a3ded17f16b70fd85e2c374108f7",
+  "timeout_seconds": 30.0
+}

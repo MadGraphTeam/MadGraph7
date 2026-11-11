@@ -1,0 +1,24 @@
+{
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/rank6-ir-triangle-validation-controller-1/controller.py",
+    "--child",
+    "validate",
+    "--source",
+    "73f311c041c176fe80c00b53f51935d8283521672717247ee73d26c855ee0640"
+  ],
+  "deadline_monotonic": 2432364.516238685,
+  "resource_limits": {
+    "address_space_bytes": 4294967296,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "reviewed_build_sha256": null,
+  "source_index_sha256": "73f311c041c176fe80c00b53f51935d8283521672717247ee73d26c855ee0640",
+  "stage": "validate",
+  "work_deadline_monotonic": 2432304.516238685
+}

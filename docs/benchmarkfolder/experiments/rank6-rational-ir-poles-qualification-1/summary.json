@@ -1,0 +1,44 @@
+{
+  "actual_DP_rows": 12,
+  "actual_QP_rows": 12,
+  "amplitude_rescue_qualified": false,
+  "cache_enabled": false,
+  "cases": 24,
+  "compiler_calls": 0,
+  "components_per_case": 210,
+  "full_partial_pairs_with_exact_pole_words": 12,
+  "independent_blocked_API_audit_joined": true,
+  "initial_IEEE": [
+    0,
+    0
+  ],
+  "live_binary_reads": 0,
+  "loader_queries": 0,
+  "model_IEEE": [
+    32,
+    0
+  ],
+  "native_to_host_transport": {
+    "host_real_values_checked": 25200,
+    "mapping_components": 210,
+    "native_output_buffers": 24,
+    "native_to_host_numeric_join": true,
+    "new_native_calls": 0,
+    "partial_quiet_finite_markers_checked": 2520,
+    "signed_zero_transport_qualified": false
+  },
+  "new_native_executions": 0,
+  "original_failed_BUILD_preserved": true,
+  "performance_acceptance": false,
+  "physical_amplitude_qualified": false,
+  "physical_stress_qualified": false,
+  "rational_oracle_passes": 24,
+  "retained_runtime_providers": 15,
+  "retrospective_IEEE_failure_unchanged": true,
+  "retrospective_source9f_UV_replayed": true,
+  "runtime_identity_scope": "Retained actual listing/maps/hash receipts only; no fresh provider hash or binary execution.",
+  "schema": "portable-rank6-rational-ir-poles-replay-v1",
+  "trap_safety_qualified": false,
+  "validation_separate_and_preserved": true,
+  "verified": true
+}

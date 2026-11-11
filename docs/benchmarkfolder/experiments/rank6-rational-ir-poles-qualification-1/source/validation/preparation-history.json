@@ -1,0 +1,7 @@
+{
+  "compiler_calls": 0,
+  "loader_queries": 0,
+  "native_main_calls": 0,
+  "original_failed_BUILD_unchanged": true,
+  "preseal_pure_test_failure": "AST test initially counted only the explicit nm command and omitted the metadata-loader callback lambda; corrected its expected two call sites. Added an executable whitelist plus negative tests so arbitrary compiler/linker/main invocations remain impossible in this successor."
+}

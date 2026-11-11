@@ -1,0 +1,43 @@
+{
+  "compiler_calls": 0,
+  "file_count": 7,
+  "files": {
+    "README.md": {
+      "bytes": 4093,
+      "sha256": "55061019cb4aef363e3556927e175c1bba2330f4c5983a07c5a249cf392c23ed"
+    },
+    "controller.py": {
+      "bytes": 17072,
+      "sha256": "340aeafce2f9d44302e96bae2c4dfbe4eefe62e0d25e267d98dfe2e945d88390"
+    },
+    "input-pins.json": {
+      "bytes": 144249,
+      "sha256": "ff194961f2419e87f0db66f25e68e8d07dccbbac80e3821fd540879d38b5d15f"
+    },
+    "prepare.py": {
+      "bytes": 2228,
+      "sha256": "16f305a52938f7192c7eb55068524aa17c8647bec6bb8b9d45416f6e5ef961b5"
+    },
+    "pure-checks.json": {
+      "bytes": 355,
+      "sha256": "b47a74aefea2a782ad2486899d725a3dd248ff0131c34936a2e431efe882fc64"
+    },
+    "pure-tests.txt": {
+      "bytes": 1046,
+      "sha256": "ae02c06164fb1d598e90ebdc162aa6509809410e7585ee6ae068209cbcf9e19a"
+    },
+    "test_source.py": {
+      "bytes": 3555,
+      "sha256": "8265916ae215d9d38da457c6a781696df54c1140b74ceaffe5be36d9c05d7edf"
+    }
+  },
+  "loader_queries": 0,
+  "native_tensor_calls": 0,
+  "row_count": 24,
+  "schema": "rank6-RUN-only-source-index-v1",
+  "scientific_source_sha256": "4f496ebf3071e8d405e1e2e72b4bcff3ab7b210ef2338740cdbe314b0cfcb2b0",
+  "status": "source-only; no numerical RUN executed",
+  "total_bytes": 172598,
+  "validation_source_sha256": "73f311c041c176fe80c00b53f51935d8283521672717247ee73d26c855ee0640",
+  "validation_terminal_sha256": "9c6d48c1db7e725db8a7579d9d6dc1ea623c5f22f4603232ebf3540042f4715c"
+}

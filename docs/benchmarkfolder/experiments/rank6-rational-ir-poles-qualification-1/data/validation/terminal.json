@@ -1,0 +1,39 @@
+{
+  "cap_seconds": 180.0,
+  "child_pid": 3,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 243218702,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/rank6-ir-triangle-validation-controller-1/controller.py",
+    "--child",
+    "validate",
+    "--source",
+    "73f311c041c176fe80c00b53f51935d8283521672717247ee73d26c855ee0640"
+  ],
+  "deadline_monotonic": 2432364.516238685,
+  "finished_utc": "2026-11-11T12:01:35.817963+00:00",
+  "result_sha256": "d34d15d59ed16cdab5927fd219146979f0bd77d567dcd3ab831d547ff121dc79",
+  "returncode": 0,
+  "stage": "validate",
+  "started_utc": "2026-11-11T12:01:23.396517+00:00",
+  "status": "passed"
+}

@@ -1,0 +1,415 @@
+{
+  "actual_ABI_inputs_match": true,
+  "all210_exact_IR2_witnesses_nonzero": true,
+  "all210_scaleless_UV1_IR1_witnesses_nonzero": true,
+  "cache_enabled": false,
+  "cases": 24,
+  "checks": [
+    {
+      "action": 4101,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "1/4503599627370496",
+        "maximum_nonzero_symmetric_residual": "1/1688849860263937",
+        "maximum_scaled_error": "3/6192449487634435",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4102,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "1/4503599627370496",
+        "maximum_nonzero_symmetric_residual": "1/1688849860263937",
+        "maximum_scaled_error": "3/6192449487634435",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4103,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "3/36028797018963968",
+        "maximum_nonzero_symmetric_residual": "863/18014398509481121",
+        "maximum_scaled_error": "67/18119951625748480",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4104,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "3/36028797018963968",
+        "maximum_nonzero_symmetric_residual": "863/18014398509481121",
+        "maximum_scaled_error": "67/18119951625748480",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4105,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "61/54043195528445891",
+        "maximum_scaled_error": "13/30117822508040205",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4106,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "61/54043195528445891",
+        "maximum_scaled_error": "13/30117822508040205",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4107,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/15901409129262909612374645008236545",
+        "maximum_scaled_error": "1/7950704564631454806187322504118273",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4108,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/15901409129262909612374645008236545",
+        "maximum_scaled_error": "1/7950704564631454806187322504118273",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4109,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "3/926336713898529563388567880069503262826159877325124512315660672063305037119488",
+        "maximum_nonzero_symmetric_residual": "7/160961202614579656484445386205822983",
+        "maximum_scaled_error": "1/20890881891761220536665668824596480",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4110,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "3/926336713898529563388567880069503262826159877325124512315660672063305037119488",
+        "maximum_nonzero_symmetric_residual": "7/160961202614579656484445386205822983",
+        "maximum_scaled_error": "1/20890881891761220536665668824596480",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4111,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/26610521399990991596218793687252991",
+        "maximum_scaled_error": "1/13305260699995495798109396843626496",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4112,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/26610521399990991596218793687252991",
+        "maximum_scaled_error": "1/13305260699995495798109396843626496",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4113,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "0",
+        "maximum_scaled_error": "0",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4114,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "0",
+        "maximum_scaled_error": "0",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4115,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "5/54043195528445947",
+        "maximum_scaled_error": "1/5699868278390784",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4116,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "5/54043195528445947",
+        "maximum_scaled_error": "1/5699868278390784",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4117,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "5/54043195528445947",
+        "maximum_scaled_error": "1/5699868278390784",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4118,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "5/54043195528445947",
+        "maximum_scaled_error": "1/5699868278390784",
+        "passed": true,
+        "tolerance": "1/10000000000"
+      }
+    },
+    {
+      "action": 4119,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "0",
+        "maximum_scaled_error": "0",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4120,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "0",
+        "maximum_scaled_error": "0",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4121,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/31153781151208965771182977975320577",
+        "maximum_scaled_error": "1/25961484292674138142652481646100480",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4122,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/31153781151208965771182977975320577",
+        "maximum_scaled_error": "1/25961484292674138142652481646100480",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4123,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/31153781151208965771182977975320577",
+        "maximum_scaled_error": "1/25961484292674138142652481646100480",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    },
+    {
+      "action": 4124,
+      "native_present": true,
+      "oracle": {
+        "failures": [],
+        "maximum_expected_zero_scaled_leakage": "0",
+        "maximum_nonzero_symmetric_residual": "1/31153781151208965771182977975320577",
+        "maximum_scaled_error": "1/25961484292674138142652481646100480",
+        "passed": true,
+        "tolerance": "1/1000000000000000000000000"
+      }
+    }
+  ],
+  "components": 210,
+  "full_partial": [
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 1,
+      "fixture": 110,
+      "maximum_scaled_error": "0",
+      "pole_mode": 0,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 1,
+      "fixture": 110,
+      "maximum_scaled_error": "0",
+      "pole_mode": 1,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 1,
+      "fixture": 110,
+      "maximum_scaled_error": "0",
+      "pole_mode": 2,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 4,
+      "fixture": 110,
+      "maximum_scaled_error": "0",
+      "pole_mode": 0,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 4,
+      "fixture": 110,
+      "maximum_scaled_error": "0",
+      "pole_mode": 1,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 4,
+      "fixture": 110,
+      "maximum_scaled_error": "0",
+      "pole_mode": 2,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 1,
+      "fixture": 111,
+      "maximum_scaled_error": "0",
+      "pole_mode": 0,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 1,
+      "fixture": 111,
+      "maximum_scaled_error": "0",
+      "pole_mode": 1,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 1,
+      "fixture": 111,
+      "maximum_scaled_error": "0",
+      "pole_mode": 2,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 4,
+      "fixture": 111,
+      "maximum_scaled_error": "0",
+      "pole_mode": 0,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 4,
+      "fixture": 111,
+      "maximum_scaled_error": "0",
+      "pole_mode": 1,
+      "status": "passed"
+    },
+    {
+      "all_pole_words_equal": true,
+      "ctmode": 4,
+      "fixture": 111,
+      "maximum_scaled_error": "0",
+      "pole_mode": 2,
+      "status": "passed"
+    }
+  ],
+  "initial_IEEE": [
+    0,
+    0
+  ],
+  "model_IEEE": [
+    32,
+    0
+  ],
+  "open_items": [],
+  "performance_acceptance": false,
+  "physical_amplitude_qualified": false,
+  "physical_stress_qualified": false,
+  "schema": "rank6-IR-triangle-tensor-qualification-v1",
+  "scope": "Synthetic generated rank6 diagnostic adapter; historical exporter identity, genuine QP API, no physical numerator or amplitude.",
+  "source_fixtures": [
+    110,
+    111
+  ],
+  "status": "passed"
+}
