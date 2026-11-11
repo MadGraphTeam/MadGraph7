@@ -433,3 +433,22 @@ def test_flat_points_decay_and_two_to_one(tmp_path):
     assert flat.points[0][2] == (125.0, 0.0, 0.0, 0.0)
     with pytest.raises(ValueError, match="fixed by its masses"):
         draw_flat_points(single, process=None, points=1, seed=1, sqrt_s=500.0)
+
+
+def test_a_card_with_its_own_actions_options(tmp_path, monkeypatch):
+    """``pyamplicol X_profile.toml --stability`` (m-lit ux-polish item 6):
+    options only the card's own action takes select that action."""
+
+    from pyamplicol.cli.parser import parse_cli
+
+    card = tmp_path / "loop_gg_zgg_profile.toml"
+    card.write_text((ROOT / "examples" / "loop_gg_zgg_profile.toml").read_text())
+    monkeypatch.chdir(tmp_path)
+    for options in (["--stability"], ["--runtime", "--stability"]):
+        invocation = parse_cli(["loop_gg_zgg_profile.toml", *options])
+        assert str(invocation.resolve().effective.action) == "benchmark"
+        # The same invocation as the documented explicit form.
+        assert invocation == parse_cli(["profile", "--card", str(card), *options])
+        assert invocation != parse_cli(["profile", "--card", str(card)])
+    plain = parse_cli(["loop_gg_zgg_profile.toml", "--json"])
+    assert str(plain.resolve().effective.action) == "benchmark"

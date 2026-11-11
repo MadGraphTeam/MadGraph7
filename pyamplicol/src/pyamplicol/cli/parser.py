@@ -1519,7 +1519,16 @@ def parse_cli(
         return _namespace_to_invocation(build_parser().parse_args(normalized))
     if arguments == ["--help"]:
         return _namespace_to_invocation(build_parser().parse_args(arguments))
-    return _namespace_to_invocation(build_card_parser().parse_args(arguments))
+    card_parser = build_card_parser()
+    _, unknown = card_parser.parse_known_args(arguments)
+    if unknown:
+        # ``pyamplicol CARD --stability``: options of the card's own action.
+        from .card_actions import card_action_options
+
+        rewritten = card_action_options(arguments)
+        if rewritten is not None:
+            return parse_cli(rewritten)
+    return _namespace_to_invocation(card_parser.parse_args(arguments))
 
 
 __all__ = [
