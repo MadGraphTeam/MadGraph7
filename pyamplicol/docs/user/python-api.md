@@ -559,23 +559,47 @@ points in both modes (NinjaRS columns measured with that bound).
 
 | process | points | TIRust unchecked | NinjaRS unchecked |
 |---|---|---|---|
+| g g > h | 128 | 1.2e-13 | 1.2e-12 |
+| h > g g | 128 | 1.0e-13 | 1.1e-12 |
+| h > a a | 128 | 2.4e-14 | 4.2e-13 |
+| h > z a | 128 | 1.2e-14 | 1.6e-12 |
+| a a > h | 128 | 1.4e-14 | 1.6e-13 |
+| g g > a a | 128 | 6.6e-13 | 2.4e-13 |
+| g g > z z | 128 | 5.5e-12 | 8.8e-11 |
+| g g > w+ w- | 128 | 1.2e-12 | 5.2e-12 |
+| g g > z a | 128 | 6.8e-13 | 6.4e-12 |
 | g g > h h | 128 | 3.4e-9 | 8.8e-11 |
-| e+ e- > g g g | 128 | 3.5e-7 | 4.6e-10 |
+| g g > h z | 128 | 1.4e-12 | 1.4e-12 |
+| g g > h g | 128 | 2.4e-14 | 7.3e-13 |
+| u u~ > h g | 128 | 1.1e-14 | 1.5e-13 |
+| u g > h u | 128 | 1.2e-14 | 1.1e-13 |
+| g g > z g | 128 | 9.4e-13 | 9.7e-12 |
+| g g > a g | 128 | 2.3e-13 | 1.7e-12 |
+| e+ e- > h a | 128 | 3.8e-14 | 1.8e-13 |
+| a a > a a | 128 | 1.8e-14 | 4.9e-14 |
+| a a > z z | 128 | 1.5e-13 | 7.4e-13 |
+| a a > h h | 128 | 8.8e-11 | 9.1e-11 |
+| e+ e- > h h | 128 | 1.3e-10 | 1.3e-10 |
+| h > g g g | 128 | 6.6e-13 | 1.5e-12 |
+| z > g g g | 128 | 5.5e-11 | 3.7e-10 |
+| e+ e- > g g g | 128 | 3.5e-7 | 3.2e-10 |
 | g g > h h h | 128 | 7.6e-7 | 4.5e64: 2 above 1e-5 (the checked mode refuses them) |
 | g g > h g g | 128 | 9.2e-10 | 8.0e-10 |
 | g g > z z g | 128 | 1.2e-2: 18 above 1e-5 (all on the last resort) | 5.0e-8 |
-| g g > a a g | 128 | 7.0e-6 | 3.1e-3: 1 above 1e-5 (also when checked) |
-| g g > W+ W- g | 128 | 1.4e-2: 24 above 1e-5 (all on the last resort) | 6.2e-8 |
-| g g > z z z | 128 | 2.2e-8 | 1.8e-9; 20 fail (`Unstable`: the near-planar points) |
+| g g > a a g | 128 | 7.0e-6 | 1.0e-3: 1 above 1e-5 (also when checked) |
+| g g > w+ w- g | 128 | 1.4e-2: 24 above 1e-5 (all on the last resort) | 6.2e-8 |
+| g g > z z z | 128 | 2.2e-8 | 1.8e-9; 20 fail (`Unstable`) |
 | g g > h z g | 128 | 8.2e-9 | 3.0e-8; 2 fail (`MasterFailed`, `Unstable`) |
-| g g > a g g | 128 | 3.3e-6 | 6.8e-4: 1 above 1e-5 (also when checked) |
+| g g > a g g | 128 | 3.3e-6 | 2.0e-4: 1 above 1e-5 (also when checked) |
 | g g > z g g | 128 | 3.1e-5: 3 above 1e-5 (all on the last resort) | 6.2e-6 |
 | u u~ > h g g | 128 | 3.7e-9 | 3.5e-8 |
 | u u~ > d d~ h | 128 | 4.1e-10 | 4.3e-9 |
-| g g > h h g g | 32 | 7.1e-7 | 1.8e-6 |
-| g g > h g g g | 32 | 5.9e-8 | 4.4e-5: 2 above 1e-5 (also when checked) |
-| g g > e+ e- mu+ mu- | 32 | 5.4e-12 | 4.9e-10 |
-| g g > e+ e- mu+ mu- g | 16 | 8.3e-9 | 9.5e-8 |
+| g g > h h g g | 32 | 7.1e-7 | 7.0e-7 |
+| g g > h g g g | 32 | 5.9e-8 | 4.2e-5: 2 above 1e-5 (also when checked) |
+| g g > e+ e- mu+ mu- | 32 | 5.4e-12 | 6.5e-10 |
+| g g > a a g g | 128 | TIRust vs NinjaRS 7.0e-02 (no 256-bit truth: TIRust at 256 bits takes 405 s per point (measured 1-point probe; 32 points 3.6 h > the 3600 s row budget)) | — |
+| g g > z z z z | 112 | TIRust vs NinjaRS 4.9e-06 (no 256-bit truth: TIRust at 256 bits takes 764 s per point (measured 1-point probe; 32 points 6.8 h > the 3600 s row budget)) | — |
+| g g > e+ e- mu+ mu- g | 16 | 8.3e-9 | 7.0e-9 |
 
 Other processes and points are not measured: check a sample against the
 default (checked) call before relying on the setting.
