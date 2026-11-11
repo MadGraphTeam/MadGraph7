@@ -2841,7 +2841,7 @@ class decay_all_events(object):
             # global value for flavors not seen during the maxweight probing.
             mw_for_event = decay_me.get('max_weight_per_flavor', {}).get(
                 flavor_index_full, decay_me['max_weight'])
-            stdin_text=' %s %s %s %s %s %s %s %s %s\n' % ('2', self.options['BW_cut'], self.Ecollider, mw_for_event, self.options['frame_id'], self.options.beampol_me()[0], self.options.beampol_me()[1], flavor_index_prod, flavor_index_full)
+            stdin_text=' %s %s %s %s %s %s %s %s %s\n' % ('2', self.options['BW_cut'], self.Ecollider, mw_for_event, self.options['frame_id'], *self.event_beampol(event_map), flavor_index_prod, flavor_index_full)
             stdin_text+=p_str
             # here I also need to specify the Monte Carlo Masses
             stdin_text+=" %s \n" % nb_mc_masses
@@ -3050,6 +3050,17 @@ class decay_all_events(object):
         return  event_nb/(event_nb+nb_skip)       
 
 
+    def event_beampol(self, event_map):
+        """options.beampol_me() for the incoming legs of self.curr_event in the
+        order event_map hands them to the matrix element (give_momenta)"""
+        if not event_map:
+            event_map = dict((i, i) for i in range(len(self.curr_event.particle)))
+        legs = [self.curr_event.particle[event_map[i] + 1] for i in (0, 1)
+                if i in event_map]
+        if len(legs) == 2 and all(leg['istup'] == -1 for leg in legs):
+            return self.options.beampol_me([leg['momentum'] for leg in legs])
+        return self.options.beampol_me()
+
     def adding_only_helicity(self, event_map, production_tag):
         """no decays for this production mode, run in passthrough mode,
            only adding the helicities to the events """
@@ -3062,7 +3073,7 @@ class decay_all_events(object):
         except KeyError:
             frameid = 6
         try:
-            beampol = self.options.beampol_me()
+            beampol = self.event_beampol(event_map)
         except KeyError:
             beampol = (1.0, 1.0)
         mepath = self.all_ME[production_tag]['path']
@@ -4561,7 +4572,7 @@ class decay_all_events(object):
             rel_brs = [1.0]
 
         try:
-            beampol = self.options.beampol_me()
+            beampol = self.event_beampol(event_map)
         except KeyError:
             beampol = (1.0, 1.0)
         std_in = " %s  %s %s %s %s %s %s %s %s\n" % ("1", BWcut, self.Ecollider, nbpoints,

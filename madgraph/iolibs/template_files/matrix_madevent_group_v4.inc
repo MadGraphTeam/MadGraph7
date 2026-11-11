@@ -78,7 +78,7 @@ C       row-level information to apply the identical-particle correction.
         COMMON /SUBPROC/ IPSEL
         REAL*8 HWGT, XTOT, XTRY, XREJ, XR, YFRAC(0:NCOMB)
         INTEGER NGOOD
-        INTEGER J, JJ
+        INTEGER J, JJ, JB
 	INTEGER NB_FAIL
 	SAVE NB_FAIL
 	DATA NB_FAIL /0/

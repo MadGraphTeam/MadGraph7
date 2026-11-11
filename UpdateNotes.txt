@@ -5,6 +5,9 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).
+   OM: madevent/MadSpin: polarised beams with a mirror process gave beam 1's polarisation
+       to the particle of beam 2 (#394).
    RF: Preserve the legacy scalar-scale fallback for MC@NLO-Delta events
        with an unspecified mur when reading MadGraph7 scale metadata.
    RF: Remove UNLOPS merging and NNLL+NLO jet-veto resummation, including their
