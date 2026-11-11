@@ -121,3 +121,33 @@ def test_born_of_the_point(path):
         for c in point["contributions"]:
             if c["type"] == 2:
                 np.testing.assert_allclose(c["bjx"], born["xbjrk"], rtol=1e-14)
+
+
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_matrix_element_blocks(path):
+    """The blocks of a point sit at its configurations, sum over the
+    split-order positions, and the colour links of e+ e- > q q~ are -C_F B
+    g_s^2 (sborn_sf has g_s^2)."""
+    data = reference(path)
+    count = 0
+    for _, point in points(data):
+        blocks = point.get("blocks")
+        if blocks is None:
+            assert not point["born"]["valid"]
+            continue
+        count += 1
+        assert blocks["nfks"] == point["nfks_picked"]
+        assert blocks["nbody"]["nfks"] == point["nfks_born"]
+        np.testing.assert_allclose(
+            sum(blocks["born_orders"]), blocks["born"], rtol=1e-14
+        )
+        if "real" in blocks:
+            np.testing.assert_allclose(
+                sum(blocks["real_orders"]), blocks["real"], rtol=1e-14
+            )
+        for link in blocks["nbody"]["links"]:
+            np.testing.assert_allclose(sum(link["orders"]), link["value"], rtol=1e-14)
+            if os.path.basename(path) == "epem_jj.json":
+                ratio = link["value"] / (link["g"] ** 2 * blocks["born"])
+                np.testing.assert_allclose(ratio, -4 / 3, rtol=1e-12)
+    assert count > 0

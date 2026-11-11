@@ -32,6 +32,17 @@ them into madspace/tests/test_data/fks_integrand/<name>.json:
             (wgts(1), PDFs and couplings included, in pb), wgt_me_tree,
             momenta, pdg, parton_iproc (the luminosity per subprocess times
             the weight without PDFs)
+        g (the coupling at the end of the call), blocks (the matrix-element
+        blocks of the point, where the Born is valid, each with the coupling
+        it took): nfks, i_fks, j_fks (the picked configuration), g_real,
+        real, real_orders (at the event, per split-order position), k_perp
+        (xij_kperp of the event), g_born, born, born_orders,
+        azimuthal_orders (real and imaginary part, at the position of the
+        counterterm, sborn), nbody (nfks, i_fks, j_fks of the configuration
+        of the n-body part, links[]: m, n (legs of the real process), g,
+        value, orders of sborn_sf for the pairs sbornsoft takes)
+    orders[] (per channel): position, qcd_pos, qed_pos, orders of the
+    split-order positions (amp_split_pos_to_orders)
 
 Run from anywhere with a gfortran in the PATH:
 
@@ -99,19 +110,23 @@ def generate(name, process, work, log):
 
 
 def patch_driver(out):
-    """sigint calls fks_integrand_dump after include_PDF_and_alphas."""
+    """sigint calls fks_integrand_dump after include_PDF_and_alphas (a kept
+    output gets the current fks_integrand_dump.f)."""
     path = os.path.join(out, "SubProcesses", "driver_mintFO.f")
     with open(path) as f:
         source = f.read()
-    if "fks_integrand_dump" in source:
-        return
-    anchor = "      call include_PDF_and_alphas\n"
-    if source.count(anchor) != 1:
-        raise ValueError("sigint: include_PDF_and_alphas not found once")
     with open(os.path.join(HERE, "fks_integrand_dump.f")) as f:
         dump = f.read()
+    head = dump.splitlines()[0]
+    if head in source:
+        source = source[: source.index(head)].rstrip("\n") + "\n"
+    else:
+        anchor = "      call include_PDF_and_alphas\n"
+        if source.count(anchor) != 1:
+            raise ValueError("sigint: include_PDF_and_alphas not found once")
+        source = source.replace(anchor, anchor + DUMP_CALL)
     with open(path, "w") as f:
-        f.write(source.replace(anchor, anchor + DUMP_CALL) + "\n" + dump)
+        f.write(source + "\n" + dump)
 
 
 def launch(out, values, points, work, name):
@@ -152,13 +167,43 @@ def configuration(fields):
 
 
 def parse(text, nexternal):
-    points, point, contribution = [], None, None
+    points, point, contribution, orders = [], None, None, []
     for line in text.splitlines():
         fields = line.split()
         if not fields:
             continue
         key, rest = fields[0], fields[1:]
-        if key == "POINT":
+        if key == "ORDERS":
+            v = [int(f) for f in rest]
+            orders.append(dict(position=v[0], qcd_pos=v[1], qed_pos=v[2], orders=v[3:]))
+        elif key == "G":
+            point["g"] = float(rest[0])
+        elif key == "FKS":
+            v = [int(f) for f in rest]
+            point["blocks"] = dict(nfks=v[0], i_fks=v[1], j_fks=v[2])
+        elif key == "REAL":
+            v = floats(rest)
+            point["blocks"].update(g_real=v[0], real=v[1], real_orders=v[2:])
+        elif key == "KPERP":
+            point["blocks"]["k_perp"] = floats(rest)
+        elif key == "BORN_BLOCK":
+            g, *v = floats(rest)
+            n = len(orders)
+            point["blocks"].update(
+                g_born=g,
+                born=v[0],
+                born_orders=v[1 : 1 + n],
+                azimuthal_orders=[v[1 + n : 1 + 2 * n], v[1 + 2 * n : 1 + 3 * n]],
+            )
+        elif key == "FKSB":
+            v = [int(f) for f in rest]
+            point["blocks"]["nbody"] = dict(nfks=v[0], i_fks=v[1], j_fks=v[2], links=[])
+        elif key == "LINK":
+            g, *v = floats(rest[2:])
+            point["blocks"]["nbody"]["links"].append(
+                dict(m=int(rest[0]), n=int(rest[1]), g=g, value=v[0], orders=v[1:])
+            )
+        elif key == "POINT":
             v = [int(f) for f in rest]
             point = dict(
                 call=v[0],
@@ -237,7 +282,7 @@ def parse(text, nexternal):
         elif key == "END":
             points.append(point)
             point = None
-    return points
+    return orders, points
 
 
 def read_cards(out):
@@ -297,12 +342,13 @@ def main():
                 if not os.path.isfile(path):
                     continue
                 with open(path) as f:
-                    points = parse(f.read(), nexternal)
+                    orders, points = parse(f.read(), nexternal)
                 channels.append(
                     dict(
                         subprocess=sub,
                         channel=channel,
                         fks_configurations=fks_configurations,
+                        orders=orders,
                         points=points,
                     )
                 )
