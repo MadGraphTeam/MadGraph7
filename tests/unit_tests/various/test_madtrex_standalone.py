@@ -244,6 +244,45 @@ def load_driver_module():
     return module
 
 
+class HelRecyclingHookTest(unittest.TestCase):
+    """--hel_recycling subprocesses are made right at the cards of the
+    launches before their libraries are loaded: through the hook MadGraph's
+    side (mg7/madtrex.py) sets, and with a warning in a standalone driver."""
+
+    def setUp(self):
+        self.driver = load_driver_module()
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        os.makedirs(os.path.join(self.tmp, "SubProcesses", "P1_x"))
+        with open(os.path.join(self.tmp, "SubProcesses", "subprocesses.json"), "w") as f:
+            f.write('[{"path": "SubProcesses/P1_x", "me_path": "lib/x_{device}_{fptype}.so"}]')
+
+    def recycle(self):
+        open(os.path.join(self.tmp, "SubProcesses", "P1_x", "HelRecyclingRecipe.json"),
+             "w").close()
+
+    def test_nothing_to_do_without_recycling(self):
+        calls = []
+        self.driver.hel_recycling_update = lambda *args: calls.append(args)
+        self.driver._prepare_hel_recycling(self.tmp, ["gen.dat"], [], "gen.dat")
+        self.assertEqual(calls, [])
+
+    def test_the_hook_gets_the_cards_and_the_launches(self):
+        self.recycle()
+        self.assertEqual(self.driver._recycled_subprocesses(self.tmp), ["SubProcesses/P1_x"])
+        calls = []
+        self.driver.hel_recycling_update = lambda *args: calls.append(args)
+        self.driver._prepare_hel_recycling(self.tmp, ["gen.dat"], ["launch"], "base.dat")
+        self.assertEqual(calls, [(self.tmp, ["gen.dat"], ["launch"], "base.dat")])
+
+    def test_a_standalone_driver_warns(self):
+        self.recycle()
+        self.driver.hel_recycling_update = None
+        with self.assertLogs("madgraph7", level="WARNING") as logs:
+            self.driver._prepare_hel_recycling(self.tmp, ["gen.dat"], [], "gen.dat")
+        self.assertIn("--hel_recycling", logs.output[0])
+
+
 @unittest.skipUnless(madtrex_is_installed(), "madspace/madtrex are not installed")
 class InPlaceOutputTest(unittest.TestCase):
     """By default the weights go into the event file that was reweighted,
