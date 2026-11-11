@@ -1,0 +1,22 @@
+test_conditional_alias_or_foreign_call_falls_back (__main__.Protocol.test_conditional_alias_or_foreign_call_falls_back) ... ok
+test_factory_formula_only_generic_dimensions (__main__.Protocol.test_factory_formula_only_generic_dimensions) ... ok
+test_generic_geometry_all_n_modes_e (__main__.Protocol.test_generic_geometry_all_n_modes_e) ... ok
+test_immutable_table_fortran_column_major_roundtrip (__main__.Protocol.test_immutable_table_fortran_column_major_roundtrip) ... ok
+test_implicit_expression_function_cannot_enable_environment (__main__.Protocol.test_implicit_expression_function_cannot_enable_environment) ... ok
+test_internal_unsigned_dag (__main__.Protocol.test_internal_unsigned_dag) ... ok
+test_missing_custom_or_indirect_environment_path_is_unknown (__main__.Protocol.test_missing_custom_or_indirect_environment_path_is_unknown) ... ok
+test_mp_fresh_actual_branch_not_widened_or_skip (__main__.Protocol.test_mp_fresh_actual_branch_not_widened_or_skip) ... ok
+test_nonidentity_external_slot_and_mass_policy (__main__.Protocol.test_nonidentity_external_slot_and_mass_policy) ... ok
+test_protected_unknown_composite (__main__.Protocol.test_protected_unknown_composite) ... ok
+test_register_without_active_registry_leaves_call_exact (__main__.Protocol.test_register_without_active_registry_leaves_call_exact) ... ok
+test_state_capture_before_producers_skip_unknown (__main__.Protocol.test_state_capture_before_producers_skip_unknown) ... ok
+test_tables_orientation (__main__.Protocol.test_tables_orientation) ... ok
+test_unknown_custom_mixed_and_overwrite (__main__.Protocol.test_unknown_custom_mixed_and_overwrite) ... ok
+test_unknown_route_shape_and_custom_graph_fallback (__main__.Protocol.test_unknown_route_shape_and_custom_graph_fallback) ... ok
+test_unknown_template_rejected (__main__.Protocol.test_unknown_template_rejected) ... ok
+test_unsigned_cancellation (__main__.Protocol.test_unsigned_cancellation) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.041s
+
+OK

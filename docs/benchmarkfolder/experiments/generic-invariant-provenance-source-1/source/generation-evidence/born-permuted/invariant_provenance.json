@@ -1,0 +1,794 @@
+{
+  "conservation": [
+    -1,
+    -1,
+    1
+  ],
+  "environment_contract": {
+    "call_graph_complete": false,
+    "complete": false,
+    "function_reference_closure_qualified": false,
+    "reason": "model source missing"
+  },
+  "graph": {
+    "conflicting_slots": [],
+    "has_born": true,
+    "leaves": {
+      "1": {
+        "is_part": true,
+        "leg": 3,
+        "mass": "mdl_MZ",
+        "offshell": false,
+        "slot": 1,
+        "spin": 3,
+        "state": "final",
+        "state_id": 1
+      },
+      "2": {
+        "is_part": false,
+        "leg": 2,
+        "mass": "ZERO",
+        "offshell": false,
+        "slot": 2,
+        "spin": 2,
+        "state": "outgoing",
+        "state_id": -1
+      },
+      "3": {
+        "is_part": true,
+        "leg": 1,
+        "mass": "ZERO",
+        "offshell": false,
+        "slot": 3,
+        "spin": 2,
+        "state": "incoming",
+        "state_id": 1
+      }
+    },
+    "legs": {
+      "1": {
+        "offshell": false,
+        "pdg": 2,
+        "state": false
+      },
+      "2": {
+        "offshell": false,
+        "pdg": -2,
+        "state": false
+      },
+      "3": {
+        "offshell": false,
+        "pdg": 23,
+        "state": true
+      }
+    },
+    "nexternal": 3,
+    "ninitial": 2,
+    "process": "u u~ > z",
+    "unsupported_source_features": []
+  },
+  "protected": [
+    true,
+    true,
+    true
+  ],
+  "routes": [
+    {
+      "amplitude": 1,
+      "call": "CALL %(proc_prefix)sLOOP_3(3,2,1,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),2,I_SO,1)",
+      "loopnum": 1,
+      "masses": [
+        "ZERO",
+        "ZERO",
+        "ZERO"
+      ],
+      "modes": {
+        "1": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            3,
+            2,
+            1
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "2": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            3,
+            2,
+            1
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "4": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            3,
+            2,
+            1
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "5": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            3,
+            2,
+            1
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        }
+      },
+      "n": 3,
+      "pairing": [
+        1,
+        1,
+        1
+      ],
+      "rank": 2,
+      "route": 1,
+      "we": [
+        3,
+        2,
+        1
+      ]
+    }
+  ],
+  "routing_contract": {
+    "corner_helpers": [
+      "ML5_0_LOOP_3"
+    ],
+    "first_shift": "actual zero-seeded closure, not replaced by zero",
+    "modes": [
+      1,
+      2,
+      4,
+      5
+    ],
+    "scope": "TIRust routing only; other adapter arithmetic requires a separate join"
+  },
+  "schema": 1,
+  "source_bindings": {
+    "Source/DHELAS/FFV1L2P0_3.f": {
+      "bytes": 1260,
+      "sha256": "dc3bde14d5f0afd9f35019879b21baa15a1a275309fd17f2c0003fa262ab220d"
+    },
+    "Source/DHELAS/FFV1L3_1.f": {
+      "bytes": 5026,
+      "sha256": "57d3d5a1bead213b1cd121e770086ddfcf0a52445e09caf0c8389ded19bd4c65"
+    },
+    "Source/DHELAS/FFV2L2_1.f": {
+      "bytes": 3883,
+      "sha256": "1510ee32b4c8c092801a4d5d055c2bac0f436f9ddba0f4ad7f4cab6c97418200"
+    },
+    "Source/DHELAS/FFV2_0.f": {
+      "bytes": 879,
+      "sha256": "564cd70aa7b554332c17141bf85cce02952ab4db00005ed83ff3a1dbf780994d"
+    },
+    "Source/DHELAS/FFV2_5L2_1.f": {
+      "bytes": 7054,
+      "sha256": "fcfec6fbdc6e2d3ad814b7f080639b3ecc6dcecadbdbe5b6cfdde0a64553e95f"
+    },
+    "Source/DHELAS/FFV2_5_0.f": {
+      "bytes": 1255,
+      "sha256": "d4500cc0e757a95070eb253f5a3acdffec4da564f5a1aa82cb0972083cc9324d"
+    },
+    "Source/DHELAS/FFV5L2_1.f": {
+      "bytes": 5296,
+      "sha256": "09a5c401867e96133dc72d950fd40e3fe06d163c6d114cfeaf80dd96f5253196"
+    },
+    "Source/DHELAS/FFV5_0.f": {
+      "bytes": 1148,
+      "sha256": "ffd5fa63096752aa08e79431cd87ed4eba98330ecc45df4a97a0b0863b5fd722"
+    },
+    "Source/DHELAS/MP_FFV1L2P0_3.f": {
+      "bytes": 1268,
+      "sha256": "59f3c953d6a1cbeabbef49db75f7d6cbd06126e86815629222a538ae6fffd1c6"
+    },
+    "Source/DHELAS/MP_FFV1L3_1.f": {
+      "bytes": 5034,
+      "sha256": "1056c5c9344d4a8b55082391da18ad98b700872e6ec3ac693a4f8a5b9f87e23b"
+    },
+    "Source/DHELAS/MP_FFV2L2_1.f": {
+      "bytes": 3891,
+      "sha256": "4bcf9243d367f9ab95fd6f1d7258d6ea5f5fa39635809136d962dc96b143c5a3"
+    },
+    "Source/DHELAS/MP_FFV2_0.f": {
+      "bytes": 891,
+      "sha256": "3e9524a4f8a96245b02cc7c37cb2017cef1269fded1a42fa653442ba9d20e9d3"
+    },
+    "Source/DHELAS/MP_FFV2_5L2_1.f": {
+      "bytes": 7062,
+      "sha256": "30a18a0408b03d21ee1bbd2b4408d13806044f152b41b42abbee2bd92d7d0bcd"
+    },
+    "Source/DHELAS/MP_FFV2_5_0.f": {
+      "bytes": 1267,
+      "sha256": "2949a1f2baf6b89f53c0613d5ca1973154f86563eeb37057c1412bf959914d15"
+    },
+    "Source/DHELAS/MP_FFV5L2_1.f": {
+      "bytes": 5304,
+      "sha256": "b6cf19071bca7597acb961cdd9b5e525c45bcf4d93db3d8fb70474f5b3b6fff5"
+    },
+    "Source/DHELAS/MP_FFV5_0.f": {
+      "bytes": 1160,
+      "sha256": "a8498ee8b4c08892e712953870cd71831730a8ff40a63d279cead56a1fc3ab60"
+    },
+    "Source/DHELAS/aloha_functions.f": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    },
+    "SubProcesses/P0/CT_interface.f": {
+      "bytes": 18119,
+      "sha256": "931cd2b6dcf0a08bd26dda4f496da247f3f21e953253ecef34a7b3f04f1e2ef0"
+    },
+    "SubProcesses/P0/TIRUST_interface.f": {
+      "bytes": 14015,
+      "sha256": "2e70b84901e34028133739c2fbb792657ef11b0f05845f2b40ad3df1fe256cdd"
+    },
+    "SubProcesses/P0/TIR_interface.f": {
+      "bytes": 14884,
+      "sha256": "da4800ff7ff0e4825c2614b4f9f40b0f712d926fe03548a6aeac2391477084c3"
+    },
+    "SubProcesses/P0/coef_construction_1.f": {
+      "bytes": 3267,
+      "sha256": "4c9d3407360e37b631729bc4fa8d32dad966bff22af12f8c669e337b2a7a7710"
+    },
+    "SubProcesses/P0/helas_calls_ampb_1.f": {
+      "bytes": 3128,
+      "sha256": "4c74d6b0c2331d95068b7971da149dcdd116b42ff47e4f09c697d444b41f679d"
+    },
+    "SubProcesses/P0/improve_ps.f": {
+      "bytes": 28307,
+      "sha256": "d511a2b32b286067c387fc2fc9b1e3d53600f8f7aaf107a53b98e18ec9a53260"
+    },
+    "SubProcesses/P0/loop_CT_calls_1.f": {
+      "bytes": 3024,
+      "sha256": "03906f4b93af97e226e52beb71d437766dcf72eacb49ab5ab35ff055e1bae0a0"
+    },
+    "SubProcesses/P0/loop_matrix.f": {
+      "bytes": 90585,
+      "sha256": "6bf22fdcab0463593e78299232ac1343fbf6ffd5804dfc4aeff5d0fa3498b3c1"
+    },
+    "SubProcesses/P0/mp_coef_construction_1.f": {
+      "bytes": 3159,
+      "sha256": "98821640b0759eb0f9fab49a2217d71cb81b31afa4aca851a5a14f331f9355e4"
+    },
+    "SubProcesses/P0/mp_compute_loop_coefs.f": {
+      "bytes": 14274,
+      "sha256": "06b77538398635a6c90e6456486bab9385248f84a59b85e9950ec2951a49d5a0"
+    },
+    "SubProcesses/P0/mp_helas_calls_ampb_1.f": {
+      "bytes": 2852,
+      "sha256": "ae55a3d41b93b80c90ad33d7c8fcb4e7ea54887acca537b7b557bc2eec3e98c9"
+    },
+    "SubProcesses/P0/pmass.inc": {
+      "bytes": 67,
+      "sha256": "0beacdaee18697d60521073d3a773ca4c3b0d29e30dd24980ca23d5b3b24882e"
+    }
+  },
+  "source_proof": {
+    "128": {
+      "producers": [
+        {
+          "call": "CALLMP_IXXXXX(P(0,1),ZERO,NHEL(1),+1,FLAVOR(1),W(3))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              1,
+              0,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              -1,
+              0,
+              0
+            ]
+          },
+          "line": 86,
+          "slot": 3,
+          "width": 128
+        },
+        {
+          "call": "CALLMP_OXXXXX(P(0,2),ZERO,NHEL(2),-1,FLAVOR(2),W(2))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              1,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              -1,
+              0
+            ]
+          },
+          "line": 87,
+          "slot": 2,
+          "width": 128
+        },
+        {
+          "call": "CALLMP_VXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(1))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              0,
+              1
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              0,
+              1
+            ]
+          },
+          "line": 88,
+          "slot": 1,
+          "width": 128
+        }
+      ],
+      "unsupported": {}
+    },
+    "64": {
+      "producers": [
+        {
+          "call": "CALLIXXXXX(P(0,1),ZERO,NHEL(1),+1,FLAVOR(1),W(3))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              1,
+              0,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              -1,
+              0,
+              0
+            ]
+          },
+          "line": 101,
+          "slot": 3,
+          "width": 64
+        },
+        {
+          "call": "CALLOXXXXX(P(0,2),ZERO,NHEL(2),-1,FLAVOR(2),W(2))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              1,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              -1,
+              0
+            ]
+          },
+          "line": 102,
+          "slot": 2,
+          "width": 64
+        },
+        {
+          "call": "CALLVXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(1))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              0,
+              1
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              0,
+              1
+            ]
+          },
+          "line": 103,
+          "slot": 1,
+          "width": 64
+        }
+      ],
+      "unsupported": {}
+    }
+  }
+}

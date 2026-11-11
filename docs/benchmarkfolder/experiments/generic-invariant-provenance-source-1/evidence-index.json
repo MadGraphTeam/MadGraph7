@@ -1,0 +1,316 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3736,
+      "sha256": "33b7b0515a3e0fc93d409b25fa25f61e6101f12addd33a0238bae992264a153e"
+    },
+    "source/01-metadata-caller.patch": {
+      "bytes": 56580,
+      "sha256": "89a9902e5338e2b48b1ef1cadb2d957496f05b0b066ea1dda9b8241d62b91929"
+    },
+    "source/02-scientific-consumer-CONTRACT.md": {
+      "bytes": 2592,
+      "sha256": "05a8d26f78d1e928ad1ee0c82602dc61f54f939ee19c229440a942a2f2a3020c"
+    },
+    "source/README.md": {
+      "bytes": 7867,
+      "sha256": "e17aa1b100d9eb6e0f0b8af60328aaaeec3e665ac3acb5a043a97bc07c753d8e"
+    },
+    "source/base/Template/loop_material/StandAlone/SubProcesses/makefile": {
+      "bytes": 9428,
+      "sha256": "5f775bf9193075997245a1f7f2010e293801637ee6045fb8472be1e2d3aa66f4"
+    },
+    "source/base/madgraph/iolibs/helas_call_writers.py": {
+      "bytes": 128403,
+      "sha256": "7a267fa78b75fa5b8efc4fc2f595769f938ee59919f55c6fffc3ab86ec5707ea"
+    },
+    "source/base/madgraph/iolibs/template_files/loop_optimized/helas_calls_split.inc": {
+      "bytes": 3087,
+      "sha256": "372448d005dd9a3269979d9ce8589d6e2de8ccacb9be930cd8e3e84f9b09c66c"
+    },
+    "source/base/madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc": {
+      "bytes": 7961,
+      "sha256": "3c2925d00c555bba18e24ab6272037c18c29d54947b0ad46a8cb2629e4bd1692"
+    },
+    "source/base/madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "bytes": 103531,
+      "sha256": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+    },
+    "source/base/madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc": {
+      "bytes": 21896,
+      "sha256": "d101fdedc0d4a419effe4f591c1e1bb02347712eb0ac2c05a85c18f7d2f58a38"
+    },
+    "source/base/madgraph/loop/loop_exporters.py": {
+      "bytes": 218323,
+      "sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74"
+    },
+    "source/factory-formula.patch": {
+      "bytes": 3416,
+      "sha256": "1a93fc82e1fb3f04a8c04b8c2bc770d53c985410dfe53b94299449095e7e6e34"
+    },
+    "source/generation-evidence/born-grouped/invariant_bounds.f90": {
+      "bytes": 7409,
+      "sha256": "6062ddf72b26067402d14f706f077bf87632f160298692fc9bf55be1cc2a524c"
+    },
+    "source/generation-evidence/born-grouped/invariant_bounds_data.inc": {
+      "bytes": 1091,
+      "sha256": "42d6f794c39447288a879e25a33346b9c5a65c3f5a8794583bedd34bd27d60ad"
+    },
+    "source/generation-evidence/born-grouped/invariant_environment.c": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    },
+    "source/generation-evidence/born-grouped/invariant_provenance.json": {
+      "bytes": 17213,
+      "sha256": "9865916cd7848221fe2285253703307a05389849b8919d111333dd121fded247"
+    },
+    "source/generation-evidence/born-grouped/loop_CT_calls_1.f": {
+      "bytes": 3024,
+      "sha256": "1c6815739aaf780ccf036f5d7541b892740742f76c34ec229b9799a4cb8ed8cd"
+    },
+    "source/generation-evidence/born-internal-grouped/invariant_bounds.f90": {
+      "bytes": 7409,
+      "sha256": "6062ddf72b26067402d14f706f077bf87632f160298692fc9bf55be1cc2a524c"
+    },
+    "source/generation-evidence/born-internal-grouped/invariant_bounds_data.inc": {
+      "bytes": 3971,
+      "sha256": "e05226b810dc55ee94b0a2835b67ec465991b51adb9eba68d510fd23115adcde"
+    },
+    "source/generation-evidence/born-internal-grouped/invariant_environment.c": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    },
+    "source/generation-evidence/born-internal-grouped/invariant_provenance.json": {
+      "bytes": 76989,
+      "sha256": "af8b7e983ecfef302d914737ed78e50df0845f480ef03271dd9ee7d26f613f52"
+    },
+    "source/generation-evidence/born-internal-grouped/loop_CT_calls_1.f": {
+      "bytes": 3961,
+      "sha256": "c8311c70a1ec784b2e818d870fda8bcd5f658db8e6a6ec031527fa7863be591c"
+    },
+    "source/generation-evidence/born-internal-ungrouped/invariant_bounds.f90": {
+      "bytes": 7409,
+      "sha256": "6062ddf72b26067402d14f706f077bf87632f160298692fc9bf55be1cc2a524c"
+    },
+    "source/generation-evidence/born-internal-ungrouped/invariant_bounds_data.inc": {
+      "bytes": 5822,
+      "sha256": "a26e058423ae26959f66fe9d95e750fd1b6cffd29a203cec4b70acfe40464ba5"
+    },
+    "source/generation-evidence/born-internal-ungrouped/invariant_environment.c": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    },
+    "source/generation-evidence/born-internal-ungrouped/invariant_provenance.json": {
+      "bytes": 108609,
+      "sha256": "ee09a8a321a8f6f830000ce3b839e4b69f4c0be1b3fa7cb3873b69b22afb2da4"
+    },
+    "source/generation-evidence/born-internal-ungrouped/loop_CT_calls_1.f": {
+      "bytes": 4483,
+      "sha256": "59ebf9dde4553709c5d4275422cfc2597257dd72442245e8dc1415f840b0fd39"
+    },
+    "source/generation-evidence/born-permuted/invariant_bounds.f90": {
+      "bytes": 7409,
+      "sha256": "6062ddf72b26067402d14f706f077bf87632f160298692fc9bf55be1cc2a524c"
+    },
+    "source/generation-evidence/born-permuted/invariant_bounds_data.inc": {
+      "bytes": 1091,
+      "sha256": "9b2b0c88b8d7b7c616beadbe6f89a0f4f8b7785db848c467534b4d9964d5d4da"
+    },
+    "source/generation-evidence/born-permuted/invariant_environment.c": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    },
+    "source/generation-evidence/born-permuted/invariant_provenance.json": {
+      "bytes": 17213,
+      "sha256": "c955c345705a2bdcd299977b1f7f13343c9abe0ac6cb3197493901c56350cf43"
+    },
+    "source/generation-evidence/born-permuted/loop_CT_calls_1.f": {
+      "bytes": 3024,
+      "sha256": "03906f4b93af97e226e52beb71d437766dcf72eacb49ab5ab35ff055e1bae0a0"
+    },
+    "source/generation-evidence/born-ungrouped/invariant_bounds.f90": {
+      "bytes": 7409,
+      "sha256": "6062ddf72b26067402d14f706f077bf87632f160298692fc9bf55be1cc2a524c"
+    },
+    "source/generation-evidence/born-ungrouped/invariant_bounds_data.inc": {
+      "bytes": 1091,
+      "sha256": "42d6f794c39447288a879e25a33346b9c5a65c3f5a8794583bedd34bd27d60ad"
+    },
+    "source/generation-evidence/born-ungrouped/invariant_environment.c": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    },
+    "source/generation-evidence/born-ungrouped/invariant_provenance.json": {
+      "bytes": 17213,
+      "sha256": "e780ff60fe5394471b99c2ee6d1792f1bf73a175b776a6d1f3dd5d70d6e7e33e"
+    },
+    "source/generation-evidence/born-ungrouped/loop_CT_calls_1.f": {
+      "bytes": 3018,
+      "sha256": "5b750f4336293b5fef688419ae930be29e82196b5d548db86bbb22837e66f6f1"
+    },
+    "source/generation-evidence/loop-induced-group-prefix/invariant_bounds.f90": {
+      "bytes": 7417,
+      "sha256": "f9014882993633c380169e84ec12fa78bce6f26e20dcdf7924009c5bc59feb14"
+    },
+    "source/generation-evidence/loop-induced-group-prefix/invariant_bounds_data.inc": {
+      "bytes": 1954,
+      "sha256": "2ac978755a684ca2528ac9359561afd1184eb07441317afd50ba63841a40e883"
+    },
+    "source/generation-evidence/loop-induced-group-prefix/invariant_environment.c": {
+      "bytes": 687,
+      "sha256": "8b51fd896c7123001bbe046dd496b11fabd5a6baf194c3029933e85320d04927"
+    },
+    "source/generation-evidence/loop-induced-group-prefix/invariant_provenance.json": {
+      "bytes": 41275,
+      "sha256": "52260eeb54f0d9d4d7202213dfdeb2af74a88a67d757c24386b77edb18fd7eee"
+    },
+    "source/generation-evidence/loop-induced-group-prefix/loop_CT_calls_1.f": {
+      "bytes": 3437,
+      "sha256": "fb6ef686353dffc0092a32539ce796489d96cc368d5d8d7ef1ad31467acf71dd"
+    },
+    "source/generation-evidence/loop-induced/invariant_bounds.f90": {
+      "bytes": 7409,
+      "sha256": "6062ddf72b26067402d14f706f077bf87632f160298692fc9bf55be1cc2a524c"
+    },
+    "source/generation-evidence/loop-induced/invariant_bounds_data.inc": {
+      "bytes": 1954,
+      "sha256": "2ac978755a684ca2528ac9359561afd1184eb07441317afd50ba63841a40e883"
+    },
+    "source/generation-evidence/loop-induced/invariant_environment.c": {
+      "bytes": 683,
+      "sha256": "c09dc7371ba5c606118b2b62a3d17b6cf6aaac5c30c0ec2f65da290580d56140"
+    },
+    "source/generation-evidence/loop-induced/invariant_provenance.json": {
+      "bytes": 41271,
+      "sha256": "7da7e275d0fec1a12e304fad3185de687e5728f78870650b853d8b162abde32b"
+    },
+    "source/generation-evidence/loop-induced/loop_CT_calls_1.f": {
+      "bytes": 3377,
+      "sha256": "782b0b0ff18a94f254d3764e9b66fa73e92446452099464b9b1e725b1e80b4d8"
+    },
+    "source/generation-results.json": {
+      "bytes": 47130,
+      "sha256": "3cdd37ad5313c9161eaed367cb139a0aa84826d22758b8550167d65d85393b3a"
+    },
+    "source/generation-tests.log": {
+      "bytes": 67473,
+      "sha256": "cafc5f5f56accdddc33ae3f755c2d569005a329cd41e04e164ace73a99ba213c"
+    },
+    "source/make_proposal.py": {
+      "bytes": 7906,
+      "sha256": "fba0a209ff03292038d8d8df21e33646f101ecf3b55cd38d5a0bddb8709cd18f"
+    },
+    "source/protocol-tests.log": {
+      "bytes": 2030,
+      "sha256": "dee2a889d36182a1c2b3ba6fad26f83bd67d401861a2ddd1065e6f993a923dd1"
+    },
+    "source/qualified/caller_bounds.f90": {
+      "bytes": 6893,
+      "sha256": "a0f941fc4ea7904bfd1e81880239637ad42e676f3a57ac47879f357a1241f71e"
+    },
+    "source/rendered-templates/helas_calls_split.inc": {
+      "bytes": 3213,
+      "sha256": "dbb13af5c44e0dde5caedf94e4026707eabd82f9473d958c9ae0f8f95705b799"
+    },
+    "source/rendered-templates/loop_matrix_standalone.inc": {
+      "bytes": 104470,
+      "sha256": "2fd43895847c7e9adf07af7b63aa2e0894dbed21de9df19ecb869b16967e9464"
+    },
+    "source/rendered-templates/mp_compute_loop_coefs.inc": {
+      "bytes": 22826,
+      "sha256": "31251a8759560f929007353877754c07cb4ce42742127dfd4ac924faa8c9baef"
+    },
+    "source/source-index.json": {
+      "bytes": 16170,
+      "sha256": "72c5f2729b0b176bc9ed71779dbf03d25189ac0ba5e176f7eb76cdec86de05f7"
+    },
+    "source/source-pins.json": {
+      "bytes": 7492,
+      "sha256": "8e91ab864eea1901c3ff3d35ba4a23c06d56ab18617e90c0d8723c01e4300f07"
+    },
+    "source/src/Template/loop_material/StandAlone/SubProcesses/makefile": {
+      "bytes": 10332,
+      "sha256": "e91da4384077878185079302dfc569c9f659fe21a3c0b1916fa17221d47f8239"
+    },
+    "source/src/madgraph/iolibs/helas_call_writers.py": {
+      "bytes": 128612,
+      "sha256": "abb5a735f581ed7a87cbacddca5d918e5f5bc4dba774df4b5f4ceef43690afca"
+    },
+    "source/src/madgraph/iolibs/template_files/loop_optimized/helas_calls_split.inc": {
+      "bytes": 3087,
+      "sha256": "372448d005dd9a3269979d9ce8589d6e2de8ccacb9be930cd8e3e84f9b09c66c"
+    },
+    "source/src/madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc": {
+      "bytes": 7961,
+      "sha256": "3c2925d00c555bba18e24ab6272037c18c29d54947b0ad46a8cb2629e4bd1692"
+    },
+    "source/src/madgraph/iolibs/template_files/loop_optimized/invariant_bounds.f90": {
+      "bytes": 7423,
+      "sha256": "5d2a099c29684a3a7b8749ba719add330fd44ad168a7b550ff842094709de44a"
+    },
+    "source/src/madgraph/iolibs/template_files/loop_optimized/invariant_environment.c": {
+      "bytes": 688,
+      "sha256": "5b82404bf31bb731e80d63c0187efe3cdc5e7a213373697124a7c888919f4196"
+    },
+    "source/src/madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "bytes": 103531,
+      "sha256": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+    },
+    "source/src/madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc": {
+      "bytes": 21896,
+      "sha256": "d101fdedc0d4a419effe4f591c1e1bb02347712eb0ac2c05a85c18f7d2f58a38"
+    },
+    "source/src/madgraph/loop/invariant_finalize.py": {
+      "bytes": 6544,
+      "sha256": "21c8b9d7134f2d8804acee83a770126e143902e318dbc8c8a4a62e4c0e0eaecb"
+    },
+    "source/src/madgraph/loop/invariant_provenance.py": {
+      "bytes": 18323,
+      "sha256": "67eb64ff5ae1ac99b06b4d20cec680422a68de36cee54f202ca80725ed01d28f"
+    },
+    "source/src/madgraph/loop/invariant_render.py": {
+      "bytes": 9041,
+      "sha256": "aabe8036533b37fcfdc307ab6855f756d010bed569f721717f512d1c9a48e74f"
+    },
+    "source/src/madgraph/loop/invariant_source.py": {
+      "bytes": 4645,
+      "sha256": "57c9de6057d2ea106d7eb260fabb4115842187d50d5734bfb5841c40f4d5b33a"
+    },
+    "source/src/madgraph/loop/loop_exporters.py": {
+      "bytes": 220523,
+      "sha256": "d98025030ecf10ecbe686a4ba47b8b7be6a76822e16940e1737c50a4bb43d38c"
+    },
+    "source/test_generation.py": {
+      "bytes": 9079,
+      "sha256": "4ff6a374ba3632e81aab9d1299cdfd9aa6a8a1832b9aa10d4ca78effbe615966"
+    },
+    "source/test_protocol.py": {
+      "bytes": 11710,
+      "sha256": "20299bd2f683089c7470c91f0586a14c6f499097de0c59e92794c4bb123e972b"
+    },
+    "source/verify.py": {
+      "bytes": 6033,
+      "sha256": "d52c88f820c4002c4725f628b2d7a6b9c8b0cd9c724b9fea561f305f1ca5a8b8"
+    },
+    "verify.py": {
+      "bytes": 7996,
+      "sha256": "f87599642f61fd053a4a3c1fbdd029781bd7ed5e15fc6b35d197e9df645e17ab"
+    }
+  },
+  "original_source_index": {
+    "path": "source/source-index.json",
+    "payloads": 71,
+    "sha256": "72c5f2729b0b176bc9ed71779dbf03d25189ac0ba5e176f7eb76cdec86de05f7"
+  },
+  "production_anchor": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "schema": "generic-invariant-provenance-public-source-v1",
+  "scope": {
+    "compiler_or_native_execution": false,
+    "full_model_closure": false,
+    "historical_generation_tests": 7,
+    "metadata_only": true,
+    "portable_protocol_tests": 17,
+    "scientific_dispatch": "legacy pass-through",
+    "scientific_environment_admission": false
+  }
+}

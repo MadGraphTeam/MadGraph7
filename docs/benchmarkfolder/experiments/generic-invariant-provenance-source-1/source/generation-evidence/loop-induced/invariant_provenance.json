@@ -1,0 +1,2129 @@
+{
+  "conservation": [
+    -1,
+    -1,
+    1
+  ],
+  "environment_contract": {
+    "call_graph_complete": false,
+    "complete": false,
+    "function_reference_closure_qualified": false,
+    "reason": "model source missing"
+  },
+  "graph": {
+    "conflicting_slots": [],
+    "has_born": false,
+    "leaves": {
+      "1": {
+        "is_part": true,
+        "leg": 1,
+        "mass": "ZERO",
+        "offshell": false,
+        "slot": 1,
+        "spin": 3,
+        "state": "initial",
+        "state_id": -1
+      },
+      "2": {
+        "is_part": true,
+        "leg": 2,
+        "mass": "ZERO",
+        "offshell": false,
+        "slot": 2,
+        "spin": 3,
+        "state": "initial",
+        "state_id": -1
+      },
+      "3": {
+        "is_part": true,
+        "leg": 3,
+        "mass": "mdl_MH",
+        "offshell": false,
+        "slot": 3,
+        "spin": 1,
+        "state": "final",
+        "state_id": 1
+      }
+    },
+    "legs": {
+      "1": {
+        "offshell": false,
+        "pdg": 21,
+        "state": false
+      },
+      "2": {
+        "offshell": false,
+        "pdg": 21,
+        "state": false
+      },
+      "3": {
+        "offshell": false,
+        "pdg": 25,
+        "state": true
+      }
+    },
+    "nexternal": 3,
+    "ninitial": 2,
+    "process": "g g > h",
+    "unsupported_source_features": []
+  },
+  "protected": [
+    true,
+    true,
+    true
+  ],
+  "routes": [
+    {
+      "amplitude": 1,
+      "call": "CALL %(proc_prefix)sLOOP_3(1,2,3,DCMPLX(mdl_MB),DCMPLX(mdl_MB),DCMPLX(mdl_MB),3,I_SO,1)",
+      "loopnum": 1,
+      "masses": [
+        "mdl_MB",
+        "mdl_MB",
+        "mdl_MB"
+      ],
+      "modes": {
+        "1": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "2": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "4": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "5": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        }
+      },
+      "n": 3,
+      "pairing": [
+        1,
+        1,
+        1
+      ],
+      "rank": 3,
+      "route": 1,
+      "we": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "amplitude": 2,
+      "call": "CALL %(proc_prefix)sLOOP_3(1,2,3,DCMPLX(mdl_MB),DCMPLX(mdl_MB),DCMPLX(mdl_MB),3,I_SO,2)",
+      "loopnum": 2,
+      "masses": [
+        "mdl_MB",
+        "mdl_MB",
+        "mdl_MB"
+      ],
+      "modes": {
+        "1": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "2": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "4": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "5": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        }
+      },
+      "n": 3,
+      "pairing": [
+        1,
+        1,
+        1
+      ],
+      "rank": 3,
+      "route": 2,
+      "we": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "amplitude": 3,
+      "call": "CALL %(proc_prefix)sLOOP_3(1,2,3,DCMPLX(mdl_MT),DCMPLX(mdl_MT),DCMPLX(mdl_MT),3,I_SO,3)",
+      "loopnum": 3,
+      "masses": [
+        "mdl_MT",
+        "mdl_MT",
+        "mdl_MT"
+      ],
+      "modes": {
+        "1": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "2": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "4": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "5": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        }
+      },
+      "n": 3,
+      "pairing": [
+        1,
+        1,
+        1
+      ],
+      "rank": 3,
+      "route": 3,
+      "we": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "amplitude": 4,
+      "call": "CALL %(proc_prefix)sLOOP_3(1,2,3,DCMPLX(mdl_MT),DCMPLX(mdl_MT),DCMPLX(mdl_MT),3,I_SO,4)",
+      "loopnum": 4,
+      "masses": [
+        "mdl_MT",
+        "mdl_MT",
+        "mdl_MT"
+      ],
+      "modes": {
+        "1": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "2": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "4": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                1,
+                1,
+                -1
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 2,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                1,
+                0
+              ],
+              "ops": 4,
+              "signed": [
+                1,
+                1,
+                0
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        },
+        "5": {
+          "chords": [
+            {
+              "mult": [
+                1,
+                1,
+                1
+              ],
+              "ops": 6,
+              "signed": [
+                -1,
+                -1,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 2,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                1
+              ],
+              "ops": 4,
+              "signed": [
+                0,
+                -1,
+                1
+              ]
+            }
+          ],
+          "corners": [
+            {
+              "mult": [
+                0,
+                0,
+                1
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "mult": [
+                0,
+                1,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "mult": [
+                1,
+                0,
+                0
+              ],
+              "ops": 1,
+              "signed": [
+                -1,
+                0,
+                0
+              ]
+            }
+          ],
+          "external_slots": [
+            1,
+            2,
+            3
+          ],
+          "pair_class": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "supported": true
+        }
+      },
+      "n": 3,
+      "pairing": [
+        1,
+        1,
+        1
+      ],
+      "rank": 3,
+      "route": 4,
+      "we": [
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "routing_contract": {
+    "corner_helpers": [
+      "ML5_0_LOOP_3"
+    ],
+    "first_shift": "actual zero-seeded closure, not replaced by zero",
+    "modes": [
+      1,
+      2,
+      4,
+      5
+    ],
+    "scope": "TIRust routing only; other adapter arithmetic requires a separate join"
+  },
+  "schema": 1,
+  "source_bindings": {
+    "Source/DHELAS/FFS1L1_2.f": {
+      "bytes": 3133,
+      "sha256": "85e038825d8566496e75d98858f5d5377eb813503c5fa502f8ad17821c7e2e5e"
+    },
+    "Source/DHELAS/FFS1L2_1.f": {
+      "bytes": 3127,
+      "sha256": "3269dc21bb6cdb1156b1a9a41573457ce9544c454ff658909bcfc4be577144be"
+    },
+    "Source/DHELAS/FFV1L1_2.f": {
+      "bytes": 5117,
+      "sha256": "737d0e41093b873c1da0344a0d5c3b7af66ec20bb616628efcc215ad1d53922e"
+    },
+    "Source/DHELAS/FFV1L2_1.f": {
+      "bytes": 5201,
+      "sha256": "a6530a2b8ca5fa76ff48eed8de6cae0f2de0ff5dc108c8141c9a6e1578bd86f7"
+    },
+    "Source/DHELAS/MP_FFS1L1_2.f": {
+      "bytes": 3141,
+      "sha256": "86fd74d0b6868fe625affa71da752f06d7fa0fee06ec62dfd647bf828f0cb0bb"
+    },
+    "Source/DHELAS/MP_FFS1L2_1.f": {
+      "bytes": 3135,
+      "sha256": "235cf49165f76a9e17b37155bb32410b1d23370859878698813da0e256e9a5ec"
+    },
+    "Source/DHELAS/MP_FFV1L1_2.f": {
+      "bytes": 5125,
+      "sha256": "dda39c9a424f035959553f0f2388b4af0afb1ba0bc7bed604f31e8b98c5c8529"
+    },
+    "Source/DHELAS/MP_FFV1L2_1.f": {
+      "bytes": 5209,
+      "sha256": "5ac9521221dbf20cf977971be73b4f6e8c5e04631c5f5cafe7660af1241f52ef"
+    },
+    "Source/DHELAS/MP_VVS1_0.f": {
+      "bytes": 569,
+      "sha256": "f279615f226f833fcb446f8e42f72384c774bbd19b5ea5ca6fffff2b6213f16c"
+    },
+    "Source/DHELAS/VVS1_0.f": {
+      "bytes": 557,
+      "sha256": "867faa1d6166ac3784eaf275ea32d4a2cbcbc87e1c5a8fca4f861efd920706e5"
+    },
+    "Source/DHELAS/aloha_functions.f": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    },
+    "SubProcesses/P0/CT_interface.f": {
+      "bytes": 18703,
+      "sha256": "fe2971be270a6bb5aec968775f3806b8a34ca6dcccfe489b44673976def00f41"
+    },
+    "SubProcesses/P0/TIRUST_interface.f": {
+      "bytes": 14210,
+      "sha256": "ba0f89cd8e6322999b4f71cf9ee541d3137997d8b707b935b02d174b6d3e2c93"
+    },
+    "SubProcesses/P0/TIR_interface.f": {
+      "bytes": 17308,
+      "sha256": "02970d156c61de844a3fd60eda96e798fbf28a1e8569b08da882635b38f0f3b6"
+    },
+    "SubProcesses/P0/coef_construction_1.f": {
+      "bytes": 4726,
+      "sha256": "e77ab8f7f1ea28359fc279da89dce9e425016758af510e435b0579b55980267f"
+    },
+    "SubProcesses/P0/helas_calls_ampb_1.f": {
+      "bytes": 2974,
+      "sha256": "61cce797cc3727272ddbf655e2c01ec260c03e2978ff391827ea225fe6ce7b52"
+    },
+    "SubProcesses/P0/improve_ps.f": {
+      "bytes": 28307,
+      "sha256": "ad94b6e56655a3b33e2773e637fc1ae978f5f274491abbbd4085fc12246634e2"
+    },
+    "SubProcesses/P0/loop_CT_calls_1.f": {
+      "bytes": 3377,
+      "sha256": "782b0b0ff18a94f254d3764e9b66fa73e92446452099464b9b1e725b1e80b4d8"
+    },
+    "SubProcesses/P0/loop_matrix.f": {
+      "bytes": 106709,
+      "sha256": "3e9e031a5eb07fe1d359fc8feb98ea6596ba0369432560dc7e023057da675634"
+    },
+    "SubProcesses/P0/mp_coef_construction_1.f": {
+      "bytes": 4935,
+      "sha256": "eb0a4b5070a7985f12f89f7b7e45bb87eb81f47696928a861d0f753f6624a3bb"
+    },
+    "SubProcesses/P0/mp_compute_loop_coefs.f": {
+      "bytes": 22462,
+      "sha256": "0a16abf797df30eefeb96ac35721bd942ceed8087e8a8039e534deb4176c744c"
+    },
+    "SubProcesses/P0/mp_helas_calls_ampb_1.f": {
+      "bytes": 2695,
+      "sha256": "2a512487fb29cfbf1fe10cacdcf6cf0b76ac0f464e6ba3da7bd18f52b07d35e1"
+    },
+    "SubProcesses/P0/pmass.inc": {
+      "bytes": 67,
+      "sha256": "9143e79759ec34d24d725617dda2f7f145f3cef0150774ac225af812a07894e0"
+    }
+  },
+  "source_proof": {
+    "128": {
+      "producers": [
+        {
+          "call": "CALLMP_VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              1,
+              0,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              -1,
+              0,
+              0
+            ]
+          },
+          "line": 82,
+          "slot": 1,
+          "width": 128
+        },
+        {
+          "call": "CALLMP_VXXXXX(P(0,2),ZERO,NHEL(2),-1,W(2))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              1,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              -1,
+              0
+            ]
+          },
+          "line": 83,
+          "slot": 2,
+          "width": 128
+        },
+        {
+          "call": "CALLMP_SXXXXX(P(0,3),+1,W(3))",
+          "caller": "mp_helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              0,
+              1
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              0,
+              1
+            ]
+          },
+          "line": 84,
+          "slot": 3,
+          "width": 128
+        }
+      ],
+      "unsupported": {}
+    },
+    "64": {
+      "producers": [
+        {
+          "call": "CALLVXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              1,
+              0,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              -1,
+              0,
+              0
+            ]
+          },
+          "line": 97,
+          "slot": 1,
+          "width": 64
+        },
+        {
+          "call": "CALLVXXXXX(P(0,2),ZERO,NHEL(2),-1,W(2))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              1,
+              0
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              -1,
+              0
+            ]
+          },
+          "line": 98,
+          "slot": 2,
+          "width": 64
+        },
+        {
+          "call": "CALLSXXXXX(P(0,3),+1,W(3))",
+          "caller": "helas_calls_ampb_1.f",
+          "expression": {
+            "mult": [
+              0,
+              0,
+              1
+            ],
+            "ops": 0,
+            "signed": [
+              0,
+              0,
+              1
+            ]
+          },
+          "line": 99,
+          "slot": 3,
+          "width": 64
+        }
+      ],
+      "unsupported": {}
+    }
+  }
+}

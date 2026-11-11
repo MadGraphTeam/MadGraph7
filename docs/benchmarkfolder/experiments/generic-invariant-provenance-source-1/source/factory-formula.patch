@@ -1,0 +1,89 @@
+--- qualified/caller_bounds.f90
++++ proposal/invariant_bounds.f90
+@@ -1,5 +1,5 @@
+ ! SOURCE ONLY. No FP arithmetic, implicit context, event IDs, or allowlist.
+-module ml_private_cms_caller_bounds
++module %(proc_prefix)sinvariant_bounds
+   use, intrinsic :: iso_c_binding, only: c_int64_t
+   implicit none
+   private
+@@ -7,7 +7,7 @@
+   integer, parameter, public :: zero_bound=-1000000
+   public :: read_kinematic_environment_token, environment_ok, environment_unchanged
+   public :: route_matches, build_chord_bounds, finish_difference_bounds
+-  public :: producer_kind_ok
++  public :: producer_kind_ok, external_slots_for_route
+   interface
+     function read_kinematic_environment_token() result(token) &
+         bind(C,name='ml_private_kinematic_environment_token')
+@@ -15,7 +15,7 @@
+       integer(c_int64_t) :: token
+     end function
+   end interface
+-  include 'cms_bounds_data.inc'
++  include 'invariant_bounds_data.inc'
+ contains
+   logical function producer_kind_ok(mode,width,genuine_qp) result(ok)
+     integer,intent(in)::mode,width
+@@ -111,25 +111,39 @@
+   logical function route_matches(route,n,nw,we,pairing) result(ok)
+     integer,intent(in)::route,n,nw,we(nw),pairing(n)
+     ok=.false.
+-    if(route<1.or.route>26) return
++    if(route<1.or.route>route_count) return
+     if(n/=route_n(route).or.nw/=route_nw(route)) return
+     if(any(we/=route_we(:nw,route))) return
+     if(any(pairing/=route_pairing(:n,route))) return
+     ok=.true.
+   end function
+ 
++  subroutine external_slots_for_route(route,mode,slots,ok)
++    integer,intent(in)::route,mode
++    integer,intent(out)::slots(external_count)
++    logical,intent(out)::ok
++    integer::k
++    slots=0;ok=.false.
++    if(route<1.or.route>route_count) return
++    k=mode_slot(mode)
++    if(k==0) return
++    if(.not.route_supported(route,k)) return
++    slots=route_external(:,route,k)
++    ok=all(slots>0)
++  end subroutine
++
+   subroutine build_chord_bounds(route,mode,width,n,external_bits,environment_valid, &
+       chord_error,pair_class,have_chord)
+     integer,intent(in)::route,mode,width,n
+-    integer(ik),intent(in)::external_bits(2,0:3,4)
++    integer(ik),intent(in)::external_bits(2,0:3,external_count)
+     logical,intent(in)::environment_valid
+     integer,intent(out)::chord_error(0:3,n),pair_class(n,n)
+     logical,intent(out)::have_chord(n)
+-    integer:: slot,p,emin,mu,e,s,L,up(0:3,4),dummy,terms(4),total,err(2),m
++    integer:: slot,p,emin,mu,e,s,L,up(0:3,external_count),dummy,terms(external_count),total,err(2),m
+     logical::finite,iszero
+     chord_error=zero_bound;pair_class=0;have_chord=.false.
+     if(.not.environment_valid) return
+-    if(route<1.or.route>26) return
++    if(route<1.or.route>route_count) return
+     if(n/=route_n(route)) return
+     slot=mode_slot(mode)
+     if(slot==0) return
+@@ -141,7 +155,7 @@
+       p=113;emin=-16382
+     endif
+     if(.not.route_supported(route,slot)) return
+-    do e=1,4
++    do e=1,external_count
+       do mu=0,3
+         call upper_exp(external_bits(2,mu,e),width,dummy,finite,iszero)
+         if(.not.finite.or..not.iszero) return
+@@ -155,7 +169,7 @@
+       if(L<0.or.L>1000000) return ! metadata sanity, L*u <<1/2
+       do mu=0,3
+         terms=zero_bound
+-        do e=1,4
++        do e=1,external_count
+           m=route_mult(e,s,route,slot)
+           if(m<0.or.m>1000000) return
+           if(m>0.and.up(mu,e)/=zero_bound) terms(e)=up(mu,e)+clog2(m)
