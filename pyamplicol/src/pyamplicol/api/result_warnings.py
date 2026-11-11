@@ -138,7 +138,7 @@ def numerical_warnings(
             )
         elif status == "failed":
             failures = getattr(lane, "failures", ())
-            reason = failures[0].reason if failures else lane.detail
+            reason = failures[0].detail if failures else lane.detail
             found.setdefault("failed", []).append((index, reason))
     out = []
     for kind in ("best-effort", "failed"):
