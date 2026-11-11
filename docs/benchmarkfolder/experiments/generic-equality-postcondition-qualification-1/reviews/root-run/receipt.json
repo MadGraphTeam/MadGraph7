@@ -1,0 +1,46 @@
+{
+  "build_terminal_sha256": "a12fd704ab54e935028258299239beb62f6d366620f990e0130db4f9df4fa506",
+  "native_execution_attempts": 0,
+  "physical_or_performance_qualified": false,
+  "replay_history": [
+    {
+      "reason": "Root compared integer-key in-memory mode_status to JSON string-key dictionary before normalization; no native/source failure.",
+      "status": "failed",
+      "tool_chunk": "ab5841"
+    },
+    {
+      "reason": "Root used maps field files instead of retained ELF schema; no native/source failure.",
+      "status": "failed",
+      "tool_chunk": "1d46a5"
+    },
+    {
+      "comparison": "Normalize parser result through JSON and use actual retained ELF map schema.",
+      "status": "passed"
+    }
+  ],
+  "run_terminal_sha256": "7a67bf86babae2497c65c2c421995c7038edd1e19186c1d5ed0ecc24f707f93e",
+  "snapshot_ownership_qualified": false,
+  "source_sha256": "4e3878690b366992d1dad8e43ae650a62362220d7bfc21e85850228d2aeef12d",
+  "status": "passed",
+  "total_helper_calls": 67920,
+  "variants": {
+    "checked": {
+      "counts": {
+        "accepts": 10520,
+        "executed_mode_observations": 33960,
+        "refusals": 23440
+      },
+      "input_words": 66320,
+      "observations_sha256": "a40826258c4842ac4ec21fa477a28f6b75670484387ea8c9c30ddfdafdbb4be7"
+    },
+    "optimized": {
+      "counts": {
+        "accepts": 10520,
+        "executed_mode_observations": 33960,
+        "refusals": 23440
+      },
+      "input_words": 66320,
+      "observations_sha256": "a40826258c4842ac4ec21fa477a28f6b75670484387ea8c9c30ddfdafdbb4be7"
+    }
+  }
+}

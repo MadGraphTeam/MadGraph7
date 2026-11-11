@@ -406,6 +406,17 @@ counterexamples expose a remaining parent-caller interval gap between capture,
 producer batches and consumption. Full caller lifetime and scientific admission
 remain false until those parent effects and possible momentum writes are proved.
 
+The [standalone exact-geometry helper](experiments/generic-equality-postcondition-qualification-1/README.md)
+checks a conservative alternative: integer arithmetic proves that each supplied
+momentum component equals its signed external-momentum sum. Both checked and
+optimized Fortran builds pass all 1,698 cases in twenty explicitly observed
+rounding, exception and FTZ/DAZ settings: 67,920 calls, with no skipped settings.
+Their complete transcripts are identical, and observed environment fields and
+restored state remain unchanged. Independent rational and integer-capacity
+checks retain ten exact equalities that the bounded helper conservatively
+refuses. Snapshot ownership, actual caller inputs, the final floating-point dot
+product, physical amplitudes and performance remain separate open gates.
+
 The [private CMS amplitude trial](experiments/kinematic-invariant-amplitude-qualification-1/README.md)
 compiles the Fortran prototype and preserves the ordinary point's exact
 original/candidate observations. The first stress point retains failed DP

@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/nix/store/s2946bl9ciwzhafd66jhansrmxq9xhqm-binutils-2.46/bin/nm",
+    "--undefined-only",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-equality-postcondition-qualification-work-1/build/optimized/exact_geometry.o"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-equality-postcondition-qualification-work-1/build/optimized",
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T16:30:42.888505+00:00"
+}

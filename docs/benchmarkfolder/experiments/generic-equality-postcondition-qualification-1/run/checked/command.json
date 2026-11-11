@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-equality-postcondition-qualification-work-1/build/checked/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-equality-postcondition-qualification-proposal-1/fixtures.hex",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-equality-postcondition-qualification-work-1/run/checked/observations.txt"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-equality-postcondition-qualification-work-1/run/checked",
+  "new_session": false,
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T16:34:55.971939+00:00"
+}

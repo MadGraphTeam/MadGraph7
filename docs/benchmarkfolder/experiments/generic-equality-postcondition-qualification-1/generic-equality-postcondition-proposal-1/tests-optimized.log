@@ -1,0 +1,17 @@
+test_Fortran_is_unexecuted_integer_only_source (test_exact_geometry.ExactGeometryTests.test_Fortran_is_unexecuted_integer_only_source) ... ok
+test_alignment_magnitude_and_absolute_sum_guards (test_exact_geometry.ExactGeometryTests.test_alignment_magnitude_and_absolute_sum_guards) ... ok
+test_exponent_gap_and_full_format_range_fail_closed (test_exact_geometry.ExactGeometryTests.test_exponent_gap_and_full_format_range_fail_closed) ... ok
+test_extreme_and_subnormal_equalities (test_exact_geometry.ExactGeometryTests.test_extreme_and_subnormal_equalities) ... ok
+test_four_retained_conditional_witnesses (test_exact_geometry.ExactGeometryTests.test_four_retained_conditional_witnesses) ... ok
+test_malformed_shape_kind_and_words (test_exact_geometry.ExactGeometryTests.test_malformed_shape_kind_and_words) ... ok
+test_mathematically_equal_cancellation_does_not_bypass_product_guard (test_exact_geometry.ExactGeometryTests.test_mathematically_equal_cancellation_does_not_bypass_product_guard) ... ok
+test_minimum_default_integer_and_power_two_coefficient (test_exact_geometry.ExactGeometryTests.test_minimum_default_integer_and_power_two_coefficient) ... ok
+test_nonfinite_and_nonreal_words_are_rejected_even_when_coefficient_zero (test_exact_geometry.ExactGeometryTests.test_nonfinite_and_nonreal_words_are_rejected_even_when_coefficient_zero) ... ok
+test_random_exact_cases_against_independent_fraction_oracle (test_exact_geometry.ExactGeometryTests.test_random_exact_cases_against_independent_fraction_oracle) ... ok
+test_random_finite_words_have_no_false_acceptance (test_exact_geometry.ExactGeometryTests.test_random_finite_words_have_no_false_acceptance) ... ok
+test_signed_zero_all_real_and_imaginary_positions (test_exact_geometry.ExactGeometryTests.test_signed_zero_all_real_and_imaginary_positions) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.905s
+
+OK

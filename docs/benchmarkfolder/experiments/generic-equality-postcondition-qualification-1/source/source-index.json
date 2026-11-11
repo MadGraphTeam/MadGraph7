@@ -1,0 +1,102 @@
+{
+  "CPU": 12,
+  "CPU_exclusive": false,
+  "address_space_bytes": 4294967296,
+  "caps_seconds": {
+    "build": 180,
+    "run": 180
+  },
+  "cleanup_reserve_seconds": 60,
+  "expected_accept": 526,
+  "expected_refuse": 1172,
+  "files": {
+    "README.md": {
+      "bytes": 8224,
+      "sha256": "1b7c92fe6a4ff4aaa4fe4f5ec3364c0945b46f6f656ebaa41b61071bfedac278"
+    },
+    "analyze.py": {
+      "bytes": 7648,
+      "sha256": "85f1dd68d137bf591c3602af53b46febe99bf6348d173c8e3c05f452bee332d5"
+    },
+    "ancestry.json": {
+      "bytes": 1781,
+      "sha256": "5402a9cfab8ac2744ec7f3d11322db8b2afe7d92f6a1561fbbd5ae81d776e62c"
+    },
+    "controller.py": {
+      "bytes": 21642,
+      "sha256": "37fbc4ec271170040262e12e03945220ae728dfdbb8863002bcea771c98e4ba8"
+    },
+    "corpus.py": {
+      "bytes": 17124,
+      "sha256": "ccb81d220d9a56be8e8f67f2da0c6c046037dffd0ff3396328e89ba0bb820aba"
+    },
+    "driver.f90": {
+      "bytes": 7286,
+      "sha256": "fa110cc2ebd799a221d0f86318719cb0f1d067519ae1fd0de642aba86a32831b"
+    },
+    "exact_geometry.f90": {
+      "bytes": 5688,
+      "sha256": "4dfedb9f940dd8e0565ff1ff34b9aa0d56635a5e5d8c52b328359fbfc754afda"
+    },
+    "expectations.json": {
+      "bytes": 787423,
+      "sha256": "11c9211edf2bf49991121f95152da213a72b1faf7bcd98c30dbbccb26d5e3021"
+    },
+    "fenv_observer.c": {
+      "bytes": 7979,
+      "sha256": "ed3c9f705398c4d008dae7ae055732420b8b0b11d39faa6f5dc1d04aa058c6f7"
+    },
+    "fixtures.hex": {
+      "bytes": 2230836,
+      "sha256": "7069f716495ea21c8d124b518c3438481df941f9e24d32e46e5f49605abbd74e"
+    },
+    "input-pins.json": {
+      "bytes": 8415,
+      "sha256": "496094487d2a9cf91509201cb3676ff508d0816ae9cdf7778703cdb1a85e2173"
+    },
+    "ownership.py": {
+      "bytes": 3064,
+      "sha256": "a7a741337b40788e480fd32c13ae9132be6d7eb2b96a2ca426041b9db44f9f80"
+    },
+    "source-review.json": {
+      "bytes": 1451,
+      "sha256": "7bff538030820b78ff8209b0bdc37f7ab55edf957ff693c5d90ee202e32c7061"
+    },
+    "test-receipt.json": {
+      "bytes": 1675,
+      "sha256": "d42d07a8b211a33d015b5dd3c74014aa0c244085e17ded44ffd2e35adaf31ae5"
+    },
+    "test_proposal.py": {
+      "bytes": 8716,
+      "sha256": "edf7f30e1d10a4806aa2cf678f08ce0355bac7a24d4d40cdc459fac483a90ce4"
+    },
+    "tests-normal.log": {
+      "bytes": 1757,
+      "sha256": "44524c5b978443426c3ddd2b5f265c91c6a84e6a7dc3d7a452d70074db928e28"
+    },
+    "tests-optimized.log": {
+      "bytes": 1757,
+      "sha256": "5a04676af48f7499738251fbad6062b07fa3dd76c7acf1dbf812977a89b43485"
+    },
+    "tool_environment.py": {
+      "bytes": 3682,
+      "sha256": "10ca7340f1e1ed95e372c0ed0fde4a8072cbcd4b9dede3ddb5726586d8b8f88e"
+    },
+    "toolchain-pins.json": {
+      "bytes": 12441,
+      "sha256": "d130e5c61691adf9b70b5dbf912567926241ecc20650d1a2557524f3818e17ba"
+    },
+    "unit_runtime.py": {
+      "bytes": 6981,
+      "sha256": "4552d6b3bcd8d37a11f2eba81f505e71769010314246c4382e20d15fd441b0b5"
+    }
+  },
+  "fixture_cases": 1698,
+  "helper_parent_index_sha256": "3d2e4b775334374082771f670996e67138205b66cf7d5a7ff084013235046f4c",
+  "helper_sha256": "4dfedb9f940dd8e0565ff1ff34b9aa0d56635a5e5d8c52b328359fbfc754afda",
+  "native_stages_started": false,
+  "pure_tests_normal": 12,
+  "pure_tests_optimized": 12,
+  "schema": "private-exact-geometry-standalone-qualification-source-index-v1",
+  "scope": "Uncompiled source-only separately admitted standalone helper tests; no scientific reducer/physical/lifetime/performance qualification."
+}

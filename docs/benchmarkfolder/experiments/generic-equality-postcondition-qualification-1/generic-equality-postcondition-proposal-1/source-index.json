@@ -1,0 +1,51 @@
+{
+  "Fortran_compiled": false,
+  "files": {
+    "README.md": {
+      "bytes": 8423,
+      "sha256": "33a6d3741dc954484a287b6c94af4f3a7cd796026719094d1f54238ef68d875d"
+    },
+    "derive_witnesses.py": {
+      "bytes": 8382,
+      "sha256": "19b915d7d962eaae65644b9ef2df5ade42fa43b0836947ca761ce2ff74254d4d"
+    },
+    "exact_geometry.f90": {
+      "bytes": 5688,
+      "sha256": "4dfedb9f940dd8e0565ff1ff34b9aa0d56635a5e5d8c52b328359fbfc754afda"
+    },
+    "reference.py": {
+      "bytes": 4155,
+      "sha256": "fb4bdce7b55dadcb33b053dc9ec778101aca08c5eb3c3a0058075f1038963165"
+    },
+    "test-receipt.json": {
+      "bytes": 1622,
+      "sha256": "44e82b17f5f297b7263b2d7435321d39da5784a5d83aca6446abb04f1b092ea2"
+    },
+    "test_exact_geometry.py": {
+      "bytes": 10287,
+      "sha256": "ac19e513b6e01681a6b1816d1fe9e1a34b83976a4f437e9c778c1d230d1b09b8"
+    },
+    "tests-normal.log": {
+      "bytes": 1915,
+      "sha256": "f38be9ec1fdb2c8d4051db54b2175047777c6e01ee95d83d28b77f56a916fe16"
+    },
+    "tests-optimized.log": {
+      "bytes": 1915,
+      "sha256": "0779fd53bc8f6e81f144e87c5db563664cc286904ef68c29cee5583f0940ecef"
+    },
+    "verify.py": {
+      "bytes": 2030,
+      "sha256": "306752799ff399fed8ea0934d8d3e6b5b7802d4652c6979676c5e20a7e2c258c"
+    },
+    "witnesses.json": {
+      "bytes": 18480,
+      "sha256": "b6fffc3c885fb4c810c9ee2fcefa2a0078962595f2b3a0e6cda7984262ea65d5"
+    }
+  },
+  "pure_tests_normal": 12,
+  "pure_tests_optimized": 12,
+  "schema": "private-exact-geometry-source-index-v1",
+  "scientific_dispatch_enabled": false,
+  "scope": "Uncompiled private Fortran source and tested integer algorithm specification. No production/native/ownership/scientific promotion.",
+  "snapshot_owned_or_observed": false
+}

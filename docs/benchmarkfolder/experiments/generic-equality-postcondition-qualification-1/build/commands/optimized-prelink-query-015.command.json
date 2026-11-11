@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libgfortran.so"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-equality-postcondition-qualification-work-1/build/optimized",
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T16:30:42.284509+00:00"
+}

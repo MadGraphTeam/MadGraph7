@@ -1,0 +1,58 @@
+{
+  "cap_seconds": 180.0,
+  "child_pid": 3,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 244859671,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 4,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 244859709,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 5,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 244859855,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/generic-equality-postcondition-qualification-proposal-1/controller.py",
+    "--child",
+    "--phase",
+    "run",
+    "--source",
+    "4e3878690b366992d1dad8e43ae650a62362220d7bfc21e85850228d2aeef12d",
+    "--reviewed-build",
+    "a12fd704ab54e935028258299239beb62f6d366620f990e0130db4f9df4fa506"
+  ],
+  "deadline_monotonic": 2448773.950014239,
+  "finished_utc": "2026-11-11T16:34:59.390808+00:00",
+  "phase": "run",
+  "result_sha256": "49b2cf6c15c6cc9b4ef43519c8f21d1a6126901c28ba140199d0f9c295f843db",
+  "returncode": 0,
+  "started_utc": "2026-11-11T16:34:52.830259+00:00",
+  "status": "passed"
+}
