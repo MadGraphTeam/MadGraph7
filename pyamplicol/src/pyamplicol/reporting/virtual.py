@@ -201,22 +201,34 @@ def _laurent_cells(values: Any, color: bool) -> tuple[str, ...]:
     )
 
 
-def _reduction_text(reduction: Any, color: bool) -> str:
-    """The lane's effective reduction backend (coloured), with the requested
-    one when it differs and a per-point fallback in yellow."""
+def _reduction_text(reduction: Any, fallbacks: set[str], color: bool) -> str:
+    """The lane's effective reduction backend (coloured): "auto" calls name
+    their per-point fallback; a lane the fallback served (its backend is
+    another lane's fallback) is marked in yellow, as recovered."""
 
     if reduction is None:
         return ""
     effective = str(reduction.effective)
-    text = palette.paint(
-        effective, palette.BACKEND.get(effective), color=color, bold=True
-    )
     requested = str(reduction.requested)
-    if requested != effective:
-        note = f"requested {requested}"
-        if reduction.fallback is not None:
-            note += f", fallback {reduction.fallback}"
-        text += " (" + palette.paint(note, palette.RECOVERED, color=color) + ")"
+    served_by_fallback = (
+        requested == "auto" and reduction.fallback is None and effective in fallbacks
+    )
+    text = palette.paint(
+        effective,
+        palette.RECOVERED if served_by_fallback else palette.BACKEND.get(effective),
+        color=color,
+        bold=True,
+    )
+    if served_by_fallback:
+        text += " " + palette.paint(
+            "(per-point fallback of auto)", palette.RECOVERED, color=color
+        )
+    elif requested == "auto":
+        text += " (auto" + (
+            f"; per-point fallback {reduction.fallback})"
+            if reduction.fallback is not None
+            else ")"
+        )
     if reduction.unchecked:
         text += " " + palette.paint("unchecked", palette.RECOVERED, color=color)
     return text
@@ -356,6 +368,12 @@ def virtual_evaluation_summary(
                 ),
             )
         )
+    fallbacks = {
+        str(lane.reduction.fallback)
+        for lane in result.diagnostics
+        if getattr(lane, "reduction", None) is not None
+        and lane.reduction.fallback is not None
+    }
     for point, item in enumerate(result.diagnostics):
         status.add_row(
             (
@@ -372,7 +390,7 @@ def virtual_evaluation_summary(
                     color=color,
                 ),
                 item.precision_bits,
-                _reduction_text(getattr(item, "reduction", None), color),
+                _reduction_text(getattr(item, "reduction", None), fallbacks, color),
                 palette.paint(
                     "yes" if item.accuracy_established else "no",
                     palette.GOOD if item.accuracy_established else palette.MUTED,

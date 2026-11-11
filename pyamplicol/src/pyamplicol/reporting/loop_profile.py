@@ -25,6 +25,11 @@ def _backend_label(backend: str, default: str | None, color: bool) -> str:
 
 
 def _header(report: Any, prettytable: Any, color: bool) -> str:
+    setup = (
+        (("runtime setup", report.runtime_setup),)
+        if report.runtime_setup is not None
+        else ()
+    )
     table = palette.table(
         prettytable, ("field", "value"), "pyAmpliCol loop profile", color=color
     )
@@ -36,6 +41,7 @@ def _header(report: Any, prettytable: Any, color: bool) -> str:
                 f"{report.process_id} ({report.process_expression})",
             ),
             ("contribution", report.contribution),
+            *setup,
             (
                 "backends",
                 ", ".join(
@@ -71,12 +77,16 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             "effective (reason)",
             "failed points",
         ),
-        f"Runtime ({report.runtime_setup})",
+        "Runtime per reduction backend (the setup above)",
         color=color,
     )
     summary.max_width = 60
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
+        if row.requested == "auto":
+            label += "\n" + palette.paint(
+                "as auto: per-point fallback", palette.MUTED, color=color
+            )
         if row.profile is None:
             summary.add_row(
                 (

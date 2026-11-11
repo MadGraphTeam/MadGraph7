@@ -167,6 +167,10 @@ class BackendRuntime:
     profile: VirtualProfileResult | None
     refusal: str | None = None
     ratio: float | None = None
+    # The reduction request of the timed calls: "auto" for the process
+    # type's default backend (its per-point fallback included, the default
+    # setup), the backend itself otherwise.
+    requested: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,15 +314,25 @@ def profile_loop(
     if want_runtime:
         timed = list(points) if points else _validation_points(path, physics.process_id)
         rows = []
+        default = DEFAULTS.get(contribution)
         for backend in backends:
+            # The default backend in the default setup: "auto" (with its
+            # per-point fallback), unless one backend was asked for.
+            request = (
+                "auto"
+                if evaluation.reduction is None and backend == default
+                else backend
+            )
             try:
                 profile = profile_virtual(
-                    runtime, config, points=timed, reduction=backend
+                    runtime, config, points=timed, reduction=request
                 )
             except ReductionUnavailable as error:
-                rows.append(BackendRuntime(backend, None, str(error)))
+                rows.append(
+                    BackendRuntime(backend, None, str(error), requested=request)
+                )
                 continue
-            rows.append(BackendRuntime(backend, profile))
+            rows.append(BackendRuntime(backend, profile, requested=request))
         served = [row.profile.seconds_per_point for row in rows if row.profile]
         fastest = min(served) if served else None
         runtime_rows = tuple(
@@ -329,6 +343,7 @@ def profile_loop(
                 None
                 if row.profile is None or not fastest
                 else row.profile.seconds_per_point / fastest,
+                row.requested,
             )
             for row in rows
         )
