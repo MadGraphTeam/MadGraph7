@@ -1,0 +1,5 @@
+driver.f90:48:50:
+
+   48 |     valid=env/=0.and.route_ok.and.producer_ok.and.environment_unchanged(before)
+      |                                                  1
+Warning: Impure function 'environment_unchanged' at (1) might not be evaluated [-Wfunction-elimination]

@@ -1,0 +1,28 @@
+test_all104_and_negative_scope (test_protocol.ProtocolTests.test_all104_and_negative_scope) ... ok
+test_bad_bound_class_or_route_gate (test_protocol.ProtocolTests.test_bad_bound_class_or_route_gate) ... ok
+test_environment_token_ftz_daz_rounding (test_protocol.ProtocolTests.test_environment_token_ftz_daz_rounding) ... ok
+test_exact_generation (test_protocol.ProtocolTests.test_exact_generation) ... FAIL
+test_flags_and_environment (test_protocol.ProtocolTests.test_flags_and_environment) ... ok
+test_lost_token_result (test_protocol.ProtocolTests.test_lost_token_result) ... ok
+test_positive_mock (test_protocol.ProtocolTests.test_positive_mock) ... ok
+test_short_extra_and_duplicate (test_protocol.ProtocolTests.test_short_extra_and_duplicate) ... ok
+
+======================================================================
+FAIL: test_exact_generation (test_protocol.ProtocolTests.test_exact_generation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/caller-bound-native-proposal-1/test_protocol.py", line 10, in test_exact_generation
+    c,e,t=prepare.corpus();self.assertEqual((c,e,t),(self.c,self.e,self.t))
+                           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: ([{'route': 1, 'mode': 1, 'width': 64, 'n': 3[403838 chars]se}]) != ([{'env': True, 'external': [[[13844065254536[403838 chars]47}])
+
+First differing element 0:
+[{'route': 1, 'mode': 1, 'width': 64, 'n': 3[172495 chars]174}]
+[{'env': True, 'external': [[[13844065254536[172495 chars] 64}]
+
+Diff is 1090821 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 8 tests in 2.703s
+
+FAILED (failures=1)

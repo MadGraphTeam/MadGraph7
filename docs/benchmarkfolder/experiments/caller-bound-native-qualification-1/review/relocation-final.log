@@ -1,0 +1,1 @@
+{"comparison_exact": true, "compiled_cases_replayed": 174, "new_native_calls": 0, "process_and_dlopen_calls_forbidden": true, "pure_clean_relocation_passed": true, "source_tamper_rejected": true, "unsafe_path_rejected": true, "workspace_reads_attempted": []}
