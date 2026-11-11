@@ -1269,10 +1269,12 @@ def test_packaged_rust_wrapper_serves_the_selections(artifacts, client_cases, tm
 
 
 @pytest.mark.loop_nightly
-def test_the_rust_sdk_selections_follow_the_c_abi(artifacts, client_cases, tmp_path):
+def test_the_rust_sdk_selections_follow_the_c_abi(client_cases, tmp_path):
     """The safe Rust ``Runtime::evaluate_selected``
-    (``sdk/tests/v4_selection.rs``) on both rows, compared as the other
-    clients (opt-in as ``test_loop_v2_sdk_induced.
+    (``sdk/tests/v4_selection.rs``) on every client case (the loop-induced
+    rows and the full-colour Born-interfered one, its refused colour
+    resolutions as errors), compared as the other clients (opt-in as
+    ``test_loop_v2_sdk_induced.
     test_the_rust_sdk_observables_follow_the_python_api``:
     ``PYAMPLICOL_SDK_CARGO_TARGET_DIR``, a private cargo target directory)."""
 
@@ -1296,7 +1298,7 @@ def test_the_rust_sdk_selections_follow_the_c_abi(artifacts, client_cases, tmp_p
         feed.write_text(
             json.dumps(
                 {
-                    "artifact": str(artifacts[name]),
+                    "artifact": str(case["artifact"]),
                     "process": "p",
                     "points": [
                         [_bits(float(c)) & mask for p in point for c in p]
@@ -1356,7 +1358,7 @@ def test_the_rust_sdk_selections_follow_the_c_abi(artifacts, client_cases, tmp_p
 
 
 @pytest.mark.loop_nightly
-def test_a_tir_off_library_serves_the_selections_on_ninjars(artifacts, client_cases):
+def test_a_tir_off_library_serves_the_selections_on_ninjars(client_cases):
     """lit-sdk-b item [1], the extension of lit-tirust-default's tir-off C ABI
     check to the new calls (WAITS ON lit-tirust-default, which owns the
     tir-off build and check): a librusticol_loop_sdk.so built without the
@@ -1379,7 +1381,8 @@ def test_a_tir_off_library_serves_the_selections_on_ninjars(artifacts, client_ca
     on = _sdk()
     for name, case in client_cases.items():
         points, scales = case["points"], case["scales"]
-        handles = {"off": _open(off, artifacts[name]), "on": _open(on, artifacts[name])}
+        artifact = case["artifact"]
+        handles = {"off": _open(off, artifact), "on": _open(on, artifact)}
         try:
             refused = off.rusticol_virtual_set_reduction(handles["off"], b"tirust")
             assert refused == STATUS_RUNTIME_ERROR
@@ -1394,7 +1397,12 @@ def test_a_tir_off_library_serves_the_selections_on_ninjars(artifacts, client_ca
             for selectors in selections:
                 found = _call(off, handles["off"], points, scales, **selectors)
                 reference = _call(on, handles["on"], points, scales, **selectors)
-                assert found["status"] == reference["status"] == 0, found
+                assert found["status"] == reference["status"], (name, found)
+                if reference["status"] != 0:
+                    # A selection the row does not serve (the Born-interfered
+                    # row's colour resolutions, lit-fc-hel): refused alike.
+                    assert found["error"] == reference["error"], (name, found)
+                    continue
                 assert found["statuses"] == reference["statuses"]
                 assert _bitwise(found["virtual"], reference["virtual"]), selectors
             # The cross-backend check needs TIRust: refused by the call.

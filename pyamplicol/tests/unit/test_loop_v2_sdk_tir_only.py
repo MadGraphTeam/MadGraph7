@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 
 from tests.unit.test_loop_v2_sdk_extras import _error, _sdk
+from tests.unit.test_loop_v2_sdk_induced import _record
 from tests.unit.test_loop_v2_sdk_stability import (
     FAILED_STATUS,
     STATUS_RUNTIME_ERROR,
@@ -50,14 +51,6 @@ _spec = importlib.util.spec_from_file_location(
 assert _spec is not None and _spec.loader is not None
 eft = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(eft)
-
-
-def _record(reduction) -> dict:
-    return {
-        "requested": reduction.requested,
-        "effective": reduction.effective,
-        "reason": reduction.reason,
-    }
 
 
 @pytest.mark.loop_nightly
@@ -102,8 +95,11 @@ def test_the_sdk_serves_a_tir_only_artifact_as_the_python_api(
         status, found = _evaluate(sdk, handle, points, scales)
         assert status == 0, _error(sdk)
         expected = runtime.evaluate(texts, mu_r2=mu_r2, on_failure="return")
+        # The full call-level record (requested / effective / reason, the
+        # fallback, its point count and the unchecked setting), as the
+        # loop-induced SDK test compares it.
         assert found["diagnostics"]["reduction"] == _record(
-            expected.diagnostics[0].reduction
+            expected.diagnostics[0].reduction, expected
         )
         assert found["diagnostics"]["reduction"]["reason"] == eft.ONLY
         served = [value is not None for value in expected.values]
