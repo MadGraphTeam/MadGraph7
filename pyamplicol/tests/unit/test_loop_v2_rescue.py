@@ -174,7 +174,14 @@ def test_only_failed_or_unconverged_points_escalate_in_order():
         assert result.stability[point].relative == table[level][point]
     assert result.rescue[2].attempts[1].failure == "failure 1:2"
     assert result.rescue[1].attempts[0].estimate == 1e-3
-    assert result.rescue_counts == {0: 2, 1: 1, 2: 1, "not met": 1, "best-effort": 0, "failed": 0}
+    assert result.rescue_counts == {
+        0: 2,
+        1: 1,
+        2: 1,
+        "not met": 1,
+        "best-effort": 0,
+        "failed": 0,
+    }
     # A final-level miss keeps the value, with the target marked as missed.
     assert "not met at the final level" in result.diagnostics[4].detail
     assert result.values[4][0].finite == Decimal("204.5")
@@ -194,7 +201,14 @@ def test_a_point_failing_at_every_level_is_failed_and_raises_only_on_request():
     # Failure diagnostics name the caller's point, not the subset's lane.
     assert [item.point_id for item in failed.failures] == [1]
     assert result.rescue[1].failed and not result.rescue[1].met
-    assert result.rescue_counts == {0: 1, 1: 0, 2: 0, "not met": 0, "best-effort": 0, "failed": 1}
+    assert result.rescue_counts == {
+        0: 1,
+        1: 0,
+        2: 0,
+        "not met": 0,
+        "best-effort": 0,
+        "failed": 1,
+    }
     with pytest.raises(EvaluationError, match="point 1 at every rescue level"):
         rescue(THREE, 2, _Fake(THREE, table))
 
@@ -425,7 +439,13 @@ def test_an_unreachable_binary64_target_sends_every_point_to_double_double(artif
     direct = runtime.evaluate(
         points, mu_r2=scales, arithmetic="double-double", stability_checks=CHECKS
     )
-    assert result.rescue_counts == {0: 0, 1: 3, "not met": 0, "best-effort": 0, "failed": 0}
+    assert result.rescue_counts == {
+        0: 0,
+        1: 3,
+        "not met": 0,
+        "best-effort": 0,
+        "failed": 0,
+    }
     for index in range(len(points)):
         assert _lane(result, index) == _lane(direct, index)
         record = result.rescue[index]

@@ -755,7 +755,12 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
         lane.finiteness for lane in checked.diagnostics
     ]
     rescued = shipped.evaluate(points, mu_r2=scales, stability=ladder)
-    assert rescued.rescue_counts == {0: len(points), "not met": 0, "best-effort": 0, "failed": 0}
+    assert rescued.rescue_counts == {
+        0: len(points),
+        "not met": 0,
+        "best-effort": 0,
+        "failed": 0,
+    }
     assert all(lane.reduction is not None for lane in rescued.diagnostics)
     assert all(0.0 <= lane.finiteness <= 1e-12 for lane in rescued.diagnostics)
 
