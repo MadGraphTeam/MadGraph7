@@ -290,7 +290,7 @@ def test_rendering_both_backends_a_refusal_and_json():
     assert "refused" in text and "no TIRust in this build" in text
     # The best-effort points (m-lit ux-besteffort): counted apart and their
     # accuracy against the truth in their own table.
-    assert "best-effort" in text and "unc. covers" in text
+    assert "best-eff./none" in text and "unc. covers" in text
     payload = json.loads(machine.getvalue())
     assert "\x1b[" not in machine.getvalue()
     assert payload["stability"][0]["percentiles"][3]["digits"] == 3.0

@@ -400,9 +400,9 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         (
             "backend",
             "measured",
-            "best-effort /\nno value",
+            "best-eff./none",
             "flagged",
-            "flagged,\ninaccurate",
+            "flagged inacc.",
             "missed",
             "time",
         ),
@@ -540,15 +540,15 @@ def _best_effort_table(served: Any, prettytable: Any, color: bool) -> str | None
         (
             "backend",
             "points",
-            "true digits\nmin/med/max",
-            "unc. digits\nmedian",
-            "|unc-true|\nmedian",
-            "unc. covers\ntruth",
+            "true min/med/max",
+            "unc. median",
+            "|unc-true| med",
+            "unc. covers",
         ),
         "Best-effort values (refused in binary64) against the truth",
         color=color,
     )
-    table.max_width = 14
+    table.max_width = 20
     for row in rows:
         points = [item for item in row.per_point if item.status == "best-effort"]
         true = sorted(float(item.true_digits) for item in points)
