@@ -1,0 +1,13 @@
+{
+  "files": {
+    "README.md": "efb81bde5598996e0eb980944e4fbd87ff80d0cd2b3003972456ce076fefdf2c",
+    "interpreter-supplement.json": "c85d97814cec179eb449244b0bdd700cbca0c225ddb748749634e79e192e1854",
+    "pure-preflight.json": "88b77d13446ef1d6af1032baf2a5777d2deeb60b8fb2361961d9fe4b28da1d76",
+    "smoke.diff": "7b12cd9bfbfb948edb5431e8f92cb967151e694992b468b6226924f7c008f022",
+    "smoke.py": "0b8ff118757c2dee9f09145e15a4d03dea272d95cb6304c3b7dc6a186cf3e3d0"
+  },
+  "native_execution_admitted": false,
+  "original_build_receipt_sha256": "75ab86f7a9acc9c0a0359b3aa2a7c9293a8d36ef6fd74f8f1768cfe8970da49b",
+  "original_source_seal_sha256": "3b8ffa3555351ce73e98d1103514944bce6d1e9eff4c6d519b609526649782bd",
+  "schema": "tirust-runtime-interpreter-admission-v1"
+}

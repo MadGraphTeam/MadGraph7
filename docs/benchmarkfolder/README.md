@@ -140,11 +140,15 @@ pass at both `3e-6` and `1e-8`: twelve lanes, 100 saved points each, all accepte
 results in the selected backend's DP mode. Five more successor processes now
 have [independently audited closed checkpoints](campaigns/entry-latch-cache-guard-1/QUALIFICATION_PROGRESS.md):
 the Higgs and Higgs-pair controls, QCD top-pair production, EW muon-pair production,
-and the mixed QCD/QED control. Both three-particle processes and QCD four-particle
-production have also closed: all 60 completed lanes pass `3e-6`; 52 also pass
-the separate `1e-8` target. QCD three- and four-particle production retain finite
-target misses. TIRust accepts QP results at respectively 13 and 86 points in
-those processes. EW four-particle production and precise timing remain pending.
+and the mixed QCD/QED control. Both three- and four-particle processes have also
+closed: all eleven cases and 66 lanes pass `3e-6`; 54 lanes also pass the separate
+`1e-8` target. QCD three- and four-particle production retain finite target
+misses; EW four-particle production also retains pole target misses for some
+reducers. TIRust accepts QP results at respectively 13, 86 and 60 points in QCD
+three-particle, QCD four-particle and EW four-particle production. The final EW
+checkpoint selects five completed original lanes and a separate fresh 100-point
+TIRust run, retaining the user-interrupted 74-point attempt without concatenation.
+Precise timing remains pending.
 The preceding 31-page PDF covers the `invariant-symmetry-1`
 registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
@@ -223,6 +227,19 @@ The earlier seven-component calculation, both native answers and every
 COLLIER disagreement remain preserved. This fixture corroboration does not
 qualify physical high-rank amplitudes or general kinematics, stability rescues,
 threshold, soft/collinear or complex-mass stress. Those physical gates remain open.
+
+The [current-source relocated deployment check](experiments/current-source-deployment-runtime-qualification-1/README.md)
+uses actual standalone and FKS/NLO CLI exports at `0fcd2cd873d6`, the installed
+`eb3d67fd…` TIRust library and the unchanged NinjaRS archive. After private
+dependency prefixes were removed and both exports moved, nine fixed-mode
+workers completed; seven comparisons against the two same-export CutTools
+controls agree within `4.34e-16`. The NLO entry point rejects an incomplete
+finite result. The actual ELF interpreter and initialized runtime providers,
+card restoration and cleanup are verified. These unchecked 110/120 results
+retain one final point per worker after four driver evaluations; they qualify
+internal deployment, relocation and the virtual-entry guard. Stability, rescue,
+cache invalidation, Monte Carlo integration and runtime performance remain
+outside this check.
 
 The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
 index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
@@ -368,12 +385,18 @@ inputs missing. The original capture failure and later inventory-admission
 failure remain visible. These boundary diagnostics establish neither independent
 accuracy nor the exact cause of every internal fallback failure.
 
-The optional private diagnostic bridge has no usable library or numerical
-result. Its [first build failure](experiments/tirust-first-failure-capture/diagnostics-private-build-failed-1/README.md)
-retains compiler resource errors; the [second attempt](experiments/tirust-first-failure-capture/diagnostics-private-build-failed-2/README.md)
-retains a build timeout. Both preserve their source proposals, logs and pure
-verification commands. They leave the inner fallback diagnosis open and do
-not change the installed reduction libraries or production precision policy.
+The optional private diagnostic bridge now has a separately
+[completed build](experiments/tirust-first-failure-capture/diagnostics-private-build-complete-3/README.md)
+and an [audited twelve-call metadata replay](experiments/tirust-first-failure-capture/diagnostics-replay-closed-1/README.md).
+The replay preserves all twelve original refusals for six captured Zgg requests,
+with exact runtime providers and no failed tensor outputs read. It identifies
+small-Gram expansion nonconvergence and rejection of an alternative PV route
+by its Cayley-cancellation check. This diagnoses those refusals without supplying
+accepted tensor answers or resolving physical accuracy. The
+[first build failure](experiments/tirust-first-failure-capture/diagnostics-private-build-failed-1/README.md)
+and [second build timeout](experiments/tirust-first-failure-capture/diagnostics-private-build-failed-2/README.md)
+remain preserved. The installed libraries and production precision policy are
+unchanged.
 
 The [published 31-page preceding-source PDF](https://github.com/MadGraphTeam/MadGraph7/blob/913a746201eb6ef806ccb219c890a7f3486d6322/docs/benchmarkfolder/benchmark.pdf)
 retains its exact source, ledger and plots at commit `913a746201eb6`. Its SHA-256 is
@@ -514,9 +537,10 @@ is not an additional delivery gate. The required EW threshold, QCD
 soft/collinear and complex-mass stress cases remain separate unresolved gates.
 Complete delivery additionally requires the installed ABI and Fortran checks,
 separate subprocess/event cache lifecycle qualification, precision cohorts and
-resolution of retained stress failures. The separately frozen current-source
-cache lifecycle proof is closed in its stated native-DP and tensor-key scope;
-public-call parity alone was insufficient, and the historical full-source proof
-was not reused for changed source. That scoped lifecycle pass does not close
-the physical stress or performance gates. A passing eight-process runtime gate
+resolution of retained stress failures. The separately frozen preceding-source
+`2c13246ffa63` cache lifecycle proof is closed in its native-DP and tensor-key
+scope. The successor's guard/reset tests, fixed-mode parity and ordinary
+comparisons retain their narrower scopes; the preceding full-source lifecycle
+proof has not been rerun for those changes. That scoped lifecycle pass does not
+close the physical stress or performance gates. A passing eight-process runtime gate
 alone cannot complete the integration goal.

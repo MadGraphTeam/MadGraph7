@@ -1,0 +1,265 @@
+   3676771:	
+   3676771:	file=libgcc_s.so.1 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libgcc_s.so.1 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/glibc-hwcaps/x86-64-v4:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/glibc-hwcaps/x86-64-v3:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/glibc-hwcaps/x86-64-v2:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib/glibc-hwcaps/x86-64-v4:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib/glibc-hwcaps/x86-64-v3:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib/glibc-hwcaps/x86-64-v2:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/glibc-hwcaps/x86-64-v4:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/glibc-hwcaps/x86-64-v3:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/glibc-hwcaps/x86-64-v2:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib/glibc-hwcaps/x86-64-v4:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib/glibc-hwcaps/x86-64-v3:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib/glibc-hwcaps/x86-64-v2:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/glibc-hwcaps/x86-64-v4:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/glibc-hwcaps/x86-64-v3:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/glibc-hwcaps/x86-64-v2:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/glibc-hwcaps/x86-64-v4/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib/glibc-hwcaps/x86-64-v4/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib/glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib/glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../lib/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/glibc-hwcaps/x86-64-v4/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib/glibc-hwcaps/x86-64-v4/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib/glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib/glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../../lib/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/glibc-hwcaps/x86-64-v4/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libgcc_s.so.1
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/glibc-hwcaps/x86-64-v4:/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/glibc-hwcaps/x86-64-v3:/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/glibc-hwcaps/x86-64-v2:/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/glibc-hwcaps/x86-64-v4/libgcc_s.so.1
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libgcc_s.so.1
+   3676771:	 search path=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/glibc-hwcaps/x86-64-v4:/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/glibc-hwcaps/x86-64-v3:/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/glibc-hwcaps/x86-64-v2:/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v4:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v3:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v2:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/glibc-hwcaps/x86-64-v4/libgcc_s.so.1
+   3676771:	  trying file=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+   3676771:	  trying file=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+   3676771:	  trying file=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1
+   3676771:	
+   3676771:	file=libgcc_s.so.1 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d65a24bb0  base: 0x0000788d659f9000   size: 0x000000000002c1e8
+   3676771:	    entry: 0x0000788d659f9000  phdr: 0x0000788d659f9040  phnum:                 11
+   3676771:	
+   3676771:	
+   3676771:	file=libdl.so.2 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libdl.so.2 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libdl.so.2
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libdl.so.2
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libdl.so.2
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+   3676771:	
+   3676771:	file=libdl.so.2 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d659f7da8  base: 0x0000788d659f4000   size: 0x0000000000004010
+   3676771:	    entry: 0x0000788d659f4000  phdr: 0x0000788d659f4040  phnum:                 12
+   3676771:	
+   3676771:	
+   3676771:	file=libutil.so.1 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libutil.so.1 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libutil.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libutil.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libutil.so.1
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+   3676771:	
+   3676771:	file=libutil.so.1 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d659f2da8  base: 0x0000788d659ef000   size: 0x0000000000004010
+   3676771:	    entry: 0x0000788d659ef000  phdr: 0x0000788d659ef040  phnum:                 12
+   3676771:	
+   3676771:	
+   3676771:	file=librt.so.1 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=librt.so.1 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/librt.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/librt.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/librt.so.1
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+   3676771:	
+   3676771:	file=librt.so.1 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d659ebd38  base: 0x0000788d659e8000   size: 0x0000000000004010
+   3676771:	    entry: 0x0000788d659e8000  phdr: 0x0000788d659e8040  phnum:                 12
+   3676771:	
+   3676771:	
+   3676771:	file=libpthread.so.0 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libpthread.so.0 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libpthread.so.0
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libpthread.so.0
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libpthread.so.0
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+   3676771:	
+   3676771:	file=libpthread.so.0 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d659e6da8  base: 0x0000788d659e3000   size: 0x0000000000004010
+   3676771:	    entry: 0x0000788d659e3000  phdr: 0x0000788d659e3040  phnum:                 12
+   3676771:	
+   3676771:	
+   3676771:	file=libgfortran.so.5 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libgfortran.so.5 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libgfortran.so.5
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libgfortran.so.5
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libgfortran.so.5
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libgfortran.so.5
+   3676771:	 search path=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v4:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v3:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v2:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgfortran.so.5
+   3676771:	  trying file=/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v4/libgfortran.so.5
+   3676771:	  trying file=/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v3/libgfortran.so.5
+   3676771:	  trying file=/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/glibc-hwcaps/x86-64-v2/libgfortran.so.5
+   3676771:	  trying file=/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5
+   3676771:	
+   3676771:	file=libgfortran.so.5 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d659e0a68  base: 0x0000788d6568b000   size: 0x0000000000357700
+   3676771:	    entry: 0x0000788d6568b000  phdr: 0x0000788d6568b040  phnum:                 11
+   3676771:	
+   3676771:	
+   3676771:	file=libm.so.6 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libm.so.6 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libm.so.6
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libm.so.6
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libm.so.6
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+   3676771:	
+   3676771:	file=libm.so.6 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d65689c00  base: 0x0000788d655a3000   size: 0x00000000000e7018
+   3676771:	    entry: 0x0000788d655a3000  phdr: 0x0000788d655a3040  phnum:                 12
+   3676771:	
+   3676771:	
+   3676771:	file=libmvec.so.1 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libmvec.so.1 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libmvec.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libmvec.so.1
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libmvec.so.1
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+   3676771:	
+   3676771:	file=libmvec.so.1 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d655a1830  base: 0x0000788d654a9000   size: 0x00000000000f9010
+   3676771:	    entry: 0x0000788d654a9000  phdr: 0x0000788d654a9040  phnum:                 12
+   3676771:	
+   3676771:	
+   3676771:	file=libc.so.6 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libc.so.6 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libc.so.6
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libc.so.6
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libc.so.6
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+   3676771:	
+   3676771:	file=libc.so.6 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d65497920  base: 0x0000788d6529b000   size: 0x000000000020bdd8
+   3676771:	    entry: 0x0000788d652c5680  phdr: 0x0000788d6529b040  phnum:                 15
+   3676771:	
+   3676771:	
+   3676771:	file=libmadloop_tirust.so [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libmadloop_tirust.so [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libmadloop_tirust.so
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libmadloop_tirust.so
+   3676771:	
+   3676771:	file=libmadloop_tirust.so [0];  generating link map
+   3676771:	  dynamic: 0x0000788d6528f2f8  base: 0x0000788d614bf000   size: 0x0000000003ddb2e8
+   3676771:	    entry: 0x0000788d614bf000  phdr: 0x0000788d614bf040  phnum:                  9
+   3676771:	
+   3676771:	
+   3676771:	file=libstdc++.so.6 [0];  needed by /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check [0]
+   3676771:	find library=libstdc++.so.6 [0]; searching
+   3676771:	 search path=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/libstdc++.so.6
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libstdc++.so.6
+   3676771:	  trying file=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/libstdc++.so.6
+   3676771:	 search path=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib		(system search path)
+   3676771:	  trying file=/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libstdc++.so.6
+   3676771:	 search path=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib		(RUNPATH from file /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check)
+   3676771:	  trying file=/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6
+   3676771:	
+   3676771:	file=libstdc++.so.6 [0];  generating link map
+   3676771:	  dynamic: 0x0000788d614b6c78  base: 0x0000788d6123d000   size: 0x0000000000281048
+   3676771:	    entry: 0x0000788d6123d000  phdr: 0x0000788d6123d040  phnum:                 11
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6
+   3676771:	
+   3676771:	
+   3676771:	calling init: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libmadloop_tirust.so
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+   3676771:	
+   3676771:	
+   3676771:	calling init: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+   3676771:	
+   3676771:	
+   3676771:	initialize program: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check
+   3676771:	
+   3676771:	
+   3676771:	transferring control: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check
+   3676771:	
+   3676771:	
+   3676771:	calling fini:  [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/../../lib/libmadloop_tirust.so [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6 [0]
+   3676771:	
+   3676771:	
+   3676771:	calling fini: /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2 [0]
+   3676771:	

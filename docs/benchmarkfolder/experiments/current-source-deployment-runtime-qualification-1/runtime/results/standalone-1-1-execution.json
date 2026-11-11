@@ -1,0 +1,20 @@
+{
+  "cap_seconds": 120,
+  "cleanup_complete": true,
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z",
+  "label": "standalone-1-1",
+  "loader_logs": {
+    "logs/loader-standalone-1-1.3675926": "866b9a2c47b24389b61c0c1e0393eafe49953ff27c2323541b0d9aa8173d3035"
+  },
+  "pid": 3675926,
+  "raw_result": "results/standalone-1-1-result.dat",
+  "raw_result_sha256": "1a860f0aa1488fae047dd897cd656b3cc9392079ff6d6c36b2199560f8f6325c",
+  "returncode": 0,
+  "seconds_diagnostic_only": 0.03766692988574505,
+  "stdout": "logs/standalone-1-1.log",
+  "stdout_sha256": "7a96c787f18d86c6608da256f4f8bbaa14aade051d48cf2b67f90650c0e686c8",
+  "timeout": false
+}

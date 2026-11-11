@@ -1,0 +1,137 @@
+{
+  "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": {
+    "bytes": 196968,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 183818,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+    "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+  },
+  "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": {
+    "bytes": 3647568,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 1448349,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+    "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+  },
+  "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": {
+    "bytes": 302136,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 3529861,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+    "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+  },
+  "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": {
+    "bytes": 253696,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 196667,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+  },
+  "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": {
+    "bytes": 2413048,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 196673,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+    "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+  },
+  "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": {
+    "bytes": 15688,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 196678,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+    "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+  },
+  "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": {
+    "bytes": 1029504,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 196680,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+    "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+  },
+  "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": {
+    "bytes": 16536,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 196695,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+    "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+  },
+  "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": {
+    "bytes": 16352,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 196699,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+    "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+  },
+  "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": {
+    "bytes": 15512,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 196703,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+    "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+  },
+  "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": {
+    "bytes": 3230392,
+    "device_major": 0,
+    "device_minor": 33,
+    "inode": 205227,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+    "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+  },
+  "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/capture/stability-check": {
+    "bytes": 21272,
+    "device_major": 0,
+    "device_minor": 44,
+    "inode": 235224995,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/capture/stability-check",
+    "sha256": "8b530ead988e77df43b39d83d6a743e1ddad7de26aa77bf51ffbf0ba3a17a71c"
+  },
+  "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/target/release/libmadloop_tirust_private_diag.so": {
+    "bytes": 69161040,
+    "device_major": 0,
+    "device_minor": 44,
+    "inode": 235224985,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/target/release/libmadloop_tirust_private_diag.so",
+    "sha256": "73abcfb34d01afa09c45f1acb612da0a83d05c8961ec07b3cf2f65a02e94c721"
+  },
+  "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": {
+    "bytes": 3752144,
+    "device_major": 0,
+    "device_minor": 44,
+    "inode": 16457068,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+    "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+  },
+  "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0": {
+    "bytes": 3770520,
+    "device_major": 0,
+    "device_minor": 44,
+    "inode": 16343959,
+    "observation": "post-terminal current file identity; native binding already checked by frozen controller",
+    "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+    "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+  }
+}

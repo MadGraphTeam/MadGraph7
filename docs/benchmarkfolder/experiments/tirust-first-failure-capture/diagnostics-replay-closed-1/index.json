@@ -1,0 +1,121 @@
+{
+  "accuracy_or_performance_qualification": false,
+  "actual_tool_exit_code": 0,
+  "actual_tool_session_id": 90460,
+  "amplitude_evaluations": 0,
+  "failed_tensor_outputs_read": 0,
+  "files": {
+    "README.md": {
+      "bytes": 4157,
+      "sha256": "5bee825ce3b5241f43b0050004185b83d8726176192843e72deace8f8521ff55"
+    },
+    "mapped-file-identities.json": {
+      "bytes": 7332,
+      "sha256": "dd960bda5d49441be25800780ee2f5515a6d851fc32a4cffa2b5f8a8fd5e75cd"
+    },
+    "postterminal-observation.json": {
+      "bytes": 1546,
+      "sha256": "177e5a5ef3bd81e399f34cceef161a50cf9c220bf7bfb6379c1a552f38ae6855"
+    },
+    "retained-tree.json": {
+      "bytes": 10729,
+      "sha256": "e2821aa9a720678e0ece14f68306512d4a8f601975bf357bab5036bf3236dbdd"
+    },
+    "run/derived-inputs.json": {
+      "bytes": 2993,
+      "sha256": "8e9ec261723bb0114464cbfd810b317e94413d503089b2d4493af64e032ded14"
+    },
+    "run/driver/command.json": {
+      "bytes": 4568,
+      "sha256": "e1e3d7632da138c83b8aa7cabcd20c7839048ab78e2f21e3e105b0cb6375ee31"
+    },
+    "run/driver/runtime-maps-00.txt": {
+      "bytes": 1693,
+      "sha256": "6b04b15916f8c57440d1147121b0500e03a9756866beaa4286bd44cc28981fb5"
+    },
+    "run/driver/runtime-maps-01.txt": {
+      "bytes": 12944,
+      "sha256": "60c1806cce60ba1b3e541652edd24c2e72ff4441edc977611c78ac534dcdc561"
+    },
+    "run/driver/runtime-maps-02.txt": {
+      "bytes": 12993,
+      "sha256": "e8a80448acf452deca981d386afa307443427d2517d4572934596d7579244143"
+    },
+    "run/driver/runtime-maps-03.txt": {
+      "bytes": 12944,
+      "sha256": "e9b5cbec9de7e8ed79c0439276f11fc9bbb3071c40344862c189aa6df9ad483f"
+    },
+    "run/driver/runtime-maps-04.txt": {
+      "bytes": 12944,
+      "sha256": "adbb776d69be779e76d186535363a44266c3e0087ffc6fec7e539ab440e7a7cb"
+    },
+    "run/driver/stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "run/inputs/tirust-input-p025-m1-g059.dat": {
+      "bytes": 1004,
+      "sha256": "b14af90667077aef544708227b0065e55366a9ddeeacc6a297c76447757d0438"
+    },
+    "run/inputs/tirust-input-p025-m1-g061.dat": {
+      "bytes": 1004,
+      "sha256": "72136f21085e91367b63448a5ef10e6be9ffdc6450a6b163fb88317ca31ec405"
+    },
+    "run/inputs/tirust-input-p025-m2-g059.dat": {
+      "bytes": 1004,
+      "sha256": "3ae17ecc24af56c2529ded8f330a2d5b79c59b2d21cd94ae892deed07927f8a8"
+    },
+    "run/inputs/tirust-input-p025-m2-g061.dat": {
+      "bytes": 1004,
+      "sha256": "68e4436c8bfe883f9c76899a232e5f44ec9ecdb248a00ce269ded7ab3e9ea165"
+    },
+    "run/inputs/tirust-input-p025-m3-g059.dat": {
+      "bytes": 1004,
+      "sha256": "dd6544bc1277f4d30f7579a2099aa5622b7482b0c892747661a0b18805b5bdcd"
+    },
+    "run/inputs/tirust-input-p025-m3-g061.dat": {
+      "bytes": 1004,
+      "sha256": "479ad1fa89325e0bda14be066b95f6d8e87b26621c2fc9c9c3d3a0ede1c78557"
+    },
+    "run/loader/command.json": {
+      "bytes": 4290,
+      "sha256": "06cb9d2666f1d94fb098f9c892a8baaec76d6dc1607fad16d3a723a7a97651ba"
+    },
+    "run/loader/runtime-maps-00.txt": {
+      "bytes": 1693,
+      "sha256": "0cbff7212cdace01ede2b1f2fb51622e5d0baadd59808fde857cbeafe53eff14"
+    },
+    "run/loader/stdout.txt": {
+      "bytes": 2368,
+      "sha256": "abdca6d5ddfdb6346af559e6008c0fe3a8b21deb28f905f3ff08a031e4d29b02"
+    },
+    "run/request-manifest.txt": {
+      "bytes": 858,
+      "sha256": "ea8cf4bd379ce47e0a030962b3be30f1e926a2c36ecdb141a163a4b22aa9430f"
+    },
+    "run/started.json": {
+      "bytes": 35754,
+      "sha256": "f37eb30dd93f2784cbceea809df091ead829ebc5b23ac69bb466ce6ec70b0510"
+    },
+    "run/terminal.json": {
+      "bytes": 77546,
+      "sha256": "5083a81944e969495ac575e0736763e121d36d705df992a63335ca34129ea1db"
+    },
+    "run/tirust-replay.jsonl": {
+      "bytes": 32929,
+      "sha256": "7711572f21459ab74bbf07e80f4624e6e8510f0cc7333e1f98a0a9a8299a64ce"
+    },
+    "verify.py": {
+      "bytes": 12037,
+      "sha256": "5be2c25b9133eaea3e51d2e980a9c6209f9324402ad492b8a6c87da5c9d40a71"
+    }
+  },
+  "native_retries": 0,
+  "original_refusals_preserved": 12,
+  "payload_bytes": 258342,
+  "payload_files": 26,
+  "private_dso_loaded": true,
+  "schema": "private_tirust_diagnostic_replay_retention_v1",
+  "source_proposal_sha256": "6cc9b0f96e2493fcd3f967d3c39f1ae273ab461ae7917bf220ccb504f1387fb5",
+  "tensor_evaluations": 12
+}

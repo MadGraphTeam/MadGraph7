@@ -1,0 +1,27 @@
+{
+  "aliases": {
+    "ld-linux-x86-64.so.2": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "libc.so.6": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+    "libcollier.so": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+    "libdl.so.2": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+    "libgcc_s.so.1": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+    "libgfortran.so.5": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+    "libm.so.6": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+    "libmadloop_tirust_private_diag.so": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/target/release/libmadloop_tirust_private_diag.so",
+    "libninja.so.0": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+    "libpthread.so.0": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+    "libquadmath.so.0": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+    "librt.so.1": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+    "libstdc++.so.6": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+    "libutil.so.1": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1"
+  },
+  "input_copies": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostic-replay-1/inputs/tirust-input-p025-m1-g059.dat": "b14af90667077aef544708227b0065e55366a9ddeeacc6a297c76447757d0438",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostic-replay-1/inputs/tirust-input-p025-m1-g061.dat": "72136f21085e91367b63448a5ef10e6be9ffdc6450a6b163fb88317ca31ec405",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostic-replay-1/inputs/tirust-input-p025-m2-g059.dat": "3ae17ecc24af56c2529ded8f330a2d5b79c59b2d21cd94ae892deed07927f8a8",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostic-replay-1/inputs/tirust-input-p025-m2-g061.dat": "68e4436c8bfe883f9c76899a232e5f44ec9ecdb248a00ce269ded7ab3e9ea165",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostic-replay-1/inputs/tirust-input-p025-m3-g059.dat": "dd6544bc1277f4d30f7579a2099aa5622b7482b0c892747661a0b18805b5bdcd",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostic-replay-1/inputs/tirust-input-p025-m3-g061.dat": "479ad1fa89325e0bda14be066b95f6d8e87b26621c2fc9c9c3d3a0ede1c78557"
+  },
+  "manifest_sha256": "ea8cf4bd379ce47e0a030962b3be30f1e926a2c36ecdb141a163a4b22aa9430f"
+}

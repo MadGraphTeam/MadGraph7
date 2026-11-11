@@ -1,0 +1,17 @@
+{
+  "cards": {
+    "nlo": {
+      "matches_original_build_card": true,
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92"
+    },
+    "standalone": {
+      "matches_original_build_card": true,
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92"
+    }
+  },
+  "original_build_receipt_sha256": "75ab86f7a9acc9c0a0359b3aa2a7c9293a8d36ef6fd74f8f1768cfe8970da49b",
+  "private_source_prefixes_absent": true,
+  "scope": "fresh read-only post-run card/hash and private-prefix inspection; not another amplitude evaluation"
+}

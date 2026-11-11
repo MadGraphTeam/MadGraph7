@@ -1,0 +1,20 @@
+{
+  "cap_seconds": 60,
+  "cleanup_complete": true,
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/check"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z",
+  "label": "nlo-partial",
+  "loader_logs": {
+    "logs/loader-nlo-partial.3678870": "0bfe048ec77f5bbc1c99fe4d185c7ab31e6cb45d2854a0c87617e86fb6a31860"
+  },
+  "pid": 3678870,
+  "raw_result": "results/nlo-partial-result.dat",
+  "raw_result_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "returncode": 1,
+  "seconds_diagnostic_only": 0.021867332980036736,
+  "stdout": "logs/nlo-partial.log",
+  "stdout_sha256": "9348f482962886428accecb6ca070665f8962c6b7c77d6bf54b0e2baa66e24dc",
+  "timeout": false
+}

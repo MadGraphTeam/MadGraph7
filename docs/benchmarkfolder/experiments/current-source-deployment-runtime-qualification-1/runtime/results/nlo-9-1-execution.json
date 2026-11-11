@@ -1,0 +1,20 @@
+{
+  "cap_seconds": 120,
+  "cleanup_complete": true,
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/check"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z",
+  "label": "nlo-9-1",
+  "loader_logs": {
+    "logs/loader-nlo-9-1.3678029": "3be1ea573055406faf3a33f3356ad56c83abd6c84358370e32738811a788147d"
+  },
+  "pid": 3678029,
+  "raw_result": "results/nlo-9-1-result.dat",
+  "raw_result_sha256": "41fa9f4493a9e0c5505e50019d5a21f61ab954dc6a15b8fdcd027894dc61440a",
+  "returncode": 0,
+  "seconds_diagnostic_only": 0.022552094887942076,
+  "stdout": "logs/nlo-9-1.log",
+  "stdout_sha256": "89d9f9f73ad70610511cd8a1b329d1b1ad606e7aeb1704fe28abd7ed790c4cf9",
+  "timeout": false
+}
