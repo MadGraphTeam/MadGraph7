@@ -326,6 +326,16 @@ def validate_summary(data, registered_identity=None):
     return data
 
 
+def guard_composite_canonical(root, output):
+    """A canonical composite must be built and verified by its append builder."""
+    root = Path(root).resolve()
+    if Path(output).resolve() != (root / "benchmark.pdf").resolve():
+        return
+    ledger = root / "report-build.json"
+    if ledger.exists() and json.loads(ledger.read_text()).get("schema") == "madloop-tirust-composite-report-v1":
+        raise ValueError("Canonical report contains the preserved CMS supplement. Use build_stress_report.py to build or verify it; --output CUSTOM.pdf remains available for the original campaign builder.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "benchmark.pdf")
@@ -335,6 +345,7 @@ def main():
     parser.add_argument("--campaign-report", help="Explicit frozen docsroot-relative dossier for that campaign")
     parser.add_argument("--supplement", help="Explicit frozen source-progress selection; does not alter selected campaign gates")
     args = parser.parse_args()
+    guard_composite_canonical(ROOT, args.output)
     if args.campaign_report and not args.campaign:
         parser.error("--campaign-report requires --campaign")
     summary, inventory, context, typst_inputs = prepare_report(ROOT, args.campaign, args.campaign_report, args.supplement)

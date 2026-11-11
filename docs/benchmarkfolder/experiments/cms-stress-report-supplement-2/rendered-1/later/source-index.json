@@ -1,0 +1,47 @@
+{
+  "canonical_or_tracked_writes": false,
+  "data_sha256": "b8acf5247a4f6485cafa60521213dd3c04c8dd0f31453fca922b7475a9c20af7",
+  "files": {
+    "PLAN.md": {
+      "bytes": 2618,
+      "sha256": "2e4a520c261651031d614e1fb082acbc2193a26bfa1f6e6b27268a1a0d0c8a9c"
+    },
+    "README.md": {
+      "bytes": 2796,
+      "sha256": "aa80854fe8b6fc173449f38e11e77e573e1018a5449ad4fc94ca77592bb7a531"
+    },
+    "matched-data.json": {
+      "bytes": 3452,
+      "sha256": "b8acf5247a4f6485cafa60521213dd3c04c8dd0f31453fca922b7475a9c20af7"
+    },
+    "matched-page.typ": {
+      "bytes": 4808,
+      "sha256": "9d5febcb85c26e6afd8aa03edccdb415bc26e26fa60479f4943932582d6c6a6b"
+    },
+    "prepare_matched.py": {
+      "bytes": 15280,
+      "sha256": "c4472e938418f803583af213e05c960bd92f607c47c6a1929a8d26240803dddd"
+    },
+    "public-map.json": {
+      "bytes": 341,
+      "sha256": "af145746caf68ee09188e83add498fff7eb06a690258d56825c305c3a9857d04"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    },
+    "test_matched.py": {
+      "bytes": 3887,
+      "sha256": "aee4acaf775ba982115e867558bcade53c23ac6ef2953354aef6a73ba5012c86"
+    },
+    "validation.json": {
+      "bytes": 651,
+      "sha256": "e280c14c3eebcd1670dac13497f1deffc5e4b14178b3483b9db0c0b7c6827f89"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "previous_three_pages_unchanged": true,
+  "public_packet_index_sha256": "eacced6cc887ee586d15c4ceade8ac1f089fec0a36b84708f12086d05ba2f8a0",
+  "schema": "madloop-later-matched-page-source-v1",
+  "source_only": true
+}

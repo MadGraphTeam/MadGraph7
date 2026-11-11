@@ -1,0 +1,41 @@
+{
+  "matplotlib": "3.10.8",
+  "pdffonts": {
+    "argv": [
+      "pdffonts",
+      "-v"
+    ],
+    "returncode": 0,
+    "stderr": "pdffonts version 25.10.0\nCopyright 2005-2025 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC\n",
+    "stdout": ""
+  },
+  "pdfinfo": {
+    "argv": [
+      "pdfinfo",
+      "-v"
+    ],
+    "returncode": 0,
+    "stderr": "pdfinfo version 25.10.0\nCopyright 2005-2025 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC\n",
+    "stdout": ""
+  },
+  "platform": "Linux-6.18.45-x86_64-with-glibc2.42",
+  "python": "3.13.12 (main, Feb  3 2026, 17:53:27) [GCC 15.2.0]",
+  "python_executable": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+  "tool_paths": {
+    "pdffonts": "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+    "pdfinfo": "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo",
+    "pdftoppm": "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm",
+    "pdftotext": "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext",
+    "python3": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "typst": "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst"
+  },
+  "typst": {
+    "argv": [
+      "typst",
+      "--version"
+    ],
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "typst 0.15.1 (9dfd3a08)\n"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "input_sha256": "ec7282a3cfa9c977eb5f9642268e9fc79242a1f89946d5b40ad53048e2936d45",
+  "plotted_observations": 8,
+  "note": "Two points and two coefficients, no error distribution or population inference",
+  "runtime_coupling_bits_observed": false,
+  "candidate_external_leaves_newly_captured": false,
+  "UV_cancellation_separately_measured": false,
+  "finite_term_adjudicated": false,
+  "new_native_evaluations": 0
+}

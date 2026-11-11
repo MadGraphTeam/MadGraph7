@@ -1,0 +1,64 @@
+{
+  "Typst_diagnostics_empty": true,
+  "all_fonts_embedded": true,
+  "all_fonts_subset": true,
+  "all_fonts_unicode": true,
+  "canonical_pdf_unchanged": true,
+  "font_count": 6,
+  "new_native_physics_evaluations": 0,
+  "no_source_corrections": true,
+  "other_poppler_diagnostics_empty": true,
+  "page_count": 3,
+  "page_text_bounds": [
+    {
+      "max_x": 551.873181,
+      "max_y": 819.63375,
+      "min_x": 45.354332,
+      "min_y": 51.318,
+      "page": 1,
+      "page_height": 841.8898,
+      "page_width": 595.2756,
+      "words": 436,
+      "words_outside_page": 0
+    },
+    {
+      "max_x": 549.921265,
+      "max_y": 819.63375,
+      "min_x": 45.354332,
+      "min_y": 26.5803,
+      "page": 2,
+      "page_height": 841.8898,
+      "page_width": 595.2756,
+      "words": 348,
+      "words_outside_page": 0
+    },
+    {
+      "max_x": 551.873213,
+      "max_y": 819.63375,
+      "min_x": 45.354332,
+      "min_y": 26.5803,
+      "page": 3,
+      "page_height": 841.8898,
+      "page_width": 595.2756,
+      "words": 377,
+      "words_outside_page": 0
+    }
+  ],
+  "passed": true,
+  "pole_plot_input_sha256": "ec7282a3cfa9c977eb5f9642268e9fc79242a1f89946d5b40ad53048e2936d45",
+  "poppler_metadata_warning": "Syntax Error: Suspects object is wrong type (boolean)\n",
+  "schema": "madloop-private-stress-render-layout-inspection-v1",
+  "source_and_render_copy_payloads_unchanged": true,
+  "visual_inspection": {
+    "pages": [
+      1,
+      2,
+      3
+    ],
+    "result": "All three pages legible; no clipping/overlap; navy tables/panels; point labels and qualification limitations visible.",
+    "reviewers": [
+      "rendering agent",
+      "root"
+    ]
+  }
+}

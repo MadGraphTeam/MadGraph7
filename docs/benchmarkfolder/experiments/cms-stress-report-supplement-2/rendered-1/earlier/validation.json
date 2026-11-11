@@ -1,0 +1,19 @@
+{
+  "PDF_or_PNG_generated": false,
+  "Python_sources_parsed": 3,
+  "Typst_source_rendered": false,
+  "boundary_negative_controls": 3,
+  "data_sha256": "ec7282a3cfa9c977eb5f9642268e9fc79242a1f89946d5b40ad53048e2936d45",
+  "four_closed_packet_payloads_verified": 997,
+  "generator_replay_passed": true,
+  "new_native_evaluations": 0,
+  "packet_index_files_verified": 4,
+  "passed": true,
+  "plot_source_executed": false,
+  "production_changes": false,
+  "pure_test_elapsed_seconds": 0.096,
+  "pure_tests": 12,
+  "schema": "madloop-private-stress-report-source-validation-v1",
+  "tracked_report_and_NinjaRS_preserved": true,
+  "unexpected_input_or_native_accesses": 0
+}

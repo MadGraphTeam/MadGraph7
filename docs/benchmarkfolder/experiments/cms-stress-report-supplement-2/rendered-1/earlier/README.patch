@@ -1,0 +1,28 @@
+--- a/docs/benchmarkfolder/README.md
++++ b/docs/benchmarkfolder/README.md
+@@ -1,4 +1,12 @@
+ # TIRust / MadLoop benchmark
++
++**Current status.** The production registration `0fcd2cd873d6` has eleven
++closed ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate
++`1e-8` target. The current 35-page [benchmark PDF](benchmark.pdf) is a frozen
++ordinary-campaign snapshot. The private CMS invariant-certificate prototype
++is unpromoted: conditional QP pole consistency does not settle its finite
++term or qualify the incomplete stress stage. Final precise timings remain
++[Hua-Sheng’s local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+ 
+ This campaign compares the exact starting revision
+ `9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f` with the integration candidate.
+@@ -297,8 +305,10 @@
+ reconstructs the existing model and supports the prototype's QP double pole
+ at that stress point; CutTools returns approximately half the predicted value.
+ This checks one coefficient under the documented reconstruction assumptions.
+-Finite and single-pole truth require further adjudication, including the
+-reducers' different kinematic and scalar-classification policies.
++The subsequent single-IR-pole audit below also supports the candidate under
++its documented reconstruction assumptions. The finite coefficient remains
++unadjudicated; the reducers' different kinematic and scalar-classification
++policies still require matched-input investigation.
+ 
+ The subsequent [single-IR-pole audit](experiments/cms-universal-qed-single-pole-audit-1/README.md)
+ also supports the candidate QP coefficient, within `5.23e-16` of the FKS

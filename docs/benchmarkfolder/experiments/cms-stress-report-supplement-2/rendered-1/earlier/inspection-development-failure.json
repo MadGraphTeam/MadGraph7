@@ -1,0 +1,6 @@
+{
+  "failure": "AssertionError at validation-helper line15",
+  "observed_terminal_exit_code": 1,
+  "scope": "Layout receipt generation assumed pdfinfo stderr empty. Actual metadata warning retained verbatim in inspect-1.stderr. Font token offsets were also corrected before the successful receipt. No render or source bytes changed.",
+  "tool_chunk": "0acdd0"
+}

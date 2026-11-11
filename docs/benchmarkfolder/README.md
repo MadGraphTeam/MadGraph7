@@ -1,5 +1,17 @@
 # TIRust / MadLoop benchmark
 
+**Current status.** Production registration `0fcd2cd873d6` has eleven closed
+ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
+target. The [39-page benchmark PDF](benchmark.pdf) preserves the original 35
+report pages and appends four pages of separately bound CMS chronology. The
+later [private matched-input QP comparison](experiments/matched-native-input-qualification-1/README.md)
+agrees in Born, finite and both poles at the saved forward fixture, with
+maximum relative disagreement `2.014e-16`. Its explicit backend-8 input-policy
+derivative is unpromoted; original legacy 8's failure remains historical.
+Independent amplitude truth, normal checked execution and generic production
+coverage remain unqualified. Final precise timings remain
+[Hua-Sheng’s local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+
 This campaign compares the exact starting revision
 `9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f` with the integration candidate.
 The prior NinjaRS report remains in `doc/benchmarkfolder`.
@@ -154,7 +166,7 @@ registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
 Its numerical report is bound to a sealed terminal eleven-process checkpoint
 and immutable source-specific selection/dossier. Those 66 lanes do not qualify
-the changed Fortran source. The current 35-page PDF retains that evidence and
+the changed Fortran source. The preserved 35-page PDF retains that evidence and
 adds the separately bound eleven-case current-source supplement and the
 current-source QCD three-particle raw stability study. Its immutable progress-3
 selection includes both four-particle checkpoints, all 66 regression passes and
@@ -297,21 +309,33 @@ A separate [universal QED double-pole audit](experiments/cms-universal-qed-pole-
 reconstructs the existing model and supports the prototype's QP double pole
 at that stress point; CutTools returns approximately half the predicted value.
 This checks one coefficient under the documented reconstruction assumptions.
-Finite and single-pole truth require further adjudication, including the
-reducers' different kinematic and scalar-classification policies.
+At that earlier boundary the remaining coefficients still required
+adjudication. The subsequent single-pole and later matched-input results below
+provide separate evidence; the failed original stress stage remains failed.
 
 The subsequent [single-IR-pole audit](experiments/cms-universal-qed-single-pole-audit-1/README.md)
 also supports the candidate QP coefficient, within `5.23e-16` of the FKS
 prediction. It explicitly relies on the retained restored QP inputs and the
 intended UV-renormalized amplitude; runtime coupling bits and UV cancellation
-were not independently measured. The finite term remains unadjudicated.
+were not independently measured. These analytic pole audits do not determine
+the finite term; the later matched-input probe supplies finite agreement under
+its explicitly private input policy.
 
 The [legacy Ninja/NinjaRS reference probe](experiments/kinematic-legacy-reference-adjudication-1/README.md)
 completes both workers but obtains no valid reference: NinjaRS reports five
 failed box reductions, while Ninja's final Laurent coefficients are nonfinite.
 The logs establish QP interface use and preserve every blocked comparison.
-A separate comparison must establish matched native inputs before attributing
-the remaining disagreement to a reduction algorithm.
+The later [matched-input probe](experiments/matched-native-input-qualification-1/README.md)
+uses a separate private backend-8 derivative with the candidate certified
+invariant/symmetry policy and aligned scale expression. All 52 native pairs,
+104 native adapter calls and both whole-worker/bootstrap gates pass. All
+point-20 Born/finite/pole orders agree within `2.014e-16`; finite and single-pole
+returned binary64 words differ by one ULP, while Born and double-pole words are
+identical. Candidate-9 output words also match the earlier eligible candidate.
+Its recorded canonical numerator is the Fortran contraction buffer, not an
+argument to TIRust’s tensor-only API. Original legacy backend 8 is unchanged.
+This establishes matched-input agreement, not an algorithmic winner, an analytic
+finite oracle, normal checked stability, generic source qualification or performance.
 
 The separate [original-input EW replay](experiments/ew-original-refusal-replay-1/README.md)
 reproduces both point-2, rank-three refusals and retains their complete original
@@ -487,7 +511,7 @@ misses, accepted DP/QP counts and interrupted EW attempt remain visible. The
 guard-only cache experiment is descriptive shared-host evidence; precise local
 acceptance is still TODO.
 The [33-page milestone](https://github.com/MadGraphTeam/MadGraph7/blob/48b664a029d35acb2646b8820f9c654cfed6e852/docs/benchmarkfolder/benchmark.pdf)
-and its progress-1 selection remain unchanged at that commit. The current PDF
+and its progress-1 selection remain unchanged at that commit. The preserved ordinary-report PDF
 has 35 pages: historical raw figures remain on pages 27–30, current-source
 numerical progress is on pages 32–33, cache-guard scope and local TODOs are on
 page 34, and the separately qualified current-source raw study is on page 35.
@@ -497,17 +521,47 @@ proposal and a small layout amendment are retained with the release receipts.
 
 A new old-source selection/dossier binds the preceding precision TODO through
 its exact archived path; the published selection/dossier remain immutable.
-Rebuild and verify this explicitly selected two-source view:
+Rebuild and verify the archived ordinary view into a custom output
+(the canonical report now uses the append builder below):
 
 ```sh
 source tools/tirust_env.sh
 current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-entry-cache-supplement-1.json
 current_report_supplement=campaigns/entry-latch-cache-guard-1/report-supplements/progress-3/selection.json
-python3 -B docs/benchmarkfolder/build_report.py --campaign invariant-symmetry-1 \
+python3 -B docs/benchmarkfolder/build_report.py --output /tmp/ordinary-35-page-report.pdf --campaign invariant-symmetry-1 \
   --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
-python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign invariant-symmetry-1 \
+python3 -B docs/benchmarkfolder/build_report.py --output /tmp/ordinary-35-page-report.pdf --verify-only --campaign invariant-symmetry-1 \
   --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
 ```
+
+The canonical 39-page PDF preserves those exact 35 pages from
+`history/report-before-cms-stress-supplement-1/` and appends four separately
+bound CMS diagnostic pages. Pages 36–38 preserve the earlier failed/incomplete
+trial and conditional pole audits. Page 39 records the later eligible private
+matched-input result without reclassifying earlier failures. The exact combined
+source/render packet is `experiments/cms-stress-report-supplement-2/rendered-1/`;
+it retains both original Typst sources, data, plots, public joins and commands.
+
+Reproduce the composite into a fresh custom output and verify it:
+
+```sh
+source tools/tirust_env.sh
+python3 -B docs/benchmarkfolder/build_stress_report.py --output /tmp/benchmark-with-cms-stress.pdf
+python3 -B docs/benchmarkfolder/build_stress_report.py --output /tmp/benchmark-with-cms-stress.pdf --verify-only
+python3 -B docs/benchmarkfolder/build_stress_report.py --output /tmp/benchmark-with-cms-stress.pdf --verify-only --verify-pages
+```
+
+The builder authenticates the archived ledger's 12,252 inputs and the sealed
+four-page artifact. It verifies same-version paired 144-dpi RGB pixels, per-page
+layout text, geometry and fonts for all 39 delivered pages. This is not PDF
+object-graph equivalence or a new annotation/link proof. The composite ledger
+retains source pins, tool versions, commands, warnings and the page proof.
+File-only verification launches no programs; explicit page checks use bounded
+read-only document tools. The optional `--rebuild-supplement` compiles the known
+`earlier/supplement.typ` and `later/matched-page.typ` sources separately, preserving
+the earlier 1/3–3/3 footers, then joins them before the same checks. The older
+builder guards canonical composite output; explicit custom output remains
+available. No report command launches native physics or qualifies local timing.
 
 Dossier creation and report building never launch new numerical measurements.
 Each retrospective and raw plot has a separate page. The original numerical
@@ -522,9 +576,10 @@ in the campaign report-snapshots directory.
 The closed11 PDF, ledger, context and changed report sources from commit
 `772b15ed39cc` are preserved under `history/report-before-closed-provisional/`.
 
-The report build does not run numerical measurements. It writes `benchmark.pdf`
-and `report-build.json`, which records input and PDF hashes, the exact Typst
-version, creation timestamp, and font search paths. Typst 0.15.1, Libertinus
+The report builders do not run numerical measurements. The composite
+`report-build.json` binds the preserved original ledger, sealed four-page
+supplement, final PDF and page-preservation receipt. The archived original
+ledger retains its exact Typst version, creation timestamp and font search paths. Typst 0.15.1, Libertinus
 7.051 and DejaVu 2.37 reproduce the recorded presentation. The renderer refuses
 a passing headline with missing main cases, absent backend comparisons,
 insufficient samples/repetitions, or a runtime bound above the agreed limit.

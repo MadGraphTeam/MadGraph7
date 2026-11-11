@@ -1,0 +1,55 @@
+[
+  {
+    "argv": [
+      "pdfinfo",
+      ".tirust-build/stress-report-supplement-render-1/supplement.pdf"
+    ],
+    "returncode": 0,
+    "stderr": "inspect-1.stderr",
+    "stdout": "inspect-1.stdout"
+  },
+  {
+    "argv": [
+      "pdffonts",
+      ".tirust-build/stress-report-supplement-render-1/supplement.pdf"
+    ],
+    "returncode": 0,
+    "stderr": "inspect-2.stderr",
+    "stdout": "inspect-2.stdout"
+  },
+  {
+    "argv": [
+      "pdftotext",
+      "-layout",
+      ".tirust-build/stress-report-supplement-render-1/supplement.pdf",
+      ".tirust-build/stress-report-supplement-render-1/supplement.txt"
+    ],
+    "returncode": 0,
+    "stderr": "inspect-3.stderr",
+    "stdout": "inspect-3.stdout"
+  },
+  {
+    "argv": [
+      "pdftotext",
+      "-bbox",
+      ".tirust-build/stress-report-supplement-render-1/supplement.pdf",
+      ".tirust-build/stress-report-supplement-render-1/supplement-bbox.html"
+    ],
+    "returncode": 0,
+    "stderr": "inspect-4.stderr",
+    "stdout": "inspect-4.stdout"
+  },
+  {
+    "argv": [
+      "pdftoppm",
+      "-png",
+      "-r",
+      "100",
+      ".tirust-build/stress-report-supplement-render-1/supplement.pdf",
+      ".tirust-build/stress-report-supplement-render-1/page"
+    ],
+    "returncode": 0,
+    "stderr": "inspect-5.stderr",
+    "stdout": "inspect-5.stdout"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "Typst_rendered": false,
+  "canonical_or_tracked_writes": false,
+  "closed_run_payloads_joined": 43,
+  "data_sha256": "b8acf5247a4f6485cafa60521213dd3c04c8dd0f31453fca922b7475a9c20af7",
+  "elapsed_seconds": 0.288,
+  "new_native_physics_evaluations": 0,
+  "passed": true,
+  "public_data_verify_only_passed": true,
+  "public_packet_index_sha256": "eacced6cc887ee586d15c4ceade8ac1f089fec0a36b84708f12086d05ba2f8a0",
+  "public_payloads_authenticated": 304,
+  "pure_tests": 11,
+  "ready_for_reviewed_private_render": true,
+  "receipt_and_policy_roles_joined": 6,
+  "schema": "madloop-later-matched-page-source-validation-v1",
+  "test_session": 46433
+}

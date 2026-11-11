@@ -1,0 +1,118 @@
+{
+  "canonical_or_tracked_writes": false,
+  "files": {
+    "PLAN.md": {
+      "bytes": 2618,
+      "sha256": "2e4a520c261651031d614e1fb082acbc2193a26bfa1f6e6b27268a1a0d0c8a9c"
+    },
+    "README.md": {
+      "bytes": 2796,
+      "sha256": "aa80854fe8b6fc173449f38e11e77e573e1018a5449ad4fc94ca77592bb7a531"
+    },
+    "inspect-1.stderr": {
+      "bytes": 54,
+      "sha256": "1caba36976fd3bbea2009a8fa6ea9c450e613e879e11190e8757b7df6e9f7b71"
+    },
+    "inspect-1.stdout": {
+      "bytes": 468,
+      "sha256": "6d1a936619c588584db580da880a3b5b8e64bac3c7090fdf7e2fce9b568fdedc"
+    },
+    "inspect-2.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "inspect-2.stdout": {
+      "bytes": 759,
+      "sha256": "a57801304fbc9892b578163d4ae7aa7d333cbe028ff25d6d6bb7d78ba0ca5b1b"
+    },
+    "inspect-3.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "inspect-3.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "inspect-4.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "inspect-4.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "inspection-commands.json": {
+      "bytes": 1047,
+      "sha256": "177c97a56860a790ecb45c62bc06debe6ad4067d1e0c5010f1d581ba27d624a6"
+    },
+    "layout-review.json": {
+      "bytes": 473,
+      "sha256": "16712ab92cb89e0514888746b753c1757823a95d88503980c352350c68071e7f"
+    },
+    "matched-data.json": {
+      "bytes": 3452,
+      "sha256": "b8acf5247a4f6485cafa60521213dd3c04c8dd0f31453fca922b7475a9c20af7"
+    },
+    "matched-page-bbox.html": {
+      "bytes": 54142,
+      "sha256": "d9639cd58b062e26d55ad1ae80e7749e0bf4e236099f4998e122bfa54d54c9aa"
+    },
+    "matched-page.pdf": {
+      "bytes": 73626,
+      "sha256": "f8e37e8f5dd1a5528e4505ec3a929f882b07b6e6b4aed1f89d365de1d127b1fd"
+    },
+    "matched-page.typ": {
+      "bytes": 4808,
+      "sha256": "9d5febcb85c26e6afd8aa03edccdb415bc26e26fa60479f4943932582d6c6a6b"
+    },
+    "page-1.png": {
+      "bytes": 291702,
+      "sha256": "1dd31cbf807e3822db10b1c191f25db72819b1909ca8849cef26dd46e84161f2"
+    },
+    "prepare_matched.py": {
+      "bytes": 15280,
+      "sha256": "c4472e938418f803583af213e05c960bd92f607c47c6a1929a8d26240803dddd"
+    },
+    "public-map.json": {
+      "bytes": 341,
+      "sha256": "af145746caf68ee09188e83add498fff7eb06a690258d56825c305c3a9857d04"
+    },
+    "render-command.json": {
+      "bytes": 392,
+      "sha256": "deb18a1dd1175c8b959f4fb2a2e25eb6952eb2184dc3be888f20898222ec669c"
+    },
+    "render.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "render.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "source-index.json": {
+      "bytes": 1610,
+      "sha256": "758901a3c6771910230097c681d08c5c0a1f05a3f947041d613b07699c15c29b"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    },
+    "test_matched.py": {
+      "bytes": 3887,
+      "sha256": "aee4acaf775ba982115e867558bcade53c23ac6ef2953354aef6a73ba5012c86"
+    },
+    "tool-versions.json": {
+      "bytes": 202,
+      "sha256": "b9224edcd9899901dd058a5b5ed8c4ca4f752ae1c870acdfb2b341ee6c367678"
+    },
+    "validation.json": {
+      "bytes": 651,
+      "sha256": "e280c14c3eebcd1670dac13497f1deffc5e4b14178b3483b9db0c0b7c6827f89"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "page_count": 1,
+  "public_packet_index_sha256": "eacced6cc887ee586d15c4ceade8ac1f089fec0a36b84708f12086d05ba2f8a0",
+  "schema": "madloop-later-matched-one-page-render-v1",
+  "source_index_sha256": "758901a3c6771910230097c681d08c5c0a1f05a3f947041d613b07699c15c29b"
+}

@@ -1,0 +1,25 @@
+{
+  "argv": [
+    [
+      "python3",
+      "-B",
+      ".tirust-build/stress-report-supplement-render-1/render_poles.py",
+      "--data",
+      ".tirust-build/stress-report-supplement-render-1/data.json",
+      "--output",
+      ".tirust-build/stress-report-supplement-render-1/pole-comparison"
+    ],
+    [
+      "typst",
+      "compile",
+      ".tirust-build/stress-report-supplement-render-1/supplement.typ",
+      ".tirust-build/stress-report-supplement-render-1/supplement.pdf",
+      "--input",
+      "include-pole-plot=true"
+    ]
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "environment_setup": "source tools/tirust_env.sh",
+  "native_physics_calls": 0,
+  "source_index_sha256": "cdb111b82c60978ffd63a2d1ecd6992b2c9b6ec030d780a409d76931dfde5973"
+}

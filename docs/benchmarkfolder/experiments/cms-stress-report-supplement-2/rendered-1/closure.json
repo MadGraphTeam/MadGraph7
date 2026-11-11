@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "python3",
+    "-B",
+    ".tirust-build/stress-report-supplement-render-2/build_bundle.py",
+    "--source-index-sha256",
+    "06bd39393697588ef5558e38badba1e20a0a158550c122c342dc897988df3ea6"
+  ],
+  "canonical_and_NinjaRS_unchanged": true,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "document_commands": 23,
+  "earlier_three_pages_preserved": true,
+  "environment_setup": "source tools/tirust_env.sh",
+  "later_page_preserved": true,
+  "new_native_physics_evaluations": 0,
+  "no_new_Typst_compile_in_bundle_merge": true,
+  "observed_terminal_exit_code": 0,
+  "root_visual_review_of_later_page_passed": true,
+  "tool_session": 46074
+}

@@ -1,0 +1,13 @@
+{
+  "Typst_diagnostics_empty": true,
+  "fonts": 6,
+  "fonts_embedded_subset_unicode": true,
+  "new_native_physics_evaluations": 0,
+  "pages": 1,
+  "passed": true,
+  "root_visual_review_pending": true,
+  "schema": "madloop-later-matched-one-page-layout-v1",
+  "source_copy_unchanged": true,
+  "visual_inspection": "Rendering agent: legible one-page layout; table, policy delta, chronology and qualification limits visible; no overlap/clipping.",
+  "words_outside_page": 0
+}

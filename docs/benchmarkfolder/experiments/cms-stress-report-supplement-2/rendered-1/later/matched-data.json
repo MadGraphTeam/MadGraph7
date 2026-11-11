@@ -1,0 +1,87 @@
+{
+  "algorithmic_winner_selected": false,
+  "bootstrap_controls_passed": true,
+  "bootstrap_point": 1,
+  "closed_receipt_pins": {
+    "matched-comparison.json": "af4b58a379ac35a78066a1bcad38ed3f4fe9e16e6b0d4583dbd4e6c940eba6d5",
+    "prior-candidate-word-parity.json": "5f9f4cc6c8d2ad35944158cd7ad9fe30c8c0a91729b69456cc9528cf7d07c8e9",
+    "root-run-review.json": "9ca6601ab14a58d25eee4d77159805731e6c3d9ecd7264c364e636ed9501bf66",
+    "run-closure.json": "52faa470d8be22b81f8636edba21f5fba6c2d13be1f0241a8212a7b2055839a7"
+  },
+  "fixed_QP_return": 120,
+  "generic_source_qualified": false,
+  "independent_accuracy_qualified": false,
+  "input_policy_source_pins": {
+    "policy_note": "414a65385fb3e69c45c91a63ed04eb73d5a9012ce041aca00f21fbdbe539f943",
+    "scientific_index": "357e116b51879cda1e1145c9d040194732c21ffd9fcd2557d9f68451901b262b"
+  },
+  "matched_native_inputs": true,
+  "maximum_relative_error": "2.01363060398197313E-16",
+  "native_calls": 104,
+  "native_pairs": 52,
+  "new_native_physics_evaluations": 0,
+  "normal_checked_execution_qualified": false,
+  "original_legacy8_unchanged": true,
+  "outer_calls": 4,
+  "performance_qualified": false,
+  "point": 20,
+  "prior_candidate9_word_parity": true,
+  "prior_stress_failure_preserved": true,
+  "private8_policy_change": true,
+  "public_packet_index_sha256": "eacced6cc887ee586d15c4ceade8ac1f089fec0a36b84708f12086d05ba2f8a0",
+  "public_packet_payloads_verified": 304,
+  "public_packet_verified": true,
+  "public_receipt_map": {
+    "matched-comparison.json": "results/matched-comparison.json",
+    "policy_note": "science/PROPOSAL.md",
+    "prior-candidate-word-parity.json": "results/prior-candidate-word-parity.json",
+    "root-run-review.json": "results/root-run-review.json",
+    "run-closure.json": "results/run-closure.json",
+    "scientific_index": "science/index.json"
+  },
+  "ready_to_seal": true,
+  "schema": "madloop-later-matched-input-report-data-v1",
+  "table": [
+    {
+      "backend8": "3.38642869505281705E-2",
+      "backend8_word": "3FA156A8E9E8E5C7",
+      "backend9": "3.38642869505281705E-2",
+      "backend9_word": "3FA156A8E9E8E5C7",
+      "binary64_word_ULP_gap": 0,
+      "coefficient": "Born",
+      "relative_error": "0.00000000000000000E+17",
+      "symmetric_relative_error": "0.00000000000000000E+17"
+    },
+    {
+      "backend8": "-3.44596168243842815E-2",
+      "backend8_word": "BFA1A4B0DE963B64",
+      "backend9": "-3.44596168243842746E-2",
+      "backend9_word": "BFA1A4B0DE963B63",
+      "binary64_word_ULP_gap": 1,
+      "coefficient": "finite",
+      "relative_error": "2.01363060398197313E-16",
+      "symmetric_relative_error": "1.00681530199098667E-16"
+    },
+    {
+      "backend8": "-4.96751292099207892E-3",
+      "backend8_word": "BF7458D0989C220D",
+      "backend9": "-4.96751292099207806E-3",
+      "backend9_word": "BF7458D0989C220C",
+      "binary64_word_ULP_gap": 1,
+      "coefficient": "single_pole",
+      "relative_error": "1.74606840844448127E-16",
+      "symmetric_relative_error": "8.73034204222240710E-17"
+    },
+    {
+      "backend8": "-1.62776864325700260E-4",
+      "backend8_word": "BF2555E29E1E385E",
+      "backend9": "-1.62776864325700260E-4",
+      "backend9_word": "BF2555E29E1E385E",
+      "binary64_word_ULP_gap": 0,
+      "coefficient": "double_pole",
+      "relative_error": "0.00000000000000000E+17",
+      "symmetric_relative_error": "0.00000000000000000E+17"
+    }
+  ],
+  "whole_worker_gates_passed": true
+}

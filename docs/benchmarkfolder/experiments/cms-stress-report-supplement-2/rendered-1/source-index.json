@@ -1,0 +1,74 @@
+{
+  "earlier_render_index_sha256": "26ebae5025032f9aa9451da754ce2e4ac0f789fcfd411881fafcc2c5e6559c25",
+  "files": {
+    "README.md": {
+      "bytes": 2948,
+      "sha256": "681b62883ee131d29faac71dd642ed015e787c5cfc7be58a4d314934057e57df"
+    },
+    "build_bundle.py": {
+      "bytes": 2979,
+      "sha256": "685a33b3b3f6f0aeb19643009a9ead4ae4e06b388f18ed5ef6c9359803d03120"
+    },
+    "earlier/data.json": {
+      "bytes": 12058,
+      "sha256": "ec7282a3cfa9c977eb5f9642268e9fc79242a1f89946d5b40ad53048e2936d45"
+    },
+    "earlier/index.json": {
+      "bytes": 6309,
+      "sha256": "26ebae5025032f9aa9451da754ce2e4ac0f789fcfd411881fafcc2c5e6559c25"
+    },
+    "earlier/pole-comparison.png": {
+      "bytes": 142112,
+      "sha256": "9f5a42046196d7939c9025b9e076316cf769a76cca53e010e576246dc8e5dd00"
+    },
+    "earlier/source-index.json": {
+      "bytes": 2522,
+      "sha256": "cdb111b82c60978ffd63a2d1ecd6992b2c9b6ec030d780a409d76931dfde5973"
+    },
+    "earlier/style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    },
+    "earlier/supplement.typ": {
+      "bytes": 8590,
+      "sha256": "4f2fc5e5bc8b6cdc7d94912565f7ed455d7a0d75bdfc71674afd744f80dccde0"
+    },
+    "later/index.json": {
+      "bytes": 4028,
+      "sha256": "19bfe2e61cb5077db5bd833425b148afbe39c021727e911c8fe5a0e4b501fc68"
+    },
+    "later/matched-data.json": {
+      "bytes": 3452,
+      "sha256": "b8acf5247a4f6485cafa60521213dd3c04c8dd0f31453fca922b7475a9c20af7"
+    },
+    "later/matched-page.typ": {
+      "bytes": 4808,
+      "sha256": "9d5febcb85c26e6afd8aa03edccdb415bc26e26fa60479f4943932582d6c6a6b"
+    },
+    "later/prepare_matched.py": {
+      "bytes": 15280,
+      "sha256": "c4472e938418f803583af213e05c960bd92f607c47c6a1929a8d26240803dddd"
+    },
+    "later/public-map.json": {
+      "bytes": 341,
+      "sha256": "af145746caf68ee09188e83add498fff7eb06a690258d56825c305c3a9857d04"
+    },
+    "later/source-index.json": {
+      "bytes": 1610,
+      "sha256": "758901a3c6771910230097c681d08c5c0a1f05a3f947041d613b07699c15c29b"
+    },
+    "later/style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    },
+    "page_tools.py": {
+      "bytes": 16829,
+      "sha256": "cddab2f6055b96a1524713d5d624c9a2a67219482933635f7bb7ead985907ff3"
+    }
+  },
+  "later_render_index_sha256": "19bfe2e61cb5077db5bd833425b148afbe39c021727e911c8fe5a0e4b501fc68",
+  "matched_public_packet_index_sha256": "eacced6cc887ee586d15c4ceade8ac1f089fec0a36b84708f12086d05ba2f8a0",
+  "new_native_physics_evaluations": 0,
+  "schema": "madloop-four-page-stress-source-v1",
+  "source_only": true
+}
