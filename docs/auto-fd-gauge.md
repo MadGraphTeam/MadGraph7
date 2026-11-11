@@ -397,14 +397,26 @@ Review follow-ups:
   is an argument again, and the window uses the real pole mass and the width
   of the complex mass (`M**2 = MR**2 - i MR W`). The window edges are then the
   fixed-width ones, and Fortran and madmatrix agree
-  (`test_dollar_exclusion_complex_mass_scheme`);
+  (`test_dollar_exclusion_complex_mass_scheme`). The Fortran lines use the
+  generic `REAL`/`AIMAG`, so that the quadruple-precision copy of the routine
+  (MadLoop, aMC@NLO) keeps a `complex*32` mass: `DIMAG` does not compile
+  there, and `DBLE` would truncate the pole mass;
+- `$` on a massless particle (`$ a`, `$ g`) is refused when the process is
+  defined: there is no on-shell window to remove, and in the complex-mass
+  scheme the width of the window, `-Im(M**2)/MR`, is 0/0, which made the
+  theta function zero and silently dropped the diagram. Use `$$` or `/`
+  instead. The `syntax` tutorial now compares `$ z` with `$$ z`;
 - the `MADARITH_DOUBLEEXPANSION` (`FPTYPE=e`) variant of the complex-mass
   propagator in madmatrix cast the complex mass to a real and dropped the
   width. It now subtracts the complex `M*M`: real part in double-word
   arithmetic, imaginary part as the width. That build does not compile on
   this platform even without the complex-mass scheme (C++20 concepts under
   `-std=c++17`, then `Double<double>` conversions), so the variant is checked
-  on the generated text only, against the real-mass one.
+  on the generated text only, against the real-mass one
+  (`test_madmatrix_doubleexpansion_propagator`).
 
 Not addressed here: the madmatrix `HRDCOD=1` build is still broken with
-complex parameters (pre-existing).
+complex parameters (pre-existing). A MadLoop standalone output with `$`
+(`u u~ > e+ e- $ z [virt=QCD]`) compiles its HELAS library but does not link,
+in either scheme: the loop HELAS functions have no `theta_functionr`
+(pre-existing).

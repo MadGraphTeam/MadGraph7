@@ -1541,10 +1541,17 @@ class ComplexMassCustomPropagatorTest(unittest.TestCase):
         the window uses the real pole mass and the width of the complex mass,
         M**2 = MR**2 - i MR W, which reproduce the fixed-width window."""
         from madmatrix import model_handling
+        from aloha.aloha_writers import ALOHAWriterForFortranQP
         expected = {
             'Fortran': ['FFV2P1D_3(F1, F2, COUP, M3, BWCUTOFF,V3)',
-                        'MR3 = SQRT(DBLE(M3**2))', 'W3 = -DIMAG(M3**2)/MR3',
+                        'MR3 = SQRT(REAL(M3**2))', 'W3 = -AIMAG(M3**2)/MR3',
                         'FCT0 = ((MR3-W3*BWCUTOFF))**(2d0)'],
+            # quadruple precision (MadLoop, aMC@NLO): the generic REAL/AIMAG
+            # keep the kind of the complex*32 M3 -- DIMAG does not compile
+            # there and DBLE would truncate the pole mass to double
+            ALOHAWriterForFortranQP: ['complex*32 M3', 'real*16 MR3',
+                        'MR3 = SQRT(REAL(M3**2))', 'W3 = -AIMAG(M3**2)/MR3',
+                        'FCT0 = ((MR3-W3*BWCUTOFF))**(2q0)'],
             'CPP': ['std::complex<double> M3, double BWCUTOFF,ALOHAOBJ',
                     'MR3 = sqrt(real(M3*M3));', 'W3 = -imag(M3*M3)/MR3;',
                     'FCT0 = pow((MR3-W3*BWCUTOFF),2.);'],
@@ -1562,6 +1569,34 @@ class ComplexMassCustomPropagatorTest(unittest.TestCase):
             self.assertEqual(len(fcts), 2, str(language))
             for fct in fcts:
                 self.assertNotRegex(fct, r'\bM3\b', str(language))
+
+    def test_madmatrix_doubleexpansion_propagator(self):
+        """MADMATRIX_DOUBLEEXPANSION (FPTYPE=e) writes P^2 - m^2 itself, in
+        double-word arithmetic. With the complex mass, m^2 = M*M carries the
+        width: P^2 - m^2 = ( P^2 - Re(m^2) ) + i ( -Im(m^2) ), the same
+        number as the fixed-width ( P^2 - M^2 ) + i M W, since
+        m^2 = M^2 - i M W. (FPTYPE=e does not build everywhere, so the text
+        is what can be checked here.)"""
+        from madmatrix import model_handling
+        saved = model_handling.arith_doubleexpansion
+        model_handling.arith_doubleexpansion = True
+        try:
+            text = self.routine((('FFV2',), [], 3),
+                                model_handling.MadMatrixALOHAWriter, 1)
+        finally:
+            model_handling.arith_doubleexpansion = saved
+        block = text.split('#ifdef MADARITH_DOUBLEEXPANSION', 1)[1].split('#endif', 1)[0]
+        for line in ['const cxtype M2c3 = M3 * M3;',
+                     'M2d3 = static_cast<MG_ARITHM::Double<fptype_amp>>(M2c3.real());',
+                     '( P3d[3] * P3d[3] ) - M2d3 );',
+                     'const fptype_amp_sv iMW = -M2c3.imag();',
+                     'const cxtype_amp_sv denden = cxmake( PmM2, iMW );']:
+            self.assertIn(line, block)
+        # M is complex: no real-mass cast, and no width argument
+        self.assertNotIn('static_cast<MG_ARITHM::Double<fptype_amp>>(M3)', block)
+        self.assertNotRegex(text, r'\bW3\b')
+        # and the default build keeps the complex-mass madmatrix::denom
+        self.assertIn('madmatrix::denom( Ccoeff, COUP, dP3, M3 );', text)
 
     def test_width_in_the_numerator_only_is_refused(self):
         """the numerator is checked too, not only a custom denominator"""

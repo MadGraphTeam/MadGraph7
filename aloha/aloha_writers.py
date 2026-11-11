@@ -1028,7 +1028,10 @@ class ALOHAWriterForFortran(WriteALOHA):
         keys.sort(key=misc.cmp_to_key(sort_fct))
         cms_names = self.complex_mass_fct_width()
         if cms_names:
-            out.write(' %(mr)s = SQRT(DBLE(M%(i)d**2))\n %(w)s = -DIMAG(M%(i)d**2)/%(mr)s\n'
+            # the generic REAL/AIMAG keep the kind of M (complex*32 in the
+            # quadruple-precision routines, where DIMAG does not compile and
+            # DBLE truncates to double)
+            out.write(' %(mr)s = SQRT(REAL(M%(i)d**2))\n %(w)s = -AIMAG(M%(i)d**2)/%(mr)s\n'
                       % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
             self.declaration.add(('double', cms_names[0]))
         for name in keys:

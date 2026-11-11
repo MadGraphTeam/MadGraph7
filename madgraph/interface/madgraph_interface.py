@@ -7416,6 +7416,18 @@ This implies that with decay chains:
                isinstance(forbidden_onsh_schannel_ids[0], list):
                 raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \
                       " which can be used only for required s-channels")
+            # $ removes the window |sqrt(s) - M| < BWCUTOFF * W around the
+            # pole: a massless particle has none (and in the complex-mass
+            # scheme its width, -Im(M^2)/M, is 0/0)
+            massless = [self._curr_model.get_particle(pid).get_name()
+                        for pid in forbidden_onsh_schannel_ids
+                        if self._curr_model.get_particle(pid) and
+                        self._curr_model.get_particle(pid).get('mass').lower() == 'zero']
+            if massless:
+                raise self.InvalidCmd("The $ syntax is not supported for massless "
+                      "particles (%s): there is no on-shell window to exclude. "
+                      "Use / to remove the particle, or $$ to remove its "
+                      "s-channel propagators." % ', '.join(massless))
             if forbidden_schannel_ids and \
                isinstance(forbidden_schannel_ids[0], list):
                 raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \

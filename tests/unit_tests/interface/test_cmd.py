@@ -531,6 +531,25 @@ class TestValidCmd(unittest.TestCase):
         self.assertEqual(len(proc), 4)
         
     @test_aloha.set_global()
+    def test_dollar_massless_is_refused(self):
+        """`$` removes the on-shell window |sqrt(s) - M| < BWCUTOFF * W: a
+        massless particle has none (in the complex-mass scheme its width
+        would be 0/0, and the diagram silently zero), so `$ a` is refused,
+        also inside a multiparticle; `$ z` and `$$ a` still go through."""
+
+        cmd = self.cmd
+        self.do('import model sm')
+        for line in ('generate e+ e- > mu+ mu- $ a',
+                     'generate e+ e- > mu+ mu- $ g',
+                     'generate e+ e- > mu+ mu- $ z a'):
+            with self.assertRaisesRegex(cmd.InvalidCmd, 'not supported for massless'):
+                cmd.do_generate(line.split(' ', 1)[1])
+        self.do('generate e+ e- > mu+ mu- $ z')
+        self.assertEqual(cmd._curr_amps[0].get('process').get('forbidden_onsh_s_channels'), [23])
+        self.do('generate e+ e- > mu+ mu- $$ a')
+        self.assertTrue(cmd._curr_amps)
+
+    @test_aloha.set_global()
     def test_generate_polarised(self):
         """check that simple syntax goes through and return expected process"""
            
