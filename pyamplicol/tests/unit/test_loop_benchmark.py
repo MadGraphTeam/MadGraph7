@@ -2795,6 +2795,45 @@ def test_report_builder_backend_table_and_missing_box(tmp_path):
     assert [e["table"] for e in missing] == sorted(e["table"] for e in missing)
 
 
+def test_report_builder_missing_box_labels_a_cross_backend_difference_once():
+    """A row without a 256-bit truth (lit-report R2) gives ONE labelled
+    Missing-box line for the two backends' difference, never an error line
+    per backend."""
+
+    builder = _report_builder()
+    cross = {
+        "points": 128,
+        "max_relative": 7e-2,
+        "lax": 1e-5,
+        "above": 23,
+        "worst": 7e-2,
+        "served_by": [],
+        "failed": None,
+        "not_compared": 0,
+        "failed_classes": [],
+        "note": True,
+        "cross_backend": True,
+    }
+    row = {
+        "math": "g g -> a a g g",
+        "label": "li_gg_aagg",
+        "generation": {"status": "measured"},
+        "timing": {
+            "status": "measured",
+            "backend_label": "TIRust",
+            "accuracy": cross,
+            "other_backend": {"backend_label": "NinjaRS", "accuracy": dict(cross)},
+        },
+        "providers": {"status": "no reference"},
+        "validation": {"status": "pass"},
+    }
+    missing = builder.build_missing({"groups": []}, {"groups": [{"rows": [row]}]})
+    acc = [e for e in missing if e["kind"] == "accuracy"]
+    assert len(acc) == 1 and acc[0]["rows"] == ["g g -> a a g g"]
+    assert "cross-backend, not a truth" in acc[0]["text"]
+    assert "TIRust unchecked" not in acc[0]["text"]
+
+
 def test_report_builder_accuracy_line_without_a_truth_is_the_labelled_cross_backend_difference():
     """A row whose 256-bit truth is not obtainable within its row budget
     (lit-report R2) carries the two backends' difference at the timed
@@ -2826,7 +2865,8 @@ def test_report_builder_accuracy_line_without_a_truth_is_the_labelled_cross_back
     for backend in ("tirust", "ninjars"):
         line = builder._li_accuracy(acc, "li_gg_aagg", backend)
         assert line["cross_backend"] and line["note"] and line["above"] == 1
-        assert line["worst"] == 3e-5 and line["failed"] == 2
+        assert line["worst"] == 3e-5 and line["not_compared"] == 2
+        assert line["failed"] is None
         assert (
             line["source"]
             == "li-unchecked-accuracy.json rows[li_gg_aagg].cross_backend"
