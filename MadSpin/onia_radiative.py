@@ -415,9 +415,13 @@ def ambiguous(chains, masses, tolerance=1e-6):
     return out
 
 
-def branching_ratio(chain, decay_block):
+def branching_ratio(chain, decay_block, defaults=None, used=None):
     """The product of the BR lines of the chain's steps in the DECAY blocks of
-    the param_card; raises ValueError naming a missing line."""
+    the param_card; a step without a BR line takes the default branching
+    fraction (defaults: {pdg: (width, {sorted products: fraction})}, the PDG
+    values of madgraph/models/onia_decays.py or the model's own), noted in
+    used as (what, fraction); raises ValueError naming a line that neither
+    has."""
     def line(pdg, ids, what):
         table = decay_block.decay_table.get(abs(pdg))
         if table:
@@ -426,10 +430,21 @@ def branching_ratio(chain, decay_block):
                     return table.get(tuple([len(order)] + list(order))).value
                 except KeyError:
                     continue
+        if defaults:
+            # the table of the particle; that of the antiparticle conjugated
+            entry = defaults.get(pdg)
+            key = tuple(sorted(ids))
+            if entry is None and defaults.get(-pdg) is not None:
+                entry = defaults.get(-pdg)
+                key = tuple(sorted(-i if i not in (GAMMA,) else i for i in ids))
+            if entry is not None and key in entry[1]:
+                if used is not None:
+                    used.append((what, entry[1][key]))
+                return entry[1][key]
         raise ValueError(
-            "MadSpin: no branching ratio for %s in the param_card. A radiative transition is "
-            "non-perturbative: give its BR line (and those of the decays that follow) in the "
-            "DECAY block, e.g.\n   DECAY %d <total width>\n      <BR>  %d  %s" % (
+            "MadSpin: no branching ratio for %s, in the param_card or the PDG values. A radiative "
+            "transition is non-perturbative: give its BR line (and those of the decays that "
+            "follow) in the DECAY block, e.g.\n   DECAY %d <total width>\n      <BR>  %d  %s" % (
                 what, abs(pdg), len(ids), '  '.join(str(i) for i in sorted(ids))))
     br = 1.0
     for step in chain.steps():

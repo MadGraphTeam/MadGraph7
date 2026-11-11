@@ -171,6 +171,12 @@ class OniaRegistry(object):
         # radiative transitions (onia_radiative): decay-line text -> Chain
         self.radiative = {}
         self.radiative_evaluator = None
+        # the widths and branching fractions of the onia (PDG 2026,
+        # madgraph/models/onia_decays.py, or the model's own
+        # all_boundstate_decays), for radiative transitions that the
+        # param_card of the events does not give
+        from madgraph.models.onia_decays import boundstate_decays
+        self.default_decays = boundstate_decays(getattr(mg5cmd, '_curr_model', None))
 
     def __bool__(self):
         return bool(self.fockstates)
@@ -478,6 +484,8 @@ class OniaRegistry(object):
             try:
                 ms.banner.param_card['decay'].get((pdg,))
             except Exception:
+                if self.radiative_default_width(ms, fock, logger):
+                    continue
                 raise ms.InvalidCmd(
                     "MadSpin: %s (pdg %d) is a bound state, with no width in the model. Add its "
                     "total width to the param_card of the events (a DECAY block, e.g. 'DECAY %d "
@@ -540,6 +548,41 @@ class OniaRegistry(object):
             pass
 
     # ------------------------------------------- radiative transitions --
+    # the total width given to a parent whose width is not measured (chi_bJ,
+    # h_b): for a bound state decaying by radiative transitions only, its
+    # width only normalises the branching ratio, which is that of the BR
+    # lines (or of the model), and cancels
+    RADIATIVE_PLACEHOLDER_WIDTH = 1e-4
+
+    def radiative_default_width(self, ms, fock, logger):
+        """A bound state that decays by radiative transitions only and has no
+        DECAY block in the param_card of the events: its DECAY block is added
+        (in memory) with the total width of the model (PDG), or a placeholder
+        where it is not measured; False if it has other decays, or needs a
+        real width (onia_breit_wigner)."""
+        import madgraph.models.check_param_card as check_param_card
+        name = alias((self.singlet_of(fock) or fock).get('name'))
+        branches = ms.list_branches.get(name) or ms.list_branches.get(alias(fock.get('name')), [])
+        if not branches or not all(b in self.radiative for b in branches):
+            return False
+        pdg = abs((self.singlet_of(fock) or fock).get('pdg_code'))
+        width = (self.default_decays.get(pdg) or (None, {}))[0]
+        if width is None:
+            if ms._onia_breit_wigner():
+                return False
+            width = self.RADIATIVE_PLACEHOLDER_WIDTH
+            logger.info('MadSpin: %s has no DECAY block and no measured width: it decays by radiative '
+                        'transitions only, whose branching ratios are the BR lines (or the PDG 2026 '
+                        'values), so its width (set to %g GeV) only normalises them.'
+                        % (fock.get('name'), width))
+        else:
+            logger.info('MadSpin: %s has no DECAY block: its total width is the PDG 2026 value, %g GeV'
+                        % (fock.get('name'), width))
+        ms.banner.param_card['decay'].append(check_param_card.Parameter(
+            block='decay', lhacode=[abs(fock.get('pdg_code'))], value=width,
+            comment='width of %s (model default)' % fock.get('name')))
+        return True
+
     def parse_radiative(self, ms, line):
         """A decay line whose first step is a radiative transition between
         bound states ('chic1 > Jpsi a, Jpsi > mu+ mu-', onia_radiative): its
@@ -642,7 +685,11 @@ class OniaRegistry(object):
             logger.info('MadSpin: radiative chains with the masses of the model for %s (a MASS line '
                         'of the param_card of the events sets another)', ', '.join(shown))
         for text, chain in self.radiative.items():
-            onia_radiative.branching_ratio(chain, decay_block)   # raises with the line to add
+            used = []
+            onia_radiative.branching_ratio(chain, decay_block, self.default_decays, used)
+            for what, value in used:
+                logger.info('MadSpin: no BR line for %s in the param_card: %g, the PDG 2026 value'
+                            % (what, value))
             for step in chain.steps():
                 mi = masses.get(abs(step.parent.get('pdg_code')))
                 mf = masses.get(abs(step.daughter.get('pdg_code')))
@@ -655,7 +702,7 @@ class OniaRegistry(object):
                             mi, step.daughter.get('name'), mf))
             logger.info('MadSpin: %s, a radiative chain (%s), branching ratio %.4g', text,
                         ' then '.join(s.kind for s in chain.steps()),
-                        onia_radiative.branching_ratio(chain, decay_block))
+                        onia_radiative.branching_ratio(chain, decay_block, self.default_decays))
         clash = onia_radiative.ambiguous(list(self.radiative.values()), masses)
         if clash:
             a, b = clash[0]
@@ -711,7 +758,8 @@ class OniaRegistry(object):
             for q in chain.final_pdgs():
                 masses.setdefault(abs(q), particle_mass(q))
         gen = onia_radiative.PoolGenerator(self.radiative_evaluator, masses, rng, colour_of)
-        brs = [onia_radiative.branching_ratio(chain, decay_block) for i, text, chain in chosen]
+        brs = [onia_radiative.branching_ratio(chain, decay_block, self.default_decays)
+               for i, text, chain in chosen]
         groups = [chosen] if cumul else [[c] for c in chosen]
         for group in groups:
             gbrs = [brs[chosen.index(c)] for c in group]
@@ -818,7 +866,8 @@ class OniaRegistry(object):
             ms.banner.charge_card('slha')
         if branches and all(b in self.radiative for b in branches):
             import MadSpin.onia_radiative as onia_radiative
-            return sum(onia_radiative.branching_ratio(self.radiative[b], ms.banner.param_card['decay'])
+            return sum(onia_radiative.branching_ratio(self.radiative[b], ms.banner.param_card['decay'],
+                                                      self.default_decays)
                        for b in branches)
         table = ms.banner.param_card['decay'].decay_table.get(abs(singlet.get('pdg_code')))
         if not table or not branches:

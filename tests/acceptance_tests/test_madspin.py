@@ -246,9 +246,16 @@ class TestMadSpin(unittest.TestCase):
                                'set pdlabel nn23lo1', 'set iseed 51'])
         events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
         production = lhe_parser.EventFile(events).cross
-        shutil.copy(events, pjoin(self.path, 'psi2s.lhe.gz'))
+        # MadSpin unpacks the file it imports: keep the events aside and put the input back
+        # before each run
+        text = gzip.open(events, 'rt').read()
 
-        def run(spinmode):
+        def run(spinmode, events_text=text):
+            for name in ('psi2s.lhe.gz', 'psi2s.lhe'):
+                if os.path.exists(pjoin(self.path, name)):
+                    os.remove(pjoin(self.path, name))
+            with gzip.open(pjoin(self.path, 'psi2s.lhe.gz'), 'wt') as fsock:
+                fsock.write(events_text)
             script = pjoin(self.path, 'ms_rad')
             with open(script, 'w') as fsock:
                 fsock.write('import psi2s.lhe.gz\nset spinmode %s\nset seed 13\n'
@@ -264,6 +271,24 @@ class TestMadSpin(unittest.TestCase):
 
         out = run('none')
         self.assertFalse(os.path.exists(out))
+
+        # the same events without the DECAY blocks of the bound states: the widths and branching
+        # fractions are the PDG 2026 values (madgraph/models/onia_decays.py)
+        import madgraph.models.onia_decays as onia_decays
+        defaults = onia_decays.PDG_2026
+        stripped = re.sub(r'(?ims)^\s*DECAY\s+(100443|20443|445|443)\s.*?(?=^\s*(?:DECAY|BLOCK)\s|</slha>)',
+                          '', text)
+        slha = stripped.split('</slha>')[0].split('<slha>')[-1]
+        self.assertIsNone(re.search(r'(?im)^\s*DECAY\s+(100443|20443|445|443)\s', slha))
+        self.assertIsNotNone(re.search(r'(?im)^\s*DECAY\s+23\s', slha))
+        out = run('madspin', stripped)
+        self.assertTrue(os.path.exists(out))
+        br_model = defaults[443][1][(-13, 13)] * (
+            defaults[100443][1][(22, 20443)] * defaults[20443][1][(22, 443)]
+            + defaults[100443][1][(22, 445)] * defaults[445][1][(22, 443)])
+        self.assertLess(abs(lhe_parser.EventFile(out).cross / production / br_model - 1), 1e-6)
+        os.rename(out, pjoin(self.path, 'psi2s_decayed_model.lhe.gz'))
+
         out = run('madspin')
         self.assertTrue(os.path.exists(out))
         events = lhe_parser.EventFile(out)

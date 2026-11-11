@@ -9,7 +9,21 @@ def get_boundstates_ufo(model):
     states are read from that UFO's own boundstates.py only, so nothing from
     a model imported earlier in the same session can leak in.
     """
+    return _from_boundstates(model, lambda module: list(module.all_boundstates), [])
 
+
+def get_boundstate_decays_ufo(model):
+    """The decays of the bound states shipped by a UFO model, its
+    boundstates.py's all_boundstate_decays: {pdg: (total width in GeV or
+    None, {(sorted pdg codes of the products): branching fraction})}, or {}
+    when the model has none."""
+    return _from_boundstates(model, lambda module: dict(getattr(module, 'all_boundstate_decays', {})),
+                             {})
+
+
+def _from_boundstates(model, attribute, default):
+    """attribute(module) of the boundstates.py of a model (a loaded model or
+    the path of a UFO directory), default when there is none."""
     if isinstance(model, str):
         path = model
     else:
@@ -23,7 +37,7 @@ def get_boundstates_ufo(model):
             path = None
         path = path or model.__dict__.get('path')
     if not path or not os.path.isfile(os.path.join(path, 'boundstates.py')):
-        return []
+        return default
 
     # boundstates.py does a top-level 'import object_library', and every UFO
     # ships its own object_library.py. Both names stay in sys.modules once
@@ -35,9 +49,9 @@ def get_boundstates_ufo(model):
     sys.path.insert(0, path)
     try:
         import boundstates
-        return list(boundstates.all_boundstates)
+        return attribute(boundstates)
     except Exception:
-        return []
+        return default
     finally:
         sys.path.remove(path)
         for n in names:

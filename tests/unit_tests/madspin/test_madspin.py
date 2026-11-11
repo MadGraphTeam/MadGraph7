@@ -15587,6 +15587,56 @@ DECAY 443 9.26e-05
         chain2 = R.parse_chain(reg, 'psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > e+ e-', name2pdg)
         self.assertRaises(ValueError, R.branching_ratio, chain2, card['decay'])
 
+    def test_model_defaults(self):
+        """The PDG 2026 widths and branching fractions of the onia
+        (madgraph/models/onia_decays.py), a model's own values in place of
+        them, and their use for a chain without BR lines: a BR line of the
+        param_card wins, the defaults fill the others in."""
+        import madgraph.models.onia_decays as onia_decays
+        import madgraph.models.check_param_card as check_param_card
+        R = self.R
+        defaults = onia_decays.PDG_2026
+        # the colour-singlet onia of sm_onia, by their PDG codes
+        pdgs = set([441, 100441, 443, 100443, 10443, 10441, 20443, 445, 551, 100551, 200551, 553,
+                    100553, 200553, 10553, 110553, 210553, 10551, 20553, 555, 110551, 120553,
+                    100555, 210551, 220553, 200555])
+        self.assertIn(20443, defaults)
+        for pdg, (width, brs) in defaults.items():
+            self.assertIn(pdg, pdgs)
+            self.assertTrue(width is None or 0 < width < 0.1, pdg)
+            self.assertLessEqual(sum(brs.values()), 1., pdg)
+            for products, fraction in brs.items():
+                self.assertEqual(products, tuple(sorted(products)))
+                self.assertTrue(0 < fraction <= 1)
+                for q in products:
+                    self.assertTrue(abs(q) in (11, 13, 15, 22) or abs(q) in pdgs, (pdg, products))
+        self.assertEqual(defaults[20443][1][(22, 443)], 0.339)
+        self.assertIsNone(defaults[20553][0])
+        # a model with its own values (all_boundstate_decays of its boundstates.py) overrides
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        try:
+            with open(pjoin(tmp, 'object_library.py'), 'w') as fsock:
+                fsock.write('all_boundstates = []\n')
+            with open(pjoin(tmp, 'boundstates.py'), 'w') as fsock:
+                fsock.write('import object_library\nall_boundstates = []\n'
+                            'all_boundstate_decays = {20443: (1e-3, {(22, 443): 0.5})}\n')
+            merged = onia_decays.boundstate_decays(tmp)
+        finally:
+            shutil.rmtree(tmp)
+        self.assertEqual(merged[20443], (1e-3, {(22, 443): 0.5}))
+        self.assertEqual(merged[445], defaults[445])
+        reg = self.registry()
+        chain = R.parse_chain(reg, 'psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > mu+ mu-',
+                              {'mu+': -13, 'mu-': 13, 'a': 22})
+        card = check_param_card.ParamCard()
+        card.read('\nDECAY 20443 8.40e-04\n   3.43e-01  2  443  22\nDECAY 443 9.26e-05\n'.split('\n'))
+        used = []
+        br = R.branching_ratio(chain, card['decay'], defaults, used)
+        self.assertAlmostEqual(br, 9.85e-02 * 0.343 * 5.961e-02, 15)
+        self.assertEqual([u[1] for u in used], [9.85e-02, 5.961e-02])
+        self.assertRaises(ValueError, R.branching_ratio, chain, card['decay'])
+
     def test_decay_events_and_library(self):
         """The decay events of psi(2S) > chi_c1 gamma, chi_c1 > J/psi gamma
         (no J/psi decay): on shell, four-momentum conserved, the first photon
