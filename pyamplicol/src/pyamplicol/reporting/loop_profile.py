@@ -510,6 +510,14 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         "not flag; time: the backend's binary64 and double-double calls. "
         "Percentages of the measured points."
     )
+    if best is not None:
+        notes.append(
+            "Best-effort values: the uncertainty is the one each value carries "
+            "(VirtualBestEffort.uncertainty: the check set above together with "
+            "the recommended checks, a rotation and the rescaled "
+            "reduction-direction check, relative per sector); it covers the "
+            "truth when the true relative error is within it."
+        )
     notes.append(
         "Flagged: the binary64 call's estimate (relative, per sector) above the "
         "target with the check set named above (one default rotation unless "
