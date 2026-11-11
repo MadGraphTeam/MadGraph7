@@ -2946,8 +2946,9 @@ def profile_virtual(
 
 def failure_reason(diagnostic: Any) -> str:
     """A failed point's reason from its ``VirtualLaneDiagnostic``: the status
-    and the first failed channel's stage and detail (else the lane's
-    detail)."""
+    and the first failed channel's stage and first message (else the lane's
+    first message). A detail joins one message per failed lane with "; "
+    (``_first_message``); the others are counted, not repeated."""
 
     if diagnostic is None:
         return "failed"
@@ -2955,9 +2956,34 @@ def failure_reason(diagnostic: Any) -> str:
     failures = getattr(diagnostic, "failures", ()) or ()
     if failures:
         first = failures[0]
-        return f"{status}: {first.stage}: {first.detail}"
+        return f"{status}: {first.stage}: {_first_message(str(first.detail))}"
     detail = str(getattr(diagnostic, "detail", "") or "")
-    return f"{status}: {detail}" if detail else status
+    return f"{status}: {_first_message(detail)}" if detail else status
+
+
+def _first_message(detail: str) -> str:
+    """The first of the "; "-joined messages of a failure detail (split at
+    nesting depth 0 of brackets and quotes) and the count of the others."""
+
+    depth = 0
+    quoted = False
+    parts: list[str] = []
+    start = 0
+    for index, char in enumerate(detail):
+        if char == '"' and (index == 0 or detail[index - 1] != "\\"):
+            quoted = not quoted
+        elif not quoted and char in "([{":
+            depth += 1
+        elif not quoted and char in ")]}":
+            depth = max(depth - 1, 0)
+        elif (
+            not quoted and depth == 0 and char == ";" and detail.startswith("; ", index)
+        ):
+            parts.append(detail[start:index])
+            start = index + 2
+    parts.append(detail[start:])
+    first = parts[0]
+    return first if len(parts) == 1 else f"{first} (+{len(parts) - 1} more)"
 
 
 def _reduction_record(reductions: Sequence[Any]) -> dict[str, object]:

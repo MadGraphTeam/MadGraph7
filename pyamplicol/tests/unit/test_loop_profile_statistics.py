@@ -206,6 +206,18 @@ def test_failure_reason_reads_the_first_failed_channel():
         failures=(VirtualFailureDiagnostic(0, None, None, 2, "reduction", "rank 7"),),
     )
     assert failure_reason(lane) == "unsupported: reduction: rank 7"
+    # One message per failed lane, joined with "; " (also inside brackets and
+    # quotes of a message): the first is kept, the others counted.
+    joined = VirtualLaneDiagnostic(
+        "failed",
+        "double",
+        53,
+        False,
+        'lane 1: Unstable("a; b") (c; d); lane 2: x; lane 3: y',
+    )
+    assert failure_reason(joined) == (
+        'failed: lane 1: Unstable("a; b") (c; d) (+2 more)'
+    )
     plain = VirtualLaneDiagnostic("failed", "double", 53, False, "nan value")
     assert failure_reason(plain) == "failed: nan value"
     assert failure_reason(None) == "failed"
