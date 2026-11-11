@@ -918,9 +918,9 @@ unguarded), recorded per point
 (`VirtualReduction.guard_estimate`; [Python API](python-api.md): NinjaRS can
 return badly wrong values as success at near-planar 2 -> 3 points of rank-n
 pentagon families in every arithmetic, the "Near-planar NinjaRS hazard",
-with the measured windows). An explicit `"ninjars"` or `"tirust"` has no
-fallback and no guard (explicit `"ninjars"` without stability checks was
-exposed to that hazard until NinjaRS's conditioning bound, 71eddb15), and neither has a
+with the measured windows, which NinjaRS's conditioning bound now refuses
+typed). An explicit `"ninjars"` or `"tirust"` has no fallback and no guard,
+and neither has a
 TIR-only artifact. An explicitly requested backend that cannot serve
 the call is refused before any point is evaluated (`ReductionUnavailable`, a
 `CompatibilityError` with key `reduction-unavailable`), never switched

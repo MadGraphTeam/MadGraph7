@@ -785,8 +785,8 @@ binary64 kinematics improvement switched on (below). On an x86-64 CPU
 without AVX and FMA3, SymJIT tree artifacts are refused with the reason; they
 are never evaluated through Symbolica.
 
-The binary64 kinematics improvement of the tree calls (m-lit
-lit-psimprove): `rusticol_runtime_set_kinematics_improvement(handle, setting)`
+The binary64 kinematics improvement of the tree calls:
+`rusticol_runtime_set_kinematics_improvement(handle, setting)`
 (`"z-shift"`, MadLoop's default and the default here, `"rescaling"`,
 `"projection"` or `"off"`, as the Python API's `kinematics_improvement=`) and
 `rusticol_runtime_set_kinematics_improvement_binary64(handle, on)` (0 by
@@ -853,7 +853,7 @@ The SDK serves the helicity selections of the Python API through
 `color_resolution="amplitude-basis"` (an explicitly basis-dependent split; a
 helicity selection is |A(h)|²/avg with the total's average; colour flows are
 refused, full colour); for a Born-interfered process `helicities=` at every
-colour accuracy (lit-fc-hel: ordinary, per point and resolved; at NLC and
+colour accuracy (ordinary, per point and resolved; at NLC and
 full colour one contracted colour component per row, at leading colour one
 per Born basis element), its leading-colour colour flows refused with a text
 naming the Python API's `color_flows=`. Only the selected rows are evaluated
@@ -892,27 +892,21 @@ the fallback's value unchanged. On the same exact inputs the guard's
 estimates are the Python API's, bitwise or a few units in the last place
 apart (the SDK forms the colour-metric norms of the inclusive |A|² in
 binary64). In binary64 the fallback's value is
-served unguarded (`"guard_estimate"` null), as before the guard. An explicit `"ninjars"`
+served unguarded (`"guard_estimate"` null). An explicit `"ninjars"`
 or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
 (NinjaRS refused typed); a library built without TIRust takes NinjaRS under
 `"auto"`, with the reason, and refuses `"tirust"`.
 
-NinjaRS before 71eddb15 (pin 5b6a8f57) returned finite, badly wrong values
-with status `AccuracyNotEstablished` at near-planar 2 -> 3 points of pentagon families
-whose rank equals their propagator count (all-vector quark loops: measured
-on loop-induced g g > z z z, z z g, z g g, a a g, a g g and W+ W- g), in
-binary64 and in double-double; the measured windows, the records and the
-estimates of each check are in the [Python API](python-api.md),
-"Near-planar NinjaRS hazard". The SDKs' binary64 monitoring is the Python
-API's binary64 estimate, bitwise, and flags them as the Python API's checks
-do (the recommended checks gave 3.0 to 236 at the measured wrong binary64
-points, a Python API record: `workspace/tmp/ninjars-dd-zzz/C/out/tilt.json`
-'nj_b64_chk'); in double-double and arbitrary precision the SDKs run no
-monitoring (`AccuracyNotEstablished`, no estimate), so an explicit
-`"ninjars"` call there, or any NinjaRS value in binary64 without monitoring
-(the `"auto"` fallback's included), was exposed until NinjaRS's conditioning
-bound (71eddb15, M-LIT lit-ninja-planar), which refuses such lanes typed
-(status Failed). The target accuracy
+At near-planar 2 -> 3 points of pentagon families whose rank equals their
+propagator count (all-vector quark loops: measured on loop-induced
+g g > z z z, z z g, z g g, a a g, a g g and W+ W- g) NinjaRS's reduction can
+produce finite, badly wrong values in binary64 and in double-double; the
+measured windows and the estimates of each check are in the
+[Python API](python-api.md), "Near-planar NinjaRS hazard". NinjaRS's
+conditioning bound refuses such lanes typed (status Failed). The SDKs'
+binary64 monitoring, bitwise the Python API's binary64 estimate, flags what
+the bound does not refuse; in double-double and arbitrary precision the SDKs
+run no monitoring (`AccuracyNotEstablished`, no estimate). The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the

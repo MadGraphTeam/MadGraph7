@@ -358,7 +358,7 @@ within the limit keeps the fallback's value unchanged, and the result's
 `stability` stays what the call's own checks give (none without checks).
 In binary64 the fallback's value is served unguarded, with no estimate
 recorded: there the protection is the conditioning bound in NinjaRS's own
-fast engine (NinjaRS 71eddb15, below), and stability checks or the rescue
+fast engine (below), and stability checks or the rescue
 stack flag what it serves.
 When the call's checks run that rotation first (the recommended checks) it
 is reused; beside other checks (another rotation first, e.g. every default
@@ -378,82 +378,47 @@ largest ratio is the point's `guard_estimate`. Points TIRust serves run
 nothing more.
 The estimate is a sampled measure, not a proven bound.
 
-**Near-planar NinjaRS hazard.** NinjaRS before 71eddb15 (pin 5b6a8f57)
-returned finite, badly wrong values reported as success at near-planar
-2 -> 3 points (the event plane contains the beam: the pentagon Gram
-determinant nearly vanishes) of pentagon families whose rank equals their
-propagator count (all-vector quark loops), in every arithmetic, unless
-stability checks ran. Since 71eddb15 (M-LIT lit-ninja-planar) its box
-mu-expansion's conditioning bound refuses such lanes typed (`Unstable`;
-the generic engine's `CutFailed { SingularParameter }`): in double-double
-it refuses g g > z z z stream points 44 / 57 and the tilt points eps 0,
-1e-14 and 1e-13 below (`workspace/tmp/lit-fallback-guard/fix3/probe14.json`),
-so the fallback fails them typed; the guard stays as defence in depth on
-what the fallback still serves. The records at 5b6a8f57:
-Measured on g g > z z z stream point 44 tilted out of its plane by an angle
-eps, and on constructed planar points of six loop-induced rows (records in
-`workspace/tmp/ninjars-dd-zzz/C/out/`; truth: TIRust at 78 digits on the
-same binary64 texts):
+**Near-planar NinjaRS hazard.** At near-planar 2 -> 3 points (the event
+plane contains the beam: the pentagon Gram determinant nearly vanishes) of
+pentagon families whose rank equals their propagator count (all-vector quark
+loops), NinjaRS's reduction can produce finite, badly wrong values in every
+arithmetic. Its box mu-expansion's conditioning bound refuses such lanes
+typed (`Unstable`; the generic engine's `CutFailed { SingularParameter }`),
+so under `"auto"` the fallback fails them typed (in double-double, e.g., the
+measured g g > z z z points at tilts eps = 0, 1e-14 and 1e-13 out of the
+plane); the guard stays as defence in depth on what the fallback still
+serves. Without that bound (measured 2026-11-08 on the development host;
+truth: TIRust at 78 digits), g g > z z z tilted by eps out of its plane was
+served wrong in binary64 from eps ~5e-7 (2e-2 off at 1e-7) down to at least
+1e-12, and in double-double at eps 0 (up to 1.3e7 off), 3.3e-6 off at 1e-14
+and within 2.1e-10 from 1e-13 up. Measured affected: loop-induced
+g g > z z z, z z g, z g g, a a g, a g g and W+ W- g; measured unaffected:
+the rank-4 pentagon rows g g > h h h and g g > h z g, Born-interfered
+g g > g g g and five Born-interfered NLO electroweak rows. The recommended
+checks flag such values (estimates 22 to 892 in double-double, 3.0 to 236 in
+binary64 on the measured wrong points) and the rescue stack escalates them.
+A value the bound does not flag is no more verified than before: an explicit
+`reduction="ninjars"` has no fallback guard, so request stability checks
+where such kinematics matter.
 
-* binary64 serves wrong values from eps ~5e-7 (2e-2 off at 1e-7, 3.6e-7 at
-  1e-6) down to at least 1e-12, with a point-dependent lower edge: point 44
-  tilted is refused at eps <= 1e-12 (`tilt.json` 'nj_b64'), the six
-  constructed rows are served 2.8e12 to 1.5e17 off at 1e-12 (`pr-*.json`
-  'nj_b64'), and every measured row is refused at eps 0;
-* double-double is wrong at eps 0 (1.3e7 off at point 44, `tilt.json`
-  'nj_dd'; 3.8e-3 to 1.7e3 on the six constructed rows, `pr-*.json`
-  'nj_dd'), 3.3e-6 off at 1e-14 and within 2.1e-10 from 1e-13 up
-  (`tilt.json` 'nj_dd').
-
-Measured affected: loop-induced g g > z z z, z z g, z g g, a a g, a g g and
-W+ W- g. Measured unaffected: the rank-4 pentagon rows g g > h h h and
-g g > h z g, Born-interfered g g > g g g, and five Born-interfered NLO
-electroweak rows (`workspace/tmp/ninjars-dd-zzz/B.md` §2.3). What flags the
-wrong values, per check and arithmetic (estimates on the measured wrong
-points):
-
-* the guarded `"auto"` fallback above (double-double and arbitrary
-  precision): its check alone (the cached reduction-direction re-reduction)
-  gave 9.7 to 142 in double-double on the four measured wrong stream points
-  (`C/out/checks.json` 'nj_dd_dir');
-* the recommended checks and the rescue levels' checks in double-double:
-  22 to 852 on the 18 served wrong g g > z z z points
-  (`workspace/tmp/ninjars-dd-zzz/A/out/ddcheck.json`) and 27 to 892
-  (`B.md` §2.1, §3); the rescue stack escalates on them (`B.md` §2.1);
-* the recommended checks in binary64: 3.0 to 236 at the wrong tilt points
-  (`C/out/tilt.json` 'nj_b64_chk'; 3.0 at eps 1e-7, error 2e-2).
-
-An explicit `reduction="ninjars"` without stability checks (and the native
-SDKs' NinjaRS calls without monitoring) was exposed to this hazard until the
-conditioning bound (NinjaRS 71eddb15); the guard does not cover explicit
-calls. A value the bound does not flag is no more verified than before,
-and the guard's estimate is no proven bound either. Measured at
-near-forward g g > h h points (`workspace/tmp/lit-fallback-guard/fix5/probe15.json`):
-
-* the inputs' own consistency: given as binary64 texts (gluon legs off
-  shell by up to 5.2e-13 GeV^2, Higgs legs by up to 2.0e-10 GeV^2,
-  momentum conservation missed by up to 9.9e-14 GeV), the +- helicity
-  rows of `evaluate_resolved` (1e-13 to 1e-21 of the ++ rows) move far
-  from those of the exact point nearby on NinjaRS (1.1e-4 to 9.3e11, the
-  same in double-double and at 60 and 80 digits) and little on TIRust
-  at 80 digits (2.2e-11 to 2.3e-6); on the exact on-shell,
-  momentum-conserving points NinjaRS at 60 and 80 digits agrees with
-  TIRust at 80 digits to 3e-37 (the latter's own error). On the binary64
-  texts the rows are well defined
-  (TIRust's at 80 digits stay within 2.3e-6 of the exact point's);
-  NinjaRS's response to the texts' shell and momentum-conservation
-  defect is what moves them, and neither the reduction-direction check
-  (the fallback guard's included) nor, by construction, a rotation
-  re-test sees it (`"auto"` double-double serves two such points 1.1e-4
-  and 2.1e4 off with estimates 5.7e-10 and 1.5e-7). The cause is under
-  investigation (F-GH). Exactly on-shell, momentum-conserving momenta
-  (exact decimal texts) avoid this response (double-double's own
-  rounding error remains, next item). The summed |A|^2 is not affected
-  at these points (within 1.2e-9);
-* on the exact points, double-double `"auto"` serves the +- rows of one
-  point 1.8e-5 and 2.0e-5 off with the guard's estimate 9.3e-6, inside
-  the limit 1e-5 (and rejects a point whose rows are 4.5e2 to 7.4e2 off,
-  estimate 0.61).
+**Inexact inputs near forward.** Near forward, backward or threshold
+kinematics NinjaRS amplifies a point's on-shell and momentum-conservation
+defect by about the inverse box Gram determinant, and neither the
+reduction-direction check nor a rotation re-test sees it (a rotation keeps
+the defect). Measured (2026-11-09, development host) at near-forward
+g g > h h points given as binary64 texts (gluon legs off shell by up to
+5.2e-13 GeV^2, Higgs legs by up to 2.0e-10 GeV^2): the +- helicity rows of
+`evaluate_resolved` (1e-13 to 1e-21 of the ++ rows) moved 1.1e-4 to 9.3e11
+from those of the exact point nearby on NinjaRS, while the summed |A|^2
+stayed within 1.2e-9. The kinematics improvement (below; on by default in
+double-double and arbitrary precision, in binary64 with
+`kinematics_improvement_binary64=True`) removes that defect. On exactly
+on-shell, momentum-conserving points double-double's own rounding remains:
+there `"auto"` served the +- rows of one point 1.8e-5 and 2.0e-5 off with
+the guard's estimate 9.3e-6, inside its limit 1e-5. This is the guard's
+known limitation: its estimate is an estimate, and strongly suppressed
+helicity rows near exactly forward kinematics can be served beyond their own
+1e-5 (the summed observables are not affected at that level).
 
 `"tirust"` is served in every arithmetic (binary64, double-double and
 arbitrary precision, also on every level of a rescue stack). An explicit
@@ -568,8 +533,8 @@ production default: without it, the default `"auto"` serves loop-induced
 processes on TIRust at the checked target accuracy above with the per-point
 NinjaRS fallback. A value that is not a bool is refused (`ValueError`).
 
-Measured accuracy of the setting (M-LIT `lit-unchecked`, 2026-11-08/09;
-record `docs/performance_reports/loop/data/li-unchecked-accuracy.json`):
+Measured accuracy of the setting (2026-11-08/09, development host; record
+`docs/performance_reports/loop/data/li-unchecked-accuracy.json`):
 binary64 finite part through this API (`Runtime.load(artifact,
 reduction_unchecked=True)`, `evaluate(points, mu_r2=..., poles="none",
 on_failure="return", reduction="tirust" | "ninjars")`) on each row's first
@@ -582,8 +547,7 @@ refuse the point (g g > h h h: a box whose three momenta are linearly
 dependent, which only its noise tests catch), and keep its few points off by
 up to 3e-3 that the checked mode serves as well (a triangle cut with a small
 Gram determinant); its conditioning bound refuses the near-planar g g > z z z
-points in both modes (NinjaRS columns re-measured at NinjaRS 71eddb15,
-M-LIT `lit-ninja-planar`).
+points in both modes (NinjaRS columns measured with that bound).
 
 | process | points | TIRust unchecked | NinjaRS unchecked |
 |---|---|---|---|
@@ -707,7 +671,7 @@ processes.
 ### Helicity selection of Born-interfered virtuals
 
 A Born-interfered virtual selects its Born helicity rows at every colour
-accuracy (lit-fc-hel), with the tree engine's helicity IDs (`h:<values in leg
+accuracy, with the tree engine's helicity IDs (`h:<values in leg
 order>`) or the runtime's `h<index>`:
 
 ```python
