@@ -1,0 +1,33 @@
+{
+  "CPU": 12,
+  "CPU_reserved": false,
+  "ELFs": 2,
+  "RUN_admitted": false,
+  "address_space_bytes": 17179869184,
+  "authority": "root explicit one BUILD admission after source/tests/audit review",
+  "automatic_retry": false,
+  "cleanup_seconds": 60,
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "-I",
+    ".tirust-build/generic-owned-CMS-plain-build-proposal-1/controller.py",
+    "--execute",
+    "--phase",
+    "build",
+    "--source",
+    "691aaa51ea9f39e9d810455db4cd28a5c6cda5f7de7235da86229ba3e8b6bfae"
+  ],
+  "core_bytes": 0,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "file_bytes": 268435456,
+  "model_calls_admitted": 0,
+  "native_main_calls_admitted": 0,
+  "native_runtime_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "one_invocation_only": true,
+  "recorded_utc": "2026-11-11T20:08:20.320854+00:00",
+  "reducer_calls_admitted": 0,
+  "shared_mutex": true,
+  "source_index_sha256": "691aaa51ea9f39e9d810455db4cd28a5c6cda5f7de7235da86229ba3e8b6bfae",
+  "total_seconds": 1800
+}

@@ -21,7 +21,19 @@ A later [private checked CMS20 replay](experiments/normal-checked-cms20-qualific
 also passes MadLoop's automatic DP-to-QP rescue and independent stability checks,
 retaining six failed DP reductions before the accepted QP result. That fixture
 uses cache disabled. Independent amplitude truth and generic production coverage
-remain unqualified. Final precise timings remain
+remain unqualified.
+
+The [generic CMS prototype's normal run](experiments/generic-owned-CMS-normal-qualification-1/README.md)
+now closes six fresh workers at `MLStabThres=1e-6`, with both caches disabled.
+All 24 returned Born/finite/pole slots at three ordinary controls agree bit for
+bit; the overall and single split-order rows duplicate the same physical values.
+At two forward fixtures the legacy caller refuses with code `420`, while the
+experimental caller reports accepted TIRust-QP code `323`. Independent replay
+retains all 106 outer calls and 22 runtime maps. These are plain self-check
+observations: constructor/q/veto provenance, independent physical accuracy,
+default-cache coverage and performance remain open. Production is unchanged.
+
+Final precise timings remain
 [Hua-Sheng’s local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
 
 This campaign compares the exact starting revision

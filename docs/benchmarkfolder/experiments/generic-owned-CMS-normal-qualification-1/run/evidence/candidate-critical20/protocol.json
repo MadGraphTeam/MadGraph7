@@ -1,0 +1,64 @@
+[
+  {
+    "direction": "RECV",
+    "fields": [
+      "READY",
+      "1438990"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "LEARN",
+      "1",
+      "0"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "LEARNED",
+      "1438990",
+      "1",
+      "1",
+      "15",
+      "12"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "RUN",
+      "2",
+      "1"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "DONE",
+      "1438990",
+      "2",
+      "1",
+      "20",
+      "323",
+      "2"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "EXIT",
+      "3",
+      "0"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "EXIT",
+      "1438990",
+      "3"
+    ]
+  }
+]

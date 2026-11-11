@@ -1,0 +1,30 @@
+{
+  "authorized_by": "root exact RUN2 admission",
+  "caps": {
+    "CPU": 12,
+    "address_space_bytes": 17179869184,
+    "all_in_seconds": 1800,
+    "cleanup_seconds": 60,
+    "core_bytes": 0,
+    "exclusive_CPU": false,
+    "file_bytes": 268435456,
+    "per_protocol_reply_seconds": 180,
+    "shared_mutex": true
+  },
+  "compiler_calls_admitted": false,
+  "execute_once": true,
+  "experimental_ELF_execution_admitted": true,
+  "independent_physical_truth_qualified": false,
+  "loader_queries_admitted": false,
+  "observer_admitted": false,
+  "phase": "run",
+  "production_code_change_admitted": false,
+  "recorded_utc": "2026-11-11T21:13:16.793227+00:00",
+  "reviewed_BUILD_terminal_sha256": "be89129beb16a82d65624748aa6948d1d955358d910efc9956845ae6efff98f2",
+  "runtime": "exact15 providers and eb3",
+  "scope": "Two exact experimental plainELFs; normal12point learning; controls1/7/12 and independent critical20/21 requests; declared failure policy/no retry.",
+  "source_index_sha256": "47e858475b6c5fa571885ed665607497db72153d41f7101abf85b2d48c7661be",
+  "source_review_receipt_sha256": "4ab0e411a9bfe060487b954b2644f9d7127d43507f57855471d3654f23db2bff",
+  "timing_acceptance_admitted": false,
+  "workers": 6
+}

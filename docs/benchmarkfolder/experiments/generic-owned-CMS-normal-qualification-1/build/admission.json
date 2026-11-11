@@ -1,0 +1,41 @@
+{
+  "child_argv": [
+    ".tirust-build/generic-owned-CMS-plain-build-proposal-2/controller.py",
+    "--child",
+    "--phase",
+    "build",
+    "--source",
+    "fb73546348a4daaf736c8c17b91670225cafa4f36fe93e5a066b81c3464a7ccb"
+  ],
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "-I",
+    ".tirust-build/generic-owned-CMS-plain-build-proposal-2/controller.py",
+    "--child",
+    "--phase",
+    "build",
+    "--source",
+    "fb73546348a4daaf736c8c17b91670225cafa4f36fe93e5a066b81c3464a7ccb"
+  ],
+  "deadline_monotonic": 2464253.704219685,
+  "phase": "build",
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 268435456
+  },
+  "reviewed_build_sha256": null,
+  "source_index_sha256": "fb73546348a4daaf736c8c17b91670225cafa4f36fe93e5a066b81c3464a7ccb",
+  "supervisor_identity": {
+    "parent_pid": 284326,
+    "pid": 2737092,
+    "process_group": 2737092,
+    "session": 2737092,
+    "start_time_ticks": 246245365,
+    "state": "R"
+  }
+}

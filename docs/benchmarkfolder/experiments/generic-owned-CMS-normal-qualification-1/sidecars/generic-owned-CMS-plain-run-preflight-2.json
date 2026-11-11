@@ -1,0 +1,22 @@
+{
+  "forbidden_api_attempts": [],
+  "native_admitted": false,
+  "preflight": {
+    "CPU": 12,
+    "CPU_reserved": false,
+    "cleanup_seconds": 60,
+    "compiler_queries": 0,
+    "loader_queries": 0,
+    "native_main_calls": 0,
+    "per_protocol_call_seconds": 180,
+    "phase": "run",
+    "resource_limits": {
+      "address_space_bytes": 17179869184,
+      "core_bytes": 0,
+      "file_bytes": 268435456
+    },
+    "status": "source-only-preflight-passed",
+    "total_seconds": 1800,
+    "workers": 6
+  }
+}

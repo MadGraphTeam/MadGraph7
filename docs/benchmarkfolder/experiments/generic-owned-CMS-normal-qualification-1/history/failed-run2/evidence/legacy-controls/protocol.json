@@ -1,0 +1,17 @@
+[
+  {
+    "direction": "RECV",
+    "fields": [
+      "READY",
+      "3634357"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "LEARN",
+      "1",
+      "0"
+    ]
+  }
+]

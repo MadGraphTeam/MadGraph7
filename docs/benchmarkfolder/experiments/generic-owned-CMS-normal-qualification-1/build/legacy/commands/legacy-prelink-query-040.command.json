@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libquadmath.a"
+  ],
+  "controller_pid": 2738279,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-CMS-plain-build-work-2/build/legacy/SubProcesses/P0_epem_mupmum",
+  "process_group": 2738279,
+  "session": 2738279,
+  "started_utc": "2026-11-11T20:26:20.816928+00:00"
+}
