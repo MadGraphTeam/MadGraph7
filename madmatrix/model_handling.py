@@ -795,6 +795,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # FCTn are numbered in creation order and a later one can use an
         # earlier one (the $ propagator's theta function takes FCT0/FCT1), so
         # define them in that order -- the dict order puts FCT0 last there.
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            # complex-mass scheme: the real pole mass and the width of the $
+            # window, from the complex mass (complex_mass_fct_width)
+            out.write('    const fptype %(mr)s = sqrt( ( M%(i)d * M%(i)d ).real() );\n'
+                      '    const fptype %(w)s = -( M%(i)d * M%(i)d ).imag() / %(mr)s;\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
         for name in sorted(self.routine.fct, key=lambda n: (len(n), n)):
             fct, objs = self.routine.fct[name]
             # OM the FCTn variable needs to be defined, not only assigned (and
@@ -807,9 +814,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 self.declaration.add(('complex', name))
             args = [self.write_obj(obj) for obj in objs]
             try:
-                out.write(format % ','.join(args)) # single-argument formats
+                text = format % ','.join(args) # single-argument formats
             except TypeError:
-                out.write(format % tuple(args)) # e.g. 'pow', which takes two
+                text = format % tuple(args) # e.g. 'pow', which takes two
+            out.write(self.fct_with_pole_mass(text, cms_names))
         numerator = self.routine.expr
         if self.coup_name:
             # one term of an assembled routine: its own coupling among COUP1, ...

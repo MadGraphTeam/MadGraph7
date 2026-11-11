@@ -438,6 +438,28 @@ if __name__ == '__main__':
     #===============================================================================
     # Helper function get_momenta
     #===============================================================================
+    def get_external_masses(self, process, special_mass=None):
+        """The (real) masses of the external legs of process, in the order of
+        their leg numbers; a merged multiplet takes its first flavour's. A leg
+        with id 0 is the special resonance of the CMS check, whose mass is
+        special_mass."""
+
+        mass = []
+        for l in sorted(process.get('legs'), key=lambda l: l.get('number')):
+            pdg = l.get('id')
+            if pdg != 0 and pdg:
+                if pdg in self.full_model.merged_particles:
+                    pdg =  self.full_model.merged_particles[pdg][0] 
+                mass_string = self.full_model.get_particle(pdg).get('mass')        
+                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
+            else:
+                if isinstance(special_mass, float):
+                    mass.append(special_mass)
+                else:
+                    raise Exception("A 'special_mass' option must be specified"+\
+                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
+        return mass
+
     def get_momenta(self, process, options=None, special_mass=None):
         """Get a point in phase space for the external states in the given
         process, with the CM energy given. The incoming particles are
@@ -493,21 +515,7 @@ if __name__ == '__main__':
         nfinal = len(sorted_legs) - nincoming
 
         # Find masses of particles
-        mass = []
-        for l in sorted_legs:
-            pdg = l.get('id')
-            if pdg != 0 and pdg:
-                if pdg in self.full_model.merged_particles:
-                    pdg =  self.full_model.merged_particles[pdg][0] 
-                mass_string = self.full_model.get_particle(pdg).get('mass')        
-                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
-            else:
-                if isinstance(special_mass, float):
-                    mass.append(special_mass)
-                else:
-                    raise Exception("A 'special_mass' option must be specified"+\
-                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
-        #mass = [math.sqrt(m.real) for m in mass]
+        mass = self.get_external_masses(process, special_mass)
 
 
 
@@ -3999,19 +4007,10 @@ def _check_sa_energy(proc, evaluator_obj, energy):
     this energy explicitly to every backend, Python included (get_momenta has
     its own, different, threshold rule), so that none of them adjusts it.
     """
-    legs = proc.get('legs')
-    if len([l for l in legs if not l.get('state')]) != 2:
+    if len([l for l in proc.get('legs') if not l.get('state')]) != 2:
         return energy
-    model = evaluator_obj.full_model
-    total = 0.
-    for leg in legs:
-        pdg = leg.get('id')
-        if pdg in model.merged_particles:
-            pdg = model.merged_particles[pdg][0]
-        name = model.get_particle(pdg).get('mass')
-        if name.lower() != 'zero':
-            total += model.get('parameter_dict')[name].real  # signed, as PMASS
-    return max(energy, 2. * total)
+    # signed, as the drivers' PMASS
+    return max(energy, 2. * sum(evaluator_obj.get_external_masses(proc)))
 
 
 def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):

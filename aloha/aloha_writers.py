@@ -35,6 +35,28 @@ class WriteALOHA:
     type_to_size = {'S':3, 'T':18, 'V':6, 'F':6,'R':18}
 
 
+    def complex_mass_fct_width(self):
+        """Complex-mass scheme: the FCT definitions of the $ window (P1D),
+        (M -+ BWCUTOFF*W)**2, need the real pole mass and the width, which the
+        routine no longer receives: M<i> is complex. Both follow from it
+        exactly, M<i>**2 = MR**2 - i MR W. Returns the names (MR<i>, W<i>) to
+        define, and the FCTs then use MR<i> for M<i>; None when there is
+        nothing to do (any other scheme, or no width in the FCTs)."""
+
+        if not (aloha.complex_mass and self.offshell and self.routine.fct):
+            return None
+        width = re.compile(r'\bW%d\b' % self.outgoing)
+        if not any(width.search(' '.join(str(o) for o in objs))
+                   for _, objs in self.routine.fct.values()):
+            return None
+        return 'MR%d' % self.outgoing, 'W%d' % self.outgoing
+
+    def fct_with_pole_mass(self, text, names):
+        """the FCT definition text with the real pole mass for M<i>"""
+        if not names:
+            return text
+        return re.sub(r'\bM%d\b' % self.outgoing, names[0], text)
+
     def check_complex_mass_propagator(self):
         """Complex-mass scheme: the mass argument M<i> is complex and carries
         the width, and the routine has no width argument. A propagator is
@@ -272,6 +294,11 @@ class WriteALOHA:
             elif aloha.complex_mass:
                 call_arg.append(('complex','M%s' % self.outgoing))              
                 self.declaration.add(('complex','M%s' % self.outgoing))
+                # the $ window needs the cutoff in the complex-mass scheme too
+                # (every call site passes it); the width comes from M
+                if 'P1D' in self.tag:
+                    call_arg.append(('double','BWCUTOFF'))              
+                    self.declaration.add(('double','BWCUTOFF'))
             else:
                 call_arg.append(('double','M%s' % self.outgoing))              
                 self.declaration.add(('double','M%s' % self.outgoing))                
@@ -999,6 +1026,11 @@ class ALOHAWriterForFortran(WriteALOHA):
             
         keys = list(self.routine.fct.keys())        
         keys.sort(key=misc.cmp_to_key(sort_fct))
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            out.write(' %(mr)s = SQRT(DBLE(M%(i)d**2))\n %(w)s = -DIMAG(M%(i)d**2)/%(mr)s\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
+            self.declaration.add(('double', cms_names[0]))
         for name in keys:
             fct, objs = self.routine.fct[name]
             format = ' %s = %s\n' % (name, self.get_fct_format(fct))
@@ -1007,7 +1039,7 @@ class ALOHAWriterForFortran(WriteALOHA):
             except TypeError:
                 text = format % tuple([self.write_obj(obj) for obj in objs])
             finally:
-                out.write(text)
+                out.write(self.fct_with_pole_mass(text, cms_names))
         
 
         numerator = self.routine.expr
@@ -2321,10 +2353,16 @@ class ALOHAWriterForCPP(WriteALOHA):
             
         keys = list(self.routine.fct.keys())        
         keys.sort(key=misc.cmp_to_key(sort_fct))
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            out.write(' %(mr)s = sqrt(real(M%(i)d*M%(i)d));\n %(w)s = -imag(M%(i)d*M%(i)d)/%(mr)s;\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
+            self.declaration.add(('double', cms_names[0]))
         for name in keys:
             fct, objs = self.routine.fct[name]
             format = ' %s = %s;\n' % (name, self.get_fct_format(fct))
-            out.write(format % ','.join([self.write_obj(obj) for obj in objs]))
+            out.write(self.fct_with_pole_mass(
+                format % ','.join([self.write_obj(obj) for obj in objs]), cms_names))
             
         
 

@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from madgraph import core
 
 import copy
+import re
 import os
 
 import aloha
@@ -1529,6 +1530,38 @@ class ComplexMassCustomPropagatorTest(unittest.TestCase):
         for language in self.languages():
             with self.assertRaisesRegex(Exception, 'uses the width', msg=str(language)):
                 self.routine((('FFV2',), ['P1W'], 3), language, True)
+
+    def test_dollar_propagator(self):
+        """The $ exclusion (P1D) keeps the width inside its FCT definitions,
+        (M -+ BWCUTOFF*W)**2, which the numerator and denominator checks do
+        not see. In the complex-mass scheme the routine used to lose both W
+        and BWCUTOFF from its arguments, although every call site passes
+        BWCUTOFF: an uninitialised W3 (and the arguments shifted by one) in
+        Fortran, no compilation in C++. Now BWCUTOFF stays an argument and
+        the window uses the real pole mass and the width of the complex mass,
+        M**2 = MR**2 - i MR W, which reproduce the fixed-width window."""
+        from madmatrix import model_handling
+        expected = {
+            'Fortran': ['FFV2P1D_3(F1, F2, COUP, M3, BWCUTOFF,V3)',
+                        'MR3 = SQRT(DBLE(M3**2))', 'W3 = -DIMAG(M3**2)/MR3',
+                        'FCT0 = ((MR3-W3*BWCUTOFF))**(2d0)'],
+            'CPP': ['std::complex<double> M3, double BWCUTOFF,ALOHAOBJ',
+                    'MR3 = sqrt(real(M3*M3));', 'W3 = -imag(M3*M3)/MR3;',
+                    'FCT0 = pow((MR3-W3*BWCUTOFF),2.);'],
+            model_handling.MadMatrixALOHAWriter: [
+                    'const fptype & BWCUTOFF',
+                    'const fptype MR3 = sqrt( ( M3 * M3 ).real() );',
+                    'const fptype W3 = -( M3 * M3 ).imag() / MR3;',
+                    'FCT0 = cxpow( ( MR3 - W3 * BWCUTOFF ), two );']}
+        for language, lines in expected.items():
+            text = self.routine((('FFV2',), ['P1D'], 3), language, True)
+            for line in lines:
+                self.assertIn(line, text, str(language))
+            # the FCTs use the real pole mass, never the complex M3
+            fcts = [l for l in text.splitlines() if re.search(r'FCT[01] =', l)]
+            self.assertEqual(len(fcts), 2, str(language))
+            for fct in fcts:
+                self.assertNotRegex(fct, r'\bM3\b', str(language))
 
     def test_width_in_the_numerator_only_is_refused(self):
         """the numerator is checked too, not only a custom denominator"""

@@ -388,6 +388,16 @@ Review follow-ups:
 - the width check of the complex-mass scheme looks at the numerator of a
   propagator as well as at a custom denominator, and runs for every
   off-shell routine (`check_complex_mass_propagator`);
+- `$` exclusions (`p p > e+ e- $ z`) were broken in the complex-mass
+  scheme. The window `|sqrt(s) - M| < BWCUTOFF * W` sits in the FCT
+  definitions of the P1D routine, and the routine lost both `W` and
+  `BWCUTOFF` from its arguments although every call site passes `BWCUTOFF`.
+  In Fortran the arguments were shifted by one and `W` was uninitialised, so
+  the result was silently wrong; madmatrix and C++ did not compile. `BWCUTOFF`
+  is an argument again, and the window uses the real pole mass and the width
+  of the complex mass (`M**2 = MR**2 - i MR W`). The window edges are then the
+  fixed-width ones, and Fortran and madmatrix agree
+  (`test_dollar_exclusion_complex_mass_scheme`);
 - the `MADARITH_DOUBLEEXPANSION` (`FPTYPE=e`) variant of the complex-mass
   propagator in madmatrix cast the complex mass to a real and dropped the
   width. It now subtracts the complex `M*M`: real part in double-word

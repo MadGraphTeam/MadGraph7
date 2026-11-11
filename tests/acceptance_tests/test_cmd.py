@@ -2228,6 +2228,68 @@ class TestCmdShell2(unittest.TestCase,
             self.do('set complex_mass_scheme False')
             self.do('set gauge unitary')
 
+    def test_dollar_exclusion_complex_mass_scheme(self):
+        """`$ z` in the complex-mass scheme, Fortran and madmatrix.
+
+        The $ window |sqrt(s) - M| < BWCUTOFF * W was written with a width
+        and a cutoff the routine no longer received: the Fortran routine took
+        one argument less than its call (BWCUTOFF landed in the output
+        wavefunction) and an uninitialised W, madmatrix did not compile. With
+        the real pole mass and width of the complex mass the window is the
+        fixed-width one: inside it (91.5 GeV) the Z diagram is gone and the
+        value is the photon-only one, outside (300 GeV) it is back."""
+
+        import aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV', re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+        self.addCleanup(devnull.close)
+
+        def values(output_format, energies):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if output_format == 'standalone_fortran':
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+                target, exe = ['make', 'check'], './check'
+            else:
+                target, exe = ['make'], './check_sa.exe'
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dir = pjoin(proc_root, [d for d in sorted(os.listdir(proc_root))
+                                         if d.startswith('P')][0])
+            self.assertEqual(subprocess.call(target, stdout=devnull, stderr=devnull,
+                                             cwd=proc_dir), 0,
+                             '%s does not compile' % output_format)
+            out = {}
+            for energy in energies:
+                text = subprocess.check_output('%s %s' % (exe, energy), shell=True,
+                                               cwd=proc_dir).decode()
+                out[energy] = float(me_re.findall(text)[0])
+            return out
+
+        energies = ('91.5', '300')
+        self.do('set auto_gauge False')
+        self.do('set complex_mass_scheme True')
+        try:
+            self.do('import model sm')
+            self.do('generate e+ e- > mu+ mu- $ z')
+            fortran = values('standalone_fortran', energies)
+            madmatrix = values('standalone', energies)
+            self.do('generate e+ e- > mu+ mu- / z')
+            photon = values('standalone_fortran', energies)
+        finally:
+            self.do('set complex_mass_scheme False')
+
+        for energy in energies:
+            self.assertAlmostEqual(madmatrix[energy] / fortran[energy], 1., delta=1e-6)
+        # inside the window: no Z; outside: the Z is there (10% and more)
+        self.assertAlmostEqual(fortran['91.5'] / photon['91.5'], 1., delta=1e-12)
+        self.assertGreater(abs(fortran['300'] / photon['300'] - 1.), 0.1)
+
     def test_madmatrix_fd_simd_lanes(self):
         """FD gauge: the scalar and the vectorised madmatrix backends must
         compute the same thing, over many events.
