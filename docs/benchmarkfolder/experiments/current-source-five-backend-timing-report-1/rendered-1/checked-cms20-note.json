@@ -1,0 +1,12 @@
+{
+  "authenticated": true,
+  "closed": true,
+  "comparison_sha256": "8ff34fa6a4648ebb84cab4b2cb8a0a1d2f3e25591c42b55aa8f398b308a27465",
+  "evidence_index_sha256": "f83d036d054adc58a3202c8614b7b9dcec549309b30be30390887f838822f3fc",
+  "evidence_url": "https://github.com/MadGraphTeam/MadGraph7/blob/b443c529633071b997bd21aa3654ef8b10b9e013/docs/benchmarkfolder/experiments/normal-checked-cms20-qualification-1/README.md",
+  "indexed_payloads_authenticated": 314,
+  "new_native_physics_evaluations": 0,
+  "root_review_sha256": "226918bd2b26c740d493473aa12384fd9a5859da04c5e14a03e17b23ec954ff5",
+  "run_sha256": "046d83232bd40235f2401341c0806fb9446599b321da23e72b663b9430d68aa1",
+  "scope": "One later private CMS20 fixture with cache disabled passes automatic stability checks and genuine QP rescue (return323): six failed DP group reductions remain retained; all52 QP reductions succeed. The earlier failed controller attempt remains failed. This is not generic or production qualification, enabled-cache qualification, independent full-amplitude truth, or a performance result."
+}

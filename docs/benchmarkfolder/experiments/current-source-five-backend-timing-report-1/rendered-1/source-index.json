@@ -1,0 +1,77 @@
+{
+  "CSV_rows": 20,
+  "files": {
+    "README.md": {
+      "bytes": 6596,
+      "sha256": "7f21f1cd0605c87ac985586a1b3694f407712441b07eaf4eeb0a21b3d44255b1"
+    },
+    "checked-cms20-note.json": {
+      "bytes": 1080,
+      "sha256": "d448e426390d6704ad533c1648db6eb3b27aa07ff29d5131e60282ecc9cea659"
+    },
+    "prepare_timing_report.py": {
+      "bytes": 14116,
+      "sha256": "a181acbb4bd578d5008b6257e59c6d681d78d0ca9ee93ac6519dc35c05820e7a"
+    },
+    "render_timing_comparison.py": {
+      "bytes": 7000,
+      "sha256": "942bd1a7760595ae04b70ae55b4dde4ff68a5ae1757ecbf4d51558ba60609c39"
+    },
+    "scientific-selection.json": {
+      "bytes": 770,
+      "sha256": "f68cc93b8b26823db79217a574c033ff8959f32414a5a5002767a3e21b4acfe7"
+    },
+    "source-test-receipt.json": {
+      "bytes": 491,
+      "sha256": "f54e3756e13838107b74f890e0dd6931562d619bbb20583fe05b27d7c5b45579"
+    },
+    "style-provenance.json": {
+      "bytes": 732,
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    },
+    "test_prepare.py": {
+      "bytes": 2633,
+      "sha256": "07e4d6b5c9097bf5815072c1053f7cc382730aacf622800e71bebbf89efca238"
+    },
+    "timing-replay.json": {
+      "bytes": 4537646,
+      "sha256": "36de4802ff26ffe9e7942ec4c230d322fd44033ab9a1fbb262bc2e7a9d3869b8"
+    },
+    "timing-report-data.json": {
+      "bytes": 4673973,
+      "sha256": "9aecf4d459efa07e6d16b79c938f627e71c57c4d8c756e1e901627337d674dfb"
+    },
+    "timing-summary.csv": {
+      "bytes": 4768,
+      "sha256": "c0e0cc38b6567d898fa6fd917b6d5c7b2f02627daf60747c21f189d037f8e3d4"
+    },
+    "timings.typ": {
+      "bytes": 7183,
+      "sha256": "392e63cb9c57f28ef17b967b80d231870ae486716af43d1f8b65c8dfff9a1d06"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "previous_successful_source_sha256": "3c7beee3fb0f1d701c4328527bf9cbe1e8bc6fc5a3c83ab4db63b33de8359cdf",
+  "schema": "madloop-shared-host-five-backend-timing-report-source-v1",
+  "scientific_packets": [
+    {
+      "path": "experiments/current-source-five-backend-timing-1/index.json",
+      "sha256": "3dc2c2b46295fce266706fd05b9444ee7408e41e3164daff77054189e2d79966"
+    },
+    {
+      "path": "experiments/current-source-four-lepton-timing-1/index.json",
+      "sha256": "2373175c50a62f0c5e0664c2337b438ae147ae31b1f4ff958ece374f041a2e89"
+    },
+    {
+      "path": "experiments/normal-checked-cms20-qualification-1/evidence-index.json",
+      "sha256": "f83d036d054adc58a3202c8614b7b9dcec549309b30be30390887f838822f3fc"
+    }
+  ],
+  "source_correction": "Omit duplicate cohort note box from PDF only, avoiding a mostly blank page. Its data/README text and all science/CSV/plot sources remain unchanged. Pure preparation tests retained from exact unchanged source/data.",
+  "supersedes_failed_typst_source_sha256": "07efea5f00573a244ff0331e821005cb1aaba89315c93d043dd15e06fc666a0a",
+  "tests_passed": 3
+}

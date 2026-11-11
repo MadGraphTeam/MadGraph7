@@ -2,8 +2,16 @@
 
 **Current status.** Production registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
-target. The [39-page benchmark PDF](benchmark.pdf) preserves the original 35
-report pages and appends four pages of separately bound CMS chronology. The
+target. The [41-page benchmark PDF](benchmark.pdf) preserves the original 35
+report pages and four separately bound CMS chronology pages, then appends
+[two pages of actual shared-host timings](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md)
+for four SM processes and all five reducers, including a fresh QCD 2→4
+four-lepton process. All twenty timing lanes pass the retained `3e-6` and
+ordinary `1e-8` numerical gates; these descriptive timings are separate from
+local performance acceptance. The reusable
+[20-row timing CSV](experiments/current-source-five-backend-timing-report-1/rendered-1/timing-summary.csv)
+retains the exact medians, unscaled MADs, paired-cycle ratios and accepted
+precision counts. The
 later [private matched-input QP comparison](experiments/matched-native-input-qualification-1/README.md)
 agrees in Born, finite and both poles at the saved forward fixture, with
 maximum relative disagreement `2.014e-16`. Its explicit backend-8 input-policy
@@ -548,7 +556,7 @@ python3 -B docs/benchmarkfolder/build_report.py --output /tmp/ordinary-35-page-r
   --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
 ```
 
-The canonical 39-page PDF preserves those exact 35 pages from
+The archived 39-page PDF preserves those exact 35 pages from
 `history/report-before-cms-stress-supplement-1/` and appends four separately
 bound CMS diagnostic pages. Pages 36–38 preserve the earlier failed/incomplete
 trial and conditional pole audits. Page 39 records the later eligible private
@@ -577,6 +585,41 @@ the earlier 1/3–3/3 footers, then joins them before the same checks. The older
 builder guards canonical composite output; explicit custom output remains
 available. No report command launches native physics or qualifies local timing.
 
+The canonical 41-page PDF now preserves that exact 39-page composite under
+`history/report-before-five-backend-timing-1/`, including its old ledger and
+owning builder, and appends the sealed two-page
+[five-backend timing tail](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md).
+The first-three and fresh four-lepton raw timing capsules remain separate,
+with complete portable replay, runtime/card/cohort pins and all ten balanced
+cycles. Each lane uses all 100 saved points. The CSV and plot use unchanged
+analyzer statistics: wall ms per physical evaluation, median ± unscaled MAD,
+and median of ten within-cycle backend/NinjaRS8 ratios. READY initialization
+is separate. All timed accepted output calls were DP; internal retries and
+hardware FPE flags were not observed. These shared-host timings carry no
+confidence interval, baseline/rescue-chain acceptance result or local ≤1.05
+claim. The complete registered local campaign remains
+[Hua-Sheng's precise timing TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+The separate private checked-CMS20 note does not qualify production timings.
+
+Rebuild the timing tail and reproduce the complete report into a fresh output:
+
+```sh
+source tools/tirust_env.sh
+python3 -B docs/benchmarkfolder/build_timing_report.py --output /tmp/benchmark-with-five-backend-timings.pdf --rebuild-supplement
+python3 -B docs/benchmarkfolder/build_timing_report.py --output /tmp/benchmark-with-five-backend-timings.pdf --verify-only
+```
+
+The matching owner authenticates both scientific timing seals, the optional
+CMS evidence seal, the unchanged 39-page archive and sealed source/data/plot
+inputs. It checks all 41 pages using paired144dpi RGB pixels, per-page text,
+geometry and fonts; this is not PDF object-graph or new annotation/link
+proof. The ledger retains exact tool versions, commands, warnings and page
+proof. File-only verification runs no programs; optional `--verify-pages`
+uses bounded read-only document tools. The ordinary and stress builders
+refuse to overwrite this canonical timing composite; explicit historical
+custom outputs remain available. The main historical Typst source and
+NinjaRS report PDF/source remain unchanged.
+
 Dossier creation and report building never launch new numerical measurements.
 Each retrospective and raw plot has a separate page. The original numerical
 and delivery gates remain unchanged.
@@ -590,9 +633,10 @@ in the campaign report-snapshots directory.
 The closed11 PDF, ledger, context and changed report sources from commit
 `772b15ed39cc` are preserved under `history/report-before-closed-provisional/`.
 
-The report builders do not run numerical measurements. The composite
-`report-build.json` binds the preserved original ledger, sealed four-page
-supplement, final PDF and page-preservation receipt. The archived original
+The report builders do not run numerical measurements. The current timing
+`report-build.json` binds the archived 39-page PDF and ledger, sealed two-page
+timing tail, final PDF and page-preservation receipt. The archived composite
+ledger separately retains its original35-page ledger and four-page CMS tail. The archived original
 ledger retains its exact Typst version, creation timestamp and font search paths. Typst 0.15.1, Libertinus
 7.051 and DejaVu 2.37 reproduce the recorded presentation. The renderer refuses
 a passing headline with missing main cases, absent backend comparisons,

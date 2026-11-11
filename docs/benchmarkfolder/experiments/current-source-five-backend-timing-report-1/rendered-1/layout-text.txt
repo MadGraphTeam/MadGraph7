@@ -1,0 +1,109 @@
+Five-backend Standard Model timings
+  Descriptive shared-host measurements. These full-amplitude timings compare explicit CutTools, Ninja, COLLIER, NinjaRS and
+  TIRust on the selected saved cohorts. There is no CPU reservation and no confidence-interval or final local-performance acceptance
+  claim. The earlier 39 pages retain their separately bound scientific and timing history.
+
+
+GNU Fortran (GCC) 15.2.0; AMD EPYC 9754 128-Core Processor; affinity CPU 12; one-thread environment on a shared, unreserved host.
+
+Elapsed time is the unchanged Fortran SYSTEM_CLOCK wall clock, divided by the actual points × loops. Each backend has
+ten position-balanced cycles (five Latin positions followed by reversal), with loops fixed after two retained calibrations.
+The nominal batch target is two seconds; actual batch durations and counts remain in the closed evidence. The table
+reports the median and unscaled median absolute deviation, not an error bar on the mean. Ratios are medians of
+ten within-cycle backend / NinjaRS8 ratios. Actual timed batches range from 1.95 to 3.14 seconds; integer full-cohort
+traversal counts can exceed the nominal target.
+Table 1: Warmed full-amplitude wall time. Ratios below one mean that backend is faster than NinjaRS8. All actual saved-cohort sizes and
+accepted output-call counts are retained.
+Process · cohort           Reducer         READY s           Wall ms/point ·          Ratio / 8   Accepted DP /     Status
+                                                             median ± MAD                         QP
+
+uū → Z · QCD               CutTools        0.0343            0.127 ± 9.53 × 10−4      ×1.48       157000 / 0        3e-6 pass
+N=100
+
+                           Ninja           0.0282            0.0876 ± 9.14 × 10−4     ×1.01       237000 / 0        3e-6 pass
+                                                                               −4
+                           COLLIER         0.0358            0.116 ± 7.30 × 10        ×1.37       173000 / 0        3e-6 pass
+                                                                                 −3
+                           NinjaRS         0.0297            0.0854 ± 1.78 × 10       ×1.00       239000 / 0        3e-6 pass
+                                                                                 −3
+                           TIRust          0.0166            0.0946 ± 1.36 × 10       ×1.11       214000 / 0        3e-6 pass
+
+gg → tt̄t̄ · QCD           CutTools        0.615             5.55 ± 0.0559            ×1.30       4000 / 0          3e-6 pass
+N=100
+
+                           Ninja           0.447             4.23 ± 0.0255            ×0.998      5000 / 0          3e-6 pass
+
+                           COLLIER         0.583             5.40 ± 0.0319            ×1.27       4000 / 0          3e-6 pass
+
+                           NinjaRS         0.453             4.25 ± 0.0325            ×1.00       5000 / 0          3e-6 pass
+
+                           TIRust          0.482             4.46 ± 0.0249            ×1.05       5000 / 0          3e-6 pass
+
+e⁺e⁻ → μ⁺μ⁻ · EW           CutTools        0.442             4.12 ± 0.0144            ×1.21       5000 / 0          3e-6 pass
+N=100
+
+                           Ninja           0.365             3.31 ± 0.0357            ×0.975      6000 / 0          3e-6 pass
+
+                           COLLIER         0.488             4.49 ± 0.0374            ×1.33       5000 / 0          3e-6 pass
+
+                           NinjaRS         0.376             3.38 ± 0.0155            ×1.00       6000 / 0          3e-6 pass
+
+                           TIRust          0.366             3.54 ± 0.0236            ×1.04       6000 / 0          3e-6 pass
+
+uū → e⁺e⁻μ⁺μ⁻ · QCD        CutTools        1.53              14.9 ± 0.0813            ×1.03       2000 / 0          3e-6 pass
+N=100
+
+                           Ninja           1.47              14.4 ± 0.127             ×1.000      2000 / 0          3e-6 pass
+
+                           COLLIER         1.55              15.0 ± 0.174             ×1.05       2000 / 0          3e-6 pass
+
+                           NinjaRS         1.48              14.4 ± 0.0872            ×1.00       2000 / 0          3e-6 pass
+
+                           TIRust          1.49              14.5 ± 0.0970            ×1.01       2000 / 0          3e-6 pass
+
+
+The separate ordinary 1e-8 target passes in 20 / 20 lanes.
+
+READY time includes the first amplitude and initialization/learning, excluding SETPARA and process startup; it is
+separate from warmed timing. Accepted DP/QP counts cover timed output calls and do not recover unobserved
+internal retries or floating-point exception flags. Numerical checks and timing status are separate; failed or unavailable
+comparisons remain explicit. Coefficient checks cover the retained final 100-point traversal of learning, each calibration
+and each timed batch; accepted-status counts cover all timed repetitions.
+The 𝑢𝑢 → 𝑍 cohort varies physical on-shell Z boosts. The other three selected cohorts use 1 TeV. These labels follow
+actual saved-point physics and generation records, not the global configuration energy field.
+
+
+
+
+                                                                    1/2
+MadLoop with TIRust                                                                               2026-11-11 · revision registered science 0fcd2cd873
+
+
+Timing comparison and scope
+
+
+
+
+Figure 1: Absolute warmed wall timing for each case and within-cycle ratios relative to NinjaRS8. Whiskers show unscaled MAD, not
+confidence intervals. Green means a smaller backend/NinjaRS8 ratio, red a larger ratio. Unavailable cells are not zero.
+
+The fresh four-lepton QCD 2 → 4 generation has maximum loop N=4 and rank=3, across 12 loop-call groups, as
+reparsed from its compiled source text. Four final particles do not imply six propagators in each loop. The separately
+validated ZZgg process retains its full numerical coverage and precise local timing TODO. These shared-host compar­
+isons do not replace the full registered numerical matrix or Hua-Sheng’s precise local per-process timing campaign. The
+agreed upper-95% runtime-ratio bound ≤1.05, source-matched baseline/rescue-chain comparison and existing-backend
+regressions remain separate acceptance items.
+
+  Separate private checked-CMS20 result. One later private CMS20 fixture with cache disabled passes automatic stability checks
+  and genuine QP rescue (return323): six failed DP group reductions remain retained; all52 QP reductions succeed. The earlier failed
+  controller attempt remains failed. This is not generic or production qualification, enabled-cache qualification, independent full-
+  amplitude truth, or a performance result. Closed evidence. This does not qualify the production timing inputs or generic execution.
+
+Closed timing evidence and reproduction commands: Closed timing capsules; see the accompanying README and scientific-selection.json. Clock, source/
+runtime/card/cohort pins, actual durations, calibration and all accepted-status/precision histograms are retained with that packet.
+
+
+
+
+                                                                      2/2
+

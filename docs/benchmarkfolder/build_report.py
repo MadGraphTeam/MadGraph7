@@ -332,8 +332,8 @@ def guard_composite_canonical(root, output):
     if Path(output).resolve() != (root / "benchmark.pdf").resolve():
         return
     ledger = root / "report-build.json"
-    if ledger.exists() and json.loads(ledger.read_text()).get("schema") == "madloop-tirust-composite-report-v1":
-        raise ValueError("Canonical report contains the preserved CMS supplement. Use build_stress_report.py to build or verify it; --output CUSTOM.pdf remains available for the original campaign builder.")
+    if ledger.exists() and json.loads(ledger.read_text()).get("schema") in ("madloop-tirust-composite-report-v1", "madloop-tirust-timing-composite-report-v1"):
+        raise ValueError("Canonical report contains the preserved CMS supplement. Use the matching append owner (build_stress_report.py or build_timing_report.py) to build or verify it; --output CUSTOM.pdf remains available for the original campaign builder.")
 
 
 def main():

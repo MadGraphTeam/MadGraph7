@@ -1,0 +1,30 @@
+{
+  "CSV": {
+    "bytes": 4768,
+    "sha256": "c0e0cc38b6567d898fa6fd917b6d5c7b2f02627daf60747c21f189d037f8e3d4"
+  },
+  "CSV_rows": 20,
+  "PDF": {
+    "bytes": 261494,
+    "sha256": "986b8000890613ff45add7d4cdfa6a92bdf06efcc9d3b7676aa7364c0ff51f56"
+  },
+  "Typst_warnings": [],
+  "document_commands": 11,
+  "document_returncodes_all_zero": true,
+  "document_warnings": [
+    {
+      "command": [
+        "pdfinfo",
+        ".tirust-build/shared-host-timing-report-render-4/timing-supplement.pdf"
+      ],
+      "stderr": "Syntax Error: Suspects object is wrong type (boolean)\n"
+    }
+  ],
+  "embedded_fonts": 6,
+  "new_native_physics_evaluations": 0,
+  "page_count": 2,
+  "performance_acceptance": false,
+  "schema": "madloop-shared-host-timing-render-closure-v1",
+  "source_index_sha256": "07061f6d59d1a9c1ae85e5d8490332bc81de7046222b727a2d373f8cf7e8e5fe",
+  "visual_scope": "Complete20-rowtable and20/20targetline; fourpanels plus ratioheatmap and scopedCMSnote; independently reviewed by root before publication."
+}
