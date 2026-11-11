@@ -66,7 +66,10 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
 
     rows = report.runtime
     served = [row for row in rows if row.profile is not None]
-    fastest = min((row.profile.seconds_per_point for row in served), default=None)
+    fastest = min(
+        (row.profile.seconds_per_point for row in served if row.ratio is not None),
+        default=None,
+    )
     summary = palette.table(
         prettytable,
         (
@@ -100,13 +103,17 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             )
             continue
         profile = row.profile
-        best = profile.seconds_per_point == fastest
+        compared = sum(1 for other in served if other.ratio is not None)
+        best = row.ratio is not None and profile.seconds_per_point == fastest
         time_text = _seconds_text(profile.seconds_per_point)
+        timed = profile.batch * profile.samples
         ratio = (
-            palette.paint("fastest", palette.GOOD, color=color, bold=True)
-            if best and len(served) > 1
+            palette.paint("all points failed", palette.BAD, color=color, bold=True)
+            if row.ratio is None
+            else palette.paint("fastest", palette.GOOD, color=color, bold=True)
+            if best and compared > 1
             else ""
-            if len(served) < 2
+            if compared < 2
             else palette.paint(f"x{row.ratio:.2f}", palette.RECOVERED, color=color)
         )
         lanes = profile.reduction.get("lanes") or {}
@@ -124,7 +131,11 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 label,
                 palette.paint(
                     time_text,
-                    palette.GOOD if best and len(served) > 1 else None,
+                    palette.GOOD
+                    if best and compared > 1
+                    else palette.BAD
+                    if row.ratio is None
+                    else None,
                     color=color,
                     bold=True,
                 ),
@@ -132,7 +143,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 ratio,
                 lane_text,
                 palette.paint(
-                    str(profile.failed_points),
+                    f"{profile.failed_points} of {timed}",
                     palette.GOOD if profile.failed_points == 0 else palette.BAD,
                     color=color,
                 ),
@@ -145,7 +156,8 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     fields = ["stage"]
     for row in served:
         fields += [f"{_name(row.backend)} time", f"{_name(row.backend)} share"]
-    if len(served) == 2:
+    pair = len(served) == 2 and all(row.ratio is not None for row in served)
+    if pair:
         fields.append(f"{_name(served[1].backend)} / {_name(served[0].backend)}")
     stages = palette.table(
         prettytable,
@@ -168,7 +180,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             seconds.append(value)
             share = 1.0 if group == "total" else value / total
             cells += [_seconds_text(value), f"{100 * share:5.1f} %"]
-        if len(served) == 2:
+        if pair:
             first, second = seconds
             if first > 0.0 and second > 0.0:
                 ratio = second / first
@@ -223,7 +235,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     target_digits = -math.log10(target)
     rows = report.stability
     served = [row for row in rows if row.refusal is None and row.points]
-    fields = ["percentile (worst first)", "class points"]
+    fields = ["percentile (worst first)", "class points (per backend)"]
     for row in served:
         name = _name(row.backend)
         fields += [
@@ -241,10 +253,10 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     labels = {0.001: "1 per mil", 0.01: "1 %", 0.1: "10 %", 0.5: "50 % (median)"}
     if served:
         for index, first in enumerate(served[0].percentiles):
-            counts = {row.percentiles[index].count for row in served}
+            counts = [row.percentiles[index].count for row in served]
             cells = [
                 labels.get(first.percentile, f"{100 * first.percentile:g} %"),
-                " / ".join(str(count) for count in sorted(counts)),
+                " / ".join(str(count) for count in counts),
             ]
             for row in served:
                 item = row.percentiles[index]

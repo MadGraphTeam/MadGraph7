@@ -261,3 +261,37 @@ def test_flat_points_conserve_momentum_and_keep_the_masses(tmp_path):
         assert external_masses(item) == pytest.approx(masses, abs=1e-6)
     with pytest.raises(ValueError, match="must exceed"):
         flat_points(kinematics, 1, seed=1, sqrt_s=300.0)
+
+
+def test_runtime_tables_compare_served_backends_only():
+    from pyamplicol.benchmarking import VirtualProfileResult
+    from pyamplicol.reporting import render_summary
+
+    def profile(seconds, failed):
+        return VirtualProfileResult(
+            "gg_zgg",
+            "g g > z g g",
+            "loop-induced",
+            4,
+            2,
+            0,
+            seconds,
+            seconds,
+            seconds,
+            {"trees": seconds / 2, "reduction": seconds / 2},
+            {"lanes": {"tirust": 6, "ninjars": 2}},
+            False,
+            failed,
+        )
+
+    rows = (
+        BackendRuntime("tirust", profile(1e-3, 0), ratio=1.0, requested="auto"),
+        BackendRuntime("ninjars", profile(3e-3, 0), ratio=3.0),
+    )
+    text = render_summary(_report(None, rows), color=False)
+    assert "fastest" in text and "x3.00" in text and "NinjaRS / TIRust" in text
+    assert "NinjaRS 2 (per-point fallback)" in text and "0 of 8" in text
+    failed = (rows[0], BackendRuntime("ninjars", profile(3e-3, 8), ratio=None))
+    text = render_summary(_report(None, failed), color=False)
+    assert "all points failed" in text and "8 of 8" in text
+    assert "NinjaRS / TIRust" not in text

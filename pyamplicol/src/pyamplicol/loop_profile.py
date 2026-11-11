@@ -267,6 +267,12 @@ def _estimated_relative(estimate: Any, total: float) -> float:
     return error / abs(total)
 
 
+def _served_points(profile: Any) -> int:
+    """The timed points a profile's backend served (not failed)."""
+
+    return profile.batch * profile.samples - profile.failed_points
+
+
 def _runtime_setup(unchecked: bool, bench: Any) -> str:
     reduction = (
         "unchecked reduction (timing mode, no accuracy certificate)"
@@ -338,7 +344,13 @@ def profile_loop(
                 )
                 continue
             rows.append(BackendRuntime(backend, profile, requested=request))
-        served = [row.profile.seconds_per_point for row in rows if row.profile]
+        # A backend that failed every timed point is not compared (its time
+        # is that of failing, not of serving the process).
+        served = [
+            row.profile.seconds_per_point
+            for row in rows
+            if row.profile and _served_points(row.profile)
+        ]
         fastest = min(served) if served else None
         runtime_rows = tuple(
             BackendRuntime(
@@ -346,7 +358,7 @@ def profile_loop(
                 row.profile,
                 row.refusal,
                 None
-                if row.profile is None or not fastest
+                if row.profile is None or not fastest or not _served_points(row.profile)
                 else row.profile.seconds_per_point / fastest,
                 row.requested,
             )
