@@ -1,0 +1,45 @@
+{
+  "abi_controller_calls": 0,
+  "canonical_source_view_runtime_identity_present": false,
+  "cohort_count": 20,
+  "compiler_calls": 0,
+  "cross_precision_misuse_expected_to_refuse": false,
+  "driver_or_controller_implemented": false,
+  "environment_field_count": 7,
+  "fortran_source_or_sealed_parent_edits": false,
+  "full_caller_qualified": false,
+  "inputs": {
+    ".tirust-build/generic-equality-postcondition-qualification-proposal-1/README.md": {
+      "bytes": 8224,
+      "sha256": "1b7c92fe6a4ff4aaa4fe4f5ec3364c0945b46f6f656ebaa41b61071bfedac278"
+    },
+    ".tirust-build/generic-equality-postcondition-qualification-proposal-1/driver.f90": {
+      "bytes": 7286,
+      "sha256": "fa110cc2ebd799a221d0f86318719cb0f1d067519ae1fd0de642aba86a32831b"
+    },
+    ".tirust-build/generic-equality-postcondition-qualification-proposal-1/fenv_observer.c": {
+      "bytes": 7979,
+      "sha256": "ed3c9f705398c4d008dae7ae055732420b8b0b11d39faa6f5dc1d04aa058c6f7"
+    },
+    ".tirust-build/generic-owned-snapshot-qualification-proposal-1/audit-design/REQUIREMENTS.md": {
+      "bytes": 7644,
+      "sha256": "095a7c9da644d0d2105a5fa65825dc3272cbd4b286ea897bf976d64d34481c5a"
+    },
+    ".tirust-build/generic-owned-snapshot-source-1/owned_snapshots.f90": {
+      "bytes": 9490,
+      "sha256": "307b8f7615b3c83c8ca15713b180d8cd70013f441ca0598f466efd6386966706"
+    }
+  },
+  "native_calls": 0,
+  "numerical_calls": 0,
+  "performance_qualified": false,
+  "required_driver_precision_separation": "Disjoint caller-owned DP and QP reference/pending arrays and masks; matching named routines",
+  "runtime_abi_qualified": false,
+  "runtime_precision_tag_present": false,
+  "schema": "standalone-snapshot-transport-audit-design-v1",
+  "scientific_dispatch_enabled": false,
+  "scientific_qualified": false,
+  "scope": "Read-only source inspection and dormant requirements only; no driver/controller implementation or execution",
+  "tests_executed": false,
+  "unit_feasible_under_declared_caller_contract": true
+}

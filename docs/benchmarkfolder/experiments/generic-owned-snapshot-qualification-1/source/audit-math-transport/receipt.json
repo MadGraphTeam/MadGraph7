@@ -1,0 +1,15 @@
+{
+  "native_calls": 0,
+  "payloads": {
+    "README.md": {
+      "bytes": 3996,
+      "sha256": "7ea650d674e8562d07e36cd6c778f60eeda013ea26773abee6f91ac036938d87"
+    },
+    "source-read-review.json": {
+      "bytes": 5673,
+      "sha256": "a58f831afe241f2b88c75518cfd5280ea184e0a4f8a08456b94e9e2f754ab46a"
+    }
+  },
+  "schema": "independent-transport-source-audit-receipt-v1",
+  "scientific_dispatch_enabled": false
+}

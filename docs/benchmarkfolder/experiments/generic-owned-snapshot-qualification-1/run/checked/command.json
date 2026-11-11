@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-work-2/build/checked/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-proposal-2/fixtures.hex",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-work-2/run/checked/observations.txt"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-work-2/run/checked",
+  "new_session": false,
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T18:17:38.755346+00:00"
+}

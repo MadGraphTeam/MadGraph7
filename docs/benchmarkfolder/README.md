@@ -439,6 +439,14 @@ checks retain ten exact equalities that the bounded helper conservatively
 refuses. Snapshot ownership, actual caller inputs, the final floating-point dot
 product, physical amplitudes and performance remain separate open gates.
 
+The [standalone snapshot fixture](experiments/generic-owned-snapshot-qualification-1/README.md)
+tests the Fortran module's word transport, staged publication, reset and separate
+DP/QP state. Checked and optimized builds agree on all 1,480 observations,
+3,680 API outcomes and 94,720 integer state words across twenty environment
+settings. Actual runtime mappings and observed environment restoration pass.
+These unit observations do not establish physical constructor completion,
+current-point provenance, q/dot behavior or full amplitude correctness.
+
 The [private CMS amplitude trial](experiments/kinematic-invariant-amplitude-qualification-1/README.md)
 compiles the Fortran prototype and preserves the ordinary point's exact
 original/candidate observations. The first stress point retains failed DP

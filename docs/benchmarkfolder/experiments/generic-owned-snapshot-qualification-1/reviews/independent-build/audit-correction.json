@@ -1,0 +1,6 @@
+{
+  "schema": "audit-only-schema-correction-v1",
+  "initial_audit_source_sha256": "a7825cc65164cf94dee63f92271ccf7bb04600bd94909c9ba2c938a48aaa1eec",
+  "reason": "Actual limits.json stores the resource mapping under actual and also records pid/session/process_group; initial audit assumed the mapping at top level. Source/build/evidence unchanged; blocked pure source/build/static-runtime replay had passed before the schema assertion.",
+  "initial_attempt": "exit1 at resource-schema assertion; no receipt produced; no native or evidence mutation"
+}

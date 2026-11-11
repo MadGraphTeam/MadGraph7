@@ -1,0 +1,45 @@
+{
+  "child_argv": [
+    ".tirust-build/generic-owned-snapshot-qualification-proposal-2/controller.py",
+    "--child",
+    "--phase",
+    "run",
+    "--source",
+    "41797bbf9e25eb1836932307f66ad74f413714dd38cf1485e07cc8f2d74160d9",
+    "--reviewed-build",
+    "cb09bd997719180a66ad18d157d7d0830876ff12611621abeae97537fd342ec1"
+  ],
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "-I",
+    ".tirust-build/generic-owned-snapshot-qualification-proposal-2/controller.py",
+    "--child",
+    "--phase",
+    "run",
+    "--source",
+    "41797bbf9e25eb1836932307f66ad74f413714dd38cf1485e07cc8f2d74160d9",
+    "--reviewed-build",
+    "cb09bd997719180a66ad18d157d7d0830876ff12611621abeae97537fd342ec1"
+  ],
+  "deadline_monotonic": 2454938.369448723,
+  "phase": "run",
+  "resource_limits": {
+    "address_space_bytes": 4294967296,
+    "core_bytes": 0,
+    "file_bytes": 268435456
+  },
+  "reviewed_build_sha256": "cb09bd997719180a66ad18d157d7d0830876ff12611621abeae97537fd342ec1",
+  "source_index_sha256": "41797bbf9e25eb1836932307f66ad74f413714dd38cf1485e07cc8f2d74160d9",
+  "supervisor_identity": {
+    "parent_pid": 1,
+    "pid": 2,
+    "process_group": 1,
+    "session": 1,
+    "start_time_ticks": 245475830,
+    "state": "R"
+  }
+}

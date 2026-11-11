@@ -1,0 +1,7 @@
+                 U __addvdi3
+                 U __addvsi3
+                 U __mulvdi3
+                 U __negvdi2
+                 U __subvdi3
+                 U _gfortran_runtime_error_at
+                 U memcpy

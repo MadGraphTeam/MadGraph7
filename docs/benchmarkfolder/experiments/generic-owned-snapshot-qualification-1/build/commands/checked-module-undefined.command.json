@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/nix/store/s2946bl9ciwzhafd66jhansrmxq9xhqm-binutils-2.46/bin/nm",
+    "--undefined-only",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-work-2/build/checked/owned_snapshots.o"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-work-2/build/checked",
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T18:12:22.682204+00:00"
+}

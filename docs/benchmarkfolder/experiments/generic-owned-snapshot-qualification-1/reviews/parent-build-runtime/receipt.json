@@ -1,0 +1,25 @@
+{
+  "RUN_admitted_by_this_review": false,
+  "RUN_evidence_reviewed": false,
+  "audit_native_calls": 0,
+  "payloads": {
+    "README.md": {
+      "bytes": 2135,
+      "sha256": "326f766637c67d951679153f1b8635b4aaeefa68c5c0dd037616d2e827f355fa"
+    },
+    "inputs.json": {
+      "bytes": 65969,
+      "sha256": "3c180d0717f3338a59e404f1929be36c565db3378a654bf1dff6c356bb02f9c1"
+    },
+    "review.json": {
+      "bytes": 29251,
+      "sha256": "a24a724f7b2da742dba6d4ee7be008724aedb9af8313beb44fdd8647f4e45eda"
+    }
+  },
+  "result_sha256": "0a6737daa72d18f9031aa53e7a4c7d8df8f7b967dddf86372f432d34e6c344a4",
+  "schema": "independent-closed-snapshot-BUILD-review-receipt-v1",
+  "scientific_dispatch_enabled": false,
+  "source_index_sha256": "41797bbf9e25eb1836932307f66ad74f413714dd38cf1485e07cc8f2d74160d9",
+  "status": "pass-closed-BUILD-only",
+  "terminal_sha256": "cb09bd997719180a66ad18d157d7d0830876ff12611621abeae97537fd342ec1"
+}

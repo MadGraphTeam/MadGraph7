@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-O0",
+    "-fcheck=all",
+    "-ftrapv",
+    "-fPIC",
+    "-c",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-proposal-2/owned_snapshots.f90",
+    "-o",
+    "owned_snapshots.o"
+  ],
+  "controller_pid": 3,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-snapshot-qualification-work-2/build/checked",
+  "process_group": 3,
+  "session": 3,
+  "started_utc": "2026-11-11T18:12:20.717570+00:00"
+}

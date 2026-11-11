@@ -1,0 +1,61 @@
+{
+  "cap_seconds": 180.0,
+  "child_pid": 3,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 245475910,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 4,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 245475990,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 5,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 245476035,
+        "state": "S"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "-I",
+    ".tirust-build/generic-owned-snapshot-qualification-proposal-2/controller.py",
+    "--child",
+    "--phase",
+    "run",
+    "--source",
+    "41797bbf9e25eb1836932307f66ad74f413714dd38cf1485e07cc8f2d74160d9",
+    "--reviewed-build",
+    "cb09bd997719180a66ad18d157d7d0830876ff12611621abeae97537fd342ec1"
+  ],
+  "deadline_monotonic": 2454938.369448723,
+  "finished_utc": "2026-11-11T18:17:40.526953+00:00",
+  "original_end_monotonic": 2454938.369448723,
+  "original_start_monotonic": 2454758.369448723,
+  "phase": "run",
+  "result_sha256": "0e696761b43e899c78e8457dee150066b948738d43a18633a1bfa38227cb4e0d",
+  "returncode": 0,
+  "started_utc": "2026-11-11T18:17:37.299868+00:00",
+  "status": "passed"
+}

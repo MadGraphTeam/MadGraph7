@@ -1,0 +1,32 @@
+{
+  "RUN_result_sha256": "0e696761b43e899c78e8457dee150066b948738d43a18633a1bfa38227cb4e0d",
+  "RUN_terminal_sha256": "3b9b46fd23b59f29e0ef571edf8024f078aeaff1892c8a8f89bca630f636100d",
+  "audit_compiler_calls": 0,
+  "audit_loader_queries": 0,
+  "audit_native_control_calls": 0,
+  "audit_target_execution": 0,
+  "full_caller_qualified": false,
+  "payloads": {
+    "README.md": {
+      "bytes": 2115,
+      "sha256": "ae761b5267fed2568f28bf85c0bbce81089aa42dbb0177c4f72614edf6c676dc"
+    },
+    "inputs.json": {
+      "bytes": 22122,
+      "sha256": "8b4467488dbe767c5c373f3d578a9477c31c7864a78dbe38dfd6a6fc2f9d3cf5"
+    },
+    "review.json": {
+      "bytes": 5180,
+      "sha256": "81f526b6c2457b01335de26966acb8aeab9eff9adcd2feb7a9b03d76b27decc2"
+    },
+    "review_states.py": {
+      "bytes": 6488,
+      "sha256": "ffa14d174978693aea008d52deb502e378a6f5f90cd68c172204d2d38b606a2b"
+    }
+  },
+  "performance_qualified": false,
+  "schema": "independent-closed-snapshot-RUN-data-review-receipt-v1",
+  "scientific_dispatch_enabled": false,
+  "source_index_sha256": "41797bbf9e25eb1836932307f66ad74f413714dd38cf1485e07cc8f2d74160d9",
+  "status": "pass-exact-standalone-fixture-lane"
+}
