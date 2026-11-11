@@ -914,7 +914,9 @@ runs a rotation re-test (the recommended checks' rotation of the evaluated
 point) in the call's arithmetic
 and fails typed when the check's relative estimate exceeds
 `reduction_target`, never below 1e-5 (a binary64 fallback point is served
-unguarded), recorded per point
+unguarded; the guard's estimate is an estimate, not a bound: strongly
+suppressed helicity rows near exactly forward kinematics can be served
+beyond their own 1e-5), recorded per point
 (`VirtualReduction.guard_estimate`; [Python API](python-api.md): NinjaRS can
 return badly wrong values as success at near-planar 2 -> 3 points of rank-n
 pentagon families in every arithmetic, the "Near-planar NinjaRS hazard",
