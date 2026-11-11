@@ -618,3 +618,74 @@ def test_every_sdk_returns_refused_points_with_their_best_effort_value(
         ], language
         for p in refused:
             assert found_u[p] == uncertainties[p], language
+
+
+# ------------------------------------------------------------ heavy rows
+
+
+@pytest.fixture(scope="module", params=["loop_gg_zgg", "loop_uux_ttxgg"])
+def heavy(request, loop_native, tmp_path_factory):
+    """The two examples where explicit TIRust refuses most flat points
+    (m-lit ux-profile F1: g g > z g g 43 %, u u~ > t t~ g g 77 %), generated
+    from their shipped cards, and eight flat points (seed 1)."""
+
+    import shutil
+
+    from pyamplicol.cli.flat_points import draw_flat_points
+    from pyamplicol.cli.main import main
+    from tests.unit.test_examples import EXAMPLES
+
+    if not _tirust(loop_native):
+        pytest.skip("the staged native extension is built without TIRust")
+    root = tmp_path_factory.mktemp(request.param)
+    for item in EXAMPLES.iterdir():
+        if item.name.endswith(".toml"):
+            shutil.copy(item, root / item.name)
+    shutil.copytree(EXAMPLES / "data", root / "data")
+    artifact = root / "artifact"
+    card = root / f"{request.param}_generate.toml"
+    assert main(
+        [str(card), "--progress", "off", "--set", f"generation.output={artifact}"]
+    ) in (
+        0,
+        None,
+    )
+    flat = draw_flat_points(artifact, process=None, points=8, seed=1, sqrt_s=None)
+    return artifact, flat.as_inputs(exact=True), flat.mu_r2()
+
+
+@pytest.mark.loop_physics
+def test_the_heavy_refusal_rows_return_the_unchecked_values(heavy):
+    """On the heavy-refusal rows explicit TIRust's refused points carry
+    exactly the unchecked TIRust values (best-effort), the accepted ones
+    keep the "return" call's values bitwise, every lane has a value or a
+    stated reason, and the warnings metadata counts them."""
+
+    from pyamplicol import Runtime
+
+    artifact, points, scales = heavy
+    runtime = Runtime.load(artifact)
+    options = {"mu_r2": scales, "poles": "none", "reduction": "tirust"}
+    returned = runtime.evaluate(points, on_failure="return", **options)
+    unchecked = runtime.evaluate(
+        points, on_failure="return", reduction_unchecked=True, **options
+    )
+    found = runtime.evaluate(points, **options)
+    refused = [p for p, ok in enumerate(returned.valid) if not ok]
+    assert refused, "the heavy rows refuse flat points on TIRust"
+    for p, status in enumerate(found.statuses):
+        if p not in refused:
+            assert status == "success" and repr(found.values[p]) == repr(
+                returned.values[p]
+            )
+        elif unchecked.values[p] is not None:
+            assert status == "best-effort"
+            assert repr(found.values[p]) == repr(unchecked.values[p]), p
+            record = found.diagnostics[p].best_effort
+            assert record.refusal and (record.uncertainty is None) == (
+                record.source == "none"
+            )
+        else:
+            assert status == "failed" and found.values[p] is None
+    counts = {w.kind: w.count for w in found.warnings}
+    assert sum(counts.values()) == len(refused)
