@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 #if __has_include( "HelRecycling.inc" ) and !defined MG_HR_PROBE
@@ -235,6 +236,72 @@ namespace madmatrix
     }
   }
 #define MG_HR_PROBE_AMP( NAMP ) hr_probe_record( NAMP, amp_sv[0] )
+#elif __has_include( "HelRecycling.inc" )
+  // --hel_recycling run-time check. The recycled build skips the (helicity,
+  // amplitude) pairs the warm-up found vanishing (cHrDropped), and that is only
+  // right at the parameters it measured them at: a coupling that was zero there
+  // (a Wilson coefficient left at 0 in the output's param_card) has all its
+  // amplitudes skipped, at any parameters. So whenever the good helicities are
+  // chosen (sigmaKin_getGoodHel: at initialisation, and again at every change of
+  // parameters through UMAMI), the plain code it runs records which amplitudes
+  // are alive, as the warm-up probe does; if one of the skipped pairs is,
+  // hr_check_stale sets params.hrStale and sigmaKin uses the plain code for that
+  // instance (complete, just not recycled). The threshold is looser than the
+  // probe's (1e-12): the run time may be in single precision, where a
+  // cancellation zero is a residual of order 1e-6, and a pair it lets through
+  // is below hrCheckTol of the largest amplitude of its helicity at every
+  // event looked at.
+#define MGONGPU_HR_CHECK 1
+  namespace // internal linkage: every P* library has its own (see hrUnbakedRowSaid)
+  {
+    constexpr double hrCheckTol = std::numeric_limits<fptype_amp>::epsilon() > 1e-10 ? 1e-4 : 1e-9;
+    template<typename V>
+    inline double
+    hr_check_lane( const V& v, [[maybe_unused]] const int lane )
+    {
+      if constexpr( std::is_arithmetic_v<V> )
+        return v;
+      else
+        return v[lane];
+    }
+    struct HrCheck
+    {
+      static constexpr int nlane = sizeof( fptype_amp_sv ) / sizeof( fptype_amp );
+      std::vector<fptype_amp_sv> abs2;      // |amp|^2 on the current page, by amplitude number
+      std::vector<char> recorded;           // abs2[namp] was set on the current page
+      std::vector<std::vector<char>> alive; // [ihel][namp]: above hrCheckTol at one event at least
+      void
+      record( const int namp, const cxtype_amp_sv& amp )
+      {
+        if( (int)abs2.size() <= namp )
+        {
+          abs2.resize( namp + 1 );
+          recorded.resize( namp + 1, 0 );
+        }
+        abs2[namp] = cxabs2( amp );
+        recorded[namp] = 1;
+      }
+      void
+      close( const int ihel )
+      {
+        if( alive.empty() ) alive.resize( ncomb );
+        std::vector<char>& hel = alive[ihel];
+        if( hel.size() < abs2.size() ) hel.resize( abs2.size(), 0 );
+        for( int lane = 0; lane < nlane; lane++ )
+        {
+          double ampmax = 0;
+          for( size_t namp = 0; namp < abs2.size(); namp++ )
+            if( recorded[namp] ) ampmax = std::max( ampmax, hr_check_lane( abs2[namp], lane ) );
+          for( size_t namp = 0; namp < abs2.size(); namp++ )
+            if( recorded[namp] && hr_check_lane( abs2[namp], lane ) > hrCheckTol * hrCheckTol * ampmax ) hel[namp] = 1;
+        }
+        std::fill( recorded.begin(), recorded.end(), 0 );
+      }
+    };
+    thread_local HrCheck* hrCheck = nullptr; // set by sigmaKin_getGoodHel only
+  }
+#define MG_HR_PROBE_AMP( NAMP ) \
+  do { if( hrCheck ) hrCheck->record( NAMP, amp_sv[0] ); } while( 0 )
 #else
 #define MG_HR_PROBE_AMP( NAMP )
 #endif
@@ -342,6 +409,9 @@ namespace madmatrix
       // the probe runs from sigmaKin_getGoodHel, which passes the rows of cHel
       assert( allihel == nullptr && hel >= cHel[0] && hel < cHel[0] + ncomb * npar );
       hr_probe_close( (int)( ( hel - cHel[0] ) / npar ) );
+#elif defined MGONGPU_HR_CHECK
+      // the run-time check runs from sigmaKin_getGoodHel, which passes the rows of cHel
+      if( hrCheck && allihel == nullptr ) hrCheck->close( (int)( ( hel - cHel[0] ) / npar ) );
 #endif
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
@@ -390,7 +460,8 @@ namespace madmatrix
   namespace
   {
     std::atomic<bool> hrUnbakedRowSaid{ false }; // the helicity loop runs in OpenMP/madspace threads
-    std::atomic<bool> hrDeclinedSaid{ false };   // called from every thread of the helicity loop
+    std::atomic<bool> hrDeclinedSaid{ false };
+    std::atomic<bool> hrStaleSaid{ false };   // see hr_check_stale   // called from every thread of the helicity loop
   }
 
   // The rows that were built are the rows that contributed AT THE PARAMETERS THE
@@ -451,6 +522,38 @@ namespace madmatrix
             "INFO: this SIMD width, more than MGONGPU_HR_MAX_TABLE_MB=%d (make HRMAXMB=<n>, 0 for no limit);\n"
             "INFO: the plain matrix element is faster there.\n",
             hrPageTableBytes / ( 1024. * 1024. ), (int)MGONGPU_HR_MAX_TABLE_MB );
+  }
+
+  // The run-time check (see MGONGPU_HR_CHECK): whether one of the pairs the
+  // recycled build skips is alive at the parameters sigmaKin_getGoodHel just ran
+  // at, among the helicities it found good. Says so once.
+  inline bool
+  hr_check_stale( const HrCheck& check, const bool* isGoodHel )
+  {
+    int nalive = 0, firstHel = 0, firstAmp = 0;
+    for( int i = 0; i < nHrDropped && !check.alive.empty(); i++ )
+    {
+      const int ihel = cHrDropped[i][0] - 1;
+      const int namp = cHrDropped[i][1];
+      if( !isGoodHel[ihel] ) continue;
+      const std::vector<char>& hel = check.alive[ihel];
+      if( namp < (int)hel.size() && hel[namp] )
+      {
+        if( nalive++ == 0 )
+        {
+          firstHel = ihel + 1;
+          firstAmp = namp;
+        }
+      }
+    }
+    if( nalive > 0 && !hrStaleSaid.exchange( true ) )
+      printf( "WARNING: --hel_recycling: %d (helicity, amplitude) pair(s) that the recycled build skips\n"
+              "WARNING: do not vanish at these parameters (helicity %d, amplitude %d, ...): the build was\n"
+              "WARNING: measured at other parameters (a coupling that was zero there, typically). The matrix\n"
+              "WARNING: element is computed WITHOUT recycling: complete, but slower. Regenerate the output\n"
+              "WARNING: at these parameters to recycle it (an mg7 launch measures them again itself).\n",
+              nalive, firstHel, firstAmp );
+    return nalive > 0;
   }
 
   // Build every helicity row of the table at once, for one event page (two in
@@ -782,6 +885,11 @@ namespace madmatrix
     // flavors (extra helicities simply contribute 0 for a given flavor at run
     // time, exactly as in the scalar standalone_cpp per-flavor good-hel filter).
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
+#ifdef MGONGPU_HR_CHECK
+    // --hel_recycling: record which amplitudes are alive at these parameters (hr_check_stale)
+    HrCheck check;
+    hrCheck = &check;
+#endif
     (void)iflavorVec; // flavor is forced below to scan every flavor combination
     unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
     // |M|^2 of every helicity at every sampled event (of the current flavor),
@@ -838,6 +946,10 @@ namespace madmatrix
         if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * limhel / ncomb ) isGoodHel[ihel] = true;
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
+#ifdef MGONGPU_HR_CHECK
+    hrCheck = nullptr;
+    params.hrStale = hr_check_stale( check, isGoodHel );
+#endif
   }
 
   //--------------------------------------------------------------------------
@@ -1069,7 +1181,7 @@ namespace madmatrix
       // unless its tables are too big for this SIMD width (hrUseRecycling), or
       // each event has a helicity of its own (allihel: the recycled rows are made
       // for the good helicities, not per SIMD lane)
-      if( hrUseRecycling && allihel == nullptr )
+      if( hrUseRecycling && allihel == nullptr && !params.hrStale )
       {
         hr_page( params, allmomenta, allcouplings, iflavorVec, allMEs, allNumerators, allDenominators, jamp2_sv, MEs_ighel,
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT

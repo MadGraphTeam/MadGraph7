@@ -2575,11 +2575,14 @@ print(json.dumps(out))
 
         The recycled build drops the amplitudes that vanish at the parameters
         it is measured at. Measured at ymb = 0 it drops the Higgs diagram at
-        every helicity, which is wrong at the default card (checked first, so
-        that the comparison is known to see it); measured again there it is
-        right again. A card at which the filter comes out the same rewrites
-        nothing, and the card it was measured at measures nothing. Each build
-        is compared with the plain matrix element at its card, event by event."""
+        every helicity, which is wrong at the default card: there the build's
+        run-time check (hr_check_stale, what a standalone user who edits the
+        card relies on) must see that a skipped amplitude is alive, say so and
+        use the plain code. Measured again at the default card it recycles
+        again. A card at which the filter comes out the same rewrites nothing,
+        and the card it was measured at measures nothing. Each build is
+        compared with the plain matrix element at its card, event by event, and
+        must say it is stale exactly where its filter does not hold."""
         import glob
         from madmatrix import hel_recycling_filter as hrf
         devnull = open(os.devnull, 'w')
@@ -2618,14 +2621,20 @@ print(json.dumps(out))
                             stdout=devnull, stderr=devnull, cwd=proc_dir)
             self.assertTrue(os.path.exists(exe), 'no check_sa.exe in %s' % proc_dir)
             out = pjoin(proc_dir, 'me.bin')
-            subprocess.call(['./check_sa.exe', 'perf', '--dump-me', out, '16', '32', '1'],
-                            stdout=devnull, stderr=subprocess.STDOUT, cwd=proc_dir)
-            return array.array('d', open(out, 'rb').read())
+            run = subprocess.run(['./check_sa.exe', 'perf', '--dump-me', out, '16', '32', '1'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 cwd=proc_dir)
+            stale = 'do not vanish at these parameters' in \
+                run.stdout.decode(errors='replace')
+            return array.array('d', open(out, 'rb').read()), stale
 
-        def worst(card):
-            plain, values = me(dirs['plain'], card), me(dirs['recycled'], card)
+        def worst(card, stale=False):
+            (plain, _), (values, said) = me(dirs['plain'], card), me(dirs['recycled'], card)
             self.assertEqual(len(plain), len(values))
             self.assertTrue(any(plain))
+            self.assertEqual(said, stale, 'the run-time check %s at %s'
+                             % ('missed the stale build' if stale else
+                                'took a right build for stale', os.path.basename(card)))
             return max(abs(a - b) / abs(a) for a, b in zip(plain, values))
 
         def update(card):
@@ -2642,8 +2651,9 @@ print(json.dumps(out))
         self.assertTrue(glob.glob(pjoin(dirs['recycled'], 'lib',
                                         'libmadmatrix_*_%s%s_scalar_d.so'
                                         % (found[0], tags[pdir]))))
-        # that build at the default card: the Higgs diagram is missing
-        self.assertGreater(worst(default), 1e-8)
+        # that build at the default card skips the Higgs diagram, which is
+        # alive there: the run-time check sees it and the plain code is used
+        self.assertLessEqual(worst(default, stale=True), 1e-12)
 
         self.assertEqual(update(default), {pdir: ''})  # back to the output's own
         self.assertEqual(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)

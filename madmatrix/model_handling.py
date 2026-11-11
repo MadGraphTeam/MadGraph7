@@ -2565,6 +2565,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         for compact, full in enumerate(kept):
             row_of_hel[full - 1] = compact
         post = recipe.get('post') or MadMatrixUFOHelasCallWriter.HR_POST_EMPTY
+        dropped = sorted((int(h), int(a)) for h, a in zero_perhel)
         ntmp = post['ntmp'] if post['mode'] == 'fold' else 0
         namp = post['namp'] if post['mode'] == 'rows' else 0
         orig_path = pjoin(path, 'HelRecycling_orig.cc')
@@ -2580,9 +2581,16 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '  constexpr int hrNtmp = %d; // shared color-flow sub-expressions of one row (fold)\n'
                 '  constexpr int hrNamp = %d; // amplitude slots of one row (rows)\n'
                 '  static constexpr int cHrRow[ncomb] = { %s }; // row of each helicity (-1: not built)\n'
+                '  // the (helicity, amplitude) pairs this build skips, as the warm-up\n'
+                '  // printed them (1-based row of cHel, MG_HR_PROBE_AMP number): checked\n'
+                '  // at run time against the parameters in use (hr_check_stale)\n'
+                '  constexpr int nHrDropped = %d;\n'
+                '  static constexpr int cHrDropped[%d][2] = { %s };\n'
                 '%s'
                 '${helicity_lines}\n%s\n${helas_calls}\n'
                 % (ntmp, namp, ', '.join(str(row) for row in row_of_hel),
+                   len(dropped), max(len(dropped), 1),
+                   ', '.join('{ %d, %d }' % pair for pair in dropped) or '{ 0, 0 }',
                    '#define MGONGPU_HR_ROWS 1 // the color flows are made row by row in hr_row\n'
                    if post['mode'] == 'rows' else '',
                    cls.HR_CALLS_MARK))
