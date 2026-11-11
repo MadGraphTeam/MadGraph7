@@ -1638,8 +1638,23 @@ class BenchmarkConfig:
     minimum_samples: int = field(default=5, metadata=_setting("int"))
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    # Loop artifacts (``pyamplicol profile --runtime / --stability``): what
+    # the profile measures (neither set: the runtime only) and the number of
+    # flat points of the stability statistics (drawn as
+    # ``evaluation.phase_space`` sets: its seed and energy).
+    runtime: bool = field(default=False, metadata=_setting("bool"))
+    stability: bool = field(default=False, metadata=_setting("bool"))
+    stability_points: int = field(default=100, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
+        for name in ("runtime", "stability"):
+            if type(getattr(self, name)) is not bool:
+                raise ConfigurationError(f"benchmark.{name} must be a boolean")
+        object.__setattr__(
+            self,
+            "stability_points",
+            _integer(self.stability_points, "benchmark.stability_points"),
+        )
         object.__setattr__(
             self,
             "target_runtime",

@@ -927,7 +927,10 @@ def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_profile_options(parser: argparse.ArgumentParser) -> None:
+    from .profile_options import add_profile_mode_options
+
     parser.add_argument("target", type=Path, nargs="?", default=None, metavar="OUTPUT")
+    add_profile_mode_options(parser)
     # Loop (v2 virtual) artifacts: the profiled calls' backend, setting and
     # scale (the per-stage table of ``benchmarking.profile_virtual``).
     parser.add_argument(
@@ -935,7 +938,10 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         dest="evaluation.reduction",
         choices=tuple(ReductionBackend),
         default=argparse.SUPPRESS,
-        help="loop artifacts: the reduction backend of the profiled calls",
+        help=(
+            "loop artifacts: profile this reduction backend only (default: "
+            "both, side by side; auto: the process type's default)"
+        ),
     )
     parser.add_argument(
         "--reduction-unchecked",

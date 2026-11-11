@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # Loop example: profile the gg_epemmpmm artifact (time per stage, checked
-# default; add --reduction-unchecked for the unchecked timing mode).
+# default; add --reduction-unchecked for the unchecked timing mode) on both
+# reduction backends side by side; --stability adds the stable-digit statistics
+# (pyamplicol profile --card loop_gg_epemmpmm_profile.toml --stability).
 
 schema_version = 1
 action = "benchmark"
@@ -13,3 +15,7 @@ momenta = "data/loop_gg_epemmpmm_momenta.json"
 batch_size = 32
 warmup_runs = 1
 minimum_samples = 3
+# The flat points of --stability: few, so that it runs in about ten seconds
+# here (about 0.4 s per point for both backends together); raise with
+# --stability-points.
+stability_points = 25

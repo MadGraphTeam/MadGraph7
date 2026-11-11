@@ -636,6 +636,12 @@ class DefaultCliServices:
         else:
             # Flat phase-space points ([evaluation.phase_space]).
             points = _flat_points(config).as_inputs(exact=False)
+        if _virtual_artifact_hint(config.evaluation.artifact):
+            # A loop artifact: both reduction backends side by side, the
+            # runtime and/or the stability statistics (``loop_profile``).
+            from pyamplicol.loop_profile import profile_loop
+
+            return profile_loop(config.evaluation.artifact, config, points=points)
         return BenchmarkRunner(config=config, progress=progress).run(
             config.evaluation.artifact,
             points=points,

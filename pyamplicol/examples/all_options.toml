@@ -513,6 +513,19 @@ helicity_ids = []
 # benchmark.color_flow_ids: Optional benchmark LC flow selectors. With both
 # selector lists empty, profiling chooses the generated layout's hot workload.
 color_flow_ids = []
+# benchmark.runtime: Loop artifacts: profile the runtime (time per point and
+# per stage of each reduction backend). Neither runtime nor stability set
+# profiles the runtime only. Default false.
+runtime = false
+# benchmark.stability: Loop artifacts: the stability statistics of each
+# reduction backend (binary64 stable digits against a double-double re-run,
+# and the accuracy of the default rotation estimate) over flat points.
+# Default false.
+stability = false
+# benchmark.stability_points: Positive count of flat (RAMBO) phase-space
+# points of the stability statistics (drawn with evaluation.phase_space's
+# seed and sqrt_s). Default 100.
+stability_points = 100
 
 [check]
 # check.points: Positive count of seeded phase-space points per process of

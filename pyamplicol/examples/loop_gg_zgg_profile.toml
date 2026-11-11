@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # Loop example: profile the gg_zgg artifact (time per stage, checked
-# default; add --reduction-unchecked for the unchecked timing mode).
+# default; add --reduction-unchecked for the unchecked timing mode) on both
+# reduction backends side by side; --stability adds the stable-digit statistics
+# (pyamplicol profile --card loop_gg_zgg_profile.toml --stability).
 
 schema_version = 1
 action = "benchmark"
@@ -13,3 +15,10 @@ momenta = "data/loop_gg_zgg_momenta.json"
 batch_size = 32
 warmup_runs = 1
 minimum_samples = 3
+# The flat points of --stability: two, the fewest with a median row. This
+# cannot reach the ten seconds of the other cards: NinjaRS's double-double
+# reference of this loop-induced process costs about 30 s per point (TIRust's
+# about 0.3 s), so --stability takes about a minute here. For larger counts
+# profile TIRust alone (--loop-reduction tirust --stability-points 30 runs in
+# about ten seconds); raise with --stability-points.
+stability_points = 2

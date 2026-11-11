@@ -2740,36 +2740,8 @@ type SavedEvaluatorHead = (
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
     use std::borrow::Cow;
-    use symbolica::evaluate::Instruction;
-    use symbolica::prelude::AtomCore;
     use symbolica::state::{State, StateMap};
 
-    fn referenced<T>(
-        exported: &symbolica::evaluate::ExportedInstructions<T>,
-        symbols: &mut impl Extend<symbolica::atom::Symbol>,
-    ) {
-        for instruction in &exported.instructions {
-            if let Instruction::Fun(_, call, _) = instruction {
-                symbols.extend([call.0]);
-                for tag in &call.1 {
-                    symbols.extend(tag.get_all_symbols(true));
-                }
-            }
-        }
-        for constant in &exported.constant_functions {
-            symbols.extend([constant.symbol]);
-            for tag in &constant.tags {
-                symbols.extend(tag.get_all_symbols(true));
-            }
-        }
-        for body in &exported.sub_evaluators {
-            symbols.extend([body.symbol]);
-            for tag in &body.tags {
-                symbols.extend(tag.get_all_symbols(true));
-            }
-            referenced(&body.instructions, symbols);
-        }
-    }
     let incompatible = |error: &dyn std::fmt::Display| {
         RusticolError::compatibility(format!(
             "Python Evaluator.save() does not match Symbolica serialization ABI {}: {error}",
@@ -2829,20 +2801,44 @@ pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<V
         let mut last = LAST_WHOLE_STATE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let (section, state_map) = match last.take() {
-            Some((section, state_map))
+        let (section, state_map, producer_functions) = match last.take() {
+            Some((section, state_map, producer_functions))
                 if state.len() > section.len() && state.starts_with(&section) =>
             {
-                (section, state_map)
+                (section, state_map, producer_functions)
             }
             _ => {
-                let (len, state_map) = import(state)?;
-                (state[..len].to_vec(), state_map)
+                // The whole state holds every symbol of the producer, also
+                // the ones its Python Community modules define with
+                // user-defined functions (symbolica_integrate, hyperbolica,
+                // gammaloop, ...), which this process does not know. The
+                // import only maps the evaluator's references, so it reads
+                // them as plain symbols (`whole_state_for_import`); the
+                // evaluator's own references to them are reported below.
+                //
+                // The copy reads Symbolica's private record layout; a layout
+                // it cannot read (a producer whose records drifted) falls
+                // back to the unpatched import, as before: the same symbols,
+                // only Symbolica's warning per function-bearing record.
+                let (len, state_map, producer_functions) = match whole_state_for_import(state) {
+                    Some((patched, producer_functions)) => {
+                        let (len, state_map) = import(&patched)?;
+                        (len, state_map, producer_functions)
+                    }
+                    None => {
+                        let (len, state_map) = import(state)?;
+                        (len, state_map, std::collections::HashSet::new())
+                    }
+                };
+                (state[..len].to_vec(), state_map, producer_functions)
             }
         };
         let len = section.len();
         let evaluator = decode_head(&state[len..], &state_map);
-        *last = Some((section, state_map));
+        if let Ok(evaluator) = &evaluator {
+            warn_on_referenced_producer_functions(evaluator, &producer_functions);
+        }
+        *last = Some((section, state_map, producer_functions));
         (len, evaluator?)
     } else {
         let (len, state_map) = import(state)?;
@@ -3005,10 +3001,156 @@ fn numbered_section<'a>(
 const WHOLE_STATE_EXPORT: u8 = 1;
 
 /// The last whole-state section `canonical_saved_evaluator` imported,
-/// with its state map.
+/// with its state map and the producer's function-bearing symbol names.
 #[cfg(feature = "symbolica-runtime")]
-static LAST_WHOLE_STATE: std::sync::Mutex<Option<(Vec<u8>, symbolica::state::StateMap)>> =
-    std::sync::Mutex::new(None);
+#[allow(clippy::type_complexity)]
+static LAST_WHOLE_STATE: std::sync::Mutex<
+    Option<(
+        Vec<u8>,
+        symbolica::state::StateMap,
+        std::collections::HashSet<String>,
+    )>,
+> = std::sync::Mutex::new(None);
+
+/// A whole-state save (`state`: the section, then the payload) as
+/// `canonical_saved_evaluator` imports it, and the full names of the
+/// producer's symbols defined with user-defined functions.
+///
+/// A Python Symbolica without symbolica-dev#163 (PyPI 3.0.3) saves the
+/// producer's whole state, including the symbols its Community modules
+/// (symbolica_integrate, hyperbolica, gammaloop, ...) define with
+/// user-defined functions, which are not exportable. Importing such a record
+/// into a process that lacks the symbol creates it without functions, and
+/// Symbolica logs a warning for each one (29 per process for the 3.0.3
+/// wheel). The import here only maps the evaluator's references onto this
+/// process's symbols and the stored form keeps only the referenced ones, so
+/// the copy marks every record exportable: the import creates exactly the
+/// symbols it created before (the flag only selects that warning), and an
+/// evaluator that does reference such a symbol is reported by
+/// `warn_on_referenced_producer_functions` instead.
+///
+/// The record layout read here is Symbolica's private `Symbol::export` of the
+/// serialization ABI `crate::SYMBOLICA_SERIALIZATION_ABI` (3.0.x). None when
+/// the state does not parse as that layout (a short read, or an exportable
+/// byte other than 0 or 1): the caller then imports the unpatched state.
+/// Symbolica with symbolica-dev#163 saves only the referenced symbols, which
+/// makes this copy unnecessary (it then finds nothing to patch).
+#[cfg(feature = "symbolica-runtime")]
+fn whole_state_for_import(state: &[u8]) -> Option<(Vec<u8>, std::collections::HashSet<String>)> {
+    parse_whole_state(state).ok().flatten()
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn parse_whole_state(
+    state: &[u8],
+) -> std::io::Result<Option<(Vec<u8>, std::collections::HashSet<String>)>> {
+    use std::io::{Error, ErrorKind, Read};
+    use symbolica::atom::UserData;
+
+    fn take<const N: usize>(rest: &mut &[u8]) -> std::io::Result<[u8; N]> {
+        let mut value = [0; N];
+        rest.read_exact(&mut value)?;
+        Ok(value)
+    }
+    fn string<'a>(rest: &mut &'a [u8]) -> std::io::Result<&'a [u8]> {
+        let len = u32::from_le_bytes(take(rest)?) as usize;
+        let value = rest
+            .get(..len)
+            .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+        *rest = &rest[len..];
+        Ok(value)
+    }
+
+    let mut rest = state
+        .get(STATE_HEADER_LEN..)
+        .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+    let count = u64::from_le_bytes(take(&mut rest)?);
+    let mut patched = state.to_vec();
+    let mut functions = std::collections::HashSet::new();
+    for _ in 0..count {
+        // Symbol::export: name, namespace, flags (u8, u32), tags, aliases,
+        // user data, whether the definition is exportable (u8).
+        let name = string(&mut rest)?;
+        string(&mut rest)?;
+        take::<5>(&mut rest)?;
+        for _ in 0..2 {
+            for _ in 0..u16::from_le_bytes(take(&mut rest)?) {
+                string(&mut rest)?;
+            }
+        }
+        UserData::read(&mut rest)?;
+        let at = state.len() - rest.len();
+        match take::<1>(&mut rest)?[0] {
+            0 => {
+                patched[at] = 1;
+                functions.insert(String::from_utf8_lossy(name).into_owned());
+            }
+            1 => {}
+            // Not a boolean: the layout drifted, patch nothing.
+            _ => return Ok(None),
+        }
+    }
+    Ok(Some((patched, functions)))
+}
+
+/// The symbols an exported evaluator references: its function heads and
+/// their tags, constant functions and sub-evaluators.
+#[cfg(feature = "symbolica-runtime")]
+fn referenced<T>(
+    exported: &symbolica::evaluate::ExportedInstructions<T>,
+    symbols: &mut impl Extend<symbolica::atom::Symbol>,
+) {
+    use symbolica::prelude::AtomCore;
+
+    for instruction in &exported.instructions {
+        if let symbolica::evaluate::Instruction::Fun(_, call, _) = instruction {
+            symbols.extend([call.0]);
+            for tag in &call.1 {
+                symbols.extend(tag.get_all_symbols(true));
+            }
+        }
+    }
+    for constant in &exported.constant_functions {
+        symbols.extend([constant.symbol]);
+        for tag in &constant.tags {
+            symbols.extend(tag.get_all_symbols(true));
+        }
+    }
+    for body in &exported.sub_evaluators {
+        symbols.extend([body.symbol]);
+        for tag in &body.tags {
+            symbols.extend(tag.get_all_symbols(true));
+        }
+        referenced(&body.instructions, symbols);
+    }
+}
+
+/// Warn about each symbol `evaluator` references that its producer defined
+/// with user-defined functions while this process has it without any (the
+/// one case of Symbolica's import warning that concerns the evaluator).
+#[cfg(feature = "symbolica-runtime")]
+fn warn_on_referenced_producer_functions(
+    evaluator: &ExpressionEvaluator<Complex<Rational>>,
+    producer_functions: &std::collections::HashSet<String>,
+) {
+    if producer_functions.is_empty() {
+        return;
+    }
+    let mut symbols = Vec::new();
+    referenced(&evaluator.export_instructions(), &mut symbols);
+    for symbol in symbols {
+        let name = symbol.get_name();
+        let producer = name.replacen(IMPORT_CONFLICT_SUFFIX, "", 1);
+        if symbol.is_exportable()
+            && (producer_functions.contains(name) || producer_functions.contains(&producer))
+        {
+            tracing::warn!(
+                "the saved evaluator references {name}, which its producer defined with \
+                 user-defined functions; this process has it without any"
+            );
+        }
+    }
+}
 
 /// A borrowed state map as a bincode decoding context.
 #[cfg(feature = "symbolica-runtime")]
@@ -3270,6 +3412,52 @@ mod canonical_save_tests {
             ])
             .build()
             .unwrap()
+    }
+
+    /// A whole-state save (PyPI Symbolica 3.0.3) carries the producer's
+    /// function-bearing symbols as not exportable; the import copy marks them
+    /// exportable (Symbolica's per-symbol import warning) and names them,
+    /// changing nothing else, and the save stays canonicalisable.
+    #[test]
+    fn whole_state_import_copy_reads_function_bearing_symbols_as_plain() {
+        let _unlock = crate::licence::unlock();
+        let f = symbolica::atom::SymbolBuilder::new(symbolica::wrap_symbol!(
+            "pyamplicol_function_bearing::f"
+        ))
+        .with_normalization_function(|_view, _out| {})
+        .build()
+        .unwrap();
+        assert!(!f.is_exportable());
+        let evaluator = evaluator();
+        let whole = whole_state_save(&evaluator);
+        let state = &whole[SAVED_EVALUATOR_MAGIC.len() + 1..];
+        let (patched, functions) = whole_state_for_import(state).unwrap();
+        assert!(functions.contains("pyamplicol_function_bearing::f"));
+        assert_eq!(patched.len(), state.len());
+        let changed = state
+            .iter()
+            .zip(&patched)
+            .filter(|(before, after)| before != after)
+            .map(|(before, after)| (*before, *after))
+            .collect::<Vec<_>>();
+        assert_eq!(changed, vec![(0, 1); functions.len()]);
+        let (mut original, mut copy) = (state, patched.as_slice());
+        State::import(&mut original, None).unwrap();
+        State::import(&mut copy, None).unwrap();
+        assert_eq!(original.len(), copy.len(), "the same section length");
+        assert!(canonical_saved_evaluator(&whole).unwrap().is_some());
+        // A layout the copy cannot read is not patched (the caller imports
+        // the unpatched state): a truncated state, and an exportable byte
+        // that is not a boolean.
+        assert!(whole_state_for_import(&state[..STATE_HEADER_LEN + 4]).is_none());
+        let first = state
+            .iter()
+            .zip(&patched)
+            .position(|(before, after)| before != after)
+            .unwrap();
+        let mut drifted = state.to_vec();
+        drifted[first] = 7;
+        assert!(whole_state_for_import(&drifted).is_none());
     }
 
     #[test]

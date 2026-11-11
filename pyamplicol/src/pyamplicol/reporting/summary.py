@@ -3338,14 +3338,21 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
     if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
         from .virtual import virtual_evaluation_summary
 
-        return virtual_evaluation_summary(value, prettytable=prettytable)
+        return virtual_evaluation_summary(value, prettytable=prettytable, color=color)
 
     from pyamplicol.api.virtual_results import VirtualOrderEvaluation
 
     if isinstance(value, VirtualOrderEvaluation):
         from .virtual import virtual_order_summary
 
-        return virtual_order_summary(value, prettytable=prettytable)
+        return virtual_order_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.loop_profile import LoopProfileReport
+
+    if isinstance(value, LoopProfileReport):
+        from .loop_profile import loop_profile_summary
+
+        return loop_profile_summary(value, prettytable=prettytable, color=color)
 
     from pyamplicol.benchmarking import VirtualProfileResult
 

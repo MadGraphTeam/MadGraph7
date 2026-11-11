@@ -2783,6 +2783,9 @@ class VirtualProfileResult:
     unchecked: bool
     failed_points: int
     label: str | None = None
+    # The failed timed points per reason (``failure_reason``), most frequent
+    # first.
+    failure_reasons: tuple[tuple[str, int], ...] = ()
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2836,13 +2839,15 @@ def profile_virtual(
     config: RunConfig | BenchmarkConfig | None,
     *,
     points: Momenta | None = None,
+    reduction: str | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``). Settings: ``benchmark.batch_size``,
     ``warmup_runs`` and ``minimum_samples``; ``evaluation.process``,
     ``reduction``, ``reduction_target`` and ``reduction_unchecked`` when a path
     is loaded; ``evaluation.mu_r2`` (default: per point the squared
-    invariant mass of its initial state)."""
+    invariant mass of its initial state). ``reduction`` names the backend of
+    every profiled call (the runtime's otherwise)."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
@@ -2890,11 +2895,14 @@ def profile_virtual(
         else [_initial_invariant(point, initial) for point in batch]
     )
     options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    if reduction is not None:
+        options["reduction"] = reduction
     for _ in range(bench.warmup_runs):
         runtime.evaluate(batch, **options)
     walls: list[float] = []
     totals: dict[str, float] = {}
     failed = 0
+    reasons: dict[str, int] = {}
     contribution = runtime.contribution_kind
     reductions: list[Any] = []
     for _ in range(max(bench.minimum_samples, 1)):
@@ -2903,7 +2911,11 @@ def profile_virtual(
             result = runtime.evaluate(batch, **options)
             wall = time.perf_counter() - begin
         walls.append(wall)
-        failed += sum(1 for valid in result.valid if not valid)
+        for valid, lane in zip(result.valid, result.diagnostics, strict=True):
+            if not valid:
+                failed += 1
+                reason = failure_reason(lane)
+                reasons[reason] = reasons.get(reason, 0) + 1
         for group, value in profile_stages(seconds or {}, wall, contribution).items():
             totals[group] = totals.get(group, 0.0) + value
         reductions.extend(
@@ -2926,7 +2938,52 @@ def profile_virtual(
         _reduction_record(reductions),
         any(bool(getattr(r, "unchecked", False)) for r in reductions),
         failed,
+        failure_reasons=tuple(
+            sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        ),
     )
+
+
+def failure_reason(diagnostic: Any) -> str:
+    """A failed point's reason from its ``VirtualLaneDiagnostic``: the status
+    and the first failed channel's stage and first message (else the lane's
+    first message). A detail joins one message per failed lane with "; "
+    (``_first_message``); the others are counted, not repeated."""
+
+    if diagnostic is None:
+        return "failed"
+    status = str(getattr(diagnostic, "status", "failed"))
+    failures = getattr(diagnostic, "failures", ()) or ()
+    if failures:
+        first = failures[0]
+        return f"{status}: {first.stage}: {_first_message(str(first.detail))}"
+    detail = str(getattr(diagnostic, "detail", "") or "")
+    return f"{status}: {_first_message(detail)}" if detail else status
+
+
+def _first_message(detail: str) -> str:
+    """The first of the "; "-joined messages of a failure detail (split at
+    nesting depth 0 of brackets and quotes) and the count of the others."""
+
+    depth = 0
+    quoted = False
+    parts: list[str] = []
+    start = 0
+    for index, char in enumerate(detail):
+        if char == '"' and (index == 0 or detail[index - 1] != "\\"):
+            quoted = not quoted
+        elif not quoted and char in "([{":
+            depth += 1
+        elif not quoted and char in ")]}":
+            depth = max(depth - 1, 0)
+        elif (
+            not quoted and depth == 0 and char == ";" and detail.startswith("; ", index)
+        ):
+            parts.append(detail[start:index])
+            start = index + 2
+    parts.append(detail[start:])
+    first = parts[0]
+    return first if len(parts) == 1 else f"{first} (+{len(parts) - 1} more)"
 
 
 def _reduction_record(reductions: Sequence[Any]) -> dict[str, object]:

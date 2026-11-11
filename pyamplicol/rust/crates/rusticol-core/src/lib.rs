@@ -106,6 +106,10 @@ pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 9;
 pub const PROCESS_ARTIFACT_SCHEMA_VERSION: u32 = 3;
 pub const RUNTIME_PHYSICS_SCHEMA_VERSION: u32 = 1;
 pub const C_ABI_VERSION: u32 = 1;
+// The whole-state import of a Python Evaluator.save()
+// (`evaluator::backend::whole_state_for_import`) also reads Symbolica's
+// private `Symbol::export` record layout of this ABI; it falls back to the
+// unpatched import when the layout does not parse.
 pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v2";
 
 /// Unstable implementation details shared with pyAmpliCol's private PyO3
