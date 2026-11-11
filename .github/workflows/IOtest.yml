@@ -39,7 +39,6 @@ jobs:
 
   # IOTest framework self-tests (from unittest_2)
 
-
   IOtest_bundle_1:
     # former jobs, run one after the other: IOtest_iotest_examples
     #   IOtest_fks IOtest_fd_gauge IOtest_export
@@ -105,7 +104,6 @@ jobs:
       - if: always()
         uses: ./.github/actions/clean_tmp
 
-
   # Loop squared-order IOTest – needs UFO model cache (from unittest_29)
   IOtest_loop_sqso:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
@@ -125,16 +123,17 @@ jobs:
       - if: always()
         uses: ./.github/actions/clean_tmp
 
-
   IOtest_bundle_2:
-    # former jobs, run one after the other: IOtest_acceptance_proc
-    #   IOtest_matchbox
-    # Each keeps its own steps, run even when an earlier one failed.
+    # merged jobs, run one after the other: IOtest_bundle_2 IOtest_bundle_3
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- IOtest_acceptance_proc ----
       # ---------------------------------------------------------------------------
@@ -157,17 +156,6 @@ jobs:
             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
             ./tests/test_manager.py testIO_MatchBoxOutput -pA -t0 -l INFO
 
-
-  IOtest_bundle_3:
-    # former jobs, run one after the other: IOtest_TIR IOtest_loop_induced
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
-
       # ---- IOtest_TIR ----
       # TIR output IOTest (from acceptancetest_70)
       - name: "IOtest_TIR: test TIR output IO test"
@@ -186,7 +174,6 @@ jobs:
             cd $GITHUB_WORKSPACE
             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
             ./tests/test_manager.py testIO_loop_induced_standalone_output -pA -t0 -l INFO
-
 
   # Gnuplot histogram output IOTest (from acceptancetest_100)
   IOtest_gnuplot:

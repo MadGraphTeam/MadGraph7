@@ -240,8 +240,8 @@ jobs:
             ${{ runner.os }}-cargo-1.99.1-
       - name: Install C++17 and Fortran 2008 toolchains
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install --no-install-recommends -y g++ gfortran make
           command -v c++
           command -v gfortran
           command -v make
@@ -420,8 +420,8 @@ jobs:
           python-version: "3.11"
       - name: Install the independent oracle toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y gfortran make
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install --no-install-recommends -y gfortran make
           python -m pip install "jsonschema>=4.22,<5"
       - name: Run independent Fortran physics comparison
         run: |
