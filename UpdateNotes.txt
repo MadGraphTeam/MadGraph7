@@ -22,7 +22,8 @@ ANNOUNCEMENT:
    OM: new process option 'generate|add process ... --gauge=FD|unitary': the outputs madevent,
        standalone_fortran, standalone and mg7 hold subprocesses in both gauges (Fortran:
        Source/DHELAS_FD, C++: src/HelAmps_<model>_fd.h), the other formats refuse it. MadSpin
-       and the reweighting read such a proc_card in one gauge (FD when a line had it).
+       and the reweighting read such a proc_card in one gauge (the reweighting: FD when every
+       process can be, else unitary). Not available after 'add model' or 'customize_model'.
    OM: FD gauge in the complex-mass scheme: the goldstone part of the propagator used the
        conjugate mass. Outputs in one gauge are otherwise unchanged. The multiparticles of the
        user survive the reload of the model behind 'set gauge'. While an 'output

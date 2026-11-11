@@ -118,11 +118,15 @@ Outputs in one gauge are byte-identical to before.
   automatic choice they get one gauge: FD when every process can be in it
   (correct for all of them), unitary otherwise. A `--gauge=` line of the
   user is refused there.
-- **MadSpin and the reweighting** read the proc_card of the events through
-  `Banner.charge_card`, which drops `--gauge=` from the process lines and
-  puts `set gauge FD` ahead of them when a line had it. The reweighting
-  builds one library and runs every process in the FD gauge then, which is
-  correct for all of them. MadSpin keeps its own gauge.
+- **MadSpin and the reweighting** ask the banner for the proc_card without
+  `--gauge=` options (`Banner.proc_card_in_one_gauge`; the shared reader
+  `charge_card` keeps the card as written). MadSpin keeps its own gauge. The
+  reweighting, which builds one library, generates the processes again with
+  the automatic choice on, so its output gets one gauge the same way as any
+  single-library output: FD when every process can be in it, else unitary
+  (a polarised or spin-2 process keeps the unitary gauge).
+- A model changed after its import (`add model`, `customize_model`) is never
+  reloaded into another gauge: no automatic choice, and `--gauge=` refused.
 - The FD gauge is cited when any process uses it.
 
 Checked: the mixed `standalone_fortran` and `standalone` outputs of

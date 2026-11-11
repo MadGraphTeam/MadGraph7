@@ -193,6 +193,26 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertGauge('unitary', automatic=False)
         self.assertEqual(self.cmd._auto_fd_lines, set())
 
+    def test_gauge_option_of_the_session_gauge(self):
+        """--gauge=unitary with the automatic choice on: recorded once, kept
+        in the unitary gauge (no 'Duplicate process')"""
+
+        self.do('generate p p > w+ w- --gauge=unitary')
+        self.assertGauge('unitary', automatic=False)
+        self.assertEqual(len(self.cmd._process_lines), 1)
+        self.assertEqual(len(self.cmd._line_ranges), 1)
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+
+    def test_edited_model_has_no_automatic_choice(self):
+        """a model changed after its import (add model, customize_model) is
+        never reloaded into another gauge"""
+
+        self.cmd.history.append('add model taudecay_UFO')
+        self.do('generate p p > w+ w-')
+        self.assertGauge('unitary', automatic=False)
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'add process p p > z h --gauge=FD')
+
     def test_decay_chain(self):
         """a decay chain is generated again as a decay chain"""
 
@@ -670,21 +690,62 @@ class TestProcessGaugeOutput(unittest.TestCase):
 class TestProcCardOneGauge(unittest.TestCase):
     """The proc_card of events read back by MadSpin and the reweighting."""
 
-    def test_one_gauge_lines(self):
+    def test_strip_gauge_options(self):
         import madgraph.various.banner as banner_mod
         lines = ['import model sm',
                  '# --gauge=FD chosen automatically for the processes that need it',
                  'generate p p > w+ w- --gauge=FD',
                  'add process p p > t t~',
                  'output madevent PROC']
-        self.assertEqual(banner_mod.ProcCard.one_gauge_lines(lines),
-                         ['import model sm', lines[1], 'set gauge FD',
-                          'generate p p > w+ w-', 'add process p p > t t~',
-                          'output madevent PROC'])
+        self.assertEqual(banner_mod.ProcCard.strip_gauge_options(lines),
+                         (['import model sm', lines[1], 'generate p p > w+ w-',
+                           'add process p p > t t~', 'output madevent PROC'], True))
         plain = ['import model sm', 'generate p p > t t~', 'output madevent PROC']
-        self.assertEqual(banner_mod.ProcCard.one_gauge_lines(plain), plain)
+        self.assertEqual(banner_mod.ProcCard.strip_gauge_options(plain), (plain, False))
+
+    def test_banner_reader_stays_faithful(self):
+        """the shared reader keeps the card; MadSpin and the reweighting ask
+        for it in one gauge"""
+        import madgraph.various.banner as banner_mod
         banner = banner_mod.Banner()
-        banner['mg5proccard'] = '\n'.join(lines)
-        card = banner.charge_card('proc_card')
-        self.assertIn('set gauge FD', list(card))
-        self.assertEqual(card.info['generate'], 'p p > w+ w-')
+        banner['mg5proccard'] = '\n'.join(['import model sm',
+                                           'generate p p > w+ w- --gauge=FD',
+                                           'add process p p > t t~'])
+        self.assertIn('generate p p > w+ w- --gauge=FD', list(banner.charge_card('proc_card')))
+        self.assertTrue(banner.proc_card_in_one_gauge())
+        self.assertEqual(list(banner.proc_card)[1], 'generate p p > w+ w-')
+        self.assertNotIn('set gauge FD', list(banner.proc_card))
+        self.assertFalse(banner_mod.Banner().proc_card_in_one_gauge())
+
+
+class TestGaugeHelpers(unittest.TestCase):
+    """aloha.gauge_scope and the gauge-model conflict check."""
+
+    def test_noop_scope_keeps_changes(self):
+        old = aloha.unitary_gauge
+        try:
+            with aloha.gauge_scope(''):
+                aloha.unitary_gauge = 3
+            self.assertEqual(aloha.unitary_gauge, 3)
+            with aloha.gauge_scope('FD'):
+                self.assertEqual(aloha.unitary_gauge, 3)
+            aloha.unitary_gauge = True
+            with aloha.gauge_scope('FD'):
+                self.assertEqual(aloha.unitary_gauge, 3)
+            self.assertEqual(aloha.unitary_gauge, True)
+        finally:
+            aloha.unitary_gauge = old
+
+    def test_external_parameter_conflict(self):
+        import copy
+        import_ufo._import_once[:] = []
+        with aloha.gauge_scope('unitary'):
+            base = import_ufo.import_model('sm')
+        with aloha.gauge_scope('FD'):
+            twin = import_ufo.import_model('sm')
+        self.assertEqual(import_ufo.gauge_model_conflicts(base, twin), [])
+        for lst in twin['parameters'].values():
+            for param in lst:
+                if param.name == 'mdl_MT':
+                    param.value = 200.
+        self.assertIn('mdl_MT', import_ufo.gauge_model_conflicts(base, twin))

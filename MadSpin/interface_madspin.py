@@ -1212,6 +1212,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         # Read the banner of the inputfile
         self.events_file = open(os.path.realpath(inputfile))
         self.banner = banner.Banner(self.events_file)
+        # processes in two gauges ('--gauge=FD' lines): MadSpin has its own
+        self.banner.proc_card_in_one_gauge()
 
 
         # Check the validity of the banner:

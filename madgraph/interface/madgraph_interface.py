@@ -245,6 +245,20 @@ def fd_gauge_criterion(amplitudes):
     return any(_fd_gauge_criterion_node(amp, decay=False) for amp in amplitudes)
 
 
+def amplitudes_prefer_fd_gauge(amplitudes):
+    """Whether the amplitudes of one process line want the FD gauge:
+    fd_gauge_criterion, and no polarised leg (the split of a cross section
+    into polarisations is defined in the unitary gauge)."""
+
+    if not amplitudes:
+        return False    # [amplicol]: no diagram
+    for amp in iter_tree_amplitudes(amplitudes):
+        for leg in amp.get('process').get('legs'):
+            if leg.get('polarization'):
+                return False
+    return fd_gauge_criterion(amplitudes)
+
+
 def _fd_gauge_excluded(amplitudes):
     """Loop, perturbed or spin above one: the FD gauge is not validated."""
 
@@ -4517,7 +4531,7 @@ This implies that with decay chains:
                 set_process_gauge(myprocdef, self._line_gauge)
                 if backend:
                     self.add_backend_process(myprocdef, backend, warning_duplicate)
-                    self._line_ranges.append((first_amp, first_amp))
+                    self._line_ranges.append((first_amp, first_amp, False))
                     # kept for the replay of an automatic change of gauge
                     if not self._auto_gauge_replay:
                         self._process_lines.append((raw_line, nb_proc))
@@ -4637,7 +4651,8 @@ This implies that with decay chains:
             logger.info("Total: %i processes with %i diagrams" % \
                   (len(self._curr_amps), ndiags))        
 
-            self._line_ranges.append((first_amp, len(self._curr_amps)))
+            self._line_ranges.append((first_amp, len(self._curr_amps),
+                    amplitudes_prefer_fd_gauge(self._curr_amps[first_amp:])))
             if not self._auto_gauge_replay:
                 self._process_lines.append((raw_line, nb_proc))
                 self.apply_automatic_gauge()
@@ -4674,7 +4689,9 @@ This implies that with decay chains:
                        if l.startswith(('generate', 'add process'))]) + counter
         line = ' '.join(args)
         if gauge == self.options['gauge']:
-            MadGraphCmd.do_add(self, line, counter=counter)
+            # the line itself is recorded (with its option) below, once
+            with misc.TMP_variable(self, '_auto_gauge_replay', True):
+                MadGraphCmd.do_add(self, line, counter=counter)
         else:
             if self.postponed_export_pending():
                 raise self.InvalidCmd('An output is waiting for its model '
@@ -4688,7 +4705,7 @@ This implies that with decay chains:
                 MadGraphCmd.do_add(self, line, counter=counter)
             new = self._curr_amps[nb_amps:]
             if gauge == 'FD' and (_fd_gauge_excluded(new) or
-                                  self.has_onium_amplitude() or
+                                  self.has_onium_amplitude(new) or
                                   any(abs(pol) > 1
                                       for amp in iter_tree_amplitudes(new)
                                       for leg in amp.get('process').get('legs')
@@ -4710,6 +4727,10 @@ This implies that with decay chains:
 
         if gauge == self.options['gauge']:
             return self._curr_model
+        if self.model_edited_since_import():
+            raise self.InvalidCmd('The model was changed after its import (add '
+                'model, customize_model): it cannot be imported again in another '
+                'gauge. Use "set gauge %s" before the import instead.' % gauge)
         base = self._curr_model
         cached = self._gauge_models.get(gauge)
         if cached and cached[0] is base:
@@ -4770,7 +4791,7 @@ This implies that with decay chains:
         """Whether the processes of the k-th process line can be generated
         in the FD gauge (diagrams, no exclusion, no polarised leg)."""
 
-        start, end = self._line_ranges[k]
+        start, end, wants = self._line_ranges[k]
         amps = self._curr_amps[start:end]
         if not amps or _fd_gauge_excluded(amps):
             return False
@@ -4838,6 +4859,14 @@ This implies that with decay chains:
             by_gauge[gauge] = misc.make_unique(lorentz)
         return by_gauge
 
+    def model_edited_since_import(self):
+        """Whether the session model was changed after 'import model' (add
+        model, customize_model): importing it again, in another gauge, would
+        lose that."""
+
+        return any(line.startswith(('add model', 'customize_model'))
+                   for line in self.history)
+
     def gauges_in_use(self):
         """The gauges of the generated processes, the session one included."""
 
@@ -4874,7 +4903,9 @@ This implies that with decay chains:
 
         if self._auto_gauge_replay or not self.options.get('auto_gauge', True):
             return
-        if self._explicit_gauge:
+        if self._explicit_gauge or self.model_edited_since_import():
+            # the user's choice; or a model changed after its import, which
+            # the reload into another gauge would lose
             return
         current = self.options['gauge']
         if current != 'FD':
@@ -4936,27 +4967,12 @@ This implies that with decay chains:
             return 'unitary', set()
         explicit = [self.split_gauge_option(self.split_arg(line))[0]
                     for line, nb in lines]
-        wants = [gauge == 'FD' if gauge else self.line_prefers_fd_gauge(k)
+        wants = [gauge == 'FD' if gauge else self._line_ranges[k][2]
                  for k, gauge in enumerate(explicit)]
         if all(wants) and not any(explicit):
             return 'FD', set()
         return 'unitary', set(k for k, want in enumerate(wants)
                               if want and not explicit[k])
-
-    def line_prefers_fd_gauge(self, k):
-        """Whether the processes of the k-th process line want the FD gauge:
-        fd_gauge_criterion, and no polarised leg (the split of a cross
-        section into polarisations is defined in the unitary gauge)."""
-
-        start, end = self._line_ranges[k]
-        amps = self._curr_amps[start:end]
-        if not amps:
-            return False    # [amplicol]: no diagram
-        for amp in iter_tree_amplitudes(amps):
-            for leg in amp.get('process').get('legs'):
-                if leg.get('polarization'):
-                    return False
-        return fd_gauge_criterion(amps)
 
     def automatic_fd_gauge_in_use(self):
         """Whether an FD gauge in use was picked by apply_automatic_gauge: for
@@ -4988,22 +5004,6 @@ This implies that with decay chains:
                 'electroweak process, and %s needs the unitary gauge: start '
                 'again with "set gauge unitary" before the first "generate".'
                 % why)
-
-    def processes_prefer_fd_gauge(self):
-        """True when the generated processes pass fd_gauge_criterion and none
-        is a bound state, an [amplicol] process or has a polarised leg."""
-
-        if not self._curr_amps or self._curr_amplicol_defs:
-            return False
-        if self.has_onium_amplitude():
-            return False
-        for amp in iter_tree_amplitudes(self._curr_amps):
-            for leg in amp.get('process').get('legs'):
-                # a polarised leg: the split into polarisations is gauge
-                # dependent and defined in the unitary gauge
-                if leg.get('polarization'):
-                    return False
-        return fd_gauge_criterion(self._curr_amps)
 
     def fd_gauge_supported_by_model(self, model):
         """Whether import_ufo could check the goldstone content of the model
@@ -5056,7 +5056,7 @@ This implies that with decay chains:
         if self._curr_amps and tags - old_tags == set([len(lines) - 1]) and \
                                     old_tags <= tags:
             # only the last line changes, to the FD gauge: generate it alone
-            start, end = self._line_ranges[-1]
+            start = self._line_ranges[-1][0]
             del self._curr_amps[start:]
             del self._line_ranges[-1]
             self._curr_proc_defs.pop(-1)
@@ -8868,10 +8868,11 @@ This implies that with decay chains:
 
                 logger.info(f"Defined boundstate {boundstate_label} = {bound_state}")
 
-    def has_onium_amplitude(self):
-        """True if one of the generated processes has a bound state."""
+    def has_onium_amplitude(self, amplitudes=None):
+        """True if one of the generated processes (or of `amplitudes`) has a
+        bound state."""
 
-        for amp in self._curr_amps or []:
+        for amp in (self._curr_amps if amplitudes is None else amplitudes) or []:
             try:
                 amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
                 for one_amp in amps:

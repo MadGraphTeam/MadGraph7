@@ -32,7 +32,8 @@ class gauge_scope(object):
     def __enter__(self):
         global unitary_gauge
         self.old = unitary_gauge
-        if self.value not in ('', None) and self.value != self.old:
+        self.active = self.value not in ('', None) and self.value != self.old
+        if self.active:
             from aloha import aloha_lib
             aloha_lib.KERNEL.clean()
             unitary_gauge = self.value
@@ -40,7 +41,7 @@ class gauge_scope(object):
 
     def __exit__(self, *args):
         global unitary_gauge
-        if unitary_gauge != self.old:
+        if self.active:
             from aloha import aloha_lib
             aloha_lib.KERNEL.clean()
             unitary_gauge = self.old

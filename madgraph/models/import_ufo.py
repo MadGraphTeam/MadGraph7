@@ -784,7 +784,11 @@ def gauge_model_conflicts(base, twin):
                     for c in lst)
 
     def parameters(model):
-        return dict((p.name, getattr(p, 'expr', None))
+        # internal parameters by expression, external ones by value and
+        # position in the param_card
+        return dict((p.name, (getattr(p, 'expr', None), getattr(p, 'value', None),
+                              getattr(p, 'lhablock', None),
+                              tuple(getattr(p, 'lhacode', None) or ())))
                     for lst in model['parameters'].values() for p in lst)
 
     def lorentz(model):

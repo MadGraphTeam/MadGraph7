@@ -212,6 +212,12 @@ class ReweightInterface(extended_cmd.Cmd):
             value = self.ask("What is the path to banner", 0, [0], "please enter a path", timeout=0)
             self.lhe_input.banner = open(value).read()
         self.banner = self.lhe_input.get_banner()
+        if self.banner.proc_card_in_one_gauge():
+            # a sample whose processes are in two gauges: the processes are
+            # generated again with the automatic choice, and the one library
+            # of the reweighting gets one gauge (single_gauge_for_output: FD
+            # when every process can be, else unitary)
+            self.mg5cmd.options['auto_gauge'] = True
         
         #get original cross-section/error
         if 'init' not in self.banner:
