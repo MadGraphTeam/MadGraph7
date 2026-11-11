@@ -127,7 +127,9 @@ at nearly degenerate 2 -> 2 kinematics): generate each artifact in a fresh
 process where that matters. A Symbolica Community build with
 symbolica-dev/symbolica#163, or a Symbolica release that contains it, is not
 affected. Process artifacts load only in the version that wrote them:
-artifacts written by 1.0.2 are refused by 1.0.3, regenerate them.
+artifacts written by 1.0.2 are refused by 1.0.3, regenerate them. The model
+compiler version is unchanged (17), so prepared `.pyamplicol-model` bundles
+written by 1.0.2 still load.
 
 Version `1.0.2` was not published on PyPI and has no tag; its content is part
 of 1.0.3.

@@ -318,6 +318,13 @@ estimate = value.stability[0]
 print(estimate.absolute, estimate.magnitude, estimate.scale)   # E, S per sector; max E/S
 ```
 
+`VirtualStabilityChecks(1, True, rescaled=True)` are the **recommended
+checks** (one rotation, the reduction-direction check and the rescaled
+check; importable as `pyamplicol.loops.v2.stability.RECOMMENDED_CHECKS`).
+Stability checks are off by default (no estimate is returned then); the
+reduction backends' own acceptance and refusal checks stay on unless
+`reduction_unchecked=True`.
+
 The reduction backend is chosen once per call (`reduction="auto"`, `"ninjars"`
 or `"tirust"` on `Runtime.load` and on every evaluation; default: the
 artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
