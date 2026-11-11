@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, TypeAlias, cast
+from typing import Any, Literal, TypeAlias, cast
 
 from pyamplicol.config import (
     BenchmarkConfig,
@@ -303,6 +303,9 @@ class GenerationResult:
     mode: Literal["error", "append", "replace"]
     schema_version: int = 3
     files: tuple[Path, ...] = ()
+    # Known, benign dependency log events of the generation, returned
+    # instead of printed (``ResultWarning``; m-lit ux-besteffort).
+    warnings: tuple[Any, ...] = ()
 
     def __post_init__(self) -> None:
         try:

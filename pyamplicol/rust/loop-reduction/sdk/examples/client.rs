@@ -95,6 +95,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]
     );
     assert_eq!(partial.shape.successful_points, 2);
+    // Default policy "best-effort": no error; no value for point 1 (NaN).
+    assert!(partial.uncertainties.iter().all(|u| u.is_nan()));
+    runtime.set_on_failure("raise")?; // opt-in strict mode
+    assert!(
+        runtime
+            .evaluate(&momenta, 3, Some(&ids), &[1e6], true, None)
+            .is_err()
+    );
+    runtime.set_on_failure("best-effort")?;
     assert!(!partial.diagnostics_json.is_empty());
     let empty = runtime.evaluate(&[], 0, None, &[], true, None)?;
     assert!(empty.born.is_empty() && empty.virtual_values.is_empty() && empty.statuses.is_empty());

@@ -65,6 +65,12 @@ int main(int argc,char **argv) {
     auto partial=runtime.evaluate(momenta,3,{1e6},ids,true);
     assert(partial.successful_ids()==std::vector<std::uint64_t>({91,70}));
     assert(partial.statuses()==std::vector<std::uint32_t>({0,3,0}));
+    // Default policy "best-effort": no exception; no value for point 1 (NaN).
+    for(double u : partial.uncertainties()) assert(std::isnan(u));
+    runtime.set_on_failure("raise");  // opt-in strict mode
+    try { runtime.evaluate(momenta,3,{1e6},ids,true); assert(false); }
+    catch(const rusticol::VirtualError &) {}
+    runtime.set_on_failure("best-effort");
     assert(partial.shape().successful_points==2 && !partial.diagnostics_json().empty());
     auto empty=runtime.evaluate({},0,{}, {},true);
     assert(empty.born().empty() && empty.virtual_values().empty() && empty.statuses().empty());

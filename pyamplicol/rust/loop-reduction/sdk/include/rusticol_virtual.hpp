@@ -88,6 +88,11 @@ public:
     std::vector<std::uint32_t> statuses() const {
         return copy<std::uint32_t>(shape_.requested_points, rusticol_virtual_result_copy_statuses);
     }
+    // Per requested point the relative uncertainty of a best-effort point
+    // (RUSTICOL_VIRTUAL_BEST_EFFORT); NaN otherwise.
+    std::vector<double> uncertainties() const {
+        return copy<double>(shape_.requested_points, rusticol_virtual_result_copy_uncertainties);
+    }
     std::string diagnostics_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_result_diagnostics_json);
     }
@@ -159,6 +164,9 @@ public:
     }
     std::vector<std::uint32_t> statuses() const {
         return copy<std::uint32_t>(shape_.requested_points, rusticol_virtual_correlated_result_copy_statuses);
+    }
+    std::vector<double> uncertainties() const {
+        return copy<double>(shape_.requested_points, rusticol_virtual_correlated_result_copy_uncertainties);
     }
     std::string diagnostics_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_correlated_result_diagnostics_json);
@@ -276,6 +284,14 @@ public:
     void set_reduction_unchecked(bool unchecked) {
         virtual_detail::check(
             rusticol_virtual_set_reduction_unchecked(handle_.get(), unchecked ? 1 : 0));
+    }
+    // Failure policy of later evaluations (the Python API's on_failure=):
+    // "best-effort" (default; refused points return the unchecked value with
+    // status RUSTICOL_VIRTUAL_BEST_EFFORT and an uncertainty, nothing thrown),
+    // "return" (they stay failed) or "raise" (a call with such a point throws
+    // VirtualError). A refused value throws VirtualError.
+    void set_on_failure(const std::string &on_failure) {
+        virtual_detail::check(rusticol_virtual_set_on_failure(handle_.get(), on_failure.c_str()));
     }
     // Kinematics improvement of later evaluations (the Python API's
     // kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",

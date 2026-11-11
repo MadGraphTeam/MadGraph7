@@ -55,7 +55,10 @@ enum rusticol_virtual_point_status {
   RUSTICOL_VIRTUAL_VERIFIED = 1, /* reserved: plan v4 never returns it */
   RUSTICOL_VIRTUAL_RESCUED = 2, /* reserved: the rescue is the Python API's */
   RUSTICOL_VIRTUAL_FAILED = 3,
-  RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED = 4
+  RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED = 4,
+  /* A point no configured alternative accepted, returned with the unchecked
+   * reduction's value (never a success): rusticol_virtual_set_on_failure. */
+  RUSTICOL_VIRTUAL_BEST_EFFORT = 5
 };
 /* Loop-induced processes (metadata_json "contribution_kind": "loop-induced",
  * "interference": "conj(loop)*loop"; |A_loop|^2, no Born) are opened directly,
@@ -201,6 +204,30 @@ int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,
  * nothing changes. */
 int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
   int unchecked);
+/* Failure policy of later evaluations (the Python API's on_failure=; m-lit
+ * ux-besteffort; additive, ABI version 2 kept). "best-effort" (the default,
+ * also for NULL): the call returns OK with every point; a point that no
+ * configured alternative accepts (the backend's own acceptance checks, the
+ * "auto" per-point fallback) is evaluated again from its exact inputs without
+ * those checks (as rusticol_virtual_set_reduction_unchecked 1) and, where
+ * that gives a value, returned as a row with status
+ * RUSTICOL_VIRTUAL_BEST_EFFORT, its refusal in the diagnostics'
+ * "best_effort" {"<id>": {"refusal","uncertainty","source","detail",
+ * "reduction"}} and its relative uncertainty
+ * (rusticol_virtual_result_copy_uncertainties): the call's own binary64
+ * stability estimate ("source": "stability-checks"), else one default
+ * rotation re-test of that point ("rotation"), else none ("none", NaN, said
+ * so in "detail"); a point without any value stays RUSTICOL_VIRTUAL_FAILED.
+ * The diagnostics' "warnings" list the best-effort and failed points (kind,
+ * first reason, count, point ids); "failures" keeps one message per reason
+ * class with the count of the others. Nothing is printed. "return": such
+ * points stay RUSTICOL_VIRTUAL_FAILED (no re-evaluation). "raise" (opt-in
+ * strict mode): a call with such a point returns
+ * RUSTICOL_VIRTUAL_RUNTIME_ERROR with the first reason. Points the
+ * configured alternatives accept are evaluated as before, bitwise. Another
+ * value is RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_on_failure(rusticol_virtual_handle *handle,
+  const char *on_failure);
 /* Kinematics improvement of later evaluations (the Python API's
  * kinematics_improvement=; m-lit lit-psimprove; additive, ABI version 2 kept):
  * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1,
@@ -268,7 +295,9 @@ int rusticol_virtual_metadata_json(const rusticol_virtual_handle *handle,
 int rusticol_virtual_capabilities_json(const rusticol_virtual_handle *handle,
   char *output, size_t capacity, size_t *needed);
 /* Returns OK for a completed batch even if some points failed. Inspect statuses.
- * Numerical rows exist ONLY for successful_point_ids in their original order.
+ * Numerical rows exist ONLY for successful_point_ids in their original order:
+ * the points with a value, i.e. every status but RUSTICOL_VIRTUAL_FAILED
+ * (RUSTICOL_VIRTUAL_BEST_EFFORT rows included: check the statuses).
  * Every finite binary64 input is read as its exact value. Stability estimates
  * follow rusticol_virtual_set_stability_checks; the precision rescue is the
  * Python API's.
@@ -294,6 +323,10 @@ int rusticol_virtual_result_copy_requested_ids(const rusticol_virtual_result *, 
 int rusticol_virtual_result_copy_successful_ids(const rusticol_virtual_result *, uint64_t *, size_t);
 int rusticol_virtual_result_copy_statuses(const rusticol_virtual_result *, uint32_t *, size_t);
 int rusticol_virtual_result_diagnostics_json(const rusticol_virtual_result *, char *, size_t, size_t *);
+/* Per requested point the relative uncertainty of a RUSTICOL_VIRTUAL_BEST_EFFORT
+ * point's value; NaN for every other point and for a best-effort point
+ * without an estimate (rusticol_virtual_set_on_failure). */
+int rusticol_virtual_result_copy_uncertainties(const rusticol_virtual_result *, double *, size_t);
 /* Extended-precision results: {"arithmetic","digits","born","virtual"} with
  * decimal literals in the copy layouts (absent poles null); "null" for a
  * binary64 result. */
@@ -425,6 +458,7 @@ int rusticol_virtual_correlated_result_copy_requested_ids(const rusticol_virtual
 int rusticol_virtual_correlated_result_copy_successful_ids(const rusticol_virtual_correlated_result *, uint64_t *, size_t);
 int rusticol_virtual_correlated_result_copy_statuses(const rusticol_virtual_correlated_result *, uint32_t *, size_t);
 int rusticol_virtual_correlated_result_diagnostics_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
+int rusticol_virtual_correlated_result_copy_uncertainties(const rusticol_virtual_correlated_result *, double *, size_t);
 int rusticol_virtual_correlated_result_histories_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 int rusticol_virtual_correlated_result_spin_legs_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 /* [real, imaginary] decimal literals of an extended-precision correlated

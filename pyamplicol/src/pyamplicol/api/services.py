@@ -365,8 +365,31 @@ class Generator:
         correlators: _pyamplicol.CorrelatorConfig | None = None,
     ) -> GenerationResult:
         """Generate an artifact in ``error``, ``append``, or ``replace`` mode.
-        A process string may use MG5_aMC syntax, as in :meth:`plan`."""
+        A process string may use MG5_aMC syntax, as in :meth:`plan`. The
+        known, benign dependency log events of the generation are returned
+        in the result's ``warnings`` instead of being printed
+        (``_internal.symbolica_log``, m-lit ux-besteffort)."""
 
+        from dataclasses import replace
+
+        from pyamplicol._internal.symbolica_log import capture
+
+        with capture("generate") as captured:
+            result = self._generate(
+                processes, output, model=model, mode=mode, correlators=correlators
+            )
+        found = captured.warnings()
+        return replace(result, warnings=result.warnings + found) if found else result
+
+    def _generate(
+        self,
+        processes: ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str],
+        output: os.PathLike[str] | str,
+        *,
+        model: ModelSource | _pyamplicol.CompiledModel | None = None,
+        mode: Literal["error", "append", "replace"] = "error",
+        correlators: _pyamplicol.CorrelatorConfig | None = None,
+    ) -> GenerationResult:
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
         processes = self._translate(processes)
@@ -1909,6 +1932,42 @@ load = Runtime.load
 
 
 def check(
+    target: os.PathLike[str] | str | RunConfig | ConfigResolution,
+    *,
+    points: int | None = None,
+    seed: int | None = None,
+    precision: Literal["auto", "double", "double-double"] | None = None,
+    model: ModelSource | os.PathLike[str] | str | None = None,
+    source: str | None = None,
+    progress: ProgressSink | None = None,
+    sqrt_s: float | None = None,
+    arbitrary_digits: int | None = None,
+) -> CheckReport:
+    """:func:`_check`, the known, benign dependency log events it triggers
+    returned in the report's ``warnings`` instead of being printed
+    (``_internal.symbolica_log``, m-lit ux-besteffort)."""
+
+    from dataclasses import replace
+
+    from pyamplicol._internal.symbolica_log import capture
+
+    with capture("check") as captured:
+        report = _check(
+            target,
+            points=points,
+            seed=seed,
+            precision=precision,
+            model=model,
+            source=source,
+            progress=progress,
+            sqrt_s=sqrt_s,
+            arbitrary_digits=arbitrary_digits,
+        )
+    found = captured.warnings()
+    return replace(report, warnings=report.warnings + found) if found else report
+
+
+def _check(
     target: os.PathLike[str] | str | RunConfig | ConfigResolution,
     *,
     points: int | None = None,
