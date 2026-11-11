@@ -228,6 +228,16 @@ def reduction_target(value: object) -> float:
     raise ValueError(policy()["target"]["refusal"])
 
 
+# The failure policies of a virtual evaluation (``evaluation.on_failure``,
+# the CLI's ``--on-failure``, ``evaluate(..., on_failure=)``): "raise" (the
+# default) raises at the first point no configured alternative serves;
+# "return" returns such points as failed lanes without a value; "best-effort"
+# returns them, where the backends' unchecked reduction gives a finite value,
+# as "best-effort" lanes with that value and its uncertainty (m-lit
+# ux-besteffort), the others as failed lanes.
+ON_FAILURE = ("raise", "return", "best-effort")
+
+
 def reduction_unchecked(value: object) -> bool:
     """The value of the unchecked reduction setting (``evaluation.
     reduction_unchecked``, the CLI's ``--reduction-unchecked``,
@@ -1464,8 +1474,8 @@ class EvaluationConfig:
     correlated_requests: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
-    on_failure: Literal["raise", "return"] = field(
-        default="raise", metadata=_setting("str", choices=("raise", "return"))
+    on_failure: Literal["raise", "return", "best-effort"] = field(
+        default="raise", metadata=_setting("str", choices=ON_FAILURE)
     )
     stability: EvaluationStabilityConfig = field(
         default_factory=EvaluationStabilityConfig, metadata=_section()
@@ -1555,9 +1565,9 @@ class EvaluationConfig:
             "correlated_requests",
             _path(self.correlated_requests, "evaluation.correlated_requests"),
         )
-        if self.on_failure not in ("raise", "return"):
+        if self.on_failure not in ON_FAILURE:
             raise ConfigurationError(
-                "evaluation.on_failure must be 'raise' or 'return'"
+                "evaluation.on_failure must be 'raise', 'return' or 'best-effort'"
             )
         if not isinstance(self.stability, EvaluationStabilityConfig):
             raise ConfigurationError(

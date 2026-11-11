@@ -25,6 +25,7 @@ from pyamplicol.config import (
     ReductionBackend,
     resolve_config,
 )
+from pyamplicol.config.models import ON_FAILURE
 
 from .licensing import LicenseKind, LicenseRequestInvocation
 from .utilities import UtilityInvocation, parse_utility
@@ -685,11 +686,12 @@ def _add_evaluation_options(
     parser.add_argument(
         "--on-failure",
         dest="evaluation.on_failure",
-        choices=("raise", "return"),
+        choices=ON_FAILURE,
         default=argparse.SUPPRESS,
         help=(
-            "virtual numerical failures: raise or return unavailable rows "
-            "with diagnostics"
+            "virtual numerical failures: raise, return unavailable rows with "
+            "diagnostics, or return refused points with their best-effort value "
+            "(the unchecked reduction's) and its uncertainty, never as a success"
         ),
     )
     # The precision-rescue options were removed with the legacy loop engine;

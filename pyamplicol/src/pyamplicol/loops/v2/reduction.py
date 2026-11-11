@@ -111,6 +111,7 @@ from __future__ import annotations
 import functools
 import json
 import math
+import re
 from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -304,6 +305,10 @@ _EFFECTIVE: ContextVar[str] = ContextVar("pyamplicol_v2_reduction", default="nin
 _TARGET: ContextVar[float | None] = ContextVar("pyamplicol_v2_target", default=None)
 # The unchecked setting of the current context (off by default).
 _UNCHECKED: ContextVar[bool] = ContextVar("pyamplicol_v2_unchecked", default=False)
+# Whether the current context serves the points every configured
+# alternative refused by their best-effort value (``serving_best_effort``;
+# ``on_failure="best-effort"``, m-lit ux-besteffort).
+_BEST_EFFORT: ContextVar[bool] = ContextVar("pyamplicol_v2_best_effort", default=False)
 _KEEP: Any = object()
 
 
@@ -333,6 +338,21 @@ def running(
         if held is not None:
             _TARGET.reset(held)
         _EFFECTIVE.reset(token)
+
+
+@contextmanager
+def serving_best_effort(on: bool) -> Iterator[None]:
+    """Serve, in this context, the points every configured alternative of a
+    call refused or failed by their best-effort value (``with_fallback``;
+    ``on_failure="best-effort"``): the caller's evaluation without a rescue
+    policy, or a rescue policy's LAST level only (its earlier levels'
+    refused points climb to the next level as before)."""
+
+    token = _BEST_EFFORT.set(bool(on))
+    try:
+        yield
+    finally:
+        _BEST_EFFORT.reset(token)
 
 
 def current() -> str:
@@ -588,7 +608,7 @@ def _carries_guard(checks: Any) -> bool:
     return bool(rotations) and rotations[0] == guard_rotation()
 
 
-def with_fallback(
+def _with_fallback(
     run: Callable[[list[int] | None, Any], tuple[list[_R], dict[int, list[str]]]],
     choice: VirtualReduction,
     count: int,
@@ -751,8 +771,169 @@ def with_fallback(
     return results, failures, records
 
 
+def with_fallback(
+    run: Callable[[list[int] | None, Any], tuple[list[_R], dict[int, list[str]]]],
+    choice: VirtualReduction,
+    count: int,
+    checks: Any,
+    carrier: str,
+) -> tuple[list[_R | None], dict[int, list[str]], dict[int, VirtualReduction]]:
+    """``run`` of a batch on the call's backend with its per-point fallback
+    (``_with_fallback``: the arguments, the guard and the records), then, in
+    a context serving best-effort values (``serving_best_effort``,
+    ``on_failure="best-effort"``) of a call reduced WITH the backends' own
+    checks, the BEST-EFFORT evaluation of every point still failed
+    (``_best_effort``). Without that context nothing else runs: the
+    points every alternative serves, and every call outside it, are
+    evaluated exactly as before (bitwise, at the same cost)."""
+
+    results, failures, records = _with_fallback(run, choice, count, checks, carrier)
+    if failures and _BEST_EFFORT.get() and not choice.unchecked:
+        _best_effort(run, choice, checks, carrier, results, failures, records)
+    return results, failures, records
+
+
+# A TIRust method-choice refusal's measure: its two frames' deviation and
+# the lane's term scale (``v2_tir``'s reason text).
+_DEVIATION = re.compile(
+    r"deviation ([-+0-9.eE]+) of term scale ([-+0-9.eE]+) between its two frames"
+)
+
+
+def backend_deviation(reasons: Collection[str]) -> float | None:
+    """The backend's own accuracy measure stated by refusal ``reasons``: the
+    largest deviation of a TIRust method-choice lane between its two frames
+    relative to that lane's term scale (a lane-level measure), None when no
+    reason states one."""
+
+    found: list[float] = []
+    for reason in reasons:
+        for deviation, scale in _DEVIATION.findall(reason):
+            try:
+                size = float(scale)
+                value = float(deviation) / size if size > 0 else math.inf
+            except ValueError:
+                continue
+            if not math.isnan(value):
+                found.append(value)
+    return max(found) if found else None
+
+
+def _point_estimate(result: Any) -> float:
+    """The relative estimate of one point from every check its evaluation
+    ran (the ``"relative"`` metric over the outputs the call returns, the
+    fallback guard's rule ``fallback_estimate`` without restricting the
+    checks); NaN when an output has no estimate."""
+
+    outputs = []
+    roundoff = math.nan
+    for output in _outputs(result):
+        estimate = getattr(output, "stability", None)
+        if estimate is None or not estimate.budgets:
+            return math.nan
+        roundoff = estimate.roundoff
+        outputs.append(_guard_sectors(estimate))
+    return fallback_estimate(outputs, roundoff)
+
+
+def _best_effort(
+    run: Callable[[list[int] | None, Any], tuple[list[Any], dict[int, list[str]]]],
+    choice: VirtualReduction,
+    checks: Any,
+    carrier: str,
+    results: list[Any],
+    failures: dict[int, list[str]],
+    records: dict[int, VirtualReduction],
+) -> None:
+    """Serve the still-failed points of a call by their best-effort value
+    (m-lit ux-besteffort; ``VirtualBestEffort``), in place: the same
+    reduction with its per-point fallback and the fallback's guard
+    (``_with_fallback``) WITHOUT the backends' own acceptance and refusal
+    checks (``choice`` with ``unchecked``: what ``reduction_unchecked=True``
+    returns for the point, bitwise), on those points only, from their
+    original exact inputs, at the call's carrier. Its uncertainty is the
+    relative estimate of the call's own checks (less the cross-backend
+    check, as for a fallback point, m-lit R6) when the call runs checks,
+    else of the recommended rotation re-test (``guard_rotation``) run on
+    these points alone, whose estimate the public result then does not
+    carry. A point the unchecked reduction fails too stays failed with
+    every reason; a served point's record (``VirtualReduction.best_effort``)
+    keeps the refusals it overrides (bounded, ``bounded_reasons``)."""
+
+    from pyamplicol.api.virtual_results import VirtualBestEffort, VirtualReduction
+
+    from .plan_export import bounded_reasons
+
+    indices = sorted(failures)
+    enabled = checks is not None and bool(
+        getattr(checks, "rotations", ()) or getattr(checks, "reduction_direction", False)
+    )
+    if enabled:
+        own = (
+            replace(checks, cross_backend=False)
+            if getattr(checks, "cross_backend", False)
+            else checks
+        )
+    else:
+        own = _guard_check(checks if checks is not None else None)
+
+    def again(chosen: list[int] | None, with_checks: Any) -> Any:
+        return run(
+            indices if chosen is None else [indices[i] for i in chosen], with_checks
+        )
+
+    unchecked = replace(choice, unchecked=True)
+    values, still, served = _with_fallback(
+        again, unchecked, len(indices), own, carrier
+    )
+    for local, index in enumerate(indices):
+        refusal = bounded_reasons(failures[index])
+        if local in still or values[local] is None:
+            failures[index] = bounded_reasons(
+                [
+                    *failures[index],
+                    *(
+                        f"best effort ({NAMES[choice.effective]} unchecked): {reason}"
+                        for reason in still.get(local, ["no value"])
+                    ),
+                ]
+            )
+            continue
+        value = values[local]
+        estimate = _point_estimate(value)
+        if math.isnan(estimate):
+            uncertainty, source = None, "none"
+        else:
+            uncertainty, source = estimate, (
+                "stability-checks" if enabled else "rotation"
+            )
+        record = served.get(local)
+        effective = choice.effective if record is None else record.effective
+        guard = None if record is None else record.guard_estimate
+        records[index] = VirtualReduction(
+            choice.requested,
+            effective,
+            f"best effort: the value of {NAMES[effective]} without the backends' "
+            "own acceptance and refusal checks (reduction_unchecked), every "
+            "configured alternative having refused or failed the point: "
+            + "; ".join(refusal),
+            target=choice.target,
+            unchecked=True,
+            guard_estimate=guard,
+            best_effort=VirtualBestEffort(
+                "; ".join(refusal),
+                uncertainty,
+                source,
+                backend_deviation(refusal),
+            ),
+        )
+        results[index] = value if enabled else _without_checks(value)
+        del failures[index]
+
+
 __all__ = [
     "BACKENDS",
+    "backend_deviation",
     "CARRIERS",
     "DEFAULTS",
     "ReductionUnavailable",
@@ -774,6 +955,7 @@ __all__ = [
     "resolve",
     "route",
     "running",
+    "serving_best_effort",
     "text",
     "with_fallback",
 ]

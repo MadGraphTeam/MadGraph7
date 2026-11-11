@@ -36,11 +36,13 @@ from pyamplicol.api.virtual_results import (
     VirtualScalar,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
+    best_effort_detail,
     computes_poles,
     pole_selection,
     splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
+from pyamplicol.config.models import ON_FAILURE
 from pyamplicol.correlators import (
     ColorCorrelator,
     CorrelatedRequest,
@@ -465,8 +467,8 @@ def v2_options(
     reaches this check only from the calls that take none (``evaluate``
     runs it before, ``loops.v2.rescue``)."""
 
-    if on_failure not in ("raise", "return"):
-        raise ValueError("on_failure must be 'raise' or 'return'")
+    if on_failure not in ON_FAILURE:
+        raise ValueError("on_failure must be 'raise', 'return' or 'best-effort'")
     if helicities or color_flows:
         # ``evaluate`` and ``evaluate_resolved`` take them (Born-interfered:
         # helicities at every colour accuracy, colour flows at leading
@@ -998,6 +1000,23 @@ class V2ObservablesRuntime:
                 ),
                 reduction=reduction,
             )
+        best = None if reduction is None else reduction.best_effort
+        if best is not None:
+            # Every configured alternative refused the point; its value is
+            # the unchecked reduction's (``on_failure="best-effort"``).
+            return VirtualLaneDiagnostic(
+                "best-effort",
+                arithmetic,  # type: ignore[arg-type]
+                bits,
+                False,
+                f"v2 {executor} executor; {best_effort_detail(best)}",
+                failures=(
+                    VirtualFailureDiagnostic(
+                        index, None, None, None, "v2-evaluation", best.refusal
+                    ),
+                ),
+                reduction=reduction,
+            )
         return VirtualLaneDiagnostic(
             "success",
             arithmetic,  # type: ignore[arg-type]
@@ -1223,7 +1242,7 @@ class V2ObservablesRuntime:
         arithmetic: str | None,
         helicities: Sequence[str] | None,
         color_flows: Sequence[str] | None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["raise", "return", "best-effort"] = "raise",
         # Keyed by the call's carrier, or under a rescue policy by each
         # ``VirtualRescueLevel`` (``V2VirtualRuntime._reduction_choices``).
         reductions: Mapping[Any, VirtualReduction | None] | None = None,
@@ -1379,7 +1398,7 @@ class V2ObservablesRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["raise", "return", "best-effort"] = "raise",
         reductions: Mapping[str, VirtualReduction] | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
@@ -1469,7 +1488,7 @@ class V2ObservablesRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["raise", "return", "best-effort"] = "raise",
         _correlated: bool = True,
         reductions: Mapping[str, VirtualReduction] | None = None,
         kinematics_improvement: str | None = None,
@@ -1620,7 +1639,7 @@ class V2ObservablesRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["raise", "return", "best-effort"] = "raise",
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
