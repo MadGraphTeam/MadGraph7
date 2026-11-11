@@ -597,7 +597,7 @@ points in both modes (NinjaRS columns measured with that bound).
 | g g > h h g g | 32 | 7.1e-7 | 7.0e-7 |
 | g g > h g g g | 32 | 5.9e-8 | 4.2e-5: 2 above 1e-5 (also when checked) |
 | g g > e+ e- mu+ mu- | 32 | 5.4e-12 | 6.5e-10 |
-| g g > a a g g | 128 | TIRust vs NinjaRS 7.0e-02 (no 256-bit truth: TIRust at 256 bits takes 405 s per point (measured 1-point probe; 32 points 3.6 h > the 3600 s row budget)) | — |
+| g g > a a g g | 128 | TIRust vs NinjaRS 7.0e-02 (no 256-bit truth: TIRust at 256 bits takes 405 s per point (measured 1-point probe; 32 points 3.6 h > the 3600 s row budget)); at its 2 largest-difference points vs the 256-bit truth: 1.3e-04 | at those points: 7.6e-02 |
 | g g > z z z z | 112 | TIRust vs NinjaRS 4.9e-06 (no 256-bit truth: TIRust at 256 bits takes 764 s per point (measured 1-point probe; 32 points 6.8 h > the 3600 s row budget)) | — |
 | g g > e+ e- mu+ mu- g | 16 | 8.3e-9 | 7.0e-9 |
 

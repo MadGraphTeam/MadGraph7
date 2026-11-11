@@ -2813,6 +2813,11 @@ def test_report_builder_missing_box_labels_a_cross_backend_difference_once():
         "failed_classes": [],
         "note": True,
         "cross_backend": True,
+        "truth_at_points": {
+            "points": [104, 107],
+            "tirust_max_relative": 1.3e-4,
+            "ninjars_max_relative": 7.6e-2,
+        },
     }
     row = {
         "math": "g g -> a a g g",
@@ -2832,6 +2837,10 @@ def test_report_builder_missing_box_labels_a_cross_backend_difference_once():
     assert len(acc) == 1 and acc[0]["rows"] == ["g g -> a a g g"]
     assert "cross-backend, not a truth" in acc[0]["text"]
     assert "TIRust unchecked" not in acc[0]["text"]
+    assert acc[0]["text"].endswith(
+        "at its 2 largest-difference points against the 256-bit truth:"
+        " TIRust 1.3e-04, NinjaRS 7.6e-02"
+    )
 
 
 def test_report_builder_accuracy_line_without_a_truth_is_the_labelled_cross_backend_difference():
