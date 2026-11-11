@@ -1,5 +1,8 @@
 # TIRust / MadLoop benchmark
 
+The [current acceptance selection](CURRENT_STATUS.md) distinguishes production
+evidence, unapplied experiments and preserved historical indices.
+
 **Current status.** Production registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
 target. The [42-page benchmark PDF](benchmark.pdf) preserves all preceding 41
@@ -920,8 +923,10 @@ Complete delivery additionally requires the installed ABI and Fortran checks,
 separate subprocess/event cache lifecycle qualification, precision cohorts and
 resolution of retained stress failures. The separately frozen preceding-source
 `2c13246ffa63` cache lifecycle proof is closed in its native-DP and tensor-key
-scope. The successor's guard/reset tests, fixed-mode parity and ordinary
-comparisons retain their narrower scopes; the preceding full-source lifecycle
-proof has not been rerun for those changes. That scoped lifecycle pass does not
-close the physical stress or performance gates. A passing eight-process runtime gate
-alone cannot complete the integration goal.
+scope. The [successor lifecycle replay](experiments/subprocess-cache-lifecycle-successor-qualification-1/README.md)
+is now closed at `0fcd2cd873d6` for real-SM `N≤3`, rank≤2 native-DP physical
+calls and separate DP/QP tensor-key diagnostics. Physical-QP rescues, EW,
+loop-induced, rank-six physical and poles-only amplitudes remain outside that
+proof. Neither lifecycle result closes the physical stress or performance
+gates. A passing eight-process runtime gate alone cannot complete the
+integration goal.

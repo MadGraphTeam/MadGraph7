@@ -1,0 +1,56 @@
+# Current acceptance status — 2026-11-11
+
+This status selects evidence for production revision
+`0fcd2cd873d61d134837e1d9e87afb13a47824fd`, registered as
+[`entry-latch-cache-guard-1`](campaigns/entry-latch-cache-guard-1/manifest.json).
+Its exporter inventory is
+`afb6e0bea64ea0932751ff4869c206bcea9477d40a39a54bb99d0f06d85b75a6`
+and numerical identity is
+`3c13ad88b825d9d19b1030b62b317c0f31759e002d8dfdb9050142301a7cae24`.
+The baseline remains `9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f`.
+The integration goal is incomplete.
+
+| Evidence | Current result and scope |
+|---|---|
+| [Ordinary process matrix](campaigns/entry-latch-cache-guard-1/QUALIFICATION_PROGRESS.md) | Eleven CLI-generated processes, six lanes and 100 saved points per lane. All 66 lanes pass `3e-6`; 54 also pass the separate `1e-8` target. The remaining target misses and independent-reference limitations are retained. |
+| [Frozen ordinary selection](campaigns/entry-latch-cache-guard-1/report-supplements/progress-3/selection.json) | Selects the closed checkpoints for this production source, including both four-particle processes, interruption history and source-specific evidence. It does not import predecessor results as new measurements. |
+| [Subprocess/event cache lifecycle](experiments/subprocess-cache-lifecycle-successor-qualification-1/README.md) | Closed for real-SM `N≤3`, rank≤2 native-DP amplitudes and separate DP/QP tensor-key diagnostics. It covers prefix isolation, entry-latch reset, invalidation, independent checks and context recreation. Physical-QP rescues, EW, loop-induced, rank-six physical and poles-only amplitudes remain outside this proof. |
+| [Published benchmark](benchmark.pdf) | The current 42-page PDF preserves preceding results and adds separately scoped implementation qualifications. Its [ledger](report-build.json) binds PDF SHA256 `4f087a337a8cf736d8d21509486727f7c6f55b3467dd1535d4190f96be73a18f`. |
+| [Five-reducer timing appendix](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md) | Twenty descriptive full-amplitude timing lanes cover four SM processes, including a fresh QCD `2→4` process. All twenty pass their retained `3e-6` and `1e-8` numerical gates. Shared-host timings do not satisfy precise performance acceptance. |
+| [Stability comparisons](stability_appendix_c/current-source-qcd3-raw-delivery-2/README.md) | Current-source QCD Zgg comparisons supplement the preserved Appendix-C-style plots. Internal consistency estimates, unavailable diagnostics and independent numerical error retain distinct scopes. |
+| [Generic CMS prototype](experiments/generic-owned-CMS-normal-qualification-1/README.md) | Three ordinary controls agree bit for bit. Two forward fixtures retain legacy `420` refusals and candidate-reported `323` QP acceptance. Both caches are disabled; these self-check observations establish neither independent finite accuracy nor generic production coverage. |
+
+The [QP-mass correction](experiments/fortran-qp-mass-current-qualification-1/README.md),
+its [fresh-CLI follow-up](experiments/fortran-qp-mass-fresh-cli-qualification-1/README.md),
+the [legacy-dispatch recording unit](experiments/fortran-qp-mass-non9-dispatch-qualification-1/README.md)
+and the generic CMS prototype are experimental qualifications. Their source
+patches remain unapplied to production. Standalone tensor, snapshot and integer
+geometry tests do not supply missing full-amplitude qualifications. The
+[phase-space-repair profile](experiments/fortran-host-repair-profile-qualification-1/README.md)
+measures existing work; it is not an optimization gain.
+
+Required EW threshold, QCD soft/collinear and complex-mass stress accuracy
+remain unresolved. The [retained physical-stress result](experiments/physical-stress-current-portable-4-terminal-2/evidence-index.json)
+belongs to preceding source `2c13246ffa63`; it cannot qualify current production.
+Candidate constructor/current-point/q/veto provenance, cache-enabled CMS
+behavior, broader physical integration and measured benefit must be established
+before any corresponding experimental source promotion. A promotion requires
+a new source identity and fresh validation, rather than reusing this source's
+66 ordinary passes. Native-DP and rescued-QP timing cohorts also remain
+unqualified.
+
+Final precise timings remain
+[Hua-Sheng's local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md):
+a fresh supported installation, all 66 local numerical lanes, eight main
+TIRust-first versus baseline runtime gates and separate existing-backend
+regression checks. The upper 95% paired runtime-ratio bound must be ≤1.05 for
+each main process. Historical qualified timing failures remain retained.
+
+The root [qualification index](qualification.json) and [summary](summary.json)
+are preserved historical snapshots, not this current source's acceptance
+selection. Their references to DSO `095e`, candidate `c91cb85f` and pending
+successor physics describe those earlier snapshots. Frozen checkpoint documents
+may likewise describe the report page count at their creation. The current
+PDF and its reproduction commands are selected by the [current report ledger](report-build.json)
+and [matching report instructions](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md).
+No historical failure or unmeasured result is converted into a pass here.
