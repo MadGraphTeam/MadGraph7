@@ -312,9 +312,12 @@
   }
  },
  "unrun_checks": {
-  "what": "§4.1 per-row checks lit-ref's manifest does not carry and lit-val does not run, with the reason (never dropped silently)",
+  "what": "§4.1 per-row checks lit-ref's manifest does not carry and lit-val does not run, with the reason (never dropped silently)"
+ },
+ "not_applicable_checks": {
+  "what": "§4.1 per-row checks that do not apply by a user ruling, recorded with the ruling beside the row's other checks (they make no row partial)",
   "LI-24": {
-   "lambda_hhh scan": "not run: the campaign model (loop_qcd_qed_sm = MG5 loop_sm) has no external trilinear coupling (lam = MH^2/(2 v^2) is internal), so lambda_hhh cannot be scanned alone; no model with an independent kappa_lambda is in tools/loop_reference/li_campaign.json. The triangle-box cancellation and the threshold are li_gg_hh's runs and its stress points"
+   "lambda_hhh scan": "not applicable (USER 2026-11-09 ~08:42): the SM models' trilinear lam = MH^2/(2 v^2) is internal and cannot be scaled independently; the triangle-box cancellation and the threshold are li_gg_hh's runs and its stress points"
   }
  }
 }

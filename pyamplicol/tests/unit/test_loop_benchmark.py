@@ -86,12 +86,16 @@ def test_streams_are_exact_distinct_and_start_with_the_campaign(key):
     # loop-induced g g > h h h): momentum conservation exact, mass shells to
     # the printed 30 digits.
     supplied = stream["construction"].startswith("supplied_points")
+    # A decay (loop-induced h > g g, z > g g g, ...): one incoming particle.
+    incoming = stream.get("initial", 2)
     for point in points:
         if not supplied:
-            exact_points.check(point, masses, 2)
+            exact_points.check(point, masses, incoming)
             continue
         for mu in range(4):
-            assert sum(p[mu] for p in point[:2]) == sum(p[mu] for p in point[2:])
+            assert sum(p[mu] for p in point[:incoming]) == sum(
+                p[mu] for p in point[incoming:]
+            )
         for p, m in zip(point, masses, strict=True):
             assert abs(exact_points._dot(p, p) - m * m) <= p[0] ** 2 / 10**27
     assert streams.campaign_agreement(key, stream) in (True, None)
@@ -99,6 +103,23 @@ def test_streams_are_exact_distinct_and_start_with_the_campaign(key):
     for exact, decimal in zip(stream["points"][:3], text, strict=True):
         for leg, values in zip(exact, decimal, strict=True):
             assert [float(Fraction(x)) for x in leg] == [float(x) for x in values]
+
+
+@pytest.mark.parametrize(
+    "key",
+    [k for k in streams.keys() if "two-body construction" in streams.load(k)["construction"]],
+)
+def test_pair_streams_hold_no_beam_collinear_point(key):
+    """lit-report: the exact centre-of-mass points of a massive 2 -> 2 pair
+    never put a final momentum exactly along the beam (zero transverse
+    momentum: the boxes' Gram determinants vanish exactly there; both
+    backends failed such points of g g > z z in binary64)."""
+
+    stream = streams.load(key)
+    prefix = stream["campaign_prefix"]
+    for index in range(prefix, len(stream["points"])):
+        point = streams.exact(stream, index)
+        assert all(p[1] or p[2] for p in point[2:]), index
 
 
 def test_gate_verdict():
@@ -699,7 +720,8 @@ def test_gate_document_applies_the_floor_and_reads_no_old_root(tmp_path, no_old_
         providers,
         {**providers, "process": "gg_ggg"},
         _pyamplicol_record("uux_ddxg", [0.0026, 0.0027, 0.0028]),
-        _pyamplicol_record("gg_ggg", [0.0060, 0.0061, 0.0062]),
+        # A Born-interfered run of the harness names its backend (a string).
+        _pyamplicol_record("gg_ggg", [0.0060, 0.0061, 0.0062], reduction="ninjars"),
     ]
     records[1]["providers"] = {
         name: {k: v for k, v in result.items() if k != "export"}
@@ -1764,6 +1786,50 @@ def test_an_upper_bound_outside_the_protocol_bounds_the_fastest_provider():
         decisions,
     )
     assert "ratio_to_fastest_bound" not in plain
+    # Each measured provider names its timing's settings (lit-report G5): a
+    # record without a protocol is a production run.
+    proc["providers"]["openloops"] = {
+        "median_seconds_per_point": 50.0,
+        "points": 16,
+        "mode": "most optimistic",
+        "protocol": "optimistic",
+        "library": {"name": "ppllll"},
+    }
+    runtime = builder._provider_runtime(proc)["providers"]
+    assert runtime["openloops"]["protocol"] == "optimistic"
+    assert runtime["madloop"]["protocol"] == "production"
+    assert "protocol" not in runtime["recola"]
+
+
+def test_table_1_names_its_provider_protocols_and_marks_kept_production_times():
+    """lit-report G5: summary.json meta lists the settings of Table 1's
+    provider timings and why a provider kept its production record (g1.json
+    meta ``provider_kept``); the report marks a production time beside
+    optimistic ones and names the protocol in its legend."""
+
+    import json
+
+    source = (
+        ROOT / "docs/performance_reports/loop/scripts/build_summary.py"
+    ).read_text()
+    assert '"provider_protocols": sorted(' in source
+    assert '{"provider_kept": g1["provider_kept"]}' in source
+    typ = (ROOT / "docs/performance_reports/loop/benchmarks.typ").read_text()
+    assert '#let t1-optimistic = "optimistic" in S.meta.at("provider_protocols"' in typ
+    assert "#t1-mark(x)" in typ and "#t1-mark(c.providers.at(f.key))" in typ
+    assert "#if t1-optimistic [ The providers run in their most optimistic" in typ
+    summary = json.loads(
+        (ROOT / "docs/performance_reports/loop/data/summary.json").read_text()
+    )
+    protocols = summary["meta"]["provider_protocols"]
+    shown = {
+        x["protocol"]
+        for g in summary["groups"]
+        for r in g["rows"]
+        for x in (r["full_colour"].get("providers") or {}).values()
+        if "protocol" in x
+    }
+    assert protocols == sorted(shown) and protocols
 
 
 def test_a_campaign_timed_on_tool_revisions_of_its_slice_revision(monkeypatch):
@@ -2421,6 +2487,468 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
         build()
 
 
+def test_report_builder_loop_induced_untimed_row_prints_its_marker(tmp_path):
+    """A registry row declared ``untimed`` (LI-X1: an execution check without
+    a reference, USER 2026-11-06 ~14:55) prints its explicit marker with the
+    registry's reason in both cells once its package has landed, and a row
+    without any reference expects no provider: never 'pending'."""
+
+    builder = _report_builder()
+    registry = _loop_induced_registry()
+    registry["groups"].append("EFT")
+    registry["gate_classes"]["eft"] = "test"
+    registry["landed"].append("lit-eft")
+    registry["rows"].append(
+        {
+            "key": "li_x1",
+            "process": None,
+            "ids": ["LI-X1"],
+            "corrections": "EFT",
+            "legs": None,
+            "group": "EFT",
+            "gate_class": "eft",
+            "served_by": "lit-eft",
+            "backends": ["tirust"],
+            "references": [],
+            "label": "rank > N+2 EFT row",
+            "untimed": "execution check only (test)",
+        }
+    )
+    ms = _loop_induced_milestone(registry)
+    data = tmp_path / "data"
+    data.mkdir()
+    recency = builder.Recency(tmp_path, ms["ancestry"])
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    row = {r["key"]: r for g in out["groups"] for r in g["rows"]}["li_x1"]
+    marker = {"status": "not timed", "reason": "execution check only (test)"}
+    assert row["generation"] == marker and row["timing"] == marker
+    assert row["providers"] == {
+        "status": "no reference",
+        "reason": "no reference provider",
+        "expected": [],
+    }
+    # Not landed: pending like every other row of a package not landed.
+    registry["landed"].remove("lit-eft")
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    row = {r["key"]: r for g in out["groups"] for r in g["rows"]}["li_x1"]
+    assert row["timing"]["status"] == "pending"
+
+
+def test_report_builder_backend_table_and_missing_box(tmp_path):
+    """The backend-comparison table (m-lit Q40): TIRust and NinjaRS under
+    the unchecked setting per loop-induced row (time, stages grouped with the
+    backend's own reduction stages, ratio, accuracy, the L6 verdict of
+    lit.json) and per Born-interfered 2->3 / 2->4 row of Table 1 (the
+    records of backends-born.json, else the 'not timed' marker), LI-B1's L6
+    tally; the "Missing or incomplete" box lists the cells without a value,
+    a failing gate with its dominating stage, a partial validation (its
+    partial checks and TIRust's failed fixture points) and an accuracy note,
+    rows sharing a reason on one line."""
+
+    import json
+
+    builder = _report_builder()
+    ti_stages = {
+        "inputs": 0.1,
+        "numerator": 0.5,
+        "scatter": 0.1,
+        "moments": 0.2,
+        "contraction": 0.05,
+        "glue": 0.05,
+        "untimed": 0.0,
+    }
+    nj_stages = {
+        "inputs": 0.1,
+        "numerator": 0.5,
+        "scatter": 0.1,
+        "ninjars": 0.6,
+        "masters": 0.2,
+        "glue": 0.05,
+        "untimed": 0.0,
+    }
+    acc = {
+        "points": 128,
+        "max_relative": 2e-3,
+        "lax": 1e-5,
+        "above": 3,
+        "worst": 2e-3,
+        "served_by": ["last resort"],
+        "failed": 0,
+        "failed_classes": [],
+        "note": True,
+    }
+    li_row = {
+        "key": "gg_hgg",
+        "math": "g g -> h g g",
+        "label": "g g > h g g",
+        "generation": {"status": "measured"},
+        "providers": {"status": "recorded", "fastest": {"key": "openloops"}},
+        "validation": {
+            "status": "partial",
+            "note": "li_gg_hgg: L3 partial (x); li_gg_hgg: L6 partial"
+            " (TIRust fails 2 of 3 binary64 points closed (typed))",
+        },
+        "timing": {
+            "status": "measured",
+            "unchecked": True,
+            "backend": "tirust",
+            "backend_label": "TIRust",
+            "seconds_per_point": 1.0,
+            "revision": "aaaaaaaa",
+            "stages": ti_stages,
+            "accuracy": acc,
+            "source": "test",
+            "gate": {
+                "status": "fail",
+                "ratio_to_limit": 1.2,
+                "backend_label": "TIRust",
+            },
+            "other_backend": {
+                "backend": "ninjars",
+                "backend_label": "NinjaRS per amplitude",
+                "status": "served",
+                "seconds_per_point": 2.5,
+                "stages": nj_stages,
+            },
+        },
+    }
+    untimed = {
+        "key": "li_x1",
+        "math": None,
+        "label": "EFT row",
+        "generation": {"status": "not timed", "reason": "execution check only"},
+        "timing": {"status": "not timed", "reason": "execution check only"},
+        "providers": {"status": "no reference"},
+        "validation": {"status": "pass"},
+    }
+    loop_induced = {
+        "groups": [
+            {"name": "2->3", "rows": [li_row]},
+            {"name": "EFT", "rows": [untimed]},
+        ]
+    }
+
+    def g1(key, math, gate=None, lc="measured"):
+        return {
+            "key": key,
+            "math": math,
+            "generation": {"main": {"status": "measured"}},
+            "leading_colour": {"main": {"status": lc, "reason": "refused by design"}},
+            "full_colour": {
+                "main": {"status": "measured", "gate": gate, "stages": nj_stages},
+                "gate_rule": "G1",
+            },
+        }
+
+    summary = {
+        "groups": [
+            {"name": "2->2", "rows": [g1("gg_gg", "g g -> g g")]},
+            {
+                "name": "2->3",
+                "rows": [
+                    g1(
+                        "gg_ggg",
+                        "g g -> g g g",
+                        {"status": "open", "ratio_to_limit": 1.0},
+                    ),
+                    g1("uux_ggg", "u overline(u) -> g g g", lc="not supported"),
+                ],
+            },
+        ]
+    }
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "lit.json").write_text(
+        json.dumps(
+            {
+                "rows": {
+                    "gg_hgg": {
+                        "runs": {
+                            "li_gg_hgg": {
+                                "L6": {
+                                    "double": {
+                                        "status": "partial",
+                                        "tirust_served": 1,
+                                        "of": 3,
+                                        "finite_max_relative": 3e-12,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "ids": {
+                    "LI-B1": {
+                        "status": "partial",
+                        "campaigns": {
+                            "m": {
+                                "rows": {
+                                    "A": {"status": "pass"},
+                                    "B": {"status": "partial"},
+                                    "C": {"status": "pass"},
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        )
+    )
+    table = builder.build_backend_table(summary, loop_induced, data=data)
+    (li,) = table["loop_induced"]["rows"]
+    assert li["ratio"] == 2.5 and li["tirust"]["accuracy"] == acc
+    assert (
+        li["tirust"]["stages"]["moments"] == 0.2
+        and "ninjars" in li["ninjars"]["stages"]
+    )
+    assert li["l6"]["runs"] == [
+        {
+            "run": "li_gg_hgg",
+            "status": "partial",
+            "tirust_served": 1,
+            "of": 3,
+            "finite_max_relative": 3e-12,
+        }
+    ]
+    assert table["loop_induced"]["not_unchecked"] == ["li_x1"]
+    born = table["born_interfered"]
+    assert [r["key"] for r in born["rows"]] == ["gg_ggg", "uux_ggg"]
+    assert born["l6"]["rows"] == {"pass": 2, "partial": 1} and not born["present"]
+    assert all(
+        r["tirust"]["status"] == r["ninjars"]["status"] == "not timed"
+        for r in born["rows"]
+    )
+    (data / "backends-born.json").write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "key": "gg_ggg",
+                        "backend": "tirust",
+                        "seconds_per_point": 0.01,
+                        "revision": "b" * 40,
+                        "stages_per_point": {
+                            "reduction": 0.004,
+                            "reduction: tensor moments": 0.003,
+                            "reduction: contraction": 0.0005,
+                            "dressing": 0.005,
+                        },
+                        "agreement": {"max_relative": 1e-12, "points": 128},
+                    },
+                    {
+                        "key": "gg_ggg",
+                        "backend": "ninjars",
+                        "seconds_per_point": 0.02,
+                        "revision": "b" * 40,
+                        "stages_per_point": {
+                            "reduction": 0.012,
+                            "reduction: masters": 0.002,
+                            "dressing": 0.005,
+                        },
+                    },
+                    {
+                        "key": "uux_ggg",
+                        "backend": "tirust",
+                        "missing": "outside the row budget",
+                    },
+                ]
+            }
+        )
+    )
+    born = builder.build_backend_table(summary, loop_induced, data=data)[
+        "born_interfered"
+    ]
+    ggg = born["rows"][0]
+    assert ggg["ratio"] == 2.0 and ggg["agreement"]["max_relative"] == 1e-12
+    assert ggg["tirust"]["stages"]["moments"] == 0.003
+    assert ggg["tirust"]["stages"]["glue"] == pytest.approx(0.0005)
+    assert ggg["ninjars"]["stages"]["ninjars"] == 0.01
+    assert born["rows"][1]["tirust"] == {
+        "status": "not run",
+        "reason": "outside the row budget",
+    }
+    missing = builder.build_missing(summary, loop_induced)
+    texts = {(e["table"], e["kind"], e["text"]): e for e in missing}
+    assert (
+        "1",
+        "no value",
+        "leading colour: not supported (refused by design)",
+    ) in texts
+    gate1 = texts[("1", "gate", "open")]
+    assert (
+        gate1["rows"] == ["g g -> g g g"] and gate1["dominant"][0]["stage"] == "ninjars"
+    )
+    gate2 = texts[("2", "gate", "fail on TIRust")]
+    assert gate2["ratio"] == [1.2] and gate2["dominant"][0]["stage"] == "numerator"
+    assert (
+        "2",
+        "validation",
+        "partial: L3, L6; TIRust fails 2 of 3 binary64 fixture points"
+        " closed (checked default; lit.json)",
+    ) in texts
+    assert (
+        "2",
+        "accuracy",
+        "TIRust unchecked: 3/128 points above 1e-05, worst 2.0e-03",
+    ) in texts
+    assert ("2", "no value", "not timed: execution check only") in texts
+    assert [e["table"] for e in missing] == sorted(e["table"] for e in missing)
+
+
+def test_report_builder_missing_box_labels_a_cross_backend_difference_once():
+    """A row without a 256-bit truth (lit-report R2) gives ONE labelled
+    Missing-box line for the two backends' difference, never an error line
+    per backend."""
+
+    builder = _report_builder()
+    cross = {
+        "points": 128,
+        "max_relative": 7e-2,
+        "lax": 1e-5,
+        "above": 23,
+        "worst": 7e-2,
+        "served_by": [],
+        "failed": None,
+        "not_compared": 0,
+        "failed_classes": [],
+        "note": True,
+        "cross_backend": True,
+        "truth_at_points": {
+            "points": [104, 107],
+            "tirust_max_relative": 1.3e-4,
+            "ninjars_max_relative": 7.6e-2,
+        },
+    }
+    row = {
+        "math": "g g -> a a g g",
+        "label": "li_gg_aagg",
+        "generation": {"status": "measured"},
+        "timing": {
+            "status": "measured",
+            "backend_label": "TIRust",
+            "accuracy": cross,
+            "other_backend": {"backend_label": "NinjaRS", "accuracy": dict(cross)},
+        },
+        "providers": {"status": "no reference"},
+        "validation": {"status": "pass"},
+    }
+    missing = builder.build_missing({"groups": []}, {"groups": [{"rows": [row]}]})
+    acc = [e for e in missing if e["kind"] == "accuracy"]
+    assert len(acc) == 1 and acc[0]["rows"] == ["g g -> a a g g"]
+    assert "cross-backend, not a truth" in acc[0]["text"]
+    assert "TIRust unchecked" not in acc[0]["text"]
+    assert acc[0]["text"].endswith(
+        "at its 2 largest-difference points against the 256-bit truth:"
+        " TIRust 1.3e-04, NinjaRS 7.6e-02"
+    )
+
+
+def test_report_builder_missing_box_other_cell_and_born_note():
+    """The Missing box names the other backend's cell without a value when
+    no accuracy line names its failures (g g > z z z z's NinjaRS), and a
+    Born-interfered TIRust-vs-NinjaRS difference above the lax precision
+    (Table 3), labelled cross-backend."""
+
+    builder = _report_builder()
+    row = {
+        "math": "g g -> z z z z",
+        "label": "li_gg_zzzz",
+        "generation": {"status": "measured"},
+        "timing": {
+            "status": "measured",
+            "backend_label": "TIRust",
+            "other_backend": {
+                "backend_label": "NinjaRS",
+                "status": "failed closed",
+                "label": "16/128 failed closed, lane status Unstable",
+                "accuracy": {
+                    "cross_backend": True,
+                    "note": False,
+                    "failed": None,
+                },
+            },
+        },
+        "providers": {"status": "no reference"},
+        "validation": {"status": "pass"},
+    }
+    born = {
+        "rows": [
+            {
+                "math": "g g -> g g g",
+                "agreement": {
+                    "max_relative": 2.1e-3,
+                    "points": 128,
+                    "lax": 1e-5,
+                    "note": True,
+                },
+            },
+            {
+                "math": "u u~ -> g g g",
+                "agreement": {
+                    "max_relative": 1.8e-9,
+                    "points": 128,
+                    "lax": 1e-5,
+                    "note": False,
+                },
+            },
+        ]
+    }
+    loop_induced = {
+        "groups": [{"rows": [row]}],
+        "backends": {"born_interfered": born},
+    }
+    missing = builder.build_missing({"groups": []}, loop_induced)
+    texts = {(e["table"], e["kind"], e["text"]): e["rows"] for e in missing}
+    other = "NinjaRS time: failed closed (16/128 failed closed, lane status Unstable)"
+    assert texts[("2", "no value", other)] == ["g g -> z z z z"]
+    born_lines = [e for e in missing if e["table"] == "3"]
+    assert len(born_lines) == 1 and born_lines[0]["rows"] == ["g g -> g g g"]
+    assert "cross-backend, not a truth" in born_lines[0]["text"]
+    assert "2.1e-03" in born_lines[0]["text"]
+
+
+def test_report_builder_accuracy_line_without_a_truth_is_the_labelled_cross_backend_difference():
+    """A row whose 256-bit truth is not obtainable within its row budget
+    (lit-report R2) carries the two backends' difference at the timed
+    points, labelled, with the 1e-5 note rule; a row with a truth keeps
+    the truth's line per backend."""
+
+    builder = _report_builder()
+    acc = {
+        "lax": 1e-5,
+        "rows": {
+            "li_gg_aagg": {
+                "points": 128,
+                "revision": "bbbbbbbb",
+                "cross_backend": {
+                    "points": 126,
+                    "failed": 2,
+                    "max_relative": 3e-5,
+                    "above_1e-5": 1,
+                    "reason": "256-bit truth 405 s per point",
+                },
+            },
+            "li_gg_hh": {
+                "points": 128,
+                "revision": "bbbbbbbb",
+                "tirust": {"max_relative": 1e-9, "above_1e-5": [], "failed": []},
+            },
+        },
+    }
+    for backend in ("tirust", "ninjars"):
+        line = builder._li_accuracy(acc, "li_gg_aagg", backend)
+        assert line["cross_backend"] and line["note"] and line["above"] == 1
+        assert line["worst"] == 3e-5 and line["not_compared"] == 2
+        assert line["failed"] is None
+        assert (
+            line["source"]
+            == "li-unchecked-accuracy.json rows[li_gg_aagg].cross_backend"
+        )
+    truth = builder._li_accuracy(acc, "li_gg_hh", "tirust")
+    assert truth["max_relative"] == 1e-9 and "cross_backend" not in truth
+    assert builder._li_accuracy(acc, "li_gg_hh", "ninjars") is None
+
+
 def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_provider():
     """Figure 1's loop-induced rows (USER 2026-11-07 ~10:40): every row of the
     loop-induced table with a batched pyAmpliCol time and a matched provider
@@ -2834,8 +3362,75 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
     assert json.loads(options.json.read_text())["protocol"] == "optimistic"
     assert seen["openloops"][-1] == seen["recola"][-1] == "optimistic"
     assert seen["madloop"][-1] == {"CTModeRun": "1", "MLReductionLib": "6|7|1"}
-    with pytest.raises(SystemExit, match="loop-induced rows"):
-        providers.main(types.SimpleNamespace(**{**vars(options), "process": "gg_ggg"}))
+    # Born-interfered rows (lit-report G5): the same settings; Recola, whose
+    # scale is the generation's, times the stream points at the first
+    # point's mu_R (their indices recorded); a production record of the
+    # same tool checks every provider's values at the timed points.
+    seen.clear()
+    born = types.SimpleNamespace(
+        **{**vars(options), "process": "gg_ggg", "points": 4, "madloop_param": []}
+    )
+
+    def recola(spec, points, *args):
+        seen["recola"] = (points, *args)
+        return {
+            "provider": "recola",
+            "mean_seconds_per_point": 1.0,
+            "rows": [{"finite": 2.0 + 1e-9}] * len(points["points"]),
+        }
+
+    def rows(name, values):
+        def run(*args):
+            seen[name] = args
+            return {
+                "provider": name,
+                "mean_seconds_per_point": 1.0,
+                "rows": [{"finite": v} for v in values],
+            }
+
+        return run
+
+    monkeypatch.setattr(providers, "recola", recola)
+    monkeypatch.setattr(providers, "openloops", rows("openloops", [1.0, 2.0, 3.0, 4.0]))
+    monkeypatch.setattr(providers, "madloop", rows("madloop", [1.0, 2.0, 3.0, 4.5]))
+    production = tmp_path / "production.json"
+    production.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    name: {"rows": [{"finite": v} for v in (2.0, 9.0, 9.0, 2.0)]}
+                    for name in ("recola", "openloops", "madloop")
+                }
+            }
+        )
+    )
+    born.production_json = production
+    born.json = tmp_path / "born.json"
+    assert providers.main(born) == 0
+    stream = streams.load("gg_ggg")
+    first = stream["mu_r"][0]
+    kept = [i for i in range(4) if stream["mu_r"][i] == first]
+    assert seen["recola"][0]["mu_r"] == [first] * len(kept)
+    assert seen["openloops"][-1] == "optimistic" and seen["recola"][-1] == "optimistic"
+    assert seen["madloop"][-1] == {"CTModeRun": "1"}
+    record = json.loads(born.json.read_text())["providers"]
+    assert record["recola"]["stream_points"] == kept == [0, 3]
+    assert record["recola"]["production_check"]["passed"]
+    assert record["recola"]["production_check"]["points"] == 2
+    assert not record["openloops"]["production_check"]["passed"]
+    assert record["madloop"]["production_check"]["max_relative"] == pytest.approx(7 / 9)
+    # The same through the command line (--production-json).
+    from tools.loop_benchmark.__main__ import main as cli
+
+    argv = ["providers", "gg_ggg", "--cpu", "0", "--points", "4"]
+    argv += ["--work", str(tmp_path / "cli"), "--protocol", "optimistic"]
+    argv += ["--production-json", str(production), "--json", str(tmp_path / "c.json")]
+    assert cli(argv) == 0
+    again = json.loads((tmp_path / "c.json").read_text())["providers"]
+    assert again["recola"]["production_check"] == record["recola"]["production_check"]
+    assert providers.same_scale(
+        {"points": [1, 2, 3], "mu_r": ["7", "5", "7"], "pdgs": []}
+    ) == ({"points": [1, 3], "mu_r": ["7", "7"], "pdgs": []}, [0, 2])
 
     # The Recola driver: dynamic settings and the per-point setters follow
     # the ``dynamic`` command (1, the production default, keeps them).
@@ -2872,6 +3467,27 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
         "source_flags": ["-O2"],
     }
     assert providers.cmake_build(tmp_path, root, "recola") is None
+
+
+def test_a_provider_subset_of_the_stream_keeps_its_stream_indices():
+    """lit-report G5: a provider timing a subset of the stream (Recola's
+    Born-interfered most optimistic arm, ``stream_points``) is compared with
+    pyAmpliCol and written to the values document at those stream points,
+    not at the first n."""
+
+    born = [{"born": 1.0, "finite": float(i), "seconds": 0.1} for i in (0, 3)]
+    record = {
+        "providers": {
+            "openloops": {"rows": [{"born": 1.0, "finite": 9.0}] * 2},
+            "madloop": {"rows": born, "stream_points": [0, 3]},
+        }
+    }
+    values = gate._provider_values("gg_ggg", record)
+    assert sorted(values["madloop"]) == [0, 3]
+    assert values["madloop"][3] == (1.0, 3.0)
+    assert sorted(values["openloops"]) == [0, 1]
+    assert list(gate.stream_indices({"rows": [{}, {}, {}]})) == [0, 1, 2]
+    assert gate.stream_indices({"rows": [{}], "stream_points": [5]}) == [5]
 
 
 def test_one_helicity_arms_select_one_row_for_one_call():
@@ -3208,3 +3824,78 @@ def test_blocks_without_their_core_are_left_out():
     assert marked["below_min_cpu_share"] == gate.MIN_CPU_SHARE
     del summary["cpu_share"]
     assert gate.valid_blocks(summary, gate.MIN_CPU_SHARE) is summary
+
+
+def test_report_builder_pairs_providers_of_a_row_without_a_fixture_record():
+    """lit-report: a loop-induced row whose providers were timed only in its
+    unchecked re-time unit (no lit-ref fixture timing record) takes the
+    paired times; each provider is matched when the row's lit.json validation
+    agrees with it within 1e-5, else shown unmatched with the reason."""
+
+    builder = _report_builder()
+    prov = {"status": "not run", "reason": "no record", "expected": ["ML", "OL", "Rc"]}
+    rec = {
+        "key": "gg_zz",
+        "backend": "tirust",
+        "revision": "524e6cfaa78c",
+        "host": "test host",
+        "providers": {
+            "times": {
+                "madloop": {"seconds_per_point": 3e-3, "rounds": [1, 2]},
+                "openloops": {"seconds_per_point": 2e-3, "rounds": [1, 2]},
+                "recola": {"seconds_per_point": 1e-3, "rounds": [1, 2]},
+            }
+        },
+    }
+    validation = {
+        "references": [
+            {"key": "madloop", "short": "ML", "max_relative": 1e-13},
+            {"key": "openloops", "short": "OL", "max_relative": 2e-4},
+        ]
+    }
+    out = builder._li_paired(prov, rec, validation)
+    assert out["status"] == "recorded" and out["paired"]
+    assert not out["providers"]["madloop"].get("match")
+    assert "2.0e-04" in out["providers"]["openloops"]["match"]
+    assert "no agreement" in out["providers"]["recola"]["match"]
+    # The fastest matched provider is MadLoop (the faster two are unmatched).
+    assert out["fastest"]["key"] == "madloop"
+    assert out["fastest_unmatched"]["key"] == "recola"
+    # A row with a fixture record keeps its entries' match status.
+    kept = builder._li_paired(
+        {"status": "recorded", "providers": {"recola": {"match": "x"}}}, rec, validation
+    )
+    assert kept["providers"]["recola"]["match"] == "x"
+
+
+def test_report_builder_states_the_unchecked_runs_host_state():
+    """lit-report: Table 2's provenance line carries the runs' concurrency,
+    load, MemAvailable, smallest median CPU share and the re-timed rows."""
+
+    builder = _report_builder()
+    state = {"loadavg": ["300.5", "1", "1"], "mem_available_gib": 250.0}
+    recs = [
+        {
+            "configuration": "unchecked",
+            "revision": "524e6cfaa78c",
+            "key": "a",
+            "concurrency": "40 rows in parallel units",
+            "host_state": {"start": state, "end": dict(state, loadavg=["350.0"])},
+            "cpu_share": {"min": 0.9, "median": 0.97},
+            "retimed": {"reason": "disturbed"},
+        },
+        {
+            "configuration": "unchecked",
+            "revision": "0000000",
+            "key": "b",
+            "host_state": {"start": dict(state, loadavg=["999"])},
+        },
+    ]
+    hs = builder._li_host_state({"records": recs}, {"524e6cfa"})
+    assert hs == {
+        "concurrency_max": 40,
+        "load_1min": [300.5, 350.0],
+        "mem_available_gib_min": 250.0,
+        "cpu_share_min": 0.97,
+        "re_timed": 1,
+    }

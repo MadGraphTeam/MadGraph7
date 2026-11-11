@@ -142,15 +142,66 @@ def test_the_stage_split_is_labelled_and_complete():
     }
     split = module._stage_split(stages, "tirust")
     assert split["label"] == "instrumented run: stage shares, not the timed call"
-    seconds = split["seconds_per_point"]
-    assert list(seconds) == [
-        "trees + CT kets",
-        "dressing",
-        "scatter",
-        "reduction",
-        "rest",
-    ]
-    assert seconds["rest"] == pytest.approx(0.1)
-    assert sum(seconds.values()) == pytest.approx(split["total"])
+    # The run's stages verbatim (the reduction with its backend's own
+    # sub-stages): the report groups them (build_summary.py _split).
+    per = stages["backend_runs"]["tirust"]["batches"]["128"]["stages_per_point"]
+    assert split["seconds_per_point"] == per
+    assert split["total"] == 1.0 and split["batch"] == 128
     assert module._stage_split(stages, "ninjars") is None
     assert module._stage_split(None, "tirust") is None
+    # The report's grouping of the record: TIRust's reduction as its tensor
+    # moments and contraction, the timer's rest outside them in glue.
+    import importlib.util
+
+    path = (
+        ROOT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
+    )
+    spec = importlib.util.spec_from_file_location("li_report_build_summary", path)
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    grouped = builder._li_stages({"stages": split})
+    assert grouped["inputs"] == 0.1 and grouped["numerator"] == 0.5
+    assert grouped["moments"] == 0.15 and grouped["contraction"] == 0.0
+    assert grouped["glue"] == pytest.approx(0.01 + 0.05)
+    assert "ninjars" not in grouped and "masters" not in grouped
+
+
+def test_cross_backend_agreement_and_born_records():
+    """The two backends' agreement at the timed points (finite part, the
+    largest over sectors, points either fails counted apart), and a
+    Born-interfered row's record for the backend table (lit-report R4)."""
+
+    import types
+
+    module = _module()
+    tirust = types.SimpleNamespace(
+        values=[[(2.0, 0, 0)], [(1.0, 0, 0), (4.0, 0, 0)], None]
+    )
+    ninjars = types.SimpleNamespace(
+        values=[[(2.0, 0, 0)], [(1.0, 0, 0), (4.4, 0, 0)], [(1.0, 0, 0)]]
+    )
+    cross = module.cross_backend(tirust, ninjars)
+    assert cross["points"] == 2 and cross["failed"] == 1
+    assert cross["max_relative"] == pytest.approx(0.4 / 4.4)
+    assert cross["above_1e-5"] == 1 and cross["per_point"][0] == 0.0
+    record = {
+        "key": "gg_ggg",
+        "process": "gg_ggg",
+        "revision": "b" * 40,
+        "backend": "tirust",
+        "batch": 128,
+        "seconds_per_point": 0.01,
+        "failed_points": [0],
+        "cross_backend": {k: v for k, v in cross.items() if k != "per_point"},
+    }
+    born = module._born_record(record)
+    assert born["seconds_per_point"] == 0.01 and "failed_points" not in born
+    assert born["agreement"] == {
+        "max_relative": cross["max_relative"],
+        "points": 2,
+        "metric": cross["metric"],
+    }
+    failed = dict(record, backend="ninjars", failed_points=[3])
+    del failed["seconds_per_point"]
+    failed = module._born_record(failed)
+    assert failed["failed_points"] == 3 and "agreement" not in failed
