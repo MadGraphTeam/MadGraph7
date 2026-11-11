@@ -1148,12 +1148,8 @@ def _default_lc_profile_selectors(
     color_flows = tuple(selected_color_ids)
     if physics.color_accuracy != "lc" or lc_flow_layout is None:
         return helicities or None, color_flows or None
-    complete_helicities = _is_complete_selector_set(
-        helicities, physics.helicity_ids
-    )
-    complete_color_flows = _is_complete_selector_set(
-        color_flows, physics.color_ids
-    )
+    complete_helicities = _is_complete_selector_set(helicities, physics.helicity_ids)
+    complete_color_flows = _is_complete_selector_set(color_flows, physics.color_ids)
     if lc_flow_layout == _LC_TOPOLOGY_REPLAY_LAYOUT:
         normalized_helicities = None if complete_helicities else helicities or None
         normalized_color_flows = (
@@ -2836,13 +2832,15 @@ def profile_virtual(
     config: RunConfig | BenchmarkConfig | None,
     *,
     points: Momenta | None = None,
+    reduction: str | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``). Settings: ``benchmark.batch_size``,
     ``warmup_runs`` and ``minimum_samples``; ``evaluation.process``,
     ``reduction``, ``reduction_target`` and ``reduction_unchecked`` when a path
     is loaded; ``evaluation.mu_r2`` (default: per point the squared
-    invariant mass of its initial state)."""
+    invariant mass of its initial state). ``reduction`` names the backend of
+    every profiled call (the runtime's otherwise)."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
@@ -2890,6 +2888,8 @@ def profile_virtual(
         else [_initial_invariant(point, initial) for point in batch]
     )
     options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    if reduction is not None:
+        options["reduction"] = reduction
     for _ in range(bench.warmup_runs):
         runtime.evaluate(batch, **options)
     walls: list[float] = []

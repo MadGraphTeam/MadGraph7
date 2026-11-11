@@ -1576,8 +1576,44 @@ class BenchmarkConfig:
     minimum_samples: int = field(default=5, metadata=_setting("int"))
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    # Loop artifacts (``pyamplicol profile --runtime / --stability``): what
+    # the profile measures (neither set: the runtime only) and the flat
+    # points of the stability statistics (their count, first seed, None:
+    # ``generation.validation.seed``, and centre-of-mass energy, None: the
+    # artifact's generation energy).
+    runtime: bool = field(default=False, metadata=_setting("bool"))
+    stability: bool = field(default=False, metadata=_setting("bool"))
+    stability_points: int = field(default=100, metadata=_setting("int"))
+    stability_seed: int | None = field(
+        default=None, metadata=_setting("int", nullable=True)
+    )
+    sqrt_s: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
 
     def __post_init__(self) -> None:
+        for name in ("runtime", "stability"):
+            if type(getattr(self, name)) is not bool:
+                raise ConfigurationError(f"benchmark.{name} must be a boolean")
+        object.__setattr__(
+            self,
+            "stability_points",
+            _integer(self.stability_points, "benchmark.stability_points"),
+        )
+        if self.stability_seed is not None:
+            object.__setattr__(
+                self,
+                "stability_seed",
+                _integer(self.stability_seed, "benchmark.stability_seed", minimum=0),
+            )
+        if self.sqrt_s is not None:
+            object.__setattr__(
+                self,
+                "sqrt_s",
+                _finite_float(
+                    self.sqrt_s, "benchmark.sqrt_s", minimum=0.0, exclusive=True
+                ),
+            )
         object.__setattr__(
             self,
             "target_runtime",

@@ -14,6 +14,8 @@ from pyamplicol.config import PoleSelection
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.models.base import CouplingOrders
 
+from . import palette
+
 
 def _order(order: CouplingOrders) -> str:
     return ", ".join(f"{name}^{power}" for name, power in order) or "1"
@@ -28,47 +30,90 @@ def _scalar(value: VirtualScalar | None) -> str:
     return str(value)
 
 
-def _estimate_row(estimate: Any) -> tuple[str, ...]:
+def _target(result: Any) -> float:
+    """The accuracy target the call's estimates are read against: the
+    reduction's recorded target, else the default target (1e-5)."""
+
+    for lane in result.diagnostics:
+        reduction = getattr(lane, "reduction", None)
+        if reduction is not None and reduction.target is not None:
+            return float(reduction.target)
+    from pyamplicol.loops.v2.reduction import default_target
+
+    return float(default_target())
+
+
+def _estimate_row(estimate: Any, target: float, color: bool) -> tuple[str, ...]:
     def text(value: float | None) -> str:
-        return "absent" if value is None else f"{value:.3e}"
+        if value is None:
+            return "absent"
+        return palette.within(value, target, color=color, text=f"{value:.3e}")
 
     return (
         text(estimate.relative),
         text(estimate.finite),
         text(estimate.single_pole),
         text(estimate.double_pole),
-        ", ".join(f"{name} {value:.2e}" for name, value in estimate.checks),
+        ", ".join(
+            f"{palette.paint(name, palette.ESTIMATE, color=color)} {value:.2e}"
+            for name, value in estimate.checks
+        ),
     )
 
 
-def _stability_table(result: Any, prettytable: Any) -> Any:
+def _axes(resolved: bool, color: bool, helicity: Any, component: Any) -> tuple:
+    if not resolved:
+        return ()
+    return (
+        palette.paint(helicity, palette.HELICITY, color=color),
+        palette.paint(component, palette.COMPONENT, color=color),
+    )
+
+
+def _stability_table(result: Any, prettytable: Any, color: bool = False) -> Any:
     """Per-point (resolved: per-entry) stability estimates, or None."""
 
     if result.stability is None:
         return None
     resolved = isinstance(result, ResolvedVirtualEvaluation)
     axes = ("helicity", "colour component") if resolved else ()
-    table = prettytable.PrettyTable(
-        ("point", *axes, "relative", "finite", "single pole", "double pole", "checks")
+    target = _target(result)
+    table = palette.table(
+        prettytable,
+        ("point", *axes, "relative", "finite", "single pole", "double pole", "checks"),
+        "Stability estimates (relative; requested checks only; green within "
+        f"the target {target:g}, red above)",
+        color=color,
     )
-    table.title = "Stability estimates (relative; requested checks only)"
-    table.align = "l"
-    table.hrules = prettytable.HRuleStyle.FRAME
     for point, estimate in enumerate(result.stability):
         if estimate is None:
-            table.add_row((point, *("",) * len(axes), "unavailable", "", "", "", ""))
+            table.add_row(
+                (
+                    point,
+                    *("",) * len(axes),
+                    palette.paint("unavailable", palette.BAD, color=color),
+                    "",
+                    "",
+                    "",
+                    "",
+                )
+            )
         elif resolved:
             for h, helicity in enumerate(result.helicity_ids):
                 for c, component in enumerate(result.virtual_color_ids):
                     table.add_row(
-                        (point, helicity, component, *_estimate_row(estimate[h][c]))
+                        (
+                            point,
+                            *_axes(True, color, helicity, component),
+                            *_estimate_row(estimate[h][c], target, color),
+                        )
                     )
         else:
-            table.add_row((point, *_estimate_row(estimate)))
+            table.add_row((point, *_estimate_row(estimate, target, color)))
     return table
 
 
-def _pole_parts_table(result: Any, prettytable: Any) -> Any:
+def _pole_parts_table(result: Any, prettytable: Any, color: bool = False) -> Any:
     """Both origins' pole parts per component (``poles`` "uv" or "ir"), or
     None; resolved results per helicity and colour component."""
 
@@ -77,7 +122,8 @@ def _pole_parts_table(result: Any, prettytable: Any) -> Any:
         return None
     resolved = isinstance(result, ResolvedVirtualEvaluation)
     axes = ("helicity", "colour component") if resolved else ()
-    table = prettytable.PrettyTable(
+    table = palette.table(
+        prettytable,
         (
             "point",
             "virtual squared order",
@@ -86,11 +132,10 @@ def _pole_parts_table(result: Any, prettytable: Any) -> Any:
             "component",
             "single pole [-1]",
             "double pole [-2]",
-        )
+        ),
+        "Pole parts by origin (P/eps = P_UV/eps_UV + P_IR/eps_IR)",
+        color=color,
     )
-    table.title = "Pole parts by origin (P/eps = P_UV/eps_UV + P_IR/eps_IR)"
-    table.align = "l"
-    table.hrules = prettytable.HRuleStyle.FRAME
 
     def entries(value: Any) -> Any:
         if not resolved:
@@ -98,11 +143,21 @@ def _pole_parts_table(result: Any, prettytable: Any) -> Any:
             return
         for h, helicity in enumerate(result.helicity_ids):
             for c, component in enumerate(result.virtual_color_ids):
-                yield (helicity, component), value[h][c]
+                yield _axes(True, color, helicity, component), value[h][c]
 
     for point, lane in enumerate(parts):
         if lane is None:
-            table.add_row((point, "", *("",) * len(axes), "", "", "unavailable", ""))
+            table.add_row(
+                (
+                    point,
+                    "",
+                    *("",) * len(axes),
+                    "",
+                    "",
+                    palette.paint("unavailable", palette.BAD, color=color),
+                    "",
+                )
+            )
             continue
         for index, sector in enumerate(result.sectors):
             for origin in ("uv", "ir"):
@@ -111,21 +166,70 @@ def _pole_parts_table(result: Any, prettytable: Any) -> Any:
                         table.add_row(
                             (
                                 point,
-                                _order(sector.order),
+                                palette.paint(
+                                    _order(sector.order), palette.ORDER, color=color
+                                ),
                                 *labels,
                                 origin,
                                 component,
-                                _scalar(laurent.single_pole),
-                                _scalar(laurent.double_pole),
+                                palette.paint(
+                                    _scalar(laurent.single_pole),
+                                    palette.SINGLE_POLE,
+                                    color=color,
+                                ),
+                                palette.paint(
+                                    _scalar(laurent.double_pole),
+                                    palette.DOUBLE_POLE,
+                                    color=color,
+                                ),
                             )
                         )
     return table
 
 
+def _laurent_cells(values: Any, color: bool) -> tuple[str, ...]:
+    """A Laurent triple's cells: the finite part, the single and the double
+    pole in their own colours (``unavailable`` in red for a failed lane)."""
+
+    if values is None:
+        return (palette.paint("unavailable", palette.BAD, color=color),) * 3
+    finite, single, double = map(_scalar, values)
+    return (
+        palette.paint(finite, palette.FINITE, color=color, bold=True),
+        palette.paint(single, palette.SINGLE_POLE, color=color),
+        palette.paint(double, palette.DOUBLE_POLE, color=color),
+    )
+
+
+def _reduction_text(reduction: Any, color: bool) -> str:
+    """The lane's effective reduction backend (coloured), with the requested
+    one when it differs and a per-point fallback in yellow."""
+
+    if reduction is None:
+        return ""
+    effective = str(reduction.effective)
+    text = palette.paint(
+        effective, palette.BACKEND.get(effective), color=color, bold=True
+    )
+    requested = str(reduction.requested)
+    if requested != effective:
+        note = f"requested {requested}"
+        if reduction.fallback is not None:
+            note += f", fallback {reduction.fallback}"
+        text += " (" + palette.paint(note, palette.RECOVERED, color=color) + ")"
+    if reduction.unchecked:
+        text += " " + palette.paint("unchecked", palette.RECOVERED, color=color)
+    return text
+
+
 def virtual_evaluation_summary(
-    result: VirtualEvaluation | ResolvedVirtualEvaluation, *, prettytable: Any
+    result: VirtualEvaluation | ResolvedVirtualEvaluation,
+    *,
+    prettytable: Any,
+    color: bool = False,
 ) -> str:
-    """Render all sectors, poles, pairing metadata and per-lane diagnostics."""
+    """Render all sectors, poles, pairing metadata and per-lane diagnostics
+    (coloured when ``color``: ``reporting.palette``)."""
     resolved = isinstance(result, ResolvedVirtualEvaluation)
     axes = (
         (
@@ -135,8 +239,15 @@ def virtual_evaluation_summary(
         if resolved
         else ()
     )
-    born = prettytable.PrettyTable(("point", "Born squared order", *axes, "Born"))
-    virtual = prettytable.PrettyTable(
+    loop_induced = getattr(result, "contribution", "virtual") == "loop-induced"
+    born = palette.table(
+        prettytable,
+        ("point", "Born squared order", *axes, "Born"),
+        "Born contributions",
+        color=color,
+    )
+    virtual = palette.table(
+        prettytable,
         (
             "point",
             "virtual squared order",
@@ -144,21 +255,39 @@ def virtual_evaluation_summary(
             "finite [0]",
             "single pole [-1]",
             "double pole [-2]",
-        )
+        ),
+        "|A_loop|^2 (loop-induced)" if loop_induced else "Born-loop interference",
+        color=color,
     )
-    pairs = prettytable.PrettyTable(("virtual squared order", "Born x loop orders"))
-    status = prettytable.PrettyTable(
-        ("point", "status", "arithmetic", "bits", "accuracy established", "detail")
+    pairs = palette.table(
+        prettytable,
+        ("virtual squared order", "Born x loop orders"),
+        "Contributing order pairs",
+        color=color,
     )
-    for table, title in (
-        (born, "Born contributions"),
-        (virtual, "Born-loop interference"),
-        (pairs, "Contributing order pairs"),
-        (status, "Evaluation diagnostics"),
-    ):
-        table.title = title
-        table.align = "l"
-        table.hrules = prettytable.HRuleStyle.FRAME
+    status = palette.table(
+        prettytable,
+        (
+            "point",
+            "status",
+            "arithmetic",
+            "bits",
+            "reduction",
+            "accuracy established",
+            "detail",
+        ),
+        "Evaluation diagnostics",
+        color=color,
+    )
+
+    def order_cell(order: CouplingOrders) -> str:
+        return palette.paint(_order(order), palette.ORDER, color=color)
+
+    def born_cell(value: Any) -> str:
+        if value is None:
+            return palette.paint("unavailable", palette.BAD, color=color)
+        return palette.paint(_scalar(value), palette.BORN, color=color)
+
     if isinstance(result, ResolvedVirtualEvaluation):
         for point, row in enumerate(result.born_values):
             for order_index, order in enumerate(result.born_orders):
@@ -167,30 +296,28 @@ def virtual_evaluation_summary(
                         born.add_row(
                             (
                                 point,
-                                _order(order),
-                                helicity,
-                                component,
-                                "unavailable"
-                                if row is None
-                                else _scalar(row[order_index][h][c]),
+                                order_cell(order),
+                                *_axes(True, color, helicity, component),
+                                born_cell(
+                                    None if row is None else row[order_index][h][c]
+                                ),
                             )
                         )
         for point, virtual_row in enumerate(result.values):
             for order_index, sector in enumerate(result.sectors):
                 for h, helicity in enumerate(result.helicity_ids):
                     for c, component in enumerate(result.virtual_color_ids):
-                        coefficients = (
-                            ("unavailable",) * 3
-                            if virtual_row is None
-                            else tuple(map(_scalar, virtual_row[order_index][h][c]))
-                        )
                         virtual.add_row(
                             (
                                 point,
-                                _order(sector.order),
-                                helicity,
-                                component,
-                                *coefficients,
+                                order_cell(sector.order),
+                                *_axes(True, color, helicity, component),
+                                *_laurent_cells(
+                                    None
+                                    if virtual_row is None
+                                    else virtual_row[order_index][h][c],
+                                    color,
+                                ),
                             )
                         )
     else:
@@ -199,24 +326,30 @@ def virtual_evaluation_summary(
                 born.add_row(
                     (
                         point,
-                        _order(order),
-                        "unavailable"
-                        if inclusive_row is None
-                        else _scalar(inclusive_row[index]),
+                        order_cell(order),
+                        born_cell(
+                            None if inclusive_row is None else inclusive_row[index]
+                        ),
                     )
                 )
         for point, inclusive_virtual_row in enumerate(result.values):
             for index, sector in enumerate(result.sectors):
-                coefficients = (
-                    ("unavailable",) * 3
-                    if inclusive_virtual_row is None
-                    else tuple(map(_scalar, inclusive_virtual_row[index]))
+                virtual.add_row(
+                    (
+                        point,
+                        order_cell(sector.order),
+                        *_laurent_cells(
+                            None
+                            if inclusive_virtual_row is None
+                            else inclusive_virtual_row[index],
+                            color,
+                        ),
+                    )
                 )
-                virtual.add_row((point, _order(sector.order), *coefficients))
     for sector in result.sectors:
         pairs.add_row(
             (
-                _order(sector.order),
+                order_cell(sector.order),
                 "; ".join(
                     f"({_order(pair.born)}) x ({_order(pair.loop)})"
                     for pair in sector.pairs
@@ -227,16 +360,37 @@ def virtual_evaluation_summary(
         status.add_row(
             (
                 point,
-                item.status,
-                item.arithmetic,
+                palette.paint(
+                    item.status,
+                    palette.STATUS.get(item.status),
+                    color=color,
+                    bold=True,
+                ),
+                palette.paint(
+                    item.arithmetic,
+                    palette.ARITHMETIC.get(item.arithmetic),
+                    color=color,
+                ),
                 item.precision_bits,
-                "yes" if item.accuracy_established else "no",
+                _reduction_text(getattr(item, "reduction", None), color),
+                palette.paint(
+                    "yes" if item.accuracy_established else "no",
+                    palette.GOOD if item.accuracy_established else palette.MUTED,
+                    color=color,
+                ),
                 item.detail,
             )
         )
     header = (
-        "Virtual coefficients: Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon); "
-        "epsilon powers (0, -1, -2); "
+        palette.paint("Virtual coefficients", palette.TITLE, color=color, bold=True)
+        + ": Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon); "
+        "epsilon powers ("
+        + palette.paint("0", palette.FINITE, color=color)
+        + ", "
+        + palette.paint("-1", palette.SINGLE_POLE, color=color)
+        + ", "
+        + palette.paint("-2", palette.DOUBLE_POLE, color=color)
+        + "); "
         f"colour accuracy={result.color_accuracy.upper()}.\n"
         f"R2 requested={result.r2.requested.value}; "
         f"effective={result.r2.effective.value}; "
@@ -264,47 +418,51 @@ def virtual_evaluation_summary(
             "\nPoles: the infrared poles of the renormalised virtual (the "
             "double pole is infrared); both origins' parts per component follow."
         )
-    tables = [born, virtual, pairs, status]
-    parts = _pole_parts_table(result, prettytable)
+    # A loop-induced result has no Born: its Born table would stay empty.
+    tables = [virtual, pairs, status]
+    if not loop_induced:
+        tables.insert(0, born)
+    parts = _pole_parts_table(result, prettytable, color)
     if parts is not None:
         tables.append(parts)
-    stability = _stability_table(result, prettytable)
+    stability = _stability_table(result, prettytable, color)
     if stability is not None:
         tables.append(stability)
     return "\n\n".join((header, *(str(table.get_string()) for table in tables)))
 
 
-def virtual_order_summary(result: Any, *, prettytable: Any) -> str:
+def virtual_order_summary(result: Any, *, prettytable: Any, color: bool = False) -> str:
     """A ``VirtualOrderEvaluation``: the evaluation's tables (every sector
     and Born order apart) followed by the explicit sums over the squared
     orders, labelled as such."""
 
-    table = prettytable.PrettyTable(
+    table = palette.table(
+        prettytable,
         (
             "point",
             "Born summed over orders",
             "finite [0]",
             "single pole [-1]",
             "double pole [-2]",
-        )
+        ),
+        "Explicit sums over the squared coupling orders (sum_orders)",
+        color=color,
     )
-    table.title = "Explicit sums over the squared coupling orders (sum_orders)"
-    table.align = "l"
-    table.hrules = prettytable.HRuleStyle.FRAME
     born = result.sum_born_orders()
     for point, laurent in enumerate(result.sum_orders()):
-        coefficients = (
-            ("unavailable",) * 3 if laurent is None else tuple(map(_scalar, laurent))
-        )
         table.add_row(
             (
                 point,
-                "unavailable" if born[point] is None else _scalar(born[point]),
-                *coefficients,
+                palette.paint("unavailable", palette.BAD, color=color)
+                if born[point] is None
+                else palette.paint(_scalar(born[point]), palette.BORN, color=color),
+                *_laurent_cells(laurent, color),
             )
         )
     return (
-        virtual_evaluation_summary(result.evaluation, prettytable=prettytable)
+        virtual_evaluation_summary(
+            result.evaluation, prettytable=prettytable, color=color
+        )
         + "\n\n"
         + str(table.get_string())
     )
