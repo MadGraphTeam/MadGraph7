@@ -1,0 +1,10 @@
+{
+  "cards": {
+    "Cards/MadLoopParams.dat": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+    "SubProcesses/MadLoop5_resources/MadLoopParams.dat": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+    "SubProcesses/MadLoopParams.dat": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+    "SubProcesses/P0_uux_z/MadLoop5_resources/MadLoopParams.dat": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+  },
+  "executable_sha256": "5d3fce9280e78406f5b469c8a61595efe5c5c587d0b9b34ba924e6a7689d7dcd",
+  "physical_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+}

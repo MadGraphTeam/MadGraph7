@@ -1,0 +1,10 @@
+{
+  "command": ["/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3", "-B", "-m", "unittest", "discover", "-s", ".tirust-build/fortran-tirust-interface-o3-proposal-2", "-p", "test_*.py"],
+  "status": "passed",
+  "tests": 60,
+  "skipped": 0,
+  "compiler_invocations": 0,
+  "loader_queries": 0,
+  "native_scientific_evaluations": 0,
+  "scope": "Original pure driver/parser/policy/admission suite, source1 preservation, assembled subprocess-blocked preflight, own-accuracy-only drift acceptance/reporting, coefficient/status rejection and fixed15-call DP anchor planning. No O3 native stage has been admitted."
+}

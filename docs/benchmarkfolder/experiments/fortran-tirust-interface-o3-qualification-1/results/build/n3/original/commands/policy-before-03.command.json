@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "make",
+    "--no-print-directory",
+    "--dry-run",
+    "--always-make",
+    "couplings.o",
+    "couplings1.o",
+    "couplings2.o",
+    "couplings3.o",
+    "flavor_couplings.o",
+    "get_color.o",
+    "lha_read.o",
+    "model_functions.o",
+    "mp_couplings1.o",
+    "mp_couplings2.o",
+    "mp_couplings3.o",
+    "printout.o",
+    "rw_para.o",
+    "testprog.o"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-tirust-interface-o3-work-2/build/n3/original/Source/MODEL",
+  "scope": "compiler-policy helper; make-internal child queries are not individually recorded"
+}

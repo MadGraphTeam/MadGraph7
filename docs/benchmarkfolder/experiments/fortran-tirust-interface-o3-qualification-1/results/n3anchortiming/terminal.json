@@ -1,0 +1,49 @@
+{
+  "cap_seconds": 600.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 3,
+        "process_group": 3,
+        "session": 3,
+        "start_time_ticks": 244455448,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 5,
+        "process_group": 5,
+        "session": 5,
+        "start_time_ticks": 244458632,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3,
+        "pid": 8,
+        "process_group": 8,
+        "session": 8,
+        "start_time_ticks": 244474340,
+        "state": "S"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2445152.840586395,
+  "pid": 3,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "result_sha256": "c5585510d4128f15562a36bbdcf8fa96f73d19a34e96cf89a53d7040c82b7d8e",
+  "returncode": 0,
+  "source_index_sha256": "83721ec7d56313807d5ba2a282411b2ea2623ed0810158bed8a0b0b108afcb0b",
+  "stage": "n3anchortiming",
+  "status": "passed"
+}

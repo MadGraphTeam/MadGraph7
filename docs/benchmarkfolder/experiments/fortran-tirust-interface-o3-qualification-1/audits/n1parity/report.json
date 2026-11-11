@@ -1,0 +1,55 @@
+{
+  "QP_qualified": false,
+  "blocking_defects": [],
+  "build_audit_sha256": "cb7c42ef8db9195fdfa06af9b212db6d459bc767e2ac3f4d083a0491c1195b08",
+  "build_terminal_sha256": "29dabbb9f0ab7f8e8eebdba6e56dca095b6fcc630dd561cd90f81d7accd56502",
+  "candidate_promoted": false,
+  "closed_cleanup_survivors": [],
+  "compiler_invocations_by_auditor": 0,
+  "crossvariant_accuracy_word_differences": 0,
+  "crossvariant_coefficient_word_differences": 0,
+  "hard_ordinary_tolerance": 1e-08,
+  "lanes": {
+    "candidate": {
+      "IEEE_observations": 200,
+      "historical_scientific_gate_passed": true,
+      "learning_raw_bytes_equal": true,
+      "raw_word_rows": 200,
+      "sources_objects_cards_executable_maps_verified": true,
+      "status_counts": {
+        "219": 100
+      },
+      "steady_learning_points": 100
+    },
+    "original": {
+      "IEEE_observations": 200,
+      "historical_scientific_gate_passed": true,
+      "learning_raw_bytes_equal": true,
+      "raw_word_rows": 200,
+      "sources_objects_cards_executable_maps_verified": true,
+      "status_counts": {
+        "219": 100
+      },
+      "steady_learning_points": 100
+    }
+  },
+  "limitations": [
+    "This ordinary n1 cohort is DP only; mandatory n3 automatic-QP full100 qualification remains separate.",
+    "IEEE pre/post sticky-state equality is observational, not trap-freedom or newly-raised-exception proof.",
+    "No warmed timing or performance benefit is qualified by this parity stage.",
+    "Cleanup proof is confined to retained observed descendants with matching process-start/session identities."
+  ],
+  "loader_queries_by_auditor": 0,
+  "maximum_coefficient_residual": 0,
+  "n1parity_result_sha256": "d87ce9312707595382a27846f694031c3cde9086c2b23d23420fcbd87cdbd8e9",
+  "n1parity_terminal_sha256": "558849b4ce6eb99da75c36d613c9828b4a5b96ecbec88e35109ee1a4dab69a1f",
+  "native_numerical_evaluations_by_auditor": 0,
+  "performance_acceptance": false,
+  "recorded_runtime_loader_queries": 4,
+  "regression_tolerance": 3e-06,
+  "schema": "independent-o3-source2-n1parity-pure-audit-v1",
+  "scope": "Closed N1PARITY only; current later-stage state is outside this audit.",
+  "source_index_sha256": "83721ec7d56313807d5ba2a282411b2ea2623ed0810158bed8a0b0b108afcb0b",
+  "status": "PASS",
+  "strict_IEEE_observations_equal": true
+}

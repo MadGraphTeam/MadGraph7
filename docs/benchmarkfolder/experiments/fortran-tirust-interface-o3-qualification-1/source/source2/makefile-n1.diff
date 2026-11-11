@@ -1,0 +1,8 @@
+--- original/n1/makefile
++++ candidate/n1/makefile
+@@ -224,4 +224,4 @@
+ 
+ # Private controlled experiment: only this source receives additional flags.
+ TIRUST_interface.o: TIRUST_interface.f $(POLYNOMIAL) $(OLP_POLYNOMIAL)
+-	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
++	$(FC) $(FFLAGS) -O3 -fno-fast-math -c $< -o $@ $(LOOP_INCLUDE)

@@ -248,6 +248,19 @@ controlled compiler experiment. It establishes no optimization gain, current
 NinjaRS comparison or local performance acceptance. Portable replay preserves
 the initial missing-tool build failure and all subsequent qualification records.
 
+The subsequent [strict wrapper compiler experiment](experiments/fortran-tirust-interface-o3-qualification-1/README.md)
+changes only `TIRUST_interface.f` to add `-O3 -fno-fast-math` in private builds.
+All coefficient, accuracy, status and observed IEEE words match on the full100
+small-process cohort and the full100 `u u~ > z g g` cohort, including its 13
+automatic-QP points. Seven paired timings give candidate/original medians
+`0.988074` for the small process, `1.008736` for the three-particle DP anchor and
+`1.002603` for its automatic-QP anchor. These shared-host samples show no
+consistent overall benefit. The 179,424 timed calls and all raw comparisons are
+retained; the three-particle measurements time anchors, not its full cohort.
+The compiler change remains unpromoted. Prospective makefile patches remain
+unapplied, and build registration, formal compiler-policy compatibility and
+broader qualification remain open. Default flags and the frozen PDF are unchanged.
+
 The experimental adaptive-precision bridge is an isolated development build,
 not a private repository or the installed backend used in this campaign. It
 tries 256-bit MPFR first and retries an eligible conditioning refusal once at
