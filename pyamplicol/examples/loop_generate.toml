@@ -60,8 +60,10 @@ warmup_runs = 1
 minimum_samples = 3
 # profile --stability (profile --runtime --stability for both): the flat
 # points of the stability statistics, drawn as [evaluation.phase_space] sets.
-# Few, as the cost per point depends on the process (two binary64 and two
-# double-double calls per point and backend: about 0.4 s for u u~ > d d~ at
-# one loop, up to about 30 s for NinjaRS on a 2 -> 3 loop-induced process);
-# two is the fewest with a median row. Raise with --stability-points.
-stability_points = 2
+# Ten, so that --stability takes about ten seconds for the entry above (about
+# 1 s per point for both backends together: two binary64 and two
+# double-double calls per point and backend) and the 10 % class holds a
+# point. The cost per point depends on the process (up to about 30 s for
+# NinjaRS's double-double reference of a 2 -> 3 loop-induced process): lower
+# it for heavier processes, raise it with --stability-points for tails.
+stability_points = 10
