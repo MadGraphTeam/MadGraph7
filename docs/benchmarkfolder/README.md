@@ -187,6 +187,17 @@ Scale construction also differs: TIRust uses `REAL(MU_R,QP)**2`, whereas NinjaRS
 uses `REAL(MU_R**2,QP)`. Native scalar inputs across adapters are therefore not
 claimed bit-identical; the retained backend-8 scale discrepancy stays explicit.
 
+A [closed ordinary-QP transport profile](experiments/fortran-qp-transport-profile-qualification-1/README.md)
+retains three fresh workers, each with the unchanged 100-point learning traversal
+and the same DP and automatically rescued QP anchors. All coefficient, status,
+accuracy and observed IEEE state words agree. At the QP anchor, native reduction
+occupies 92.33% and output decoding plus mapping 5.32% of the recorded sequential
+QP intervals; this excludes host/numerator work and is not a full-amplitude timing.
+Seven exact primary QP repeats already hit the native cache. These observations
+establish neither a new optimization nor performance acceptance. The portable
+file-only verifier reproduces all three modes and preserves both preparation
+failures separately.
+
 The experimental adaptive-precision bridge is an isolated development build,
 not a private repository or the installed backend used in this campaign. It
 tries 256-bit MPFR first and retries an eligible conditioning refusal once at
