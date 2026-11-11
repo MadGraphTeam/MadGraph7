@@ -468,6 +468,19 @@ in presence of majorana particle/flow violation"""
                 elif propa in [[],['1D']]:
                     massless = False
                     self.denominator = None
+                elif aloha.unitary_gauge == 3 and spin in [1, 3] and \
+                        aloha_writers.fd_polarized_propagator(propa) is not None:
+                    # FD gauge, polarised propagator of a massive vector (and
+                    # of its Goldstone boson, the fifth component of the same
+                    # line): the ordinary FD wavefunction is built here, and
+                    # the writer projects it on the requested piece instead of
+                    # applying the full FD projector
+                    # (aloha_writers.FD_POLARIZED_PROPAGATORS).
+                    if aloha.complex_mass:
+                        raise ALOHAERROR('Polarised propagators are not '
+                                 'supported in the complex-mass scheme.')
+                    massless = False
+                    self.denominator = None
                 else:
                     if '1D' in propa:
                         lorentz *= self.get_custom_propa('1D', spin, id)

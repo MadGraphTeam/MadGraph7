@@ -232,7 +232,9 @@ class MatrixElementEvaluator(object):
                 if pdg in sub_ids:
                     return list(sub_ids).index(pdg) + 1
             return 1
-        legs = process.get('legs')
+        # a decay-chain matrix element is evaluated on all its external legs
+        legs = process.get_legs_with_decays() if process.get('decay_chains') \
+               else process.get('legs')
         flavor = [_flavor_group_pos(leg) for leg in legs]
 
         if "matrix_elements" not in self.stored_quantities:

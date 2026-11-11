@@ -468,6 +468,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         out = StringIO()
         w = self.outname
+        pol = self.fd_polarization()
+        if pol is not None:
+            out.write(self.get_fd_polarized_propagator_txt(pol))
+            return out.getvalue()
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
         out.write('    const cxtype_sv FDJS1 = ( %s ) / FDNQ;\n' %
                   ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
@@ -476,6 +480,67 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         for i in range(size):
             out.write('    %(w)s[%(i)d] = %(w)s[%(i)d] - FDQ[%(i)d] * FDJS1 - FDN[%(i)d] * FDJS2;\n'
                       % {'w': w, 'i': i})
+        return out.getvalue()
+
+    def get_fd_polarized_propagator_txt(self, pol):
+        """FD gauge, polarised propagator: the wavefunction built with the
+        ordinary FD numerator is projected on one piece of it instead of the
+        full projector (aloha_writers.FD_POLARIZED_PROPAGATORS, and
+        fd_polarized_propagator in aloha_functions_fd.f for the formulas):
+        eps0 (eps0*.w) for {0}, the transverse components (and their helicity
+        projections) for {T}/{+}/{-}, -(q^2-M^2) n (n.w)/(n.q)^2 for {A},
+        the same with q^2-M^2+iM*Gamma for {S}. The unit vector along the
+        momentum is -n (n = (+-1, -q/|q|))."""
+
+        out = StringIO()
+        w = self.outname
+        m = 'M%s' % self.outgoing
+        width = 'W%s' % self.outgoing
+        nw = ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4))
+        out.write('    const cxtype_sv FDI = cxmake( fptype_sv{ 0 }, fptype_sv{ 0 } + 1. );\n')
+        out.write('    const cxtype_sv FDNW = %s;\n' % nw)
+        if pol in (1, 2, 3):
+            out.write('    const cxtype_sv FDNV = %s;\n' % ' + '.join(
+                'FDN[%d] * %s[%d]' % (i, w, i) for i in (1, 2, 3)))
+            for i in (1, 2, 3):
+                out.write('    const cxtype_sv FDT%d = %s[%d] - FDN[%d] * FDNV;\n'
+                          % (i, w, i, i))
+            if pol != 1:
+                # (n x w), n being minus the unit vector along the momentum
+                for i, j, k in ((1, 2, 3), (2, 3, 1), (3, 1, 2)):
+                    out.write('    const cxtype_sv FDX%d = FDN[%d] * %s[%d] - FDN[%d] * %s[%d];\n'
+                              % (i, j, w, k, k, w, j))
+            out.write('    %s[0] = cxzero_sv();\n' % w)
+            for i in (1, 2, 3):
+                if pol == 1:
+                    out.write('    %s[%d] = FDT%d;\n' % (w, i, i))
+                else:
+                    # helicity +1: (T - i qh x w)/2 = (T + i n x w)/2
+                    out.write('    %s[%d] = ( FDT%d %s FDI * FDX%d ) * ( fptype_sv{ 0 } + 0.5 );\n'
+                              % (w, i, i, '+' if pol == 2 else '-', i))
+            out.write('    %s[4] = cxzero_sv();\n' % w)
+            return out.getvalue()
+        terms = []
+        if pol in (0, 6):
+            out.write('    const cxtype_sv FDC = FDNW * ( %s / FDNQ ) - FDI * %s[4];\n' % (m, w))
+            terms.append('( FDN[%%(i)d] * ( -%s / FDNQ ) ) * FDC' % m)
+        if pol == 4:
+            out.write('    const fptype_sv FDQ2 = %s;\n' % ' - '.join(
+                'FDQ[%d].real() * FDQ[%d].real()' % (i, i) for i in range(4)))
+            out.write('    const fptype_sv FDA = ( %s * %s - FDQ2 ) / ( FDNQ * FDNQ );\n' % (m, m))
+            terms.append('( FDN[%(i)d] * FDA ) * FDNW')
+        if pol in (5, 6):
+            out.write('    const fptype_sv FDQ2 = %s;\n' % ' - '.join(
+                'FDQ[%d].real() * FDQ[%d].real()' % (i, i) for i in range(4)))
+            out.write('    const cxtype_sv FDS = cxmake( ( %s * %s - FDQ2 ) / ( FDNQ * FDNQ ), '
+                      '-%s * %s / ( FDNQ * FDNQ ) );\n' % (m, m, m, width))
+            terms.append('( FDN[%(i)d] * FDNW ) * FDS')
+        for i in range(4):
+            out.write('    %s[%d] = %s;\n' % (w, i, ' + '.join(t % {'i': i} for t in terms)))
+        if pol in (0, 6):
+            out.write('    %s[4] = FDI * FDC;\n' % w)
+        else:
+            out.write('    %s[4] = cxzero_sv();\n' % w)
         return out.getvalue()
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting, add delayed declaration with initialisation)

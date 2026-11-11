@@ -25,6 +25,39 @@ import itertools
 KERNEL = aloha_lib.KERNEL
 pjoin = os.path.join
 
+# FD gauge: the polarised propagators of a massive vector. In that gauge the
+# propagator numerator of the five-component field (vector + Goldstone boson)
+#     N = -g5 + (q n + n q*)/(n.q),  q = (q^mu, -iM),  n = (sign q0, -q/|q|, 0)
+# splits exactly, on or off shell, into
+#     N = sum_{T} eps eps* + eps0 eps0* + (q^2 - M^2) n n/(n.q)^2
+# with eps0 = (-M n/(n.q), i) the FD longitudinal polarisation vector (the one
+# of the external vfdxxxx), the transverse vectors being the unitary-gauge ones
+# (no fifth component). The routine builds the ordinary FD wavefunction and the
+# full FD projector is replaced by the projection on one of these pieces. The
+# value is the code passed to the projection routine of each language
+# (fd_polarized_propagator in aloha_functions_fd.f, aloha_aux_functions.fd_cc,
+# wavefunctions.py; inlined for madmatrix). {S} is {A} with its factor
+# (q^2-M^2)/(q^2-M^2+iM*Gamma) replaced by 1, as in the unitary gauge.
+FD_POLARIZED_PROPAGATORS = {'1L': 0,    # {0}  eps0 eps0*
+                            '1T': 1,    # {T}  transverse
+                            '1TR': 2,   # {+}  helicity +1
+                            '1TL': 3,   # {-}  helicity -1
+                            '1A': 4,    # {A}  (q^2-M^2) n n/(n.q)^2
+                            '1S': 5,    # {S}  (q^2-M^2+iM*Gamma) n n/(n.q)^2
+                            '1LS': 6,   # {0S} {0} + {S}
+                            }
+
+
+def fd_polarized_propagator(propa):
+    """The FD_POLARIZED_PROPAGATORS code of a list of propagator tags (the
+    'P' tags without their 'P', e.g. ['1L'] or ['1L', '1D']), or None when
+    it is not a polarised propagator handled in the FD gauge."""
+    tags = [p for p in propa if p != '1D']
+    if len(tags) == 1 and tags[0] in FD_POLARIZED_PROPAGATORS:
+        return FD_POLARIZED_PROPAGATORS[tags[0]]
+    return None
+
+
 class WriteALOHA: 
     """ Generic writing functions """ 
     
@@ -206,6 +239,15 @@ class WriteALOHA:
         if aloha.unitary_gauge != 3 or not self.offshell or 'P1N' in self.tag:
             return False
         return self.particles[self.outgoing-1].startswith(('V','S'))
+
+    def fd_polarization(self):
+        """FD gauge: the FD_POLARIZED_PROPAGATORS code of this routine, when
+        its outgoing line is a polarised propagator, None otherwise."""
+
+        if not self.has_fd_propagator():
+            return None
+        return fd_polarized_propagator(
+                           [t[1:] for t in self.tag if t.startswith('P')])
 
     def rename_wf(self, name):
         """Name under which a wavefunction is written. It is its own name
@@ -1172,6 +1214,13 @@ class ALOHAWriterForFortran(WriteALOHA):
 
         out = StringIO()
         outname = self.outname
+        pol = self.fd_polarization()
+        if pol is not None:
+            # polarised propagator: projection on one piece of the FD
+            # numerator, done by the library (aloha_functions_fd.f)
+            out.write('    CALL FD_POLARIZED_PROPAGATOR(%s, M%s, W%s, %d)\n'
+                      % (outname, self.outgoing, self.outgoing, pol))
+            return out.getvalue()
         # number of Lorentz components of the outgoing wavefunction: in FD
         # gauge a vector and its Goldstone share the same 5 slots
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
@@ -1191,6 +1240,9 @@ class ALOHAWriterForFortran(WriteALOHA):
         """Variables of the inlined FD gauge propagator factor. The mass it
         needs is already an argument of any offshell routine."""
 
+        if self.fd_polarization() is not None:
+            # a polarised propagator calls the library (get_fd_propagator_txt)
+            return
         self.declaration.add(('list_complex', 'FDQ'))
         self.declaration.add(('list_double', 'FDN'))
         self.declaration.add(('double', 'FDNQ'))
@@ -2099,8 +2151,13 @@ class ALOHAWriterForCPP(WriteALOHA):
             if self.outgoing and 'P1N' not in self.tag:
                 name = self.particles[self.outgoing-1]
                 if name.startswith(('V', 'S')):
-                    text += '    multiply_propagator_factor(%(name)s%(i)s, M%(i)s, %(name)s%(i)s);\n' % \
-                            {'name': name, 'i': self.outgoing}
+                    pol = self.fd_polarization()
+                    if pol is not None:
+                        text += '    fd_polarized_propagator(%(name)s%(i)s, M%(i)s, W%(i)s, %(pol)d);\n' % \
+                                {'name': name, 'i': self.outgoing, 'pol': pol}
+                    else:
+                        text += '    multiply_propagator_factor(%(name)s%(i)s, M%(i)s, %(name)s%(i)s);\n' % \
+                                {'name': name, 'i': self.outgoing}
         return text + '}\n'
 
     def get_momenta_txt(self):
@@ -3036,6 +3093,10 @@ class ALOHAWriterForPython(WriteALOHA):
         elif not combine and aloha.unitary_gauge == 3 and \
              self.outname.startswith(('V','S')) and \
              'P1N' not in self.tag:
+            pol = self.fd_polarization()
+            if pol is not None:
+                return '    %(out)s = wavefunctions.fd_polarized_propagator(%(out)s, M%(num)s, W%(num)s, %(pol)d)\n    return %(out)s\n\n' % \
+                       {'out': self.outname, 'num': self.outgoing, 'pol': pol}
             return '    %(out)s = wavefunctions.multiply_propagator_factor(%(out)s, M%(num)s)\n    return %(out)s\n\n' % \
                    {'out': self.outname, 'num': self.outgoing}
         else:

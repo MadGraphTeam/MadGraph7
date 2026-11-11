@@ -308,3 +308,36 @@ class TestPropagatorDenominators(unittest.TestCase):
             for piece in ('cI', 'M3', 'W3'):
                 self.assertIn(piece, denominator, name)
             self.assertNotIn('dTMP', denominator, name)
+
+    def test_fd_polarised_propagator(self):
+        """FD gauge: a polarised propagator ('w+{0}' decayed further) is the
+        ordinary FD routine -- massless-type numerator, standard pole -- whose
+        final FD projector is replaced by the projection on the requested
+        piece (aloha_writers.FD_POLARIZED_PROPAGATORS), for the vector routine
+        and for its Goldstone companion alike. The unpolarised routine keeps
+        the full projector."""
+        routines = self.routines([(('FFV2',), [], 3),
+                                  (('FFV2',), ['P1L'], 3), (('FFS3',), ['P1L'], 3),
+                                  (('FFV2',), ['P1T'], 3), (('FFV2',), ['P1TR'], 3),
+                                  (('FFV2',), ['P1TL'], 3), (('FFV2',), ['P1A'], 3),
+                                  (('FFV2',), ['P1S'], 3), (('FFV2',), ['P1LS'], 3)],
+                                 gauge=3)
+        self.assertIn('FDJS1', routines['FFV2_3'])
+        expected = {'FFV2P1L_3': ['wV3[4] = FDI * FDC;'],
+                    'FFS3P1L_3': ['wS3[4] = FDI * FDC;'],
+                    'FFV2P1T_3': ['wV3[1] = FDT1;'],
+                    'FFV2P1TR_3': ['wV3[1] = ( FDT1 + FDI * FDX1 )'],
+                    'FFV2P1TL_3': ['wV3[1] = ( FDT1 - FDI * FDX1 )'],
+                    'FFV2P1A_3': ['const fptype_sv FDA = ', '* FDA ) * FDNW'],
+                    'FFV2P1S_3': ['const cxtype_sv FDS = ', '-M3 * W3'],
+                    'FFV2P1LS_3': ['* FDC + ( FDN[0] * FDNW ) * FDS',
+                                   'wV3[4] = FDI * FDC;']}
+        for name, pieces in expected.items():
+            body = routines[name]
+            # the ordinary FD wavefunction: standard pole, full gauge direction
+            self.assertIn('madmatrix::denom(', body, name)
+            self.assertIn('define_gauge_dir( FDQ, FDN );', body, name)
+            self.assertNotIn('FDJS', body, name)
+            self.assertNotIn('EPS', body, name)
+            for piece in pieces:
+                self.assertIn(piece, body, name)

@@ -291,6 +291,133 @@ class TestMatrixElementChecker(unittest.TestCase):
                     values[gauge, pol] / values['unitary', pol], 1., places=9,
                     msg='%s: %s gauge vs unitary' % (processes[pol], gauge))
 
+    def test_fd_polarised_propagator_projections(self):
+        """FD gauge: the five-component propagator numerator splits exactly,
+        on or off shell, into the transverse pieces, the FD longitudinal piece
+        eps0 eps0* (eps0 = (-M n/(n.q), i)) and the remainder
+        (q^2-M^2) n n/(n.q)^2. The projections of
+        wavefunctions.fd_polarized_propagator therefore add up to the full FD
+        projector of multiply_propagator_factor: {T}+{0}+{A} = full,
+        {+}+{-} = {T}, {0S} = {0}+{S}, and {S} is {A} with
+        (q^2-M^2) -> q^2-M^2+iM*Gamma. Checked for both signs of the energy
+        flowing through the line."""
+
+        import random
+        import aloha.template_files.wavefunctions as wf
+
+        rng = random.Random(7)
+        mass, width = 80.4, 2.05
+        for trial in range(6):
+            qv = [rng.uniform(-150, 150) for _ in range(3)]
+            energy = math.sqrt(sum(x * x for x in qv) + rng.uniform(20, 200)**2)
+            if trial % 2:
+                energy = -energy
+            win = wf.WaveFunction(size=7)
+            win.momenta = [energy] + qv
+            for i in range(2, 7):
+                win[i] = complex(rng.uniform(-1, 1), rng.uniform(-1, 1))
+            full = wf.multiply_propagator_factor(win, mass)
+            piece = dict((pol, wf.fd_polarized_propagator(win, mass, width, pol))
+                         for pol in range(7))
+            T, R, L, Z, A, S, ZS = [piece[i] for i in (1, 2, 3, 0, 4, 5, 6)]
+            # the momentum flows backwards in the projector: q = -p
+            q2 = energy**2 - sum(x * x for x in qv)
+            for i in range(2, 7):
+                scale = max(abs(full[j]) for j in range(2, 7))
+                self.assertAlmostEqual(abs(T[i] + Z[i] + A[i] - full[i]) / scale, 0., 12)
+                self.assertAlmostEqual(abs(R[i] + L[i] - T[i]) / scale, 0., 12)
+                self.assertAlmostEqual(abs(Z[i] + S[i] - ZS[i]) / scale, 0., 12)
+                self.assertAlmostEqual(
+                    abs(A[i] * (q2 - mass**2 + 1j * mass * width) / (q2 - mass**2)
+                        - S[i]) / scale, 0., 12)
+            # the transverse and helicity pieces have no time-like and no
+            # Goldstone component, the remainders no Goldstone component
+            for X in (T, R, L):
+                self.assertEqual(X[2], 0)
+                self.assertEqual(X[6], 0)
+            self.assertEqual(A[6], 0)
+            self.assertEqual(S[6], 0)
+
+    def test_fd_polarised_propagator_vs_unitary(self):
+        """t > w+{X} b, w+ > ta+ vt in the FD and unitary gauges, at a point
+        with the W on its mass shell and at one 7% below it (widths kept).
+
+        - {T}, {+}, {-} and the unpolarised chain agree at both points: the
+          transverse pieces are the same in both gauges, with no Goldstone
+          component.
+        - {0} agrees on shell, where the FD longitudinal vector eps0 differs
+          from the unitary one by a term along q, which the Goldstone
+          component cancels (Ward identity); off shell the two definitions
+          differ (here by 4e-5).
+        - {A} vanishes on shell in both gauges (it is proportional to
+          q^2-M^2) and is gauge dependent off shell."""
+
+        import madgraph.interface.master_interface as interface
+        import madgraph.core.helas_objects as helas_objects
+
+        def boost(p, b):
+            bb = sum(x * x for x in b)
+            g = 1 / math.sqrt(1 - bb)
+            bp = sum(b[i] * p[i+1] for i in range(3))
+            return [g * (p[0] + bp)] + \
+                   [p[i+1] + (g - 1) / bb * bp * b[i] + g * b[i] * p[0] for i in range(3)]
+
+        def two_body(M, m1, m2, theta, phi):
+            E1 = (M * M + m1 * m1 - m2 * m2) / (2 * M)
+            k = math.sqrt(E1 * E1 - m1 * m1)
+            d = [math.sin(theta) * math.cos(phi), math.sin(theta) * math.sin(phi),
+                 math.cos(theta)]
+            return [E1] + [k * x for x in d], [M - E1] + [-k * x for x in d]
+
+        def point(mt, mb, mw, mta):
+            """{pdg: momentum} for t (at rest) > b W(mw), W > ta+ vt"""
+            pb, pw = two_body(mt, mb, mw, 0.7, 0.3)
+            pta, pv = two_body(mw, mta, 0., 1.9, 2.2)
+            beta = [pw[i+1] / pw[0] for i in range(3)]
+            return {6: [mt, 0., 0., 0.], 5: pb, -15: boost(pta, beta),
+                    16: boost(pv, beta)}
+
+        braces = ('T', '+', '-', '0', 'A', '')
+        values = {}
+        for gauge in ('unitary', 'FD'):
+            cmd = interface.MasterCmd()
+            cmd.no_notification()
+            cmd.exec_cmd('set apply_flavor_grouping False')
+            cmd.exec_cmd('set gauge %s' % gauge)
+            cmd.exec_cmd('import model sm')
+            for brace in braces:
+                cmd.exec_cmd('generate t > w+%s b, w+ > ta+ vt'
+                             % ('{%s}' % brace if brace else ''))
+                me = helas_objects.HelasMultiProcess(
+                                       cmd._curr_amps).get_matrix_elements()[0]
+                evaluator = process_checks.MatrixElementEvaluator(
+                    cmd._curr_model, cmd=cmd, reuse=False)
+                param = evaluator.full_model.get('parameter_dict')
+                masses = [param[name].real for name in
+                          ('mdl_MT', 'mdl_MB', 'mdl_MW', 'mdl_MTA')]
+                legs = [leg.get('id') for leg in
+                        me.get('processes')[0].get_legs_with_decays()]
+                for shell, scale in (('on', 1.), ('off', 0.93)):
+                    mom = point(masses[0], masses[1], scale * masses[2], masses[3])
+                    values[gauge, brace, shell], _ = evaluator.evaluate_matrix_element(
+                        me, p=[mom[pdg] for pdg in legs])
+
+        def rel(brace, shell):
+            u, f = values['unitary', brace, shell], values['FD', brace, shell]
+            return abs(u - f) / max(abs(u), abs(f))
+
+        for brace in ('T', '+', '-', ''):
+            for shell in ('on', 'off'):
+                self.assertLess(rel(brace, shell), 1e-12, (brace, shell))
+        # the two helicities are not swapped
+        self.assertGreater(values['FD', '+', 'off'], 10 * values['FD', '-', 'off'])
+        self.assertLess(rel('0', 'on'), 1e-12)
+        self.assertLess(rel('0', 'off'), 1e-3)
+        self.assertGreater(rel('0', 'off'), 1e-8)
+        for gauge in ('unitary', 'FD'):
+            self.assertLess(values[gauge, 'A', 'on'], 1e-20 * values[gauge, '0', 'on'])
+            self.assertGreater(values[gauge, 'A', 'off'], 1e-8 * values[gauge, '0', 'off'])
+
     def test_failed_process(self):
         """Test that check process fails for wrong color-Lorentz."""
 

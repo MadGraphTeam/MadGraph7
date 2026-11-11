@@ -428,6 +428,67 @@ def multiply_propagator_factor(win, m):
 
     return wout
 
+def fd_polarized_propagator(win, m, width, ipol):
+    """FD gauge: polarised propagator of a massive vector.
+
+    win is the off-shell wavefunction built with the ordinary FD numerator
+    (vector in win[2:6], Goldstone boson in win[6]), before the FD projector.
+    It is projected on one piece of the FD numerator
+        N = sum_T eps eps* + eps0 eps0* + (q^2-M^2) n n/(n.q)^2,
+    eps0 = (-M n/(n.q), i):
+        ipol = 0 {0}, 1 {T}, 2 {+}, 3 {-}, 4 {A}, 5 {S}, 6 {0S}
+    (aloha_writers.FD_POLARIZED_PROPAGATORS). {S} is {A} with its factor
+    (q^2-M^2)/(q^2-M^2+i M width) replaced by 1."""
+
+    wout = WaveFunction(size=7)
+    if any(win.momenta):
+        mom = list(win.momenta)
+    else:
+        mom = [win[0].real, win[1].real, win[1].imag, win[0].imag]
+    wout.momenta = mom
+    wout[0] = complex(mom[0], mom[3])
+    wout[1] = complex(mom[1], mom[2])
+    wout.flavor = win.flavor
+
+    q = [complex(-x, 0.) for x in mom] + [-1j * m]
+    n = define_gauge_dir(q)
+    w0 = list(win[2:7])
+    w1 = [0j] * 5
+    nq = n[0] * q[0].real - n[1] * q[1].real - n[2] * q[2].real - n[3] * q[3].real
+    if nq == 0:
+        return wout
+    q2 = q[0].real**2 - q[1].real**2 - q[2].real**2 - q[3].real**2
+    nw = n[0] * w0[0] - n[1] * w0[1] - n[2] * w0[2] - n[3] * w0[3]
+    qh = [-n[1], -n[2], -n[3]]
+
+    if 1 <= ipol <= 3:
+        sca = qh[0] * w0[1] + qh[1] * w0[2] + qh[2] * w0[3]
+        for i in range(3):
+            w1[i+1] = w0[i+1] - qh[i] * sca
+        if ipol != 1:
+            cross = [qh[1] * w0[3] - qh[2] * w0[2],
+                     qh[2] * w0[1] - qh[0] * w0[3],
+                     qh[0] * w0[2] - qh[1] * w0[1]]
+            # helicity +1: (T - i qh x w)/2, -1: (T + i qh x w)/2
+            s = -1. if ipol == 2 else 1.
+            for i in range(3):
+                w1[i+1] = 0.5 * (w1[i+1] + s * 1j * cross[i])
+    if ipol in (0, 6):
+        c = m / nq * nw - 1j * w0[4]
+        for i in range(4):
+            w1[i] -= m / nq * n[i] * c
+        w1[4] += 1j * c
+    if ipol == 4:
+        for i in range(4):
+            w1[i] -= (q2 - m * m) / nq**2 * n[i] * nw
+    if ipol in (5, 6):
+        for i in range(4):
+            w1[i] -= (q2 - m * m + 1j * m * width) / nq**2 * n[i] * nw
+
+    for i in range(5):
+        wout[i+2] = w1[i]
+    return wout
+
 def vfdxxxx(p,vmass,nhel,nsv):
     """initialize a vector wavefunction for FD gauge"""
 

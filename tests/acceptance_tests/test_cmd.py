@@ -1400,6 +1400,39 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
+    def _standalone_me(self, output_format, make_args=()):
+        """Output the current process as `output_format` ('standalone', the
+        madmatrix one, or 'standalone_fortran'), build its check driver and
+        return the matrix element it prints at its RAMBO point (1000 GeV)."""
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('output %s %s -f' % (output_format, self.out_dir))
+        fortran = output_format == 'standalone_fortran'
+        if fortran:
+            subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                            cwd=pjoin(self.out_dir, 'Source'))
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertEqual(len(dirs), 1, 'one subprocess expected for %s'
+                         % output_format)
+        proc_dir = pjoin(proc_root, dirs[0])
+        target = ['make', 'check'] if fortran else ['make'] + list(make_args)
+        self.assertEqual(0, subprocess.call(target, stdout=devnull,
+                                            stderr=devnull, cwd=proc_dir),
+                         '%s did not build' % output_format)
+        log = pjoin(proc_dir, 'check.log')
+        subprocess.call('%s 1000' % ('./check' if fortran else './check_sa.exe'),
+                        stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                        cwd=proc_dir, shell=True)
+        found = me_re.findall(open(log).read())
+        self.assertEqual(len(found), 1, '%s produced no matrix element '
+                         '(see %s)' % (output_format, log))
+        return float(found[0])
+
     def test_polarised_propagator_madmatrix_vs_fortran(self):
         """A polarised propagator of a massive vector -- 'w+{0}' decayed
         further, the P1L form of aloha/create_aloha.py, and the auxiliary
@@ -1409,50 +1442,53 @@ class TestCmdShell2(unittest.TestCase,
         write as the Python literal '(-0+1j)': the output did not compile.
         Both drivers evaluate the same RAMBO point, and the mixed-precision
         madmatrix build is within 1e-6 of the double-precision Fortran one."""
-        devnull = open(os.devnull, 'w')
-        energy = '1000'
-        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
-                           re.IGNORECASE)
-
-        def get_value(output_format, check_exe, build_source=False):
-            if os.path.isdir(self.out_dir):
-                shutil.rmtree(self.out_dir)
-            self.do('output %s %s -f' % (output_format, self.out_dir))
-            if build_source:
-                subprocess.call(['make'], stdout=devnull, stderr=devnull,
-                                cwd=pjoin(self.out_dir, 'Source'))
-            proc_root = pjoin(self.out_dir, 'SubProcesses')
-            dirs = sorted(d for d in os.listdir(proc_root)
-                          if d.startswith('P') and
-                          os.path.isdir(pjoin(proc_root, d)))
-            self.assertEqual(len(dirs), 1, 'one subprocess expected for %s'
-                             % output_format)
-            proc_dir = pjoin(proc_root, dirs[0])
-            target = ['make', 'check'] if output_format == 'standalone_fortran' \
-                else ['make']
-            self.assertEqual(0, subprocess.call(target, stdout=devnull,
-                                                stderr=devnull, cwd=proc_dir),
-                             '%s did not build' % output_format)
-            log = pjoin(proc_dir, 'check.log')
-            subprocess.call('%s %s' % (check_exe, energy),
-                            stdout=open(log, 'w'), stderr=subprocess.STDOUT,
-                            cwd=proc_dir, shell=True)
-            found = me_re.findall(open(log).read())
-            self.assertEqual(len(found), 1, '%s produced no matrix element '
-                             '(see %s)' % (output_format, log))
-            return float(found[0])
-
         self.do('import model sm')
         for proc in ('e+ e- > w+{0} w-, w+ > mu+ vm',
                      't > w+{A} b, w+ > ta+ vt'):
             self.do('generate %s' % proc)
-            madmatrix = get_value('standalone', './check_sa.exe')
-            fortran = get_value('standalone_fortran', './check',
-                                build_source=True)
+            madmatrix = self._standalone_me('standalone')
+            fortran = self._standalone_me('standalone_fortran')
             self.assertNotEqual(fortran, 0., proc)
             self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-6,
                                    msg='%s: madmatrix %r vs Fortran %r'
                                    % (proc, madmatrix, fortran))
+
+    def test_fd_polarised_propagator_madmatrix_vs_fortran(self):
+        """FD gauge: the polarised propagators (the ordinary FD wavefunction
+        projected on one piece of the five-component numerator instead of the
+        full projector) give the same value in the Fortran standalone (library
+        routine fd_polarized_propagator) and in madmatrix (inlined), here built
+        in double precision. Before, the Fortran output crashed at run time
+        (SIGBUS) and the madmatrix one did not compile.
+
+        The transverse pieces are the same in the FD and unitary gauges, so
+        {+} must also equal its unitary-gauge value at this (off-shell) point.
+
+        Flavour grouping is off: with the leptons merged, the FD madmatrix
+        output of a top decay into a tau returns 0 even without polarisation
+        (a separate issue)."""
+        self.do('set apply_flavor_grouping False')
+        self.do('import model sm')
+        try:
+            self.do('set gauge FD')
+            fd = {}
+            for brace in ('0', '+', 'A', '0S'):
+                proc = 't > w+{%s} b, w+ > ta+ vt' % brace
+                self.do('generate %s' % proc)
+                madmatrix = self._standalone_me('standalone', ['FPTYPE=d'])
+                fortran = self._standalone_me('standalone_fortran')
+                self.assertNotEqual(fortran, 0., proc)
+                self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-12,
+                                       msg='%s: madmatrix %r vs Fortran %r'
+                                       % (proc, madmatrix, fortran))
+                fd[brace] = fortran
+            self.do('set gauge unitary')
+            self.do('generate t > w+{+} b, w+ > ta+ vt')
+            unitary = self._standalone_me('standalone_fortran')
+            self.assertAlmostEqual(fd['+'] / unitary, 1., delta=1e-12)
+        finally:
+            self.do('set gauge unitary')
+            self.do('set apply_flavor_grouping True')
 
     def test_standalone_split_orders_interference(self):
         """standalone (madmatrix) must return the squared-order contribution asked for.
