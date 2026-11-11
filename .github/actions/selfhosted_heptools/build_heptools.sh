@@ -23,8 +23,13 @@ exec 9> "$HEP.lock"
 flock 9
 
 complete() {
-    HEPTOOLS_PREFIX="$HEP" CHECK_MODE=fatal GITHUB_OUTPUT= bash "$CHECK" "$1" > /dev/null 2>&1
+    HEPTOOLS_PREFIX="$HEP" CHECK_MODE=fatal GITHUB_OUTPUT= bash "$CHECK" "$1" > /dev/null 2>&1 \
+        || return 1
+    # here also YODA's Python module, which rivet-mkhtml imports: a YODA build
+    # whose Python extension failed still installs libYODA
+    [ "$1" != contur ] || yoda_pyext
 }
+yoda_pyext() { compgen -G "$HEP/yoda/lib*/python3*/*-packages/yoda/core*.so" > /dev/null; }
 
 check_prereqs() {
     # Build prerequisites the HEPTools installers expect from the system (the
@@ -80,7 +85,25 @@ build_contur()  {
     # YODA's python extension needs Cython (see warm_cache.yml contur_cache);
     # no sudo here, so into the user site of the interpreter madgraph uses
     python3 -c 'import Cython' 2> /dev/null || python3 -m pip install --user Cython
-    mg_install "install rivet" "install contur"
+    # ... and the `cython` command: YODA's build regenerates core.cpp with it,
+    # from PATH. pip --user puts it in ~/.local/bin, which is on PATH on the
+    # hosted runners but not for this runner service; without it the Python
+    # extension failed while libYODA still installed (rivet-mkhtml: "No
+    # module named 'yoda'").
+    export PATH="$(python3 -m site --user-base)/bin:$PATH"
+    if [ -d "$HEP/yoda" ] && ! yoda_pyext; then
+        # rebuild YODA alone (rivet does not, YODA being found): its installer
+        # untars over an existing tree, so start from none
+        rm -rf "$HEP/yoda"
+        mg_install "install yoda"
+    fi
+    if ! yoda_pyext && [ -f "$HEP/yoda/yoda_install.log" ]; then
+        # its installer reports success all the same: show why
+        echo "::warning::YODA built without its Python module on $RUNNER_NAME"
+        grep -i -E 'cython|python|error' "$HEP/yoda/yoda_install.log" | tail -30
+    fi
+    HEPTOOLS_PREFIX="$HEP" CHECK_MODE=fatal GITHUB_OUTPUT= bash "$CHECK" contur > /dev/null 2>&1 \
+        || mg_install "install rivet" "install contur"
 }
 build_looptools() {
     # serial: the IREGI/CutTools makefiles do not declare their Fortran module

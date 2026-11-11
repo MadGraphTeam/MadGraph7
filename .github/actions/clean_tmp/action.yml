@@ -42,10 +42,11 @@ runs:
           || python3 -m pip install --user --quiet numpy scipy matplotlib \
           || echo "::warning::could not install numpy/scipy/matplotlib into ~/.local on $RUNNER_NAME"
         # system commands the tests need and this user cannot install (no
-        # sudo): without bc MadGraph refuses to run the parton shower
-        for c in bc; do
+        # sudo): without bc MadGraph refuses to run the parton shower, without
+        # pigz test_pigz_output_is_gzip_compatible skips (a skip fails the job)
+        for c in bc pigz; do
           command -v "$c" > /dev/null \
-            || echo "::warning::$RUNNER_NAME ($(hostname)) has no '$c': install it as root (dnf install -y $c), the shower tests fail without it"
+            || echo "::warning::$RUNNER_NAME ($(hostname)) has no '$c': install it as root (dnf install -y $c), some tests fail without it"
         done
         # Tests can leave read-only trees behind: make them writable first.
         find /tmp -mindepth 1 -maxdepth 1 -user "$(id -u)" \
