@@ -268,6 +268,11 @@ def switch_catalogue(
     }
 
 
+def _pad_empty(rows: Sequence[Any]) -> list[str]:
+    """A C array cannot be empty: one zero entry, the stored count stays 0."""
+    return [] if rows else ["    {0},"]
+
+
 def _switch_tables(
     reference: Mapping[str, Any],
     catalogue: Mapping[str, Any],
@@ -283,6 +288,7 @@ def _switch_tables(
         f"    {{{_integer(e['process'])}, reweight_switch_e{i}}},"
         for i, e in enumerate(catalogue["evaluations"])
     )
+    lines.extend(_pad_empty(catalogue["evaluations"]))
     lines.append("};")
     lines.append("static const ReweightSwitchOrdering reweight_switch_orderings[] = {")
     lines.extend(
@@ -290,6 +296,7 @@ def _switch_tables(
         f"{float(o['weight'])!r}, {o['target']}}},"
         for o in catalogue["orderings"]
     )
+    lines.extend(_pad_empty(catalogue["orderings"]))
     lines.append("};")
     for i, target in enumerate(catalogue["targets"]):
         lines.append(_int_array(f"reweight_switch_t{i}", "int", target["colors"]))
@@ -299,6 +306,7 @@ def _switch_tables(
         lines.append(
             f"    {{{target['evaluation']}, {target_index(process)}, reweight_switch_t{i}}},"
         )
+    lines.extend(_pad_empty(catalogue["targets"]))
     lines.append("};")
     flow_rows = []
     for index in range(len(reference["runtime_processes"])):
