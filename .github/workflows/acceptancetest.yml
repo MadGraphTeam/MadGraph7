@@ -46,13 +46,15 @@ jobs:
     # former jobs, run one after the other: readonly_gridpack
     #   acceptancetest_emela3
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- readonly_gridpack ----
       # concurrent read-only gridpack generation: build a gridpack, freeze it
@@ -70,21 +72,30 @@ jobs:
         run: |
             ./tests/test_manager.py test_generate_eeww_nlo_emela_noph -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
-  acceptancetest_5:
-    # The type of runner that the job will run on
+  acceptancetest_core_1:
+    # merged jobs, run one after the other: acceptancetest_5 acceptancetest_18
+    #   acceptancetest_bundle_14 acceptancetest_delphes_parallel
+    #   acceptancetest_bundle_13
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools_core
-      - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_delphes
+
+      # ---- acceptancetest_5 ----
       # Runs a set of commands using the runners shell
       - name: test one of the test test_config
+        if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_config -pA -t0 -l INFO
@@ -93,18 +104,118 @@ jobs:
             ./tests/test_manager.py test_import_model -pA -t0 -l INFO
             ./tests/test_manager.py test_check_generate_optimize -pA -t0 -l INFO
 
+      # ---- acceptancetest_18 ----
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_load_feynman
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_load_feynman -pA -t0 -l INFO
+
+      # ---- acceptancetest_check_madevent_me_vs_standalone ----
+      # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
+      - name: "acceptancetest_check_madevent_me_vs_standalone: test that ME of madevent are consistent with the standalone one"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestStandaloneMadeventMatrixElementConsistency
+
+      # ---- acceptancetest_check_mlm_rwgt ----
+      # Previously uncovered acceptance test in tests/acceptance_tests/test_MLM_reweight.py
+      - name: "acceptancetest_check_mlm_rwgt: test MLM reweight factory cases (TestMLMReweight)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMLMReweight TestMLMReweightAutoMatch
+
+      # ---- acceptancetest_delphes_parallel ----
+      # Runs a set of commands using the runners shell
+      - name: test fused parallel Pythia8 + Delphes
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_pythia8_delphes_parallel -pA -t0 -l INFO
+
+      # ---- acceptancetest_98 ----
+      - name: "acceptancetest_98"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_raise_invalid_path_py8 -pA -t0 -l INFO
+
+      # ---- acceptancetest_uncovered_merged ----
+      # Previously uncovered acceptance tests in tests/acceptance_tests/test_cmd.py
+      # related to the merged/ufo_aloha pipelines and decay-chain ordering
+      - name: "acceptancetest_uncovered_merged: test cmd uncovered merged/ufo_aloha/standalone tests"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_complex_mass_SA_merged test_import_model_v4_requires_debug test_standalone_cpp_fd_output_consistency test_standalone_fortran_two_gauges test_standalone_cpp_two_gauges test_ufo_aloha_merged -pA -t0 -l INFO
+
+      # ---- acceptancetest_dy3j_mlm ----
+      # DY+3j with MLM matching (CI coverage audit)
+      - name: "acceptancetest_dy3j_mlm: test test_madevent_dy3j_mlm"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madevent_dy3j_mlm -pA -t0 -l INFO
+
+      # ---- acceptancetest_PA_decay ----
+      # w production with PA decay modes (CI coverage audit)
+      - name: "acceptancetest_PA_decay: test the w production with PA decay tests"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_w_production_with_PA_decay -pA -t0 -l INFO
+            ./tests/test_manager.py test_w_production_with_PA_decay_inline_then_offline -pA -t0 -l INFO
+
+      # ---- acceptancetest_density ----
+      - name: "acceptancetest_density"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_density -pA -t0 -l INFO
+
+      - name: "acceptancetest_density: test test_standalone_density_dd (ZZ density vs analytic decay)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_density_dd -pA -t0 -l INFO
+
+      - name: "acceptancetest_density: test test_standalone_density_uu"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_density_uu -pA -t0 -l INFO
+
+      - name: "acceptancetest_density: test test_standalone_density_f2py (f2py density wrapper)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            sudo pip install numpy
+            which f2py
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
+            ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
+
+      - name: "acceptancetest_density: test test_standalone_f2py_get_all_inter (all_matrix2py py_get_all_inter)"
+        if: ${{ !cancelled() }}
+        # numpy and f2py_compiler come from the density f2py step above
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_f2py_get_all_inter -pA -t0 -l INFO
 
   acceptancetest_bundle_2:
-    # former jobs, run one after the other: acceptancetest_10 acceptancetest_11
-    #   acceptancetest_31 acceptancetest_32 acceptancetest_33
-    #   acceptancetest_spin2_standalone acceptancetest_78 acceptancetest_81
-    # Each keeps its own steps, run even when an earlier one failed.
+    # merged jobs, run one after the other: acceptancetest_bundle_2
+    #   acceptancetest_density_LI_f2py acceptancetest_bundle_3 acceptancetest_bundle_5
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_ufomodel
       - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_10 ----
@@ -127,6 +238,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_flavor_mask test_standalone_wwjj test_standalone_cpp_output test_standalone_merged_flavor_uq_zuq -pA -t0 -l INFO
+
       - name: "acceptancetest_31: test test_standalone_goodhel_filter (good-helicity filter is flavor-aware)"
         if: ${{ !cancelled() }}
         run: |
@@ -177,20 +289,13 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_calculate_xsect_lo -pA -t0 -l INFO
 
-
-  acceptancetest_bundle_3:
-    # former jobs, run one after the other: acceptancetest_12 acceptancetest_13
-    #   acceptancetest_14 acceptancetest_15 acceptancetest_16 acceptancetest_26
-    #   acceptancetest_29 acceptancetest_34 acceptancetest_67
-    #   acceptancetest_check_gauge
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore-pip-cache
+      # ---- acceptancetest_density_LI_f2py ----
+      # Runs a set of commands using the runners shell
+      - name: test one of the density mode for f2py loop-induced
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_vs_standalone_LI1 -pA -t0 -l INFO
 
       # ---- acceptancetest_12 ----
       - name: "acceptancetest_12"
@@ -296,35 +401,31 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_rw_tree_then_virt -pA -t0 -l INFO
 
-
-  acceptancetest_18:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools_core
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_load_feynman
+      # ---- acceptancetest_68 ----
+      - name: "acceptancetest_68"
+        if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_load_feynman -pA -t0 -l INFO
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
+            ./tests/test_manager.py test_sm_equivalence -pA -t0 -l INFO
 
+      # ---- acceptancetest_69 ----
+      - name: "acceptancetest_69"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
+            ./tests/test_manager.py test_all -pA -t0 -l DEBUG --debug
 
   acceptancetest_bundle_4:
     # former jobs, run one after the other: acceptancetest_30
     #   acceptancetest_ewsudakov acceptancetest_density_LI_convolution
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
@@ -350,46 +451,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_LI_validation -pA -t0 -l INFO
 
-
-  acceptancetest_bundle_5:
-    # former jobs, run one after the other: acceptancetest_68 acceptancetest_69
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_ufomodel
-
-      # ---- acceptancetest_68 ----
-      - name: "acceptancetest_68"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
-            ./tests/test_manager.py test_sm_equivalence -pA -t0 -l INFO
-
-      # ---- acceptancetest_69 ----
-      - name: "acceptancetest_69"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
-            ./tests/test_manager.py test_all -pA -t0 -l DEBUG --debug
-
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_6:
     # former jobs, run one after the other: acceptancetest_71 acceptancetest_76
     #   acceptancetest_95
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_71 ----
       - name: "acceptancetest_71"
@@ -414,18 +492,22 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_LOonly -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_72:
     # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_ML_check_cms_aem_emvevex
@@ -433,18 +515,24 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_check_cms_aem_emvevex -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_7:
-    # former jobs, run one after the other: acceptancetest_73
-    #   acceptancetest_emela acceptancetest_97
-    # Each keeps its own steps, run even when an earlier one failed.
+    # merged jobs, run one after the other: acceptancetest_bundle_7
+    #   acceptancetest_bundle_15 acceptancetest_104
+    #   acceptancetest_fks_standalone_limits_pp_ttx acceptancetest_80
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_73 ----
       - name: "acceptancetest_73"
@@ -466,18 +554,68 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_raise_invalid_path_hw7 -pA -t0 -l INFO
 
+      # ---- acceptancetest_density_LI_standalone1 ----
+      - name: "acceptancetest_density_LI_standalone1: test the loop induced standalone mode of the density matrix code"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone1 -pA -t0 -l INFO
+
+      # ---- acceptancetest_density_LI_standalone2 ----
+      - name: "acceptancetest_density_LI_standalone2: test the loop induced standalone mode of the density matrix code"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone2 -pA -t0 -l INFO
+
+      # ---- acceptancetest_density_LI_standalone3 ----
+      - name: "acceptancetest_density_LI_standalone3: test the loop induced standalone mode of the density matrix code"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone3 -pA -t0 -l INFO
+
+      # ---- acceptancetest_104 ----
+      - name: test loop-induced gg>h cross-section
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_loop_induced_ggh -pA -t0 -l INFO
+
+      # ---- acceptancetest_fks_standalone_limits_pp_ttx ----
+      # soft and collinear limits of p p > t t~ [QCD] via the FKS standalone
+      # output ('output standalone_fortran --fks --limits'): launch runs
+      # test_soft_col_limits in every partonic channel (built-in PDF set, no
+      # LHAPDF) and the test requires all of them to pass.
+      - name: test soft/collinear limits of p p > t t~ [QCD] (FKS standalone --limits)
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_standalone_limits_pp_ttx -pA -t0 -l INFO
+
+      # ---- acceptancetest_80 ----
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_amcatnlo_from_file
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            echo "set acknowledged_v3.1_syntax True --global" > cmd
+            ./bin/madgraph cmd
+            ./tests/test_manager.py test_amcatnlo_from_file -pA -t0 -l INFO
 
   acceptancetest_bundle_8:
     # former jobs, run one after the other: acceptancetest_74 acceptancetest_93
     #   acceptancetest_96
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_74 ----
       - name: "acceptancetest_74"
@@ -500,18 +638,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_ON_and_onshell_atNLO -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_9:
     # former jobs, run one after the other: acceptancetest_75
     #   acceptancetest_emela2 acceptancetest_88
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_75 ----
       - name: "acceptancetest_75"
@@ -533,18 +676,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_generate_eett_nlo_qcd_noisr -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_10:
-    # former jobs, run one after the other: acceptancetest_79 acceptancetest_82
-    #   acceptancetest_94 acceptancetest_99
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # merged jobs, run one after the other: acceptancetest_bundle_10 acceptancetest_106
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_79 ----
       - name: "acceptancetest_79"
@@ -574,57 +722,48 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_split_evt_gen -pA -t0 -l INFO
 
-
-  acceptancetest_80:
-    # The type of runner that the job will run on
-    runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    strategy:
-      matrix:
-        os: [ubuntu-24.04]
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_amcatnlo_from_file
+      # ---- acceptancetest_106 ----
+      # Polarised NLO+PS (MC@NLO matching) in a chosen rest frame. Asserts that
+      # the total cross-section is the fixed-order one while the absolute one
+      # stays low, which is what the azimuthal phase of the MC counterterm
+      # controls.
+      - name: test one of the test test_polarised_nlo_ps_me_frame
+        if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            echo "set acknowledged_v3.1_syntax True --global" > cmd
-            ./bin/madgraph cmd
-            ./tests/test_manager.py test_amcatnlo_from_file -pA -t0 -l INFO
+            ./tests/test_manager.py test_polarised_nlo_ps_me_frame -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_11:
     # former jobs, run one after the other: acceptancetest_83
     #   acceptancetest_uncovered_madloop
     #   acceptancetest_polarised_rotation_at_rest
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
-
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
       # StdHEP needs the rpc headers: install them before the first NLO output,
       # which compiles StdHEP once for all the tests below (a failed compilation
       # leaves vendor/StdHEP/fail and is not retried)
       - name: Install libtirpc-dev
-        run: sudo apt install -y libtirpc-dev
+        # preinstalled (libtirpc-devel) on the self-hosted alma10 runners
+        if: runner.environment != 'self-hosted'
+        run: sudo apt-get -o Acquire::Retries=5 install -y libtirpc-dev
 
       # ---- acceptancetest_83 ----
       - name: "acceptancetest_83"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            sudo apt install -y libtirpc-dev
             ./tests/test_manager.py test_check_singletop_fastjet -pA -t0 -l INFO
 
       # ---- acceptancetest_uncovered_madloop ----
@@ -645,6 +784,9 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_polarised_rotation_stability_leg_at_rest -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_12:
     # former jobs, run one after the other: acceptancetest_emela4
@@ -656,7 +798,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_emela4 ----
       - name: "acceptancetest_emela4"
@@ -673,99 +816,6 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_improve_ps_keeps_a_leg_at_rest -pA -t0 -l INFO
-
-
-  acceptancetest_bundle_13:
-    # former jobs, run one after the other: acceptancetest_98
-    #   acceptancetest_uncovered_merged acceptancetest_dy3j_mlm
-    #   acceptancetest_PA_decay acceptancetest_density
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools_core
-      - uses: ./.github/actions/restore-pip-cache
-
-      # ---- acceptancetest_98 ----
-      - name: "acceptancetest_98"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_raise_invalid_path_py8 -pA -t0 -l INFO
-
-      # ---- acceptancetest_uncovered_merged ----
-      # Previously uncovered acceptance tests in tests/acceptance_tests/test_cmd.py
-      # related to the merged/ufo_aloha pipelines and decay-chain ordering
-      - name: "acceptancetest_uncovered_merged: test cmd uncovered merged/ufo_aloha/standalone tests"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_complex_mass_SA_merged test_import_model_v4_requires_debug test_standalone_cpp_fd_output_consistency test_standalone_fortran_two_gauges test_standalone_cpp_two_gauges test_ufo_aloha_merged -pA -t0 -l INFO
-
-      # ---- acceptancetest_dy3j_mlm ----
-      # DY+3j with MLM matching (CI coverage audit)
-      - name: "acceptancetest_dy3j_mlm: test test_madevent_dy3j_mlm"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_dy3j_mlm -pA -t0 -l INFO
-
-      # ---- acceptancetest_PA_decay ----
-      # w production with PA decay modes (CI coverage audit)
-      - name: "acceptancetest_PA_decay: test the w production with PA decay tests"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_w_production_with_PA_decay -pA -t0 -l INFO
-            ./tests/test_manager.py test_w_production_with_PA_decay_inline_then_offline -pA -t0 -l INFO
-
-      # ---- acceptancetest_density ----
-      - name: "acceptancetest_density"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_standalone_density -pA -t0 -l INFO
-      - name: "acceptancetest_density: test test_standalone_density_dd (ZZ density vs analytic decay)"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_standalone_density_dd -pA -t0 -l INFO
-      - name: "acceptancetest_density: test test_standalone_density_uu"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_standalone_density_uu -pA -t0 -l INFO
-      - name: "acceptancetest_density: test test_standalone_density_f2py (f2py density wrapper)"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            sudo pip install numpy
-            which f2py
-            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
-            ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
-      - name: "acceptancetest_density: test test_standalone_f2py_get_all_inter (all_matrix2py py_get_all_inter)"
-        if: ${{ !cancelled() }}
-        # numpy and f2py_compiler come from the density f2py step above
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_standalone_f2py_get_all_inter -pA -t0 -l INFO
-
-
-  acceptancetest_104:
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
-      - name: test loop-induced gg>h cross-section
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_loop_induced_ggh -pA -t0 -l INFO
 
   acceptancetest_105:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue
@@ -794,143 +844,42 @@ jobs:
       - if: always()
         uses: ./.github/actions/clean_tmp
 
-
-  acceptancetest_bundle_14:
-    # former jobs, run one after the other:
-    #   acceptancetest_check_madevent_me_vs_standalone
-    #   acceptancetest_check_mlm_rwgt
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools_core
-
-      # ---- acceptancetest_check_madevent_me_vs_standalone ----
-      # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
-      - name: "acceptancetest_check_madevent_me_vs_standalone: test that ME of madevent are consistent with the standalone one"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestStandaloneMadeventMatrixElementConsistency
-
-      # ---- acceptancetest_check_mlm_rwgt ----
-      # Previously uncovered acceptance test in tests/acceptance_tests/test_MLM_reweight.py
-      - name: "acceptancetest_check_mlm_rwgt: test MLM reweight factory cases (TestMLMReweight)"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestMLMReweight TestMLMReweightAutoMatch
-
   acceptancetest_fks_standalone:
     # FKS Born building-block standalone output ('output standalone_fortran --fks'):
     # hardcoded-value regression, consistency vs a plain aMC@NLO output, and
     # the '--limits' soft/collinear limit test.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       - name: test FKS Born building-block standalone (value + vs aMC@NLO + limits)
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo test_fks_standalone_limits -pA -t0 -l INFO
 
-  acceptancetest_fks_standalone_limits_pp_ttx:
-    # soft and collinear limits of p p > t t~ [QCD] via the FKS standalone
-    # output ('output standalone_fortran --fks --limits'): launch runs
-    # test_soft_col_limits in every partonic channel (built-in PDF set, no
-    # LHAPDF) and the test requires all of them to pass.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
-
-      - name: test soft/collinear limits of p p > t t~ [QCD] (FKS standalone --limits)
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_fks_standalone_limits_pp_ttx -pA -t0 -l INFO
-
-  acceptancetest_bundle_15:
-    # former jobs, run one after the other:
-    #   acceptancetest_density_LI_standalone1
-    #   acceptancetest_density_LI_standalone2
-    #   acceptancetest_density_LI_standalone3
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools
-
-      # ---- acceptancetest_density_LI_standalone1 ----
-      - name: "acceptancetest_density_LI_standalone1: test the loop induced standalone mode of the density matrix code"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_density_mode_loop_induced_standalone1 -pA -t0 -l INFO
-
-      # ---- acceptancetest_density_LI_standalone2 ----
-      - name: "acceptancetest_density_LI_standalone2: test the loop induced standalone mode of the density matrix code"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_density_mode_loop_induced_standalone2 -pA -t0 -l INFO
-
-      # ---- acceptancetest_density_LI_standalone3 ----
-      - name: "acceptancetest_density_LI_standalone3: test the loop induced standalone mode of the density matrix code"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_density_mode_loop_induced_standalone3 -pA -t0 -l INFO
-
-
-  acceptancetest_density_LI_f2py:
-    # The type of runner that the job will run on
-    runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    strategy:
-      matrix:
-        os: [ubuntu-24.04]
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools
-
-      - name: Install Meson and Ninja
-        run: |
-           sudo apt-get update
-           sudo apt-get install -y meson ninja-build
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the density mode for f2py loop-induced
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_density_mode_vs_standalone_LI1 -pA -t0 -l INFO
-
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_107:
     # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # Polarised fixed-order NLO evaluated in a chosen rest frame. Asserts on
       # check_poles, which is the only check sensitive to the frame handling of
@@ -940,65 +889,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_polarised_nlo_me_frame -pA -t0 -l INFO
 
-  acceptancetest_106:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
-
-      # Polarised NLO+PS (MC@NLO matching) in a chosen rest frame. Asserts that
-      # the total cross-section is the fixed-order one while the absolute one
-      # stays low, which is what the azimuthal phase of the MC counterterm
-      # controls.
-      - name: test one of the test test_polarised_nlo_ps_me_frame
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_polarised_nlo_ps_me_frame -pA -t0 -l INFO
-
-
-  acceptancetest_delphes_parallel:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools_core
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
-      - uses: ./.github/actions/restore_delphes
-
-      # Runs a set of commands using the runners shell
-      - name: test fused parallel Pythia8 + Delphes
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_pythia8_delphes_parallel -pA -t0 -l INFO
-
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_wj_ms_decay:
     # wj production with madspin decay (CI coverage audit)
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_heptools_core
+      - uses: ./.github/actions/restore-pip-cache
       - name: test test_wj_production_with_ms_decay
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_wj_production_with_ms_decay -pA -t0 -l INFO
-
 
   acceptancetest_madspin_tree:
     # The type of runner that the job will run on
@@ -1006,7 +913,6 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools_core
@@ -1019,21 +925,25 @@ jobs:
 
   acceptancetest_madspin_LI:
     # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test that the different options of madspin do not crash at loop-induced level
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_loop_induced -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_uncovered:
     # Acceptance tests that no workflow selected (audit of 2026-10-24).
@@ -1047,11 +957,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_ufomodel
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
       # StdHEP (the hw6/py6 stdhep tests) needs the rpc headers, as in parralel.yml
       - name: Install libtirpc-dev
-        run: sudo apt install -y libtirpc-dev
+        run: sudo apt-get -o Acquire::Retries=5 install -y libtirpc-dev
 
       - name: "standalone and madmatrix outputs"
         if: ${{ !cancelled() }}
@@ -1070,7 +980,6 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_gen_evt_onlygen test_generate_events_lo_hw6_stdhep test_generate_events_lo_py6_stdhep -pA -t0 -l INFO
-
 
   acceptancetest_82_helicities:
     runs-on: ubuntu-24.04

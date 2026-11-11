@@ -12429,20 +12429,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """
         args = ['eMELA'] + args
         self.check_set(args)
-        
+
         try:
             p = subprocess.Popen([args[1], '--version'], stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
             output, error = p.communicate()
-            output = output.decode()
-            res = 0
+            output = output.decode(errors='ignore').strip()
+            res = p.returncode
         except Exception:
-            res = 1
+            output, res = '', 1
 
-        if res != 0 or error:
+        # Judge eMELA-config by its exit code and the version it prints, not by
+        # stderr: it is a bash script built on egrep, which grep >= 3.8 (e.g.
+        # AlmaLinux 10, Fedora) flags on stderr as obsolescent. Rejecting any
+        # stderr output dropped a valid eMELA there.
+        if res != 0 or not output:
             if args[1] != 'None':
                 logger.info('%s does not seem to correspond to a valid eMELA-config ' % args[1] + \
-                'executable.\n Please set the \'fastjet\'' + \
+                'executable.\n Please set the \'eMELA\'' + \
                 'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).' +
                     '\n MadGraph7> set eMELA /PATH/TO/eMELA-config\n')
             self.options[args[0]] = None
