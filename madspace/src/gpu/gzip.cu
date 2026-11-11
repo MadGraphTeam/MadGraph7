@@ -1,24 +1,28 @@
 #include "device.hpp"
 
-#include <nvcomp/gzip.h>
+#include "gpucomp.cuh"
+#include "madspace/driver/logger.hpp"
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 #include <vector>
 
 using namespace madspace;
 using namespace madspace::gpu;
+
+#ifdef MADSPACE_GPUCOMP
 
 namespace {
 
 // 64 KiB is the largest chunk nvCOMP's gzip compressor takes and its fastest.
 constexpr std::size_t chunk_bytes = 1 << 16;
 
-void check_nvcomp(nvcompStatus_t status, const char* what) {
-    if (status != nvcompSuccess) {
+void check_gpucomp(gpucompStatus_t status, const char* what) {
+    if (status != gpucompSuccess) {
         throw std::runtime_error(
             std::format(
-                "nvCOMP {} failed with status {}", what, static_cast<int>(status)
+                "GPU gzip {} failed with status {}", what, static_cast<int>(status)
             )
         );
     }
@@ -70,14 +74,14 @@ public:
     DeviceArray& operator=(const DeviceArray&) = delete;
     ~DeviceArray() {
         if (_ptr != nullptr) {
-            ignore_error(cudaFree(_ptr));
+            ignore_error(gpuFree(_ptr));
         }
     }
     void resize(std::size_t count) {
         if (_ptr != nullptr) {
-            check_error(cudaFree(_ptr));
+            check_error(gpuFree(_ptr));
         }
-        check_error(cudaMalloc(&_ptr, std::max<std::size_t>(count, 1) * sizeof(T)));
+        check_error(gpuMalloc(&_ptr, std::max<std::size_t>(count, 1) * sizeof(T)));
     }
     T* get() const { return _ptr; }
 
@@ -87,23 +91,23 @@ private:
 
 /// Compresses through a pinned staging buffer: one H2D copy of the text and one
 /// D2H copy of the packed gzip members per call.
-class NvcompGzipCompressor : public GzipCompressor {
+class GpuGzipCompressor : public GzipCompressor {
 public:
-    NvcompGzipCompressor(const GpuDevice& device, int algorithm) : _device(device) {
+    GpuGzipCompressor(const GpuDevice& device, int algorithm) : _device(device) {
         if (algorithm < 0 || algorithm > 5) {
             throw std::invalid_argument(
-                std::format("nvCOMP gzip algorithm must be 0 to 5, got {}", algorithm)
+                std::format("GPU gzip algorithm must be 0 to 5, got {}", algorithm)
             );
         }
         _options.algorithm = algorithm;
-        nvcompAlignmentRequirements_t alignment;
-        check_nvcomp(
-            nvcompBatchedGzipCompressGetRequiredAlignments(_options, &alignment),
+        gpucompAlignmentRequirements_t alignment;
+        check_gpucomp(
+            gpucompBatchedGzipCompressGetRequiredAlignments(_options, &alignment),
             "alignment query"
         );
         std::size_t max_chunk_out;
-        check_nvcomp(
-            nvcompBatchedGzipCompressGetMaxOutputChunkSize(
+        check_gpucomp(
+            gpucompBatchedGzipCompressGetMaxOutputChunkSize(
                 chunk_bytes, _options, &max_chunk_out
             ),
             "output size query"
@@ -112,15 +116,15 @@ public:
             round_up(max_chunk_out, std::max<std::size_t>(alignment.output, 16));
     }
 
-    NvcompGzipCompressor(const NvcompGzipCompressor&) = delete;
-    NvcompGzipCompressor& operator=(const NvcompGzipCompressor&) = delete;
+    GpuGzipCompressor(const GpuGzipCompressor&) = delete;
+    GpuGzipCompressor& operator=(const GpuGzipCompressor&) = delete;
 
-    ~NvcompGzipCompressor() override {
+    ~GpuGzipCompressor() override {
         if (_host_data != nullptr) {
-            ignore_error(cudaFreeHost(_host_data));
+            ignore_error(gpuFreeHost(_host_data));
         }
         if (_stream != nullptr) {
-            ignore_error(cudaStreamDestroy(_stream));
+            ignore_error(gpuStreamDestroy(_stream));
         }
     }
 
@@ -132,8 +136,8 @@ public:
         reserve(data.size());
         std::size_t chunk_count = (data.size() + chunk_bytes - 1) / chunk_bytes;
         std::memcpy(_host_data, data.data(), data.size());
-        check_error(cudaMemcpyAsync(
-            _data.get(), _host_data, data.size(), cudaMemcpyHostToDevice, _stream
+        check_error(gpuMemcpyAsync(
+            _data.get(), _host_data, data.size(), gpuMemcpyHostToDevice, _stream
         ));
         unsigned table_blocks = static_cast<unsigned>((chunk_count + 255) / 256);
         kernel_chunk_tables<<<table_blocks, 256, 0, _stream>>>(
@@ -147,8 +151,8 @@ public:
             _out_ptrs.get()
         );
         check_error();
-        check_nvcomp(
-            nvcompBatchedGzipCompressAsync(
+        check_gpucomp(
+            gpucompBatchedGzipCompressAsync(
                 _chunk_ptrs.get(),
                 _chunk_sizes.get(),
                 chunk_bytes,
@@ -164,7 +168,7 @@ public:
             "compression launch"
         );
         // The extra zero size makes the exclusive scan end on the total.
-        check_error(cudaMemsetAsync(
+        check_error(gpuMemsetAsync(
             _out_sizes.get() + chunk_count, 0, sizeof(std::size_t), _stream
         ));
         check_error(
@@ -182,28 +186,28 @@ public:
         );
         check_error();
         std::size_t packed_bytes;
-        check_error(cudaMemcpyAsync(
+        check_error(gpuMemcpyAsync(
             &packed_bytes,
             _offsets.get() + chunk_count,
             sizeof(std::size_t),
-            cudaMemcpyDeviceToHost,
+            gpuMemcpyDeviceToHost,
             _stream
         ));
-        check_error(cudaMemcpyAsync(
+        check_error(gpuMemcpyAsync(
             _host_statuses.data(),
             _statuses.get(),
-            chunk_count * sizeof(nvcompStatus_t),
-            cudaMemcpyDeviceToHost,
+            chunk_count * sizeof(gpucompStatus_t),
+            gpuMemcpyDeviceToHost,
             _stream
         ));
-        check_error(cudaStreamSynchronize(_stream));
+        check_error(gpuStreamSynchronize(_stream));
         for (std::size_t i = 0; i < chunk_count; ++i) {
-            check_nvcomp(_host_statuses[i], "chunk compression");
+            check_gpucomp(_host_statuses[i], "chunk compression");
         }
         std::size_t out_offset = out.size();
         out.resize(out_offset + packed_bytes);
-        check_error(cudaMemcpy(
-            out.data() + out_offset, _packed.get(), packed_bytes, cudaMemcpyDeviceToHost
+        check_error(gpuMemcpy(
+            out.data() + out_offset, _packed.get(), packed_bytes, gpuMemcpyDeviceToHost
         ));
     }
 
@@ -213,14 +217,14 @@ private:
             return;
         }
         if (_stream == nullptr) {
-            check_error(cudaStreamCreate(&_stream));
+            check_error(gpuStreamCreate(&_stream));
         }
         _capacity = round_up(data_bytes, chunk_bytes);
         std::size_t chunk_count = _capacity / chunk_bytes;
         if (_host_data != nullptr) {
-            check_error(cudaFreeHost(_host_data));
+            check_error(gpuFreeHost(_host_data));
         }
-        check_error(cudaMallocHost(&_host_data, _capacity));
+        check_error(gpuMallocHost(&_host_data, _capacity));
         _host_statuses.resize(chunk_count);
         _data.resize(_capacity);
         _chunks_out.resize(chunk_count * _out_stride);
@@ -231,8 +235,8 @@ private:
         _out_sizes.resize(chunk_count + 1);
         _offsets.resize(chunk_count + 1);
         _statuses.resize(chunk_count);
-        check_nvcomp(
-            nvcompBatchedGzipCompressGetTempSizeAsync(
+        check_gpucomp(
+            gpucompBatchedGzipCompressGetTempSizeAsync(
                 chunk_count, chunk_bytes, _options, &_temp_bytes, _capacity
             ),
             "temporary size query"
@@ -253,12 +257,12 @@ private:
     }
 
     const GpuDevice& _device;
-    nvcompBatchedGzipCompressOpts_t _options = nvcompBatchedGzipCompressDefaultOpts;
+    gpucompBatchedGzipCompressOpts_t _options = gpucompBatchedGzipCompressDefaultOpts;
     std::size_t _out_stride;
     std::size_t _capacity = 0;
-    cudaStream_t _stream = nullptr;
+    gpuStream_t _stream = nullptr;
     char* _host_data = nullptr;
-    std::vector<nvcompStatus_t> _host_statuses;
+    std::vector<gpucompStatus_t> _host_statuses;
     DeviceArray<char> _data;
     DeviceArray<char> _chunks_out;
     DeviceArray<char> _packed;
@@ -267,7 +271,7 @@ private:
     DeviceArray<void*> _out_ptrs;
     DeviceArray<std::size_t> _out_sizes;
     DeviceArray<std::size_t> _offsets;
-    DeviceArray<nvcompStatus_t> _statuses;
+    DeviceArray<gpucompStatus_t> _statuses;
     DeviceArray<char> _temp;
     std::size_t _temp_bytes = 0;
     DeviceArray<char> _scan_temp;
@@ -277,5 +281,17 @@ private:
 } // namespace
 
 std::unique_ptr<GzipCompressor> GpuDevice::gzip_compressor(int algorithm) const {
-    return std::make_unique<NvcompGzipCompressor>(*this, algorithm);
+    return std::make_unique<GpuGzipCompressor>(*this, algorithm);
 }
+
+#else
+
+std::unique_ptr<GzipCompressor> GpuDevice::gzip_compressor(int) const {
+    static std::once_flag warned;
+    std::call_once(warned, [] {
+        Logger::warning(GPUCOMP_FALLBACK_REASON ", falling back to CPU gzip");
+    });
+    return nullptr;
+}
+
+#endif

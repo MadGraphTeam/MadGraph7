@@ -61,9 +61,7 @@ public:
         double bias_corr2_sqrt,
         double weight_decay
     ) const override;
-#ifdef MADSPACE_NVCOMP
     std::unique_ptr<GzipCompressor> gzip_compressor(int algorithm) const override;
-#endif
 
     GpuDevice(const GpuDevice&) = delete;
     GpuDevice& operator=(GpuDevice&) = delete;

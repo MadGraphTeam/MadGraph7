@@ -12,9 +12,13 @@
 #define gpuMallocAsync cudaMallocAsync
 #define gpuFree cudaFree
 #define gpuFreeAsync cudaFreeAsync
+#define gpuMallocHost cudaMallocHost
+#define gpuFreeHost cudaFreeHost
 #define gpuMemcpy cudaMemcpy
 #define gpuMemset cudaMemset
 #define gpuMemcpyDefault cudaMemcpyDefault
+#define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
+#define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
 #define gpuMemcpyAsync cudaMemcpyAsync
 #define gpuMemsetAsync cudaMemsetAsync
 #define gpuStreamPerThread cudaStreamPerThread
@@ -64,9 +68,13 @@
 #define gpuMallocAsync hipMallocAsync
 #define gpuFree hipFree
 #define gpuFreeAsync hipFreeAsync
+#define gpuMallocHost hipHostMalloc
+#define gpuFreeHost hipHostFree
 #define gpuMemcpy hipMemcpy
 #define gpuMemset hipMemset
 #define gpuMemcpyDefault hipMemcpyDefault
+#define gpuMemcpyHostToDevice hipMemcpyHostToDevice
+#define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
 #define gpuMemcpyAsync hipMemcpyAsync
 #define gpuMemsetAsync hipMemsetAsync
 #define gpuStreamPerThread hipStreamPerThread

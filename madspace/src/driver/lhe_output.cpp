@@ -926,7 +926,7 @@ LHEFileWriter::LHEFileWriter(
         _compressor = gzip_device->gzip_compressor(gzip_algorithm);
         if (!_compressor) {
             throw std::invalid_argument(
-                "gzip_device has no gzip compressor (madspace built without nvCOMP?)"
+                "gzip_device has no gzip compressor (madspace built without GPU gzip?)"
             );
         }
     }
