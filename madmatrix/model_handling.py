@@ -49,28 +49,42 @@ def strip_banner(file_text, banner_mark):
     return '\n'.join(file_lines[start:])
 
 
+def model_parameter_name(name):
+    """Match the UFO importer's parameters that deliberately keep their names."""
+    if name.lower() in ('as', 'g', 'mu_r', 'aewm1', 'zero'):
+        return name
+    return aloha.aloha_prefix + name
+
+
 def running_propagator_parameters(model):
     """Running UFO parameters referenced by each custom propagator.
 
     Use the same ordered arguments in the ALOHA routines and their callers,
     including parameters that algebraic simplification might cancel out.
     """
+    # aS is an external UFO parameter, but is supplied event by event as G.
     dependent = {p.name: p for key, params in model['parameters'].items()
-                 if 'aS' in key for p in params}
+                 for p in params if 'aS' in key or p.name == 'aS'}
     names = sorted({p.get('propagator') for p in model['particles']
                     if isinstance(p.get('propagator'), str) and p.get('propagator')})
+    key = (aloha.aloha_prefix, tuple(names),
+           tuple((name, id(parameter)) for name, parameter in dependent.items()))
+    cached = getattr(model, '_madmatrix_propagator_parameters', None)
+    if cached and cached[0] == key:
+        return cached[1]
     if not dependent or not names:
         return {}
     from aloha.create_aloha import AbstractALOHAModel
     ufo = AbstractALOHAModel.from_model(model).model
     result = {}
-    for name in names:
-        propagator = getattr(ufo.propagators, name)
+    for propagator_name in names:
+        propagator = getattr(ufo.propagators, propagator_name)
         identifiers = set(re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b',
                                      propagator.numerator + ' ' + propagator.denominator))
-        result['P' + name] = [(name, dependent[aloha.aloha_prefix + name])
-                              for name in sorted(identifiers)
-                              if aloha.aloha_prefix + name in dependent]
+        result['P' + propagator_name] = [(ident, dependent[model_parameter_name(ident)])
+                                         for ident in sorted(identifiers)
+                                         if model_parameter_name(ident) in dependent]
+    model._madmatrix_propagator_parameters = (key, result)
     return result
 
 
@@ -390,6 +404,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
     # Running custom-propagator parameters arrive as explicit per-event arguments.
     dependent_params = ()
+    model_parameter_types = {}
 
     # OM - the body of a routine may refer to a model parameter: this happens for
     # the custom propagators of a UFO model, whose numerator/denominator are
@@ -402,7 +417,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         """Define a model parameter which the routine body uses"""
         # ALOHA sees the UFO name ('dWT'), the generated Parameters class uses
         # the prefixed one ('mdl_dWT'), exactly as in the fortran writer
-        mdlname = '%s%s' % (aloha.aloha_prefix, name)
+        mdlname = model_parameter_name(name)
         if mdlname in self.dependent_params:
             if any(argname == name for _, argname in self.call_arg):
                 return ''
@@ -759,6 +774,56 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             return denominator
         return self._fp_constant.sub(r'\1d', self._tmp_ref.sub(r'd\1', denominator))
 
+    def running_denominator_in_denom_precision(self):
+        """Evaluate a running custom denominator before narrowing any operand.
+
+        Its TMP/FCT expressions also feed numerator code at vertex precision.
+        Expand those references here so cancellation and powers use the original
+        momenta, while leaving the numerator's temporary definitions unchanged.
+        """
+        temporary = re.compile(r'\b(?:TMP|FCT)\d+\b')
+        expanded = {}
+
+        def expand(match):
+            name = match.group()
+            if name not in expanded:
+                if name in self.routine.contracted:
+                    expression = self.write_obj(self.routine.contracted[name])
+                else:
+                    function, objects = self.routine.fct[name]
+                    args = [self.write_obj(obj) for obj in objects]
+                    format = self.get_fct_format(function)
+                    try:
+                        expression = format % ','.join(args)
+                    except TypeError:
+                        expression = format % tuple(args)
+                expanded[name] = '(' + temporary.sub(expand, expression) + ')'
+            return expanded[name]
+
+        expression = temporary.sub(expand, self.write_obj(self.routine.denominator))
+        self.dp_needed.update(int(match[0]) for match in self._momentum_ref.findall(expression))
+        expression = self._momentum_ref.sub(lambda match: 'dP%s[%s]' % match.groups(), expression)
+        running = {name for tag in self.tag
+                   for name, _ in self.propagator_parameters.get(tag, ())}
+
+        def promote(match):
+            name = match.group()
+            if name == 'cI':
+                return 'static_cast<cxtype_denom_sv>(cxsmpl<fptype_denom>(0., 1.))'
+            if name in ('one', 'two', 'half', 'quarter'):
+                return name + 'd'
+            if name in running:
+                return 'static_cast<cxtype_denom_sv>(static_cast<cxtype_sv>(%s))' % name
+            if re.fullmatch(r'[MW]\d+', name):
+                return 'static_cast<fptype_denom>(%s)' % name
+            parameter_type = self.model_parameter_types.get(model_parameter_name(name))
+            if parameter_type:
+                return 'static_cast<%s>(%s)' % (
+                    'cxtype_denom_sv' if parameter_type == 'complex' else 'fptype_denom', name)
+            return name
+
+        return re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\b', promote, expression)
+
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This is called once per FFV function, i.e. once per WriteALOHA instance?
     # It is called by WriteALOHA.write, after get_header_txt, get_declaration_txt, get_momenta_txt, before get_foot_txt
@@ -911,9 +976,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                             # them as C++, including parameter declarations.
                             denominator = str(self.routine.denominator)
                             if any(self.propagator_parameters.get(tag) for tag in self.tag):
-                                denominator = self.write_obj(self.routine.denominator)
-                                denominator = ('static_cast<cxtype_denom_sv>( '
-                                               'static_cast<cxtype_sv>( %s ) )' % denominator)
+                                denominator = self.running_denominator_in_denom_precision()
                             mydict['denom'] = self.denominator_in_denom_precision(
                                                    denominator)
                             out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
@@ -1600,29 +1663,17 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # because they are used in the event by event calculation of alphaS-dependent couplings
         bsmparam_indep_real_used = []
         bsmparam_indep_complex_used = []
+        referenced = set(re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b', ' '.join(
+            [coup.expr for coup in self.coups_dep.values()] +
+            [param.expr for param in self.params_dep if param.name in params_dep_used])))
         for param in self.params_indep: # NB this is now done also for 'sm' processes (no check on model name, see PR #824)
             if param.name == 'mdl_complexi' : continue
             if param.name == 'aS' : continue
-            # Add BSM parameters which are needed to compute dependent couplings
-            # Note: this seemed enough to fix SUSY processes, but not EFT processes
-            for coupdep in self.coups_dep.values():
-                if param.name in coupdep.expr:
-                ###if ' '+param.name+' ' in coupdep.expr: # this is not enough, see review of PR #824 and mg5amcnlo#90
-                    if param.type == 'real':
-                        bsmparam_indep_real_used.append( param.name )
-                    elif param.type == 'complex':
-                        bsmparam_indep_complex_used.append( param.name )
-            # Add BSM parameters which are needed to compute dependent parameters
-            # Note: this was later added to also fix EFT processes (related to #616)
-            for pardep in self.params_dep:
-                if pardep.name not in params_dep_used:
-                    continue
-                if param.name in pardep.expr:
-                ###if param.name in pardep.expr: # this is not enough, see review of PR #824 and mg5amcnlo#90
-                    if param.type == 'real':
-                        bsmparam_indep_real_used.append( param.name )
-                    elif param.type == 'complex':
-                        bsmparam_indep_complex_used.append( param.name )
+            if param.name in referenced:
+                if param.type == 'real':
+                    bsmparam_indep_real_used.append(param.name)
+                elif param.type == 'complex':
+                    bsmparam_indep_complex_used.append(param.name)
         # Use dict.fromkeys() instead of set() to ensure a reproducible ordering of parameters (see https://stackoverflow.com/a/53657523)
         bsmparam_indep_real_used = dict.fromkeys( bsmparam_indep_real_used ) 
         bsmparam_indep_complex_used = dict.fromkeys( bsmparam_indep_complex_used ) 
@@ -1730,7 +1781,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # For simplicity, compute these parameters directly from G, rather than from another such parameter
             # (e.g. do not compute mdl_sqrt__aS as sqrt of aS, which would require defining aS first)
             gparameters = { 'aS' : 'G * G / 4. / M_PI',
-                            'mdl_sqrt__aS' : 'G / 2. / constexpr_sqrt( M_PI )' }
+                            'mdl_sqrt__aS' : 'G / 2. / static_cast<fptype>(constexpr_sqrt( M_PI ))' }
             gparamcoded = set()
             foundG = False
             for pdep in self.params_dep:
@@ -1766,6 +1817,13 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 if pdep.name == 'G':
                     foundG = True
                     dcoupsetdpar.append('        // *** NB Compute all dependent parameters, including aS, in terms of G rather than in terms of aS ***')
+            # A propagator may use aS directly, without any intermediate
+            # dependent parameter causing the definition above to be emitted.
+            direct_references = set(re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b',
+                                    ' '.join(coup.expr for coup in self.coups_dep.values())))
+            for gpar, expression in gparameters.items():
+                if gpar in direct_references and gpar not in gparamcoded:
+                    dcoupsetdpar.append('        const fptype_sv %s = %s;' % (gpar, expression))
             replace_dict['dcoupsetdpar'] = '\n'.join( dcoupsetdpar )
             dcoupsetdcoup = [ '    ' + line.replace('constexpr cxsmpl<double> ','out.').replace('mdl_complexi', 'cI') for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') if line != '' ]
             replace_dict['dcoupsetdcoup'] = '    ' + '\n'.join( dcoupsetdcoup )
@@ -1785,8 +1843,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             dcoupoutdcoup2 = [ '      out.%s = cxtype_v( %sr_v, %si_v );'%(name,name,name) for name in self.coups_dep ]
             replace_dict['dcoupoutdcoup2'] = '\n' + '\n'.join( dcoupoutdcoup2 )
             for par in bsmparam_indep_complex_used:
-                replace_dict['dcoupsetdcoup'] = replace_dict['dcoupsetdcoup'].replace( par, '(cxtype)'+par )
-                replace_dict['dcoupsetdcoup2'] = replace_dict['dcoupsetdcoup2'].replace( par, '(cxtype)'+par )
+                identifier = re.compile(r'\b%s\b' % re.escape(par))
+                for key in ('dcoupsetdpar', 'dcoupsetdpar2', 'dcoupsetdcoup', 'dcoupsetdcoup2'):
+                    replace_dict[key] = identifier.sub('(cxtype)' + par, replace_dict[key])
         else:
             replace_dict['idcoup'] = '    // NB: there are no aS-dependent couplings in this physics process'
             replace_dict['dcoupdecl'] = '      // (none)'
@@ -1970,7 +2029,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # parameters; callers extract the real part for a real UFO parameter.
         parameters = running_propagator_parameters(self.model)
         self.aloha_writer = type('ProcessALOHAWriter', (type(self).aloha_writer,), {
-            'dependent_params': frozenset(p.name for p in self.params_dep),
+            'dependent_params': frozenset(p.name for p in self.params_dep) | {'aS'},
+            'model_parameter_types': {p.name: p.type for values in self.model['parameters'].values()
+                                      for p in values},
             'propagator_parameters': parameters})
         tags = {tag for _, tags, _ in self.wanted_lorentz for tag in tags} \
                if self.wanted_lorentz else set(parameters)
@@ -3410,7 +3471,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 
             if newcoup:
                 self.couplings2order = self.couporderdep | self.couporderindep
-        if 'flvCOUPs_dep[' in call and ('CDPF_ACCESS' not in call or re.search(r'\bCOUPs\[|flvCOUPs\[', call)):
+        if 'flvCOUPs_dep[' in call and ('CDPF_ACCESS' not in call or re.search(
+                r'\bCOUPs\[(?!Parameters_dependentCouplings::idcoup_HP_)|flvCOUPs\[', call)):
             # one access type per vertex routine: CDPF_ACCESS cannot also read the
             # all-events buffer of an ordinary running coupling (on the GPU)
             raise Exception('a vertex mixing a running flavored coupling with another running coupling is not supported: %s' % call)

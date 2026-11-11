@@ -45,16 +45,19 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
             baseline = None
             # f exercises the scalar loop used to compute SIMD float couplings;
             # v exercises distinct vertex and parameter/denominator precision.
-            configurations = [('scalar', 'd'), ('simd_128', 'd'),
-                              ('simd_128', 'f'), ('simd_128', 'v')]
+            configurations = [('scalar', 'd', 0), ('simd_128', 'd', 0),
+                              ('simd_128', 'f', 0), ('simd_128', 'v', 0),
+                              ('simd_128', 'f', 1), ('simd_128', 'v', 1)]
             gpu_backend = os.environ.get('MG7_TEST_GPU_BACKEND')
             if gpu_backend:
                 self.assertIn(gpu_backend, ('cuda', 'hip'))
-                configurations.append((gpu_backend, 'd'))
-            for backend, precision in configurations:
+                configurations += [(gpu_backend, 'd', 0), (gpu_backend, 'v', 1)]
+            for backend, precision, hardcoded in configurations:
+                self.errors = []
                 self.run_command(['make', 'cleanall'], cdir)
-                self.run_command(['make', '-j2', 'BACKEND=' + backend, 'FPTYPE=' + precision], cdir)
-                tolerance = 2e-5 if precision == 'f' else 1e-6
+                self.run_command(['make', '-j2', 'BACKEND=' + backend, 'FPTYPE=' + precision,
+                                  'HRDCOD=' + str(hardcoded)], cdir)
+                tolerance = 2e-5 if precision == 'f' else (3e-6 if precision == 'v' else 1e-6)
                 for alpha, expected in reference.items():
                     self.set_alphas(cpp, alpha)
                     actual = self.matrix_element(self.run_command(['./check_sa.exe', 'matrix', '200'], cdir))
@@ -72,11 +75,13 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
                     self.run_command(fixed_args, cdir)
                     fixed = self.read_array(fixed_file)
                     self.assertEqual(len(fixed), len(alphas))
-                    # Every amplitude is multiplied by (1+i*r)/(s-MZ^2*(1+r)+i*MZ*WZ).
+                    # The numerator includes an independent complex coefficient,
+                    # plus direct aS/G references, all with different input values.
                     def factor(alpha):
                         r = (alpha / 0.1)**2
-                        return (1 + r*r) / ((200**2 - 91.188**2*(1+r))**2
-                                             + (91.188*2.441404)**2)
+                        numerator = 1 + complex(0.25, 0.75)*r + alpha + math.sqrt(4*math.pi*alpha)
+                        return abs(numerator)**2 / ((200**2 - 91.188**2*(1+r))**2
+                                                    + (91.188*2.441404)**2)
                     for actual, value, alpha in zip(baseline, fixed, alphas):
                         self.assert_close(actual, value * factor(alpha) / factor(0.08), 1e-6)
                 else:
@@ -85,6 +90,44 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
                     self.assertEqual(len(values), len(baseline))
                     for actual, expected in zip(values, baseline):
                         self.assert_close(actual, expected, tolerance)
+                print('Validated %s/%s HRDCOD=%d: max relative error %.3g' %
+                      (backend, precision, hardcoded, max(self.errors)), flush=True)
+
+    def test_madmatrix_running_helas_pole_precision(self):
+        """A squared narrow Higgs pole retains the double momentum subtraction."""
+        with tempfile.TemporaryDirectory(prefix='running_helas_pole_') as directory:
+            cmd = MasterCmd()
+            cmd.exec_cmd('import model %s' % create_model(os.path.join(directory, 'running_pole_ufo')),
+                         errorhandling=False)
+            cmd.exec_cmd('generate b b~ > h > ta+ ta-', errorhandling=False)
+            roots = {}
+            for output_format in ('standalone_fortran', 'standalone'):
+                root = os.path.join(directory, output_format)
+                cmd.exec_cmd('output %s %s -f' % (output_format, root), errorhandling=False)
+                roots[output_format] = root
+            fortran, cpp = roots['standalone_fortran'], roots['standalone']
+            fdir, = glob.glob(os.path.join(fortran, 'SubProcesses', 'P*'))
+            cdir, = glob.glob(os.path.join(cpp, 'SubProcesses', 'P*'))
+            self.run_command(['make', '-j2'], os.path.join(fortran, 'Source'))
+            self.run_command(['make', 'check'], fdir)
+            # check_sa's energy setting is fptype: use exactly representable
+            # float energies so the two drivers receive the same physical point.
+            energies = [array.array('f', [math.sqrt(125**2 + offset*125*0.006382339)])[0]
+                        for offset in (-1., 0., 1.)]
+            reference = [self.matrix_element(self.run_command(['./check', repr(energy)], fdir))
+                         for energy in energies]
+            backend = os.environ.get('MG7_TEST_GPU_BACKEND', 'simd_128')
+            for configuration in (['BACKEND=scalar', 'FPTYPE=d'],
+                                  ['BACKEND=' + backend, 'FPTYPE=v', 'HRDCOD=1']):
+                self.errors = []
+                self.run_command(['make', 'cleanall'], cdir)
+                self.run_command(['make', '-j2'] + configuration, cdir)
+                for energy, expected in zip(energies, reference):
+                    actual = self.matrix_element(self.run_command(
+                        ['./check_sa.exe', 'matrix', repr(energy)], cdir))
+                    self.assert_close(actual, expected, 1e-5)
+                print('Validated pole %s: max relative error %.3g' %
+                      (' '.join(configuration), max(self.errors)), flush=True)
 
     def run_command(self, args, cwd):
         result = subprocess.run(args, cwd=cwd, stdout=subprocess.PIPE,
@@ -99,7 +142,9 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
 
     def assert_close(self, actual, expected, tolerance):
         self.assertTrue(math.isfinite(actual) and expected > 0.)
-        self.assertLessEqual(abs(actual / expected - 1.), tolerance,
+        error = abs(actual / expected - 1.)
+        self.errors.append(error)
+        self.assertLessEqual(error, tolerance,
                              '%s != %s' % (actual, expected))
 
     @staticmethod

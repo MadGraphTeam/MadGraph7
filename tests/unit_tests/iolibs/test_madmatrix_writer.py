@@ -48,7 +48,7 @@ class TestRunningHelasParameters(unittest.TestCase):
     def test_parameter_buffer_and_dependency_closure(self):
         converter = self.converter(['PZrun'])
         self.assertEqual(list(converter.coups_dep),
-                         ['HP_mdl_running_complex', 'HP_mdl_running_real'])
+                         ['HP_G', 'HP_aS', 'HP_mdl_running_complex', 'HP_mdl_running_real'])
         self.assertIn('mdl_running_base', converter.used_dependent_parameters())
         self.assertIn('mdl_running_real', converter.used_dependent_parameters())
         self.assertNotIn('mdl_running_unused', converter.used_dependent_parameters())
@@ -66,6 +66,8 @@ class TestRunningHelasParameters(unittest.TestCase):
                          for routine in aloha_model.values())
         self.assertIn('const cxtype_sv & running_complex', text)
         self.assertIn('const fptype_sv & running_real', text)
+        self.assertIn('const fptype_sv & aS', text)
+        self.assertIn('const fptype_sv & G', text)
         self.assertNotIn('Parameters::mdl_running', text)
         self.assertNotIn('Parameters::current->mdl_running', text)
         # Model-specific configuration must not leak into later exports.
@@ -101,6 +103,45 @@ class TestRunningHelasParameters(unittest.TestCase):
             self.assertIn('idcoup_HP_mdl_running_complex', call)
             self.assertIn('cxreal( CD_ACCESS::kernelAccessConst', call)
             self.assertIn('idcoup_HP_mdl_running_real', call)
+
+    def test_running_flavour_coupling_accepts_explicit_parameter_reads(self):
+        from madgraph.core.base_objects import FLV_Coupling
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        writer = MadMatrixUFOHelasCallWriter(self.model)
+        coupling = next(coup.name for key, couplings in self.model['couplings'].items()
+                        if 'aS' in key for coup in couplings)
+        writer.flv_couplings_map['FLV_TEST'] = FLV_Coupling('FLV_TEST', {(1, 1, 0): coupling})
+        call = ('FFV1<W_ACCESS, CI_ACCESS>(m_pars->FLV_TEST, '
+                'CD_ACCESS::kernelAccessConst(COUPs['
+                'Parameters_dependentCouplings::idcoup_HP_mdl_running_real]), out);')
+        formatted = writer.format_coupling(call)
+        self.assertIn('<W_ACCESS, CDPF_ACCESS>', formatted)
+        self.assertIn('flvCOUPs_dep[0]', formatted)
+        self.assertIn('CD_ACCESS::kernelAccessConst', formatted)
+        with self.assertRaisesRegex(Exception, 'mixing a running flavored coupling'):
+            writer.format_coupling(call.replace('out);', 'COUPs[0], out);'))
+
+    def test_direct_alphas_without_an_indirect_dependency(self):
+        from madmatrix.model_handling import MadMatrixUFOModelConverter
+        converter = MadMatrixUFOModelConverter(self.model, self.directory,
+                         wanted_lorentz=[(('FFV2',), ['PZrun'], 3)],
+                         wanted_couplings=['GC_1'])
+        # Isolate the direct aS/G case from the indirect running_real chain.
+        converter.coups_dep = {name: value for name, value in converter.coups_dep.items()
+                              if name in ('HP_aS', 'HP_G')}
+        converter.generate_parameters_class_files()
+        definitions = converter.default_replace_dict['dcoupsetdpar']
+        self.assertIn('const fptype_sv aS = G * G / 4. / M_PI;', definitions)
+
+    def test_complex_parameter_names_are_matched_as_identifiers(self):
+        converter = self.converter(['PZrun'])
+        converter.generate_parameters_class_files()
+        definitions = converter.default_replace_dict
+        for key in ('dcoupsetdpar', 'dcoupsetdpar2'):
+            self.assertIn('(cxtype)mdl_running ', definitions[key])
+        self.assertIn('out.HP_mdl_running_complex = mdl_running_complex;',
+                      definitions['dcoupsetdcoup'])
+        self.assertNotIn('HP_(cxtype)', definitions['dcoupsetdcoup'])
 
 
 class TestMomentaInDenomPrecision(unittest.TestCase):
