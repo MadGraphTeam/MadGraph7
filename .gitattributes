@@ -5,9 +5,6 @@
 .pre-commit-config.yaml export-ignore
 .bzrignore export-ignore
 
-# Preserve the frozen report bytes and keep compressed PDF streams out of diffs.
-doc/benchmarkfolder/*.pdf binary
-
 # pyamplicol tests and development tooling stay in the repository for its own
 # PyPI releases. The MadGraph7 installer builds the wheel without them.
 pyamplicol/tests/ export-ignore

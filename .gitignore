@@ -1,5 +1,4 @@
 *~
-.benchmark-work/
 .ninjars-build/
 vendor/ninjars/target/
 vendor/ninjars/smoke
@@ -89,11 +88,8 @@ tests/input_files/IOTestsComparison/**/*.BackUp
 # output of ./tests/test_manager.py
 UNITTEST_proc/
 
-# Local development references and report plotting caches.
+# Local development references.
 /references/
-/doc/benchmarkfolder/final-report-v1/.mpl-cache/
-/doc/benchmarkfolder/final-report-v1/cli-report.json.gz
-/doc/benchmarkfolder/final-report-v1/fonts/*.otf
 
 # LHAPDF-format re-tabulations of the dressed-lepton densities, produced from
 # the shipped eepdf.f by vendor/eepdfgrid/gen_eepdf_lhagrid.py in under a

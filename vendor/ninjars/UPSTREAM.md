@@ -98,7 +98,7 @@ commands, input provenance, independent Ninja comparisons and sealed hashes
 are preserved in the [immutable measurement archive](https://github.com/MadGraphTeam/MadGraph7/tree/19d67c8605337c176680878a521b3a014176a7fb/docs/benchmarkfolder/experiments)
 under `qcd3-point67-{dp,masters,t3}` and `t3-dp-retry`. These fixtures do not
 require sibling reference clones. The final measured report and its offline
-reproduction instructions are in [`doc/benchmarkfolder`](../../doc/benchmarkfolder/README.md).
+reproduction instructions are linked from [the benchmark release guide](../../doc/ninjars-benchmarks.md).
 
 The `fenv-test-support` Cargo feature compiles test-only floating-point flag and
 rounding mutators. Normal installation leaves this feature disabled and builds
