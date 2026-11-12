@@ -455,6 +455,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
                   (', '.join('cxmake( fpamp_of_mom( -%s.pvec[%d] ), 0. )' % (wf, i) for i in range(4)),
                    self.outgoing))
+        if self.fd_polarization() is not None:
+            # a polarised line at rest (|q| below 1e-10 q0, rounding): pin the
+            # axis of the helicities to +z, lane by lane, as the unitary-gauge
+            # polarised routines and the FD library (fd_polarized_propagator)
+            # do. The 'f' literals and the 0* keep the type of FDQ's parts in
+            # every precision and backend.
+            for i, pinned in ((1, '1e-30f'), (2, '0.f'), (3, '1e-15f')):
+                out.write('    FDQ[%(i)d] = cxmake( fpternary( FDQ[%(i)d].real() * FDQ[%(i)d].real() * 1e20f'
+                          ' < FDQ[0].real() * FDQ[0].real(), FDQ[0].real() * 0 + %(v)s,'
+                          ' FDQ[%(i)d].real() ), FDQ[%(i)d].imag() );\n' % {'i': i, 'v': pinned})
         out.write('    fptype_sv FDN[5];\n')
         out.write('    define_gauge_dir( FDQ, FDN );\n')
         out.write('    const fptype_sv FDNQ = %s;\n' %
@@ -490,15 +500,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         eps0 (eps0*.w) for {0}, the transverse components (and their helicity
         projections) for {T}/{+}/{-}, -(q^2-M^2) n (n.w)/(n.q)^2 for {A},
         the same with q^2-M^2+iM*Gamma for {S}. The unit vector along the
-        momentum is -n (n = (+-1, -q/|q|))."""
+        momentum is -n (n = (+-1, -q/|q|)). Only the temporaries a piece reads
+        are written."""
 
         out = StringIO()
         w = self.outname
         m = 'M%s' % self.outgoing
         width = 'W%s' % self.outgoing
-        nw = ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4))
-        out.write('    const cxtype_sv FDI = cxmake( fptype_sv{ 0 }, fptype_sv{ 0 } + 1. );\n')
-        out.write('    const cxtype_sv FDNW = %s;\n' % nw)
+        if pol in (0, 2, 3, 6):
+            out.write('    const cxtype_sv FDI = cxmake( fptype_sv{ 0 }, fptype_sv{ 0 } + 1. );\n')
         if pol in (1, 2, 3):
             out.write('    const cxtype_sv FDNV = %s;\n' % ' + '.join(
                 'FDN[%d] * %s[%d]' % (i, w, i) for i in (1, 2, 3)))
@@ -520,18 +530,20 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                               % (w, i, i, '+' if pol == 2 else '-', i))
             out.write('    %s[4] = cxzero_sv();\n' % w)
             return out.getvalue()
+        # {0}, {A}, {S}, {0S}: all read n.w
+        out.write('    const cxtype_sv FDNW = %s;\n' % ' - '.join(
+            'FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
+        if pol in (4, 5, 6):
+            out.write('    const fptype_sv FDQ2 = %s;\n' % ' - '.join(
+                'FDQ[%d].real() * FDQ[%d].real()' % (i, i) for i in range(4)))
         terms = []
         if pol in (0, 6):
             out.write('    const cxtype_sv FDC = FDNW * ( %s / FDNQ ) - FDI * %s[4];\n' % (m, w))
             terms.append('( FDN[%%(i)d] * ( -%s / FDNQ ) ) * FDC' % m)
         if pol == 4:
-            out.write('    const fptype_sv FDQ2 = %s;\n' % ' - '.join(
-                'FDQ[%d].real() * FDQ[%d].real()' % (i, i) for i in range(4)))
             out.write('    const fptype_sv FDA = ( %s * %s - FDQ2 ) / ( FDNQ * FDNQ );\n' % (m, m))
             terms.append('( FDN[%(i)d] * FDA ) * FDNW')
         if pol in (5, 6):
-            out.write('    const fptype_sv FDQ2 = %s;\n' % ' - '.join(
-                'FDQ[%d].real() * FDQ[%d].real()' % (i, i) for i in range(4)))
             out.write('    const cxtype_sv FDS = cxmake( ( %s * %s - FDQ2 ) / ( FDNQ * FDNQ ), '
                       '-%s * %s / ( FDNQ * FDNQ ) );\n' % (m, m, m, width))
             terms.append('( FDN[%(i)d] * FDNW ) * FDS')

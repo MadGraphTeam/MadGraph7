@@ -109,6 +109,7 @@ import madgraph.models.build_restriction_lib as build_restrict_lib
 
 import aloha.aloha_fct as aloha_fct
 import aloha.create_aloha as create_aloha
+import aloha.aloha_writers as aloha_writers
 import aloha.aloha_lib as aloha_lib
 
 import mg5decay.decay_objects as decay_objects
@@ -1221,8 +1222,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   and are only valid on a particle that is decayed further (an internal line).")
         logger.info(" > A polarised propagator (any '{X}' on a massive vector that is decayed further) is a piece")
         logger.info("   of the propagator numerator: available in the unitary and axial gauges, and in the FD gauge")
-        logger.info("   for {0},{T},{+},{-},{A},{S},{0S}; not in the Feynman gauge. An external polarised")
-        logger.info("   particle is supported in every gauge.")
+        logger.info("   for {0},{T},{+},{-},{A},{S},{0S} ({T},{+},{-} only for a massless vector); not in the")
+        logger.info("   Feynman gauge, nor in the complex-mass scheme. {T},{+},{-} are the same in every gauge and")
+        logger.info("   {0} on shell; {A},{S},{0S} are gauge-dependent remainders that differ between gauges.")
+        logger.info("   An external polarised particle is supported in every gauge.")
         logger.info(" > At LO, polarized processes work with any 'group_subprocesses' setting. 'me_frame' (run_card)")
         logger.info("   defaults to the rest frame of the massive final-state particles (or their")
         logger.info("   decay products) in p p collisions, [1,2] (the partonic c.m.) in e+ e-.")
@@ -6373,20 +6376,17 @@ This implies that with decay chains:
         for decay in procdef.get('decay_chains'):
             self.validate_propagator_polarization(decay)
 
-    # The gauges in which the polarised propagators of a massive vector exist
-    # (aloha.unitary_gauge: True is the unitary gauge, 2 the axial gauge,
-    # False the Feynman gauge, 3 the FD gauge). In the unitary and axial
-    # gauges (the axial gauge only changes the propagator of the massless
-    # vectors) they are pieces of the unitary numerator -g + qq/M^2
-    # (aloha/create_aloha.py, get_custom_propa); in the FD gauge pieces of the
-    # five-component FD numerator, -g5 + (q n + n q*)/(n.q) =
-    # sum_T eps eps* + eps0 eps0* + (q^2-M^2) n n/(n.q)^2
-    # (aloha/aloha_writers.py, FD_POLARIZED_PROPAGATORS), which only has the
-    # helicity pieces and the remainder: {G},{H},{Q},{W} (4,5,6,7), pieces of
-    # the unitary numerator, have no FD counterpart.
+    # aloha.unitary_gauge: True is the unitary gauge, 2 the axial gauge, False
+    # the Feynman gauge, 3 the FD gauge. In the unitary and axial gauges (the
+    # axial gauge only changes the propagator of the massless vectors) every
+    # polarised propagator is a piece of the unitary numerator -g + qq/M^2
+    # (aloha/create_aloha.py, get_custom_propa). In the FD gauge only the
+    # pieces of the five-component FD numerator exist (FD_POLARIZED_PROPAGATORS
+    # in aloha/aloha_writers.py); which braces they are is read from the table
+    # brace -> tag of helas_objects (VECTOR_PROPAGATOR_TAGS), not repeated here.
     ALOHA_GAUGE_NAMES = {True: 'unitary', 2: 'axial', False: 'Feynman', 3: 'FD'}
-    POLARIZED_PROPAGATOR_GAUGES = {True: None, 2: None,
-                                   3: (4, 5, 6, 7)}
+    UNITARY_PROPAGATOR_GAUGES = (True, 2)
+    FD_GAUGE = 3
 
     @staticmethod
     def polarization_brace(polarization):
@@ -6400,41 +6400,43 @@ This implies that with decay chains:
                        for p in polarization)
 
     def validate_polarized_propagator_gauge(self, procdef):
-        """Refuse a polarised propagator of a massive vector in a gauge where
-        it does not exist.
+        """Refuse a polarised propagator of a vector in a gauge where it does
+        not exist.
 
-        The braces on a massive vector that is decayed further -- 'w+{0}',
-        'w+{T}', 'w+{A}', 'w+{S}', 'w+{0S}', 'w+{G}', ... in
+        The braces on a vector that is decayed further -- 'w+{0}', 'w+{T}',
+        'w+{A}', 'w+{S}', 'w+{0S}', 'w+{G}', ... in
         't > w+{0} b, w+ > ta+ vt' -- replace its propagator by one piece of
         its numerator, over the pole 1/(q^2 - M^2 + iM Gamma):
           - unitary and axial gauges: every brace, pieces of -g + qq/M^2;
-          - FD gauge: {0}, {T}, {+}, {-}, {A}, {S}, {0S}, pieces of the
-            five-component FD numerator (FD_POLARIZED_PROPAGATORS in
-            aloha/aloha_writers.py); {G}, {H}, {Q}, {W} are pieces of the
-            unitary numerator only and are refused;
-          - Feynman gauge: refused. The propagator is -ig/(q^2 - M^2) and the
-            qq/M^2 piece is carried by separate Goldstone diagrams, so a piece
-            of the propagator is not a polarisation (the output used to crash
-            with 'particle with custom propagator can not have polarization').
-        None of them exists in the complex-mass scheme, whose propagator is
-        not the fixed-width one the pieces decompose (the output used to stop
-        with an ALOHA error).
-        An *external* polarised massive vector is fine in every gauge (its
-        helicity amplitudes are gauge invariant) and is not touched here.
+          - FD gauge: the pieces of the five-component FD numerator, {0},
+            {T}, {+}, {-}, {A}, {S}, {0S} (aloha_writers.
+            FD_POLARIZED_PROPAGATORS); {G}, {H}, {Q}, {W}, pieces of the
+            unitary numerator only, are refused. For a massless vector the
+            FD longitudinal vector vanishes and only {T}, {+}, {-} (gauge
+            independent) are kept. {A}, {S} and {0S} are allowed with a
+            warning: the FD remainder is not the unitary-gauge one;
+          - Feynman gauge: refused for a massive vector. The propagator is
+            -ig/(q^2 - M^2) and the qq/M^2 piece is carried by separate
+            Goldstone diagrams, so a piece of the propagator is not a
+            polarisation (the output used to crash with 'particle with
+            custom propagator can not have polarization').
+        None of them exists for a massive vector in the complex-mass scheme,
+        whose propagator is not the fixed-width one the pieces decompose (the
+        output used to stop with an ALOHA error).
+        An *external* polarised vector is fine in every gauge (its helicity
+        amplitudes are gauge invariant) and is not touched here.
 
         Raises InvalidCmd; returns None."""
 
         if procdef is None:
             return
         complex_mass = bool(self.options.get('complex_mass_scheme'))
-        allowed = aloha.unitary_gauge in self.POLARIZED_PROPAGATOR_GAUGES \
-                  and not complex_mass
-        refused_braces = self.POLARIZED_PROPAGATOR_GAUGES.get(aloha.unitary_gauge)
-        if allowed and not refused_braces:
+        if aloha.unitary_gauge in self.UNITARY_PROPAGATOR_GAUGES and not complex_mass:
             return
         model = procdef.get('model')
         if not model:
             return
+        fd_gauge = aloha.unitary_gauge == self.FD_GAUGE
         gauge = self.ALOHA_GAUGE_NAMES.get(aloha.unitary_gauge, str(aloha.unitary_gauge))
 
         decayed_ids = set()
@@ -6446,24 +6448,46 @@ This implies that with decay chains:
         for leg in procdef.get('legs'):
             if not leg.get('polarization'):
                 continue
-            if allowed and not set(leg.get('polarization')).intersection(refused_braces):
-                continue
+            tag = helas_objects.vector_propagator_tag(leg.get('polarization'))
             for pdg in decayed_ids.intersection(leg.get('ids')):
                 particle = model.get_particle(pdg)
-                if particle is None or particle.get('spin') != 3 or \
-                        particle.get('mass').lower() == 'zero':
+                if particle is None or particle.get('spin') != 3:
                     continue
+                massless = particle.get('mass').lower() == 'zero'
                 values = {'name': particle.get_name(),
                           'pol': self.polarization_brace(leg.get('polarization')),
                           'gauge': gauge}
-                if complex_mass:
+                if complex_mass and not massless:
                     raise self.InvalidCmd(
                         "The polarised propagator of a massive vector "
                         "('%(name)s{%(pol)s}' decayed further) is not "
                         "available in the complex-mass scheme: its pieces "
                         "decompose the fixed-width propagator. Use 'set "
                         "complex_mass_scheme False'." % values)
-                if allowed:
+                if aloha.unitary_gauge in self.UNITARY_PROPAGATOR_GAUGES:
+                    continue
+                if fd_gauge:
+                    supported = aloha_writers.FD_MASSLESS_POLARIZED_PROPAGATORS \
+                        if massless else aloha_writers.FD_POLARIZED_PROPAGATORS
+                    if tag in supported:
+                        if tag in ('1A', '1S', '1LS'):
+                            logger.warning(
+                                "In the FD gauge '%(name)s{%(pol)s}' uses the "
+                                "remainder of the FD propagator, (q^2-M^2) n n/"
+                                "(n.q)^2 (with q^2-M^2+iM*Gamma for {S}): like "
+                                "{A} and {S} in the unitary gauge it vanishes on "
+                                "shell and is gauge dependent, but it is not the "
+                                "unitary-gauge one, so {A}, {S} and {0S} differ "
+                                "between the two gauges." % values)
+                        continue
+                    if massless:
+                        raise self.InvalidCmd(
+                            "The polarised propagator '%(name)s{%(pol)s}' of a "
+                            "massless vector is not available in the FD gauge: "
+                            "its FD longitudinal polarisation vanishes, so "
+                            "only the transverse pieces {T}, {+}, {-} are "
+                            "kept. Use one of those, or 'set gauge unitary'."
+                            % values)
                     raise self.InvalidCmd(
                         "The polarised propagator '%(name)s{%(pol)s}' is a "
                         "piece of the unitary-gauge numerator -g + qq/M^2 and "
@@ -6471,6 +6495,10 @@ This implies that with decay chains:
                         "propagator only splits into the helicity pieces {0}, "
                         "{T}, {+}, {-} and the remainder {A} (or {S}, {0S}). "
                         "Use one of those, or 'set gauge unitary'." % values)
+                if massless:
+                    # the massless propagator is the same -g in the Feynman
+                    # and unitary gauges
+                    continue
                 raise self.InvalidCmd(
                     "The polarised propagator of a massive vector "
                     "('%(name)s{%(pol)s}' decayed further) is not available "

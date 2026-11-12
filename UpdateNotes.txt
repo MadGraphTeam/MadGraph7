@@ -10,9 +10,12 @@ ANNOUNCEMENT:
        pieces of the five-component FD propagator (the FD longitudinal vector of the
        external W, the unitary transverse ones, and (q^2-M^2) n n/(n.q)^2). The FD output
        used to be wrong (SIGBUS in the Fortran standalone). {T}, {+}, {-} equal the
-       unitary-gauge ones, {0} equals it on shell.
+       unitary-gauge ones, {0} equals it on shell; {A}, {S}, {0S} are the FD remainder
+       (a warning says so). A line at rest has its helicity axis along +z, as in the
+       unitary gauge. A massless vector keeps only {T}, {+}, {-} in the FD gauge.
    OM: polarised propagators of a massive vector are refused in the Feynman gauge (the
-       output crashed), in the complex-mass scheme, and {G}, {H}, {Q}, {W} in the FD gauge.
+       output crashed), in the complex-mass scheme, and {G}, {H}, {Q}, {W} in the FD gauge
+       (also by ALOHA itself).
    OM: madmatrix: a custom propagator denominator with a width term (the polarised
        propagators) was written as a Python complex literal and did not compile.
    OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).

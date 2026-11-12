@@ -350,7 +350,9 @@ class TestMatrixElementChecker(unittest.TestCase):
           component cancels (Ward identity); off shell the two definitions
           differ (here by 4e-5).
         - {A} vanishes on shell in both gauges (it is proportional to
-          q^2-M^2) and is gauge dependent off shell."""
+          q^2-M^2) and is gauge dependent off shell.
+        - With the W at rest (the frame of its decay products, plus rounding
+          noise) the helicities are taken along +z in both gauges."""
 
         import madgraph.interface.master_interface as interface
         import madgraph.core.helas_objects as helas_objects
@@ -377,6 +379,18 @@ class TestMatrixElementChecker(unittest.TestCase):
             return {6: [mt, 0., 0., 0.], 5: pb, -15: boost(pta, beta),
                     16: boost(pv, beta)}
 
+        def rest_point(mt, mb, mw, mta):
+            """the same decay seen from the rest frame of the W, as when
+            me_frame is the W's decay products, with a rounding-size offset
+            (1e-12) on the decay products: the line is at rest up to noise"""
+            mom = point(mt, mb, mw, mta)
+            pw = [mom[-15][i] + mom[16][i] for i in range(4)]
+            beta = [-pw[i+1] / pw[0] for i in range(3)]
+            mom = dict((pdg, boost(p, beta)) for pdg, p in mom.items())
+            mom[-15][1] += 3e-12
+            mom[16][2] -= 2e-12
+            return mom
+
         braces = ('T', '+', '-', '0', 'A', '')
         values = {}
         for gauge in ('unitary', 'FD'):
@@ -397,8 +411,9 @@ class TestMatrixElementChecker(unittest.TestCase):
                           ('mdl_MT', 'mdl_MB', 'mdl_MW', 'mdl_MTA')]
                 legs = [leg.get('id') for leg in
                         me.get('processes')[0].get_legs_with_decays()]
-                for shell, scale in (('on', 1.), ('off', 0.93)):
-                    mom = point(masses[0], masses[1], scale * masses[2], masses[3])
+                for shell, scale in (('on', 1.), ('off', 0.93), ('rest', 1.)):
+                    make = rest_point if shell == 'rest' else point
+                    mom = make(masses[0], masses[1], scale * masses[2], masses[3])
                     values[gauge, brace, shell], _ = evaluator.evaluate_matrix_element(
                         me, p=[mom[pdg] for pdg in legs])
 
@@ -409,6 +424,10 @@ class TestMatrixElementChecker(unittest.TestCase):
         for brace in ('T', '+', '-', ''):
             for shell in ('on', 'off'):
                 self.assertLess(rel(brace, shell), 1e-12, (brace, shell))
+        # a W at rest (up to rounding): the helicity axis is pinned to +z, as
+        # in the unitary gauge, instead of following the rounding noise
+        for brace in ('T', '+', '-', '0', ''):
+            self.assertLess(rel(brace, 'rest'), 1e-9, brace)
         # the two helicities are not swapped
         self.assertGreater(values['FD', '+', 'off'], 10 * values['FD', '-', 'off'])
         self.assertLess(rel('0', 'on'), 1e-12)

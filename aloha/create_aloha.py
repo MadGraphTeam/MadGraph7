@@ -469,6 +469,13 @@ in presence of majorana particle/flow violation"""
                     massless = False
                     self.denominator = None
                 elif aloha.unitary_gauge == 3 and spin in [1, 3] and \
+                        any(p in aloha_writers.UNITARY_ONLY_PROPAGATORS for p in propa):
+                    # a piece of the unitary numerator: projecting it on the FD
+                    # gauge (the generic branch below) gives a wrong result
+                    raise ALOHAERROR('The polarised propagator %s is a piece of the '
+                                     'unitary-gauge numerator and has no FD-gauge '
+                                     'counterpart.' % ','.join(propa))
+                elif aloha.unitary_gauge == 3 and spin in [1, 3] and \
                         aloha_writers.fd_polarized_propagator(propa) is not None:
                     # FD gauge, polarised propagator of a massive vector (and
                     # of its Goldstone boson, the fifth component of the same

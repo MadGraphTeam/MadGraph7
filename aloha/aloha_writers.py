@@ -48,6 +48,14 @@ FD_POLARIZED_PROPAGATORS = {'1L': 0,    # {0}  eps0 eps0*
                             }
 
 
+# pieces of the unitary-gauge numerator -g + qq/M^2 only (metric, Theta,
+# qq/q^2, Ward-protected): no FD counterpart, refused in the FD gauge
+UNITARY_ONLY_PROPAGATORS = ('1G', '1H', '1Q', '1W')
+# a massless vector has no longitudinal FD polarisation (eps0 = 0 for M = 0):
+# only the transverse pieces, which are gauge independent, are kept for it
+FD_MASSLESS_POLARIZED_PROPAGATORS = ('1T', '1TR', '1TL')
+
+
 def fd_polarized_propagator(propa):
     """The FD_POLARIZED_PROPAGATORS code of a list of propagator tags (the
     'P' tags without their 'P', e.g. ['1L'] or ['1L', '1D']), or None when

@@ -78,6 +78,11 @@ void fd_polarized_propagator(ALOHAOBJ &w, double m, double width, int ipol) {
   double n[5], nq, q2, qh[3];
 
   for (int i = 0; i < 4; ++i) q[i] = -w.p[i];
+  // a line at rest (|q| below 1e-10 q0, rounding): pin the axis of the
+  // helicities to +z, as the unitary-gauge polarised routines do
+  const double pinned[3] = {1e-30, 0., 1e-15};
+  for (int i = 1; i < 4; ++i)
+    if (abs(real(q[0])) * 1e-10 > abs(real(q[i]))) q[i] = pinned[i - 1];
   q[4] = -cI * m;
   define_gauge_dir(q, n);
   for (int i = 0; i < 5; ++i) { w0[i] = w.W[i]; w1[i] = 0.; }

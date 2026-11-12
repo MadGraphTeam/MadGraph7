@@ -1458,21 +1458,32 @@ class TestCmdShell2(unittest.TestCase,
         projected on one piece of the five-component numerator instead of the
         full projector) give the same value in the Fortran standalone (library
         routine fd_polarized_propagator) and in madmatrix (inlined), here built
-        in double precision. Before, the Fortran output crashed at run time
-        (SIGBUS) and the madmatrix one did not compile.
+        in double precision, for every brace. Before, the Fortran output
+        crashed at run time (SIGBUS) and the madmatrix one did not compile.
 
         The transverse pieces are the same in the FD and unitary gauges, so
-        {+} must also equal its unitary-gauge value at this (off-shell) point.
+        {T}, {+}, {-} must also equal their unitary-gauge values at this
+        (off-shell) point.
 
-        Flavour grouping is off: with the leptons merged, the FD madmatrix
-        output of a top decay into a tau returns 0 even without polarisation
-        (a separate issue)."""
-        self.do('set apply_flavor_grouping False')
-        self.do('import model sm')
+        The madmatrix comparison runs without flavour grouping: with the
+        leptons merged the FD madmatrix output of a top decay into a tau
+        returns 0 even without polarisation, a separate bug
+        (test_fd_polarised_propagator_madmatrix_flavour_grouping). The default
+        configuration, flavour grouping on, is checked with the Fortran output,
+        which must give the same values."""
+        braces = ('0', 'T', '+', '-', 'A', 'S', '0S')
         try:
+            self.do('import model sm')
             self.do('set gauge FD')
-            fd = {}
-            for brace in ('0', '+', 'A', '0S'):
+            grouped = {}
+            for brace in braces:
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                grouped[brace] = self._standalone_me('standalone_fortran')
+
+            self.do('set apply_flavor_grouping False')
+            self.do('import model sm')
+            self.do('set gauge FD')
+            for brace in braces:
                 proc = 't > w+{%s} b, w+ > ta+ vt' % brace
                 self.do('generate %s' % proc)
                 madmatrix = self._standalone_me('standalone', ['FPTYPE=d'])
@@ -1481,14 +1492,38 @@ class TestCmdShell2(unittest.TestCase,
                 self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-12,
                                        msg='%s: madmatrix %r vs Fortran %r'
                                        % (proc, madmatrix, fortran))
-                fd[brace] = fortran
+                self.assertAlmostEqual(grouped[brace] / fortran, 1., delta=1e-12,
+                                       msg='%s: flavour grouping %r vs none %r'
+                                       % (proc, grouped[brace], fortran))
             self.do('set gauge unitary')
-            self.do('generate t > w+{+} b, w+ > ta+ vt')
-            unitary = self._standalone_me('standalone_fortran')
-            self.assertAlmostEqual(fd['+'] / unitary, 1., delta=1e-12)
+            for brace in ('T', '+', '-'):
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                unitary = self._standalone_me('standalone_fortran')
+                self.assertAlmostEqual(grouped[brace] / unitary, 1., delta=1e-12,
+                                       msg='{%s}: FD %r vs unitary %r'
+                                       % (brace, grouped[brace], unitary))
         finally:
             self.do('set gauge unitary')
             self.do('set apply_flavor_grouping True')
+
+    @unittest.expectedFailure
+    def test_fd_polarised_propagator_madmatrix_flavour_grouping(self):
+        """The default configuration of the mg7 output: FD gauge, flavour
+        grouping on, madmatrix. With the leptons merged the FD madmatrix output
+        of a top decay into a tau returns 0, polarised or not (the combined
+        vector + Goldstone routine of the merged leptons); the Fortran output is
+        right. Expected to fail until that separate bug is fixed: remove the
+        decorator then."""
+        try:
+            self.do('import model sm')
+            self.do('set gauge FD')
+            self.do('generate t > w+{0} b, w+ > ta+ vt')
+            madmatrix = self._standalone_me('standalone', ['FPTYPE=d'])
+            fortran = self._standalone_me('standalone_fortran')
+            self.assertNotEqual(fortran, 0.)
+            self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-12)
+        finally:
+            self.do('set gauge unitary')
 
     def test_standalone_split_orders_interference(self):
         """standalone (madmatrix) must return the squared-order contribution asked for.

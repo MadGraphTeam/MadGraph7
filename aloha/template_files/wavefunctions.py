@@ -377,26 +377,38 @@ def define_gauge_dir(q):
 
     return n
 
-def multiply_propagator_factor(win, m):
-    """apply the FD gauge propagator projector"""
+def _fd_output_wavefunction(win):
+    """The four-momentum of the off-shell FD wavefunction *win*, and the output
+    wavefunction carrying that momentum and its flavor (components at zero).
 
-    wout = WaveFunction(size=7)
+    The two momentum representations are populated inconsistently across
+    ALOHA routines: external FD wavefunctions (vfdxxxx / sfdxxx) fill the
+    packed complex slots win[0]/win[1] but leave .momenta at zero, whereas
+    off-shell ALOHA outputs (FFV.../VVV... routines) fill .momenta but leave
+    the packed slots at zero.  Reading only the packed slots therefore gave
+    q == 0 (hence n.q == 0 and a ZeroDivisionError) for every
+    internally-produced wavefunction -- in particular the null wavefunction a
+    merged-particle (M) routine returns on an invalid / unresolved flavor
+    combination.  Fall back between the two representations so the propagator
+    always sees the real momentum, and propagate it (in both representations)
+    and the flavor to the output so downstream propagators / .momenta
+    consumers keep working."""
 
-    # Resolve the four-momentum of the incoming (off-shell) wavefunction.
-    # The two momentum representations are populated inconsistently across
-    # ALOHA routines: external FD wavefunctions (vfdxxxx / sfdxxx) fill the
-    # packed complex slots win[0]/win[1] but leave .momenta at zero, whereas
-    # off-shell ALOHA outputs (FFV.../VVV... routines) fill .momenta but leave
-    # the packed slots at zero.  Reading only the packed slots therefore gave
-    # q == 0 (hence n.q == 0 and a ZeroDivisionError) for every
-    # internally-produced wavefunction -- in particular the null wavefunction a
-    # merged-particle (M) routine returns on an invalid / unresolved flavor
-    # combination.  Fall back between the two representations so the propagator
-    # always sees the real momentum.
     if any(win.momenta):
         mom = list(win.momenta)
     else:
         mom = [win[0].real, win[1].real, win[1].imag, win[0].imag]
+    wout = WaveFunction(size=7)
+    wout.momenta = mom
+    wout[0] = complex(mom[0], mom[3])
+    wout[1] = complex(mom[1], mom[2])
+    wout.flavor = win.flavor
+    return mom, wout
+
+def multiply_propagator_factor(win, m):
+    """apply the FD gauge propagator projector"""
+
+    mom, wout = _fd_output_wavefunction(win)
 
     q = [0j] * 5
     q[0] = complex(-mom[0], 0.)
@@ -404,13 +416,6 @@ def multiply_propagator_factor(win, m):
     q[2] = complex(-mom[2], 0.)
     q[3] = complex(-mom[3], 0.)
     q[4] = -1j * m
-
-    # Propagate the momentum (in both representations) and the flavor to the
-    # output so downstream propagators / .momenta consumers keep working.
-    wout.momenta = mom
-    wout[0] = complex(mom[0], mom[3])
-    wout[1] = complex(mom[1], mom[2])
-    wout.flavor = win.flavor
 
     n = define_gauge_dir(q)
     w0 = list(win[2:7])
@@ -440,17 +445,14 @@ def fd_polarized_propagator(win, m, width, ipol):
     (aloha_writers.FD_POLARIZED_PROPAGATORS). {S} is {A} with its factor
     (q^2-M^2)/(q^2-M^2+i M width) replaced by 1."""
 
-    wout = WaveFunction(size=7)
-    if any(win.momenta):
-        mom = list(win.momenta)
-    else:
-        mom = [win[0].real, win[1].real, win[1].imag, win[0].imag]
-    wout.momenta = mom
-    wout[0] = complex(mom[0], mom[3])
-    wout[1] = complex(mom[1], mom[2])
-    wout.flavor = win.flavor
+    mom, wout = _fd_output_wavefunction(win)
 
     q = [complex(-x, 0.) for x in mom] + [-1j * m]
+    # a line at rest (|q| below 1e-10 q0, rounding): pin the axis of the
+    # helicities to +z, as the unitary-gauge polarised routines do
+    for i, pinned in ((1, 1e-30), (2, 0.), (3, 1e-15)):
+        if abs(q[0].real) * 1e-10 > abs(q[i].real):
+            q[i] = complex(pinned, 0.)
     n = define_gauge_dir(q)
     w0 = list(win[2:7])
     w1 = [0j] * 5

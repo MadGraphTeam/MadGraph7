@@ -341,3 +341,25 @@ class TestPropagatorDenominators(unittest.TestCase):
             self.assertNotIn('EPS', body, name)
             for piece in pieces:
                 self.assertIn(piece, body, name)
+            # a line at rest gets its helicity axis pinned to +z, lane by lane,
+            # before the gauge direction is built
+            pin = body.index('FDQ[3] = cxmake( fpternary(')
+            self.assertLess(pin, body.index('define_gauge_dir( FDQ, FDN );'), name)
+            self.assertIn('FDQ[0].real() * 0 + 1e-15f', body, name)
+        # only the temporaries a piece reads are written
+        for name in ('FFV2P1T_3', 'FFV2P1TR_3', 'FFV2P1TL_3'):
+            self.assertNotIn('FDNW', routines[name], name)
+        for name in ('FFV2P1T_3', 'FFV2P1A_3', 'FFV2P1S_3'):
+            self.assertNotIn('FDI', routines[name], name)
+        # the unpolarised routine keeps its axis as it is
+        self.assertNotIn('fpternary', routines['FFV2_3'])
+
+    def test_fd_unitary_only_propagator_refused(self):
+        """{G}, {H}, {Q}, {W} are pieces of the unitary-gauge numerator: in the
+        FD gauge ALOHA refuses them rather than projecting the unitary
+        numerator on the FD gauge (what it did before, the Fortran standalone
+        then crashing), whatever path the routine is asked from."""
+        import aloha
+        for tag in ('P1G', 'P1H', 'P1Q', 'P1W'):
+            self.assertRaises(aloha.ALOHAERROR,
+                              lambda: self.routines([(('FFV2',), [tag], 3)], gauge=3))

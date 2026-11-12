@@ -2300,6 +2300,11 @@ c
       parameter (ci=(0.d0,1.d0))
 
       q(0:3) = -w % P(:)
+c     a line at rest (|q| below 1e-10 q0, rounding): pin the axis of the
+c     helicities to +z, as the unitary-gauge polarised routines do
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(1)))) q(1) = 1d-30
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(2)))) q(2) = 0d0
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(3)))) q(3) = 1d-15
       q(4) = -ci*m
       call define_gauge_dir(q, n)
       w0(0:4) = w % W(1:5)

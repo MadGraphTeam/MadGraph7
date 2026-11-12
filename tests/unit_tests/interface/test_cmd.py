@@ -709,6 +709,23 @@ class TestValidCmd(unittest.TestCase):
             self.assertRaises(
                 madgraph.InvalidCmd, self.do,
                 'generate p p > t t~, (t > w+{G} b, w+ > ta+ vt)')
+            # the FD remainder is not the unitary one: said when it is used
+            with self.assertLogs('cmdprint', level='WARNING') as log:
+                self.do('generate t > w+{A} b, w+ > ta+ vt')
+            self.assertTrue(any('remainder of the FD propagator' in line
+                                for line in log.output))
+            # a massless vector: only the transverse pieces (its FD
+            # longitudinal vector vanishes)
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
+            for brace in ('0', 'A', 'S', 'G'):
+                try:
+                    self.do('generate e+ e- > z a{%s}, a > mu+ mu-' % brace)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('a{%s}' % brace, str(error))
+                    self.assertIn('massless vector', str(error))
+                else:
+                    self.fail('a{%s} accepted in the FD gauge' % brace)
 
             # --- external polarisations, fermion propagators -----------
             for gauge in ('Feynman', 'FD'):
@@ -726,6 +743,11 @@ class TestValidCmd(unittest.TestCase):
                 for brace in fd_braces + unitary_only:
                     self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
                     self.assertTrue(cmd._curr_amps)
+            # a massless vector keeps the same -g propagator in the Feynman
+            # gauge: its transverse propagator stays allowed there
+            self.do('set gauge Feynman')
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
 
             # --- complex-mass scheme: nowhere ---------------------------
             self.do('set complex_mass_scheme True')
