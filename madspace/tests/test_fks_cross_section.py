@@ -25,6 +25,7 @@ import tempfile
 import numpy as np
 import pytest
 from madgraph.mg7.fks_driver import FKSRun, default_histograms, read_histograms
+from madspace_testing import default_context
 from test_fks_couplings import alpha_s_madfks
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
@@ -101,8 +102,10 @@ def test_against_mg5amc(path):
 def test_info_json(path):
     """The info.json of the run: the NLO cross section and its channels as
     MadBoard reads them, and histograms that add up to the cross section
-    with their underflow and overflow."""
+    with their underflow and overflow. The grids of the run stay out of the
+    default context."""
     run = fks_run(path)
+    assert not default_context().global_exists("alpha_s_logq2")
     with open(os.path.join(run.run_path, "info.json")) as f:
         info = json.load(f)
     result = run.result()

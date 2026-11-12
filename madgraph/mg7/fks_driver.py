@@ -953,7 +953,9 @@ class FKSRun:
 
     def setup(self):
         ms = madspace()
-        self.context = ms.default_context()
+        # a context of its own, so that its globals (the PDF and alpha_s
+        # grids) stay out of the default context of madspace
+        self.context = ms.Context(ms.cpu_device())
         self.couplings = Couplings(
             os.path.join(self.output, "SubProcesses", "madspace_fks"),
             self.run_card,
