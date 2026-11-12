@@ -644,6 +644,9 @@ impl EvaluatorPayloadSource {
                 container,
                 logical_path,
             } => PacbinReader::from_bytes(container.member_bytes(logical_path)?.to_vec()),
+            Self::PackedDeclared { container, payload } => {
+                PacbinReader::from_bytes(read_packed_payload(container, payload)?)
+            }
         }
     }
 

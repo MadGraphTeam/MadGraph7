@@ -84,10 +84,29 @@ def _process_id(artifact: Path, process: str | None) -> str:
     return process
 
 
+def _payload_text(artifact: Path, relative: str) -> str:
+    """A declared payload's text, stored as a file or packed in payloads.pacbin
+    (``generation.pack_payloads``)."""
+
+    path = artifact / relative
+    if path.is_file():
+        return path.read_text()
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.artifacts.manifest import ArtifactPayloads, load_manifest
+
+    try:
+        payloads = ArtifactPayloads(load_manifest(artifact, verify_payloads=False))
+        return payloads.read_text(relative)
+    except ArtifactError as exc:
+        raise OSError(str(exc)) from exc
+
+
 def _validation_point(artifact: Path, process_id: str) -> list[tuple[Decimal, ...]]:
     path = artifact / "processes" / process_id / "validation-momenta.json"
     try:
-        record = json.loads(path.read_text())
+        record = json.loads(
+            _payload_text(artifact, path.relative_to(artifact).as_posix())
+        )
     except (OSError, ValueError) as exc:
         raise ConfigurationError(
             f"no momenta file was given and the artifact has no readable "
@@ -123,7 +142,9 @@ def _mass(momentum: tuple[Decimal, ...]) -> float:
 def _initial_count(artifact: Path, process_id: str, legs: int) -> int:
     physics = artifact / "processes" / process_id / "physics.json"
     try:
-        record = json.loads(physics.read_text())
+        record = json.loads(
+            _payload_text(artifact, physics.relative_to(artifact).as_posix())
+        )
         states = record.get("state_legs") or record.get("metadata", {}).get(
             "state_legs"
         )

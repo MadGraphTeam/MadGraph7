@@ -1548,9 +1548,14 @@ def _selector_text(expression: str, *, fold: bool) -> str:
 
 
 def _json_payload(manifest: Any, path: str) -> dict[str, Any]:
+    # A payload may be packed in payloads.pacbin (generation.pack_payloads).
+    from pyamplicol.artifacts.manifest import ArtifactPayloads
+
     try:
-        return cast(dict[str, Any], json.loads((manifest.root / path).read_text()))
-    except (OSError, json.JSONDecodeError) as error:
+        return cast(
+            dict[str, Any], json.loads(ArtifactPayloads(manifest).read_bytes(path))
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ArtifactError(
             f"unreadable loop artifact payload {path}: {error}"
         ) from error

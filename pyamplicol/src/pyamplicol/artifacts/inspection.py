@@ -3103,9 +3103,7 @@ def _loop_process_inspection(
     )
 
     process_id = str(process["id"])
-    execution = _json_mapping(
-        manifest, execution_path, "process execution manifest"
-    )
+    execution = _json_mapping(manifest, execution_path, "process execution manifest")
     if (
         execution.get("kind") != LOOP_RUNTIME_KIND
         or execution.get("process_id") != process_id
