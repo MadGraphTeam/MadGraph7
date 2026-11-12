@@ -2360,6 +2360,76 @@ class TestCmdShell2(unittest.TestCase,
                                  'the scalar and vectorised backends disagree '
                                  'in %s: %s vs %s' % (d, scalar, vector))
 
+    def test_madmatrix_fd_flavor_grouping_goldstone(self):
+        """FD gauge with flavour grouping: a merged W/Goldstone coupling of an
+        off-diagonal (charged-current) lepton pair must not be dropped.
+
+        In FD gauge the W and its Goldstone share one 5 component propagator,
+        so the vector and the scalar couplings of a vertex are summed in one
+        combined routine (FFV2_FFS3M_3 for the W+ current of t > b ta+ vt,
+        FFV2_FFS1M_0 for the amplitude of ta+ vt > t b~). With flavour grouping
+        on (the default) the charged leptons are merged while vt is not, so the
+        vertex pairs flavour 0 (vt) with flavour 2 (tau). The combined
+        multi-coupling routine checked flv_index1 == flv_index2, i.e. it
+        assumed a diagonal coupling, and returned zero: |M|^2 = 0 for both
+        processes, while the single-coupling routines (unitary gauge, or
+        'set apply_flavor_grouping False') resolve the flavour slot from the
+        partner table and were right. The Goldstone coupling also only has an
+        entry for the tau, so each coupling of the sum must resolve its own
+        slot rather than share the one of the first.
+
+        A decay and a scattering cannot share an output, hence two generates.
+        """
+        energy = '1000'
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def get_values(output_format, check_exe, build_source=False):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if build_source:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = sorted(d for d in os.listdir(proc_root)
+                          if d.startswith('P') and
+                          os.path.isdir(pjoin(proc_root, d)))
+            self.assertTrue(dirs, 'no subprocess for %s' % output_format)
+            values = []
+            for d in dirs:
+                proc_dir = pjoin(proc_root, d)
+                target = ['make', 'check'] if output_format == 'standalone_fortran' \
+                    else ['make']
+                subprocess.call(target, stdout=devnull, stderr=devnull,
+                                cwd=proc_dir)
+                log = pjoin(proc_dir, 'check.log')
+                subprocess.call('%s %s' % (check_exe, energy),
+                                stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                                cwd=proc_dir, shell=True)
+                found = me_re.findall(open(log).read())
+                self.assertTrue(found, '%s produced no matrix element (see %s)'
+                                % (output_format, log))
+                values.extend(float(v) for v in found)
+            return values
+
+        self.do('import model sm')
+        self.do('set gauge FD')
+        try:
+            for process in ('t > b ta+ vt', 'ta+ vt > t b~'):
+                self.do('generate %s' % process)
+                fortran = get_values('standalone_fortran', './check',
+                                     build_source=True)
+                mg7 = get_values('standalone', './check_sa.exe')
+                # the bug gave exactly 0: make sure the reference is not
+                self.assertGreater(min(abs(v) for v in fortran), 1e-3,
+                                   'unexpectedly small Fortran matrix element '
+                                   'for %s: %s' % (process, fortran))
+                self._assert_me_lists_close(mg7, fortran, rtol=1e-6)
+        finally:
+            self.do('set gauge unitary')
+
     def test_madmatrix_hel_recycling_vs_plain(self):
         """--hel_recycling must not change |M|^2, event by event.
 

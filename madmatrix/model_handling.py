@@ -637,13 +637,6 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
             out.write('    const int & flv_index1 = F1.flv_index;\n')
             out.write('    const int & flv_index2 = F2.flv_index;\n')
-            if nb_coupling >1:
-                for i in range(1,nb_coupling+1):
-                    out.write('    int zero_coup%i = 0;\n' % i)
-                out.write('    if(flv_index1 != flv_index2 || flv_index1 == -1) {\n')
-                out.write('      %s\n' % fail)
-                out.write('      return;\n')
-                out.write('    }\n')
             out.write('    if(flv_index1 == -1 || flv_index2 == -1) {\n')
             out.write('      %s\n' % fail)
             out.write('      return;\n')
@@ -664,11 +657,23 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      return;\n')
                 out.write('    }\n')
             else:
+                # Several merged couplings summed in one routine (e.g. the
+                # FD-gauge vector+Goldstone FFV2_FFS3M_3 of a W+ -> l+ vl line).
+                # Each coupling has its own partner table, so resolve the
+                # flavour slot of each one as in the single-coupling case
+                # above: a diagonal check (flv_index1 == flv_index2) zeroes an
+                # off-diagonal vertex such as an unmerged vt (flavour 0) and a
+                # merged tau (flavour 2), and a coupling whose table has no
+                # entry for this pair (the Goldstone coupling of a massless
+                # lepton) contributes zero while the other ones are kept.
                 for i in range(1,nb_coupling+1):
-                    out.write('    if(MCOUP%i.partner1[flv_index1] != flv_index2 || MCOUP%i.partner2[flv_index1] != flv_index2) {\n' %(i,i))
-                    out.write('      zero_coup%i = 1;\n' % i)
-                    out.write('      COUP%i = cxzero_sv();\n' % i)
-                    out.write('    }\n')
+                    out.write('    int flv_sel%i = -1;\n' % i)
+                    out.write('    if(MCOUP%i.partner1[flv_index1] == flv_index2) flv_sel%i = flv_index1;\n' % (i,i))
+                    out.write('    else if(MCOUP%i.partner1[flv_index2] == flv_index1) flv_sel%i = flv_index2;\n' % (i,i))
+                out.write('    if(%s) {\n' % ' && '.join('flv_sel%i == -1' % i for i in range(1,nb_coupling+1)))
+                out.write('      %s\n' % fail)
+                out.write('      return;\n')
+                out.write('    }\n')
             if nb_coupling ==1:
                 # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                 # so, when we need to shift within the array, we need to double the shift width to account for
@@ -682,7 +687,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                     # so, when we need to shift within the array, we need to double the shift width to account for
                     # both real and imaginary parts
-                    out.write('    if(zero_coup%i ==0) { COUP%i = C_ACCESS::kernelAccessConst( MCOUP%i.value + C_ACCESS::flv_stride*flv_index1 ); }\n' % (i,i,i))
+                    out.write('    if(flv_sel%i == -1) { COUP%i = cxzero_sv(); }\n' % (i,i))
+                    out.write('    else { COUP%i = C_ACCESS::kernelAccessConst( MCOUP%i.value + C_ACCESS::flv_stride*flv_sel%i ); }\n' % (i,i,i))
         else:
             incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
             # The P1N currents of --hel_recycling (the vertex with one external
@@ -755,7 +761,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                     # so, when we need to shift within the array, we need to double the shift width to account for
                     # both real and imaginary parts
-                    out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*%s );\n' % (name, name, slot))
+                    load = '%s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*%s );' % (name, name, slot)
+                    if nb_coupling > 1 and incoming in (1, 2):
+                        # the outgoing flavour was taken from the first coupling
+                        # with an entry; a coupling whose table pairs flv_index1
+                        # with another partner (or none) does not connect these
+                        # two flavours and contributes zero
+                        out.write('    if(M%s.partner1[flv_index1] != flv_index2) { %s = cxzero_sv(); }\n' % (name, name))
+                        out.write('    else { %s }\n' % load)
+                    else:
+                        out.write('    %s\n' % load)
         return out.getvalue()
 
     # OM - add the formats which aloha_writers.ALOHAWriterForCPP is missing.
