@@ -30,6 +30,20 @@ def _scalar(value: VirtualScalar | None) -> str:
     return str(value)
 
 
+def _signed(value: VirtualScalar | None) -> str:
+    """``_scalar`` with an explicit sign: "+" on a positive value, a space
+    on zero, so that the mantissas of a column of mixed signs align."""
+
+    text = _scalar(value)
+    if value is None or isinstance(value, CorrelatedValue) or text.startswith("-"):
+        return text
+    try:
+        zero = value == 0
+    except TypeError:
+        return text
+    return (" " if zero else "+") + text
+
+
 def _target(result: Any) -> float:
     """The accuracy target the call's estimates are read against: the
     reduction's recorded target, else the default target (1e-5)."""
@@ -173,12 +187,12 @@ def _pole_parts_table(result: Any, prettytable: Any, color: bool = False) -> Any
                                 origin,
                                 component,
                                 palette.paint(
-                                    _scalar(laurent.single_pole),
+                                    _signed(laurent.single_pole),
                                     palette.SINGLE_POLE,
                                     color=color,
                                 ),
                                 palette.paint(
-                                    _scalar(laurent.double_pole),
+                                    _signed(laurent.double_pole),
                                     palette.DOUBLE_POLE,
                                     color=color,
                                 ),
@@ -193,7 +207,7 @@ def _laurent_cells(values: Any, color: bool) -> tuple[str, ...]:
 
     if values is None:
         return (palette.paint("unavailable", palette.BAD, color=color),) * 3
-    finite, single, double = map(_scalar, values)
+    finite, single, double = map(_signed, values)
     return (
         palette.paint(finite, palette.FINITE, color=color, bold=True),
         palette.paint(single, palette.SINGLE_POLE, color=color),
@@ -300,7 +314,7 @@ def virtual_evaluation_summary(
     def born_cell(value: Any) -> str:
         if value is None:
             return palette.paint("unavailable", palette.BAD, color=color)
-        return palette.paint(_scalar(value), palette.BORN, color=color)
+        return palette.paint(_signed(value), palette.BORN, color=color)
 
     if isinstance(result, ResolvedVirtualEvaluation):
         for point, row in enumerate(result.born_values):
@@ -488,7 +502,7 @@ def virtual_order_summary(result: Any, *, prettytable: Any, color: bool = False)
                 point,
                 palette.paint("unavailable", palette.BAD, color=color)
                 if born[point] is None
-                else palette.paint(_scalar(born[point]), palette.BORN, color=color),
+                else palette.paint(_signed(born[point]), palette.BORN, color=color),
                 *_laurent_cells(laurent, color),
             )
         )
