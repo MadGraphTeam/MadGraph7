@@ -221,3 +221,15 @@ def test_field_descriptions_name_the_columns_of_every_command():
     assert "single pole [-1] - the 1/epsilon coefficient of the renormalised" in whole
     nlc = field_descriptions(replace(_virtual([1]), color_accuracy="nlc"))
     assert "Born-loop interference, next-to-leading colour" in nlc
+
+
+def test_only_a_live_display_evaluates_in_successive_calls():
+    from pyamplicol.reporting.progress import TtyProgressSink
+
+    class _Terminal(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    assert TtyProgressSink(_Terminal()).live
+    assert not TtyProgressSink(io.StringIO()).live
+    assert not getattr(NullProgressSink(), "live", False)

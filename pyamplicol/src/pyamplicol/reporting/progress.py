@@ -57,8 +57,7 @@ def _details(value: ProgressDetails | None) -> ProgressDetails:
             raise ValueError("progress detail names must be non-empty strings")
         if not isinstance(detail, (str, int, float, bool, type(None))):
             raise ValueError(
-                f"progress detail {key!r} has unsupported type "
-                f"{type(detail).__name__}"
+                f"progress detail {key!r} has unsupported type {type(detail).__name__}"
             )
         if isinstance(detail, float) and not math.isfinite(detail):
             raise ValueError(f"progress detail {key!r} must be finite")
@@ -320,6 +319,12 @@ class TtyProgressSink:
         return bool(getattr(self.stream, "isatty", lambda: False)())
 
     @property
+    def live(self) -> bool:
+        """Whether this sink draws a live display on a terminal."""
+
+        return self._interactive
+
+    @property
     def _color_enabled(self) -> bool:
         if self.color is not None:
             return self.color
@@ -389,9 +394,7 @@ class _LineProgressSink:
         description = self.descriptions.get(event.task_id)
         rendered = _format_event(event, description=description)
         color_name = (
-            "RED"
-            if isinstance(event, ProgressEnd) and not event.success
-            else "CYAN"
+            "RED" if isinstance(event, ProgressEnd) and not event.success else "CYAN"
         )
         painted = _terminal_paint(rendered, color_name, enabled=self.color)
         self.stream.write(f"{painted}\n")
@@ -530,9 +533,7 @@ def _dashboard_lines(
     if not roots:
         roots = tuple(task for task in tasks if task.parent_task_id is None)
     root = max(roots or tasks, key=lambda task: task.updated_at)
-    children = tuple(
-        task for task in active if task.parent_task_id == root.task_id
-    )
+    children = tuple(task for task in active if task.parent_task_id == root.task_id)
     phase = max(children, key=lambda task: task.updated_at) if children else root
     parent_ids = {task.parent_task_id for task in active if task.parent_task_id}
     leaves = tuple(task for task in active if task.task_id not in parent_ids)
@@ -587,9 +588,7 @@ def _overall_line(
         return _paint_fragments(fragments, width=width, enabled=color)
     rss = _rss_text(usage, compact=width < 120)
     child_count = (
-        "N/A"
-        if usage.process_count is None
-        else str(max(usage.process_count - 1, 0))
+        "N/A" if usage.process_count is None else str(max(usage.process_count - 1, 0))
     )
     fragments = [
         (title, "CYAN"),
@@ -839,10 +838,7 @@ def _rss_text(usage: ResourceUsage, *, compact: bool = False) -> str:
         return "N/A"
     gib = 1024**3
     if compact:
-        return (
-            f"{usage.current_rss_bytes / gib:.2f}/"
-            f"{usage.peak_rss_bytes / gib:.2f}G"
-        )
+        return f"{usage.current_rss_bytes / gib:.2f}/{usage.peak_rss_bytes / gib:.2f}G"
     return (
         f"{usage.current_rss_bytes / gib:.2f}/"
         f"{usage.peak_rss_bytes / gib:.2f} GiB current/peak"

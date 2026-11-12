@@ -695,13 +695,18 @@ class DefaultCliServices:
                 progress, len(momenta), runtime.evaluate_resolved
             )
             return operation(cast("Momenta", momenta), **per_point, **options)
-        # Successive calls over the points: progress per point and, on
-        # Ctrl-C, the tables of the points done (``partial_evaluation``).
-        from .partial_evaluation import evaluate_in_chunks
+        # On a live progress display, successive calls over the points:
+        # progress per point and, on Ctrl-C, the tables of the points done
+        # (``partial_evaluation``; a few per cent of extra time for the
+        # calls' fixed cost). Otherwise one call, as the Python API.
+        if getattr(progress, "live", False):
+            from .partial_evaluation import evaluate_in_chunks
 
-        return evaluate_in_chunks(
-            progress, runtime.evaluate, momenta, per_point, options
-        )
+            return evaluate_in_chunks(
+                progress, runtime.evaluate, momenta, per_point, options
+            )
+        operation = _with_evaluation_progress(progress, len(momenta), runtime.evaluate)
+        return operation(cast("Momenta", momenta), **per_point, **options)
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
         from pyamplicol.api import BenchmarkRunner

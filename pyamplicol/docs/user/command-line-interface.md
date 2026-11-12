@@ -1050,7 +1050,10 @@ loop amplitude` or `..., IR poles of the renormalised virtual`. Every command sh
 progress (a live display on a terminal, plain lines with `--progress log`)
 and handles Ctrl-C: no traceback, worker processes stopped, exit code 130;
 `profile` and `evaluate` print the tables of what was measured or
-evaluated so far with a one-line notice (for a one-loop `evaluate` in
+evaluated so far with a one-line notice (`evaluate` does so with the live
+progress display on a terminal, where it evaluates in successive calls at a
+few per cent of extra time; otherwise it is one call, as in the Python API,
+and Ctrl-C ends it without a result; for a one-loop `evaluate` in
 `--json` as `interrupted`, `requested_points` and `measured_points`; a tree
 evaluation's JSON stays a list and the notice goes to stderr), `check` the tests
 completed (the rest marked "not run"), `self-test` the checks run so far, and
