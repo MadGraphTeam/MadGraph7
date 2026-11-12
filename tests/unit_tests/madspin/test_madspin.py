@@ -536,6 +536,67 @@ class TestFrameBoost(unittest.TestCase):
                 got = (2 - abs(pol), abs(pol))
             self.assertEqual(got, (hel_plus, hel_minus))
 
+    def test_beampol_follows_the_beams(self):
+        """BEAMPOL(J) acts on leg J of the matrix element: when beam 1 (the
+        incoming particle along +z) is its leg 2 -- the events of a madevent
+        mirror process -- the two values are swapped"""
+        options = interface_madspin.MadSpinOptions()
+        options['beampol'] = [-80., 30.]
+        beam1, beam2 = (250., 0., 0., 250.), (250., 0., 0., -250.)
+        self.assertEqual(options.beampol_me(), (-1.8, 1.3))
+        self.assertEqual(options.beampol_me([beam1, beam2]), (-1.8, 1.3))
+        self.assertEqual(options.beampol_me([beam2, beam1]), (1.3, -1.8))
+        # decay.momentum objects, as the v1 driver path hands them
+        self.assertEqual(options.beampol_me([madspin.momentum(*beam2),
+                                             madspin.momentum(*beam1)]),
+                         (1.3, -1.8))
+        # a 1 -> N matrix element has no beam to swap
+        self.assertEqual(options.beampol_me([beam2]), (-1.8, 1.3))
+
+    def test_event_beampol_is_set_on_change(self):
+        """the density modes push the beam polarisation of each event into the
+        library, calling it only when the orientation changes"""
+        class Module(object):
+            def __init__(self):
+                self.calls = []
+            def py_set_beampol(self, pol1, pol2):
+                self.calls.append((pol1, pol2))
+        stub = self._stub(6, beampol=(-80., 30.))
+        set_event = interface_madspin.MadSpinInterface._set_event_beampol
+        module = Module()
+        interface_madspin.MadSpinInterface._set_f2py_beampol(stub, module)
+        beam1, beam2 = (250., 0., 0., 250.), (250., 0., 0., -250.)
+        for incoming in ([beam1, beam2], [beam1, beam2], [beam2, beam1],
+                         [beam2, beam1], [beam1, beam2]):
+            set_event(stub, module, incoming)
+        self.assertEqual(module.calls, [(-1.8, 1.3), (1.3, -1.8), (-1.8, 1.3)])
+        # unpolarised beams never touch the library
+        stub = self._stub(6, beampol=(0., 0.))
+        module = Module()
+        set_event(stub, module, [beam2, beam1])
+        self.assertEqual(module.calls, [])
+
+    def test_v1_driver_beampol_per_event(self):
+        """the v1 driver gets the beam polarisation on the header of each event,
+        for the legs in the order event_map hands them over"""
+        class Stub(object):
+            event_beampol = madspin.decay_all_events.event_beampol
+        stub = Stub()
+        stub.options = interface_madspin.MadSpinOptions()
+        stub.options['beampol'] = [-80., 30.]
+        event = madspin.Event()
+        # particle 1: e- along +z (beam 1), 2: e+ along -z, 3/4: final state
+        event.particle = {
+            1: {'istup': -1, 'momentum': madspin.momentum(250., 0., 0., 250.)},
+            2: {'istup': -1, 'momentum': madspin.momentum(250., 0., 0., -250.)},
+            3: {'istup': 1, 'momentum': madspin.momentum(250., 0., 150., 200.)},
+            4: {'istup': 1, 'momentum': madspin.momentum(250., 0., -150., -200.)}}
+        stub.curr_event = event
+        self.assertEqual(stub.event_beampol({0: 0, 1: 1, 2: 2, 3: 3}), (-1.8, 1.3))
+        self.assertEqual(stub.event_beampol(None), (-1.8, 1.3))
+        # an `e+ e- >` matrix element: its leg 1 is particle 2, beam 2
+        self.assertEqual(stub.event_beampol({0: 1, 1: 0, 2: 2, 3: 3}), (1.3, -1.8))
+
     def test_beampol_needs_both_beams(self):
         """One number is ambiguous -- which beam? -- and used to surface only as
         an IndexError once the run reached a matrix element. It is refused when

@@ -6,28 +6,41 @@ ANNOUNCEMENT:
 
 0.3.0 (XX/XX/XX):
    OM: the FD gauge (Feynman-diagram gauge, arXiv:2203.10440, 2405.01256) is now chosen
-       automatically for a tree-level process whose diagrams have no QCD vertex and involve a
-       massive vector boson (VBF/VBS at QCD=0, p p > w+ w-, Drell-Yan, e+ e- > ...): in the
-       unitary gauge the diagrams of such a process grow with the energy and digits are lost in
-       their sum, in the FD gauge the cancellation happens diagram by diagram. The choice is made
-       once the diagrams are known, the model is reloaded in the FD gauge and the processes
-       generated again; a later 'add process' with a QCD vertex goes back to the unitary gauge.
-       'set gauge X' (before 'generate') always wins, 'set gauge default' hands the choice back,
-       'set auto_gauge False' turns it off. Not done for loop processes, bound states,
-       propagator polarisations ({G}, ...), models without goldstone bosons or whose goldstone
-       convention cannot be checked, and an output with --axial_gauge=True goes back to the
-       unitary gauge. The proc_card records the choice as 'set gauge FD', the FD-gauge citation
-       is triggered, and the mg7 output now records the gauge in its proc_characteristics.
-       MadSpin and the reweighting keep their own gauge handling. Not chosen either when a
-       particle of spin above one takes part (p p > w+ y with a spin-2 y is wrong by orders of
-       magnitude in the FD gauge). While an 'output --postpone_model' waits for its model the
-       gauge is fixed by the processes written in it: the automatic choice keeps it, a loop
-       process, --axial_gauge=True or 'set auto_gauge False' are refused, and an explicit
-       'set gauge' drops the pending output with a warning. The multiparticles of the user
-       ('define V z|a' ones included) now survive the reload of the model behind 'set gauge'.
-       With the default fixed-width treatment the gauges differ at the width level (1e-4 to
-       1e-3 at 1 TeV for processes with W/Z bosons, exactly zero with zero widths): the FD
-       gauge keeps those width artefacts from growing with the energy.
+       automatically for each process line whose diagrams have a W/Z propagator ending on a
+       vertex that is not a conserved current (HVV, VVV, VVVV, or a massive fermion such as t-b):
+       VBF/VBS, u u > h j j j j, p p > w+ w-, t t~ with leptonic W decays switch; Drell-Yan,
+       u d~ > e+ ve g, p p > z z and pure QCD do not. In the unitary gauge the diagrams of such a
+       process grow with the energy and digits are lost in their sum, in the FD gauge the
+       cancellation happens diagram by diagram. When every line needs it the whole output is in
+       the FD gauge ('set gauge FD' in the proc_card), otherwise only those lines are
+       ('--gauge=FD' on them). 'set gauge X' always wins, 'set gauge default' hands the choice
+       back, 'set auto_gauge False' turns it off. Never for loop processes, spin above one,
+       bound states, [amplicol] processes, polarised legs, propagator polarisations, or models
+       without (checked) goldstone bosons. The FD-gauge citation is triggered, the mg7 output
+       records the gauge in its proc_characteristics. Costs 6-27% per phase-space point, with
+       an unweighting efficiency equal or better.
+   OM: new process option 'generate|add process ... --gauge=FD|unitary': the outputs madevent,
+       standalone_fortran, standalone and mg7 hold subprocesses in both gauges (Fortran:
+       Source/DHELAS_FD, C++: src/HelAmps_<model>_fd.h), the other formats refuse it. MadSpin
+       and the reweighting read such a proc_card in one gauge (the reweighting: FD when every
+       process can be, else unitary). Not available after 'add model' or 'customize_model'.
+   OM: FD gauge in the complex-mass scheme: the goldstone part of the propagator used the
+       conjugate mass. Outputs in one gauge are otherwise unchanged. The multiparticles of the
+       user survive the reload of the model behind 'set gauge'. While an 'output
+       --postpone_model' waits for its model, the gauge of the processes written in it is kept.
+   OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
+       vanish, which the recycled matrix element is built for, are now measured again at
+       the param_card a run is launched with (after the launch question, and at each point
+       of a scan), and at the cards of a MadtRex parameter reweighting. They were only
+       measured at generation, at the output's default card: a coupling set to zero at
+       launch was still evaluated, and an amplitude that vanishes at the default card but
+       not at the launch card was silently dropped. The probe build is kept in .hrprobe,
+       so that a new card costs a run of it (milliseconds); a card at which the filter
+       comes out the same rewrites and recompiles nothing, and a build for another filter
+       than the output's has its own library name (lib..._P*_hr<hash>_*.so).
+   OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).
+   OM: madevent/MadSpin: polarised beams with a mirror process gave beam 1's polarisation
+       to the particle of beam 2 (#394).
    RF: Preserve the legacy scalar-scale fallback for MC@NLO-Delta events
        with an unspecified mur when reading MadGraph7 scale metadata.
    RF: Remove UNLOPS merging and NNLL+NLO jet-veto resummation, including their

@@ -111,39 +111,44 @@ public:
         _pool(&pool),
         _constructor(std::move(constructor)),
         _destructor(destructor),
-        _listener_id(pool.add_listener([this, lazy](std::size_t thread_count) {
-            while (_resources.size() < thread_count) {
-                _resources.emplace_back();
-                if (!lazy) {
-                    construct(_resources.back());
-                }
-            }
-        })) {
+        _lazy(lazy) {
         for (std::size_t i = 0; i == 0 || i < pool.thread_count(); ++i) {
             _resources.emplace_back();
             if (!lazy || i == 0) {
                 construct(_resources.back());
             }
         }
+        _listener_id = add_listener();
     }
     ~ThreadResource() { reset(); }
+    // The pool listener captures `this`, so a move registers a new one: the
+    // moved-from object's listener would otherwise dangle, and crash the next
+    // ThreadPool::set_thread_count().
     ThreadResource(ThreadResource&& other) noexcept :
-        _pool(std::move(other._pool)),
+        _pool(other._pool),
         _resources(std::move(other._resources)),
         _constructor(std::move(other._constructor)),
-        _listener_id(std::move(other._listener_id)),
-        _destructor(std::move(other._destructor)) {
-        other._pool = nullptr;
+        _destructor(std::move(other._destructor)),
+        _lazy(other._lazy) {
+        if (_pool) {
+            _pool->remove_listener(other._listener_id);
+            other._pool = nullptr;
+            _listener_id = add_listener();
+        }
     }
 
     ThreadResource& operator=(ThreadResource&& other) noexcept {
         reset();
-        _pool = std::move(other._pool);
+        _pool = other._pool;
         _resources = std::move(other._resources);
         _constructor = std::move(other._constructor);
-        _listener_id = std::move(other._listener_id);
         _destructor = std::move(other._destructor);
-        other._pool = nullptr;
+        _lazy = other._lazy;
+        if (_pool) {
+            _pool->remove_listener(other._listener_id);
+            other._pool = nullptr;
+            _listener_id = add_listener();
+        }
         return *this;
     }
     ThreadResource(const ThreadResource&) = delete;
@@ -162,10 +167,22 @@ public:
                 }
             }
             _pool->remove_listener(_listener_id);
+            _pool = nullptr;
         }
     }
 
 private:
+    std::size_t add_listener() {
+        return _pool->add_listener([this](std::size_t thread_count) {
+            while (_resources.size() < thread_count) {
+                _resources.emplace_back();
+                if (!_lazy) {
+                    construct(_resources.back());
+                }
+            }
+        });
+    }
+
     T& construct(std::pair<std::once_flag, std::optional<T>>& slot) const {
         auto& [flag, item] = slot;
         std::call_once(flag, [&] {
@@ -182,8 +199,9 @@ private:
     ThreadPool* _pool = nullptr;
     mutable std::deque<std::pair<std::once_flag, std::optional<T>>> _resources;
     std::function<T()> _constructor;
-    std::size_t _listener_id;
+    std::size_t _listener_id = 0;
     std::optional<std::function<void(T&)>> _destructor;
+    bool _lazy = true;
 };
 
 inline ThreadPool& default_thread_pool() {

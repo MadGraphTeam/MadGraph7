@@ -18,6 +18,7 @@ from madgraph.core import base_objects
 """Methods and classes to export matrix elements to v4 format."""
 
 import bisect
+import contextlib
 import copy
 import math, cmath
 from io import StringIO
@@ -336,6 +337,21 @@ COLOR_MATRIX_ENCODING_TEMPLATES = frozenset((
     'matrix_madevent_group_v4_onia.inc',
     'matrix_madevent_group_v4_onia_pwave.inc',
 ))
+
+# The initial states a dressed-lepton beam (pdlabel='dressed') can be made of.
+# Source/PDF/eepdf.f only provides the lepton densities of an electron or a
+# muon beam (|lpp| = 3 or 4), and only these get a <part><beam>_components
+# array written out next to their PDG2PDF call, so only these may take the
+# ee_comp_prod path below.
+DRESSED_LEPTON_PDGS = frozenset((11, 13))
+
+
+def is_dressed_lepton_beam(pdgs):
+    """Whether every initial state of one beam carries lepton-density
+    components, i.e. whether that beam can be a dressed-lepton beam."""
+
+    return bool(pdgs) and all(abs(pdg) in DRESSED_LEPTON_PDGS for pdg in pdgs)
+
 
 #===============================================================================
 # ProcessExporterFortran
@@ -803,8 +819,10 @@ class ProcessExporterFortran(VirtualExporter,
                                     break
 
             for (group_number, me_group) in enumerate(matrix_elements):
-                calls = calls + self.generate_subprocess_directory(\
-                                          me_group, fortran_model, group_number,
+                writer, scope = self.export_processes_in_gauge(me_group, fortran_model)
+                with scope:
+                    calls = calls + self.generate_subprocess_directory(\
+                                          me_group, writer, group_number,
                                           second_exporter=second_exporter, second_helas=second_helas
                                           )
         else:
@@ -819,8 +837,10 @@ class ProcessExporterFortran(VirtualExporter,
                                 self.beam_polarization[beamid-1] = False
                                 break
             for me_number, me in enumerate(matrix_elements.get_matrix_elements()):
-                calls = calls + self.generate_subprocess_directory(\
-                                                   me, fortran_model, me_number,
+                writer, scope = self.export_processes_in_gauge(me, fortran_model)
+                with scope:
+                    calls = calls + self.generate_subprocess_directory(\
+                                                   me, writer, me_number,
                                                    second_exporter=second_exporter, second_helas=second_helas)    
 
         return calls    
@@ -1750,13 +1770,7 @@ param_card.inc: MODEL/MG5_param.dat\n\t../bin/madevent --allow-stdin treatcards 
             model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
 param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatcards param\n'''
         
-        dual_libs = ''
-        dhelas_dual = ''
-        for npwave in aloha.npwave:
-            if npwave > 0:
-                dual_libs += ' $(LIBDIR)libdhelas%i.$(libext)'%npwave
-                dhelas_dual += '\n$(LIBDIR)libdhelas%i.$(libext): DHELAS%i\n'%(npwave,npwave)
-                dhelas_dual += '\tcd DHELAS%i; make; cd ..'%npwave
+        dual_libs, dhelas_dual = self.helas_library_rules()
 
         replace_dict= {'libraries': set_of_lib, 
                        'model':model_line,
@@ -2369,6 +2383,24 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         model_builder = UFO_model_to_mg4(model, write_dir, model_opts)
         model_builder.build(wanted_couplings)
 
+        self.write_aloha_library(model, wanted_lorentz, npwave=npwave)
+
+        # Make final link in the Process
+        self.make_model_symbolic_link()
+    
+        # Re-establish original aloha mode
+        aloha.mp_precision=old_aloha_mp
+    
+
+    def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge=''):
+        """The ALOHA routines of the matrix elements and their helper file:
+        Source/DHELAS, Source/DHELAS<n> for P-wave onia, and for the other
+        gauge of an output that mixes gauges Source/DHELAS_<GAUGE> (called
+        under its aloha.gauge_scope, see gauge_libraries)."""
+
+        old_aloha_mp = aloha.mp_precision
+        aloha.mp_precision = self.opt['mp']
+
         # Backup the loop and dual modes, because they can be changed in what follows.
         old_loop_mode = aloha.loop_mode
         old_dual_mode = aloha.dual_mode
@@ -2379,7 +2411,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         # here if it didn't exist already because it would be a waste of
         # memory for tree level applications since aloha is only needed at the
         # time of creating the aloha fortran subroutines.
-        if hasattr(self, 'aloha_model'):
+        if hasattr(self, 'aloha_model') and not gauge:
             aloha_model = self.aloha_model
         else:
             try:
@@ -2399,6 +2431,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         write_dir=pjoin(self.dir_path, 'Source', 'DHELAS')
         if npwave > 0:
             write_dir=pjoin(self.dir_path, 'Source', 'DHELAS%i'%npwave)
+        elif gauge:
+            write_dir=pjoin(self.dir_path, 'Source',
+                            'DHELAS' + self.gauge_libraries[gauge][0])
+            if not os.path.isdir(write_dir):
+                os.mkdir(write_dir)
         options= {}
         options['vector.inc'] = True if self.opt['export_format']=='madevent' else False
         aloha_model.write(write_dir, 'Fortran', options=options)
@@ -2409,6 +2446,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
         #copy Helas Template
         cp(MG5DIR + '/aloha/template_files/Makefile_F', write_dir+'/makefile')
+        if gauge:
+            # the library of the other gauge: libdhelas_fd for DHELAS_FD
+            with open(write_dir+'/makefile') as f:
+                text = f.read()
+            with open(write_dir+'/makefile', 'w') as f:
+                f.write(text.replace('libdhelas', 'libdhelas' +
+                                     self.gauge_libraries[gauge][1]))
         if any([any([tag.startswith('L') for tag in d[1]]) for d in wanted_lorentz]):
             cp(MG5DIR + '/aloha/template_files/aloha_functions_loop.f',
                                                  write_dir+'/aloha_functions.f')
@@ -2442,18 +2486,78 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         # TYPE(ALOHA2D) memory layout *only in this model's DHELAS copy*
         # so the tensor routine no longer overruns its slot. Models
         # without tensors keep the compact TYPE(ALOHA) %W(4) layout.
-        if self.model and any(p.get('spin') in [4, 5]
-                              for p in self.model.get('particles') if p):
+        if model and any(p.get('spin') in [4, 5]
+                         for p in model.get('particles') if p):
             self._widen_aloha_type(pjoin(write_dir, 'aloha_functions.f'))
 
         create_aloha.write_aloha_file_inc(write_dir, '.f', '.o')
+        aloha.mp_precision = old_aloha_mp
 
-        # Make final link in the Process
-        self.make_model_symbolic_link()
-    
-        # Re-establish original aloha mode
-        aloha.mp_precision=old_aloha_mp
-    
+    # The HELAS libraries of the other gauges of an output that mixes gauges,
+    # by gauge: (directory suffix, library suffix), DHELAS_FD/libdhelas_fd for
+    # 'FD'.  Set by the interface with the writer of each gauge.
+    gauge_libraries = {}
+    gauge_writers = {}
+
+    @staticmethod
+    def gauge_of(matrix_element):
+        """The gauge of a matrix element (or subprocess group) in an output
+        that mixes gauges, '' for the gauge of the session."""
+
+        if isinstance(matrix_element, group_subprocs.SubProcessGroup):
+            matrix_element = matrix_element.get('matrix_elements')[0]
+        return matrix_element.get('processes')[0].get_gauge()
+
+    def helas_suffixes(self, matrix_element):
+        """(directory, library) suffix of the HELAS library a P directory
+        links: ('', '') for Source/DHELAS, (n, n) for P-wave onia,
+        ('_FD', '_fd') for the FD processes of an output in two gauges."""
+
+        npwave = matrix_element.get_npwave()
+        if npwave > 0:
+            return '%i' % npwave, '%i' % npwave
+        return self.gauge_libraries.get(self.gauge_of(matrix_element), ('', ''))
+
+    def record_gauge_of_dir(self, matrix_element, dirpath):
+        """Note a P directory written in another gauge than the session one,
+        for proc_characteristics' gauge_of_dirs."""
+
+        gauge = self.gauge_of(matrix_element)
+        if gauge in self.gauge_libraries:
+            if not hasattr(self, 'gauge_of_dirs'):
+                self.gauge_of_dirs = []
+            self.gauge_of_dirs.append('%s=%s' % (
+                os.path.basename(os.path.normpath(dirpath)), gauge))
+
+    def helas_library_rules(self):
+        """(dual_libs, dhelas_dual) of the Source makefile: the libraries
+        besides libdhelas, P-wave onia and the other gauges."""
+
+        dual_libs = ''
+        dhelas_dual = ''
+        libraries = ['%i' % n for n in getattr(aloha, 'npwave', [0]) if n > 0]
+        libraries = [(n, n) for n in libraries] + \
+                    sorted(self.gauge_libraries.values())
+        for directory, library in libraries:
+            dual_libs += ' $(LIBDIR)libdhelas%s.$(libext)' % library
+            dhelas_dual += '\n$(LIBDIR)libdhelas%s.$(libext): DHELAS%s\n' % \
+                                                          (library, directory)
+            dhelas_dual += '\tcd DHELAS%s; make; cd ..' % directory
+        return dual_libs, dhelas_dual
+
+    def export_processes_in_gauge(self, matrix_element, writer):
+        """(writer, scope) of a matrix element or group: the writer of its
+        gauge, and a context that writes it in that gauge (aloha.gauge_scope)
+        with the model of that gauge as self.model (its interaction ids)."""
+
+        gauge = self.gauge_of(matrix_element)
+        if gauge not in self.gauge_writers:
+            return writer, aloha.gauge_scope('')
+        writer = self.gauge_writers[gauge]
+        scope = contextlib.ExitStack()
+        scope.enter_context(aloha.gauge_scope(gauge))
+        scope.enter_context(misc.TMP_variable(self, 'model', writer.get('model')))
+        return writer, scope
 
     @staticmethod
     def _widen_aloha_type(aloha_file):
@@ -4212,6 +4316,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         ENDIF
         DO IWARP=1, warp_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+c         the dressed-lepton densities read 1-x from OMX_EE, not from x
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
           """
 
 
@@ -4255,10 +4361,43 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                             one_initial_state += [-i for i in self.model['merged_particles'][-pdg]]
 
 
-            if tuple(initial_states) in [([-11],[11]), ([11],[-11]), ([-13],[13]),([13],[-13])]:
-                dressed_lep = True
-            else:
-                dressed_lep = False
+            # With pdlabel='dressed' a lepton density is not one number but
+            # n_ee components which have to be contracted beam by beam
+            # (ee_comp_prod), so the two beams may take that path only if
+            # every one of their initial states has such components. Testing
+            # tuple(initial_states) against a list of pdg pairs used to stand
+            # in for that, but the loop just above expands the merged
+            # particles of the model into initial_states: with
+            # apply_flavor_grouping on, 'e+ e- > mu+ mu-' gives
+            # ([-11,-13],[11,13]), which no list of pairs covers, and the
+            # components were silently dropped (leaving only the first one,
+            # i.e. no beamstrahlung, 13% low at FCC-ee).
+            dressed_lep = all(is_dressed_lepton_beam(one_initial_state)
+                              for one_initial_state in initial_states)
+
+            if not dressed_lep and all(any(abs(pdg) in DRESSED_LEPTON_PDGS
+                                           for pdg in one_initial_state)
+                                       for one_initial_state in initial_states):
+                # Both beams are (partly) leptonic but one of them also holds
+                # something with no lepton density -- a tau, say. Contracting
+                # the components is then only half right and multiplying the
+                # plain PDG2PDF values is not right at all, so refuse at run
+                # time, where pdlabel is known: it is a card entry, so
+                # generation cannot tell whether this directory will ever see
+                # 'dressed'. A beam with no lepton at all (a quark or a photon
+                # facing a lepton beam) does not come here: that subprocess is
+                # simply absent from the density, and pdg2pdf answers 0 for
+                # it, which is the right answer and not a mis-sum.
+                pdf_lines += "IF (PDLABEL.EQ.'dressed') THEN\n" + \
+                    "WRITE(*,*) 'ERROR: dressed lepton densities are not " + \
+                    "supported for this subprocess:'\n" + \
+                    "WRITE(*,*) '       its initial states are not all " + \
+                    "electrons/muons, so the'\n" + \
+                    "WRITE(*,*) '       luminosity components cannot be " + \
+                    "combined.'\n" + \
+                    "STOP 1\n" + \
+                    "ENDIF\n"
+
             ee_pdf_definition_lines += "DOUBLE PRECISION dummy_components(n_ee)\n"
 
    
@@ -4296,7 +4435,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                 ee_pdf_definition_lines += "DOUBLE PRECISION " + \
                                        ",".join(["%s%d_components(n_ee %s)" % (pdf_codes[pdg],i+1, vector_ext2) \
                                                  for pdg in \
-                                                 initial_states[i] if abs(pdg) in [11,13]]) + \
+                                                 initial_states[i] if abs(pdg) in DRESSED_LEPTON_PDGS]) + \
                                                  "\n"
                 
 
@@ -5951,18 +6090,19 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             linkfiles += ['ldme.inc']
         for file in linkfiles:
             ln('../%s' % file, cwd=dirpath)
-        if matrix_element.get_npwave()>0:
-            npwave = matrix_element.get_npwave()
+        directory, library = self.helas_suffixes(matrix_element)
+        self.record_gauge_of_dir(matrix_element, dirpath)
+        if directory:
             path1 = pjoin(dirpath,'../makefileP')
             path2 = pjoin(dirpath,'makefile')
             with open(path1, "r") as f:
                 content = f.readlines()
             with open(path2, "w") as f:
                 for line in content:
-                    l = line.replace('dhelas','dhelas%i'%npwave).replace('DHELAS','DHELAS%i'%npwave)
+                    l = line.replace('dhelas','dhelas'+library).replace('DHELAS','DHELAS'+directory)
                     f.write(l)
                     if 'make_opts' in line:
-                        f.write('FFLAGS += -I../../Source/DHELAS%i\n'%npwave)
+                        f.write('FFLAGS += -I../../Source/DHELAS%s\n'%directory)
         else:
             ln('../makefileP', name='makefile', cwd=dirpath)
         # Return to original PWD
@@ -5981,14 +6121,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         path = pjoin(_file_path,'iolibs','template_files','madevent_makefile_source')
         set_of_lib = '$(LIBDIR)libdhelas.$(libext) $(LIBDIR)libmodel.$(libext)'
-        dual_libs = ''
-        dhelas_dual = ''
-        if hasattr(aloha, "npwave"):
-            for npwave in aloha.npwave:
-                if npwave > 0:
-                    dual_libs += ' $(LIBDIR)libdhelas%i.$(libext)'%npwave
-                    dhelas_dual += '\n$(LIBDIR)libdhelas%i.$(libext): DHELAS%i\n'%(npwave,npwave)
-                    dhelas_dual += '\tcd DHELAS%i; make; cd ..'%npwave
+        dual_libs, dhelas_dual = self.helas_library_rules()
         model_line='''$(LIBDIR)libmodel.$(libext): MODEL\n\t cd MODEL; make\n'''
 
         if model['running_elements']:
@@ -6891,7 +7024,11 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')         
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')         
 
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
@@ -7759,7 +7896,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')                        
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')                        
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
         cp(_file_path+'/various/histograms.py', 
@@ -8010,7 +8151,21 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                          matrix_element.get('processes')[0].nice_string())
             plot.draw()
 
-        self.link_files_in_SubProcess(Ppath)
+        directory, library = self.helas_suffixes(matrix_element)
+        self.record_gauge_of_dir(matrix_element, Ppath)
+        if directory:
+            # the HELAS library of its gauge (helas_suffixes)
+            with open(pjoin(Ppath, '..', 'makefile')) as f:
+                content = f.readlines()
+            with open(pjoin(Ppath, 'makefile'), 'w') as f:
+                for line in content:
+                    f.write(line.replace('dhelas', 'dhelas' + library).replace(
+                                         'DHELAS', 'DHELAS' + directory))
+                    if 'make_opts' in line:
+                        f.write('MATRIX_FLAG += -I../../Source/DHELAS%s\n' % directory)
+            self.link_files_in_SubProcess(Ppath, False)
+        else:
+            self.link_files_in_SubProcess(Ppath)
 
         #import nexternal/leshouche in Source
         ln(pjoin(Ppath,'nexternal.inc'), pjoin(self.dir_path,'Source'), log=False)
@@ -8108,6 +8263,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         
         self.proc_characteristic['complex_mass_scheme'] = mg5options['complex_mass_scheme']
         self.proc_characteristic['gauge'] = mg5options['gauge']
+        self.proc_characteristic['gauge_of_dirs'] = list(
+                                            getattr(self, 'gauge_of_dirs', []))
 
         # set limitation linked to the model
     
@@ -8406,7 +8563,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             replace_dict['wavefunctionsize'] = 18
         else:
             replace_dict['wavefunctionsize'] = 6
-            if hasattr(self.model, '_curr_gauge') and self.model._curr_gauge == 'FD':
+            me_model = matrix_element.get('processes')[0].get('model')
+            if getattr(me_model, '_curr_gauge', None) == 'FD':
                 replace_dict['wavefunctionsize'] = 7
             if aloha.dual_mode:
                 replace_dict['wavefunctionsize'] = 8
@@ -8465,31 +8623,46 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # probabilities keep using the (n-1)! trace one
         ncolor = self.set_color_flow_lines(matrix_element, replace_dict, ncolor)
 
+        # POL(B) is the polarisation of beam B. In a grouped output, a mirror
+        # process (IMIRROR=2, IM=2) evaluates leg 1 on the parton of beam 2
+        # and leg 2 on the one of beam 1, so leg JJ takes POL(JB), JB the beam
+        # it comes from. A non-grouped output has no mirror process.
+        if isinstance(self, ProcessExporterFortranMEGroup):
+            beam_of_leg = """
+               JB = %(leg)s
+               IF (IM.EQ.2) JB = 3-%(leg)s"""
+            pol = 'JB'
+        else:
+            beam_of_leg = ''
+            pol = '%(leg)s'
         if self.beam_polarization == [True, True]:
-            replace_dict['beam_polarization'] = """
-                         DO JJ=1,nincoming
+            leg = 'JJ'
+            replace_dict['beam_polarization'] = ("""
+                         DO JJ=1,nincoming"""+ beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-               IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                 T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-               ELSE IF(POL(JJ).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+               IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
                ENDIF
              ENDDO
-            """
+            """) % {'leg': leg, 'pol': pol % {'leg': leg}}
         else:
             replace_dict['beam_polarization'] = ""
             for i in [0,1]:
                 if self.beam_polarization[i]:
-                    replace_dict['beam_polarization'] = """
-                                   ! handling only one beam polarization here. Second beam can be handle via the pdf.
+                    leg = '%i' % (i+1)
+                    replace_dict['beam_polarization'] = ("""
+                                   ! handling only one beam polarization here. Second beam can be handle via the pdf."""
+                                   + beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-                                   IF(POL(%(bid)i).NE.1d0.AND.NHEL(%(bid)i,I).EQ.INT(SIGN(1d0,POL(%(bid)i)))) THEN
-                 T=T*ABS(POL(%(bid)i))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ELSE IF(POL(%(bid)i).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(%(bid)i)))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ENDIF """ % {'bid': i+1}
+                                   IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ENDIF """) % {'leg': leg, 'pol': pol % {'leg': leg}}
 
         if matrix_element.get_nonia() > 0:
             tmpl = self.matrix_file.replace('.inc', '_onia_pwave.inc'
@@ -10290,18 +10463,19 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         #os.system(pjoin('..', '..', 'bin', 'gen_jpeg-pl'))
 
 
-        if matrix_element.get_npwave()>0:
-            npwave = matrix_element.get_npwave()
+        directory, library = self.helas_suffixes(matrix_element)
+        self.record_gauge_of_dir(matrix_element, pjoin(pathdir, subprocdir))
+        if directory:
             path1 = pjoin(pathdir,'makefile')
             path2 = pjoin(pathdir,subprocdir,'makefile')
             with open(path1, "r") as f:
                 content = f.readlines()
             with open(path2, "w") as f:
                 for line in content:
-                    l = line.replace('dhelas','dhelas%i'%npwave).replace('DHELAS','DHELAS%i'%npwave)
+                    l = line.replace('dhelas','dhelas'+library).replace('DHELAS','DHELAS'+directory)
                     f.write(l)
                     if 'make_opts' in line:
-                        f.write('MATRIX_FLAG += -I../../Source/DHELAS%i\n'%npwave)
+                        f.write('MATRIX_FLAG += -I../../Source/DHELAS%s\n'%directory)
             self.link_files_in_SubProcess(pjoin(pathdir,subprocdir), False)
         else:
             self.link_files_in_SubProcess(pjoin(pathdir,subprocdir))

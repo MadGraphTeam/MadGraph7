@@ -16,6 +16,7 @@
 (MadGraphCmd.apply_automatic_gauge and fd_gauge_criterion)."""
 
 from __future__ import absolute_import
+import glob
 import os
 import shutil
 import tempfile
@@ -61,34 +62,38 @@ class TestAutomaticGauge(unittest.TestCase):
     def gauge_lines(self):
         """the history lines about the gauge, with the process lines"""
         return [line for line in self.cmd.history
-                if line.startswith(('set gauge', '# FD gauge', 'generate',
+                if line.startswith(('set gauge', '# FD gauge', '# --gauge', 'generate',
                                     'add process'))]
 
     # ------------------------------------------------------------------
     # the criterion
     # ------------------------------------------------------------------
     def test_criterion(self):
-        """fd_gauge_criterion on the diagrams of a few SM processes"""
+        """fd_gauge_criterion on the diagrams of SM processes: a massive
+        vector propagator with an end that is not a conserved current"""
 
         self.do('set auto_gauge False')   # the amplitudes as generated
-        # (electroweak_only, massive_vector); None: not evaluated past the
-        # first QCD vertex
         expected = [
-            ('p p > w+ w- j j QCD=0', (True, True)),      # VBS
-            ('p p > w+ w-', (True, True)),                # no QCD vertex at LO
-            ('p p > h j j', (True, True)),                # VBF/VH, no QCD at LO in the sm
-            ('e+ e- > mu+ mu-', (True, True)),            # Z exchange
-            ('p p > w+ w-, w+ > e+ ve', (True, True)),    # decay chain
-            ('a a > mu+ mu-', (True, False)),             # no massive vector
-            ('p p > t t~', (False, None)),                # QCD
-            ('p p > w+ j', (False, None)),                # one QCD vertex
+            ('p p > w+ w- j j QCD=0', True),      # VBS: VVV and HVV ends
+            ('p p > w+ w-', True),                # s-channel Z/a: WWV end
+            ('p p > h j j QCD=0', True),          # VBF: HVV end
+            ('e+ e- > z h', True),                # ZZH end
+            ('g b > t e- ve~', True),             # W between t-b and leptons
+            ('p p > t t~, (t > b w+, w+ > l+ vl)', True),  # decayed W: t-b end
+            ('p p > w+ w-, w+ > e+ ve', True),    # decay chain of the above
+            ('e+ e- > ta+ ta-', False),           # tau: an SM lepton, conserved
+            ('e+ e- > t t~', True),               # Z ending on the top current
+            ('e+ e- > mu+ mu-', False),           # Z between massless currents
+            ('u d~ > e+ ve g', False),            # quark line + gluon: conserved
+            ('p p > z z', False),                 # external Z only
+            ('p p > w+ j', False),                # external W only
+            ('p p > t t~', False),                # no massive vector
+            ('a a > mu+ mu-', False),             # no massive vector
             ]
-        for line, (electroweak_only, massive_vector) in expected:
+        for line, result in expected:
             self.do('generate %s' % line)
-            result = mg_interface.fd_gauge_criterion(self.cmd._curr_amps)
-            self.assertEqual(result[0], electroweak_only, line)
-            if massive_vector is not None:
-                self.assertEqual(result[1], massive_vector, line)
+            self.assertEqual(
+                mg_interface.fd_gauge_criterion(self.cmd._curr_amps), result, line)
             self.assertGauge('unitary', automatic=False)
 
     def test_criterion_loop_amplitude(self):
@@ -96,8 +101,7 @@ class TestAutomaticGauge(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate u u~ > w+ w- [virt=QCD]')
-        self.assertEqual(mg_interface.fd_gauge_criterion(self.cmd._curr_amps),
-                         (False, False))
+        self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps))
         self.assertEqual(self.cmd.options['gauge'], 'unitary')
 
     # ------------------------------------------------------------------
@@ -124,23 +128,90 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertEqual(len(self.cmd._curr_amps), 2)
         self.assertEqual(self.gauge_lines(), ['generate p p > t t~'])
 
-    def test_add_process_reverts(self):
-        """adding a QCD process to an electroweak one brings the whole output
-        back to the unitary gauge, every process generated again"""
+    def lines_gauges(self):
+        """(process id, gauge of the process, gauge of its model)"""
+        return [(amp.get('process').get('id'), amp.get('process').get_gauge(),
+                 amp.get('process').get('model')._curr_gauge)
+                for amp in self.cmd._curr_amps]
+
+    def test_add_process_mixes_gauges(self):
+        """a process that does not need the FD gauge added to one that does:
+        the session goes back to the unitary gauge, the first line is
+        generated with --gauge=FD, and the proc_card says so"""
 
         self.do('generate p p > w+ w-')
         self.assertGauge('FD', automatic=True)
         self.do('add process p p > t t~')
-        self.assertGauge('unitary', automatic=False)
-        self.assertEqual(len(self.cmd._curr_amps), 3)
-        self.assertEqual([amp.get('process').get('id') for amp in self.cmd._curr_amps],
-                         [1, 2, 2])
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
+        self.assertTrue(self.cmd.automatic_fd_gauge_in_use())
+        self.assertEqual(self.lines_gauges(), [(1, 'FD', 'FD'), (2, '', 'unitary'),
+                                               (2, '', 'unitary')])
         self.assertEqual(self.gauge_lines(),
-                         ['generate p p > w+ w-', 'add process p p > t t~'])
-        # and an electroweak one added to a QCD one changes nothing
-        self.do('add process p p > z z')
+                         [mg_interface.MadGraphCmd.AUTO_LINE_COMMENT,
+                          'generate p p > w+ w- --gauge=FD',
+                          'add process p p > t t~'])
+        # a polarised one stays in the unitary gauge, the rest is kept
+        self.do('add process p p > w+{0} w-')
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
+        self.assertEqual(self.lines_gauges()[-1], (3, '', 'unitary'))
+
+    def test_add_process_needing_fd(self):
+        """a process that needs the FD gauge added to one that does not: only
+        that line is generated (again) in the FD gauge"""
+
+        self.do('generate p p > t t~')
         self.assertGauge('unitary', automatic=False)
-        self.assertEqual(len(self.cmd._curr_amps), 4)
+        first = list(self.cmd._curr_amps)
+        self.do('add process p p > w+ w-')
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(self.cmd._auto_fd_lines, set([1]))
+        self.assertEqual(self.lines_gauges(), [(1, '', 'unitary'), (1, '', 'unitary'),
+                                               (2, 'FD', 'FD')])
+        # the first line is not generated again
+        self.assertIs(self.cmd._curr_amps[0], first[0])
+        self.assertIn('add process p p > w+ w- --gauge=FD', self.cmd.history)
+
+    def test_single_gauge_output_fallback(self):
+        """an output writing every matrix element into one library gets one
+        gauge: FD when every process can be, unitary otherwise"""
+
+        self.do('generate p p > t t~')
+        self.do('add process p p > w+ w-')
+        self.cmd._export_format = 'pythia8'
+        self.cmd._export_dir = None
+        self.cmd.single_gauge_for_output([])
+        self.assertGauge('FD', automatic=True)
+        self.assertEqual(self.cmd._auto_fd_lines, set())
+        self.assertEqual(len(self.cmd._curr_amps), 3)
+
+        self.do('generate p p > w+{0} w-')
+        self.do('add process p p > w+ w-')
+        self.assertEqual(self.cmd._auto_fd_lines, set([1]))
+        self.cmd._export_format = 'pythia8'
+        self.cmd.single_gauge_for_output([])
+        self.assertGauge('unitary', automatic=False)
+        self.assertEqual(self.cmd._auto_fd_lines, set())
+
+    def test_gauge_option_of_the_session_gauge(self):
+        """--gauge=unitary with the automatic choice on: recorded once, kept
+        in the unitary gauge (no 'Duplicate process')"""
+
+        self.do('generate p p > w+ w- --gauge=unitary')
+        self.assertGauge('unitary', automatic=False)
+        self.assertEqual(len(self.cmd._process_lines), 1)
+        self.assertEqual(len(self.cmd._line_ranges), 1)
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+
+    def test_edited_model_has_no_automatic_choice(self):
+        """a model changed after its import (add model, customize_model) is
+        never reloaded into another gauge"""
+
+        self.cmd.history.append('add model taudecay_UFO')
+        self.do('generate p p > w+ w-')
+        self.assertGauge('unitary', automatic=False)
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'add process p p > z h --gauge=FD')
 
     def test_decay_chain(self):
         """a decay chain is generated again as a decay chain"""
@@ -154,6 +225,15 @@ class TestAutomaticGauge(unittest.TestCase):
         """nothing to gain for a process without massive vector boson"""
 
         self.do('generate a a > mu+ mu-')
+        self.assertGauge('unitary', automatic=False)
+
+    def test_polarised_legs_keep_unitary(self):
+        """the split of a cross section into polarisations is gauge
+        dependent, defined in the unitary gauge"""
+
+        self.do('generate p p > w+{0} w-{T}')
+        self.assertGauge('unitary', automatic=False)
+        self.do('generate p p > w+ w-, w+ > e+{L} ve')
         self.assertGauge('unitary', automatic=False)
 
     def test_propagator_polarization(self):
@@ -172,7 +252,7 @@ class TestAutomaticGauge(unittest.TestCase):
         self.do('define V z|a')
         self.do('define VQ = z u')
         self.do('define p = p b b~')
-        self.do('generate e+ e- > V > e+ e-')
+        self.do('generate e+ e- > V > w+ w-')
         self.assertGauge('FD', True)
         self.assertEqual(self.cmd._multiparticles['v'], [[23], [22]])
         self.do('generate p p > t t~')
@@ -191,7 +271,41 @@ class TestAutomaticGauge(unittest.TestCase):
                                             'loop_smgrav'))
         self.do('generate u d~ > w+ y')
         self.assertGauge('unitary', False)
-        self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps)[0])
+        self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps))
+
+    def test_auto_gauge_not_in_the_proc_card(self):
+        """the default auto_gauge True is not dumped into the history (MadSpin
+        and the reweighting replay the 'set' lines of the proc_card with
+        their own auto_gauge False); a choice of the user is"""
+
+        self.assertFalse([l for l in self.cmd.history
+                          if l.startswith('set auto_gauge')])
+        self.do('set auto_gauge False')
+        self.assertIn('set auto_gauge False', list(self.cmd.history))
+
+    def test_madspin_skips_the_gauge_lines(self):
+        """MadSpin runs the 'set' lines of the proc_card but the gauge ones"""
+
+        import MadSpin.interface_madspin as interface_madspin
+        is_gauge = interface_madspin.set_line_is_gauge
+        self.assertTrue(is_gauge('set gauge FD'))
+        self.assertTrue(is_gauge('set auto_gauge True'))
+        self.assertFalse(is_gauge('set complex_mass_scheme True'))
+        self.assertFalse(is_gauge('set gauge_fake 1'))
+
+    def test_amplicol_process_survives_the_revert(self):
+        """an [amplicol] process added after an automatic FD choice: the
+        session goes back to the unitary gauge, the first line keeps the FD
+        gauge, and the [amplicol] process is kept"""
+
+        self.do('generate p p > w+ w-')
+        self.assertGauge('FD', True)
+        self.do('add process g g > g g [amplicol]')
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+        self.assertEqual(self.cmd._curr_amps[0].get('process').get_gauge(), 'FD')
+        self.assertEqual(len(self.cmd._curr_amplicol_defs), 1)
 
     def test_explicit_gauge_wins(self):
         """'set gauge unitary' keeps the unitary gauge, 'set gauge FD' the FD
@@ -232,8 +346,9 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertEqual(self.cmd.options['gauge'], 'unitary')
         self.assertFalse(self.cmd._auto_gauge_active)
         self.assertEqual(aloha.unitary_gauge, True)
-        # the amplitudes are gone with the model, as after 'set gauge'
-        self.assertEqual(len(self.cmd._curr_amps), 0)
+        # the processes generated again in the unitary gauge
+        self.assertGauge('unitary', automatic=False)
+        self.assertEqual(len(self.cmd._curr_amps), 1)
         self.assertNotIn('set gauge FD', self.cmd.history)
 
     def test_model_without_feynman_gauge(self):
@@ -243,9 +358,8 @@ class TestAutomaticGauge(unittest.TestCase):
                                             'fourfermion_UFO'))
         self.assertEqual(self.cmd._curr_model.get('gauge'), [0])
         self.do('generate fa fa~ > fb fb~')
-        # V exchange, no QCD: the criterion holds, the model does not
-        self.assertEqual(mg_interface.fd_gauge_criterion(self.cmd._curr_amps),
-                         (True, True))
+        # V between massive fermions: the criterion holds, the model does not
+        self.assertTrue(mg_interface.fd_gauge_criterion(self.cmd._curr_amps))
         self.assertGauge('unitary', automatic=False)
 
     def test_unverified_model_is_given_up(self):
@@ -260,7 +374,7 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertNotIn('set gauge FD', self.cmd.history)
         # not tried again: no reload of the model this time
         model = self.cmd._curr_model
-        self.do('generate p p > z z')
+        self.do('generate p p > w+ w-')
         self.assertIs(self.cmd._curr_model, model)
         self.assertGauge('unitary', automatic=False)
 
@@ -435,3 +549,203 @@ class TestAutomaticGaugeOutput(unittest.TestCase):
             self.assertNotIn('set gauge FD', fsock.read())
         with open(pjoin(out, 'citations.log')) as fsock:
             self.assertNotIn('Hagiwara:2024xdh', fsock.read())
+
+
+class TestProcessGauge(unittest.TestCase):
+    """'generate|add process ... --gauge=X': one gauge per process line."""
+
+    def setUp(self):
+        self.cmd = master_interface.MasterCmd()
+        self.cmd.no_notification()
+        self.do('set auto_gauge False')
+        self.do('import model sm')
+
+    def tearDown(self):
+        self.cmd.exec_cmd('set gauge unitary', precmd=True, postcmd=True)
+        aloha.unitary_gauge = True
+
+    def do(self, line):
+        self.cmd.exec_cmd(line, precmd=True, postcmd=True)
+
+    def gauges(self):
+        return [(amp.get('process').get_gauge('unitary'),
+                 amp.get('process').get('model')._curr_gauge)
+                for amp in mg_interface.iter_tree_amplitudes(self.cmd._curr_amps)]
+
+    def test_two_gauges_in_one_session(self):
+        """each line generated with the model of its gauge, the session and
+        aloha staying in the unitary gauge"""
+
+        self.do('generate p p > w+ w- --gauge=FD')
+        self.do('add process p p > t t~')
+        self.do('add process p p > z z, z > e+ e- --gauge=FD')
+        self.assertEqual(self.gauges(), [('FD', 'FD'), ('unitary', 'unitary'),
+                                         ('unitary', 'unitary'), ('FD', 'FD'),
+                                         ('FD', 'FD')])
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(aloha.unitary_gauge, True)
+        self.assertEqual(self.cmd.gauges_in_use(), set(['unitary', 'FD']))
+        self.assertIn('generate p p > w+ w- --gauge=FD', self.cmd.history)
+        self.assertEqual(self.cmd._generate_info, 'p p > w+ w-')
+
+    def test_twin_model_reused(self):
+        """the FD model is imported once per session model"""
+
+        self.do('generate p p > w+ w- --gauge=FD')
+        twin = self.cmd._curr_amps[0].get('process').get('model')
+        self.do('generate p p > z z --gauge=FD')
+        self.assertIs(self.cmd._curr_amps[0].get('process').get('model'), twin)
+        self.do('import model sm')
+        self.do('generate p p > z z --gauge=FD')
+        self.assertIsNot(self.cmd._curr_amps[0].get('process').get('model'), twin)
+
+    def test_same_gauge_option_is_plain(self):
+        """--gauge= of the session gauge changes nothing"""
+
+        self.do('generate p p > w+ w- --gauge=unitary')
+        self.assertEqual(self.gauges(), [('unitary', 'unitary')])
+        self.assertIs(self.cmd._curr_amps[0].get('process').get('model'),
+                      self.cmd._curr_model)
+
+    def test_refusals(self):
+        """loop processes, spin 2, unknown gauges, a model without FD gauge"""
+
+        self.assertRaises(madgraph.InvalidCmd, self.do, 'generate p p > w+ w- --gauge=axial')
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'generate u u~ > w+ w- [virt=QCD] --gauge=FD')
+        self.do('import model %s' % pjoin(MG5DIR, 'tests', 'input_files',
+                                            'fourfermion_UFO'))
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'generate fa fa~ > fb fb~ --gauge=FD')
+        self.do('import model %s' % pjoin(MG5DIR, 'tests', 'input_files',
+                                            'loop_smgrav'))
+        self.assertRaises(madgraph.InvalidCmd, self.do, 'generate u d~ > w+ y --gauge=FD')
+        self.assertFalse(self.cmd._curr_amps)
+
+    def test_decay_chain_gauge(self):
+        """the decays of an FD line are FD too"""
+
+        self.do('generate p p > w+ w-, w+ > e+ ve --gauge=FD')
+        self.assertEqual(set(self.gauges()), set([('FD', 'FD')]))
+
+
+class TestProcessGaugeOutput(unittest.TestCase):
+    """What an output of processes in two gauges looks like."""
+
+    def setUp(self):
+        self.cmd = master_interface.MasterCmd()
+        self.cmd.no_notification()
+        self.path = tempfile.mkdtemp(prefix='process_gauge')
+        self.do('set auto_gauge False')
+        self.do('import model sm')
+        self.do('generate p p > w+ w- --gauge=FD')
+        self.do('add process p p > t t~')
+
+    def tearDown(self):
+        self.cmd.exec_cmd('set gauge unitary', precmd=True, postcmd=True)
+        aloha.unitary_gauge = True
+        shutil.rmtree(self.path, ignore_errors=True)
+
+    def do(self, line):
+        self.cmd.exec_cmd(line, precmd=True, postcmd=True)
+
+    def test_madevent_output(self):
+        """the FD P directory links Source/DHELAS_FD, the others DHELAS"""
+
+        out = pjoin(self.path, 'MIX')
+        self.do('output madevent %s -f' % out)
+        self.assertEqual(aloha.unitary_gauge, True)
+        helas_fd = pjoin(out, 'Source', 'DHELAS_FD')
+        self.assertTrue(os.path.exists(pjoin(helas_fd, 'aloha_functions.f')))
+        with open(pjoin(helas_fd, 'aloha_functions.f')) as fsock:
+            self.assertIn('DEFINE_GAUGE_DIR', fsock.read().upper())
+        with open(pjoin(out, 'Source', 'DHELAS', 'aloha_functions.f')) as fsock:
+            self.assertNotIn('DEFINE_GAUGE_DIR', fsock.read().upper())
+        with open(pjoin(helas_fd, 'makefile')) as fsock:
+            self.assertIn('libdhelas_fd', fsock.read())
+        with open(pjoin(out, 'Source', 'makefile')) as fsock:
+            self.assertIn('libdhelas_fd', fsock.read())
+        pdirs = [os.path.basename(p) for p in
+                 glob.glob(pjoin(out, 'SubProcesses', 'P*'))]
+        for pdir in pdirs:
+            makefile = pjoin(out, 'SubProcesses', pdir, 'makefile')
+            with open(makefile) as fsock:
+                self.assertEqual('dhelas_fd' in fsock.read(), 'wpwm' in pdir, pdir)
+        with open(pjoin(out, 'SubProcesses', 'proc_characteristics')) as fsock:
+            text = fsock.read()
+        self.assertIn('gauge = unitary', text)
+        self.assertIn('=FD', text)
+        with open(pjoin(out, 'citations.log')) as fsock:
+            self.assertIn('Hagiwara:2024xdh', fsock.read())
+        with open(pjoin(out, 'Cards', 'proc_card_mg5.dat')) as fsock:
+            self.assertIn('generate p p > w+ w- --gauge=FD', fsock.read())
+
+    def test_unsupported_output_refused(self):
+        """a format writing every matrix element into one library"""
+
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'output pythia8 %s -f' % pjoin(self.path, 'PY8'))
+
+
+class TestProcCardOneGauge(unittest.TestCase):
+    """The proc_card of events read back by MadSpin and the reweighting."""
+
+    def test_strip_gauge_options(self):
+        import madgraph.various.banner as banner_mod
+        lines = ['import model sm',
+                 '# --gauge=FD chosen automatically for the processes that need it',
+                 'generate p p > w+ w- --gauge=FD',
+                 'add process p p > t t~',
+                 'output madevent PROC']
+        self.assertEqual(banner_mod.ProcCard.strip_gauge_options(lines),
+                         (['import model sm', lines[1], 'generate p p > w+ w-',
+                           'add process p p > t t~', 'output madevent PROC'], True))
+        plain = ['import model sm', 'generate p p > t t~', 'output madevent PROC']
+        self.assertEqual(banner_mod.ProcCard.strip_gauge_options(plain), (plain, False))
+
+    def test_banner_reader_stays_faithful(self):
+        """the shared reader keeps the card; MadSpin and the reweighting ask
+        for it in one gauge"""
+        import madgraph.various.banner as banner_mod
+        banner = banner_mod.Banner()
+        banner['mg5proccard'] = '\n'.join(['import model sm',
+                                           'generate p p > w+ w- --gauge=FD',
+                                           'add process p p > t t~'])
+        self.assertIn('generate p p > w+ w- --gauge=FD', list(banner.charge_card('proc_card')))
+        self.assertTrue(banner.proc_card_in_one_gauge())
+        self.assertEqual(list(banner.proc_card)[1], 'generate p p > w+ w-')
+        self.assertNotIn('set gauge FD', list(banner.proc_card))
+        self.assertFalse(banner_mod.Banner().proc_card_in_one_gauge())
+
+
+class TestGaugeHelpers(unittest.TestCase):
+    """aloha.gauge_scope and the gauge-model conflict check."""
+
+    def test_noop_scope_keeps_changes(self):
+        old = aloha.unitary_gauge
+        try:
+            with aloha.gauge_scope(''):
+                aloha.unitary_gauge = 3
+            self.assertEqual(aloha.unitary_gauge, 3)
+            with aloha.gauge_scope('FD'):
+                self.assertEqual(aloha.unitary_gauge, 3)
+            aloha.unitary_gauge = True
+            with aloha.gauge_scope('FD'):
+                self.assertEqual(aloha.unitary_gauge, 3)
+            self.assertEqual(aloha.unitary_gauge, True)
+        finally:
+            aloha.unitary_gauge = old
+
+    def test_external_parameter_conflict(self):
+        import copy
+        import_ufo._import_once[:] = []
+        with aloha.gauge_scope('unitary'):
+            base = import_ufo.import_model('sm')
+        with aloha.gauge_scope('FD'):
+            twin = import_ufo.import_model('sm')
+        self.assertEqual(import_ufo.gauge_model_conflicts(base, twin), [])
+        for lst in twin['parameters'].values():
+            for param in lst:
+                if param.name == 'mdl_MT':
+                    param.value = 200.
+        self.assertIn('mdl_MT', import_ufo.gauge_model_conflicts(base, twin))

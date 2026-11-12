@@ -141,8 +141,9 @@ class AbstractRoutine(object):
 
         conjg = tuple(int(t[1:]) for t in self.tag if t.startswith('C'))
         # the model is part of the key: two models can define different
-        # structures under the same Lorentz name
-        key = (self.model, tuple(lor.name for lor in l_lorentz), conjg)
+        # structures under the same Lorentz name; so is the gauge
+        key = (self.model, tuple(lor.name for lor in l_lorentz), conjg,
+               aloha.unitary_gauge)
         if key in self.combined_builder:
             builder = self.combined_builder[key]
         else:
@@ -204,7 +205,7 @@ class AbstractRoutine(object):
             if len(lorentz.spins) != len(self.spins):
                 # not the same legs: nothing to assemble them into
                 return None
-            key = (self.model, name, conjg)
+            key = (self.model, name, conjg, aloha.unitary_gauge)
             if key in self.combined_builder:
                 builder = self.combined_builder[key]
             else:

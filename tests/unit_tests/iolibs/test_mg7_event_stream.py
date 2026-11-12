@@ -9,7 +9,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # CI collects every test module, some runners lack numpy
+    np = None
 
 _TEMPLATE = (Path(__file__).resolve().parents[3] / "madgraph" / "iolibs"
              / "template_files" / "mg7" / "event_stream.py")
@@ -63,6 +66,7 @@ class FakeStream:
         }
 
 
+@unittest.skipIf(np is None, "numpy is not installed")
 class TestEventStream(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
