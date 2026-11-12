@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields, replace
 from decimal import Decimal
 from pathlib import Path
@@ -678,26 +678,29 @@ class DefaultCliServices:
                 helicities=evaluation.helicity_ids or None,
                 color_flows=evaluation.color_flow_ids or None,
             )
-        operation = _with_evaluation_progress(
-            progress,
-            len(momenta),
-            runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate,
-        )
+        options: dict[str, object] = {
+            "precision": evaluation.precision,
+            "helicities": evaluation.helicity_ids or None,
+            "color_flows": evaluation.color_flow_ids or None,
+        }
+        per_point: dict[str, Sequence[object]] = {}
         if virtual:
-            return operation(
-                cast("Momenta", momenta),
-                precision=evaluation.precision,
-                helicities=evaluation.helicity_ids or None,
-                color_flows=evaluation.color_flow_ids or None,
-                mu_r2=scales,
-                on_failure=evaluation.on_failure,
-                **v2_options,
+            options.update(on_failure=evaluation.on_failure, **v2_options)
+            if isinstance(scales, list) and len(scales) == len(momenta):
+                per_point["mu_r2"] = scales
+            else:
+                options["mu_r2"] = scales
+        if evaluation.resolved:
+            operation = _with_evaluation_progress(
+                progress, len(momenta), runtime.evaluate_resolved
             )
-        return operation(
-            cast("Momenta", momenta),
-            precision=evaluation.precision,
-            helicities=evaluation.helicity_ids or None,
-            color_flows=evaluation.color_flow_ids or None,
+            return operation(cast("Momenta", momenta), **per_point, **options)
+        # Successive calls over the points: progress per point and, on
+        # Ctrl-C, the tables of the points done (``partial_evaluation``).
+        from .partial_evaluation import evaluate_in_chunks
+
+        return evaluate_in_chunks(
+            progress, runtime.evaluate, momenta, per_point, options
         )
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:

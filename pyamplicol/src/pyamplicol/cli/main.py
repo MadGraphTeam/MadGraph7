@@ -36,6 +36,20 @@ def _json_value(value: object) -> object:
         VirtualOrderEvaluation,
     )
 
+    from .partial_evaluation import PartialEvaluation
+
+    if isinstance(value, PartialEvaluation):
+        # An interrupted evaluate: the points done, plus how many of the
+        # requested points they are (data, as the stability run's setup).
+        inner = _json_value(value.result)
+        partial = {
+            "interrupted": True,
+            "requested_points": value.requested,
+            "measured_points": value.measured,
+        }
+        if isinstance(inner, dict):
+            return {**inner, **partial}
+        return {"values": inner, **partial}
     if isinstance(value, VirtualOrderEvaluation):
         # The one evaluation, its order axes and the explicit sums (named:
         # orders are never summed silently).
@@ -105,6 +119,16 @@ def write_result(
         json.dump(plain, stream, indent=2, sort_keys=True, allow_nan=False)
         stream.write("\n")
     elif format == "human":
+        from pyamplicol.reporting import palette
+
+        from .partial_evaluation import PartialEvaluation
+
+        notice = None
+        if isinstance(value, PartialEvaluation):
+            notice = palette.paint(
+                value.notice(), palette.RECOVERED, color=color, bold=True
+            )
+            value = value.result
         rendered = render_summary(value, color=color)
         if rendered is None:
             raise RuntimeError(
@@ -112,6 +136,8 @@ def write_result(
                 "machine-readable output"
             )
         stream.write(f"{rendered}\n")
+        if notice is not None:
+            stream.write(f"{notice}\n")
         if fields_help:
             from pyamplicol.reporting.descriptions import field_descriptions
 
