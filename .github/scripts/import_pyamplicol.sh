@@ -24,9 +24,16 @@ UPSTREAM_SHA=$(git rev-parse HEAD)
 
 # Prepared-model packs are rebuilt in CI and shipped as one release archive;
 # reports and papers are linked from the archived upstream repository.
+# The one-loop reference-generation and benchmark tooling (everything under
+# tools/loop_reference and tools/loop_benchmark but their JSON data, which the
+# tests read as fixtures) and the one-loop performance reports stay upstream.
+# These paths appear only after the first import, so the commits imported
+# earlier keep their SHAs.
 $FILTER_REPO --force \
     --path-glob '*.pyamplicol-model' --invert-paths \
     --path-glob '*.pdf' --invert-paths \
+    --path-regex '^tools/loop_(reference|benchmark)/.*(?<!\.json)$' --invert-paths \
+    --path docs/performance_reports/loop/ --invert-paths \
     --to-subdirectory-filter pyamplicol
 
 git -C "$MG_ROOT" fetch --quiet --no-tags "$WORK/pyamplicol" "+HEAD:refs/heads/pyamplicol-import"
