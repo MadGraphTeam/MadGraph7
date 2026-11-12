@@ -4,8 +4,10 @@ The [current acceptance selection](CURRENT_STATUS.md) distinguishes production
 evidence, unapplied experiments and preserved historical indices.
 The [OEM signing and rebuild note](OEM_SIGNING.md) records the signed TIRust
 pin, installation upgrade and its separate qualification. Existing measured
-campaigns and the 44-page PDF retain their original source identities; a new
-signed-source campaign is required for subsequent acceptance measurements.
+campaigns and the 44-page PDF retain their original source identities. The
+[fresh signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
+provides the current installation, numerical, timing and report commands. Its
+eleven cases are registered with all new numerical/runtime qualifications pending.
 
 Review is tracked in [draft PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/437)
 into `madloop_ninjars`; the original [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315)

@@ -49,7 +49,9 @@ That source comparison and interface tests do not qualify new full-amplitude
 accuracy or performance. The 44-page benchmark and its measured campaign remain
 bound to their recorded predecessor source. They are retained unchanged.
 Physical-stress accuracy failures, broader experimental qualifications and the
-formal eight-process runtime gates remain open. Hua-Sheng's precise local
-campaign must use a newly frozen signed-source installation and matching
-handoff; the predecessor's frozen local TODO is historical input, not automatic
-acceptance of the signing successor.
+formal eight-process runtime gates remain open. Hua-Sheng can use the new
+[signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
+for local installation, fresh numerical qualification, paired timings and report
+generation. Its eleven cases, 66 numerical lanes and eight main runtime gates
+are registered with all results pending. The predecessor's frozen local TODO
+remains historical input; its qualifications do not transfer to this source.

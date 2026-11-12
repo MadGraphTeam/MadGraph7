@@ -12,6 +12,11 @@ Review: [draft TIRust PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/43
 into `madloop_ninjars`, stacked on [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315) into `main`.
 The integration goal is incomplete.
 
+The current signed source has a [fresh local timing handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+Its source and installation are frozen separately; all 66 new numerical lanes
+and eight main runtime gates await local execution. The older handoffs and
+results below retain their recorded source bindings.
+
 The [OEM signing successor](OEM_SIGNING.md) updates the current installation
 pin to signed TIRust `10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1`. Its scoped activation and fresh
 bridge qualification are recorded separately. Numerical acceptance evidence

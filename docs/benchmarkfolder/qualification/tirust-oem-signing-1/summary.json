@@ -34,7 +34,7 @@
       "before": "f9344679b2d7081d03b34aefc112a64837e868d58527fd944951f5345ef27167"
     }
   },
-  "local_timing_todo": "Create a fresh signed-source campaign and matching handoff; the frozen predecessor handoff and historical results cannot qualify this source.",
+  "local_timing_todo": "Registered signed-source campaign tirust-oem-signed-1: all66numerical lanes and8main runtime gates pending. Follow campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md; predecessor qualifications remain historical.",
   "new_dso_sha256": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0",
   "new_full_campaign_acceptance": false,
   "numerical_upstream_base": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
