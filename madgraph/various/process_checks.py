@@ -256,16 +256,21 @@ class MatrixElementEvaluator(object):
             except NameError:
                 pass
 
-        if (auth_skipping or self.auth_skipping) and matrix_element in \
-               self.stored_quantities['matrix_elements']:
+        # With flavour grouping one matrix element serves several flavours,
+        # chosen at run time: it has been tested only for the flavours tested.
+        tested = self.stored_quantities.setdefault('tested_flavors', [])
+        if (auth_skipping or self.auth_skipping) and \
+               any(flv == flavor and me == matrix_element
+                   for me, flv in tested):
             # Exactly the same matrix element has been tested
-            logger.info("Skipping %s, " % process.nice_string() + \
+            logger.info("Skipping %s, " % check_label(process) + \
                         "identical matrix element already tested" \
                         )
             return None
 
 
         self.stored_quantities['matrix_elements'].append(matrix_element)
+        tested.append((matrix_element, flavor))
         # Create an empty color basis, and the list of raw
         # colorize objects (before simplification) associated
         # with amplitude
@@ -2004,36 +2009,91 @@ def evaluate_helicities(process, param_card = None, mg_root="",
     
     return cumulative_helEvals
     
+def check_label(process):
+    """Name of a process in the log of the checks: the grouped process,
+    followed by the physical flavours when they are tagged on its legs."""
+
+    label = process.nice_string().replace('Process:', 'process')
+    if any(leg.get('flavor') for leg in process.get('legs')):
+        label += ' [%s]' % process.base_string()
+    return label
+
+def get_flavor_choices(multileg, model):
+    """Return the (id, pdg) choices of one leg of a multiprocess.
+
+    With flavour grouping a merged id (e.g. _quark, 81) stands for several
+    physical flavours, and the matrix element of a grouped process depends on
+    the flavour passed at run time. Each merged id is therefore expanded into
+    the flavours tagged on the leg (`u` -> _quark with flavour u) or, when the
+    leg carries no tag for it (`p`), into all the flavours of its group, so
+    that each physical process is checked on its own. pdg is the signed PDG
+    code of that flavour, or None for an id that is not merged."""
+
+    merged = model.get('merged_particles') or {}
+    choices = []
+    for pid in multileg.get('ids'):
+        if abs(pid) not in merged:
+            choices.append((pid, None))
+            continue
+        group = merged[abs(pid)]
+        sign = 1 if pid > 0 else -1
+        # Same filter as MultiProcess.generate_multi_amplitudes: the tag must
+        # belong to this group and have the sign of this (anti)particle id.
+        tagged = [abs(f) for f in multileg.get('flavor')
+                  if abs(f) in group and f * pid > 0]
+        for pdg in (tagged or group):
+            choices.append((pid, sign * abs(pdg)))
+    return choices
+
 def run_multiprocs_no_crossings(function, multiprocess, stored_quantities,
                                 opt=None, options=None):
     """A wrapper function for running an iteration of a function over
     a multiprocess, without having to first create a process list
     (which makes a big difference for very large multiprocesses.
     stored_quantities is a dictionary for any quantities that we want
-    to reuse between runs."""
+    to reuse between runs.
+    With flavour grouping, every merged leg is resolved into individual
+    flavours (see get_flavor_choices) and the flavour is tagged on the leg of
+    the process passed to function."""
     
     model = multiprocess.get('model')
-    isids = [leg.get('ids') for leg in multiprocess.get('legs') \
-              if not leg.get('state')]
-    fsids = [leg.get('ids') for leg in multiprocess.get('legs') \
-             if leg.get('state')]
-    # Create dictionary between isids and antiids, to speed up lookup
+    islegs = [leg for leg in multiprocess.get('legs') if not leg.get('state')]
+    fslegs = [leg for leg in multiprocess.get('legs') if leg.get('state')]
+    isids = [get_flavor_choices(leg, model) for leg in islegs]
+    fsids = [get_flavor_choices(leg, model) for leg in fslegs]
+    # Create dictionary between isids and antiids, to speed up lookup.
+    # Crossings are identified on the physical PDG code (the flavour for a
+    # merged id), so that e.g. u d~ > w+ g and c s~ > w+ g are both checked.
     id_anti_id_dict = {}
-    for id in set(tuple(sum(isids+fsids, []))):
-        id_anti_id_dict[id] = model.get_particle(id).get_anti_pdg_code()
-        id_anti_id_dict[model.get_particle(id).get_anti_pdg_code()] = id        
+    for pid, pdg in set(sum(isids+fsids, [])):
+        if pdg is None:
+            anti = model.get_particle(pid).get_anti_pdg_code()
+            id_anti_id_dict[pid] = anti
+            id_anti_id_dict[anti] = pid
+        else:
+            id_anti_id_dict[pdg] = -pdg
+            id_anti_id_dict[-pdg] = pdg
     sorted_ids = []
     results = []
     for is_prod in itertools.product(*isids):
         for fs_prod in itertools.product(*fsids):
 
             # Check if we have already checked the process
-            if check_already_checked(is_prod, fs_prod, sorted_ids,
-                                     multiprocess, model, id_anti_id_dict):
+            if check_already_checked(
+                    [pid if pdg is None else pdg for pid, pdg in is_prod],
+                    [pid if pdg is None else pdg for pid, pdg in fs_prod],
+                    sorted_ids, multiprocess, model, id_anti_id_dict):
                 continue
             # Generate process based on the selected ids
             # (get_process carries over the polarization of the multi-legs)
-            process = multiprocess.get_process(is_prod, fs_prod)
+            process = multiprocess.get_process([pid for pid, _ in is_prod],
+                                               [pid for pid, _ in fs_prod])
+            # Tag the flavour of the merged legs, with the convention of
+            # MultiProcess.generate_multi_amplitudes (initial-state flavour
+            # stored with the sign of the crossed particle).
+            for leg, (pid, pdg) in zip(process.get('legs'), is_prod + fs_prod):
+                if pdg is not None:
+                    leg.set('flavor', [pdg if leg.get('state') else -pdg])
 
             if opt is not None:
                 if isinstance(opt, dict):
@@ -2452,8 +2512,7 @@ def check_process(process, evaluator, quick, options):
     for i, leg in enumerate(process.get('legs')):
         leg.set('number', i+1)
 
-    logger.info("Checking crossings of %s" % \
-                process.nice_string().replace('Process:', 'process'))
+    logger.info("Checking crossings of %s" % check_label(process))
 
     process_matrix_elements = []
 
@@ -2563,6 +2622,13 @@ def check_process(process, evaluator, quick, options):
     
     # Check if process was interrupted
     if not values:
+        return None
+    if not any(values):
+        # A matrix element vanishing for every ordering compares nothing
+        # (e.g. a flavour combination of a grouped process that does not
+        # conserve charge).
+        logger.info("Vanishing matrix element for %s: not checked" % \
+                    check_label(process))
         return None
 
     # Done with this process. Collect values, and store
@@ -3240,8 +3306,7 @@ def check_gauge_process(process, evaluator, options=None):
     for i, leg in enumerate(process.get('legs')):
         leg.set('number', i+1)
 
-    logger.info("Checking ward identities for %s" % \
-                process.nice_string().replace('Process', 'process'))
+    logger.info("Checking ward identities for %s" % check_label(process))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -3493,7 +3558,7 @@ def check_lorentz_process(process, evaluator,options=None):
         leg.set('number', i+1)
 
     logger.info("Checking lorentz transformations for %s" % \
-                process.nice_string().replace('Process:', 'process'))
+                check_label(process))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -3539,6 +3604,13 @@ def check_lorentz_process(process, evaluator,options=None):
             results = [data]
         else:
             results = [('Original evaluation',data)]
+    elif data and any(leg.get('flavor') for leg in process.get('legs')):
+        # Flavour combination of a grouped process with a vanishing matrix
+        # element (e.g. not conserving charge): without grouping it has no
+        # diagrams, so skip it the same way.
+        logger.info("Vanishing matrix element for %s: not checked" % \
+                    check_label(process))
+        return None
     else:
         return  {'process':process, 'results':'pass'}
 
@@ -6669,8 +6741,7 @@ def get_value(process, evaluator, p=None, options=None):
 
     name = {0:'Feynman', 1:'unitary', 2:'axial', 3:'FD'}[int(aloha.unitary_gauge)]
 
-    logger.info("Checking %s in %s gauge" % \
-        ( process.nice_string().replace('Process:', 'process'), name))
+    logger.info("Checking %s in %s gauge" % (check_label(process), name))
 
     legs = process.get('legs')
     # Generate a process with these legs

@@ -26,6 +26,15 @@ ANNOUNCEMENT:
        gauges (not Feynman, where it has no Goldstone boson), with every decayed particle on
        shell and a width of 1e-9 M: the helicity pieces agree to 1e-12, {A}, {S} and {0S}
        are gauge dependent. Refused in the complex-mass scheme and with loops.
+   OM: check gauge/brs/lorentz/permutation/full with flavour grouping (the default):
+       the flavour of the legs was dropped and every grouped process was evaluated for
+       the first flavour of each group only. A charged-current process such as
+       `u d~ > w+ g` (evaluated as d d~ > w+ g, which vanishes) was checked by nothing:
+       an empty gauge table ("Summary: 0/0 passed"), no Ward check, and a "Passed"
+       0 = 0 permutation check. The checks now evaluate the flavour asked for, and a
+       multiparticle such as `p p > w+ w-` each physical flavour, as without grouping.
+       A check that could check no process now says so instead of printing an empty
+       table.
 
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that

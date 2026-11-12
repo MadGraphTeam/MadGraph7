@@ -5900,6 +5900,8 @@ This implies that with decay chains:
         flavor_result = []
         language_result = []
         precision_result = []
+        # check modes for which no process could be checked at all
+        not_checked = []
 
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
@@ -6049,7 +6051,10 @@ This implies that with decay chains:
             
             # restore previous settings
             self.do_set('gauge %s' % gauge, log=False)
-            nb_processes += len(gauge_result_no_brs)            
+            # the first entry is the process definition, not a check
+            nb_processes += len(gauge_result_no_brs) - 1
+            if len(gauge_result_no_brs) <= 1:
+                not_checked.append('gauge')
 
         if args[0] in  ['permutation', 'full']:
             comparisons = process_checks.check_processes(myprocdef,
@@ -6062,6 +6067,8 @@ This implies that with decay chains:
                                             output_path = output_path,
                                             options=options)
             nb_processes += len(comparisons[0])
+            if not comparisons[0]:
+                not_checked.append('permutation')
 
         if args[0] in ['lorentz', 'full']:
             myprocdeff = copy.copy(myprocdef)
@@ -6074,6 +6081,8 @@ This implies that with decay chains:
                                           output_path = output_path,
                                           options=options)
             nb_processes += len(lorentz_result)
+            if not lorentz_result:
+                not_checked.append('lorentz')
 
         _merged_pdgs = myprocdef.get('model').get('merged_particles') if myprocdef else {}
         _proc_has_merged = myprocdef and any(
@@ -6113,6 +6122,10 @@ This implies that with decay chains:
                                           output_path = output_path,
                                           options=options)
             nb_processes += len(gauge_result)
+            # in 'full' mode a process without a massless gauge boson simply
+            # has no Ward identity to check
+            if not gauge_result and args[0] == 'brs':
+                not_checked.append('brs')
 
         # The CMS check is typically more complicated and slower than others
         # so we don't run it automatically with 'full'.
@@ -6184,6 +6197,11 @@ This implies that with decay chains:
         cpu_time2 = time.time()
         logger_check.info("%i check performed in %s"% (nb_processes,
                                   misc.format_time(int(cpu_time2 - cpu_time1))))
+        for mode in not_checked:
+            logger_check.warning("check %s: no process could be checked "
+                "(no diagrams%s, or a vanishing matrix element for every "
+                "flavour combination)." % (mode,
+                ', no massless external gauge boson' if mode == 'brs' else ''))
 
         if args[0] in ['cms']:
                 text = "Note that the complex mass scheme test in principle only\n"
@@ -6230,7 +6248,7 @@ This implies that with decay chains:
         if gauge_result:
             text += 'Gauge results:\n'
             text += process_checks.output_gauge(gauge_result) + '\n'
-        if gauge_result_no_brs:
+        if len(gauge_result_no_brs) > 1:
             gauge_labels = ['Unitary']
             if any('value_feynm' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('Feynman')

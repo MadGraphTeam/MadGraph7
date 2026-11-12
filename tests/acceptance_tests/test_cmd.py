@@ -5815,9 +5815,12 @@ C
 
         With apply_flavor_grouping on (the default), the four light-quark
         subprocesses are carried by the single merged matrix element
-        Q Qx > w+ w-, so the gauge block checks one process, not four.  The
-        per-flavor coverage lives in the flavor-grouping block, which compares
-        the merged matrix element against the unmerged one for every flavor.
+        Q Qx > w+ w-, whose flavour is chosen at run time: the gauge,
+        lorentz and permutation blocks evaluate it for each physical flavour
+        (d d~, u u~, s s~, c c~), as without grouping; the charge-violating
+        combinations (d u~, ...) vanish and are skipped. The flavor-grouping
+        block compares the merged matrix element against the unmerged one for
+        every flavor.
         """
 
         self.do('import model sm')
@@ -5826,16 +5829,21 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Q Qx > w+ w-', log)
-        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
-        # the four flavors (both orderings) are still checked, here:
+        for proc in ['d d~ > w+ w-', 'u u~ > w+ w-', 's s~ > w+ w-',
+                     'c c~ > w+ w-']:
+            self.assertIn(proc, log)
+        self.assertNotIn('Q Qx > w+ w-', log)
+        self.assertNotIn('d u~ > w+ w-', log)
+        self.assertNotIn('Not checked processes', log)
+        # gauge, lorentz and permutation blocks
+        self.assertEqual(log.count('Summary: 4/4 passed, 0/4 failed'), 3)
         self.assertIn('Flavor grouping check results:', log)
         self.assertIn('Summary: 8/8 passed, 0/8 failed', log)
 
     def test_check_gauge_pp_wpwm(self):
         """Test `check gauge p p > w+ w-` includes axial and succeeds.
 
-        See test_check_pp_wpwm for why a single merged process is checked.
+        See test_check_pp_wpwm for the flavours that are checked.
         """
 
         self.do('import model sm')
@@ -5844,8 +5852,69 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Q Qx > w+ w-', log)
-        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+        self.assertIn('u u~ > w+ w-', log)
+        self.assertIn('Summary: 4/4 passed, 0/4 failed', log)
+
+    def test_check_charged_current_flavour_grouping(self):
+        """`check` on a charged-current process with flavour grouping on.
+
+        `u d~ > w+ g` is generated as the merged `_quark _anti_quark > w+ g`.
+        The checks used to drop the flavour of the legs and evaluate it as
+        `d d~ > w+ g`, which vanishes: nothing was compared, and `check gauge`
+        printed an empty table ("Summary: 0/0 passed") and `check
+        permutation` a "Passed" 0 = 0. Every check must now evaluate the
+        flavour that was asked for.
+        """
+
+        self.do('import model sm')
+        self.assertTrue(self.cmd._curr_model.get('merged_particles'))
+        four_gauges = 'Gauge results (switching between Unitary/Feynman/Axial/FD gauge):'
+        for proc in ['u d~ > w+ g', 'u d~ > w+{0} g']:
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check gauge %s' % proc)
+            log = '\n'.join(cm.output)
+            self.assertIn(four_gauges, log)
+            self.assertRegex(log, r'\n%s +[1-9]' % re.escape(proc))
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+        for mode, header in [('brs', 'Gauge results:'),
+                             ('lorentz', 'Lorentz invariance results:'),
+                             ('permutation', 'Process permutation results:')]:
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check %s u d~ > w+ g' % mode)
+            log = '\n'.join(cm.output)
+            self.assertIn(header, log)
+            self.assertRegex(log, r'\nu d~ > w\+ g +[1-9]')
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+        # p p > w+ g: the two flavours with a W coupling (no CKM in sm)
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check gauge p p > w+ g')
+        log = '\n'.join(cm.output)
+        self.assertIn('u d~ > w+ g', log)
+        self.assertIn('c s~ > w+ g', log)
+        self.assertIn('Summary: 2/2 passed, 0/2 failed', log)
+
+    def test_check_flavour_grouping_nothing_checked(self):
+        """A process that cannot be checked is reported as such.
+
+        `d u~ > w+ g` has diagrams as the merged `_quark _anti_quark > w+ g`
+        but a vanishing matrix element for that flavour: no table, and a
+        warning instead of "Summary: 0/0 passed".
+        """
+
+        self.do('import model sm')
+        for mode in ['gauge', 'brs', 'lorentz', 'permutation']:
+            with self.assertLogs('check', level='INFO') as cm_check, \
+                 self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check %s d u~ > w+ g' % mode)
+            log = '\n'.join(cm.output)
+            self.assertNotIn('Summary:', log)
+            self.assertNotIn('Passed', log)
+            check_log = '\n'.join(cm_check.output)
+            self.assertIn('0 check performed', check_log)
+            self.assertIn('WARNING:check:check %s: no process could be checked'
+                          % mode, check_log)
 
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""
