@@ -1205,7 +1205,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                    const nested_vector2<std::size_t>& fks_j_from_i,
                    const std::vector<std::string>& splitting_types,
                    const std::vector<bool>& tags,
-                   int extra_counterterm) {
+                   int extra_counterterm,
+                   std::size_t incoming) {
                     return FKSConfiguration{
                         i_fks,
                         j_fks,
@@ -1216,7 +1217,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                         fks_j_from_i,
                         splitting_types,
                         extra_counterterm,
-                        tags
+                        tags,
+                        incoming
                     };
                 }
             ),
@@ -1229,7 +1231,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fks_j_from_i"),
             py::arg("splitting_types") = std::vector<std::string>{"QCD"},
             py::arg("tags") = std::vector<bool>{},
-            py::arg("extra_counterterm") = -1
+            py::arg("extra_counterterm") = -1,
+            py::arg("incoming") = 2
         )
         .def_readwrite(
             "i_fks", &FKSConfiguration::i_fks, pydoc::doc("FKSConfiguration::i_fks")
@@ -1263,6 +1266,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite(
             "tags", &FKSConfiguration::tags, pydoc::doc("FKSConfiguration::tags")
+        )
+        .def_readwrite(
+            "incoming",
+            &FKSConfiguration::incoming,
+            pydoc::doc("FKSConfiguration::incoming")
         )
         .def(
             "tagged",
@@ -1418,7 +1426,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 FKSRadiation::InitialMap,
                 const std::vector<double>&,
-                const std::vector<std::size_t>&>(),
+                const std::vector<std::size_t>&,
+                std::size_t>(),
             py::arg("born_particle_count"),
             py::arg("i_fks"),
             py::arg("j_fks"),
@@ -1428,6 +1437,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("initial_map") = FKSRadiation::asymmetric,
             py::arg("born_masses") = std::vector<double>{},
             py::arg("resonance") = std::vector<std::size_t>{},
+            py::arg("incoming") = 2,
             pydoc::doc("FKSRadiation::FKSRadiation")
         )
         .def(
@@ -1442,6 +1452,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("i_fks", &FKSRadiation::i_fks, pydoc::doc("FKSRadiation::i_fks"))
         .def("j_fks", &FKSRadiation::j_fks, pydoc::doc("FKSRadiation::j_fks"))
+        .def("incoming", &FKSRadiation::incoming, pydoc::doc("FKSRadiation::incoming"))
         .def("leptonic", &FKSRadiation::leptonic, pydoc::doc("FKSRadiation::leptonic"))
         .def(
             "s_hat_min", &FKSRadiation::s_hat_min, pydoc::doc("FKSRadiation::s_hat_min")
@@ -2036,6 +2047,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("PhaseSpaceMapping::leptonic")
         )
         .def(
+            "is_decay",
+            &PhaseSpaceMapping::is_decay,
+            pydoc::doc("PhaseSpaceMapping::is_decay")
+        )
+        .def(
             "external_masses",
             &PhaseSpaceMapping::external_masses,
             pydoc::doc("PhaseSpaceMapping::external_masses")
@@ -2539,6 +2555,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSWeights::particle_count,
             pydoc::doc("FKSWeights::particle_count")
         )
+        .def("incoming", &FKSWeights::incoming, pydoc::doc("FKSWeights::incoming"))
         .def(
             "born_order_count",
             &FKSWeights::born_order_count,
@@ -2598,7 +2615,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
-                double>(),
+                double,
+                std::size_t>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_choice") = -1,
             py::arg("fixed_ren_scale") = false,
@@ -2609,6 +2627,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mur_over_ref") = 1.,
             py::arg("muf1_over_ref") = 1.,
             py::arg("muf2_over_ref") = 1.,
+            py::arg("incoming") = 2,
             pydoc::doc("FKSScale::FKSScale")
         )
         .def_readonly_static(
@@ -2619,6 +2638,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSScale::particle_count,
             pydoc::doc("FKSScale::particle_count")
         )
+        .def("incoming", &FKSScale::incoming, pydoc::doc("FKSScale::incoming"))
         .def("options", &FKSScale::options, pydoc::doc("FKSScale::options"))
         .def(
             "with_particle_count",

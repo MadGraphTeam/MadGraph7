@@ -78,9 +78,15 @@ KERNELSPEC void fks_jet_rap_phi(const FourMom<T>& p, FVal<T>& rapidity, FVal<T>&
 // or with momenta that are not finite fail.
 template <typename T>
 KERNELSPEC void kernel_fks_cuts(
-    FIn<T, 2> p, IIn<T, 0> index, IIn<T, 2> pdg, FIn<T, 1> options, FOut<T, 0> mask
+    FIn<T, 2> p,
+    IIn<T, 0> index,
+    IIn<T, 2> pdg,
+    FIn<T, 1> options,
+    IIn<T, 0> incoming,
+    FOut<T, 0> mask
 ) {
     std::size_t c = single_index(index);
+    std::size_t n_in = single_index(incoming);
     auto pdgs = pdg[c];
     FVal<T> jetalgo = options[0], jetradius = options[1], ptj = options[2],
             etaj = options[3], ptl = options[5], etal = options[6], drll = options[7],
@@ -102,7 +108,7 @@ KERNELSPEC void kernel_fks_cuts(
     }
 
     // leptons
-    for (std::size_t i = 2; i < n; ++i) {
+    for (std::size_t i = n_in; i < n; ++i) {
         int pdg_i = single_index(pdgs[i]);
         int lepton_i = pdg_i < 0 ? -pdg_i : pdg_i;
         if (lepton_i != 11 && lepton_i != 13 && lepton_i != 15) {
@@ -120,7 +126,7 @@ KERNELSPEC void kernel_fks_cuts(
             continue;
         }
         // a positive lepton with each negative one
-        for (std::size_t j = 2; j < n; ++j) {
+        for (std::size_t j = n_in; j < n; ++j) {
             int pdg_j = single_index(pdgs[j]);
             if (pdg_j != 11 && pdg_j != 13 && pdg_j != 15) {
                 continue;
@@ -153,7 +159,7 @@ KERNELSPEC void kernel_fks_cuts(
     // jets
     FourMom<T> partons[FKS_JET_PARTONS_MAX];
     std::size_t parton_count = 0, soft_count = 0;
-    for (std::size_t i = 2; i < n; ++i) {
+    for (std::size_t i = n_in; i < n; ++i) {
         int pdg_i = single_index(pdgs[i]);
         int flavor = pdg_i < 0 ? -pdg_i : pdg_i;
         if (!((flavor >= 1 && flavor <= maxjetflavor) || flavor == 21)) {

@@ -8,12 +8,19 @@ using namespace madspace;
 
 namespace {
 
-constexpr std::size_t INCOMING_COUNT = 2;
-
 std::size_t checked_born_count(
-    std::size_t born_particle_count, std::size_t i_fks, std::size_t j_fks, bool leptonic
+    std::size_t born_particle_count,
+    std::size_t i_fks,
+    std::size_t j_fks,
+    bool leptonic,
+    std::size_t incoming
 ) {
-    if (born_particle_count < INCOMING_COUNT + 1) {
+    if (incoming != 1 && incoming != 2) {
+        throw std::invalid_argument(
+            "FKSRadiation: the Born needs two incoming particles or one (a decay)"
+        );
+    }
+    if (born_particle_count < incoming + 1) {
         throw std::invalid_argument("FKSRadiation: the Born needs a final state");
     }
     auto real_count = born_particle_count + 1;
@@ -24,12 +31,18 @@ std::size_t checked_born_count(
             std::to_string(real_count)
         );
     }
-    if (i_fks < INCOMING_COUNT || i_fks == j_fks) {
+    if (i_fks < incoming || i_fks == j_fks) {
         throw std::invalid_argument(
             "FKSRadiation: i_fks must be a final-state particle different from j_fks"
         );
     }
-    if (j_fks < INCOMING_COUNT && leptonic) {
+    if (incoming == 1 && (!leptonic || j_fks < incoming)) {
+        throw std::invalid_argument(
+            "FKSRadiation: a decay has no momentum fractions (leptonic = true) and "
+            "radiates off final-state particles only"
+        );
+    }
+    if (j_fks < incoming && leptonic) {
         throw std::invalid_argument(
             "FKSRadiation: an incoming emitter changes the momentum fractions, it "
             "needs leptonic = false"
@@ -42,13 +55,14 @@ std::vector<std::size_t> checked_resonance(
     std::size_t born_particle_count,
     std::size_t i_fks,
     std::size_t j_fks,
-    std::vector<std::size_t> resonance
+    std::vector<std::size_t> resonance,
+    std::size_t incoming
 ) {
     if (resonance.empty()) {
         return resonance;
     }
     std::sort(resonance.begin(), resonance.end());
-    if (j_fks < INCOMING_COUNT) {
+    if (j_fks < incoming) {
         throw std::invalid_argument(
             "FKSRadiation: a resonance needs a final-state emitter"
         );
@@ -59,7 +73,7 @@ std::vector<std::size_t> checked_resonance(
         );
     }
     for (auto r : resonance) {
-        if (r < INCOMING_COUNT || r > born_particle_count) {
+        if (r < incoming || r > born_particle_count) {
             throw std::invalid_argument(
                 "FKSRadiation: the members of the resonance must be final-state "
                 "particles of the real process"
@@ -114,12 +128,14 @@ FKSRadiation::FKSRadiation(
     double emitter_mass,
     InitialMap initial_map,
     const std::vector<double>& born_masses,
-    const std::vector<std::size_t>& resonance
+    const std::vector<std::size_t>& resonance,
+    std::size_t incoming
 ) :
     Mapping(
         "FKSRadiation",
         radiation_input_types(
-            checked_born_count(born_particle_count, i_fks, j_fks, leptonic), leptonic
+            checked_born_count(born_particle_count, i_fks, j_fks, leptonic, incoming),
+            leptonic
         ),
         radiation_output_types(born_particle_count, leptonic),
         {}
@@ -127,12 +143,15 @@ FKSRadiation::FKSRadiation(
     _born_particle_count(born_particle_count),
     _i_fks(i_fks),
     _j_fks(j_fks),
+    _incoming(incoming),
     _leptonic(leptonic),
     _s_hat_min(s_hat_min),
     _emitter_mass(emitter_mass),
     _initial_map(initial_map),
-    _final_masses(born_particle_count - INCOMING_COUNT, -1.),
-    _resonance(checked_resonance(born_particle_count, i_fks, j_fks, resonance)) {
+    _final_masses(born_particle_count - incoming, -1.),
+    _resonance(
+        checked_resonance(born_particle_count, i_fks, j_fks, resonance, incoming)
+    ) {
     if (!_resonance.empty()) {
         _born_resonance_mask.assign(born_particle_count, 0.);
         _real_resonance_mask.assign(born_particle_count + 1, 0.);
@@ -149,17 +168,24 @@ FKSRadiation::FKSRadiation(
                 "FKSRadiation: born_masses needs one mass per particle of the Born"
             );
         }
-        _final_masses.assign(born_masses.begin() + INCOMING_COUNT, born_masses.end());
+        _final_masses.assign(born_masses.begin() + incoming, born_masses.end());
     }
     if (s_hat_min < 0.) {
         throw std::invalid_argument("FKSRadiation: s_hat_min must not be negative");
     }
-    if (emitter_mass < 0. || (emitter_mass > 0. && j_fks < INCOMING_COUNT)) {
+    if (emitter_mass < 0. || (emitter_mass > 0. && j_fks < incoming)) {
         throw std::invalid_argument(
             "FKSRadiation: emitter_mass must not be negative, and incoming emitters "
             "are massless"
         );
     }
+}
+
+Value FKSRadiation::sqrt_s_of(FunctionBuilder& fb, Value momenta) const {
+    if (_incoming == 1) {
+        return fb.obs_mass(fb.unstack(momenta).at(0));
+    }
+    return fb.obs_sqrt_s(momenta);
 }
 
 std::vector<std::string> FKSRadiation::counter_events() const {
@@ -211,7 +237,7 @@ FKSRadiation::Emission FKSRadiation::build_emission(
             : fb.fks_initial_radiate(
                   xi_hat, y_var, r_phi, sqrt_s, x1, x2, _s_hat_min, beam_sign
               );
-        ValueVec final_state(p_born.begin() + INCOMING_COUNT, p_born.end());
+        ValueVec final_state(p_born.begin() + _incoming, p_born.end());
         auto boosted = fb.unstack(
             asymmetric
                 ? fb.fks_initial_light_cone_map(
@@ -227,7 +253,7 @@ FKSRadiation::Emission FKSRadiation::build_emission(
                   )
         );
         ValueVec real{p_in1, p_in2};
-        for (std::size_t r = INCOMING_COUNT, k = 0; r < _born_particle_count + 1; ++r) {
+        for (std::size_t r = _incoming, k = 0; r < _born_particle_count + 1; ++r) {
             real.push_back(r == _i_fks ? p_i : boosted.at(k++));
         }
         return {
@@ -262,7 +288,7 @@ FKSRadiation::Emission FKSRadiation::build_emission(
     }
 
     ValueVec spectators;
-    for (std::size_t b = INCOMING_COUNT; b < _born_particle_count; ++b) {
+    for (std::size_t b = _incoming; b < _born_particle_count; ++b) {
         if (b != jb) {
             spectators.push_back(p_born.at(b));
         }
@@ -271,7 +297,7 @@ FKSRadiation::Emission FKSRadiation::build_emission(
         auto boosted = fb.unstack(
             fb.fks_recoil_boost(fb.stack(spectators), fb.add(p_i, p_j), p_jbar, sqrt_s)
         );
-        for (std::size_t b = INCOMING_COUNT, k = 0; b < _born_particle_count; ++b) {
+        for (std::size_t b = _incoming, k = 0; b < _born_particle_count; ++b) {
             if (b != jb) {
                 p_born.at(b) = boosted.at(k++);
             }
@@ -309,7 +335,7 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
     FunctionBuilder& fb, const NamedVector<Value>& inputs, bool with_counter_events
 ) const {
     auto born = inputs.at("born_momenta");
-    auto sqrt_s = fb.obs_sqrt_s(born);
+    auto sqrt_s = sqrt_s_of(fb, born);
     Value x1, x2;
     if (!_leptonic) {
         x1 = inputs.at("x1");
@@ -420,7 +446,7 @@ Mapping::Result FKSRadiation::build_final_inverse(
     FunctionBuilder& fb, const NamedVector<Value>& inputs
 ) const {
     auto momenta = inputs.at(0);
-    auto sqrt_s = fb.obs_sqrt_s(momenta);
+    auto sqrt_s = sqrt_s_of(fb, momenta);
     // with a resonance the members are clustered in their rest frame
     bool resonant = !_resonance.empty();
     Value frame = momenta, k_res;
@@ -462,7 +488,7 @@ Mapping::Result FKSRadiation::build_final_inverse(
     }
 
     ValueVec spectators;
-    for (std::size_t r = INCOMING_COUNT; r < _born_particle_count + 1; ++r) {
+    for (std::size_t r = _incoming; r < _born_particle_count + 1; ++r) {
         if (r != _i_fks && r != _j_fks) {
             spectators.push_back(p_real.at(r));
         }
@@ -481,7 +507,7 @@ Mapping::Result FKSRadiation::build_final_inverse(
         }
         if (r == _j_fks) {
             born.push_back(p_jbar);
-        } else if (r < INCOMING_COUNT) {
+        } else if (r < _incoming) {
             born.push_back(p_real.at(r));
         } else {
             born.push_back(boosted.at(k++));
@@ -552,7 +578,7 @@ Mapping::Result FKSRadiation::build_initial_inverse(
     auto [r_xi, r_y, det_sample_inv] = fb.fks_xi_y_sample_inverse(xi_hat, y_hat);
 
     ValueVec final_state;
-    for (std::size_t r = INCOMING_COUNT; r < _born_particle_count + 1; ++r) {
+    for (std::size_t r = _incoming; r < _born_particle_count + 1; ++r) {
         if (r != _i_fks) {
             final_state.push_back(p_real.at(r));
         }

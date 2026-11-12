@@ -9,7 +9,6 @@ using namespace madspace;
 
 namespace {
 
-constexpr std::size_t INCOMING_COUNT = 2;
 constexpr double CA = 3., TR = 0.5, CF = 4. / 3.;
 
 // the pairs of sbornsoft: every unordered pair of the partners of i, a
@@ -68,7 +67,8 @@ FKSEikonals::FKSEikonals(
     ),
     _particle_count(configurations.at(0).particle_count()),
     _max_pair_count(1),
-    _resonance(resonance) {
+    _resonance(resonance),
+    _incoming(configurations.at(0).incoming) {
     for (const auto& config : configurations) {
         _i_fks.push_back(config.i_fks);
         _j_fks.push_back(config.j_fks);
@@ -121,7 +121,8 @@ NamedVector<Value> FKSEikonals::build_function_impl(
                  pair_count,
                  pair_m,
                  pair_n,
-                 _masses
+                 _masses,
+                 static_cast<me_int_t>(_incoming)
              )}
         };
     }
@@ -134,7 +135,8 @@ NamedVector<Value> FKSEikonals::build_function_impl(
         pair_count,
         pair_m,
         pair_n,
-        _masses
+        _masses,
+        static_cast<me_int_t>(_incoming)
     );
     return {{"eikonals", eikonals}};
 }
@@ -225,7 +227,8 @@ FKSSplittingKernels::FKSSplittingKernels(
          {"k_perp", batch_four_vec}}
     ),
     _particle_count(configurations.at(0).particle_count()),
-    _resonance(resonance) {
+    _resonance(resonance),
+    _incoming(configurations.at(0).incoming) {
     for (const auto& config : configurations) {
         std::size_t i = config.i_fks, j = config.j_fks;
         _i_fks.push_back(i);
@@ -258,21 +261,22 @@ NamedVector<Value> FKSSplittingKernels::build_function_impl(
         kind.push_back(_kind.at(c));
         born_j.push_back(j < i ? j : j - 1);
     }
+    Value incoming(static_cast<me_int_t>(_incoming));
     if (_resonance) {
         Value k = args.at("resonance_momentum");
         auto [z, ap, q_terms] = fb.fks_splitting_kernels_resonance(
-            args.at("momenta"), k, index, fks_i, fks_j, kind, _factors
+            args.at("momenta"), k, index, fks_i, fks_j, kind, _factors, incoming
         );
         auto k_perp = fb.fks_transverse_vector_resonance(
-            args.at("p_i_hat"), args.at("born_momenta"), k, index, born_j
+            args.at("p_i_hat"), args.at("born_momenta"), k, index, born_j, incoming
         );
         return {{"z", z}, {"ap", ap}, {"q_terms", q_terms}, {"k_perp", k_perp}};
     }
     auto [z, ap, q_terms] = fb.fks_splitting_kernels(
-        args.at("momenta"), index, fks_i, fks_j, kind, _factors
+        args.at("momenta"), index, fks_i, fks_j, kind, _factors, incoming
     );
     auto k_perp = fb.fks_transverse_vector(
-        args.at("p_i_hat"), args.at("born_momenta"), index, born_j
+        args.at("p_i_hat"), args.at("born_momenta"), index, born_j, incoming
     );
     return {{"z", z}, {"ap", ap}, {"q_terms", q_terms}, {"k_perp", k_perp}};
 }
@@ -386,7 +390,8 @@ FKSLimits::FKSLimits(
     _born_input_count(orders.born_input_count()),
     _nlo_order_count(orders.nlo_count()),
     _collinear_born(collinear_born),
-    _resonance(resonance) {
+    _resonance(resonance),
+    _incoming(configurations.at(0).incoming) {
     std::size_t largest = _eikonals.max_pair_count();
     for (std::size_t c = 0; c < configurations.size(); ++c) {
         const auto& config = configurations.at(c);
@@ -406,7 +411,7 @@ FKSLimits::FKSLimits(
         // eta Q of a particle of the real process, the charge of an outgoing
         // particle
         auto charge = [&](std::size_t r) {
-            return (r < 2 ? -1. : 1.) * config.charges.at(r);
+            return (r < config.incoming ? -1. : 1.) * config.charges.at(r);
         };
         std::vector<me_int_t> ms(largest, 0), ns(largest, 0);
         std::vector<double> factors(largest, 0.);
@@ -521,10 +526,17 @@ NamedVector<Value> FKSLimits::build_function_impl(
                   _fks_i,
                   _fks_j,
                   kind,
-                  factors
+                  factors,
+                  static_cast<me_int_t>(_incoming)
               )
             : fb.fks_splitting_kernels(
-                  args.at(name + "_momenta"), index, _fks_i, _fks_j, kind, factors
+                  args.at(name + "_momenta"),
+                  index,
+                  _fks_i,
+                  _fks_j,
+                  kind,
+                  factors,
+                  static_cast<me_int_t>(_incoming)
               );
         // the collinear counter-event can have a Born of its own
         bool own = _collinear_born && name == "collinear";
@@ -598,7 +610,8 @@ FKSPrefactors::FKSPrefactors(
     _delta_o(delta_o),
     _delta_i(delta_i),
     _delta_s(delta_s),
-    _resonance(resonance) {
+    _resonance(resonance),
+    _incoming(configurations.at(0).incoming) {
     for (const auto& config : configurations) {
         _j_fks.push_back(config.j_fks);
         _masses.push_back(config.masses);
@@ -615,7 +628,7 @@ NamedVector<Value> FKSPrefactors::build_function_impl(
     for (std::size_t c = 0; c < count; ++c) {
         std::size_t j = _j_fks.at(c);
         collinear.push_back(_masses.at(c).at(j) == 0. ? 1 : 0);
-        delta.push_back(j < INCOMING_COUNT ? _delta_i : _delta_o);
+        delta.push_back(j < _incoming ? _delta_i : _delta_o);
     }
     std::vector<double> options{_xicut, _xi_s_cut, _delta_s};
     auto [f_r, f_s, f_c, f_dc, f_sc, f_dsc, f_pdf] = _resonance
@@ -634,7 +647,8 @@ NamedVector<Value> FKSPrefactors::build_function_impl(
               std::vector<me_int_t>(_j_fks.begin(), _j_fks.end()),
               collinear,
               delta,
-              options
+              options,
+              static_cast<me_int_t>(_incoming)
           )
         : fb.fks_prefactors(
               args.at("xi"),
@@ -647,7 +661,8 @@ NamedVector<Value> FKSPrefactors::build_function_impl(
               index,
               collinear,
               delta,
-              options
+              options,
+              static_cast<me_int_t>(_incoming)
           );
     return {
         {"f_r", f_r},

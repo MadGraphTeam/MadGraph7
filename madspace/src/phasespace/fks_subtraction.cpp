@@ -417,6 +417,7 @@ FKSSoftVirtual::FKSSoftVirtual(
         }()
     ),
     _born_order_count(orders.born_count()),
+    _incoming(configurations.at(0).incoming),
     _xicut(xicut),
     _delta_o(delta_o) {
     const auto& config = configurations.at(born_configuration(configurations));
@@ -480,7 +481,7 @@ FKSSoftVirtual::FKSSoftVirtual(
             if (t == QED) {
                 auto [rm, rn] = real_pairs.at(k);
                 auto charge = [&](std::size_t r) {
-                    return (r < 2 ? -1. : 1.) * linked.charges.at(r);
+                    return (r < linked.incoming ? -1. : 1.) * linked.charges.at(r);
                 };
                 factor *= charge(rm) * charge(rn);
             }
@@ -552,7 +553,8 @@ NamedVector<Value> FKSSoftVirtual::build_function_impl(
         _pair_factor,
         _born_index,
         _ren_factor,
-        std::vector<double>{_xicut, _delta_o}
+        std::vector<double>{_xicut, _delta_o},
+        static_cast<me_int_t>(_incoming)
     );
     return {
         {"soft_virtual", soft_virtual},
@@ -634,6 +636,7 @@ FKSWeights::FKSWeights(
         }
     ),
     _particle_count(check_fks_configurations(configurations, "FKSWeights")),
+    _incoming(configurations.at(0).incoming),
     _born_power(qcd_powers(orders, orders.born)),
     _nlo_power(qcd_powers(orders, orders.nlo)) {}
 
@@ -658,7 +661,8 @@ NamedVector<Value> FKSWeights::build_function_impl(
                 args.at(coupling + "_alpha_s"),
                 args.at(luminosity + "luminosity"),
                 factor,
-                powers
+                powers,
+                static_cast<me_int_t>(_incoming)
             );
         };
     Value event =
@@ -736,6 +740,7 @@ FKSCuts::FKSCuts(
         NamedVector<Type>{{"mask", batch_float}}
     ),
     _particle_count(check_fks_configurations(configurations, "FKSCuts")),
+    _incoming(configurations.at(0).incoming),
     _options{
         jetalgo,
         jetradius,
@@ -751,7 +756,7 @@ FKSCuts::FKSCuts(
     } {
     for (const auto& configuration : configurations) {
         std::size_t partons = 0;
-        for (std::size_t i = 2; i < configuration.pdgs.size(); ++i) {
+        for (std::size_t i = _incoming; i < configuration.pdgs.size(); ++i) {
             int flavor = std::abs(configuration.pdgs.at(i));
             partons += (flavor >= 1 && flavor <= maxjetflavor) || flavor == 21;
         }
@@ -768,7 +773,14 @@ NamedVector<Value> FKSCuts::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     return {
-        {"mask", fb.fks_cuts(args.at("momenta"), args.at("fks_index"), _pdg, _options)}
+        {"mask",
+         fb.fks_cuts(
+             args.at("momenta"),
+             args.at("fks_index"),
+             _pdg,
+             _options,
+             static_cast<me_int_t>(_incoming)
+         )}
     };
 }
 
@@ -903,6 +915,11 @@ FKSCrossSection::FKSCrossSection(
     if (_cuts && _cuts->particle_count() != weights.particle_count()) {
         throw std::invalid_argument(
             "FKSCrossSection: the cuts need the particles of the weights"
+        );
+    }
+    if (scale.incoming() != weights.incoming()) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the scales need the incoming particles of the weights"
         );
     }
     std::size_t count = subtraction.configuration_count();

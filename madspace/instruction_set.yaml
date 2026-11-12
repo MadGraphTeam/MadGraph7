@@ -3385,6 +3385,9 @@ fks_sector_function:
     - name: options
       type: [float, single, 6]
       desc: "fks_a, fks_b, useenergy, usebeta, one_h_damp and a_h_damp of fks_powers.inc"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: s
       type: [float]
@@ -3421,6 +3424,9 @@ fks_eikonals:
     - name: masses
       type: [float, single, c, n]
       desc: "masses of the particles of the real process of each configuration"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: eik
       type: [float, k]
@@ -3460,6 +3466,9 @@ fks_eikonals_resonance:
     - name: masses
       type: [float, single, c, n]
       desc: "masses of the particles of the real process of each configuration"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: eik
       type: [float, k]
@@ -3487,6 +3496,9 @@ fks_splitting_kernels:
     - name: factors
       type: [float, single, c, 4]
       desc: "QCD and QED factors of the Altarelli-Parisi kernel and of the azimuthal terms of each configuration"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: z
       type: [float]
@@ -3523,6 +3535,9 @@ fks_splitting_kernels_resonance:
     - name: factors
       type: [float, single, c, 4]
       desc: "QCD and QED factors of the Altarelli-Parisi kernel and of the azimuthal terms of each configuration"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: z
       type: [float]
@@ -3550,6 +3565,9 @@ fks_transverse_vector:
     - name: born_j
       type: [int, single, c]
       desc: "position of the emitter in the Born of each configuration"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: k_perp
       type: [float, 4]
@@ -3574,6 +3592,9 @@ fks_transverse_vector_resonance:
     - name: born_j
       type: [int, single, c]
       desc: "position of the emitter in the Born of each configuration"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: k_perp
       type: [float, 4]
@@ -3616,6 +3637,9 @@ fks_prefactors:
     - name: options
       type: [float, single, 3]
       desc: "xicut, xiScut and deltaS of fks_powers.inc"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: f_r
       type: [float]
@@ -3688,6 +3712,9 @@ fks_prefactors_resonance:
     - name: options
       type: [float, single, 3]
       desc: "xicut, xiScut and deltaS of fks_powers.inc"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: f_r
       type: [float]
@@ -4084,6 +4111,9 @@ fks_soft_virtual:
     - name: options
       type: [float, single, 2]
       desc: "xicut and deltaO of fks_powers.inc"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: soft_virtual
       type: [float, o]
@@ -4111,6 +4141,9 @@ fks_cuts:
     - name: options
       type: [float, single, 11]
       desc: "jetalgo, jetradius, ptj, etaj, maxjetflavor, ptl, etal, drll, drll_sf, mll and mll_sf of the run card"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: mask
       type: [float]
@@ -4128,7 +4161,7 @@ fks_contribution_weight:
       desc: "Jacobian of its kinematics"
     - name: momenta
       type: [float, n, 4]
-      desc: "momenta of its kinematics, the incoming two first"
+      desc: "momenta of its kinematics, the incoming first"
     - name: alpha_s
       type: [float]
       desc: "strong coupling at its kinematics"
@@ -4141,21 +4174,27 @@ fks_contribution_weight:
     - name: powers
       type: [int, single, o]
       desc: "power of g_s of each order"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: weight
       type: [float]
-      desc: "the weight in pb, zero where det is zero"
+      desc: "the weight in pb (a width in GeV for a decay), zero where det is zero"
   vectorized: False
-  desc: "The weight of one contribution of the FKS integrand at its own kinematics, INV_GEV2_TO_PB luminosity factor det / (2 s) sum_o g_s^powers[o] coefficients[o] with g_s = sqrt(4 pi alpha_s) and s = (p_1 + p_2)^2 of its momenta. As sigint of driver_mintFO.f, which multiplies the weight lines without the strong coupling by g_strong^QCDpower at the scales of their own kinematics and by the luminosity of their momentum fractions. See @ref FKSWeights."
+  desc: "The weight of one contribution of the FKS integrand at its own kinematics, INV_GEV2_TO_PB luminosity factor det / (2 s) sum_o g_s^powers[o] coefficients[o] with g_s = sqrt(4 pi alpha_s) and s = (p_1 + p_2)^2 of its momenta. A decay of mass M = sqrt(p_1^2) has the flux 1 / (2 M) in place of 1 / (2 s) and no conversion to pb. As sigint of driver_mintFO.f, which multiplies the weight lines without the strong coupling by g_strong^QCDpower at the scales of their own kinematics and by the luminosity of their momentum fractions. See @ref FKSWeights."
 
 fks_scale:
   inputs:
     - name: p
       type: [float, n, 4]
-      desc: "momenta of the kinematics, the incoming two first"
+      desc: "momenta of the kinematics, the incoming first"
     - name: options
       type: [float, single, 10]
       desc: "dynamical_scale_choice, fixed_ren_scale, fixed_fac_scale, mur_ref_fixed, muf1_ref_fixed, muf2_ref_fixed, mur_over_ref, muf1_over_ref, muf2_over_ref and the floor of the dynamical scale"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: ren_scale
       type: [float]
@@ -4167,7 +4206,7 @@ fks_scale:
       type: [float]
       desc: "factorization scale of the second beam"
   vectorized: False
-  desc: "The scales of setscales.f of MadFKS at one kinematics. The reference scale of scale_global_reference (dynamical_scale_choice 1: the sum of the transverse energies of the outgoing particles in the partonic center-of-mass frame, 2: the sum of their transverse masses, 3 or -1: half of it, -2: mur_ref_fixed) is raised to the floor, a fixed scale replaces it, and each scale is multiplied by its factor. See @ref FKSScale."
+  desc: "The scales of setscales.f of MadFKS at one kinematics. The reference scale of scale_global_reference (dynamical_scale_choice 1: the sum of the transverse energies of the outgoing particles in the partonic center-of-mass frame, 2: the sum of their transverse masses, 3 or -1: half of it, -2: mur_ref_fixed) is raised to the floor, a fixed scale replaces it, and each scale is multiplied by its factor. For a decay the reference scale is the mass of the decaying particle. See @ref FKSScale."
 
 fks_luminosity:
   inputs:

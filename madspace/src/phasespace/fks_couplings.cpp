@@ -17,7 +17,8 @@ FKSScale::FKSScale(
     double muf2_ref_fixed,
     double mur_over_ref,
     double muf1_over_ref,
-    double muf2_over_ref
+    double muf2_over_ref,
+    std::size_t incoming
 ) :
     FunctionGenerator(
         "FKSScale",
@@ -31,6 +32,7 @@ FKSScale::FKSScale(
         }
     ),
     _particle_count(particle_count),
+    _incoming(incoming),
     _options{
         static_cast<double>(dynamical_scale_choice),
         fixed_ren_scale ? 1. : 0.,
@@ -43,10 +45,15 @@ FKSScale::FKSScale(
         muf2_over_ref,
         min_scale
     } {
-    if (particle_count < 3) {
+    if (incoming != 1 && incoming != 2) {
         throw std::invalid_argument(
-            "FKSScale: the kinematics needs two incoming particles and an "
-            "outgoing one"
+            "FKSScale: the kinematics needs two incoming particles or one (a "
+            "decay)"
+        );
+    }
+    if (particle_count < incoming + 1) {
+        throw std::invalid_argument(
+            "FKSScale: the kinematics needs an outgoing particle"
         );
     }
     int choice = dynamical_scale_choice;
@@ -71,14 +78,16 @@ FKSScale FKSScale::with_particle_count(std::size_t particle_count) const {
         _options.at(5),
         _options.at(6),
         _options.at(7),
-        _options.at(8)
+        _options.at(8),
+        _incoming
     );
 }
 
 NamedVector<Value> FKSScale::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    auto scales = fb.fks_scale(args.at("momenta"), _options);
+    auto scales =
+        fb.fks_scale(args.at("momenta"), _options, static_cast<me_int_t>(_incoming));
     return {
         {"ren_scale", scales.at(0)},
         {"fact_scale1", scales.at(1)},

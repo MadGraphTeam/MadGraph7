@@ -24,7 +24,9 @@ namespace madspace {
  *
  * over the outgoing particles, the first in the partonic center-of-mass frame
  * (a particle without transverse momentum adds nothing), or `mur_ref_fixed`
- * for -2. It is raised to @ref min_scale, as minscaleR and minscaleF of
+ * for -2. For a decay it is the mass @f$M@f$ of the decaying particle for
+ * every choice, as setscales.f takes it for @f$\mu_R@f$ and the Ellis-Sexton
+ * scale. It is raised to @ref min_scale, as minscaleR and minscaleF of
  * setscales.f. A fixed scale (`fixed_ren_scale`, `fixed_fac_scale`) replaces
  * it, and each scale, fixed or not, is multiplied by its factor:
  *
@@ -41,12 +43,15 @@ namespace madspace {
  * @f$\mu_R@f$ and @f$\mu_F@f$, and the virtual comes at @f$\mu_R@f$. The
  * MadFKS run card has one factorization scale (`muf_ref_fixed`,
  * `muf_over_ref`), and sigint of MadFKS takes that of the first beam for both.
+ * A decay has no densities, and its @f$\mu_F@f$ enters nothing. MadFKS takes
+ * @f$H_T/2@f$ without the first outgoing particle there (scale_global_reference
+ * starts at the third particle), madspace the mass.
  *
  * `batch` is the leading batch dimension and `n` the number of particles.
  *
  * **Arguments**
  * - `momenta` – `float`, shape `(batch, n, 4)` – the kinematics, the incoming
- *   two first, in any frame boosted along the beams.
+ *   first, in any frame boosted along the beams.
  *
  * **Returns**
  * - `ren_scale` – `float`, shape `(batch,)` – renormalization scale.
@@ -74,9 +79,11 @@ public:
      * @param mur_over_ref            Factor on @f$\mu_R@f$.
      * @param muf1_over_ref           Factor on @f$\mu_F@f$ of the first beam.
      * @param muf2_over_ref           Factor on @f$\mu_F@f$ of the second beam.
-     * @throws std::invalid_argument for fewer than three particles or another
-     *         dynamical_scale_choice (0 and 10, the scale of the user, are not
-     *         part of it).
+     * @param incoming                Number of incoming particles, two or one
+     *                                for a decay.
+     * @throws std::invalid_argument without an outgoing particle, for another
+     *         number of incoming particles or another dynamical_scale_choice
+     *         (0 and 10, the scale of the user, are not part of it).
      */
     FKSScale(
         std::size_t particle_count,
@@ -88,13 +95,16 @@ public:
         double muf2_ref_fixed = 91.118,
         double mur_over_ref = 1.,
         double muf1_over_ref = 1.,
-        double muf2_over_ref = 1.
+        double muf2_over_ref = 1.,
+        std::size_t incoming = 2
     );
     /// The floor on the dynamical reference scale, minscaleR and minscaleF of
     /// setscales.f, in GeV.
     static constexpr double min_scale = 2.;
     /// Number of particles, incoming included.
     std::size_t particle_count() const { return _particle_count; }
+    /// Number of incoming particles, one for a decay.
+    std::size_t incoming() const { return _incoming; }
     /// The options of the kernel: dynamical_scale_choice, fixed_ren_scale,
     /// fixed_fac_scale, mur_ref_fixed, muf1_ref_fixed, muf2_ref_fixed,
     /// mur_over_ref, muf1_over_ref, muf2_over_ref and @ref min_scale.
@@ -108,6 +118,7 @@ private:
     ) const override;
 
     std::size_t _particle_count;
+    std::size_t _incoming;
     std::vector<double> _options;
 };
 
@@ -168,8 +179,8 @@ public:
      * @param pdf_grid     The densities of the beams, none for beams without.
      * @param pdf_grid2    The densities of the second beam where they differ.
      * @param pdf2_prefix  Prefix of the global names of @p pdf_grid2.
-     * @param densities    Which beams take densities from the grids (the
-     *                     hadron of DIS only).
+     * @param densities    Which beams take densities from the grids, the
+     *                     others count one.
      * @param sum_flavors  Whether the luminosity sums over the flavors of the
      *                     configuration, without a flavor index.
      * @param factors      For each configuration, the factor of each flavor,

@@ -30,16 +30,22 @@ sum of those of the Born, at the Born of the event). The Born, the integrated
 counterterms and the virtual come with f_b and f_nb of compute_prefactors_nbody.
 
 Per unit phase space the weights of madspace (its Jacobians and the flux
-1/(2 s_hat)) are then those of MadFKS at the event and at every counter-event
-up to one factor per point, the ratio of the Jacobians of the two Born
-mappings. MadFKS spreads the n-body part over the random numbers of the
+1/(2 s_hat), 1/(2 M) for a decay) are then those of MadFKS at the event and
+at every counter-event up to one factor per point, the ratio of the Jacobians
+of the two Born mappings. MadFKS spreads the n-body part over the random numbers of the
 radiation with the soft counter-event of the configuration of the n-body part
 over its volume, and halves it where the configurations of the channel have
 emitters in the initial and in the final state (ini_fin_fks).
 
 With the couplings and luminosities of MadFKS at each kinematics, FKSWeights
-then gives the final weights of MadFKS in pb, and FKSCrossSection gives the
-same from the blocks directly.
+then gives the final weights of MadFKS in pb (a width in GeV for a decay),
+and FKSCrossSection gives the same from the blocks directly.
+
+For a decay MadFKS also keeps a dependence on mu_F, of the decaying particle
+as if it were an incoming parton (the sum over nincoming of the coefficient
+of log(mu_F^2 / Q^2) in bornsoftvirtual). It moves between wgt_1 and wgt_3 of
+the integrated counterterms, their sum stays that of madspace, which has
+none.
 """
 
 import functools
@@ -125,17 +131,29 @@ def boost_z(p, y):
     return q
 
 
-def to_partonic_frame(p):
-    """Momenta (batch, n, 4) in the center-of-mass frame of the incoming two,
-    along z."""
-    total = p[:, 0] + p[:, 1]
+def incoming_sum(p, incoming=2):
+    """The sum of the incoming momenta of p (batch, n, 4), the first
+    incoming (two, or one for a decay)."""
+    return p[:, :incoming].sum(1)
+
+
+def to_partonic_frame(p, incoming=2):
+    """Momenta (batch, n, 4) in the center-of-mass frame of the incoming
+    particles, along z."""
+    total = incoming_sum(p, incoming)
     y = 0.5 * np.log((total[:, 0] + total[:, 3]) / (total[:, 0] - total[:, 3]))
     return boost_z(p, -y)
 
 
-def s_hat(p):
-    total = p[:, 0] + p[:, 1]
+def s_hat(p, incoming=2):
+    total = incoming_sum(p, incoming)
     return total[:, 0] ** 2 - (total[:, 1:] ** 2).sum(-1)
+
+
+def flux(p, incoming=2):
+    """1 / (2 s_hat) of a collision, 1 / (2 M) of a decay."""
+    s = s_hat(p, incoming)
+    return 1 / (2 * (s if incoming == 2 else np.sqrt(s)))
 
 
 def scale_coefficient(c):
@@ -167,13 +185,34 @@ class Channel:
         self.born_power = [b[qcd] for b in orders["born"]]
         pdgs = configurations["born_pdgs"]
         masses = [data["param_card"]["mass"][str(abs(p))] for p in pdgs]
+        # the masses of MadFKS: those of the param card, unless the model
+        # computes them (the W of the sm model, from m_Z, G_F and alpha), as
+        # the Born of the first point has them
+        first = np.array(channel["points"][0]["p_born"])
+        for k, mass in enumerate(masses):
+            shell = math.sqrt(max(first[k, 0] ** 2 - (first[k, 1:] ** 2).sum(), 0.0))
+            if mass > 0 and abs(shell / mass - 1) > 1e-10:
+                masses[k] = shell
         self.massive = np.array(masses) > 0
-        self.born = ms.PhaseSpaceMapping(
-            masses,
-            2 * math.sqrt(float(run["ebeam1"]) * float(run["ebeam2"])),
-            leptonic=int(run["lpp1"]) == 0,
-            mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
-        )
+        self.incoming = configurations["nincoming"]
+        # MadFKS keeps a decay in GeV
+        self.madfks_conv = MADFKS_CONV if self.incoming == 2 else 1.0
+        self.madspace_conv = MADSPACE_CONV if self.incoming == 2 else 1.0
+        if self.incoming == 1:
+            # the decaying particle at rest into the final state at one vertex
+            outgoing = masses[1:]
+            vertex = ["i0"] + [f"o{k}" for k in range(len(outgoing))]
+            diagram = ms.Diagram(masses[:1], outgoing, [], [vertex])
+            self.born = ms.PhaseSpaceMapping(
+                ms.Topology(diagram), masses[0], leptonic=True
+            )
+        else:
+            self.born = ms.PhaseSpaceMapping(
+                masses,
+                2 * math.sqrt(float(run["ebeam1"]) * float(run["ebeam2"])),
+                leptonic=int(run["lpp1"]) == 0,
+                mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
+            )
         self.configurations = configurations
         self.points = [p for p in channel["points"] if "blocks" in p]
         assert len(self.points) == len(channel["points"])
@@ -183,11 +222,19 @@ class Channel:
         )
         self.kinematics = ms.FKSKinematics(mapping)
         self.names = list(mapping.counter_event_types().keys())
-        emitters = [c["j_fks"] <= 2 for c in configurations["configurations"]]
+        emitters = [
+            c["j_fks"] <= self.incoming for c in configurations["configurations"]
+        ]
         # the n-body part of a channel split into its initial-state and
         # final-state emitters (ini_fin_fks)
         self.nbody_jac = 0.5 if len(set(emitters)) == 2 else 1.0
         self.final_state = [not e for e in emitters]
+        # whether a configuration has a massless emitter, with collinear
+        # counterterms
+        self.collinear = any(
+            not self.massive[c["j_fks"] - 1 - (c["j_fks"] > c["i_fks"])]
+            for c in configurations["configurations"]
+        )
         self.n_f = data["n_f"]
         self.run_card = run
         self.alpha = 1 / data["param_card"]["sminputs"]["1"]
@@ -376,7 +423,7 @@ class Channel:
         (2 pi)^(4 - 3 n) with n final-state particles."""
         point = self.points[k]
         out, _ = self.event
-        final = len(self.configurations["born_pdgs"]) - 2
+        final = len(self.configurations["born_pdgs"]) - self.incoming
         fortran = point["born"]["xjac"] * point["born"]["xpswgt"]
         return out["born_weight"][k] / (fortran * (2 * math.pi) ** (4 - 3 * final))
 
@@ -389,7 +436,8 @@ class Channel:
         out, _ = self.event
         nbody, index = self.nbody
         radiation = nbody["soft_det"][k] / nbody["born_weight"][k]
-        volume = nbody["soft_xi_max"][k] * s_hat(out["born_momenta"][k : k + 1])[0]
+        born = out["born_momenta"][k : k + 1]
+        volume = nbody["soft_xi_max"][k] * s_hat(born, self.incoming)[0]
         spread = radiation / (volume / (16 * math.pi**2)) * self.nbody_jac
         if self.final_state[index[k]]:
             spread /= FSR_BORN_CUTOFF_FACTOR
@@ -416,7 +464,7 @@ class Channel:
                     g[coupling_of[c["type"]]][k] = c["g_strong"]
                 bare = scale_coefficient(c) * c["g_strong"] ** c["qcd_power"]
                 if c["type"] in luminosity_of and bare != 0:
-                    value = c["weight"] / (MADFKS_CONV * bare)
+                    value = c["weight"] / (self.madfks_conv * bare)
                     luminosity[luminosity_of[c["type"]]][k] = value
         alpha_s = {name: value**2 / (4 * math.pi) for name, value in g.items()}
         return alpha_s, luminosity
@@ -511,7 +559,7 @@ class Channel:
         return self.run(fks_weights(self.born, self.configurations), masked=True)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def channels(path):
     data = reference(path)
     return [Channel(data, channel) for channel in data["channels"]]
@@ -539,7 +587,8 @@ def test_kinematics(path):
                     theirs = np.delete(theirs, i_fks, axis=1)
                 else:
                     continue
-                ours, theirs = to_partonic_frame(ours), to_partonic_frame(theirs)
+                ours = to_partonic_frame(ours, channel.incoming)
+                theirs = to_partonic_frame(theirs, channel.incoming)
                 scale = theirs[..., 0].max()
                 np.testing.assert_allclose(ours / scale, theirs / scale, atol=1e-12)
         # xi and y to the rounding of the Born, absolute: xi is an energy in
@@ -557,8 +606,9 @@ def test_kinematics(path):
 def test_real_emission_and_counterterms(path):
     """The real emission and the soft, collinear and soft-collinear
     counterterms of FKSSubtraction with the blocks of MadFKS, per unit
-    Jacobian of MadFKS, are its weight lines, with their logs of mu_F."""
-    seen = set()
+    Jacobian of MadFKS, are its weight lines, with their logs of mu_F. A
+    channel with massive emitters alone has no collinear counterterms."""
+    seen, expected = set(), set()
     for channel in channels(path):
         ours = channel.subtraction
         for k, point in enumerate(channel.points):
@@ -570,7 +620,8 @@ def test_real_emission_and_counterterms(path):
                 order = channel.nlo.index(c["amp_pos"] - 1)
                 value = ours[name][k, order] * channel.madfks_norm(k, c["type"])
                 np.testing.assert_allclose(value, scale_coefficient(c), rtol=RTOL)
-    assert seen == set(COUNTERTERMS)
+        expected |= set(COUNTERTERMS) if channel.collinear else {1, 4}
+    assert seen == expected
 
 
 @pytest.mark.parametrize("path", DATA, ids=IDS)
@@ -578,7 +629,8 @@ def test_born_and_integrated_counterterms(path):
     """The Born and FKSSoftVirtual with the blocks of MadFKS, with the
     coefficients of log(mu_R^2 / Q^2) and log(mu_F^2 / Q^2), times f_b and
     f_nb are its weight lines of the Born and of the integrated
-    counterterms."""
+    counterterms. For a decay madspace has no dependence on mu_F, and the sum
+    at the scales of the line is that of MadFKS."""
     for channel in channels(path):
         _, born, _, _, _ = channel.blocks
         soft_virtual, ren, fact = channel.soft_virtual
@@ -593,8 +645,19 @@ def test_born_and_integrated_counterterms(path):
                 elif c["type"] == 3:
                     order = channel.nlo.index(c["amp_pos"] - 1)
                     ours = [soft_virtual[k, order], ren[k, order], fact[k, order].sum()]
+                    if channel.incoming == 2:
+                        np.testing.assert_allclose(
+                            np.array(ours) * f["f_nb"], c["wgt"], rtol=RTOL, atol=0
+                        )
+                        continue
+                    assert fact[k, order].sum() == 0
                     np.testing.assert_allclose(
-                        np.array(ours) * f["f_nb"], c["wgt"], rtol=RTOL, atol=0
+                        ren[k, order] * f["f_nb"], c["wgt"][1], rtol=RTOL, atol=0
+                    )
+                    q2, mu_r2, _ = c["scales2"]
+                    total = ours[0] + ours[1] * math.log(mu_r2 / q2)
+                    np.testing.assert_allclose(
+                        total * f["f_nb"], scale_coefficient(c), rtol=RTOL
                     )
 
 
@@ -626,14 +689,17 @@ def test_virtual(path):
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_color_links(path):
     """The color-correlated Borns of sborn_sf conserve color, and those of a
-    massive leg with itself are C_m B / 2 times g^2."""
+    massive leg with itself are C_m B / 2 times g^2 (the colored ones, here
+    quarks, also the decaying top)."""
     for channel in channels(path):
         _, born, color, _, diagonal = channel.blocks
         np.testing.assert_allclose(color.sum(-1), 0.0, atol=1e-13 * born.max())
         given = ~np.isnan(diagonal)
         assert given.any() == channel.massive.any()
         np.testing.assert_allclose(diagonal[given], color[given], rtol=1e-12)
-        for m in np.flatnonzero(channel.massive):
+        linked = np.flatnonzero(given.any(axis=(0, 1, 3)))
+        assert (channel.massive[linked]).all()
+        for m in linked:
             np.testing.assert_allclose(color[:, :, m, m], 4 / 3 * born, rtol=1e-12)
 
 
@@ -677,14 +743,14 @@ def test_densities(path):
                 if c["type"] in COUNTERTERMS:
                     name, det, momenta = COUNTERTERMS[c["type"]]
                     order = channel.nlo.index(c["amp_pos"] - 1)
-                    flux = 1 / (2 * s_hat(out[momenta][k : k + 1])[0])
-                    madspace = ours[name][k, order] * out[det][k] * flux
+                    factor = flux(out[momenta][k : k + 1], channel.incoming)[0]
+                    madspace = ours[name][k, order] * out[det][k] * factor
                     madfks = scale_coefficient(c) * point["vol"] / per_unit
                     np.testing.assert_allclose(madspace / madfks, expected, rtol=RTOL)
                 elif c["type"] == 2:
                     order = channel.born_power.index(c["qcd_power"])
-                    flux = 1 / (2 * s_hat(out["born_momenta"][k : k + 1])[0])
-                    madspace = born[k, order] * out["born_weight"][k] * flux
+                    factor = flux(out["born_momenta"][k : k + 1], channel.incoming)[0]
+                    madspace = born[k, order] * out["born_weight"][k] * factor
                     madfks = c["wgt"][0] / per_unit / channel.nbody_spread(k)
                     np.testing.assert_allclose(madspace / madfks, expected, rtol=RTOL)
 
@@ -697,7 +763,7 @@ def test_weights(path):
     mappings, MadFKS's spread of the n-body part and the two conversions to
     pb. With the cuts of FKSCuts, a kinematics without contributions of
     MadFKS has zero weight, and the cross section is the sum."""
-    seen = set()
+    seen, expected = set(), set()
     for channel in channels(path):
         ours = channel.weights
         # to the rounding of the parts, which cancel
@@ -705,7 +771,8 @@ def test_weights(path):
         difference = np.abs(ours["cross_section"] - sum(parts))
         assert (difference <= 1e-14 * np.abs(parts).sum(0)).all()
         for k, point in enumerate(channel.points):
-            ratio = channel.born_jacobian_ratio(k) * MADSPACE_CONV / MADFKS_CONV
+            ratio = channel.born_jacobian_ratio(k)
+            ratio *= channel.madspace_conv / channel.madfks_conv
             for name, types in WEIGHTS.items():
                 lines = [c for c in point["contributions"] if c["type"] in types]
                 if not lines:
@@ -716,7 +783,9 @@ def test_weights(path):
                 if name in ("nbody_weight", "lo_weight"):
                     madfks /= channel.nbody_spread(k)
                 np.testing.assert_allclose(ours[name][k] / madfks, ratio, rtol=RTOL)
-    assert seen == set(WEIGHTS)
+        collinear = {"collinear_weight", "soft_collinear_weight"}
+        expected |= set(WEIGHTS) - (set() if channel.collinear else collinear)
+    assert seen == expected
 
 
 @pytest.mark.parametrize("path", DATA, ids=IDS)
@@ -783,3 +852,35 @@ def test_cross_section_with_extra_counterterms():
     # rapidities y of the random Borns
     np.testing.assert_allclose(outputs["lo_weight"], expected, rtol=1e-9)
     assert np.isfinite(outputs["cross_section"]).all()
+
+
+def test_decay_round_trip():
+    """The FKS mapping of a decay maps the random numbers to the real emission
+    of the decaying particle at rest, with momentum fractions one, and back,
+    with the inverse weight. A decay radiates off final-state particles only
+    and needs the Born mapping of a decay."""
+    channel = channels(DATA[IDS.index("t_bw")])[0]
+    mapping = fks_configuration_mapping(channel.born, channel.configurations)
+    count = 256
+    r = np.random.default_rng(5).random((count, channel.born.random_dim() + 3))
+    index = torch.zeros(count, dtype=torch.int32).to(torch.get_default_device())
+    momenta, x1, x2, det = mapping.map_forward([to_torch(r)], [index])
+    p = torch.as_tensor(momenta).cpu().numpy()
+    mass = channel.born.external_masses()[0]
+    np.testing.assert_allclose(p[:, 0], np.tile([mass, 0, 0, 0], (count, 1)))
+    np.testing.assert_allclose(p[:, 1:].sum(1) - p[:, 0], 0.0, atol=1e-12 * mass)
+    np.testing.assert_array_equal(torch.as_tensor(x1).cpu().numpy(), 1.0)
+    np.testing.assert_array_equal(torch.as_tensor(x2).cpu().numpy(), 1.0)
+    r_inv, det_inv = mapping.map_inverse([momenta, x1, x2], [index])
+    np.testing.assert_allclose(torch.as_tensor(r_inv).cpu().numpy(), r, atol=1e-9)
+    product = (
+        torch.as_tensor(det).cpu().numpy() * torch.as_tensor(det_inv).cpu().numpy()
+    )
+    np.testing.assert_allclose(product, 1.0, rtol=1e-9)
+    with pytest.raises(ValueError, match="final-state particles only"):
+        ms.FKSRadiation(3, 3, 0, leptonic=True, incoming=1)
+    with pytest.raises(ValueError, match="final-state particles only"):
+        ms.FKSRadiation(3, 3, 1, leptonic=False, incoming=1)
+    collision = ms.PhaseSpaceMapping([0.0, 0.0, 4.7, 80.0], 1000.0, leptonic=True)
+    with pytest.raises(ValueError, match="decay topology"):
+        fks_configuration_mapping(collision, channel.configurations)

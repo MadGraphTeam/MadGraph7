@@ -34,7 +34,6 @@ from madspace_testing import default_context
 from test_fks_integrand import (
     DATA,
     IDS,
-    MADFKS_CONV,
     WEIGHTS,
     channels,
     scale_coefficient,
@@ -234,7 +233,7 @@ def alpha_s_2loop(asmz, q):
     return newton(2.0 * math.log(q / zmass), asmz, 5)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def alpha_s_tables(asmz):
     """The tables of alphas_from_grids: 256 nodes in log Q from 0.5 GeV to the c
     threshold, from there to the b threshold and from there to 100 TeV, with
@@ -263,7 +262,7 @@ def alpha_s_madfks(asmz, q):
     return alpha_s_2loop(asmz, q)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def nnpdf():
     return NNPDF(NNPDF_GRID)
 
@@ -345,7 +344,7 @@ def grids(tmp_path_factory):
     delete_globals(default_context())
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def asmz(path):
     """alpha_s(m_Z) of MadFKS, that of nn23nlo (pdfwrap) with PDFs and of the
     param card without, which has both."""
@@ -370,7 +369,7 @@ def scale_parameters(run):
     )
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def madspace_scales(channel):
     """The outputs of FKSScale at the event, the Born and the collinear
     counter-event."""
@@ -417,12 +416,18 @@ def densities(channel, kinematics):
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_scales(path):
     """FKSScale gives mu_R and mu_F of each weight line at its kinematics, and
-    the Ellis-Sexton scale of MadFKS is mu_R."""
+    the Ellis-Sexton scale of MadFKS is mu_R. A decay has the mass of the
+    decaying particle for mu_R, and for mu_F, which enters nothing (MadFKS
+    takes H_T/2 without the first outgoing particle there)."""
     lines = 0
     for channel, k, c, kinematics in weight_lines(path):
         ren, fact1, fact2 = madspace_scales(channel)[SCALES_OF[kinematics]]
         q2, mu_r2, mu_f2 = c["scales2"]
         np.testing.assert_allclose(ren[k] ** 2, mu_r2, rtol=RTOL)
+        if channel.incoming == 1:
+            run = channel.run_card
+            ratio = float(run["muf_over_ref"]) / float(run["mur_over_ref"])
+            mu_f2 = mu_r2 * ratio**2
         np.testing.assert_allclose(fact1[k] ** 2, mu_f2, rtol=RTOL)
         np.testing.assert_allclose(fact2[k] ** 2, mu_f2, rtol=RTOL)
         np.testing.assert_allclose(q2, mu_r2, rtol=1e-15)
@@ -471,7 +476,7 @@ def test_luminosities(path):
         w1, w2, w3 = c["wgt"]
         q2, mu_r2, mu_f2 = c["scales2"]
         size = abs(w1) + abs(w2 * math.log(mu_r2 / q2)) + abs(w3 * math.log(mu_f2 / q2))
-        theirs = np.array(c["parton_iproc"]) / (MADFKS_CONV * bare)
+        theirs = np.array(c["parton_iproc"]) / (channel.madfks_conv * bare)
         x1, x2, fact1, _ = (v[k : k + 1] for v in densities(channel, kinematics))
         if int(channel.run_card["lpp1"]) == 0:
             ours = np.ones(len(pairs))
@@ -732,9 +737,10 @@ def test_cross_section_per_flavor(path, grids):
                 assert (value[r >= reals] == 0).all()
                 total[name] = total[name] + value
         for name, value in expected.items():
-            scale = np.abs(value).max()
             # the sum over the flavors rounds differently, to 1e-12 of the
-            # largest weight of the cross section with its cancellations
+            # largest weight of the cross section with its cancellations (a
+            # massive emitter alone has no collinear weights)
+            scale = max(np.abs(value).max(), np.finfo(float).tiny)
             np.testing.assert_allclose(
                 total[name] / scale, value / scale, rtol=0, atol=1e-12
             )
@@ -839,11 +845,55 @@ def test_scale_choices(case, soft):
         assert (ours[0][:5] == options["over_ref"][0] * ms.FKSScale.min_scale).all()
 
 
+@pytest.mark.parametrize("case", SCALE_CASES.values(), ids=SCALE_CASES.keys())
+def test_decay_scales(case):
+    """For a decay the reference scale of every choice is the mass of the
+    decaying particle, at rest or boosted, raised to the floor, a fixed scale
+    replaces it and each scale takes its factor, as setscales.f for
+    nincoming = 1."""
+    rng = np.random.default_rng(11)
+    mass = np.concatenate([[1.0], rng.uniform(10.0, 200.0, 63)])
+    momentum = rng.normal(size=(64, 3)) * 30
+    p = np.zeros((64, 4, 4))
+    p[:, 0, 0] = np.sqrt(mass**2 + (momentum**2).sum(-1))
+    p[:, 0, 1:] = momentum
+    p[:, 1:] = rng.normal(size=(64, 3, 4))
+    over_ref = case.get("over_ref", (1.0, 1.0, 1.0))
+    scale = ms.FKSScale(
+        4,
+        dynamical_scale_choice=case["choice"],
+        fixed_ren_scale=case.get("fixed_ren", False),
+        fixed_fac_scale=case.get("fixed_fac", False),
+        mur_ref_fixed=91.118,
+        muf1_ref_fixed=125.0,
+        muf2_ref_fixed=80.0,
+        mur_over_ref=over_ref[0],
+        muf1_over_ref=over_ref[1],
+        muf2_over_ref=over_ref[2],
+        incoming=1,
+    )
+    assert scale.incoming() == 1
+    assert scale.with_particle_count(3).incoming() == 1
+    dynamical = np.maximum(ms.FKSScale.min_scale, mass)
+    fixed = (case.get("fixed_ren", False), case.get("fixed_fac", False))
+    expected = [
+        over_ref[0] * (91.118 if fixed[0] else dynamical),
+        over_ref[1] * (125.0 if fixed[1] else dynamical),
+        over_ref[2] * (80.0 if fixed[1] else dynamical),
+    ]
+    for ours, theirs in zip(evaluate(scale, p), expected, strict=True):
+        np.testing.assert_allclose(ours, theirs, rtol=1e-12)
+
+
 def test_scale_errors():
     with pytest.raises(ValueError, match="dynamical_scale_choice 10"):
         ms.FKSScale(5, dynamical_scale_choice=10)
-    with pytest.raises(ValueError, match="two incoming particles"):
+    with pytest.raises(ValueError, match="an outgoing particle"):
         ms.FKSScale(2)
+    with pytest.raises(ValueError, match="an outgoing particle"):
+        ms.FKSScale(1, incoming=1)
+    with pytest.raises(ValueError, match="or one"):
+        ms.FKSScale(5, incoming=3)
     with pytest.raises(TypeError, match="unknown scale parameter"):
         fks_scale({"born_pdgs": [1, -1, 11, -11]}, scalefact=1.0)
 
@@ -891,7 +941,7 @@ def test_luminosity_flavors(grids):
     np.testing.assert_allclose(
         picked, [2.0 * f1[4][0] * f2[-4][0], f1[21][1] * f2[-2][1], 0.0], rtol=1e-15
     )
-    # leptons count one, a hadron of DIS takes its densities
+    # leptons count one, and so does a beam without densities
     (leptons,) = evaluate(
         ms.FKSLuminosity([[[-11, 11], [-11, 11]], [[-11, 11]]], sum_flavors=True),
         x1,
@@ -941,6 +991,8 @@ def test_luminosity_errors(grids):
         fks_luminosities(configurations, beams=(1, 1))
     with pytest.raises(ValueError, match="hadron beams need a PdfGrid"):
         fks_luminosities(configurations, pdf_grid, beams=(0, 0))
+    with pytest.raises(ValueError, match="mix a hadron and a lepton"):
+        fks_luminosities(configurations, pdf_grid, beams=(0, 1))
 
 
 def test_underlying_born():

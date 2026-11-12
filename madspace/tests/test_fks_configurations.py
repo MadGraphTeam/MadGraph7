@@ -342,3 +342,14 @@ def test_checks_of_the_configurations():
         ms.FKSEikonals([config(splitting_types=["QCD", "QED"])])
     with pytest.raises(ValueError, match="extra counterterm"):
         ms.FKSEikonals([config(extra_counterterm=0)])
+    # a decay radiates off final-state particles, and all configurations have
+    # the same incoming particles
+    assert not config(
+        incoming=1, j_fks=1, fks_j_from_i=[[]] * 4 + [[1]]
+    ).initial_state()
+    with pytest.raises(ValueError, match="final-state particles only"):
+        ms.FKSEikonals([config(incoming=1)])
+    with pytest.raises(ValueError, match="same number of incoming"):
+        ms.FKSEikonals([config(), config(incoming=1, j_fks=1)])
+    with pytest.raises(ValueError, match="two or one"):
+        ms.FKSEikonals([config(incoming=3)])

@@ -43,6 +43,9 @@ namespace madspace {
  * gives the first solution, with the quadratic sampling below, and above it
  * the second one, linearly.
  *
+ * A decay (one incoming particle, @p incoming) radiates off final-state
+ * emitters only, in the rest frame of the decaying particle at
+ * @f$\sqrt{s} = M@f$, and has no momentum fractions.
  * For an incoming emitter, the real emission has @f$s = \bar s/(1 - \xi)@f$
  * and new momentum fractions @f$x_{1,2}@f$, @f$\phi@f$ is the azimuth of
  * @f$i@f$ about the beam axis, and the final state of the Born is boosted
@@ -192,6 +195,9 @@ public:
     ///                             emitter, i and j included, at least one
     ///                             more. Empty for none: the whole final
     ///                             state recoils.
+    /// @param incoming             Number of incoming particles, two or one
+    ///                             for a decay, which needs @p leptonic and a
+    ///                             final-state emitter.
     FKSRadiation(
         std::size_t born_particle_count,
         std::size_t i_fks,
@@ -201,7 +207,8 @@ public:
         double emitter_mass = 0.,
         InitialMap initial_map = asymmetric,
         const std::vector<double>& born_masses = {},
-        const std::vector<std::size_t>& resonance = {}
+        const std::vector<std::size_t>& resonance = {},
+        std::size_t incoming = 2
     );
     /// Number of uniform random inputs consumed by the forward mapping (3).
     std::size_t random_dim() const { return 3; }
@@ -211,6 +218,8 @@ public:
     std::size_t i_fks() const { return _i_fks; }
     /// Position of the emitter j in the real process.
     std::size_t j_fks() const { return _j_fks; }
+    /// Number of incoming particles, one for a decay.
+    std::size_t incoming() const { return _incoming; }
     /// Whether the mapping has no momentum fractions.
     bool leptonic() const { return _leptonic; }
     /// Lower bound on the partonic energy squared of the real emission.
@@ -220,7 +229,7 @@ public:
     /// The map of an emission off an incoming parton.
     InitialMap initial_map() const { return _initial_map; }
     /// Whether the emitter j is an incoming parton.
-    bool initial_state() const { return _j_fks < 2; }
+    bool initial_state() const { return _j_fks < _incoming; }
     /// The members of the resonance, positions in the real process in
     /// ascending order, empty for none.
     const std::vector<std::size_t>& resonance() const { return _resonance; }
@@ -303,10 +312,14 @@ private:
     build_final_inverse(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;
     Result
     build_initial_inverse(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;
+    // sqrt(s) of momenta, the incoming first: the mass of the decaying
+    // particle or the partonic energy
+    Value sqrt_s_of(FunctionBuilder& fb, Value momenta) const;
 
     std::size_t _born_particle_count;
     std::size_t _i_fks;
     std::size_t _j_fks;
+    std::size_t _incoming;
     bool _leptonic;
     double _s_hat_min;
     double _emitter_mass;

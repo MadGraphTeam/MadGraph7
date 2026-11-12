@@ -49,6 +49,11 @@ namespace madspace {
  * a final-state emitter (see fks_sqrt_s_hat_min). Lepton beams need an
  * @ref FKSConfigurationMapping with a @ref FKSLeptonLuminosity.
  *
+ * A Born mapping of a decay (PhaseSpaceMapping::is_decay) gives the decaying
+ * particle at rest, which is also the frame of the emission: the emitters
+ * are in the final state, at @f$\sqrt{s} = M@f$, without a boost and with
+ * momentum fractions one, as genps_fks.f for nincoming = 1.
+ *
  * With `mirror_beams` the Born mapping takes leg 1 from beam 2 for
  * `mirror_index` 1, along @f$-z@f$, with its momentum fraction x1. The emission
  * needs the first incoming parton along @f$+z@f$, so in the center-of-mass
@@ -257,6 +262,9 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  * Born mapping (`permutation_index`): the members of the Born are boosted into
  * that frame (`fks_resonance_frame`) and back (`fks_resonance_frame_inverse`)
  * around the emission. madspace.fks.fks_resonances gives those of MadGraph.
+ *
+ * A decay radiates off final-state emitters in the rest frame of the
+ * decaying particle, as for @ref FKSMapping.
  *
  * Drawing `fks_index`, uniformly or with an adaptive discrete sampler, and its
  * weight belong to the integrand, as for the `permutation_index` of a
@@ -531,7 +539,7 @@ private:
     // the masses of the final state of the Born, for the mass shell of the
     // asymmetric map of an incoming emitter
     std::vector<double> final_masses() const {
-        return {_born_masses.begin() + 2, _born_masses.end()};
+        return {_born_masses.begin() + _incoming, _born_masses.end()};
     }
     // per event the row of the tables of the resonances: its configuration and
     // the permutation of the Born mapping
@@ -584,6 +592,8 @@ private:
     double _sqrt_s_hat_floor;
     std::optional<FKSLeptonLuminosity> _luminosity;
     FKSRadiation::InitialMap _initial_map;
+    // the number of incoming particles, one for a decay
+    std::size_t _incoming;
     // per configuration the lower end of the energy squared of the Born of
     // lepton beams
     std::vector<double> _born_s_min;

@@ -15,11 +15,14 @@ namespace kernels {
 // transverse masses sqrt((E + pz) (E - pz)), 3 or -1: half of it, -2: the fixed
 // mur_ref_fixed) is raised to the floor (minscaleR and minscaleF, 2 GeV). A
 // fixed scale replaces it, and each scale is multiplied by its factor
-// (mur_over_ref, muf1_over_ref, muf2_over_ref), fixed or not.
+// (mur_over_ref, muf1_over_ref, muf2_over_ref), fixed or not. For a decay (one
+// incoming particle) the reference scale is the mass of the decaying
+// particle, as setscales.f takes it for mu_R and the Ellis-Sexton scale.
 template <typename T>
 KERNELSPEC void kernel_fks_scale(
     FIn<T, 2> p,
     FIn<T, 1> options,
+    IIn<T, 0> incoming,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2
@@ -31,7 +34,10 @@ KERNELSPEC void kernel_fks_scale(
             muf1_over_ref = options[7], muf2_over_ref = options[8], floor = options[9];
     std::size_t n = p.size();
     FVal<T> reference = 0.;
-    if (choice == 1) {
+    if (single_index(incoming) == 1) {
+        auto q = load_mom<T>(p[0]);
+        reference = sqrt(max(lsquare<T>(q), 0.));
+    } else if (choice == 1) {
         // the boost to the partonic center-of-mass frame
         FVal<T> e_tot = FVal<T>(p[0][0]) + FVal<T>(p[1][0]),
                 pz_tot = FVal<T>(p[0][3]) + FVal<T>(p[1][3]);

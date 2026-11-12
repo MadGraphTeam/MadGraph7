@@ -120,6 +120,8 @@ PROCESSES = {
         "p p > e+ e- [QCD]",
         dict(HADRONIC, mll_sf=30, mur_over_ref=2.0, muf_over_ref=0.5),
     ),
+    # a decay: a massive incoming particle at rest, a final-state emitter
+    "t_bw": ("t > b w+ QED=1 [QCD]", {}),
 }
 # more points where the jet cuts fail rarely at the event alone
 POINTS = {"epem_jj_kt": 100, "epem_jj_antikt": 100}

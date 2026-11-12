@@ -20,9 +20,9 @@ namespace madspace {
  * madspace.fks builds the list from the metadata of the FKS exporter
  * (fks_configurations.json) and the masses of the Born mapping.
  *
- * Particles are numbered from 0, incoming first, in the order of the real
- * process. Its Born is the real process without @f$i@f$, with the mother
- * @f$i + j@f$ in the place of @f$j@f$.
+ * Particles are numbered from 0, incoming first (two, or one for a decay), in
+ * the order of the real process. Its Born is the real process without
+ * @f$i@f$, with the mother @f$i + j@f$ in the place of @f$j@f$.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -63,11 +63,14 @@ struct FKSConfiguration {
     /// Whether each particle of the real process is tagged (PARTICLE_TAG_D),
     /// an identified photon (!a!) that does not split, empty for none.
     std::vector<bool> tags;
+    /// Number of incoming particles, two or one for a decay, whose emitters
+    /// are all in the final state.
+    std::size_t incoming = 2;
 
     /// Number of particles of the real process, incoming included.
     std::size_t particle_count() const { return pdgs.size(); }
     /// Whether the emitter is incoming.
-    bool initial_state() const { return j_fks < 2; }
+    bool initial_state() const { return j_fks < incoming; }
     /// Position of the emitter in the Born.
     std::size_t born_j_fks() const { return j_fks < i_fks ? j_fks : j_fks - 1; }
     /// Whether a particle of the real process is tagged.
@@ -120,9 +123,10 @@ struct FKSConfiguration {
 
 /**
  * Check a list of FKS configurations: at least one, all with real processes of
- * the same number of particles and with every field of that size, i a
- * massless final-state particle, j another particle that forms an FKS pair
- * with it, FKS pairs within the real process, one or two different
+ * the same number of particles and with every field of that size, two incoming
+ * particles or one (a decay) for all of them, i a massless final-state
+ * particle, j another particle that forms an FKS pair with it (a final-state
+ * one for a decay), FKS pairs within the real process, one or two different
  * splitting types, each "QCD" or "QED", an extra counterterm with two of
  * them only, and tags for none or all particles.
  *

@@ -25,12 +25,14 @@ namespace madspace {
  * octets, energies always for octets) and @f$h = h_\mathrm{damp}(E_i / (E_i +
  * E_j))@f$ for a final-state pair @f$(i, j)@f$ of two gluons or photons,
  * @f$h_\mathrm{damp}(z) + h_\mathrm{damp}(1 - z) = 1@f$. The sector functions
- * of the configurations of one real process add up to one. i enters with the
- * direction of its momentum per unit @f$\xi@f$ (`p_i_hat` of @ref FKSKinematics)
- * and the energy of its momentum, so that the same function gives @f$S_{ij}@f$
- * at the event and at the counter-events: at a soft one the pairs without i
- * drop out. As in fks_Sij.f, @f$S_{ij}@f$ is zero where an energy or the
- * angle of a pair in a denominator falls below @f$10^{-8}@f$. Below
+ * of the configurations of one real process add up to one. A decay has no
+ * pairs with the decaying particle, which is massive and cannot radiate
+ * collinearly (fks_Sij.f leaves them out for one incoming particle). i enters
+ * with the direction of its momentum per unit @f$\xi@f$ (`p_i_hat` of
+ * @ref FKSKinematics) and the energy of its momentum, so that the same
+ * function gives @f$S_{ij}@f$ at the event and at the counter-events: at a
+ * soft one the pairs without i drop out. As in fks_Sij.f, @f$S_{ij}@f$ is zero where an
+ * energy or the angle of a pair in a denominator falls below @f$10^{-8}@f$. Below
  * @f$\xi = 10^{-6}@f$, fks_Sij.f takes the direction of i from the soft
  * counter-event, where it evaluates the real emission in the soft limit. Here
  * it is always that of the event, and the two differ by @f$O(\xi)@f$.
@@ -103,6 +105,7 @@ private:
     ) const override;
 
     std::size_t _particle_count;
+    std::size_t _incoming;
     std::vector<me_int_t> _i_fks;
     std::vector<me_int_t> _j_fks;
     nested_vector3<me_int_t> _pairs;

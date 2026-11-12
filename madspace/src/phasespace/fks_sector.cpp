@@ -34,6 +34,7 @@ FKSSectorFunction::FKSSectorFunction(
         {{"s", batch_float}}
     ),
     _particle_count(configurations.at(0).particle_count()),
+    _incoming(configurations.at(0).incoming),
     _options{
         fks_a, fks_b, use_energy ? 1. : 0., use_beta ? 1. : 0., h_damp_one, h_damp_power
     } {
@@ -44,10 +45,14 @@ FKSSectorFunction::FKSSectorFunction(
         _masses.push_back(config.masses);
         // each unordered pair once, as the first of its two orientations in
         // fks_j_from_i (ijskip = 1 in fks_Sij.f); the second one is there
-        // only for two gluons or photons
+        // only for two gluons or photons. A decay leaves out the pairs with
+        // the decaying particle, as fks_Sij.f for nincoming != 2.
         nested_vector2<me_int_t> pairs(n, std::vector<me_int_t>(n, 0));
         for (std::size_t k = 0; k < n; ++k) {
             for (auto l : config.fks_j_from_i.at(k)) {
+                if (config.incoming == 1 && (k < 1 || l < 1)) {
+                    continue;
+                }
                 if (pairs.at(k).at(l) != 0 || pairs.at(l).at(k) != 0) {
                     if (pairs.at(k).at(l) != 0 || !is_aorg(config.pdgs.at(k)) ||
                         !is_aorg(config.pdgs.at(l))) {
@@ -114,7 +119,8 @@ NamedVector<Value> FKSSectorFunction::build_function_impl(
         _octet,
         _aorg,
         _masses,
-        _options
+        _options,
+        static_cast<me_int_t>(_incoming)
     );
     return {{"s", s}};
 }

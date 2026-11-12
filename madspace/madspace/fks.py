@@ -151,12 +151,20 @@ def sqrt_s_floor(pdgs, sqrt_s_min):
     )
 
 
-def checked_configurations(born_pdgs, particle_count, configurations):
+def checked_configurations(born_pdgs, born, configurations):
     """The configurations of fks_configurations.json, checked against the
-    Born: a Born mapping of its particles, and real processes that are the
-    Born with i and j in the place of i + j, the order FKSMapping assumes."""
-    if configurations["nincoming"] != 2:
-        raise ValueError("FKS mappings need two incoming particles")
+    Born: a Born mapping of its particles (a decay for one incoming particle),
+    and real processes that are the Born with i and j in the place of i + j,
+    the order FKSMapping assumes."""
+    nincoming = configurations["nincoming"]
+    if nincoming not in (1, 2):
+        raise ValueError("FKS mappings need two incoming particles or one (a decay)")
+    if born.is_decay() != (nincoming == 1):
+        raise ValueError(
+            "the Born mapping of a decay (one incoming particle) is that of a "
+            "decay topology, and only then"
+        )
+    particle_count = born.particle_count()
     if particle_count != len(born_pdgs):
         raise ValueError(
             f"the Born mapping has {particle_count} particles, "
@@ -215,7 +223,8 @@ def fks_mappings(
         born_plain = born_final = born
     elif callable(born):
         born_plain = born(None)
-        bound = fks_sqrt_s_hat_min(cuts, born_plain.external_masses()[2:])
+        nincoming = configurations["nincoming"]
+        bound = fks_sqrt_s_hat_min(cuts, born_plain.external_masses()[nincoming:])
         born_final = born(sqrt_s_floor(born_pdgs, bound))
         s_hat_min_initial = max(s_hat_min, bound * bound)
     else:
@@ -223,9 +232,7 @@ def fks_mappings(
             "with cuts, born has to be a function that returns the Born mapping "
             "for given cuts"
         )
-    entries = checked_configurations(
-        born_pdgs, born_plain.particle_count(), configurations
-    )
+    entries = checked_configurations(born_pdgs, born_plain, configurations)
     if resonances is None:
         resonances = [[[]] for _ in entries]
     if len(resonances) != len(entries) or any(len(r) != 1 for r in resonances):
@@ -239,7 +246,7 @@ def fks_mappings(
         resonance = list(resonance[0])
         if cuts is None:
             mapping = FKSMapping(born, i_fks, j_fks, s_hat_min, initial_map, resonance)
-        elif j_fks >= 2:
+        elif j_fks >= configurations["nincoming"]:
             mapping = FKSMapping(
                 born_final, i_fks, j_fks, s_hat_min, initial_map, resonance
             )
@@ -298,12 +305,13 @@ def fks_configuration_mapping(
     born_pdgs = list(configurations["born_pdgs"])
     pairs = [
         (configuration["i_fks"] - 1, configuration["j_fks"] - 1)
-        for configuration in checked_configurations(
-            born_pdgs, born.particle_count(), configurations
-        )
+        for configuration in checked_configurations(born_pdgs, born, configurations)
     ]
+    nincoming = configurations["nincoming"]
     floor = (
-        0.0 if cuts is None else fks_sqrt_s_hat_min(cuts, born.external_masses()[2:])
+        0.0
+        if cuts is None
+        else fks_sqrt_s_hat_min(cuts, born.external_masses()[nincoming:])
     )
     return FKSConfigurationMapping(
         born,
@@ -538,9 +546,7 @@ def fks_configurations(born, configurations):
     born_pdgs = list(configurations["born_pdgs"])
     born_masses = list(born.external_masses())
     result = []
-    for configuration in checked_configurations(
-        born_pdgs, born.particle_count(), configurations
-    ):
+    for configuration in checked_configurations(born_pdgs, born, configurations):
         pairs = configuration["fks_j_from_i"]
         if not any(pairs):
             raise ValueError(
@@ -557,6 +563,7 @@ def fks_configurations(born, configurations):
             splitting_types=list(configuration["splitting_type"]),
             tags=[bool(tag) for tag in configuration.get("real_tags", [])],
             extra_counterterm=configuration.get("extra_cnt_index", -1),
+            incoming=configurations["nincoming"],
         )
         # the Borns that FKSConfiguration infers from the splitting, which set
         # the identical-particle ratios of the counterterms
@@ -818,7 +825,11 @@ def fks_scale(configurations, **scales):
             raise TypeError(f"fks_scale: unknown scale parameter {name}")
         for option in SCALE_NAMES[name]:
             options[option] = value
-    return FKSScale(len(configurations["born_pdgs"]) + 1, **options)
+    return FKSScale(
+        len(configurations["born_pdgs"]) + 1,
+        **options,
+        incoming=configurations.get("nincoming", 2),
+    )
 
 
 def _beam_flavors(flavors, beams, nincoming=2):
@@ -921,15 +932,15 @@ def fks_luminosities(
         pdf_grid: the PdfGrid of the hadron beams, None for none.
         pdf_grid2: the PdfGrid of the second beam where it differs.
         beams: lpp1 and lpp2 of the run card, 1 for protons, -1 for
-            antiprotons and 0 for leptons without densities (one of each for
-            DIS), ignored for a decay.
+            antiprotons and 0 for leptons without densities (both or none,
+            as MadFKS has no DIS at NLO), ignored for a decay.
         sum_flavors: whether the luminosities sum over the flavors, without a
             flavor index.
 
     Raises:
         ValueError: for a fks_configurations.json of an older exporter, for
-            other beams, for hadrons without a grid or a grid without
-            hadrons, as fks_born_flavor_indices, or if a Born flavor does
+            other beams or a hadron with a lepton, for hadrons without a grid
+            or a grid without hadrons, as fks_born_flavor_indices, or if a Born flavor does
             not underlie any real flavor of a configuration.
     """
     _check_flavors(configurations)
@@ -941,6 +952,11 @@ def fks_luminosities(
             "leptons"
         )
     densities = [abs(beam) == 1 for beam in beams]
+    if densities[0] != densities[1]:
+        raise ValueError(
+            f"fks_luminosities: beams {beams} mix a hadron and a lepton, DIS has no "
+            "NLO in MadFKS"
+        )
     if any(densities) != (pdf_grid is not None):
         raise ValueError(
             "fks_luminosities: hadron beams need a PdfGrid and lepton beams none"

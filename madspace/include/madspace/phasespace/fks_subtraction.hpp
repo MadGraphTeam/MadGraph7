@@ -333,6 +333,13 @@ private:
  * QED of @f$-a (\gamma_i + 2 C_i \log \xi_\mathrm{cut}) B@f$ of the incoming
  * particle of beam @f$i@f$.
  *
+ * A decay has no beams: its massive incoming particle has no Q term and its
+ * @f$c_F@f$ are zero, and @f$\sqrt{s}@f$ is its mass. MadFKS gives it the
+ * coefficient of log(mu_F^2 / Q^2) of an incoming quark in the weight lines
+ * (the loop over nincoming of bornsoftvirtual), which it takes back from the
+ * scale-independent part, so that the weight is the same at the scales of
+ * the run.
+ *
  * `batch` is the leading batch dimension, `n` the number of particles of the
  * Born, incoming included, `b` the number of Born orders and `o` that of NLO
  * orders.
@@ -409,6 +416,7 @@ private:
     ) const override;
 
     std::size_t _born_order_count;
+    std::size_t _incoming;
     double _xicut, _delta_o;
     std::vector<double> _masses, _ren_factor;
     nested_vector2<double> _casimir, _gamma, _gamma_prime;
@@ -475,7 +483,9 @@ private:
  *
  * **Returns**
  * - `cross_section` – `float`, shape `(batch,)` – the sum of the others, the
- *   integrand in pb.
+ *   integrand in pb (a width in GeV for a decay, with the flux
+ *   @f$1 / (2 M)@f$ of the decaying particle in place of
+ *   @f$1 / (2 \hat s)@f$).
  * - `event_weight` – `float`, shape `(batch,)` – the real emission, at
  *   `momenta`.
  * - `soft_weight`, `collinear_weight`, `soft_collinear_weight` – `float`,
@@ -508,6 +518,8 @@ public:
     );
     /// Number of particles of the real processes, incoming included.
     std::size_t particle_count() const { return _particle_count; }
+    /// Number of incoming particles, one for a decay.
+    std::size_t incoming() const { return _incoming; }
     /// Number of Born orders.
     std::size_t born_order_count() const { return _born_power.size(); }
     /// Number of NLO orders.
@@ -519,6 +531,7 @@ private:
     ) const override;
 
     std::size_t _particle_count;
+    std::size_t _incoming;
     std::vector<me_int_t> _born_power, _nlo_power;
 };
 
@@ -613,6 +626,7 @@ private:
     ) const override;
 
     std::size_t _particle_count;
+    std::size_t _incoming;
     nested_vector2<me_int_t> _pdg;
     std::vector<double> _options;
 };

@@ -305,6 +305,9 @@ public:
     bool sqrt_s_hat_condition() const { return _sqrt_s_hat_condition; }
     /// Whether the PDF convolution is skipped (`x1` = `x2` = 1).
     bool leptonic() const { return _leptonic; }
+    /// Whether the topology is a decay, with one incoming particle at rest
+    /// (`x1` = `x2` = 1).
+    bool is_decay() const { return _topology.is_decay(); }
     /// Masses of the particles in the order of the output momenta, the beams
     /// first, or -1 for a position whose mass differs between permutations.
     std::vector<double> external_masses() const;

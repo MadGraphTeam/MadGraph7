@@ -7,8 +7,6 @@ using namespace madspace;
 
 namespace {
 
-constexpr std::size_t INCOMING_COUNT = 2;
-
 // product of k! over the flavors of k particles
 double identical_factor(std::vector<int> pdgs) {
     std::sort(pdgs.begin(), pdgs.end());
@@ -58,7 +56,7 @@ std::vector<int> FKSConfiguration::born_pdgs(std::size_t splitting) const {
 double FKSConfiguration::symmetry_factor() const {
     auto final_count = [&](int pdg) {
         return static_cast<double>(
-            std::count(pdgs.begin() + INCOMING_COUNT, pdgs.end(), pdg)
+            std::count(pdgs.begin() + incoming, pdgs.end(), pdg)
         );
     };
     int pdg_i = pdgs.at(i_fks), pdg_j = pdgs.at(j_fks);
@@ -71,8 +69,8 @@ double FKSConfiguration::symmetry_factor() const {
 
 double FKSConfiguration::identical_particle_ratio(std::size_t splitting) const {
     auto born = born_pdgs(splitting);
-    return identical_factor({born.begin() + INCOMING_COUNT, born.end()}) /
-        identical_factor({pdgs.begin() + INCOMING_COUNT, pdgs.end()});
+    return identical_factor({born.begin() + incoming, born.end()}) /
+        identical_factor({pdgs.begin() + incoming, pdgs.end()});
 }
 
 std::size_t madspace::check_fks_configurations(
@@ -85,7 +83,14 @@ std::size_t madspace::check_fks_configurations(
         fail("needs at least one FKS configuration");
     }
     std::size_t n = configurations.at(0).particle_count();
+    std::size_t incoming = configurations.at(0).incoming;
     for (const auto& c : configurations) {
+        if (c.incoming != incoming || (incoming != 1 && incoming != 2)) {
+            fail(
+                "the configurations need the same number of incoming particles, "
+                "two or one for a decay"
+            );
+        }
         if (c.particle_count() != n) {
             fail(
                 "the real processes of the configurations must have the same "
@@ -99,11 +104,14 @@ std::size_t madspace::check_fks_configurations(
                 "need one entry per particle of its real process"
             );
         }
-        if (c.i_fks < 2 || c.i_fks >= n || c.j_fks >= n || c.i_fks == c.j_fks) {
+        if (c.i_fks < incoming || c.i_fks >= n || c.j_fks >= n || c.i_fks == c.j_fks) {
             fail(
                 "i_fks must be a final-state particle and j_fks another particle "
                 "of the real process"
             );
+        }
+        if (incoming == 1 && c.initial_state()) {
+            fail("a decay radiates off final-state particles only");
         }
         if (c.masses.at(c.i_fks) != 0.) {
             fail("the radiated parton i must be massless");

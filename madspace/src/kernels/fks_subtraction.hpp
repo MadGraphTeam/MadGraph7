@@ -24,6 +24,18 @@ KERNELSPEC FVal<T> fks_frame_energy(FourMom<T> q, FourMom<T> p_tot, FVal<T> rs) 
     return (q[0] * p_tot[0] - q[1] * p_tot[1] - q[2] * p_tot[2] - q[3] * p_tot[3]) / rs;
 }
 
+// the sum of the incoming momenta of p, the first incoming (two, or one for a
+// decay), whose rest frame is the partonic center-of-mass frame
+template <typename T>
+KERNELSPEC FourMom<T> fks_incoming_sum(FIn<T, 2> p, std::size_t incoming) {
+    auto p1 = load_mom<T>(p[0]);
+    if (incoming == 1) {
+        return p1;
+    }
+    auto p2 = load_mom<T>(p[1]);
+    return {p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+}
+
 // d_kl of get_dkl_Sij for the momenta q1, q2 with energies e1, e2 (for the
 // energy factor; q1 can be the momentum of i per unit xi with the energy of
 // i), masses m1, m2 and color octets o1, o2. With both, the energy of 1 is
@@ -116,6 +128,7 @@ KERNELSPEC void kernel_fks_sector_function(
     IIn<T, 2> aorg,
     FIn<T, 2> masses,
     FIn<T, 1> options,
+    IIn<T, 0> incoming,
     FOut<T, 0> s
 ) {
     std::size_t c = single_index(index);
@@ -128,8 +141,9 @@ KERNELSPEC void kernel_fks_sector_function(
     bool use_energy = FVal<T>(options[2]) != 0., use_beta = FVal<T>(options[3]) != 0.;
     FVal<T> h_one = options[4], h_a = options[5];
 
-    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
-    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    std::size_t n_in = single_index(incoming);
+    auto p1 = load_mom<T>(p[0]);
+    auto p_tot = fks_incoming_sum<T>(p, n_in);
     auto rs = sqrt(max(lsquare<T>(p_tot), 0.));
     if (p1[0] <= 0. || rs <= 0.) {
         // unphysical kinematics, as fks_Sij.f
@@ -158,7 +172,8 @@ KERNELSPEC void kernel_fks_sector_function(
             FVal<T> mk = mass[k], ml = mass[l], mi = mass[ii], mj = mass[jj];
             if ((k == ii && l == jj) || (l == ii && k == jj)) {
                 inverse = inverse + 1.;
-                if (single_index(ag[k]) != 0 && single_index(ag[l]) != 0 && jj >= 2) {
+                if (single_index(ag[k]) != 0 && single_index(ag[l]) != 0 &&
+                    jj >= n_in) {
                     auto e_j = fks_frame_energy<T>(qj, p_tot, rs);
                     hfact = hfact * fks_h_damp<T>(e_i / (e_i + e_j), h_one, h_a);
                 }
@@ -257,13 +272,6 @@ KERNELSPEC void kernel_fks_sector_function(
     s = hfact / inverse;
 }
 
-// the sum of the two incoming momenta of p
-template <typename T>
-KERNELSPEC FourMom<T> fks_incoming_sum(FIn<T, 2> p) {
-    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
-    return {p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
-}
-
 // the momentum k of the resonance of the resonance-local recoil where the event
 // has one (k_0 > 0), q where it has none (k = 0)
 template <typename T>
@@ -342,13 +350,14 @@ KERNELSPEC void kernel_fks_eikonals(
     IIn<T, 2> pair_m,
     IIn<T, 2> pair_n,
     FIn<T, 2> masses,
+    IIn<T, 0> incoming,
     FOut<T, 1> eik
 ) {
     fks_eikonals_in_frame<T>(
         p,
         p_i_hat,
         y,
-        fks_incoming_sum<T>(p),
+        fks_incoming_sum<T>(p, single_index(incoming)),
         index,
         fks_j,
         pair_count,
@@ -373,13 +382,14 @@ KERNELSPEC void kernel_fks_eikonals_resonance(
     IIn<T, 2> pair_m,
     IIn<T, 2> pair_n,
     FIn<T, 2> masses,
+    IIn<T, 0> incoming,
     FOut<T, 1> eik
 ) {
     fks_eikonals_in_frame<T>(
         p,
         p_i_hat,
         y,
-        fks_frame_of<T>(k, fks_incoming_sum<T>(p)),
+        fks_frame_of<T>(k, fks_incoming_sum<T>(p, single_index(incoming))),
         index,
         fks_j,
         pair_count,
@@ -467,12 +477,22 @@ KERNELSPEC void kernel_fks_splitting_kernels(
     IIn<T, 1> fks_j,
     IIn<T, 1> kind,
     FIn<T, 2> factors,
+    IIn<T, 0> incoming,
     FOut<T, 0> z,
     FOut<T, 1> ap,
     FOut<T, 1> q
 ) {
     fks_splitting_kernels_in_frame<T>(
-        p, fks_incoming_sum<T>(p), index, fks_i, fks_j, kind, factors, z, ap, q
+        p,
+        fks_incoming_sum<T>(p, single_index(incoming)),
+        index,
+        fks_i,
+        fks_j,
+        kind,
+        factors,
+        z,
+        ap,
+        q
     );
 }
 
@@ -487,13 +507,14 @@ KERNELSPEC void kernel_fks_splitting_kernels_resonance(
     IIn<T, 1> fks_j,
     IIn<T, 1> kind,
     FIn<T, 2> factors,
+    IIn<T, 0> incoming,
     FOut<T, 0> z,
     FOut<T, 1> ap,
     FOut<T, 1> q
 ) {
     fks_splitting_kernels_in_frame<T>(
         p,
-        fks_frame_of<T>(k, fks_incoming_sum<T>(p)),
+        fks_frame_of<T>(k, fks_incoming_sum<T>(p, single_index(incoming))),
         index,
         fks_i,
         fks_j,
@@ -547,10 +568,16 @@ KERNELSPEC void kernel_fks_transverse_vector(
     FIn<T, 2> p_born,
     IIn<T, 0> index,
     IIn<T, 1> born_j,
+    IIn<T, 0> incoming,
     FOut<T, 1> k_perp
 ) {
     fks_transverse_vector_in_frame<T>(
-        p_i_hat, p_born, fks_incoming_sum<T>(p_born), index, born_j, k_perp
+        p_i_hat,
+        p_born,
+        fks_incoming_sum<T>(p_born, single_index(incoming)),
+        index,
+        born_j,
+        k_perp
     );
 }
 
@@ -563,12 +590,13 @@ KERNELSPEC void kernel_fks_transverse_vector_resonance(
     FIn<T, 1> k,
     IIn<T, 0> index,
     IIn<T, 1> born_j,
+    IIn<T, 0> incoming,
     FOut<T, 1> k_perp
 ) {
     fks_transverse_vector_in_frame<T>(
         p_i_hat,
         p_born,
-        fks_frame_of<T>(k, fks_incoming_sum<T>(p_born)),
+        fks_frame_of<T>(k, fks_incoming_sum<T>(p_born, single_index(incoming))),
         index,
         born_j,
         k_perp
@@ -597,6 +625,7 @@ KERNELSPEC void fks_prefactors_with_cuts(
     FVal<T> delta_c,
     bool collinear,
     FIn<T, 1> options,
+    std::size_t n_in,
     FOut<T, 0> f_r,
     FOut<T, 0> f_s,
     FOut<T, 0> f_c,
@@ -628,12 +657,12 @@ KERNELSPEC void fks_prefactors_with_cuts(
     auto l_delta = log(delta_c / delta_s) / delta_s;
     auto in_y = 1. / omy + l_delta;
     f_c = in_y / x_c;
-    auto s_c = lsquare<T>(fks_incoming_sum<T>(p_c));
+    auto s_c = lsquare<T>(fks_incoming_sum<T>(p_c, n_in));
     f_dc = 32. * pi * pi / (s_c * x_c * delta_s);
     auto xi_lim_c = min(FVal<T>(xi_max_c), xi_s_cut);
     auto l_xi = log(coll_cut / xi_lim_c);
     f_sc = in_y * (1. / x_c + l_xi / xi_lim_c);
-    auto s_sc = lsquare<T>(fks_incoming_sum<T>(p_sc));
+    auto s_sc = lsquare<T>(fks_incoming_sum<T>(p_sc, n_in));
     auto g = 32. * pi * pi / (s_sc * delta_s);
     auto log_cut = log(xicut), log_lim = log(xi_lim_c);
     f_dsc[0] = g / x_c;
@@ -665,6 +694,7 @@ KERNELSPEC void kernel_fks_prefactors(
     IIn<T, 1> collinear,
     FIn<T, 1> delta,
     FIn<T, 1> options,
+    IIn<T, 0> incoming,
     FOut<T, 0> f_r,
     FOut<T, 0> f_s,
     FOut<T, 0> f_c,
@@ -688,6 +718,7 @@ KERNELSPEC void kernel_fks_prefactors(
         FVal<T>(delta[c]),
         single_index(collinear[c]) != 0,
         options,
+        single_index(incoming),
         f_r,
         f_s,
         f_c,
@@ -725,6 +756,7 @@ KERNELSPEC void kernel_fks_prefactors_resonance(
     IIn<T, 1> collinear,
     FIn<T, 1> delta,
     FIn<T, 1> options,
+    IIn<T, 0> incoming,
     FOut<T, 0> f_r,
     FOut<T, 0> f_s,
     FOut<T, 0> f_c,
@@ -737,7 +769,7 @@ KERNELSPEC void kernel_fks_prefactors_resonance(
     FVal<T> xicut = options[0], delta_c = delta[c];
     auto res = load_mom<T>(k);
     auto resonant = res[0] > 0.;
-    auto total = fks_incoming_sum<T>(p_s);
+    auto total = fks_incoming_sum<T>(p_s, single_index(incoming));
     auto phat = load_mom<T>(p_i_hat_s);
     auto pj = load_mom<T>(p_s[single_index(fks_j[c])]);
     // as resonance_subtraction_scales, at a pass-through k without a resonance
@@ -764,6 +796,7 @@ KERNELSPEC void kernel_fks_prefactors_resonance(
         where(resonant, delta_c * angular_scale, delta_c),
         single_index(collinear[c]) != 0,
         options,
+        single_index(incoming),
         f_r,
         f_s,
         f_c,
@@ -1416,14 +1449,15 @@ KERNELSPEC void kernel_fks_soft_virtual(
     IIn<T, 2> born_index,
     FIn<T, 1> ren_factor,
     FIn<T, 1> options,
+    IIn<T, 0> incoming,
     FOut<T, 1> soft_virtual,
     FOut<T, 1> ren_coefficient,
     FOut<T, 2> fact_coefficients
 ) {
     constexpr double pi = 3.14159265358979323846;
     FVal<T> xicut = options[0], delta_o = options[1];
-    auto p1 = load_mom<T>(momenta[0]), p2 = load_mom<T>(momenta[1]);
-    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    std::size_t n_in = single_index(incoming);
+    auto p_tot = fks_incoming_sum<T>(momenta, n_in);
     FVal<T> s = lsquare<T>(p_tot), rs = sqrt(s);
     FVal<T> mu_r = ren_scale, mu_r2 = mu_r * mu_r;
     FVal<T> l_s = log(s / mu_r2), log_xicut = log(xicut);
@@ -1445,13 +1479,14 @@ KERNELSPEC void kernel_fks_soft_virtual(
         FVal<T> a = (t == 0 ? FVal<T>(alpha_s) : FVal<T>(alpha)) / (2. * pi);
         // the Q terms and the coefficients of log mu_F^2 per unit Born
         FVal<T> q = 0.;
-        FVal<T> fact[2];
-        for (std::size_t j = 0; j < 2; ++j) {
+        // (a decay has no beams, and its incoming particle no Q term)
+        FVal<T> fact[2] = {0., 0.};
+        for (std::size_t j = 0; j < n_in; ++j) {
             FVal<T> mu_f = j == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
             fact[j] = -(FVal<T>(gamma[t][j]) + 2. * FVal<T>(casimir[t][j]) * log_xicut);
             q = q + fact[j] * log(mu_f * mu_f / mu_r2);
         }
-        for (std::size_t j = 2; j < momenta.size(); ++j) {
+        for (std::size_t j = n_in; j < momenta.size(); ++j) {
             FVal<T> c = casimir[t][j], g = gamma[t][j], g_prime = gamma_prime[t][j];
             if (c == 0. && g == 0. && g_prime == 0.) {
                 continue;
@@ -1507,7 +1542,9 @@ KERNELSPEC void kernel_fks_soft_virtual(
 // with g_s = sqrt(4 pi alpha_s), the power p_o of g_s of order o and
 // s = (p_1 + p_2)^2, as sigint of driver_mintFO.f multiplies the weight lines
 // (without g_s) by g_strong^QCDpower and the luminosity of their kinematics.
-// Zero where det is zero, where the kinematics may be unset.
+// For a decay (one incoming particle of mass M = sqrt(p_1^2)) the flux is
+// 1 / (2 M) and the weight a width in GeV. Zero where det is zero, where the
+// kinematics may be unset.
 template <typename T>
 KERNELSPEC void kernel_fks_contribution_weight(
     FIn<T, 1> coefficients,
@@ -1517,12 +1554,12 @@ KERNELSPEC void kernel_fks_contribution_weight(
     FIn<T, 0> luminosity,
     FIn<T, 0> factor,
     IIn<T, 1> powers,
+    IIn<T, 0> incoming,
     FOut<T, 0> weight
 ) {
     constexpr double pi = 3.14159265358979323846;
-    auto p1 = load_mom<T>(momenta[0]), p2 = load_mom<T>(momenta[1]);
-    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
-    FVal<T> s = lsquare<T>(p_tot);
+    bool decay = single_index(incoming) == 1;
+    FVal<T> s = lsquare<T>(fks_incoming_sum<T>(momenta, single_index(incoming)));
     FVal<T> g_s = sqrt(4. * pi * FVal<T>(alpha_s));
     FVal<T> sum = 0.;
     for (std::size_t o = 0; o < coefficients.size(); ++o) {
@@ -1534,10 +1571,12 @@ KERNELSPEC void kernel_fks_contribution_weight(
     }
     FVal<T> d = det;
     FVal<T> safe_s = where(d == 0., 1., s);
+    FVal<T> product = FVal<T>(luminosity) * FVal<T>(factor) * d * sum;
     weight = where(
         d == 0.,
         0.,
-        INV_GEV2_TO_PB * FVal<T>(luminosity) * FVal<T>(factor) * d * sum / (2. * safe_s)
+        decay ? FVal<T>(product / (2. * sqrt(safe_s)))
+              : FVal<T>(INV_GEV2_TO_PB * product / (2. * safe_s))
     );
 }
 

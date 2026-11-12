@@ -110,6 +110,7 @@ private:
     std::vector<std::vector<std::pair<std::size_t, std::size_t>>> _pairs;
     nested_vector2<double> _masses;
     bool _resonance;
+    std::size_t _incoming;
 };
 
 /**
@@ -211,6 +212,7 @@ private:
     std::vector<int> _kind;
     nested_vector2<double> _factors;
     bool _resonance;
+    std::size_t _incoming;
 };
 
 /**
@@ -392,6 +394,7 @@ private:
     std::size_t _nlo_order_count;
     bool _collinear_born;
     bool _resonance;
+    std::size_t _incoming;
     std::vector<me_int_t> _fks_i;
     std::vector<me_int_t> _fks_j;
     std::vector<me_int_t> _pair_count;
@@ -555,6 +558,7 @@ private:
     nested_vector2<double> _masses;
     double _xicut, _xi_s_cut, _delta_o, _delta_i, _delta_s;
     bool _resonance;
+    std::size_t _incoming;
 };
 
 } // namespace madspace
