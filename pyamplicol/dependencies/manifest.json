@@ -29,8 +29,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "71eddb151e3994e6db8222221cde48b7510cc547",
-      "note": "the topic pyamplicol/box-mu-conditioning (71eddb15: the box mu-expansion's conditioning bound in both engines, a flagged lane decided a posteriori in the binary64 engines, docs/box-mu-conditioning.md) on main 98e223da, whose tree is 5b6a8f57's: main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pins on oneloopmaster a7cf4587 and Symbolica b9eaa735, Symbolica dfe6bd97 and oneloopmaster bd703d09; it reaches main through a merge commit, which the coordinator pushes before this pin lands"
+      "revision": "5fe7f3920aabd8454442a04143755c4812d9f145",
+      "note": "main 5fe7f392 = the merge of the topic pyamplicol/box-mu-conditioning (71eddb15, same tree: the box mu-expansion's conditioning bound in both engines, a flagged lane decided a posteriori in the binary64 engines, docs/box-mu-conditioning.md) on main 98e223da, whose tree is 5b6a8f57's: main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pins on oneloopmaster a7cf4587 and Symbolica b9eaa735, Symbolica dfe6bd97 and oneloopmaster bd703d09; it reaches main through a merge commit, which the coordinator pushes before this pin lands"
     },
     {
       "name": "oneloopmaster",
@@ -50,8 +50,8 @@
       ],
       "url": "https://github.com/huashengshao/TIRust.git",
       "ref": "main",
-      "revision": "fefb5f2b0a8aaabb4977db990219725f248dfc94",
-      "note": "main after the one history rewrite (2026-11-07; 760e3144 = rewritten ff13bd7), re-pinned on oneloopmaster bd703d09 (3f28d9c3) and to fefb5f2b (lit-tirust-io's supplied invariants, mu^2 input, embedder mode, lifted caps and capability query; lit-tirust-mc's small-Gram fix; lit-tirust-store's persistent tensor store, masters provider, rotation copy and direct-engine concurrency); behind the default cargo feature tir of the crates that link it; oneloop bd703d09 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
+      "revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+      "note": "main 854b79dc (PRs #25-#30: double-double subset sharing inside an AmplitudeWorkspace, opt-in RotationTest::Disabled on the TensorWorkspace facade; defaults unchanged) after the one history rewrite (2026-11-07; 760e3144 = rewritten ff13bd7), re-pinned on oneloopmaster bd703d09 (3f28d9c3) and to fefb5f2b (lit-tirust-io's supplied invariants, mu^2 input, embedder mode, lifted caps and capability query; lit-tirust-mc's small-Gram fix; lit-tirust-store's persistent tensor store, masters provider, rotation copy and direct-engine concurrency); behind the default cargo feature tir of the crates that link it; oneloop bd703d09 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
     },
     {
       "name": "feynkit",
