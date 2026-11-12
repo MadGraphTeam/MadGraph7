@@ -1002,7 +1002,11 @@ gates' reason (under `"auto"` the per-point fallback evaluates it on NinjaRS;
 under an explicit `"tirust"` it stays a failed point and a rescue's next
 level moves it). In binary64 the rows the gates refuse are tried once more
 with TIRust's own method choice (small-Gram expansions or an alternative
-reduction), and each such value is kept only if it agrees with the same row
+reduction); a row the method choice cannot serve either is evaluated by plain
+Passarino-Veltman reduction without the gates (the **verified last resort**:
+the gates bound the worst case of a Gram system, not the error of the row,
+and plain reduction is often accurate there). Each such value is kept only if
+it agrees with the same row
 evaluated again at rescaled inputs (a check that sees the wrong values a
 rotated frame alone misses) within the calibrated acceptance of the
 **target accuracy** `evaluation.reduction_target` (CLI `--reduction-target`,
@@ -1012,7 +1016,10 @@ against its own size): the target divided by 580, the largest measured ratio
 of a true error to that frame deviation against consistent high-precision
 truths; a value that fails this check fails its point the same way. The
 target only admits values (a value served at one target is the same at
-another) and governs only the values the method choice admits: rows that pass
+another) and governs only the values the method choice and the verified last
+resort admit (the calibration was measured on method-choice values and is
+carried over to the last resort, checked at the default target on a few
+hundred points of five processes): rows that pass
 the conditioning gates carry binary64's own reduction error (measured up to
 about 1e-7 relative), so a target tighter than that can be missed; it is a
 calibrated acceptance, not a certificate. In double-double and arbitrary

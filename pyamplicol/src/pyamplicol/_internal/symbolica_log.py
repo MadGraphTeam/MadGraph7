@@ -250,33 +250,57 @@ def capture(where: str) -> Iterator[Captured]:
 _MODEL_LOG = logging.getLogger("pyamplicol.models")
 
 
-def _inside(filename: object, root: Path) -> bool:
+def _inside(filename: object, root: Path, directory: bool) -> bool:
+    """Whether ``filename`` is a file of the model: inside its directory
+    ``root``, or ``root`` itself when the model source is one file."""
+
     try:
-        return Path(str(filename)).resolve().is_relative_to(root)
+        path = Path(str(filename)).resolve()
     except (OSError, RuntimeError, ValueError):
         return False
+    return path.is_relative_to(root) if directory else path == root
 
 
 @contextmanager
 def ufo_source_warnings(source: os.PathLike[str] | str) -> Iterator[None]:
     """Record the Python warnings attributed to a file of the UFO model
-    ``source`` (a directory, or a file of one) raised while the block
-    imports or compiles it, instead of printing them (module docstring).
-    Scoped: the block runs under ``warnings.catch_warnings(record=True)``
-    with the caller's filters unchanged (an ``error`` filter still raises);
-    the warnings of other files are re-emitted after the block."""
+    ``source`` (a directory: any file inside it; a single file: that file
+    only) raised while the block imports or compiles it, instead of printing
+    them (module docstring). Scoped: the block runs under
+    ``warnings.catch_warnings(record=True)`` with the caller's filters
+    unchanged (an ``error`` filter still raises); the warnings of other files
+    are re-emitted after the block, also when it raises. Each compile counts:
+    a model compiled twice (an import and a source check) reports each of its
+    warnings twice. ``catch_warnings`` swaps process-wide state, so model
+    loads are not meant to overlap in threads (they do not today)."""
 
     path = Path(source).expanduser().resolve()
-    root = path if path.is_dir() else path.parent
-    with warnings.catch_warnings(record=True) as caught:
-        try:
-            yield
-        finally:
-            recorded = list(caught)
+    directory = path.is_dir()
+    recorded: list[warnings.WarningMessage] = []
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            try:
+                yield
+            finally:
+                recorded = list(caught)
+    finally:
+        # After the caller's filters are restored, also when the block
+        # raises: re-emitted warnings meet the caller's own filters.
+        _dispatch(recorded, path, directory)
+
+
+def _dispatch(
+    recorded: list[warnings.WarningMessage], path: Path, directory: bool
+) -> None:
     with _GUARD:
         sink = _ACTIVE[0] if _ACTIVE else None
+    name = path.name if directory else path.parent.name
     for item in recorded:
-        if not _inside(item.filename, root):
+        if not _inside(item.filename, path, directory):
+            # Re-emitted at the original location. The original module's
+            # warning registry is not recorded by catch_warnings, so a
+            # 'default' / 'once' filter deduplicates against the module
+            # derived from the file name (warn_explicit's own default).
             warnings.warn_explicit(
                 item.message,
                 item.category,
@@ -290,7 +314,7 @@ def ufo_source_warnings(source: os.PathLike[str] | str) -> Iterator[None]:
         if sink is not None:
             sink.add("ufo-model", kind, message)
         else:
-            _MODEL_LOG.debug("UFO model %s: %s: %s", root.name, kind, message)
+            _MODEL_LOG.debug("UFO model %s: %s: %s", name, kind, message)
 
 
 __all__ = [

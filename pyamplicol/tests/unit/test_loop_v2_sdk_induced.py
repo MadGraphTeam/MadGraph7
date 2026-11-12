@@ -1105,14 +1105,16 @@ def test_the_sdk_fallback_and_target_need_no_symbolica_licence(
     assert record["arithmetic"] == "double-double"
 
 
-def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
+def test_a_checked_tirust_refusal_falls_back_at_the_default_target(
     loop_native, tmp_path
 ):
-    """F3 (c), Done 1 (ii) (1), at the DEFAULT target (1e-5): a refusal no
-    acceptance governs. g g > a a g (LI-33) at its first frozen stream points:
-    TIRust's conditioning gates refuse a row and then its method choice
-    refuses it too ("refused by the gates, then by the method choice"), so
-    explicit "tirust" fails the point typed in the Python API and the C ABI;
+    """F3 (c), Done 1 (ii) (1), at the DEFAULT target (1e-5): g g > a a g
+    (LI-33) at its first frozen stream points, where TIRust refuses a point
+    on its acceptance check (before m-lit tir-uuzggg the refusal was
+    structural: its conditioning gates and then its method choice refused a
+    row; that row now goes through the verified last resort, whose
+    acceptance check refuses a lane), so explicit "tirust" fails the point
+    typed in the Python API and the C ABI;
     "auto" serves it on NinjaRS (its value bitwise the explicit NinjaRS one,
     its record NinjaRS and the fallback's reason), the C ABI's diagnostics
     naming it under "fallbacks", bitwise the Python API's values. A binary64
@@ -1142,20 +1144,19 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
     tirust = runtime.evaluate(exact_points, reduction="tirust", **options)
     ninjars = runtime.evaluate(exact_points, reduction="ninjars", **options)
     auto = runtime.evaluate(exact_points, **options)
-    refused = [
-        p
-        for p, lane in enumerate(tirust.diagnostics)
-        if "refused by the gates, then by the method choice" in lane.detail
-    ]
+    refused = [p for p, value in enumerate(tirust.values) if value is None]
     assert refused, [lane.detail[:200] for lane in tirust.diagnostics]
     for p, lane in enumerate(auto.diagnostics):
         if tirust.values[p] is None:
             assert lane.reduction.effective == "ninjars", p
-            assert (
-                "refused by the gates, then by the method choice"
-                in (lane.reduction.reason)
-                or p not in refused
-            )
+            assert any(
+                cause in lane.reduction.reason
+                for cause in (
+                    "lane refused by its check",
+                    "check row failed",
+                    "gate-0 last resort",
+                )
+            ), lane.reduction.reason
             assert repr(auto.values[p]) == repr(ninjars.values[p]), p
             assert lane.reduction.guard_estimate is None, p
         else:

@@ -331,9 +331,10 @@ artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
 NinjaRS for a Born-interfered process (TIRust for both on a TIR-only
 artifact) and falls back to NinjaRS, with the reason recorded, where TIRust
 cannot serve the call (a native extension built without TIRust). On TIRust,
-`"auto"` has a **per-point NinjaRS fallback**: a point TIRust refuses (a
-kinematic row its conditioning gates and then its checked method choice
-refuse, or a method-choice value beyond the target, below) or fails (also in
+`"auto"` has a **per-point NinjaRS fallback**: a point TIRust refuses (in
+binary64 a value of its checked method choice or of its verified last resort
+that its acceptance check finds beyond the target, below; in double-double and
+arbitrary precision a kinematic row its conditioning gates refuse) or fails (also in
 the call's own stability checks, e.g. a rotated evaluation) is evaluated again
 on NinjaRS from its original exact inputs, in the call's own arithmetic,
 after the TIRust call. That point's lane records its own `VirtualReduction`:
@@ -729,7 +730,10 @@ result's warnings into ONE `pyamplicol.NumericalAccuracyWarning` (a
 `UserWarning` subclass, filterable with the standard `warnings` module).
 `Generator.generate` and `pyamplicol.check` return the known, benign
 dependency log events they trigger in their result's `warnings` (source
-`"symbolica"` or `"ufo-model-loader"`) instead of printing them.
+`"symbolica"` or `"ufo-model-loader"`) instead of printing them, and so the
+Python warnings a UFO model's own modules raise when they are compiled (source
+`"ufo-model"`, for example Python 3.12's `SyntaxWarning` for an invalid escape
+such as `'\lambda'` in a TeX name; one entry per compile).
 
 `on_failure` selects the policy: `"best-effort"` (the default; `None`
 means it), `"return"` (such points stay failed lanes, no extra evaluation)

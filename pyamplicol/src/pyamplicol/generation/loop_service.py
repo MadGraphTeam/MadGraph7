@@ -2158,7 +2158,10 @@ def _require_stored(context, stored) -> None:
             f"{stored.root}: the model check prepared is not the artifact's "
             f"stored model ({'; '.join(differ)}): check regenerates the stored "
             "processes from their own model; give the stored model's source "
-            "(model= / --model)"
+            "(model= / --model), or regenerate the artifact from the current "
+            "model (a content_sha256 difference alone means the model's files "
+            "changed since the artifact was generated, for example a newer "
+            "pyAmpliCol's bundled copy)"
         )
     expected = {str(p["id"]): str(p["expression"]) for p in stored.processes}
     regenerated = {

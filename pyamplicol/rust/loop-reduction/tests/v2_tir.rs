@@ -307,7 +307,7 @@ fn gate_refused(lane: &LaneOutcome<f64>) -> bool {
             assert!(
                 reason.contains("refused by the conditioning gates")
                     || reason.contains("refused by the gates, then by the method choice")
-                    || reason.contains("method-choice lane refused by its check"),
+                    || reason.contains("lane refused by its check"),
                 "not a gate refusal: {reason}"
             );
             true
@@ -1545,8 +1545,10 @@ fn the_rescaled_acceptance_refuses_the_rotation_blind_lanes() {
                 let reason = default[0][lane]
                     .as_ref()
                     .expect_err("a blind lane is refused");
+                // A method-choice lane, or a lane of the verified last
+                // resort (tir-uuzggg), refused by the acceptance check.
                 assert!(
-                    reason.contains("method-choice lane refused by its check"),
+                    reason.contains("lane refused by its check"),
                     "lane {lane}: {reason}"
                 );
             }
@@ -1622,7 +1624,7 @@ fn refused_lanes_state_their_measures_as_data() {
             .find(|m| !m.check && m.group == 0 && m.lane == lane);
         match outcome {
             Ok(_) => assert!(measure.is_none(), "lane {lane}"),
-            Err(reason) if reason.contains("method-choice lane refused by its check") => {
+            Err(reason) if reason.contains("lane refused by its check") => {
                 deviations += 1;
                 let measure = measure.expect("a deviation measure").measure;
                 assert_eq!(measure.kind, MeasureKind::MethodChoiceDeviation);
@@ -1963,6 +1965,115 @@ fn the_unchecked_mode_skips_the_acceptance_and_serves_by_the_last_resort() {
     assert_eq!(again, served);
     let statistics = V2Backend::<f64>::take_statistics(&mut off);
     assert_eq!(statistics.counts, checked_statistics.counts);
+}
+
+/// The verified last resort of the checked mode (m-lit tir-uuzggg,
+/// `TirOptions::verified_last_resort`, on by default): the rows the method
+/// choice refuses (here forced by an expert's method-choice gate of 1, which
+/// its PV systems never pass) are served by the gate-0 last resort and each
+/// of their lanes is verified like a method-choice lane. Off: those lanes
+/// fail closed with the method choice's reason. On: the same lanes the off
+/// run serves, bitwise; every other lane either served within the target of
+/// the 80-digit truth or refused by the acceptance check with its measure;
+/// the last resort counts exactly the rows the method choice refused; at
+/// least one refused lane is now served.
+#[test]
+fn the_verified_last_resort_serves_method_choice_refusals_its_check_accepts() {
+    let groups = unchecked_groups();
+    let truth = consistent_truth(&groups, 80);
+    let refusing = TirOptions {
+        method_choice_gate: 1.0,
+        ..TirOptions::default()
+    };
+    assert!(refusing.verified_last_resort, "on by default");
+    let run = |options: TirOptions| {
+        let mut backend = V2Backends::TiRust(Box::new(TirReductionBackend::new(options)));
+        let (found, _) = reduce(&mut backend, &groups, Poles::All, None);
+        (found, V2Backend::<f64>::take_statistics(&mut backend))
+    };
+    let (closed, closed_statistics) = run(TirOptions {
+        verified_last_resort: false,
+        ..refusing
+    });
+    eprintln!("off: {:?}", closed_statistics.counts);
+    assert_eq!(count(&closed_statistics, "TIR last-resort rows"), 0);
+    let (found, statistics) = run(refusing);
+    eprintln!("on: {:?}", statistics.counts);
+    let refused = count(&statistics, "TIR gate refusals");
+    let choice = count(&statistics, "TIR method-choice rows");
+    assert!(refused > choice, "the method choice refuses rows");
+    assert_eq!(count(&statistics, "TIR last-resort rows"), refused - choice);
+    // The method-choice lanes and their check are untouched: the same
+    // method-choice refusals as with the option off.
+    assert_eq!(
+        count(
+            &statistics,
+            "TIR method-choice lanes refused by their check"
+        ),
+        count(
+            &closed_statistics,
+            "TIR method-choice lanes refused by their check"
+        )
+    );
+    let (mut rescued, mut still, mut checked_out) = (0, 0, 0);
+    for (g, group) in found.iter().enumerate() {
+        for (lane, value) in group.iter().enumerate() {
+            match (&closed[g][lane], value) {
+                (Ok(before), after) => {
+                    assert_eq!(Ok(before), after.as_ref(), "family {g} lane {lane}");
+                }
+                (Err(before), Ok(after)) => {
+                    assert!(
+                        before.contains("then by the method choice"),
+                        "family {g} lane {lane}: {before}"
+                    );
+                    let error = relative(after, truth[g][lane].as_ref().unwrap());
+                    eprintln!(
+                        "family {g} lane {lane}: served by the verified last resort, {error:e} from the truth"
+                    );
+                    assert!(
+                        error <= rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
+                        "family {g} lane {lane}: {error:e}"
+                    );
+                    rescued += 1;
+                }
+                (Err(before), Err(after)) => {
+                    assert!(
+                        after.contains("refused by its check")
+                            || after.contains("check row failed")
+                            || after.contains("gate-0 last resort"),
+                        "family {g} lane {lane}: {after}"
+                    );
+                    // A lane the method choice refused and the last resort
+                    // served is refused by the check as a LAST-RESORT lane,
+                    // never labelled as a method-choice lane.
+                    if before.contains("then by the method choice")
+                        && (after.contains("refused by its check")
+                            || after.contains("check row failed"))
+                    {
+                        assert!(
+                            after.contains("TIRust last-resort (gate-0 plain PV) lane"),
+                            "family {g} lane {lane}: {after}"
+                        );
+                        checked_out += 1;
+                    }
+                    still += 1;
+                }
+            }
+        }
+    }
+    eprintln!(
+        "verified last resort: {rescued} lanes served, {still} still refused \
+         ({checked_out} by its check)"
+    );
+    assert_eq!(
+        count(&statistics, "TIR last-resort lanes refused by their check"),
+        checked_out
+    );
+    assert!(
+        rescued > 0,
+        "the verified last resort serves a refused lane"
+    );
 }
 
 /// The unchecked mode in the extended carriers (m-lit lit-unchecked; their

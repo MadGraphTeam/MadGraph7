@@ -146,3 +146,53 @@ def test_the_loader_path_returns_them(tmp_path: Path) -> None:
     assert len(found) == 1
     assert found[0].message.startswith("parameters.py:23: ")
     assert "invalid escape sequence" in found[0].message
+
+
+def test_a_raising_block_still_sorts_its_warnings(tmp_path: Path) -> None:
+    """A loader failure inside the scope: the model's warnings are still
+    captured and the others still re-emitted, then the error propagates."""
+
+    root = _model(tmp_path, "escmodel_raise")
+    with warnings.catch_warnings(record=True) as shown:
+        warnings.simplefilter("always")
+        with (
+            symbolica_log.capture("generate") as sink,
+            pytest.raises(RuntimeError, match="loader failed"),
+            symbolica_log.ufo_source_warnings(root),
+        ):
+            _import(root)
+            warnings.warn("not the model's", UserWarning, stacklevel=1)
+            raise RuntimeError("loader failed")
+    assert [str(item.message) for item in shown] == ["not the model's"]
+    assert [item.source for item in sink.warnings()] == ["ufo-model"]
+
+
+def test_a_file_source_claims_only_that_file(tmp_path: Path) -> None:
+    """A single-file source (a JSON model) claims its own file only: a
+    warning from a sibling module of the same directory is re-emitted."""
+
+    root = _model(tmp_path, "escmodel_file")
+    model_file = tmp_path / "model.json"
+    model_file.write_text("{}", encoding="utf-8")
+    with warnings.catch_warnings(record=True) as shown:
+        warnings.simplefilter("always")
+        with (
+            symbolica_log.capture("generate") as sink,
+            symbolica_log.ufo_source_warnings(model_file),
+        ):
+            _import(root)
+    assert [item.category for item in shown] == [ESCAPE_CATEGORY]
+    assert sink.warnings() == ()
+    with (
+        symbolica_log.capture("generate") as sink,
+        symbolica_log.ufo_source_warnings(root / "parameters.py"),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("always")
+        compile(
+            (root / "parameters.py").read_bytes(),
+            str(root / "parameters.py"),
+            "exec",
+            dont_inherit=True,
+        )
+    assert [item.source for item in sink.warnings()] == ["ufo-model"]
