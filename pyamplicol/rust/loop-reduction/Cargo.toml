@@ -22,9 +22,9 @@ tir = ["dep:iregi-rust", "dep:iregi-masters", "rusticol-core/tirust-capability"]
 feynkit-kinematics = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
 pyamplicol = { path = "../crates/pyamplicol" }
 rusticol-core = { path = "../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge", "loop-v2"] }
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "71eddb151e3994e6db8222221cde48b7510cc547" }
-ninjars-graph = { git = "https://github.com/alphal00p/ninjars.git", rev = "71eddb151e3994e6db8222221cde48b7510cc547" }
-ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "71eddb151e3994e6db8222221cde48b7510cc547", features = ["native-masters"] }
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "5fe7f3920aabd8454442a04143755c4812d9f145" }
+ninjars-graph = { git = "https://github.com/alphal00p/ninjars.git", rev = "5fe7f3920aabd8454442a04143755c4812d9f145" }
+ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "5fe7f3920aabd8454442a04143755c4812d9f145", features = ["native-masters"] }
 # One oneloop feature set in every root build (M-LIT PLAN §2.c.2 item 3, the Q28
 # rule): NinjaRS's native masters need generated-evaluators, TIRust rust-codegen;
 # rust-codegen only adds modules (rust_codegen, native::batch).
@@ -35,5 +35,5 @@ serde_json = "1"
 # A commit of TIRust's main (after its one history rewrite); its oneloop
 # revision and feature set are this manifest's, its Symbolica requirement
 # ("3.0") resolves to the root [patch.crates-io] revision.
-iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "2bba1b2502661a8170f7b00eed9afa2ed0ac3e78", optional = true }
-iregi-masters = { git = "https://github.com/huashengshao/TIRust.git", rev = "2bba1b2502661a8170f7b00eed9afa2ed0ac3e78", optional = true }
+iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "854b79dcb7fffcb35e92b4a8a3dd443369b798c4", optional = true }
+iregi-masters = { git = "https://github.com/huashengshao/TIRust.git", rev = "854b79dcb7fffcb35e92b4a8a3dd443369b798c4", optional = true }
