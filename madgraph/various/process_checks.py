@@ -5164,7 +5164,15 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
     mg_root = cmd._mgme_dir
     
     cmass_scheme = cmd.options['complex_mass_scheme']
-    
+
+    if isinstance(processes_unit, base_objects.ProcessDefinition) and \
+                                            processes_unit.get('decay_chains'):
+        return check_unitary_feynman_decay_chains(
+                    [('unitary', True, processes_unit),
+                     ('axial', 2, processes_axial),
+                     ('FD', 3, processes_fd)],
+                    param_card=param_card, options=options, cmd=cmd)
+
     if isinstance(processes_unit, base_objects.ProcessDefinition):
         # Generate a list of unique processes
         # Extract IS and FS ids
@@ -6499,6 +6507,160 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
 
     return (process.nice_string().replace('Process:', '').strip(),result)
 
+def boost_from_rest_frame(p, parent):
+    """p, given in the rest frame of 'parent' (a time-like momentum), seen in
+    the frame where the parent has momentum 'parent'."""
+    mass = math.sqrt(max(parent[0]**2 - sum(x * x for x in parent[1:]), 0.))
+    pdot = sum(p[i] * parent[i] for i in range(1, 4))
+    factor = pdot / (mass * (parent[0] + mass)) + p[0] / mass
+    return [(p[0] * parent[0] + pdot) / mass] + \
+           [p[i] + factor * parent[i] for i in range(1, 4)]
+
+
+DECAY_CHAIN_WIDTH = 1e-9
+
+def get_decay_chain_momenta(evaluator, process, options=None, parent=None):
+    """A phase-space point for all the external legs of a decay-chain process,
+    in the order of process.get_legs_with_decays().
+
+    The core process is drawn as for any process (get_momenta), and each decay
+    in the rest frame of the decaying particle, boosted to its momentum,
+    recursively: every decayed particle is on its mass shell."""
+
+    core, _ = evaluator.get_momenta(process, options)
+    legs = process.get('legs')
+    numbers = sorted(leg.get('number') for leg in legs)
+    momenta = [core[numbers.index(leg.get('number'))] for leg in legs]
+    if parent is not None:
+        momenta = [boost_from_rest_frame(p, parent) for p in momenta]
+
+    # same pairing of decays with legs as Process.get_legs_with_decays
+    decays = list(process.get('decay_chains'))
+    decay_of_leg = {}
+    for i, leg in enumerate(legs):
+        if not leg.get('state'):
+            continue
+        ids = [d.get('legs')[0].get('id') for d in decays]
+        if leg.get('id') in ids:
+            decay_of_leg[i] = decays.pop(ids.index(leg.get('id')))
+    assert not decays
+
+    out = []
+    for i, p in enumerate(momenta):
+        if i in decay_of_leg:
+            out.extend(get_decay_chain_momenta(evaluator, decay_of_leg[i],
+                                               options, p)[1:])
+        else:
+            out.append(p)
+    return out
+
+
+def decayed_particles(model, process):
+    """The particles decayed in a decay-chain process (at any depth); they
+    need a mass shell."""
+    particles = []
+    for decay in process.get('decay_chains'):
+        leg = decay.get('legs')[0]
+        # a ProcessDefinition has multi-legs
+        pdg = leg.get('ids')[0] if 'ids' in leg else leg.get('id')
+        particle = model.get_particle(model.merged_particles.get(pdg, [pdg])[0])
+        if particle.get('mass').upper() == 'ZERO':
+            raise InvalidCmd("'check gauge' with a decay chain needs massive "
+                "decayed particles: %s is massless." % particle.get_name())
+        particles.append(particle)
+        particles.extend(decayed_particles(model, decay))
+    return particles
+
+
+def decay_chain_string(process):
+    """One line in the syntax of 'generate', e.g. 'u u~ > t t~, (t > w+{0} b,
+    w+ > e+ ve)', for the table of 'check gauge'."""
+    text = process.nice_string(prefix=False, print_weighted=False)
+    text = text.split('\n')[0].split(' @')[0].strip()
+    for decay in process.get('decay_chains'):
+        sub = decay_chain_string(decay)
+        text += ', ' + ('(%s)' % sub if decay.get('decay_chains') else sub)
+    return text
+
+
+def check_unitary_feynman_decay_chains(gauge_procdefs, param_card=None,
+                                       options=None, cmd=FakeInterface()):
+    """'check gauge' for a process with decay chains, such as
+    't > w+{0} b, w+ > ta+ vt': the same phase-space point is evaluated in
+    each gauge of gauge_procdefs, a list of (name, aloha.unitary_gauge value,
+    ProcessDefinition or None to skip that gauge).
+
+    Every decayed particle is on its mass shell (get_decay_chain_momenta),
+    where a decay chain is meaningful: off shell, the chain is a subset of
+    the diagrams and depends on the gauge in proportion to q^2 - M^2 + iM*W.
+    Its propagator is kept finite there by a width of 1e-9 M
+    (DECAY_CHAIN_WIDTH), the same factor in every gauge; the other widths are
+    zero, as for any gauge check outside the complex-mass scheme. The gauge
+    dependence is then of order 1e-10: on 'u d~ > w+ z' with both bosons
+    decayed it is 4e-4 at the physical widths, 4e-8 at 1e-6 M, 4e-11 at
+    1e-9 M, while below 1e-10 M the rounding of q^2 - M^2 takes over.
+    The Feynman gauge is never in the list: a decay chain fixes the
+    intermediate vector, without its Goldstone boson, so the chain is not
+    complete there (and a polarised propagator does not exist there).
+
+    Returns the list of check_unitary_feynman, with 'value_unit',
+    'value_axial', 'value_fd' entries (no 'value_feynm')."""
+
+    cmass_scheme = cmd.options['complex_mass_scheme']
+    first = [procdef for _, _, procdef in gauge_procdefs if procdef][0]
+
+    results = {}
+    momenta = {}
+    order = []
+    for name, gauge, procdef in gauge_procdefs:
+        if procdef is None:
+            continue
+        with misc.TMP_variable(aloha, 'unitary_gauge', gauge):
+            model = procdef.get('model')
+            evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
+                                               auth_skipping=False, reuse=False)
+            param = evaluator.full_model.get('parameter_dict')
+            if not cmass_scheme:
+                for particle in evaluator.full_model.get('particles'):
+                    if particle.get('width') != 'ZERO':
+                        param[particle.get('width')] = 0.
+            for particle in decayed_particles(evaluator.full_model, procdef):
+                if particle.get('width') == 'ZERO':
+                    raise InvalidCmd("'check gauge' with a decay chain needs "
+                        "a width parameter for the decayed %s."
+                        % particle.get_name())
+                param[particle.get('width')] = DECAY_CHAIN_WIDTH * \
+                                            abs(param[particle.get('mass')])
+            amplitudes = diagram_generation.MultiProcess(procdef,
+                                    collect_mirror_procs=False).get('amplitudes')
+            matrix_elements = helas_objects.HelasMultiProcess(
+                                    amplitudes).get_matrix_elements()
+            for me in matrix_elements:
+                for process in me.get('processes'):
+                    key = decay_chain_string(process)
+                    logger.info("Checking process %s in %s gauge" % (key, name))
+                    if key not in momenta:
+                        momenta[key] = get_decay_chain_momenta(evaluator,
+                                                               process, options)
+                        order.append(key)
+                    value = evaluator.evaluate_matrix_element(me,
+                                p=momenta[key], output='jamp', options=options)
+                    results.setdefault(key, {})[name] = value
+            clean_added_globals(ADDED_GLOBAL)
+
+    labels = {'unitary': 'value_unit', 'axial': 'value_axial', 'FD': 'value_fd'}
+    output = [first]
+    for key in order:
+        values = results[key]
+        if 'unitary' not in values or None in values.values():
+            continue
+        entry = {'process': key}
+        for name, value in values.items():
+            entry[labels[name]] = value
+        output.append(entry)
+    return output
+
+
 def get_value(process, evaluator, p=None, options=None):
     """Return the value/momentum for a phase space point"""
     
@@ -6754,7 +6916,10 @@ def output_unitary_feynman(comparison_results, output='text'):
     col_size = 18
     use_axial = any('value_axial' in comp for comp in comparison_results)
     use_fd = any('value_fd' in comp for comp in comparison_results)
-    gauge_columns = [("Unitary", 'value_unit'), ("Feynman", 'value_feynm')]
+    use_feynman = any('value_feynm' in comp for comp in comparison_results)
+    gauge_columns = [("Unitary", 'value_unit')]
+    if use_feynman:
+        gauge_columns.append(("Feynman", 'value_feynm'))
     if use_axial:
         gauge_columns.append(("Axial", 'value_axial'))
     if use_fd:

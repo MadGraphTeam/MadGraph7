@@ -1496,5 +1496,117 @@ class TestPrecisionCheck(unittest.TestCase):
                 shutil.rmtree(output_path, ignore_errors=True)
 
 
+
+class TestCheckGaugeDecayChain(unittest.TestCase):
+    """'check gauge' on a decay chain (process_checks.
+    check_unitary_feynman_decay_chains): the chain is compared in the
+    unitary, axial and FD gauges, with every decayed particle on shell."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.interface.master_interface as interface
+        cls.cmd = interface.MasterCmd()
+        cls.cmd.no_notification()
+        cls.cmd.exec_cmd('set apply_flavor_grouping False')
+        cls.cmd.exec_cmd('import model sm')
+
+    def check_gauge(self, process):
+        """{process string: (relative difference, gauge labels)} from the
+        table that 'check gauge' logs"""
+        import logging
+        with self.assertLogs('madgraph.check_cmd', 'INFO') as logs:
+            self.cmd.exec_cmd('check gauge %s' % process)
+        text = '\n'.join(record.getMessage() for record in logs.records)
+        lines = text.split('\n')
+        header = [line for line in lines if line.startswith('Process ')][0]
+        labels = header.split()[1:-3]
+        rows = {}
+        for line in lines:
+            if line.endswith(('Passed', 'Failed')) and not \
+                                            line.lstrip().startswith('JAMP'):
+                words = line.split()
+                values = [float(x) for x in words[-2 - len(labels):-2]]
+                rows[' '.join(words[:-2 - len(labels)])] = \
+                    (float(words[-2]), values)
+        return labels, rows
+
+    def test_decay_chain_momenta(self):
+        """Momenta of all the external legs, in the order of
+        get_legs_with_decays, with every decayed particle on shell and
+        momentum conserved at every vertex."""
+        import madgraph.core.diagram_generation as diagram_generation
+        import madgraph.core.helas_objects as helas_objects
+        procdef = self.cmd.extract_check_process(
+                        'u u~ > t t~, (t > w+ b, w+ > e+ ve), t~ > w- b~')
+        amplitudes = diagram_generation.MultiProcess(procdef,
+                                collect_mirror_procs=False).get('amplitudes')
+        me = helas_objects.HelasMultiProcess(amplitudes).get_matrix_elements()[0]
+        process = me.get('processes')[0]
+        evaluator = process_checks.MatrixElementEvaluator(self.cmd._curr_model,
+                                                          cmd=self.cmd)
+        p = process_checks.get_decay_chain_momenta(evaluator, process)
+        ids = [leg.get('id') for leg in process.get_legs_with_decays()]
+        self.assertEqual(ids, [2, -2, -11, 12, 5, -24, -5])
+        param = evaluator.full_model.get('parameter_dict')
+        mass = lambda name: abs(param[name])
+        sq = lambda q: q[0]**2 - q[1]**2 - q[2]**2 - q[3]**2
+        add = lambda *qs: [sum(q[i] for q in qs) for i in range(4)]
+        self.assertAlmostEqual(sq(add(p[2], p[3])) / mass('mdl_MW')**2, 1, 12)
+        self.assertAlmostEqual(sq(add(p[2], p[3], p[4])) / mass('mdl_MT')**2, 1, 12)
+        self.assertAlmostEqual(sq(add(p[5], p[6])) / mass('mdl_MT')**2, 1, 12)
+        self.assertAlmostEqual(sq(p[5]) / mass('mdl_MW')**2, 1, 12)
+        total = add(p[2], p[3], p[4], p[5], p[6])
+        for i in range(4):
+            self.assertAlmostEqual(total[i], p[0][i] + p[1][i], 8)
+
+    def test_check_gauge_polarised_decay_chain(self):
+        """The helicity pieces and the unpolarised chain agree in the
+        unitary, axial and FD gauges; {S} is gauge dependent and differs in
+        FD. The Feynman gauge is not compared (no Goldstone boson in the
+        chain), and {G} has no FD counterpart."""
+        for brace in ('', '{0}', '{T}', '{+}', '{0S}'):
+            labels, rows = self.check_gauge('t > w+%s b, w+ > ta+ vt' % brace)
+            self.assertEqual(labels, ['Unitary', 'Axial', 'FD'], brace)
+            (diff, values), = rows.values()
+            self.assertLess(diff, 1e-12, brace)
+            self.assertGreater(min(values), 0, brace)
+        labels, rows = self.check_gauge('t > w+{S} b, w+ > ta+ vt')
+        (diff, values), = rows.values()
+        self.assertGreater(diff, 1e-2)
+        self.assertEqual(values[0], values[1])          # unitary = axial
+        labels, rows = self.check_gauge('t > w+{G} b, w+ > ta+ vt')
+        self.assertEqual(labels, ['Unitary', 'Axial'])
+
+    def test_check_gauge_two_decays(self):
+        """With two decayed bosons the core process has an s-channel W:
+        the width given to the decayed particles (1e-9 M) leaves it gauge
+        invariant to 1e-10 (at the physical width it differs by 4e-4)."""
+        labels, rows = self.check_gauge(
+                        'u d~ > w+{0} z, w+ > e+ ve, z > mu+ mu-')
+        (diff, values), = rows.values()
+        self.assertLess(diff, 1e-9)
+        labels, rows = self.check_gauge(
+                'g g > t t~, (t > w+{T} b, w+ > e+ ve), (t~ > w-{0} b~, w- > mu- vm~)')
+        (diff, values), = rows.values()
+        self.assertLess(diff, 1e-10)
+
+    def test_check_decay_chain_refused(self):
+        """Decay chains: only 'check gauge', without loops, outside the
+        complex-mass scheme, and with massive decayed particles."""
+        import madgraph
+        for line in ('check brs t > w+ b, w+ > ta+ vt',
+                     'check full t > w+ b, w+ > ta+ vt',
+                     'check gauge u u~ > z g, z > mu+ mu- [QCD]',
+                     'check gauge e+ e- > a z, a > mu+ mu-'):
+            self.assertRaises(madgraph.InvalidCmd,
+                              lambda: self.cmd.exec_cmd(line, errorhandling=False))
+        self.cmd.exec_cmd('set complex_mass_scheme True')
+        try:
+            self.assertRaises(madgraph.InvalidCmd, lambda: self.cmd.exec_cmd(
+                'check gauge t > w+ b, w+ > ta+ vt', errorhandling=False))
+        finally:
+            self.cmd.exec_cmd('set complex_mass_scheme False')
+
+
 if __name__ == '__main__':
     unittest.unittest.main()

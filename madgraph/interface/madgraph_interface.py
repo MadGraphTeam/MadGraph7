@@ -877,6 +877,12 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   comparing Feynman and unitary gauges. For tree-level")
         logger.info("   processes the axial gauge (and, if the model has a Feynman")
         logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well.")
+        logger.info("   A decay chain is accepted here only, e.g.")
+        logger.info("   'check gauge t > w+{0} b, w+ > ta+ vt': it is compared in")
+        logger.info("   the unitary, axial and FD gauges (not Feynman, where the")
+        logger.info("   chain has no Goldstone boson) with every decayed particle")
+        logger.info("   on shell and a width of 1e-9 M. {A}, {S} and {0S} are")
+        logger.info("   gauge dependent and are expected to differ in FD.")
         logger.info("   This check is, for now, not available for loop processes.")
         logger.info("o brs:",'$MG:color:GREEN')
         logger.info("   Check that the Ward identities are satisfied if the ")
@@ -1622,7 +1628,17 @@ class CheckValidForCmd(cmd.CheckCmd):
         if args[0] in ['stability', 'profile'] and os.path.isfile(args[3]):
             param_card = args.pop(3)
         if any([',' in elem for elem in args if not elem.startswith('--')]):
-            raise self.InvalidCmd('Decay chains not allowed in check')
+            if args[0] != 'gauge':
+                raise self.InvalidCmd("Decay chains are only allowed in 'check gauge'")
+            if any('[' in elem or ']' in elem for elem in args):
+                raise self.InvalidCmd("The '[' and ']' syntax cannot be used "
+                                      "with decay chains.")
+            if self.options['complex_mass_scheme']:
+                # the complex masses keep the physical widths: the chain is
+                # then off shell by iM*Gamma, and gauge dependent at that order
+                raise self.InvalidCmd("'check gauge' with a decay chain is "
+                    "not available in the complex-mass scheme: use 'set "
+                    "complex_mass_scheme False'.")
         
         user_options = {'--energy':'1000','--split_orders':'-1',
                    '--reduction':'1|3|5|6','--CTModeRun':'-1',
@@ -5803,7 +5819,7 @@ This implies that with decay chains:
         proc_line = " ".join(args[1:])
         # Don't try to extract the process if just re-analyzing a saved run
         if not (args[0]=='cms' and options['analyze']!='None'):
-            myprocdef = self.extract_process(proc_line)
+            myprocdef = self.extract_check_process(proc_line, validate_gauge=False)
             if myprocdef and myprocdef.get_interference_mode():
                 raise self.InvalidCmd(
                     "The check command does not support %s interference "
@@ -5978,42 +5994,47 @@ This implies that with decay chains:
                         myprocdef.get('perturbation_couplings') in [[],['QCD']]:
 
             line = " ".join(args[1:])
-            myprocdef = self.extract_process(line)
-            if gauge == 'unitary':
-                myprocdef_unit = myprocdef
-            else:
-                self.do_set('gauge unitary', log=False)
-                myprocdef_unit = self.extract_process(line)
-            if gauge == 'feynman':
-                myprocdef_feyn = myprocdef
+            decay_chain = bool(myprocdef.get('decay_chains'))
+            # a decay chain is compared in the unitary, axial and FD gauges at
+            # a point where its decayed particles are on shell (process_checks.
+            # check_unitary_feynman_decay_chains); each gauge validates its
+            # own polarised propagators
+            self.do_set('gauge unitary', log=False)
+            myprocdef_unit = self.extract_check_process(line)
+            if decay_chain:
+                logger_check.info("Decay chain: the Feynman gauge is not "
+                    "compared (the chain fixes the intermediate vector, "
+                    "without its Goldstone boson); the decayed particles are "
+                    "put on shell, with a width of 1e-9 M.")
+                myprocdef_feyn = None
             else:
                 self.do_set('gauge Feynman', log=False)
-                myprocdef_feyn = self.extract_process(line)
+                myprocdef_feyn = self.extract_check_process(line)
             if myprocdef.get('perturbation_couplings') == [] and \
                (args[0] == 'full' or (args[0] == 'gauge')) and \
                0 in self._curr_model.get('gauge'):
-                if gauge == 'axial':
-                    myprocdef_axial = myprocdef
-                else:
-                    self.do_set('gauge axial', log=False)
-                    myprocdef_axial = self.extract_process(line)
+                self.do_set('gauge axial', log=False)
+                myprocdef_axial = self.extract_check_process(line)
             else:
                 myprocdef_axial = None
             if myprocdef.get('perturbation_couplings') == [] and \
                (args[0] == 'full' or (args[0] == 'gauge')) and \
                1 in self._curr_model.get('gauge'):
-                if gauge == 'FD':
-                    myprocdef_fd = myprocdef
-                else:
-                    self.do_set('gauge FD', log=False)
-                    myprocdef_fd = self.extract_process(line)
+                self.do_set('gauge FD', log=False)
+                try:
+                    myprocdef_fd = self.extract_check_process(line)
+                except self.InvalidCmd as error:
+                    # e.g. a unitary-only propagator piece ({G}, {H}, ...)
+                    logger_check.info("Not compared in the FD gauge: %s" % error)
+                    myprocdef_fd = None
             else:
                 myprocdef_fd = None
 
-            nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
-            nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
-            if nb_part_feyn == nb_part_unit:
-                logger_check.error('No Goldstone present for this check!!')
+            if myprocdef_feyn is not None:
+                nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
+                nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
+                if nb_part_feyn == nb_part_unit:
+                    logger_check.error('No Goldstone present for this check!!')
             gauge_result_no_brs = process_checks.check_unitary_feynman(
                                                 myprocdef_unit, myprocdef_feyn,
                                                 myprocdef_axial,
@@ -6210,7 +6231,9 @@ This implies that with decay chains:
             text += 'Gauge results:\n'
             text += process_checks.output_gauge(gauge_result) + '\n'
         if gauge_result_no_brs:
-            gauge_labels = ['Unitary', 'Feynman']
+            gauge_labels = ['Unitary']
+            if any('value_feynm' in res for res in gauge_result_no_brs[1:]):
+                gauge_labels.append('Feynman')
             if any('value_axial' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('Axial')
             if any('value_fd' in res for res in gauge_result_no_brs[1:]):
@@ -7747,6 +7770,25 @@ This implies that with decay chains:
                       reverse = True)
         pdg_list.sort(key = lambda i: \
                       model.get_particle(i).get('mass').lower() != 'zero')
+
+    def extract_check_process(self, line, validate_gauge=True):
+        """The process of a 'check' command: a single process, or (for
+        'check gauge') a decay chain such as 't > w+{0} b, w+ > ta+ vt',
+        whose polarisation braces are validated as by 'generate' (in the
+        current gauge if validate_gauge). Returns a ProcessDefinition."""
+
+        if ',' not in line:
+            return self.extract_process(line)
+        if '[' in line or ']' in line:
+            raise self.InvalidCmd("The '[' and ']' syntax cannot be used "
+                                  "with decay chains.")
+        myprocdef, _ = self.extract_decay_chain_process(line)
+        if myprocdef.are_decays_perturbed():
+            raise self.InvalidCmd("Decay processes cannot be perturbed.")
+        self.validate_propagator_polarization(myprocdef)
+        if validate_gauge:
+            self.validate_polarized_propagator_gauge(myprocdef)
+        return myprocdef
 
     def extract_decay_chain_process(self, line, level_down=False, proc_number=0):
         """Recursively extract a decay chain process definition from a

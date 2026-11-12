@@ -18,6 +18,11 @@ ANNOUNCEMENT:
        (also by ALOHA itself).
    OM: madmatrix: a custom propagator denominator with a width term (the polarised
        propagators) was written as a Python complex literal and did not compile.
+   OM: check gauge accepts a decay chain, e.g. 'check gauge t > w+{0} b, w+ > ta+ vt' (the
+       other checks still refuse them). The chain is compared in the unitary, axial and FD
+       gauges (not Feynman, where it has no Goldstone boson), with every decayed particle on
+       shell and a width of 1e-9 M: the helicity pieces agree to 1e-12, {A}, {S} and {0S}
+       are gauge dependent. Refused in the complex-mass scheme and with loops.
 
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
