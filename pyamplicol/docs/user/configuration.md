@@ -1806,7 +1806,10 @@ Binary64 evaluation needs no Symbolica licence, at any model parameters, pole
 selection and scale, except for loops routed to the exact engine at light
 masses (above: they use pyAmpliCol's own Symbolica key, which expires on
 2028-03-01, after which they need a personal licence); double-double and
-arbitrary precision use pyAmpliCol's own Symbolica key as well. The native SDKs
+arbitrary precision use pyAmpliCol's own Symbolica key as well, and so does
+generation (tree and loop: the Python package and every native entry point), so
+a user without a personal licence generates without Symbolica's restricted
+mode until that date. The native SDKs
 (C, C++, Fortran, Rust) open a v2 artifact through `rusticol_virtual_open` and
 evaluate binary64 virtuals, bitwise equal to the Python API, without a licence
 (with the same exception):
