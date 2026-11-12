@@ -476,9 +476,9 @@ Integrand::Integrand(
     }
     for (auto input : me_first.external_inputs()) {
         if (input != MatrixElement::momenta_in && input != MatrixElement::flavor_in &&
-            input != MatrixElement::alpha_s_in) {
+            input != MatrixElement::alpha_s_in && input != MatrixElement::diagram_in) {
             throw std::invalid_argument(
-                "the integrand only supplies momenta, flavor and alpha_s to the "
+                "the integrand only supplies momenta, flavor, alpha_s and diagram to the "
                 "matrix element, the random inputs have to be sampled internally"
             );
         }
@@ -623,6 +623,7 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
 
     if (_energy_scale && _energy_scale->is_mlm()) {
         ret.push_back("cluster_scales_acc", acc_float_array(particle_count - 2));
+        ret.push_back("mlm_diagram_acc", acc_int);
     }
     if (emits_alphas_scales(_energy_scale, _running_coupling, particle_count)) {
         ret.push_back("alphas_scales_acc", acc_float_array(particle_count - 3));
@@ -1079,6 +1080,7 @@ NamedVector<Value> Integrand::build_channel_part(
 
     if (_energy_scale && _energy_scale->is_mlm()) {
         out.push_back("cluster_scales_acc", scales.at("outgoing_scales"));
+        out.push_back("mlm_diagram_acc", scales.at("diagram_index"));
     }
     if (emits_alphas_scales(
             _energy_scale, _running_coupling, _mapping.particle_count()
@@ -1389,6 +1391,14 @@ NamedVector<Value> Integrand::build_common_part(
     int amp2_index = me_output_index(me_first, MatrixElement::diagram_amp2_out);
     Value me_flavor_id =
         _flavor_remap.size() > 0 ? flavor_table_lookup(_flavor_remap) : flavor_id;
+    Value mlm_diagram = _energy_scale && _energy_scale->is_mlm() &&
+            !_energy_scale->mlm_history_per_diagram()
+        ? args.at("mlm_diagram_acc")
+        : fb.full({static_cast<me_int_t>(-1), fb.batch_size({momenta_acc})});
+    const auto& me_inputs = me_first.external_inputs();
+    const bool accepts_diagram = std::find(
+        me_inputs.begin(), me_inputs.end(), MatrixElement::diagram_in
+    ) != me_inputs.end();
     auto make_xs_args = [&](std::array<Value, 2>& pdfs, Value alpha) {
         ValueVec xs_args;
         for (auto input : me_first.external_inputs()) {
@@ -1396,6 +1406,8 @@ NamedVector<Value> Integrand::build_common_part(
                 xs_args.push_back(momenta_acc);
             } else if (input == MatrixElement::flavor_in) {
                 xs_args.push_back(me_flavor_id);
+            } else if (input == MatrixElement::diagram_in) {
+                xs_args.push_back(mlm_diagram);
             }
         }
         xs_args.push_back(x1_acc);
@@ -1518,7 +1530,8 @@ NamedVector<Value> Integrand::build_common_part(
         }
         alpha_qcd_acc =
             _running_coupling.value().build_function(fb, {ren_scale_acc}).at(0);
-        if (_mlm_history_qcd_power >= 0) {
+        mlm_diagram = scales.at("diagram_index");
+        if (_mlm_history_qcd_power >= 0 && !accepts_diagram) {
             // |M|^2 ~ alpha_s^n: rescale the first evaluation by
             // (alpha_s' / alpha_s)^n f1' f2' / (f1 f2); colour, helicity and
             // diagram weights stay valid (ratios of terms of the same power).
@@ -1546,8 +1559,9 @@ NamedVector<Value> Integrand::build_common_part(
                 raw_me = fb.mul(raw_me, alpha_factor);
             }
         } else {
-            // several powers of alpha_s mix (gluon fusion and VBF in one
-            // process, say): the matrix element has to be evaluated again
+            // Re-evaluate at the final scales and diagram so its color flow
+            // follows the clustering, including a madevent fallback to the
+            // union history. This is also needed when alpha_s powers mix.
             dxs_vec =
                 _diff_xs.at(0)
                     .build_function(fb, make_xs_args(pdfs_acc, alpha_qcd_acc))
@@ -1734,6 +1748,11 @@ NamedVector<Value> Integrand::build_common_part(
               std::pair{"helicity_index", MatrixElement::helicity_index_out},
               std::pair{"diagram_index", MatrixElement::diagram_index_out}}) {
             int index = me_output_index(me_first, me_output);
+            if (index == -1 && me_output == MatrixElement::diagram_index_out &&
+                _energy_scale && _energy_scale->is_mlm()) {
+                outputs.push_back(name, scatter_or_drop(zeros_int, mlm_diagram));
+                continue;
+            }
             if (index == -1 && me_output == MatrixElement::diagram_index_out &&
                 mapping_diagram_acc) {
                 outputs.push_back(

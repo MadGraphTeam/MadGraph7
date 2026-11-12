@@ -7,6 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "ColorData.h" // diagram-to-color configuration map
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "GpuRuntime.h"
@@ -100,6 +101,12 @@ namespace
   }
 
 
+  __device__ bool selectable_diagram( const int diagram )
+  {
+    return diagram >= 0 && static_cast<unsigned int>( diagram ) < mgOnGpu::nchannels &&
+      mgOnGpu::channel2iconfig[diagram] > 0;
+  }
+
   __global__ void copy_inputs(
     const double* momenta_in,
     const double* helicity_random_in,
@@ -108,6 +115,7 @@ namespace
     const double* alpha_s_in,
     const unsigned int* flavor_indices_in,
     const int* helicity_in,
+    const int* diagram_in,
     fptype_momenta* momenta,
     fptype* helicity_random,
     fptype* color_random,
@@ -115,6 +123,7 @@ namespace
     fptype* g_s,
     unsigned int* flavor_indices,
     int* helicity_given,
+    unsigned int* diagram_given,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -133,6 +142,12 @@ namespace
     color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
     g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
     flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
+    if( diagram_in )
+    {
+      const int diagram = diagram_in[i_in + offset];
+      // Keep invalid indices out of the color table; copy_outputs flags them.
+      diagram_given[i_event] = ( selectable_diagram( diagram ) ? diagram + 1 : 0 );
+    }
     if( helicity_in )
     {
       // an index out of [0,ncomb) cannot be reported from here (umami_matrix_element returns
@@ -156,6 +171,7 @@ namespace
     int* color_out,
     int* helicity_out,
     const int* helicity_in,
+    const int* diagram_in,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -174,6 +190,18 @@ namespace
       }
     }
 
+    if( diagram_in && diagram_in[i_event + offset] != -1 &&
+        !selectable_diagram( diagram_in[i_event + offset] ) )
+    {
+      if( m2_out ) m2_out[i_event + offset] = 0;
+      if( amp2_out )
+        for( int d = 0; d < ProcessData::ndiagrams; ++d )
+          amp2_out[d * stride + i_event + offset] = 0;
+      if( helicity_out ) helicity_out[i_event + offset] = -1;
+      if( diagram_out ) diagram_out[i_event + offset] = -1;
+      if( color_out ) color_out[i_event + offset] = -1;
+      return;
+    }
     if( m2_out ) m2_out[i_event + offset] = matrix_elements[i_event];
     if( amp2_out )
     {
@@ -502,7 +530,7 @@ extern "C"
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
     const int* helicity_in = nullptr;
-    [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
+    const int* diagram_in = nullptr;
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -592,10 +620,10 @@ extern "C"
     fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index, *helicity_given;
-    unsigned int *flavor_indices, *diagram_index;
+    unsigned int *flavor_indices, *diagram_index, *diagram_given;
 
     std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 17> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 18> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -605,6 +633,7 @@ extern "C"
         {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&diagram_given), rounded_count * sizeof( unsigned int )},
         // The color flow is picked among ncolor_flow structures, which is more than
         // ncolor when the color sum runs on the DDM basis
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
@@ -643,6 +672,7 @@ extern "C"
       alpha_s_in,
       flavor_indices_in,
       helicity_in,
+      diagram_in,
       momenta,
       helicity_random,
       color_random,
@@ -650,6 +680,7 @@ extern "C"
       g_s,
       flavor_indices,
       helicity_given,
+      diagram_given,
       count,
       stride,
       offset );
@@ -677,7 +708,7 @@ extern "C"
       flavor_indices,
       helicity_random,
       color_random,
-      nullptr,
+      diagram_in ? diagram_given : nullptr,
       diagram_random,
       matrix_elements,
       helicity_index,
@@ -715,6 +746,7 @@ extern "C"
       color_out,
       helicity_out,
       helicity_in,
+      diagram_in,
       count,
       stride,
       offset );

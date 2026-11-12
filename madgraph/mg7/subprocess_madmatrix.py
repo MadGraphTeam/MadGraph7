@@ -1165,7 +1165,9 @@ class MadgraphSubprocess:
                     [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
                      ms.MatrixElement.flavor_in, ms.MatrixElement.random_color_in,
                      ms.MatrixElement.random_helicity_in,
-                     ms.MatrixElement.random_diagram_in],
+                     ms.MatrixElement.random_diagram_in]
+                    + ([ms.MatrixElement.diagram_in]
+                       if self.process.mlm_clustering else []),
                     [ms.MatrixElement.matrix_element_out,
                      ms.MatrixElement.color_index_out,
                      ms.MatrixElement.helicity_index_out,
@@ -1177,7 +1179,9 @@ class MadgraphSubprocess:
             elif matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
-                    ms.Integrand.matrix_element_inputs,
+                    list(ms.Integrand.matrix_element_inputs)
+                    + ([ms.MatrixElement.diagram_in]
+                       if self.process.mlm_clustering else []),
                     ms.Integrand.matrix_element_outputs,
                     True,
                     self.process.me_frame,
