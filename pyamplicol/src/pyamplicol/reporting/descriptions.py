@@ -432,17 +432,125 @@ def _generation() -> list[Block]:
     ]
 
 
+def _tree_evaluation(resolved: bool) -> list[Block]:
+    columns: list[tuple[str | None, str]] = [
+        ("point", "the phase-space point, in input order"),
+    ]
+    if resolved:
+        columns += [
+            ("helicity", "the helicities of the external legs, in process order"),
+            ("color", "the colour flow or colour component"),
+        ]
+    columns.append(
+        (
+            "matrix element",
+            "the squared tree matrix element, summed over what the row does "
+            "not resolve",
+        )
+    )
+    if resolved:
+        columns.append(
+            (
+                None,
+                "(LC) or (NLC) in the title: leading or next-to-leading "
+                "colour, not full colour.",
+            )
+        )
+    return [("Resolved Evaluation" if resolved else "Summed Evaluation", columns)]
+
+
+def _benchmark() -> list[Block]:
+    return [
+        (
+            "Benchmark summary",
+            [
+                ("metric", "what was measured or how"),
+                (
+                    "value",
+                    "its value; times per point are means with their standard "
+                    "error",
+                ),
+            ],
+        ),
+        (
+            "Timing breakdown",
+            [
+                ("component", "a part of one evaluation"),
+                ("mean +/- standard error", "its time per point"),
+                ("relative standard error", "the standard error over the mean"),
+            ],
+        ),
+        (
+            "Native work counters",
+            [
+                ("area", "the part of the native runtime"),
+                ("counter", "what is counted"),
+                ("mean", "the mean count"),
+                ("normalization", "per point or per runtime call"),
+            ],
+        ),
+    ]
+
+
+def _diagnostics() -> list[Block]:
+    return [
+        (
+            "Summary",
+            [
+                ("package version", "the installed pyAmpliCol version"),
+                ("checks", "how many checks ran"),
+                ("interrupted", "yes when Ctrl-C stopped the run early"),
+            ],
+        ),
+        (
+            "Checks",
+            [
+                ("name", "the check"),
+                (
+                    "status",
+                    "pass, fail, or warning when the check could not run or was not run",
+                ),
+                (
+                    "detail",
+                    "what was found; the physics checks compare with MadLoop "
+                    "and give the largest relative difference",
+                ),
+            ],
+        ),
+    ]
+
+
+def _examples() -> list[Block]:
+    return [
+        (
+            "Packaged Examples",
+            [
+                ("name", "run it with: pyamplicol examples run NAME"),
+                ("action", "what the card does: generate, evaluate, profile ..."),
+                ("description", "what the example shows"),
+            ],
+        )
+    ]
+
+
 def field_descriptions(value: Any) -> str:
     """The plain-words description of the tables ``render_summary`` prints
     for ``value``."""
 
-    from pyamplicol.api.results import GenerationResult
+    from decimal import Decimal
+
+    from pyamplicol.api.results import (
+        BenchmarkResult,
+        GenerationResult,
+        ResolvedEvaluation,
+    )
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
         VirtualOrderEvaluation,
     )
     from pyamplicol.loop_profile import LoopProfileReport
+    from pyamplicol.diagnostics import DiagnosticReport
     from pyamplicol.loops.v2.checks import CheckReport
 
     blocks: list[Block]
@@ -456,16 +564,35 @@ def field_descriptions(value: Any) -> str:
         blocks = _check(value)
     elif isinstance(value, GenerationResult):
         blocks = _generation()
+    elif isinstance(value, ResolvedEvaluation):
+        blocks = _tree_evaluation(True)
+    elif isinstance(value, tuple) and value and all(
+        isinstance(item, (int, float, complex, Decimal))
+        and not isinstance(item, bool)
+        for item in value
+    ):
+        blocks = _tree_evaluation(False)
+    elif isinstance(value, BenchmarkResult):
+        blocks = _benchmark()
+    elif isinstance(value, DiagnosticReport):
+        blocks = _diagnostics()
+    elif (
+        isinstance(value, (list, tuple))
+        and value
+        and all(type(item).__name__ == "ExampleEntry" for item in value)
+    ):
+        blocks = _examples()
     else:
         blocks = [
             (
                 "Tables",
                 [
+                    ("field", "the name of the quantity"),
                     (
-                        None,
-                        "Each row names a field and its value; numbers of both "
-                        "signs carry an explicit + so that the digits align.",
-                    )
+                        "value",
+                        "its value; signed numbers carry an explicit + so that "
+                        "the digits align",
+                    ),
                 ],
             )
         ]

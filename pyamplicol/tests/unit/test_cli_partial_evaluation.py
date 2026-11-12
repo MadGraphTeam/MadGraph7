@@ -206,3 +206,18 @@ def test_interrupt_before_any_point_propagates(monkeypatch):
             {"mu_r2": list(range(3))},
             {"scale": 7},
         )
+
+
+def test_field_descriptions_name_the_columns_of_every_command():
+    from pyamplicol.diagnostics import DiagnosticCheck, DiagnosticReport
+    from pyamplicol.reporting.descriptions import field_descriptions
+
+    tree = " ".join(field_descriptions((1.0, -2.0)).split())
+    assert "Summed Evaluation" in tree and "matrix element -" in tree
+    report = DiagnosticReport("1.0.3", (DiagnosticCheck("python", "pass", "3.11"),))
+    text = field_descriptions(report)
+    assert "Checks" in text and "status" in text and "package version" in text
+    whole = " ".join(field_descriptions(_virtual([1])).split())
+    assert "single pole [-1] - the 1/epsilon coefficient of the renormalised" in whole
+    uv = field_descriptions(replace(_virtual([1]), poles="uv"))
+    assert "Born-loop interference, UV poles of the bare loop amplitude" in uv
