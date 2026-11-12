@@ -2115,6 +2115,9 @@ This will take effect only in a NEW terminal
         if mode == 'madweight':
             raise self.InvalidCmd('launch on a madweight directory is no longer supported; '
                                   'MadWeight has been removed')
+        if mode == 'pythia8':
+            raise self.InvalidCmd('%s is a Pythia 8 directory: launching Pythia 8 process code '
+                                  'is no longer supported. %s' % (path, PYTHIA8_OUTPUT_DROPPED))
 
         args[0] = mode
         args.append(path)
@@ -9825,9 +9828,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 ext_program = launch_ext.MELauncher(args[1], self, unit='GeV',
                                 shell = isinstance(self, cmd.CmdShell),
                                 options=self.options,**options)
-
-        elif args[0] == 'pythia8':
-            ext_program = launch_ext.Pythia8Launcher( args[1], self, **options)
 
         elif args[0] == 'aMC@NLO':
             if options['interactive']:

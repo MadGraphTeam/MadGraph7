@@ -540,7 +540,7 @@ class Switcher(object):
         if path:
             type = self.cmd.find_output_type(self, path)
             if type in ['standalone_fortran', 'standalone_cpp_family',
-                        'pythia8', 'madevent', 'amcatnlo_fks_sa']:
+                        'madevent', 'amcatnlo_fks_sa']:
                 self.change_principal_cmd('MadGraph')
             elif type == 'aMC@NLO':
                 self.change_principal_cmd('aMC@NLO')

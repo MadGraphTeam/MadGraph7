@@ -17,7 +17,10 @@ ANNOUNCEMENT:
        says how to use Pythia 8 instead: shower the events of a madevent, mg7 or NLO
        output (shower=Pythia8 at the launch question). The help no longer advertises
        it, and 'output <format> auto' no longer writes into the Pythia 8 directory for
-       the formats without an automatic directory name (it used pythia8_path).
+       the formats without an automatic directory name (it used pythia8_path). The code
+       that wrote Pythia 8 process and model code is removed (the Pythia 8 exporters of
+       export_cpp.py, template_files/pythia8, and 'launch' on a Pythia 8 directory, which
+       now says that this is no longer supported).
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point

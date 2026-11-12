@@ -523,7 +523,9 @@ class TestValidCmd(unittest.TestCase):
         """'output pythia8' was dropped in MadGraph7 (Pythia 8 showers the
         LHE events of a madevent/mg7/NLO output instead). It must be refused,
         with that advice, by the LO, MadLoop and aMC@NLO interfaces; the
-        aMC@NLO one used to take 'pythia8' as the output directory name."""
+        aMC@NLO one used to take 'pythia8' as the output directory name.
+        'launch' on a Pythia 8 directory (which ran the main program of such
+        an output) is refused with the same advice."""
 
         target = pjoin(self.path, 'PY8_OUTPUT')
         for interface in ('MadGraph', 'MadLoop', 'aMC@NLO'):
@@ -536,6 +538,17 @@ class TestValidCmd(unittest.TestCase):
                                    'output pythia8 is no longer supported.*shower=Pythia8',
                                    master.check_output, ['pythia8', target])
             self.assertFalse(os.path.exists(target))
+
+        # a Pythia 8 tree, as find_output_type recognises it
+        py8_dir = pjoin(self.path, 'PY8_TREE')
+        os.makedirs(pjoin(py8_dir, 'include', 'Pythia8'))
+        open(pjoin(py8_dir, 'include', 'Pythia8', 'Pythia.h'), 'w').close()
+        master = cmd.MasterCmd()
+        master.no_notification()
+        options = type('LaunchOptions', (), {'cluster': 0})()
+        self.assertRaisesRegex(master.InvalidCmd,
+                               'is a Pythia 8 directory.*output pythia8 is no longer supported',
+                               master.check_launch, [py8_dir], options)
 
     @test_aloha.set_global()
     def test_simple_generate(self):
