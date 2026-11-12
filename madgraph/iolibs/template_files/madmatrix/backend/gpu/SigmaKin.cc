@@ -314,7 +314,7 @@ namespace madmatrix
     const fptype_momenta* momenta = allmomenta;
     const fptype* COUPs[nxcoup > 0 ? nxcoup : 1];
     for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
-    fptype_amp* numerators = &allNumerators[ievt * ndiagrams];
+    fptype_amp* numerators = &allNumerators[static_cast<size_t>( ievt ) * ndiagrams];
     // Create an array of views over the Flavor Couplings
     FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
 
@@ -532,7 +532,7 @@ namespace madmatrix
       // The numerators have already been accumulated over all good helicities in place (atomicAdd in
       // calculate_jamps), so there is no helicity dimension to sum here. The denominator is just the
       // sum of all numerators for this event: derive it once and store it for the downstream consumers.
-      fptype_amp* numerators = allNumerators + ievt * ndiagrams;
+      fptype_amp* numerators = allNumerators + static_cast<size_t>( ievt ) * ndiagrams;
       fptype denominator = 0;
       for( int idiag = 0; idiag < ndiagrams; ++idiag )
         denominator += numerators[idiag];
@@ -646,17 +646,18 @@ namespace madmatrix
     // Event-by-event random choice of channel
     if( allrnddiagram != nullptr )
     {
+      const fptype_amp* numerators = allNumerators + static_cast<size_t>( ievt ) * ndiagrams;
       fptype numerator_sum = 0., normalization = 0.;
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        normalization += allNumerators[ievt * ndiagrams + ichan];
+        normalization += numerators[ichan];
       }
       channelId = mgOnGpu::nchannels;
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        numerator_sum += allNumerators[ievt * ndiagrams + ichan];
+        numerator_sum += numerators[ichan];
         if( allrnddiagram[ievt] < numerator_sum / normalization )
         {
           channelId = ichan + 1;

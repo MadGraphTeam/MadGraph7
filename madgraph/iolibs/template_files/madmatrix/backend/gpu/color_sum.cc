@@ -155,8 +155,8 @@ namespace madmatrix
                     const fptype_amp* allJamps, // input: jamp[2][ncolor][ihel][nevt] for one specific helicity ihel
                     const int nhel )        // input: number of good helicities nGoodHel
   {
-    const int nevt = gridDim.x * blockDim.x;
-    const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+    const size_t nevt = gridDim.x * blockDim.x;
+    const size_t ievt = blockDim.x * blockIdx.x + threadIdx.x;
     constexpr int ihel = 0; // the input buffer allJamps already points to a specific helicity
     // NB! The same striding as in compute_jamps and cuBLAS is used here
     for( int ix2 = 0; ix2 < mgOnGpu::nx2; ix2++ )
@@ -222,12 +222,13 @@ namespace madmatrix
     // The scratch buffer holds the BLAS intermediate results and, in mixed precision mode,
     // the converted jamps and the fptype2 MEs: see the layout in blasColorSumTmpSize, which
     // is what MatrixElementKernels.cc allocates.
+    const size_t planeSize = static_cast<size_t>( ncolor ) * nhel * nevt; // one real or imag plane
     fptype2* ghelAllZtempBoth = ghelAllBlasTmp;                                        // start of the fptype2[ncolor*2*nhel*nevt] buffer
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     // Mixed precision mode: the jamps go through a buffer of their own, as they must be
     // converted from double to float on the way
-    fptype_colour* ghelAllJampsBuf = ghelAllBlasTmp + ncolor * mgOnGpu::nx2 * nhel * nevt;    // start of the second one
-    fptype_colour* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * ncolor * mgOnGpu::nx2 * nhel * nevt; // start of the fptype_colour[nhel*nevt] buffer
+    fptype_colour* ghelAllJampsBuf = ghelAllBlasTmp + mgOnGpu::nx2 * planeSize;    // start of the second one
+    fptype_colour* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * mgOnGpu::nx2 * planeSize; // start of the fptype_colour[nhel*nevt] buffer
     const fptype_colour* ghelAllJamps2 = convertD2F_AllJamps( ghelAllJampsBuf, ghelAllJamps, ghelStreams, nhel, gpublocks, gputhreads );
 #else
     static_assert( std::is_same<fptype_colour, fptype>::value );
@@ -238,9 +239,9 @@ namespace madmatrix
 #endif
     // Real and imaginary components
     const fptype_colour* ghelAllJampsReal = ghelAllJamps2;
-    const fptype_colour* ghelAllJampsImag = ghelAllJamps2 + ncolor * nhel * nevt;
+    const fptype_colour* ghelAllJampsImag = ghelAllJamps2 + planeSize;
     fptype_colour* ghelAllZtempReal = ghelAllZtempBoth;
-    fptype_colour* ghelAllZtempImag = ghelAllZtempBoth + ncolor * nhel * nevt;
+    fptype_colour* ghelAllZtempImag = ghelAllZtempBoth + planeSize;
 
     // Note: striding for cuBLAS (that of DeviceAccessJamp, over ncolor):
     // - ghelAllJamps2(icol,ihel,ievt).real is ghelAllJamps2[0 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt]
