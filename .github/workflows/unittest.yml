@@ -587,7 +587,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test IOExportPythia8Test TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits -t0
+            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test CPPTemplateWriterTest TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits -t0
 
       - name: "unittest_loop_madevent_uncovered"
         if: ${{ !cancelled() }}
