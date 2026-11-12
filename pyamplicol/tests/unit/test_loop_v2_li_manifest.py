@@ -298,6 +298,24 @@ def test_judge_records_partial_waits_and_passes(entries):
     assert judged["L1"]["status"] == "recorded" and "L8" in judged
 
 
+def test_a_point_ninjars_fails_and_tirust_serves_has_no_backend_difference(entries):
+    """A point TIRust serves but NinjaRS fails closed (no value, e.g. a forward
+    stress point) is left out of L6's finite-part difference and makes the
+    NinjaRS side partial; the judge does not stop on it."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    record = _record("li_gg_hh")
+    t64 = record["arms"]["ninjars/double/plain"]
+    record["arms"]["tirust/double/plain"] = t64
+    record["arms"]["ninjars/double/plain"] = {
+        "points": [t64["points"][0]]
+        + [_point(0, None, status="failed")] * (len(t64["points"]) - 1)
+    }
+    judged = lm.judge(record, entry)
+    assert judged["N"]["status"] == "partial"
+    assert judged["L6"]["double"]["finite_max_relative"] == 0.0
+
+
 def test_l1_judges_double_double_where_binary64_is_known_to_its_estimate(entries):
     """L1 at a point where binary64 deviates from a provider beyond LAX:
     covered by ten times binary64's own estimate (the E check's rule), the
