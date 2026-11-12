@@ -50,8 +50,8 @@
       ],
       "url": "https://github.com/huashengshao/TIRust.git",
       "ref": "main",
-      "revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
-      "note": "main 854b79dc (PRs #25-#30: double-double subset sharing inside an AmplitudeWorkspace, opt-in RotationTest::Disabled on the TensorWorkspace facade; defaults unchanged) after the one history rewrite (2026-11-07; 760e3144 = rewritten ff13bd7), re-pinned on oneloopmaster bd703d09 (3f28d9c3) and to fefb5f2b (lit-tirust-io's supplied invariants, mu^2 input, embedder mode, lifted caps and capability query; lit-tirust-mc's small-Gram fix; lit-tirust-store's persistent tensor store, masters provider, rotation copy and direct-engine concurrency); behind the default cargo feature tir of the crates that link it; oneloop bd703d09 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
+      "revision": "bc94b496e94d7b7686fc28adbfe9b42a68200d02",
+      "note": "main bc94b496 (PR #31: triangles get the loop-rotation test on the binary64 TensorWorkspace facade only; DirectWorkspace, TensorStore, embedder mode and double-double unchanged; earlier PRs #25-#30: double-double subset sharing inside an AmplitudeWorkspace, opt-in RotationTest::Disabled on the TensorWorkspace facade; defaults unchanged) after the one history rewrite (2026-11-07; 760e3144 = rewritten ff13bd7), re-pinned on oneloopmaster bd703d09 (3f28d9c3) and to fefb5f2b (lit-tirust-io's supplied invariants, mu^2 input, embedder mode, lifted caps and capability query; lit-tirust-mc's small-Gram fix; lit-tirust-store's persistent tensor store, masters provider, rotation copy and direct-engine concurrency); behind the default cargo feature tir of the crates that link it; oneloop bd703d09 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
     },
     {
       "name": "feynkit",
