@@ -2215,6 +2215,36 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         return True
 
     #===========================================================================
+    # onium_colour_legs
+    #===========================================================================
+    @staticmethod
+    def onium_colour_legs(legs, model):
+        """For each bound state of legs (keyed by the number of its first
+        constituent), the number of the constituent whose index is the colour
+        index of the bound state in the colour basis: the colour projector of
+        ColorBasis.OniumColorString puts a colour octet on the constituent that
+        carries the triplet index, i.e. the quark of an outgoing pair and the
+        antiquark of an incoming one (an incoming quark is an outgoing
+        antiquark in the colour strings)."""
+
+        def charge(l):
+            c = model.get_particle(l.get('id')).get_color()
+            return c if l.get('state') else -c
+
+        out = {}
+        first = None
+        for l in legs:
+            if not l.get('onium'):
+                continue
+            if first is None:
+                first = l
+                continue
+            out[first.get('number')] = l.get('number') \
+                if (charge(first), charge(l)) == (-3, 3) else first.get('number')
+            first = None
+        return out
+
+    #===========================================================================
     # get_leshouche_lines
     #===========================================================================
     def get_leshouche_lines(self, matrix_element, numproc):
@@ -2280,14 +2310,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                                   ",".join([ "%3r" % 0 ] * nexternal)))
 
                 else:
-                    # First build a color representation dictionary
+                    # First build a color representation dictionary; a bound
+                    # state under the number of its colour index (that of its
+                    # antiquark when it decays, see onium_colour_legs)
+                    onium_leg = self.onium_colour_legs(legs, proc.get('model'))
                     repr_dict = {}
                     onium = False
                     for l in legs:
                         if l.get('onium'):
                             if not onium:
                                 onium = True
-                                repr_dict[l.get('number')] = \
+                                repr_dict[onium_leg[l.get('number')]] = \
                                     l.get('onium').get('C')\
                                     * (-1)**(1+l.get('state'))
                             else:
@@ -2298,10 +2331,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                                 proc.get('model').get_particle(l.get('id')).get_color()\
                                 * (-1)**(1+l.get('state'))
 
-                    # Get the list of color flows
+                    # Get the list of color flows; the legs are numbered by
+                    # constituents, so are the incoming ones whose flow the
+                    # decomposition reverses (both constituents of a decaying
+                    # bound state)
                     color_flow_list = \
                         matrix_element.get('color_basis').get_flow_basis().\
-                                  color_flow_decomposition(repr_dict, ninitial)
+                                  color_flow_decomposition(repr_dict,
+                                      matrix_element.get_nexternal_ninitial(constituents=True)[1])
                     # And output them properly
                     for cf_i, color_flow_dict in enumerate(color_flow_list):
                         for i in [0, 1]:
@@ -2311,7 +2348,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                                 if l.get('onium'):
                                     if not onium:
                                         onium = True
-                                        color_flow.append("%3r" % color_flow_dict[l.get('number')][i])
+                                        color_flow.append("%3r" % color_flow_dict[onium_leg[l.get('number')]][i])
                                     else:
                                         onium = False
                                         continue
@@ -6184,6 +6221,9 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             path2 = pjoin(dirpath,'makefile')
             with open(path1, "r") as f:
                 content = f.readlines()
+            # never write through a link to makefileP
+            if os.path.lexists(path2):
+                os.remove(path2)
             with open(path2, "w") as f:
                 for line in content:
                     l = line.replace('dhelas','dhelas%i'%npwave).replace('DHELAS','DHELAS%i'%npwave)
@@ -10905,6 +10945,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             path2 = pjoin(pathdir,subprocdir,'makefile')
             with open(path1, "r") as f:
                 content = f.readlines()
+            # never write through a link to SubProcesses/makefile, which then
+            # took the dual-number HELAS library of every P-wave group in turn
+            # (DHELAS1, DHELAS11, ...)
+            if os.path.lexists(path2):
+                os.remove(path2)
             with open(path2, "w") as f:
                 for line in content:
                     l = line.replace('dhelas','dhelas%i'%npwave).replace('DHELAS','DHELAS%i'%npwave)

@@ -101,6 +101,19 @@ ANNOUNCEMENT:
          onia by the Breit-Wigner truncation of their width (0.979 for BW_cut = 15), although an
          onium decays on its mass shell and no virtuality is drawn: the decayed cross section is
          now the production one times the branching ratio (test_madspin_onium_decay_2to2).
+       - Bug fix: the madevent output of a decaying bound state named its P directory
+         after the constituents, so that the Fock states of a hadron ("generate Jpsi >
+         mu+ mu-" decays six) all wrote to one directory, P1_ccx_ll, which kept the last
+         one only, and each P-wave group rewrote SubProcesses/makefile through the link of
+         that directory (DHELAS1, DHELAS11, DHELAS111): gensym did not compile. A decaying
+         bound state now names its directory after its Fock state (P1_Jpsi13S11_ll), and
+         the makefile of a P-wave directory is a file of its own.
+       - Bug fix: the madevent output of a decaying colour octet ("generate Jpsi(1|1S08) >
+         g g a", "Jpsi(1|3S18) > u u~") stopped in the colour-flow decomposition of
+         leshouche.inc: the octet was looked up on its quark leg, while its colour
+         projector carries the octet on the antiquark leg of an incoming pair, and its flow
+         was not reversed as that of an incoming particle. Both now follow the projector
+         (test_onium_decay_all_fock_states).
        - Bug fix: the final-state momentum reshuffling (mom_resh_type 1, 2, 3, the default
          1) of a process without a recoil system, e.g. "p p > Jpsi(1|3S18)" or "g g >
          chic2(1|3P21)", kept the partonic energy near the physical one, so that a bound

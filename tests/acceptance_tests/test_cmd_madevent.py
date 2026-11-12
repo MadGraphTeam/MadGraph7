@@ -2706,6 +2706,90 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(width2 / width - M / mphys), 1e-4,
                         '%s / %s against %s' % (width2, width, M / mphys))
 
+    def test_onium_decay_all_fock_states(self):
+        """Decays of every Fock state of a hadron and of colour octets in
+        madevent. A decaying bound state names its P directory (Jpsi > mu+ mu-
+        decays six Fock states; named after the constituents, all six wrote
+        to P1_ccx_ll, and each P-wave group rewrote SubProcesses/makefile
+        through the link of the directory, DHELAS1, DHELAS11, DHELAS111, so
+        that gensym did not compile). The colour flow of a decaying octet
+        follows its colour projector, on its antiquark leg, reversed as an
+        incoming particle (Jpsi(1|1S08) > g g a stopped the output in the
+        colour-flow decomposition)."""
+
+        import glob
+
+        def onium_dirs(proc_dir):
+            return sorted(os.path.basename(d) for d in glob.glob(pjoin(proc_dir, 'SubProcesses', 'P*')))
+
+        def width():
+            run_card = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+            text = open(run_card).read()
+            text = re.sub(r'(?m)^\s*\S+\s*=\s*nevents\b', ' 500 = nevents', text)
+            open(run_card, 'w').write(text)
+            self.do('generate_events -f')
+            return self.cmd_line.results.current['cross']
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+
+        # the colour singlet alone
+        mg_cmd.exec_cmd('generate Jpsi(1|3S11) > mu+ mu-')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        singlet = width()
+        self.assertGreater(singlet, 0)
+
+        # every Fock state of the J/psi: one P directory each; the octets do
+        # not decay into mu+ mu- (colour), so the width is that of the singlet
+        shutil.rmtree(self.run_dir)
+        mg_cmd.exec_cmd('generate Jpsi > mu+ mu-')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        dirs = onium_dirs(self.run_dir)
+        self.assertEqual(len(dirs), 6, dirs)
+        self.assertEqual(sorted(d.split('_')[1] for d in dirs),
+                         sorted('Jpsi1' + f for f in ('1S08', '3P08', '3P18', '3P28', '3S11', '3S18')))
+        sub = pjoin(self.run_dir, 'SubProcesses')
+        self.assertNotIn('DHELAS1', open(pjoin(sub, 'makefile')).read())
+        for d in dirs:
+            mk = pjoin(sub, d, 'makefile')
+            if '3P' in d:
+                self.assertFalse(os.path.islink(mk), d)
+                text = open(mk).read()
+                self.assertIn('-ldhelas1 ', text)
+                self.assertNotIn('dhelas11', text)
+            else:
+                self.assertTrue(os.path.islink(mk), d)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        allfock = width()
+        self.assertLess(abs(allfock / singlet - 1), 1e-6, '%s against %s' % (allfock, singlet))
+
+        # decaying colour octets: the colour flows of leshouche.inc conserve
+        # colour, the incoming octet with colour and anticolour exchanged
+        for proc in ('Jpsi(1|1S08) > g g a', 'Jpsi(1|3S18) > u u~', 'chic0(1|3S18) > g g g'):
+            shutil.rmtree(self.run_dir)
+            mg_cmd.exec_cmd('generate %s' % proc)
+            mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+            for les in glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*', 'leshouche.inc')):
+                flows = {}
+                for m in re.finditer(r'ICOLUP\((\d),I,(\d+),1\),I=1,\s*\d+\)/([^/]*)/', open(les).read()):
+                    flows.setdefault(int(m.group(2)), {})[int(m.group(1))] = [int(x) for x in m.group(3).split(',')]
+                self.assertTrue(flows, proc)
+                for f, cols in flows.items():
+                    col, acol = cols[1], cols[2]
+                    # the decaying bound state (first particle) as an outgoing one
+                    col[0], acol[0] = acol[0], col[0]
+                    tags = [t for t in col if t] + [t for t in acol if t]
+                    self.assertTrue(tags, (proc, f))
+                    self.assertEqual(sorted(t for t in col if t), sorted(t for t in acol if t),
+                                     (proc, f, cols))
+                    self.assertEqual(len(tags), 2 * len(set(tags)), (proc, f, cols))
+
     def test_onium_decay_massive_products(self):
         """An onium decaying into massive particles in madevent: the symmetry
         program of the survey reads the onia card, so the decaying onium has
