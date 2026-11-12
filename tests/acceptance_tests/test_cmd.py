@@ -1506,14 +1506,12 @@ class TestCmdShell2(unittest.TestCase,
             self.do('set gauge unitary')
             self.do('set apply_flavor_grouping True')
 
-    @unittest.expectedFailure
     def test_fd_polarised_propagator_madmatrix_flavour_grouping(self):
         """The default configuration of the mg7 output: FD gauge, flavour
         grouping on, madmatrix. With the leptons merged the FD madmatrix output
-        of a top decay into a tau returns 0, polarised or not (the combined
-        vector + Goldstone routine of the merged leptons); the Fortran output is
-        right. Expected to fail until that separate bug is fixed: remove the
-        decorator then."""
+        of a top decay into a tau used to return 0, polarised or not (the
+        merged W/Goldstone couplings of an off-diagonal lepton pair, fixed in
+        madmatrix/model_handling.py); it now equals the Fortran output."""
         try:
             self.do('import model sm')
             self.do('set gauge FD')

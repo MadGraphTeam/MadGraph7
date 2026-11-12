@@ -18,6 +18,9 @@ ANNOUNCEMENT:
        (also by ALOHA itself).
    OM: madmatrix: a custom propagator denominator with a width term (the polarised
        propagators) was written as a Python complex literal and did not compile.
+   OM: madmatrix, FD gauge, flavour grouping on (the default): |M|^2 was 0 for a W/Goldstone
+       line between merged and unmerged flavours (t > b ta+ vt, ta+ vt > t b~): the
+       combined vector + Goldstone routine assumed a flavour-diagonal coupling.
    OM: check gauge accepts a decay chain, e.g. 'check gauge t > w+{0} b, w+ > ta+ vt' (the
        other checks still refuse them). The chain is compared in the unitary, axial and FD
        gauges (not Feynman, where it has no Goldstone boson), with every decayed particle on
