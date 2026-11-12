@@ -231,8 +231,7 @@ def _virtual(value: Any) -> list[Block]:
             "zero: the bare loop has no UV double pole",
         ),
         "ir": (
-            "the 1/epsilon coefficient of the IR poles of the renormalised "
-            "virtual",
+            "the 1/epsilon coefficient of the IR poles of the renormalised virtual",
             "the 1/epsilon^2 coefficient, infrared",
         ),
         "none": ("not computed", "not computed"),
@@ -467,8 +466,7 @@ def _benchmark() -> list[Block]:
                 ("metric", "what was measured or how"),
                 (
                     "value",
-                    "its value; times per point are means with their standard "
-                    "error",
+                    "its value; times per point are means with their standard error",
                 ),
             ],
         ),
@@ -508,7 +506,8 @@ def _diagnostics() -> list[Block]:
                 ("name", "the check"),
                 (
                     "status",
-                    "pass, fail, or warning when the check could not run or was not run",
+                    "pass, fail, or warning when the check could not run or "
+                    "was not run",
                 ),
                 (
                     "detail",
@@ -549,8 +548,8 @@ def field_descriptions(value: Any) -> str:
         VirtualEvaluation,
         VirtualOrderEvaluation,
     )
-    from pyamplicol.loop_profile import LoopProfileReport
     from pyamplicol.diagnostics import DiagnosticReport
+    from pyamplicol.loop_profile import LoopProfileReport
     from pyamplicol.loops.v2.checks import CheckReport
 
     blocks: list[Block]
@@ -566,10 +565,14 @@ def field_descriptions(value: Any) -> str:
         blocks = _generation()
     elif isinstance(value, ResolvedEvaluation):
         blocks = _tree_evaluation(True)
-    elif isinstance(value, tuple) and value and all(
-        isinstance(item, (int, float, complex, Decimal))
-        and not isinstance(item, bool)
-        for item in value
+    elif (
+        isinstance(value, tuple)
+        and value
+        and all(
+            isinstance(item, (int, float, complex, Decimal))
+            and not isinstance(item, bool)
+            for item in value
+        )
     ):
         blocks = _tree_evaluation(False)
     elif isinstance(value, BenchmarkResult):

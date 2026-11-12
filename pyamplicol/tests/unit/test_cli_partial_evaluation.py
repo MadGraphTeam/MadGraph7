@@ -147,12 +147,12 @@ def test_slow_points_go_one_per_call_after_the_second_call(monkeypatch):
 def test_a_failure_is_the_one_call_failure(monkeypatch):
     # Point 12 fails in the third call; the error names it by its index in
     # all the points, as one call does.
-    with pytest.raises(EvaluationError, match="failed at point 12$"):
+    with pytest.raises(EvaluationError, match=r"failed at point 12$"):
         _run(monkeypatch, 20, _Clock(), failing=12)
     calls: list[int] = []
     clock = _Clock()
     monkeypatch.setattr(pe, "time", clock)
-    with pytest.raises(EvaluationError, match="failed at point 12$"):
+    with pytest.raises(EvaluationError, match=r"failed at point 12$"):
         pe.evaluate_in_chunks(
             NullProgressSink(),
             _operation(calls, clock, failing=12),

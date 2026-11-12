@@ -269,9 +269,7 @@ def virtual_titles(result: Any) -> tuple[str, str]:
     if colour is not None:
         born.append(colour)
         virtual.append(colour)
-    if result.color_accuracy == "lc" and isinstance(
-        result, ResolvedVirtualEvaluation
-    ):
+    if result.color_accuracy == "lc" and isinstance(result, ResolvedVirtualEvaluation):
         born.append("anchors signed, potentially overcomplete")
     poles = _POLE_WORDS.get(str(getattr(result.poles, "value", result.poles)))
     if poles is not None:

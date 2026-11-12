@@ -47,6 +47,7 @@ from pyamplicol.models.loop_preparation import (
     resolve_loop_preparation,
     with_loop_preparation,
 )
+from pyamplicol.reporting.logging import notice
 
 from .dag_algorithms import infer_minimal_coupling_order_limits
 from .loop_artifact import (
@@ -59,11 +60,6 @@ from .validation import build_process_validation_point
 
 _LOGGER = logging.getLogger("pyamplicol.generation")
 
-
-def notice(logger: logging.Logger, label: str, message: str, *args: object) -> None:
-    from pyamplicol.reporting.logging import notice as emit
-
-    emit(logger, label, message, *args)
 
 # The binary64 carrier at a staged-validation miss, under the user's O1 rule
 # of 2026-10-23 (HANDOFF §0): its virtual is held to max(tolerance, E), E its

@@ -185,7 +185,9 @@ def test_signed_resolved_json_and_human_preserve_axes_precision_and_accuracy():
             assert data["epsilon_powers"] == [0, -1, -2]
         else:
             # The titles say what changes the numbers' meaning (tables only).
-            assert "Born anchor" in text and "Born contributions, leading colour" in text
+            assert (
+                "Born anchor" in text and "Born contributions, leading colour" in text
+            )
             assert "anchors signed, potentially overcomplete" in text
             assert "Born-loop interference, leading colour" in text
             assert "single pole [-1]" in text and "double pole [-2]" in text

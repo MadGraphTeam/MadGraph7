@@ -166,7 +166,7 @@ def configure_cli_logging(
     if selected_level > logging.INFO:
         # Above INFO the user-facing notices still show, as the CLI's own
         # short lines (never in the logger format).
-        notices = logging.StreamHandler(handler.stream)
+        notices = logging.StreamHandler(getattr(handler, "stream", sys.stderr))
         setattr(notices, _NOTICE_MARKER, True)
         setattr(notices, _HANDLER_MARKER, True)
         notices.setLevel(logging.INFO)

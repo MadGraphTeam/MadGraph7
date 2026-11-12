@@ -770,8 +770,7 @@ of the points done per backend and precision and an estimated time to
 completion; Ctrl-C stops the run and prints the tables of the points
 evaluated so far with a one-line notice (`stability_setup.requested`,
 `measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
-The runtime timing runs before the pool, in one process.
-each backend evaluates every point in pure binary64 with the default rotation
+The runtime timing runs before the pool, in one process. Each backend evaluates every point in pure binary64 with the default rotation
 test (one default rotation, what `evaluation.stability_checks` gives by
 default; `evaluation.stability_checks` replaces it when set; the rescue's own
 check set, a fixed Euler rotation plus the rescaled-reduction check, is
