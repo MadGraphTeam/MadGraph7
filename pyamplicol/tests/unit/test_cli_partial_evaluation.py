@@ -219,5 +219,5 @@ def test_field_descriptions_name_the_columns_of_every_command():
     assert "Checks" in text and "status" in text and "package version" in text
     whole = " ".join(field_descriptions(_virtual([1])).split())
     assert "single pole [-1] - the 1/epsilon coefficient of the renormalised" in whole
-    uv = field_descriptions(replace(_virtual([1]), poles="uv"))
-    assert "Born-loop interference, UV poles of the bare loop amplitude" in uv
+    nlc = field_descriptions(replace(_virtual([1]), color_accuracy="nlc"))
+    assert "Born-loop interference, next-to-leading colour" in nlc
