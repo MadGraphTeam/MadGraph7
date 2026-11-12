@@ -51,6 +51,10 @@ export ENV_VFOLD_BATCH_PERVN=${ENV_VFOLD_BATCH_PERVN:-1}
 export ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE:-1}
 # SBORN at another coupling g served by rescaling (road B step 10b)
 export ENV_VFOLD_SBORN_GSCALE=${ENV_VFOLD_SBORN_GSCALE:-1}
+# Timers of the MG5aMC cpu_time calls: getrusage in the reference modes F0
+# and F1, clock_gettime via the vDSO (wall time, no syscall) in F2, F and C
+# (road B steps 11a+11b; the Fortran default 0 is getrusage in all modes)
+export ENV_VFOLD_CPUTIME=${ENV_VFOLD_CPUTIME:--1}
 unset vfold_procdir
 
 echo "MadVFold: ENV_VFOLD_* variables (these are only examples: tune them to your needs)"
@@ -62,3 +66,4 @@ echo "ENV_VFOLD_KPOINT_BATCH=${ENV_VFOLD_KPOINT_BATCH}"
 echo "ENV_VFOLD_BATCH_PERVN=${ENV_VFOLD_BATCH_PERVN}"
 echo "ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE}"
 echo "ENV_VFOLD_SBORN_GSCALE=${ENV_VFOLD_SBORN_GSCALE}"
+echo "ENV_VFOLD_CPUTIME=${ENV_VFOLD_CPUTIME}"
