@@ -92,9 +92,20 @@ now passes all six workers with exact full-history/reference agreement. It
 records 16 veto decisions and eight consumed upper-matrix changes across the
 two difficult fixtures, including actual genuine-QP states in modes 4/5.
 DP eligibility is kept separate from QP ownership. This qualifies the recorded
-provenance branches; independent amplitude accuracy, broader caller coverage
-and cache-enabled behavior remain open. Legacy `420` refusals and the original
-failed observer run remain retained.
+provenance branches; independent amplitude accuracy and broader caller coverage
+remain open. Legacy `420` refusals and the original failed observer run remain
+retained. The cache-enabled follow-up is scoped separately below.
+
+The [limited CMS cache qualification](experiments/generic-owned-CMS-cache-qualification-1/README.md)
+passes twelve fresh workers, six own plain/observed comparisons and six
+cacheall/cache0 comparisons on five saved point IDs. Recorded coefficients,
+accuracy, histories and observed state agree exactly. Visible intervals retain
+701 DP master reuses, two QP tensor hits at group19 (N1/rank0), 141 independent
+checks with a populated primary store and 24 clears. Failed intervals are
+censored; these counts are not lifetime totals or timing gains. Accounted
+budget bounds pass without exercising exhaustion. The prototype stays
+unapplied; independent amplitude accuracy, broader cache/caller coverage and
+performance remain open. Blocked source1 and failed RUN2/RUN3 are preserved.
 
 Final precise timings remain
 [Hua-Sheng’s local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).

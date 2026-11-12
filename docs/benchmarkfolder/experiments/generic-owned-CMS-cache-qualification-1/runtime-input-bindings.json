@@ -1,0 +1,1366 @@
+{
+  "cache0-observed-controls": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 1173,
+        "sha256": "abc402b5092f499d921e76f79143ef07828f1cacd072b4955e92eb2145f11817"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "observed",
+      "cohort": "controls",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cache0-observed-controls",
+      "ids": [
+        1,
+        7,
+        12
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/controls.dat",
+      "policy": "cache0"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cache0-observed-critical20": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "ae099fd67e4f1d4132d8783dbd80a1a08516298f4452fb9b1a7f41f4063b258d"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "observed",
+      "cohort": "critical20",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cache0-observed-critical20",
+      "ids": [
+        20
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical20.dat",
+      "policy": "cache0"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cache0-observed-critical21": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "4fd3fa9c37460d1478afeee7814b543dd6c9f2b888fc2623d51b6379dd8573d2"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "observed",
+      "cohort": "critical21",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cache0-observed-critical21",
+      "ids": [
+        21
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical21.dat",
+      "policy": "cache0"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cache0-plain-controls": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 1173,
+        "sha256": "abc402b5092f499d921e76f79143ef07828f1cacd072b4955e92eb2145f11817"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "plain",
+      "cohort": "controls",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cache0-plain-controls",
+      "ids": [
+        1,
+        7,
+        12
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/controls.dat",
+      "policy": "cache0"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cache0-plain-critical20": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "ae099fd67e4f1d4132d8783dbd80a1a08516298f4452fb9b1a7f41f4063b258d"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "plain",
+      "cohort": "critical20",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cache0-plain-critical20",
+      "ids": [
+        20
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical20.dat",
+      "policy": "cache0"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cache0-plain-critical21": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14623,
+        "sha256": "01db62b7a861aa832063c5216473aafb8adff0a44bffc2956fd7b684452093e0"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "4fd3fa9c37460d1478afeee7814b543dd6c9f2b888fc2623d51b6379dd8573d2"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "plain",
+      "cohort": "critical21",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cache0-plain-critical21",
+      "ids": [
+        21
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical21.dat",
+      "policy": "cache0"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cacheall-observed-controls": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 1173,
+        "sha256": "abc402b5092f499d921e76f79143ef07828f1cacd072b4955e92eb2145f11817"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "observed",
+      "cohort": "controls",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cacheall-observed-controls",
+      "ids": [
+        1,
+        7,
+        12
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/controls.dat",
+      "policy": "cacheall"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cacheall-observed-critical20": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "ae099fd67e4f1d4132d8783dbd80a1a08516298f4452fb9b1a7f41f4063b258d"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "observed",
+      "cohort": "critical20",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cacheall-observed-critical20",
+      "ids": [
+        20
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical20.dat",
+      "policy": "cacheall"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cacheall-observed-critical21": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "4fd3fa9c37460d1478afeee7814b543dd6c9f2b888fc2623d51b6379dd8573d2"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "observed",
+      "cohort": "critical21",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cacheall-observed-critical21",
+      "ids": [
+        21
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical21.dat",
+      "policy": "cacheall"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cacheall-plain-controls": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 1173,
+        "sha256": "abc402b5092f499d921e76f79143ef07828f1cacd072b4955e92eb2145f11817"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "plain",
+      "cohort": "controls",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cacheall-plain-controls",
+      "ids": [
+        1,
+        7,
+        12
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/controls.dat",
+      "policy": "cacheall"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cacheall-plain-critical20": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "ae099fd67e4f1d4132d8783dbd80a1a08516298f4452fb9b1a7f41f4063b258d"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "plain",
+      "cohort": "critical20",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cacheall-plain-critical20",
+      "ids": [
+        20
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical20.dat",
+      "policy": "cacheall"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  },
+  "cacheall-plain-critical21": {
+    "files": {
+      "Cards/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "Cards/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "Cards/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+        "bytes": 572,
+        "sha256": "9cab79d200ecf1030066c0e7ba7d410b5b05ccc943274e080c6ca8f7b9c61445"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+        "bytes": 622,
+        "sha256": "1ae37e96d6ef1e6fb1e728af19ec403bd35f5a78e4383b6a4ccc32f614b2d182"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+        "bytes": 160,
+        "sha256": "d78a7b145b2fb57b58555e7d56cd6be7a461c1924690fa882e876251c8a02bb5"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoop5_resources/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/MadLoopParams.dat": {
+        "bytes": 14624,
+        "sha256": "9f70f6163ce87efe0e24917ed373b27955580545ae47bb030c16623020426fea"
+      },
+      "SubProcesses/P0_epem_mupmum/ident_card.dat": {
+        "bytes": 371,
+        "sha256": "1cc87dbf7c86a5fc5817add487a5df17c0cef8c4051e12d7c065370916d387e7"
+      },
+      "SubProcesses/P0_epem_mupmum/measurement.dat": {
+        "bytes": 392,
+        "sha256": "4fd3fa9c37460d1478afeee7814b543dd6c9f2b888fc2623d51b6379dd8573d2"
+      },
+      "SubProcesses/P0_epem_mupmum/param_card.dat": {
+        "bytes": 4397,
+        "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+      },
+      "SubProcesses/P0_epem_mupmum/training.dat": {
+        "bytes": 4686,
+        "sha256": "098e52ff8c5b0892f7200161bba138a1f15446bc32944ef1cbf6f84070537237"
+      }
+    },
+    "request": {
+      "arm": "plain",
+      "cohort": "critical21",
+      "expected_legacy_critical_failure_allowed": false,
+      "id": "cacheall-plain-critical21",
+      "ids": [
+        21
+      ],
+      "lane": "candidate",
+      "measurement": "inputs/critical21.dat",
+      "policy": "cacheall"
+    },
+    "scope": "Staged numerical/model/identifier cards, four resources and exact decimal input streams; no native clone artifacts"
+  }
+}
