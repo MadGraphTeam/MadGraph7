@@ -32,12 +32,14 @@ struct V2PlanFamilies(Option<FamilyRecords>);
 impl V2PlanFamilies {
     #[new]
     fn new() -> Self {
+        let _unlock = pyamplicol::unlock();
         Self(Some(FamilyRecords::default()))
     }
 
     /// Append one family record (`_Exporter.family`'s), read as the
     /// program's records are (`from_program`).
     fn push(&mut self, record: &Bound<'_, PyAny>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         let families = self
             .0
             .as_mut()
@@ -48,6 +50,7 @@ impl V2PlanFamilies {
     }
 
     fn __len__(&self) -> usize {
+        let _unlock = pyamplicol::unlock();
         self.0.as_ref().map_or(0, FamilyRecords::len)
     }
 }
@@ -62,12 +65,14 @@ struct V2PlanContents(Option<ContentRecords>);
 impl V2PlanContents {
     #[new]
     fn new() -> Self {
+        let _unlock = pyamplicol::unlock();
         Self(Some(ContentRecords::default()))
     }
 
     /// Append one content record (`_Exporter.content`'s), read as the
     /// program's records are (`from_program`).
     fn push(&mut self, record: &Bound<'_, PyAny>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         let contents = self
             .0
             .as_mut()
@@ -78,6 +83,7 @@ impl V2PlanContents {
     }
 
     fn __len__(&self) -> usize {
+        let _unlock = pyamplicol::unlock();
         self.0.as_ref().map_or(0, ContentRecords::len)
     }
 }
@@ -87,6 +93,7 @@ impl V2PlanModel {
     /// The model of a plan v4 JSON (`ExportedPlan.json()`).
     #[staticmethod]
     fn from_json(py: Python<'_>, json: &[u8]) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| PlanModel::from_json(json))
             .map(Self)
             .map_err(error)
@@ -102,6 +109,7 @@ impl V2PlanModel {
     /// path.
     #[staticmethod]
     fn from_program(program: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         PlanModel::from_records(Records(program))
             .map(Self)
             .map_err(|failure| error(format!("loop v2 plan records: {failure}")))
@@ -118,6 +126,7 @@ impl V2PlanModel {
         families: &Bound<'_, V2PlanFamilies>,
         contents: Option<&Bound<'_, V2PlanContents>>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let taken = families
             .borrow_mut()
             .0
@@ -139,11 +148,13 @@ impl V2PlanModel {
 
     /// The number of contents.
     fn content_count(&self) -> usize {
+        let _unlock = pyamplicol::unlock();
         self.0.content_count()
     }
 
     /// The JSON of content `index`, as the plan JSON writes it.
     fn content_json<'py>(&self, py: Python<'py>, index: usize) -> PyResult<Bound<'py, PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         self.0
             .content_json(index)
             .map(|json| PyBytes::new(py, &json))
@@ -152,11 +163,13 @@ impl V2PlanModel {
 
     /// The number of schedule-B families.
     fn family_count(&self) -> usize {
+        let _unlock = pyamplicol::unlock();
         self.0.family_count()
     }
 
     /// The JSON of family `index`, as the plan JSON writes it.
     fn family_json<'py>(&self, py: Python<'py>, index: usize) -> PyResult<Bound<'py, PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         self.0
             .family_json(index)
             .map(|json| PyBytes::new(py, &json))
@@ -166,6 +179,7 @@ impl V2PlanModel {
     /// The model of a binary plan member.
     #[staticmethod]
     fn from_binary(py: Python<'_>, member: &[u8]) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| PlanModel::from_binary(member))
             .map(Self)
             .map_err(error)
@@ -173,6 +187,7 @@ impl V2PlanModel {
 
     /// The plan JSON, byte-identical to `ExportedPlan.json()`.
     fn json<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        let _unlock = pyamplicol::unlock();
         let model = &self.0;
         let json = py.detach(|| model.json());
         PyBytes::new(py, &json)
@@ -180,6 +195,7 @@ impl V2PlanModel {
 
     /// The binary columnar member.
     fn binary<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         let model = &mut self.0;
         let member = py.detach(|| model.binary()).map_err(error)?;
         Ok(PyBytes::new(py, &member))
@@ -189,6 +205,7 @@ impl V2PlanModel {
     /// `(peak bytes, allocated bytes, iterations)` (`PlanModel::derive_bound`),
     /// after its refusal of untrusted scalars.
     fn derive_bound(&self, py: Python<'_>) -> PyResult<(u64, u64, u64)> {
+        let _unlock = pyamplicol::unlock();
         let model = &self.0;
         py.detach(|| model.derive_bound())
             .map(|bound| (bound.memory, bound.allocated, bound.work))
@@ -199,6 +216,7 @@ impl V2PlanModel {
     /// tests of crafted members).
     #[staticmethod]
     fn columns() -> Vec<&'static str> {
+        let _unlock = pyamplicol::unlock();
         column_names().to_vec()
     }
 }
@@ -214,6 +232,7 @@ fn v2_plan_load(
     data: &[u8],
     digest: bool,
 ) -> PyResult<(&'static str, f64, f64, Option<String>)> {
+    let _unlock = pyamplicol::unlock();
     py.detach(|| {
         let binary = is_binary(data);
         let start = Instant::now();
@@ -242,6 +261,7 @@ fn v2_plan_load(
 /// pool-failure fallback's test.
 #[pyfunction]
 fn v2_plan_read_pool() -> Option<bool> {
+    let _unlock = pyamplicol::unlock();
     read_pool()
 }
 
@@ -252,6 +272,7 @@ fn v2_plan_read_pool() -> Option<bool> {
 /// so fail-closed probes call `v2_plan_load(data, digest=False)` instead.
 #[pyfunction]
 fn v2_plan_read(py: Python<'_>, data: &[u8]) -> PyResult<String> {
+    let _unlock = pyamplicol::unlock();
     py.detach(|| {
         let program = if is_binary(data) {
             read_binary(data)

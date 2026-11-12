@@ -152,6 +152,7 @@ fn flags(bytes: &[u8]) -> PyResult<Vec<bool>> {
 impl V2Generation {
     #[new]
     fn new(py: Python<'_>, input: &str) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let input: FamilyInput = serde_json::from_str(input).map_err(error)?;
         let families = py.detach(|| generate_families(&input)).map_err(error)?;
         Ok(Self {
@@ -165,6 +166,7 @@ impl V2Generation {
     /// scaleless, rejected, scaleless_families)`; a root's label is its cut
     /// species; the scaleless families' states follow every admitted one's.
     fn families(&self) -> RawFamilies {
+        let _unlock = pyamplicol::unlock();
         let output = &self.families;
         let raw = |family: &rusticol_core::loop_v2::generate::families::Family| -> RawFamily {
             (
@@ -212,6 +214,7 @@ impl V2Generation {
     /// The skeletons of every family (`skeletons.family_skeletons`):
     /// `(contents, orders, skeletons per family)`.
     fn skeletons(&self, py: Python<'_>, input: &str) -> PyResult<RawSkeletons> {
+        let _unlock = pyamplicol::unlock();
         let input: ScheduleInput = serde_json::from_str(input).map_err(error)?;
         let (contents, orders, skeletons) = py
             .detach(|| build_skeletons(&self.input, &self.families, &input))
@@ -236,6 +239,7 @@ impl V2Generation {
     /// `(handle, 0, contents, labels, orders, schedules)` with every
     /// family's skeletons; see `loops/v2/generator_input.py`.
     fn schedules(&self, py: Python<'_>, input: &str) -> PyResult<RawSchedules> {
+        let _unlock = pyamplicol::unlock();
         let input: ScheduleInput = serde_json::from_str(input).map_err(error)?;
         let build = py
             .detach(|| arena::build_retained(&self.input, &self.families, &input))
@@ -263,6 +267,7 @@ impl V2Generation {
         keep: &[u8],
         readings: bool,
     ) -> PyResult<RawSchedules> {
+        let _unlock = pyamplicol::unlock();
         let mut input: ScheduleInput = serde_json::from_str(input).map_err(error)?;
         if input.keep.is_some() {
             return Err(error("rebuild keep flags come as bytes"));
@@ -300,6 +305,7 @@ impl V2Generation {
     /// little-endian `(u64 offsets, u32 content ids)` bytes and the distinct
     /// content ids, first seen (the seed stage's content order).
     fn readings(&self, py: Python<'_>, handle: usize) -> PyResult<(Vec<u8>, Vec<u8>, Vec<u32>)> {
+        let _unlock = pyamplicol::unlock();
         let retained = self.retained(handle)?;
         Ok(py.detach(|| {
             let readings = retained.readings();
@@ -310,12 +316,14 @@ impl V2Generation {
 
     /// `MonomialLayout`'s rank bound of a build (`Retained::max_rank`).
     fn max_rank(&self, handle: usize) -> PyResult<i64> {
+        let _unlock = pyamplicol::unlock();
         self.retained(handle)?.max_rank().map_err(error)
     }
 
     /// Release a build no stage reads any more (`Arena::release`): later
     /// reads of its handle raise.
     fn release(&self, handle: usize) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         self.arena.release(handle).map_err(error)
     }
 }
@@ -345,6 +353,7 @@ type Overlaps = Vec<Option<Vec<(i32, i64)>>>;
 
 #[pyfunction]
 fn trace_overlaps(py: Python<'_>, products: Vec<Vec<Vec<i64>>>) -> PyResult<Overlaps> {
+    let _unlock = pyamplicol::unlock();
     py.detach(|| {
         products
             .iter()
@@ -374,6 +383,7 @@ fn reducer_rank_refusal(
     rank: usize,
     reducer: &str,
 ) -> PyResult<Option<String>> {
+    let _unlock = pyamplicol::unlock();
     use rusticol_core::loop_v2::bounds::Reducer;
     let reducer = Reducer::parse(reducer).map_err(error)?;
     Ok(rusticol_loop_reduction::runtime::rank_refusal(
@@ -390,6 +400,7 @@ fn reducer_rank_refusal(
 /// NinjaRS's rank makes the artifact TIR-only, m-lit lit-eft).
 #[pyfunction]
 fn family_rank_refusal(propagators: usize, rank: usize) -> Option<String> {
+    let _unlock = pyamplicol::unlock();
     rusticol_core::loop_v2::bounds::admission_refusal(propagators, rank)
 }
 

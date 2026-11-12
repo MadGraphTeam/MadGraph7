@@ -151,6 +151,7 @@ impl NativeCellTable {
     /// A table from Python cells (`[[[(power, re, im), ...] per b] per c]`).
     #[staticmethod]
     fn from_cells(rows: Vec<Vec<RawLaurent>>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let rows = rows
             .into_iter()
             .map(|row| {
@@ -172,6 +173,7 @@ impl NativeCellTable {
     }
 
     fn __len__(&self) -> usize {
+        let _unlock = pyamplicol::unlock();
         self.rows.len()
     }
 
@@ -189,6 +191,7 @@ impl NativeCellTable {
         start: usize,
         stop: Option<usize>,
     ) -> PyResult<(Vec<RawLaurent>, Vec<Vec<usize>>)> {
+        let _unlock = pyamplicol::unlock();
         let stop = stop.unwrap_or(self.rows.len()).min(self.rows.len());
         let start = start.min(stop);
         // Shared cells are looked up by address first, then by value: the
@@ -220,6 +223,7 @@ impl NativeCellTable {
     /// columns the basis; the distinct cells in first-seen order, as
     /// `decode`), never decoded to Python (M-FINAL MF-8G-1).
     fn section<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         use rusticol_core::loop_v2::trees::binary::{CellTable, Column};
         let out = py.detach(|| {
             let basis = self.rows.first().map_or(0, Vec::len);
@@ -255,6 +259,7 @@ impl NativeCellTable {
 
     /// The rows of both tables, in order.
     fn concatenated(&self, other: &NativeCellTable) -> NativeCellTable {
+        let _unlock = pyamplicol::unlock();
         let mut rows = self.rows.clone();
         rows.extend(other.rows.iter().cloned());
         NativeCellTable::new(rows)
@@ -269,6 +274,7 @@ impl NativeCellTable {
         pairs: Vec<(u32, u32)>,
         born_grades: Option<RawGrades>,
     ) -> Option<i32> {
+        let _unlock = pyamplicol::unlock();
         let table = OrderedTable {
             cells: &self.rows,
             class_orders: &class_orders,
@@ -290,6 +296,7 @@ struct NativeCellEngine {
 impl NativeCellEngine {
     #[new]
     fn new(legs: Vec<(i64, i32)>, basis: Vec<RawTensor>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let basis = basis
             .into_iter()
             .map(tensor)
@@ -301,6 +308,7 @@ impl NativeCellEngine {
 
     /// The engine against another basis on the same legs, sharing caches.
     fn rebased(&self, basis: Vec<RawTensor>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let basis = basis
             .into_iter()
             .map(tensor)
@@ -321,6 +329,7 @@ impl NativeCellEngine {
         loop_side: Vec<(i64, i64)>,
         threads: Option<usize>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let engine = &self.engine;
         let directed = on_threads(py, threads, || engine.directed(&born, &loop_side))?;
         Ok(Self { engine: directed })
@@ -328,6 +337,7 @@ impl NativeCellEngine {
 
     /// Register a canonical quark ring by its reduced tensor.
     fn register_ring(&self, ring: RawTensor) -> PyResult<usize> {
+        let _unlock = pyamplicol::unlock();
         self.engine.register_ring(tensor(ring)?).map_err(error)
     }
 
@@ -347,6 +357,7 @@ impl NativeCellEngine {
         classes: Vec<RawClass>,
         threads: Option<usize>,
     ) -> PyResult<NativeCellTable> {
+        let _unlock = pyamplicol::unlock();
         let classes = classes
             .into_iter()
             .map(class)
@@ -368,6 +379,7 @@ impl NativeCellEngine {
         kets: Vec<RawStructure>,
         threads: Option<usize>,
     ) -> PyResult<RawAmplitudeBasis> {
+        let _unlock = pyamplicol::unlock();
         let classes = classes
             .into_iter()
             .map(class)
@@ -407,6 +419,7 @@ fn colour_gram(
     basis: Vec<RawTensor>,
     threads: Option<usize>,
 ) -> PyResult<NativeCellTable> {
+    let _unlock = pyamplicol::unlock();
     let basis = basis
         .into_iter()
         .map(tensor)
@@ -423,6 +436,7 @@ fn contract_colours(
     pairs: Vec<(RawTensor, RawTensor)>,
     threads: Option<usize>,
 ) -> PyResult<Vec<RawLaurent>> {
+    let _unlock = pyamplicol::unlock();
     let pairs = pairs
         .into_iter()
         .map(|(a, b)| Ok((tensor(a)?, tensor(b)?)))
@@ -434,6 +448,7 @@ fn contract_colours(
 /// `colour.face_count` per pair of structures (bra, ket).
 #[pyfunction]
 fn face_counts(pairs: Vec<(RawStructure, RawStructure)>) -> PyResult<Vec<i32>> {
+    let _unlock = pyamplicol::unlock();
     pairs
         .into_iter()
         .map(|(a, b)| cells::face_count(&structure(a), &structure(b)).map_err(error))
@@ -461,6 +476,7 @@ fn project_records(
     seeds: Vec<(Vec<(usize, String, String)>, u32)>,
     threads: Option<usize>,
 ) -> PyResult<(Vec<u8>, Vec<u8>, Vec<(usize, u32, i32)>)> {
+    let _unlock = pyamplicol::unlock();
     let accuracy = self::accuracy(accuracy)?;
     let ordered: Vec<OrderedTable<'_>> = tables
         .iter()
@@ -522,6 +538,7 @@ impl NativeAdjointOrbits {
     /// the Born key sets {(structure, N_c power)}.
     #[new]
     fn new(adjoint: Vec<(i64, i64)>, born_keys: Vec<Vec<(RawStructure, i32)>>) -> Self {
+        let _unlock = pyamplicol::unlock();
         let keys: Vec<Vec<(Structure, i32)>> = born_keys
             .into_iter()
             .map(|set| set.into_iter().map(|(s, p)| (structure(s), p)).collect())
@@ -538,6 +555,7 @@ impl NativeAdjointOrbits {
 
     /// `_AdjointOrbits.rename` of one structure, as (label, image) pairs.
     fn rename(&self, raw: RawStructure) -> Vec<(i64, i64)> {
+        let _unlock = pyamplicol::unlock();
         let mut out: Vec<(i64, i64)> = self.orbits.rename(&structure(raw)).into_iter().collect();
         out.sort();
         out
@@ -557,6 +575,7 @@ fn overlap_degrees(
     orbits: Option<PyRef<'_, NativeAdjointOrbits>>,
     threads: Option<usize>,
 ) -> PyResult<Vec<Option<i32>>> {
+    let _unlock = pyamplicol::unlock();
     let mut legs = legs;
     legs.sort();
     let sets: Vec<Vec<(Structure, i32)>> = sets
@@ -582,6 +601,7 @@ fn tensor_overlap_degrees(
     queries: Vec<(usize, usize, i32)>,
     threads: Option<usize>,
 ) -> PyResult<Vec<Option<i32>>> {
+    let _unlock = pyamplicol::unlock();
     let sets = |raw: Vec<Vec<(RawTensor, i32)>>| -> PyResult<Vec<Vec<(Tensor, i32)>>> {
         raw.into_iter()
             .map(|set| {
@@ -607,6 +627,7 @@ fn operator_images(
     born: Vec<(i64, i64)>,
     loop_side: Vec<(i64, i64)>,
 ) -> PyResult<Vec<RawTensor>> {
+    let _unlock = pyamplicol::unlock();
     let tensors = tensors
         .into_iter()
         .map(tensor)
@@ -637,6 +658,7 @@ fn directed_overlap_degrees(
     queries: Vec<(usize, usize, usize, i32)>,
     threads: Option<usize>,
 ) -> PyResult<Vec<Option<i32>>> {
+    let _unlock = pyamplicol::unlock();
     let sets = |raw: Vec<Vec<(RawStructure, i32)>>| -> Vec<Vec<(Structure, i32)>> {
         raw.into_iter()
             .map(|set| set.into_iter().map(|(s, p)| (structure(s), p)).collect())
@@ -662,6 +684,7 @@ fn live_classes(
     queries: Vec<(usize, u32)>,
     threads: Option<usize>,
 ) -> PyResult<Vec<bool>> {
+    let _unlock = pyamplicol::unlock();
     let accuracy = self::accuracy(accuracy)?;
     let tables: Vec<cells::Criterion<'_>> = criteria
         .iter()
@@ -710,6 +733,7 @@ impl NativeDipoleOrbits {
         classes: Vec<Vec<i64>>,
         threads: Option<usize>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let basis = basis
             .into_iter()
             .map(tensor)
@@ -720,10 +744,12 @@ impl NativeDipoleOrbits {
 
     #[staticmethod]
     fn from_json(text: &str) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         Ok(Self::new(DipoleOrbits::from_json(text).map_err(error)?))
     }
 
     fn to_json(&self) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         self.orbits.to_json().map_err(error)
     }
 
@@ -751,6 +777,7 @@ impl NativeDipoleOrbits {
     }
 
     fn check_conservation(&self, py: Python<'_>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.orbits.check_conservation())
             .map_err(error)
     }
@@ -758,6 +785,7 @@ impl NativeDipoleOrbits {
     /// Every entry as fraction texts: `{(i, j): rows}` over coloured leg
     /// labels i != j (`LoopSlice.dipoles`).
     fn expand(&self, py: Python<'_>) -> PyResult<RawDipoles> {
+        let _unlock = pyamplicol::unlock();
         let c = self.orbits.coloured.len();
         let n = self.orbits.basis;
         // Dense [i][j][b][b'] texts, allocated fallibly (the stored form's
@@ -789,11 +817,13 @@ impl NativeDipoleOrbits {
 
     /// SHA-256 of the expanded entries in `LoopSlice.dipoles` order.
     fn digest(&self, py: Python<'_>) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.orbits.digest()).map_err(error)
     }
 
     /// Dense binary64 operators `[i][j][b][b']`.
     fn expand_f64(&self, py: Python<'_>) -> PyResult<Vec<f64>> {
+        let _unlock = pyamplicol::unlock();
         let out = py.detach(|| self.orbits.expand_f64()).map_err(error)?;
         self.decodes.fetch_add(out.len(), Ordering::Relaxed);
         Ok(out)
@@ -811,6 +841,7 @@ impl NativeDipoleOrbits {
         orders: usize,
         sandwiches: Vec<(usize, usize)>,
     ) -> PyResult<NativeDipoleCorrelator> {
+        let _unlock = pyamplicol::unlock();
         let components = components
             .into_iter()
             .map(|(b, o, factor)| Ok((b, o, parse_rational(&factor).map_err(error)?)))

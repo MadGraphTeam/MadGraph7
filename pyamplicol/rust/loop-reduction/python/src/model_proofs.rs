@@ -36,6 +36,7 @@ fn model_kernel_equivalence(
     known: HashSet<String>,
     threads: Option<usize>,
 ) -> PyResult<(Vec<String>, Vec<(String, ProofResult)>)> {
+    let _unlock = pyamplicol::unlock();
     let inputs: Vec<KernelKeyInput> = items
         .into_iter()
         .map(

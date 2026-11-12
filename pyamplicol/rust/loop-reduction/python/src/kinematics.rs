@@ -17,6 +17,7 @@ use symbolica::domains::rational::Rational;
 /// default, the refusal texts, the key and MadLoop's tolerances).
 #[pyfunction]
 pub fn kinematics_policy() -> String {
+    let _unlock = pyamplicol::unlock();
     ki::policy_json().to_string()
 }
 
@@ -30,6 +31,7 @@ pub fn kinematics_applies(
     binary64: bool,
     carrier: &str,
 ) -> PyResult<Option<&'static str>> {
+    let _unlock = pyamplicol::unlock();
     let setting = ki::setting(setting).map_err(error)?;
     Ok(ki::applies(setting, binary64, carrier == "double").map(ki::Variant::name))
 }
@@ -39,6 +41,7 @@ pub fn kinematics_applies(
 /// reaches`, the key of [`kinematics_applies`]).
 #[pyfunction]
 pub fn kinematics_reaches(binary64: bool, carrier: &str) -> bool {
+    let _unlock = pyamplicol::unlock();
     ki::reaches(binary64, carrier == "double")
 }
 
@@ -46,6 +49,7 @@ pub fn kinematics_reaches(binary64: bool, carrier: &str) -> bool {
 /// setting "off"; `kinematics_improvement::off_record_json`).
 #[pyfunction]
 pub fn kinematics_off_record(setting: &str) -> String {
+    let _unlock = pyamplicol::unlock();
     ki::off_record_json(setting).to_string()
 }
 
@@ -58,6 +62,7 @@ pub fn kinematics_notes(
     carrier: &str,
     precision: u32,
 ) -> PyResult<Vec<String>> {
+    let _unlock = pyamplicol::unlock();
     let records: Vec<serde_json::Value> = records
         .iter()
         .map(|record| serde_json::from_str(record).map_err(error))
@@ -129,6 +134,7 @@ pub fn improve_kinematics(
     onshell: Option<f64>,
     close: Option<f64>,
 ) -> PyResult<(Vec<Point>, Vec<String>)> {
+    let _unlock = pyamplicol::unlock();
     let arithmetic = arithmetic_of(arithmetic, digits)?;
     // No variant given: the policy's default (`DEFAULT_VARIANT`).
     let variant = match variant {

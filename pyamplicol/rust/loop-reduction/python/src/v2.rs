@@ -92,6 +92,7 @@ impl V2Reducer {
         cache_masters: bool,
         unchecked: bool,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let mut reducer =
             runtime::V2Reducer::new(arithmetic, precision, engine, cache_masters).map_err(error)?;
         reducer.set_unchecked(unchecked);
@@ -106,6 +107,7 @@ impl V2Reducer {
         self.0.cached_masters()
     }
     fn clear_masters(&mut self) {
+        let _unlock = pyamplicol::unlock();
         self.0.clear_masters();
     }
     /// Per master family `{requests, hits, evaluated}` since the last call,
@@ -113,6 +115,7 @@ impl V2Reducer {
     fn take_master_statistics(
         &mut self,
     ) -> Option<BTreeMap<&'static str, BTreeMap<&'static str, u64>>> {
+        let _unlock = pyamplicol::unlock();
         self.0.take_master_statistics().map(|s: MasterStatistics| {
             MasterStatistics::FAMILY_NAMES
                 .iter()
@@ -134,6 +137,7 @@ impl V2Reducer {
     /// last call (inputs at its absolute thresholds; 0 for the generic
     /// engines).
     fn take_exact_lanes(&mut self) -> u64 {
+        let _unlock = pyamplicol::unlock();
         self.0.take_exact_lanes()
     }
     /// Returns `(direct, check)`: one `ReductionBatch` per group, and the
@@ -159,6 +163,7 @@ impl V2Reducer {
         keep_masters: bool,
         master_poles: &str,
     ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
+        let _unlock = pyamplicol::unlock();
         let poles = poles.map_or(Ok(Poles::All), |value| poles_option(&value))?;
         let masters = master_selection(master_poles)?;
         let groups = family_groups(&groups);
@@ -331,6 +336,7 @@ impl V2TirReducer {
         acceptance_frame: Option<String>,
         unchecked: bool,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         #[cfg(feature = "tir")]
         {
             let options = rusticol_loop_reduction::v2_tir::TirOptions {
@@ -366,6 +372,7 @@ impl V2TirReducer {
     }
     /// The (propagators, rank) plans built so far.
     fn plans(&self) -> Vec<(usize, usize)> {
+        let _unlock = pyamplicol::unlock();
         self.0.plans()
     }
     #[pyo3(signature = (groups, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false))]
@@ -381,6 +388,7 @@ impl V2TirReducer {
         shift: bool,
         rescale: bool,
     ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
+        let _unlock = pyamplicol::unlock();
         let poles = poles.map_or(Ok(Poles::All), |value| poles_option(&value))?;
         let check = check.then_some(rusticol_core::loop_v2::retest::ReductionCheck {
             reverse,
@@ -415,6 +423,7 @@ impl V2SeedFourier {
         born_orbits: usize,
         loop_orbits: usize,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let kernels: Vec<Vec<_>> = kernels
             .into_iter()
             .map(|k| {
@@ -432,6 +441,7 @@ impl V2SeedFourier {
         self.0.group_order()
     }
     fn weights(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.weights(&input.0))
             .map(NativeBatch)
             .map_err(error)
@@ -442,6 +452,7 @@ impl V2SeedFourier {
 /// tensor numerator, in NinjaRS's storage order.
 #[pyfunction]
 fn v2_tensor_monomials(rank: usize) -> Vec<[u32; 4]> {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::runtime::tensor_monomials(rank)
 }
 

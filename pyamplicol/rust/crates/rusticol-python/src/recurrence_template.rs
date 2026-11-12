@@ -1146,6 +1146,7 @@ pub(crate) fn _validate_recurrence_template_input_v1(
     template_input: &Bound<'_, PyAny>,
     authenticated_prepared_kernel_ids: Option<Vec<u32>>,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let decoded = parse_input(template_input)?;
     let native = py
         .detach(move || validate_input(decoded, authenticated_prepared_kernel_ids))

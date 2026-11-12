@@ -72,6 +72,7 @@ fn loop_kernel_terms(
     kernels: Vec<KernelItem>,
     threads: Option<usize>,
 ) -> PyResult<Vec<(Option<Vec<Vec<TermTuple>>>, Option<String>)>> {
+    let _unlock = pyamplicol::unlock();
     let jobs: Vec<KernelTermsJob> = kernels
         .into_iter()
         .map(|(expressions, positions, parameters)| KernelTermsJob {
@@ -114,6 +115,7 @@ fn loop_rename_export(
     renames: Vec<(String, String)>,
     quality: u32,
 ) -> PyResult<(usize, usize)> {
+    let _unlock = pyamplicol::unlock();
     py.detach(|| rename_export(&source, &target, &renames, quality))
         .map(|counts| (counts.renamed, counts.symbols))
         .map_err(error)
