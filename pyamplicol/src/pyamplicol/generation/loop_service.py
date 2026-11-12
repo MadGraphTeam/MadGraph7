@@ -47,6 +47,7 @@ from pyamplicol.models.loop_preparation import (
     resolve_loop_preparation,
     with_loop_preparation,
 )
+from pyamplicol.reporting.logging import notice
 
 from .dag_algorithms import infer_minimal_coupling_order_limits
 from .loop_artifact import (
@@ -58,6 +59,7 @@ from .progress import GenerationPhaseReporter, PhaseHandle
 from .validation import build_process_validation_point
 
 _LOGGER = logging.getLogger("pyamplicol.generation")
+
 
 # The binary64 carrier at a staged-validation miss, under the user's O1 rule
 # of 2026-10-23 (HANDOFF §0): its virtual is held to max(tolerance, E), E its
@@ -370,8 +372,10 @@ def _with_stable_externals(backend, processes, resolved, compiled, preparation):
     widths = stable_external_widths(compiled, pdgs, preparation.fixed_parameters)
     if not widths:
         return preparation
-    _LOGGER.info(
-        "loop.external_widths = 'zero': fixed %s (external particles)",
+    notice(
+        _LOGGER,
+        "widths",
+        "%s for the external particles (loop.external_widths = 'zero')",
         ", ".join(f"{name} = 0" for name in widths),
     )
     return replace(
@@ -1881,9 +1885,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     )
                     phase.update(index + 1, message=name)
             # The preparation memo and store state (log only: the artifact
-            # is the same whatever the cache state): one sentence at INFO,
-            # the full statistics at DEBUG.
-            _LOGGER.info("%s", memo.summary())
+            # is the same whatever the cache state): one sentence and the
+            # full statistics at DEBUG.
+            _LOGGER.debug("%s", memo.summary())
             _LOGGER.debug("loop preparation: %s", json.dumps(memo.report()))
             process_groups = None
             if grouping:
@@ -2044,7 +2048,12 @@ def check_loop_requests(
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.preparation_cache import PreparationMemo, store_for
     from pyamplicol.loops.v2.blocks import born_dag_scope
-    from pyamplicol.loops.v2.checks import check_request
+    from pyamplicol.loops.v2.checks import (
+        CheckInterrupted,
+        ProcessCheck,
+        check_request,
+        interrupted_row,
+    )
     from pyamplicol.loops.v2.induced import probe_carriers
 
     _raise_blocked(backend, processes)
@@ -2075,7 +2084,8 @@ def check_loop_requests(
         del _dags
         native = load_loop_native()
         compiled = context.resolved.compiled
-        for entry, request in zip(context.expanded, requests, strict=True):
+        pairs = list(zip(context.expanded, requests, strict=True))
+        for position, (entry, request) in enumerate(pairs):
             name = entry.request.name
             momenta = _validation_momenta(
                 context,
@@ -2085,21 +2095,40 @@ def check_loop_requests(
                 unavailable=f"check momenta unavailable for {name}",
                 sqrt_s=sqrt_s,
             )
-            checked.append(
-                check_request(
-                    name,
-                    entry.request.expression,
-                    compiled,
-                    request,
-                    native,
-                    momenta,
-                    carriers,
-                    memo=memo,
-                    kinematics=kinematics,
-                    arbitrary=precision is None,
-                    digits=arbitrary_digits,
+            try:
+                checked.append(
+                    check_request(
+                        name,
+                        entry.request.expression,
+                        compiled,
+                        request,
+                        native,
+                        momenta,
+                        carriers,
+                        memo=memo,
+                        kinematics=kinematics,
+                        arbitrary=precision is None,
+                        digits=arbitrary_digits,
+                    )
                 )
-            )
+            except CheckInterrupted as error:
+                # Ctrl-C: the processes checked, the interrupted one's rows
+                # so far, the others not run.
+                checked.append(error.partial)
+                checked.extend(
+                    ProcessCheck(
+                        rest.request.name,
+                        rest.request.expression,
+                        later.contribution,
+                        "-",
+                        (),
+                        "-",
+                        (interrupted_row(),),
+                        0.0,
+                    )
+                    for rest, later in pairs[position + 1 :]
+                )
+                raise CheckInterrupted(checked) from None
     return checked
 
 

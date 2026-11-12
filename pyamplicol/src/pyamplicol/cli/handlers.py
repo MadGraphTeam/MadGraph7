@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields, replace
 from decimal import Decimal
 from pathlib import Path
@@ -177,11 +177,53 @@ def _log_process_syntax(resolution: ConfigResolution | None) -> None:
         return
     from pyamplicol.processes.mg5_syntax import translate_process_expression
     from pyamplicol.reporting import get_logger
+    from pyamplicol.reporting.logging import notice
 
     for entry in resolution.requested.process.entries:
         translation = translate_process_expression(entry.expression)
         if translation.translated:
-            get_logger("cli").info("process %s", translation.describe())
+            settings = "; ".join(
+                f"{path.removeprefix('process.')} {_setting_text(value)}"
+                for path, value in translation.settings.items()
+            )
+            notice(
+                get_logger("cli"),
+                "process",
+                "%s  ->  %s%s",
+                translation.source,
+                translation.expression,
+                f"  ({settings})" if settings else "",
+            )
+
+
+def _log_generation_header(config: RunConfig) -> None:
+    """The model and the output directory of a generation, as the CLI's
+    notice lines before its progress display."""
+
+    from pyamplicol.reporting import get_logger
+    from pyamplicol.reporting.logging import notice
+
+    model = config.model
+    source = Path(str(model.source)).name if model.source is not None else "-"
+    restriction = getattr(model, "restriction", None)
+    loop_model = getattr(config.loop, "model", None)
+    scheme = getattr(getattr(loop_model, "scheme", None), "mass_scheme", None)
+    parts = [source]
+    if restriction:
+        parts.append(f"restriction {restriction}")
+    if scheme is not None:
+        parts.append(f"{scheme} scheme")
+    logger = get_logger("cli")
+    notice(logger, "model", "%s", ", ".join(parts))
+    notice(logger, "output", "%s", config.generation.output)
+
+
+def _setting_text(value: object) -> str:
+    if isinstance(value, Mapping):
+        return ", ".join(f"{key} {entry}" for key, entry in value.items())
+    if isinstance(value, (tuple, list)):
+        return ", ".join(str(item) for item in value)
+    return str(value)
 
 
 def _flat_points(config: RunConfig):
@@ -199,6 +241,39 @@ def _flat_points(config: RunConfig):
         seed=space.seed,
         sqrt_s=space.sqrt_s,
     )
+
+
+def _with_evaluation_progress(
+    progress: ProgressSink, points: int, operation: Callable[..., _T]
+) -> Callable[..., _T]:
+    """``operation`` (one evaluation call over every point) reported to
+    ``progress`` as one task with its elapsed time."""
+
+    def run(*args: object, **kwargs: object) -> _T:
+        task = "evaluate-points"
+        started = time.perf_counter()
+        progress.emit(
+            ProgressStart(
+                task,
+                f"Evaluating {points} point(s)",
+                details={"step": f"evaluating {points} point(s)"},
+            )
+        )
+        success = False
+        try:
+            result = operation(*args, **kwargs)
+            success = True
+            return result
+        finally:
+            progress.emit(
+                ProgressEnd(
+                    task,
+                    success=success,
+                    elapsed_seconds=time.perf_counter() - started,
+                )
+            )
+
+    return run
 
 
 def _virtual_artifact_hint(path: Path) -> bool:
@@ -414,6 +489,7 @@ class DefaultCliServices:
             raise ConfigurationError("generate requires generation.output")
         processes = _process_set(config)
         _log_process_syntax(self._resolution)
+        _log_generation_header(config)
         return Generator(
             config=self._generation_config(config), progress=progress
         ).generate(
@@ -602,25 +678,35 @@ class DefaultCliServices:
                 helicities=evaluation.helicity_ids or None,
                 color_flows=evaluation.color_flow_ids or None,
             )
-        operation = (
-            runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate
-        )
+        options: dict[str, object] = {
+            "precision": evaluation.precision,
+            "helicities": evaluation.helicity_ids or None,
+            "color_flows": evaluation.color_flow_ids or None,
+        }
+        per_point: dict[str, Sequence[object]] = {}
         if virtual:
-            return operation(
-                cast("Momenta", momenta),
-                precision=evaluation.precision,
-                helicities=evaluation.helicity_ids or None,
-                color_flows=evaluation.color_flow_ids or None,
-                mu_r2=scales,
-                on_failure=evaluation.on_failure,
-                **v2_options,
+            options.update(on_failure=evaluation.on_failure, **v2_options)
+            if isinstance(scales, list) and len(scales) == len(momenta):
+                per_point["mu_r2"] = scales
+            else:
+                options["mu_r2"] = scales
+        if evaluation.resolved:
+            operation = _with_evaluation_progress(
+                progress, len(momenta), runtime.evaluate_resolved
             )
-        return operation(
-            cast("Momenta", momenta),
-            precision=evaluation.precision,
-            helicities=evaluation.helicity_ids or None,
-            color_flows=evaluation.color_flow_ids or None,
-        )
+            return operation(cast("Momenta", momenta), **per_point, **options)
+        # On a live progress display, successive calls over the points:
+        # progress per point and, on Ctrl-C, the tables of the points done
+        # (``partial_evaluation``; a few per cent of extra time for the
+        # calls' fixed cost). Otherwise one call, as the Python API.
+        if getattr(progress, "live", False):
+            from .partial_evaluation import evaluate_in_chunks
+
+            return evaluate_in_chunks(
+                progress, runtime.evaluate, momenta, per_point, options
+            )
+        operation = _with_evaluation_progress(progress, len(momenta), runtime.evaluate)
+        return operation(cast("Momenta", momenta), **per_point, **options)
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
         from pyamplicol.api import BenchmarkRunner
@@ -641,7 +727,9 @@ class DefaultCliServices:
             # runtime and/or the stability statistics (``loop_profile``).
             from pyamplicol.loop_profile import profile_loop
 
-            return profile_loop(config.evaluation.artifact, config, points=points)
+            return profile_loop(
+                config.evaluation.artifact, config, points=points, progress=progress
+            )
         return BenchmarkRunner(config=config, progress=progress).run(
             config.evaluation.artifact,
             points=points,

@@ -57,4 +57,3 @@ color_flow_ids = ["1"]
 format = "human"
 color = "auto"
 progress = "auto"
-log_level = "info"

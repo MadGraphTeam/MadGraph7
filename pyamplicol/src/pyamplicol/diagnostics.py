@@ -9,10 +9,12 @@ import json
 import math
 import shutil
 import sys
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from . import __version__
 from ._internal.versions import verify_native_module
@@ -32,6 +34,8 @@ class DiagnosticCheck:
 class DiagnosticReport:
     package_version: str
     checks: tuple[DiagnosticCheck, ...]
+    # Ctrl-C stopped the self-test: the remaining checks are "not run".
+    interrupted: bool = False
 
     @property
     def ok(self) -> bool:
@@ -346,20 +350,57 @@ def run_doctor() -> DiagnosticReport:
     return DiagnosticReport(__version__, checks)
 
 
-def run_self_test() -> DiagnosticReport:
-    """Run the fast checks required of an installed binary distribution."""
+def run_self_test(progress: Any = None) -> DiagnosticReport:
+    """Run the fast checks required of an installed binary distribution;
+    ``progress`` (a ``reporting.ProgressSink``) receives one task per check.
+    Ctrl-C returns the checks run so far, the others marked "not run"."""
 
-    checks = (
-        _python_check(),
-        _asset_check(),
-        _native_check(required=True),
-        _sdk_check(required=True),
-        _physics_check(),
-        _virtual_check(),
-        _prepared_virtual_check(),
-        _prepared_loop_induced_check(),
+    steps: tuple[tuple[str, str, Callable[[], DiagnosticCheck]], ...] = (
+        ("python", "Python", _python_check),
+        ("model-assets", "model assets", _asset_check),
+        ("rusticol-python", "native extension", lambda: _native_check(required=True)),
+        ("native-sdk", "native SDK", lambda: _sdk_check(required=True)),
+        ("physics-f64", "tree physics", _physics_check),
+        ("physics-virtual", "one-loop virtual, generated", _virtual_check),
+        (
+            "physics-virtual-prepared",
+            "one-loop virtual, prepared",
+            _prepared_virtual_check,
+        ),
+        (
+            "physics-virtual-loop-induced",
+            "loop-induced, prepared",
+            _prepared_loop_induced_check,
+        ),
     )
-    return DiagnosticReport(__version__, checks)
+    checks: list[DiagnosticCheck] = []
+    interrupted = False
+    for index, (_name, label, step) in enumerate(steps):
+        task = f"self-test-{index}"
+        begin = time.perf_counter()
+        if progress is not None:
+            from pyamplicol.reporting.progress import ProgressStart
+
+            progress.emit(
+                ProgressStart(task, f"Self-test {index + 1}/{len(steps)}: {label}")
+            )
+        try:
+            checks.append(step())
+        except KeyboardInterrupt:
+            checks += [
+                DiagnosticCheck(name, "fail", "not run (Ctrl-C)")
+                for name, _label, _step in steps[index:]
+            ]
+            interrupted = True
+            break
+        finally:
+            if progress is not None:
+                from pyamplicol.reporting.progress import ProgressEnd
+
+                progress.emit(
+                    ProgressEnd(task, elapsed_seconds=time.perf_counter() - begin)
+                )
+    return DiagnosticReport(__version__, tuple(checks), interrupted=interrupted)
 
 
 __all__ = [

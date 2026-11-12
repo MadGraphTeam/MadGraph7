@@ -115,6 +115,8 @@ class CliInvocation:
     dry_run: bool = False
     full_physics: bool = False
     correlators: Path | None = None
+    # --fields-description-help: describe the tables after them.
+    fields_help: bool = False
 
     def __post_init__(self) -> None:
         frozen = _freeze(self.dedicated)
@@ -169,6 +171,16 @@ def _common_parent(*, include_card: bool = True) -> argparse.ArgumentParser:
         action="store_true",
         default=argparse.SUPPRESS,
         help="Emit machine-readable JSON instead of human-facing tables.",
+    )
+    parser.add_argument(
+        "--fields-description-help",
+        dest="_fields_help",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "after the tables, describe each table and its columns in plain "
+            "words (the command runs as usual)"
+        ),
     )
     parser.add_argument(
         "--color",
@@ -1400,6 +1412,7 @@ def _namespace_to_invocation(
     raw["output.format"] = "json" if bool(raw.pop("_json_output", False)) else "human"
     dry_run = bool(raw.pop("_dry_run", False))
     full_physics = bool(raw.pop("_full_physics", False))
+    fields_help = bool(raw.pop("_fields_help", False))
     correlators = raw.pop("_correlators", None)
 
     positional_process = raw.pop("process", None)
@@ -1466,6 +1479,7 @@ def _namespace_to_invocation(
         dry_run=dry_run,
         full_physics=full_physics,
         correlators=correlators,
+        fields_help=fields_help,
     )
 
 

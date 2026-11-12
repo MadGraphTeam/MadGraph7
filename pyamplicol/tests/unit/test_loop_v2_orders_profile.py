@@ -362,6 +362,48 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
 
 
 @pytest.mark.loop_physics
+def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
+    """profile --stability on 1 (in-process) and 3 worker processes: the
+    same per-point records and statistics (ux-cli C5); only the times and
+    the worker count differ."""
+
+    from pyamplicol.cli.main import run_cli
+
+    reports = {}
+    for cores in ("1", "3"):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "7",
+                "--n_core" if cores == "1" else "--n-core",
+                cores,
+                "--progress",
+                "off",
+                "--json",
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        reports[cores] = json.loads(stdout.getvalue())
+    one, three = reports["1"], reports["3"]
+    assert one["stability_setup"]["n_core"] == 1
+    assert three["stability_setup"]["n_core"] == 3
+    for report in (one, three):
+        assert report["stability_setup"]["interrupted"] is False
+        assert report["stability_setup"]["requested"] == 7
+        report["stability_setup"].pop("n_core")
+        for row in report["stability"]:
+            row.pop("seconds")
+    assert one["stability"] == three["stability"]
+    assert one["stability_setup"] == three["stability_setup"]
+    assert one["failure_causes"] == three["failure_causes"]
+
+
 def test_a_loop_induced_view_has_no_born(tmp_path):
     from pyamplicol import Runtime
 
@@ -384,3 +426,23 @@ def test_a_loop_induced_view_has_no_born(tmp_path):
     assert len(view.orders) == 1
     (only,) = view.orders
     assert view.sum_orders()[0] == view.for_order(only)[0]
+
+
+def test_interrupted_stability_notice_names_the_common_points():
+    from pyamplicol.reporting.loop_profile import interrupted_line
+
+    assert interrupted_line({"interrupted": False}, color=False) is None
+    setup = {
+        "interrupted": True,
+        "requested": 1000,
+        "measured_points": 68,
+        "evaluated_per_backend": {"ninjars": 68, "tir": 107},
+    }
+    line = interrupted_line(setup, color=False)
+    assert line.startswith("interrupted: 68 of 1000 requested points evaluated")
+    assert "by every backend (" in line and "107" in line
+    assert line.endswith("the tables compare those points")
+    setup["evaluated_per_backend"] = {"ninjars": 68, "tir": 68}
+    assert interrupted_line(setup, color=False).endswith(
+        "evaluated; the tables hold those points"
+    )

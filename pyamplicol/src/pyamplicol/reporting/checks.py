@@ -26,9 +26,6 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
     deviation and E over the row's scale (``checks.CheckRow``), verdict,
     fallback or reason) and the overall verdict with the exit code."""
 
-    from pyamplicol.loops.v2 import checks
-    from pyamplicol.loops.v2.induced import ESTIMATE_FACTOR
-
     from .summary import _paint
 
     header = prettytable.PrettyTable(("field", "value"))
@@ -38,29 +35,16 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
     header.add_rows(
         (
             ("source", f"{report.source} ({report.source_kind})"),
-            ("regeneration", report.regeneration),
             (
                 "points",
                 f"{report.points} per process (seeds {report.seed} to "
-                f"{report.seed + report.points - 1}), momenta lifted to exact "
-                "conservation, mu_R^2 = s of the initial state",
+                f"{report.seed + report.points - 1})",
             ),
             (
                 "carriers",
                 f"{report.precision}: " + " then ".join(report.carriers)
                 if len(report.carriers) > 1
                 else f"{report.precision}: {report.carriers[0]}",
-            ),
-            (
-                "criteria",
-                f"poles: |pole - Catani| <= {checks.ESTIMATES} E + "
-                f"{checks.CATANI_FLOOR:g} |Catani| (binary64, recommended "
-                f"checks; double-double {checks.CATANI_DD_FLOOR:g} relative); "
-                "loop-induced finiteness, Ward and Goldstone probes within "
-                f"{ESTIMATE_FACTOR}x their own estimate; Born-interfered Ward: "
-                "ward.ward_row; arbitrary precision (the rung, digits derived "
-                "from the double-double shortfall) by the double-double "
-                "criterion. ratio <= 1 passes",
             ),
             ("seconds", f"{report.seconds:.3g}"),
         )
@@ -127,6 +111,22 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
         if report.exit_code == 0
         else ("FAILED" if report.exit_code == 1 else "NOTHING CHECKED")
     )
+    if getattr(report, "interrupted", False):
+        done = sum(
+            row.verdict not in ("not run",)
+            for process in report.processes
+            for row in process.rows
+        )
+        blocks.append(
+            _paint(
+                f"check interrupted (Ctrl-C): {done} test row(s) completed, the "
+                "rest not run (exit code 130)",
+                "YELLOW",
+                enabled=color,
+                bold=True,
+            )
+        )
+        return "\n\n".join(blocks)
     blocks.append(
         _paint(
             f"check {verdict} (exit code {report.exit_code})",

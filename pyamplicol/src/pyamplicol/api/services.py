@@ -2120,16 +2120,26 @@ def _check(
     operation = getattr(backend, "check", None)
     if operation is None:
         raise GenerationError("generator backend does not support check")
-    checked = operation(
-        _process_set(requests),
-        model=model_source,
-        points=count,
-        seed=first,
-        precision=explicit,
-        stored=stored,
-        sqrt_s=energy,
-        arbitrary_digits=digits,
-    )
+    from pyamplicol.loops.v2.checks import CheckInterrupted, reporting
+
+    interrupted = False
+    with _CheckProgress(progress, requests, count, str(carrier)) as tracker:
+        try:
+            with reporting(tracker.status):
+                checked = operation(
+                    _process_set(requests),
+                    model=model_source,
+                    points=count,
+                    seed=first,
+                    precision=explicit,
+                    stored=stored,
+                    sqrt_s=energy,
+                    arbitrary_digits=digits,
+                )
+        except CheckInterrupted as error:
+            checked = list(error.partial)
+            interrupted = True
+            tracker.interrupted = True
     return CheckReport(
         label,
         kind,
@@ -2143,7 +2153,103 @@ def _check(
         "request on the full tree kernels, widths zeroed outside the "
         "complex-mass scheme",
         round(time.perf_counter() - started, 3),
+        interrupted=interrupted,
     )
+
+
+class _CheckProgress:
+    """``check``'s progress: an introductory notice (what is checked, which
+    checks, how many points), then one task per test the check starts
+    (``loops.v2.checks.status``), each finished when the next starts (in
+    log mode one line per started and per finished test)."""
+
+    def __init__(
+        self, sink: ProgressSink | None, requests: Any, points: int, carrier: str
+    ) -> None:
+        self.sink = sink
+        self.requests = requests
+        self.points = points
+        self.carrier = carrier
+        self.current: tuple[str, float] | None = None
+        self.count = 0
+        self.interrupted = False
+
+    def __enter__(self) -> _CheckProgress:
+        import time
+
+        from pyamplicol.reporting import get_logger
+        from pyamplicol.reporting.logging import notice
+        from pyamplicol.reporting.progress import ProgressStart
+
+        names = ", ".join(str(request.expression) for request in self.requests)
+        notice(
+            get_logger("cli"),
+            "check",
+            "%s: %d point(s), poles (Catani or finiteness), Ward, Goldstone; "
+            "carriers %s",
+            names,
+            self.points,
+            self.carrier,
+        )
+        self.begin = time.perf_counter()
+        if self.sink is not None:
+            self.sink.emit(
+                ProgressStart(
+                    "check",
+                    f"Checking {len(self.requests)} process(es) at "
+                    f"{self.points} point(s)",
+                    details={"step": "regenerating the request in memory"},
+                )
+            )
+        return self
+
+    def status(self, text: str) -> None:
+        import time
+
+        from pyamplicol.reporting.progress import ProgressStart
+
+        self._finish(True)
+        if self.sink is None:
+            return
+        self.count += 1
+        task = f"check-test-{self.count}"
+        self.current = (task, time.perf_counter())
+        self.sink.emit(ProgressStart(task, text, parent_task_id="check"))
+
+    def _finish(self, success: bool) -> None:
+        import time
+
+        from pyamplicol.reporting.progress import ProgressEnd
+
+        if self.current is None or self.sink is None:
+            return
+        task, begin = self.current
+        self.current = None
+        self.sink.emit(
+            ProgressEnd(
+                task,
+                success=success,
+                message=None if success else "interrupted",
+                elapsed_seconds=time.perf_counter() - begin,
+            )
+        )
+
+    def __exit__(self, kind: Any, value: Any, traceback: Any) -> None:
+        import time
+
+        from pyamplicol.reporting.progress import ProgressEnd
+
+        failed = kind is not None or self.interrupted
+        self._finish(not failed)
+        if self.sink is not None:
+            self.sink.emit(
+                ProgressEnd(
+                    "check",
+                    success=not failed,
+                    message="interrupted" if self.interrupted else None,
+                    elapsed_seconds=time.perf_counter() - self.begin,
+                )
+            )
 
 
 def benchmark(

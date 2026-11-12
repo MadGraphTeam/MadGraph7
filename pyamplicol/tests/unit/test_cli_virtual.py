@@ -242,5 +242,6 @@ def test_cli_virtual_output_preserves_every_order_pole_and_decimal(correlated):
     assert "single pole [-1]" in human.getvalue()
     assert "double pole [-2]" in human.getvalue()
     assert "QCD^4, QED^2" in human.getvalue()
-    assert "requested=auto; effective=model" in human.getvalue()
+    # Tables only: the normalisation and R2 notes are field descriptions.
+    assert "requested=auto; effective=model" not in human.getvalue()
     assert "accuracy established" in human.getvalue()

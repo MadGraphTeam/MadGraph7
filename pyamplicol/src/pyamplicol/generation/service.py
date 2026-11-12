@@ -8884,7 +8884,7 @@ def _collapse_flavor_blind_classes(
     conjugated = sum(
         member.conjugated for group in members.values() for member in group
     )
-    _LOGGER.info(
+    _LOGGER.debug(
         "Flavor-blind grouping: %d subprocess%s -> %d generated "
         "representative%s; %d routed member%s (%d by charge conjugation%s); "
         "%d relabelling warning%s",

@@ -10,7 +10,6 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualScalar,
 )
-from pyamplicol.config import PoleSelection
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.models.base import CouplingOrders
 
@@ -28,6 +27,20 @@ def _scalar(value: VirtualScalar | None) -> str:
     if isinstance(value, CorrelatedValue):
         return f"({value.real}) + ({value.imag})i"
     return str(value)
+
+
+def _signed(value: VirtualScalar | None) -> str:
+    """``_scalar`` with an explicit sign: "+" on a positive value, a space
+    on zero, so that the mantissas of a column of mixed signs align."""
+
+    text = _scalar(value)
+    if value is None or isinstance(value, CorrelatedValue) or text.startswith("-"):
+        return text
+    try:
+        zero = value == 0
+    except TypeError:
+        return text
+    return (" " if zero else "+") + text
 
 
 def _target(result: Any) -> float:
@@ -81,8 +94,7 @@ def _stability_table(result: Any, prettytable: Any, color: bool = False) -> Any:
     table = palette.table(
         prettytable,
         ("point", *axes, "relative", "finite", "single pole", "double pole", "checks"),
-        "Stability estimates (relative; requested checks only; green within "
-        f"the target {target:g}, red above)",
+        f"Stability estimates (relative, target {target:g})",
         color=color,
     )
     for point, estimate in enumerate(result.stability):
@@ -173,12 +185,12 @@ def _pole_parts_table(result: Any, prettytable: Any, color: bool = False) -> Any
                                 origin,
                                 component,
                                 palette.paint(
-                                    _scalar(laurent.single_pole),
+                                    _signed(laurent.single_pole),
                                     palette.SINGLE_POLE,
                                     color=color,
                                 ),
                                 palette.paint(
-                                    _scalar(laurent.double_pole),
+                                    _signed(laurent.double_pole),
                                     palette.DOUBLE_POLE,
                                     color=color,
                                 ),
@@ -193,7 +205,7 @@ def _laurent_cells(values: Any, color: bool) -> tuple[str, ...]:
 
     if values is None:
         return (palette.paint("unavailable", palette.BAD, color=color),) * 3
-    finite, single, double = map(_scalar, values)
+    finite, single, double = map(_signed, values)
     return (
         palette.paint(finite, palette.FINITE, color=color, bold=True),
         palette.paint(single, palette.SINGLE_POLE, color=color),
@@ -234,6 +246,37 @@ def _reduction_text(reduction: Any, fallbacks: set[str], color: bool) -> str:
     return text
 
 
+_COLOUR_WORDS = {"lc": "leading colour", "nlc": "next-to-leading colour"}
+
+_POLE_WORDS = {
+    "none": "finite only",
+    "uv": "UV poles of the bare loop amplitude",
+    "ir": "IR poles of the renormalised virtual",
+}
+
+
+def virtual_titles(result: Any) -> tuple[str, str]:
+    """The titles of the Born and the virtual table, with what changes the
+    meaning of their numbers: a colour accuracy other than full colour, LC
+    Born anchors and a pole selection other than all poles."""
+
+    loop_induced = getattr(result, "contribution", "virtual") == "loop-induced"
+    colour = _COLOUR_WORDS.get(str(result.color_accuracy))
+    born = ["Born contributions"]
+    virtual = [
+        "|A_loop|^2 (loop-induced)" if loop_induced else "Born-loop interference"
+    ]
+    if colour is not None:
+        born.append(colour)
+        virtual.append(colour)
+    if result.color_accuracy == "lc" and isinstance(result, ResolvedVirtualEvaluation):
+        born.append("anchors signed, potentially overcomplete")
+    poles = _POLE_WORDS.get(str(getattr(result.poles, "value", result.poles)))
+    if poles is not None:
+        virtual.append(poles)
+    return ", ".join(born), ", ".join(virtual)
+
+
 def virtual_evaluation_summary(
     result: VirtualEvaluation | ResolvedVirtualEvaluation,
     *,
@@ -252,10 +295,11 @@ def virtual_evaluation_summary(
         else ()
     )
     loop_induced = getattr(result, "contribution", "virtual") == "loop-induced"
+    born_title, virtual_title = virtual_titles(result)
     born = palette.table(
         prettytable,
         ("point", "Born squared order", *axes, "Born"),
-        "Born contributions",
+        born_title,
         color=color,
     )
     virtual = palette.table(
@@ -268,7 +312,7 @@ def virtual_evaluation_summary(
             "single pole [-1]",
             "double pole [-2]",
         ),
-        "|A_loop|^2 (loop-induced)" if loop_induced else "Born-loop interference",
+        virtual_title,
         color=color,
     )
     pairs = palette.table(
@@ -300,7 +344,7 @@ def virtual_evaluation_summary(
     def born_cell(value: Any) -> str:
         if value is None:
             return palette.paint("unavailable", palette.BAD, color=color)
-        return palette.paint(_scalar(value), palette.BORN, color=color)
+        return palette.paint(_signed(value), palette.BORN, color=color)
 
     if isinstance(result, ResolvedVirtualEvaluation):
         for point, row in enumerate(result.born_values):
@@ -401,43 +445,6 @@ def virtual_evaluation_summary(
                 item.detail,
             )
         )
-    header = (
-        palette.paint("Virtual coefficients", palette.TITLE, color=color, bold=True)
-        + ": Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon); "
-        "epsilon powers ("
-        + palette.paint("0", palette.FINITE, color=color)
-        + ", "
-        + palette.paint("-1", palette.SINGLE_POLE, color=color)
-        + ", "
-        + palette.paint("-2", palette.DOUBLE_POLE, color=color)
-        + "); "
-        f"colour accuracy={result.color_accuracy.upper()}.\n"
-        f"R2 requested={result.r2.requested.value}; "
-        f"effective={result.r2.effective.value}; "
-        f"{result.r2.reason}"
-    )
-    if result.correlated:
-        header += (
-            "\nDirected colour correlations retain complex Born "
-            "and Laurent coefficients."
-        )
-    if result.color_accuracy == "lc" and resolved:
-        header += (
-            "\nBorn anchors are signed, potentially overcomplete components; "
-            "they are not sampling probabilities."
-        )
-    if result.poles is PoleSelection.NONE:
-        header += "\nFinite-only evaluation: the poles were not computed."
-    elif result.poles is PoleSelection.UV:
-        header += (
-            "\nPoles: the ultraviolet poles of the bare loop amplitude; both "
-            "origins' parts per component, counterterms included, follow."
-        )
-    elif result.poles is PoleSelection.IR:
-        header += (
-            "\nPoles: the infrared poles of the renormalised virtual (the "
-            "double pole is infrared); both origins' parts per component follow."
-        )
     # A loop-induced result has no Born: its Born table would stay empty.
     tables = [virtual, pairs, status]
     if not loop_induced:
@@ -448,7 +455,9 @@ def virtual_evaluation_summary(
     stability = _stability_table(result, prettytable, color)
     if stability is not None:
         tables.append(stability)
-    out = "\n\n".join((header, *(str(table.get_string()) for table in tables)))
+    # Tables only: the normalisation, R2 and pole notes are in
+    # --fields-description-help (``reporting.descriptions``).
+    out = "\n\n".join(str(table.get_string()) for table in tables)
     return out + warnings_line(result, color)
 
 
@@ -488,7 +497,7 @@ def virtual_order_summary(result: Any, *, prettytable: Any, color: bool = False)
                 point,
                 palette.paint("unavailable", palette.BAD, color=color)
                 if born[point] is None
-                else palette.paint(_scalar(born[point]), palette.BORN, color=color),
+                else palette.paint(_signed(born[point]), palette.BORN, color=color),
                 *_laurent_cells(laurent, color),
             )
         )

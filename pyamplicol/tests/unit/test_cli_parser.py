@@ -903,3 +903,19 @@ def test_evaluate_profile_and_check_take_the_kinematics_improvement() -> None:
     default = parse_cli(("evaluate",))
     assert "evaluation.kinematics_improvement" not in default.dedicated
     assert "evaluation.kinematics_improvement_binary64" not in default.dedicated
+
+
+def test_fields_description_help_and_n_core_options():
+    """ux-cli C5/C6: --fields-description-help on every action, --n_core and
+    --n-core set benchmark.n_core."""
+
+    from pyamplicol.cli.parser import parse_cli
+
+    for action in ("evaluate", "check", "profile"):
+        invocation = parse_cli([action, "artifact", "--fields-description-help"])
+        assert invocation.fields_help is True
+    assert parse_cli(["profile", "artifact"]).fields_help is False
+    for spelling in ("--n_core", "--n-core"):
+        invocation = parse_cli(["profile", "artifact", spelling, "3"])
+        assert invocation.resolve().effective.benchmark.n_core == 3
+    assert parse_cli(["profile", "artifact"]).resolve().effective.benchmark.n_core == 10

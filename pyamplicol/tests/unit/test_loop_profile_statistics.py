@@ -22,6 +22,7 @@ from pyamplicol.loop_profile import (
     LoopProfileReport,
     StabilityPoint,
     _backend_statistics,
+    failure_causes,
     needed_points,
     percentile_table,
     relative_error,
@@ -283,8 +284,14 @@ def test_rendering_both_backends_a_refusal_and_json():
     assert "\x1b[" not in text and "\x1b[" in coloured.getvalue()
     assert "true digits" in text and "NinjaRS cannot serve rank 7" in text
     assert "- (N >= 1000)" in text and "50 %" in text
-    flat = " ".join(text.split())
-    assert "A populated 1 per mil class needs N >= 1000 measured points" in flat
+    # Tables only (C6): no legend; the descriptions come with
+    # --fields-description-help.
+    assert "Digits: -log10" not in text and "lanes:" not in text
+    described = io.StringIO()
+    write_result(report, format="human", stream=described, fields_help=True)
+    flat = " ".join(described.getvalue().split())
+    assert "Field descriptions" in flat and "arXiv:1103.0621" in flat
+    assert "* marks the default reduction backend" in flat
     # Laptop terminal: no line wider than the report's width.
     assert max(len(line) for line in text.splitlines()) <= 100
     assert "refused" in text and "no TIRust in this build" in text
@@ -325,7 +332,12 @@ def test_runtime_tables_compare_served_backends_only():
     )
     text = render_summary(_report(None, rows), color=False)
     assert "fastest" in text and "x3.00" in text and "NinjaRS / TIRust" in text
-    assert "NinjaRS 2 (fallback)" in text and "0 of 8" in text
+    # One-line names, the default with an asterisk (C3); the lanes column
+    # only because points were served by two backends; no failed column and
+    # no notes when nothing failed.
+    assert "TIRust *" in text and "(default)" not in text and "as auto" not in text
+    assert "| lanes" in text and "NinjaRS 2" in text
+    assert "| failed" not in text and "\n---\n" not in text and "lanes:" not in text
     assert max(len(line) for line in text.splitlines()) <= 100
     failed = (
         rows[0],
@@ -335,9 +347,137 @@ def test_runtime_tables_compare_served_backends_only():
             ratio=None,
         ),
     )
-    text = render_summary(_report(None, failed), color=False)
+    causes = failure_causes(
+        [("ninjars", "runtime", "no value", "unsupported: rank 7")] * 8,
+        {("ninjars", "runtime"): 8},
+    )
+    text = render_summary(
+        replace(_report(None, failed), failure_causes=causes), color=False
+    )
     assert "all failed" in text and "8 of 8" in text
-    flat = " ".join(text.split())
-    assert "NinjaRS failed 8 of 8 timed points: 8x unsupported: rank 7" in flat
-    assert "only one served" in text and "time of failing" in flat
+    # The failure causes under the table (C10).
+    lines = text.splitlines()
+    assert "8 (100 %) NinjaRS | no value: unsupported: rank 7" in lines
+    assert (
+        lines[lines.index("8 (100 %) NinjaRS | no value: unsupported: rank 7") - 1]
+        == "---"
+    )
     assert "NinjaRS / TIRust" not in text
+
+
+def test_failure_causes_group_by_masked_first_message():
+    """ux-cli C10: a point's cause is its first refusal message without the
+    status, the stage and the "(+N more ...)" counts; causes group with their
+    numbers (and non-finite values) masked, most frequent first."""
+
+    from pyamplicol.loop_profile import _strip_status
+
+    reason = (
+        "failed: v2-evaluation: family 386 lane: TIRust Unstable: Gram for "
+        "[0, 1, 2, 3]: conditioning 1.3e-6 (rounding inf) (+1 more like this); "
+        "family 7 lane: other (+2 more)"
+    )
+    first = _strip_status(reason, "failed")
+    assert first == (
+        "family 386 lane: TIRust Unstable: Gram for [0, 1, 2, 3]: "
+        "conditioning 1.3e-6 (rounding inf)"
+    )
+    other = first.replace("386", "75").replace("1.3e-6", "4e-4").replace("inf", "2.1")
+    causes = failure_causes(
+        [("tirust", "stability", "best-effort", first)]
+        + [("tirust", "stability", "best-effort", other)] * 2
+        + [("tirust", "stability", "no reference", "gates only")]
+        + [("tirust", "runtime", "no value", "x")],
+        {("tirust", "stability"): 10, ("tirust", "runtime"): 4},
+    )
+    assert [(c.table, c.kind, c.count, c.total) for c in causes] == [
+        ("runtime", "no value", 1, 4),
+        ("stability", "best-effort", 3, 10),
+        ("stability", "no reference", 1, 10),
+    ]
+    assert causes[1].reason == first
+
+
+def test_stability_estimate_grows_while_a_stream_has_no_point(monkeypatch):
+    """Each backend and precision starts with two probes, point 0 and points
+    1-2, together: their difference is the cost per point without the
+    worker's first-call cost. A stream without a returned point costs at
+    least the time its probe has been running, less the first-call cost seen
+    on the other streams, so the estimate rises while a slow stream's first
+    point is pending; later tasks give a stream's cost per point."""
+
+    import pyamplicol.loop_profile as lp
+
+    clock = [100.0]
+    monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
+    tracker = lp._StabilityProgress(None, ("ninjars",), 11, 2)
+    # binary64: 0.8 s first-call cost + 0.2 s per point.
+    tracker.add("ninjars", "binary64", 1, 1.0, 0)
+    # Only the one probe: 1 s per point at most; 21 points left.
+    assert tracker.eta() == pytest.approx((10 * 1.0 + 11 * 1.0) / 2)
+    tracker.add("ninjars", "binary64", 2, 1.2, 1)
+    # The probes' difference: 0.2 s per point. The double-double probe has
+    # run since 99 s (1 s, less the 0.8 s first-call cost: 0.2 s).
+    assert tracker.eta() == pytest.approx((8 * 0.2 + 11 * 0.2) / 2)
+    clock[0] = 160.0
+    assert tracker.eta() == pytest.approx((8 * 0.2 + 11 * (61.0 - 0.8)) / 2)
+    tracker.add("ninjars", "double-double", 1, 61.0, 0)
+    tracker.add("ninjars", "double-double", 2, 131.0, 1)
+    # Its probes: 70 s per point.
+    assert tracker.eta() == pytest.approx((8 * 0.2 + 8 * 70.0) / 2)
+    tracker.add("ninjars", "binary64", 4, 1.0, 3)
+    # Later tasks: 0.25 s per point.
+    assert tracker.eta() == pytest.approx((4 * 0.25 + 8 * 70.0) / 2)
+
+
+def test_stability_estimate_bounds_a_stream_with_one_probe(monkeypatch):
+    """With only its one-point probe back, a stream costs per point between
+    the time its two-point probe has run beyond it and the one-point probe;
+    within those, the other streams' warm mean."""
+
+    import pyamplicol.loop_profile as lp
+
+    clock = [100.0]
+    monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
+    tracker = lp._StabilityProgress(None, ("ninjars",), 11, 1)
+    tracker.add("ninjars", "binary64", 1, 1.0, 0)
+    tracker.add("ninjars", "binary64", 2, 1.2, 1)
+    # The probes started at 99 s; the double-double one-point probe took
+    # 5 s (first-call cost included): 0.2 s per point, the warm mean.
+    clock[0] = 104.0
+    tracker.add("ninjars", "double-double", 1, 5.0, 0)
+    assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 0.2)
+    # Its two-point probe still running at 30 s: at least 30 - 5 s per point,
+    # at most the 5 s of the one-point probe.
+    clock[0] = 129.0
+    assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 5.0)
+    clock[0] = 107.0
+    assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 3.0)
+
+
+def test_displayed_stability_estimate_is_smoothed(monkeypatch):
+    """The displayed estimate follows the raw one in logarithm with the
+    smoothing time constant: shown at once, a jump damped, a steady
+    estimate kept (counting down)."""
+
+    import math
+
+    import pyamplicol.loop_profile as lp
+
+    clock = [100.0]
+    raw = [60.0]
+    monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
+    tracker = lp._StabilityProgress(None, ("ninjars",), 11, 1)
+    monkeypatch.setattr(tracker, "eta", lambda: raw[0])
+    assert tracker.shown_eta() == pytest.approx(60.0)
+    # A tenfold jump one second later moves it by a small factor only.
+    clock[0], raw[0] = 101.0, 590.0
+    weight = 1.0 - math.exp(-1.0 / tracker.ETA_SMOOTHING_SECONDS)
+    expected = math.exp((1 - weight) * math.log(59.0) + weight * math.log(590.0))
+    assert tracker.shown_eta() == pytest.approx(expected)
+    assert expected < 2 * 59.0
+    # A steady estimate is kept; minutes later the new one has taken over.
+    clock[0], raw[0] = 400.0, 300.0
+    assert tracker.shown_eta() == pytest.approx(300.0, rel=1e-6)
+    monkeypatch.setattr(tracker, "eta", lambda: None)
+    assert tracker.shown_eta() is None

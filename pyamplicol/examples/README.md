@@ -479,11 +479,13 @@ best-effort value at its true digits; only a point with no binary64 value
 counts 0 digits), and
 how well the default rotation estimate predicts them
 ([the command-line guide](../docs/user/command-line-interface.md#profile)).
-Each card's point count is small so that `--stability` takes about ten seconds
-(about a minute for `loop_gg_zgg`, where NinjaRS's double-double reference
-costs about 30 s per point; the card says so); raise it with
-`--stability-points` for meaningful tails (a populated 1 per mil class needs
-1000 points).
+Every card draws 1000 points (the default), evaluated on 10 worker processes
+(`[benchmark] n_core`, `--n_core`); the progress display shows the estimated
+time to completion (`loop_gg_zgg` is the slow one: NinjaRS's double-double
+reference costs about 30 s per point), and Ctrl-C prints the tables of the
+points evaluated so far. `--stability-points` and `--n_core` change both.
+The tables come alone; `--fields-description-help` adds a plain-words
+description of every table and column.
 
 The walkthrough generates the artifact with the example's correlator
 declaration; `--regenerate` makes it do so even when the card's generation

@@ -528,8 +528,12 @@ runtime = false
 stability = false
 # benchmark.stability_points: Positive count of flat (RAMBO) phase-space
 # points of the stability statistics (drawn with evaluation.phase_space's
-# seed and sqrt_s). Default 100.
-stability_points = 100
+# seed and sqrt_s). Default 1000.
+stability_points = 1000
+# benchmark.n_core: Positive count of worker processes of the stability
+# statistics (`--n_core`; at most the usable cores; 1 runs in-process; the
+# result does not depend on it). Default 10.
+n_core = 10
 
 [check]
 # check.points: Positive count of seeded phase-space points per process of
@@ -568,8 +572,10 @@ format = "human"
 color = "auto"
 # output.progress: "auto", "tty", "log", or "off". Default auto.
 progress = "auto"
-# output.log_level: "debug", "info", "warning", or "error". Default info.
-log_level = "info"
+# output.log_level: "debug", "info", "warning", or "error" (the logger
+# records shown; the CLI's own notice lines show at any level). Default
+# warning.
+log_level = "warning"
 
 [symbolica]
 # symbolica.suggest_license: Show one restricted-mode license reminder. Default true.

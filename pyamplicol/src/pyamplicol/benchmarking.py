@@ -1148,12 +1148,8 @@ def _default_lc_profile_selectors(
     color_flows = tuple(selected_color_ids)
     if physics.color_accuracy != "lc" or lc_flow_layout is None:
         return helicities or None, color_flows or None
-    complete_helicities = _is_complete_selector_set(
-        helicities, physics.helicity_ids
-    )
-    complete_color_flows = _is_complete_selector_set(
-        color_flows, physics.color_ids
-    )
+    complete_helicities = _is_complete_selector_set(helicities, physics.helicity_ids)
+    complete_color_flows = _is_complete_selector_set(color_flows, physics.color_ids)
     if lc_flow_layout == _LC_TOPOLOGY_REPLAY_LAYOUT:
         normalized_helicities = None if complete_helicities else helicities or None
         normalized_color_flows = (
@@ -2786,6 +2782,11 @@ class VirtualProfileResult:
     # The failed timed points per reason (``failure_reason``), most frequent
     # first.
     failure_reasons: tuple[tuple[str, int], ...] = ()
+    # The timed points the backend refused and served with their best-effort
+    # value (``on_failure="best-effort"``; not counted in ``failed_points``)
+    # and their reasons, most frequent first.
+    best_effort_points: int = 0
+    best_effort_reasons: tuple[tuple[str, int], ...] = ()
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2840,6 +2841,8 @@ def profile_virtual(
     *,
     points: Momenta | None = None,
     reduction: str | None = None,
+    on_failure: str = "return",
+    progress: Callable[[int, int], None] | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``). Settings: ``benchmark.batch_size``,
@@ -2847,7 +2850,10 @@ def profile_virtual(
     ``reduction``, ``reduction_target`` and ``reduction_unchecked`` when a path
     is loaded; ``evaluation.mu_r2`` (default: per point the squared
     invariant mass of its initial state). ``reduction`` names the backend of
-    every profiled call (the runtime's otherwise)."""
+    every profiled call (the runtime's otherwise). ``on_failure`` is the
+    timed calls' policy ("best-effort": a refused point is served, timed and
+    counted in ``best_effort_points``); ``progress(done, total)`` is called
+    after every warm-up and timed call."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
@@ -2894,15 +2900,20 @@ def profile_virtual(
         if evaluation is not None and evaluation.mu_r2 is not None
         else [_initial_invariant(point, initial) for point in batch]
     )
-    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    options = {"mu_r2": scales, "poles": "none", "on_failure": on_failure}
     if reduction is not None:
         options["reduction"] = reduction
-    for _ in range(bench.warmup_runs):
+    calls = bench.warmup_runs + max(bench.minimum_samples, 1)
+    for done in range(bench.warmup_runs):
         runtime.evaluate(batch, **options)
+        if progress is not None:
+            progress(done + 1, calls)
     walls: list[float] = []
     totals: dict[str, float] = {}
     failed = 0
     reasons: dict[str, int] = {}
+    served = 0
+    served_reasons: dict[str, int] = {}
     contribution = runtime.contribution_kind
     reductions: list[Any] = []
     for _ in range(max(bench.minimum_samples, 1)):
@@ -2911,10 +2922,17 @@ def profile_virtual(
             result = runtime.evaluate(batch, **options)
             wall = time.perf_counter() - begin
         walls.append(wall)
+        if progress is not None:
+            progress(bench.warmup_runs + len(walls), calls)
         for valid, lane in zip(result.valid, result.diagnostics, strict=True):
-            if not valid:
+            if valid:
+                continue
+            reason = failure_reason(lane)
+            if getattr(lane, "status", None) == "best-effort":
+                served += 1
+                served_reasons[reason] = served_reasons.get(reason, 0) + 1
+            else:
                 failed += 1
-                reason = failure_reason(lane)
                 reasons[reason] = reasons.get(reason, 0) + 1
         for group, value in profile_stages(seconds or {}, wall, contribution).items():
             totals[group] = totals.get(group, 0.0) + value
@@ -2940,6 +2958,10 @@ def profile_virtual(
         failed,
         failure_reasons=tuple(
             sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        ),
+        best_effort_points=served,
+        best_effort_reasons=tuple(
+            sorted(served_reasons.items(), key=lambda item: (-item[1], item[0]))
         ),
     )
 

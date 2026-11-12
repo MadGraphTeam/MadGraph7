@@ -79,6 +79,17 @@ def _evaluation_scalar_text(value: Decimal | float | int) -> str:
 
 
 def _evaluation_value_text(value: complex | Decimal | float | int) -> str:
+    """A table value with an explicit sign ("+" on a positive real part, a
+    space on zero), so that the mantissas of a column align."""
+
+    text = _unsigned_value_text(value)
+    if text.startswith("-"):
+        return text
+    real = value.real if isinstance(value, complex) else value
+    return (" " if real == 0 and not text.endswith("j") else "+") + text
+
+
+def _unsigned_value_text(value: complex | Decimal | float | int) -> str:
     if isinstance(value, complex):
         real = _evaluation_scalar_text(value.real)
         if value.imag == 0.0:

@@ -15,7 +15,9 @@ momenta = "data/loop_gg_epemmpmm_momenta.json"
 batch_size = 32
 warmup_runs = 1
 minimum_samples = 3
-# The flat points of --stability: few, so that it runs in about ten seconds
-# here (about 0.4 s per point for both backends together); raise with
-# --stability-points.
-stability_points = 25
+# profile --stability: 1000 flat points (the default) on 10 worker
+# processes (n_core, --n_core; at most the usable cores). The progress
+# display shows the estimated time to completion; Ctrl-C prints the tables of
+# the points evaluated so far.
+stability_points = 1000
+n_core = 10
