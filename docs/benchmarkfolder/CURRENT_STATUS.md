@@ -53,6 +53,9 @@ a fresh supported installation, all 66 local numerical lanes, eight main
 TIRust-first versus baseline runtime gates and separate existing-backend
 regression checks. The upper 95% paired runtime-ratio bound must be ≤1.05 for
 each main process. Historical qualified timing failures remain retained.
+Separate diagnostic native-DP and rescued-cohort timings remain an explicit
+[local follow-up TODO](PRECISION_COHORT_TIMING_TODO.md); the required local
+cohort adapter is not yet qualified.
 
 The root [qualification index](qualification.json) and [summary](summary.json)
 are preserved historical snapshots, not this current source's acceptance
