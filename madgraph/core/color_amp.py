@@ -53,6 +53,13 @@ logger = logging.getLogger('madgraph.color_amp')
 # Del Duca-Dixon-Maltoni basis. Using it divides the number of JAMPs by (n-1)
 # and the size of the color matrix by (n-1)^2.
 #
+# Color singlets (e.g. the Higgs boson of the effective g g H theory) do not
+# change the color space: as long as every colored external leg is a gluon, the
+# n-gluon basis applies. Their vertices only bring f's (g g g H, g g g g H) and
+# adjoint Kronecker deltas (g g H, written 2 Tr(a,b) = delta^ab in the color
+# strings), which are contracted away before the decomposition, see
+# contract_adjoint_deltas.
+#
 # Module level switch selecting the color basis used for fully adjoint
 # processes. Set through 'set color_basis' in the MG5 interface (the exporters
 # which need a color flow decomposition, i.e. anything writing leshouche
@@ -64,6 +71,10 @@ ddm_basis = False
 # keep using the (n-1)! trace ones, obtained from the DDM JAMPs through the
 # Kleiss-Kuijf relations.
 ddm_flow_basis = False
+# The processes for which the DDM basis was requested (ddm_basis on) but which
+# kept the trace basis, as (process, reason) pairs, so that the interface can
+# tell the user. Emptied by set_ddm_basis.
+ddm_fallbacks = []
 
 
 def set_ddm_basis(value, with_flow=False):
@@ -72,11 +83,51 @@ def set_ddm_basis(value, with_flow=False):
     global ddm_basis, ddm_flow_basis
     ddm_basis = bool(value)
     ddm_flow_basis = ddm_basis and bool(with_flow)
+    del ddm_fallbacks[:]
 
 
 class DDMError(Exception):
     """Raised when a color string cannot be mapped onto the DDM basis. Always
     caught by ColorBasis.build, which then falls back on the trace basis."""
+
+
+def contract_adjoint_deltas(col_str):
+    """Return a copy of the ColorString col_str where every adjoint Kronecker
+    delta touching a summed index has been contracted.
+
+    An adjoint delta^ab enters the color strings as 2 Tr(a,b), e.g. from the
+    Identity(1,2) of the effective g g H vertex (Tr(a,b) = delta^ab/2). When a
+    or b is a summed index, the delta only identifies it with the other index
+    and is removed by renaming it in the object it connects to (with a factor
+    1/2 on the coefficient). A delta between two external legs cannot be
+    contracted and is kept. Raise DDMError for a closed delta (delta^aa)."""
+
+    objs = [col_obj.create_copy() for col_obj in col_str]
+    coeff = col_str.coeff
+
+    while True:
+        for pos, col_obj in enumerate(objs):
+            if type(col_obj) is color_algebra.Tr and len(col_obj) == 2 and \
+               (col_obj[0] < 0 or col_obj[1] < 0):
+                break
+        else:
+            break
+
+        first, second = objs.pop(pos)
+        if first == second:
+            raise DDMError("closed adjoint delta Tr(%i,%i)" % (first, second))
+        old, new = (first, second) if first < 0 else (second, first)
+        for other in objs:
+            if old in other:
+                other.replace_indices({old: new})
+                break
+        else:
+            raise DDMError("summed index %i of an adjoint delta is not "
+                           "contracted with anything" % old)
+        coeff = coeff / 2
+
+    return color_algebra.ColorString(objs, coeff, col_str.is_imaginary,
+                                     col_str.Nc_power, col_str.loop_Nc_power)
 
 
 def ddm_half_ladder(perm, first, last):
@@ -255,10 +306,12 @@ class _ColorTree(object):
 
 
 def reduce_to_ddm(col_str, first, last):
-    """Decompose the ColorString col_str (a product of f objects) onto the DDM
-    half-ladder basis, returning a ColorFactor whose strings are the basis
-    elements. Raise DDMError if col_str is not a fully adjoint color tree."""
+    """Decompose the ColorString col_str (a product of f objects and adjoint
+    deltas) onto the DDM half-ladder basis, returning a ColorFactor whose
+    strings are the basis elements. Raise DDMError if col_str is not a fully
+    adjoint color tree."""
 
+    col_str = contract_adjoint_deltas(col_str)
     decomposition = _ColorTree(col_str).reduce_to_ddm(first, last)
 
     col_fact = color_algebra.ColorFactor()
@@ -309,6 +362,9 @@ class ColorBasis(dict):
 
     # Dictionary to save the DDM decompositions already done
     _ddm_dict = {}
+
+    # The process, for the messages
+    _process_name = 'unknown process'
 
 
     class ColorBasisError(Exception):
@@ -556,29 +612,49 @@ class ColorBasis(dict):
 
     def get_ddm_ends(self):
         """If every color structure of this basis is a fully adjoint color tree
-        over one and the same set of external legs -- i.e. if the process is a
-        pure multi-gluon one -- return the two legs to be put at the ends of the
-        DDM half-ladders. Return None otherwise."""
+        over one and the same set of external legs -- i.e. if all the colored
+        external legs are gluons, next to any number of color singlets --
+        return the two legs to be put at the ends of the DDM half-ladders.
+        Return None otherwise."""
+
+        try:
+            return self.find_ddm_ends()
+        except DDMError:
+            return None
+
+    def find_ddm_ends(self):
+        """Same as get_ddm_ends, but raise DDMError, with the reason, for a
+        process with at least three colored legs on which the DDM basis cannot
+        be used. None is only returned when the DDM basis would bring nothing,
+        i.e. for fewer than three colored legs."""
 
         legs = None
         for colorize_dict in self._list_color_dict:
             for col_str in colorize_dict.values():
                 externals = []
-                for col_obj in col_str:
+                not_f = None
+                for col_obj in contract_adjoint_deltas(col_str):
                     if col_obj.__class__.__name__ == 'ColorOne':
                         continue
                     if type(col_obj) is not color_algebra.f:
-                        return None
+                        not_f = col_obj
                     externals.extend([i for i in col_obj if i > 0])
-                if len(externals) != len(set(externals)):
-                    return None
                 externals = sorted(externals)
                 if legs is None:
                     legs = externals
-                    if len(legs) < 3:
+                    if len(set(legs)) < 3:
                         return None
-                elif legs != externals:
-                    return None
+                if not_f is not None:
+                    if type(not_f) is color_algebra.Tr and len(not_f) == 2:
+                        raise DDMError("color structure not connected (%s)" \
+                                       % str(col_str))
+                    raise DDMError("not all the colored legs are gluons "
+                                   "(color object %s)" % str(not_f))
+                if len(externals) != len(set(externals)):
+                    raise DDMError("repeated external index (%s)" % \
+                                   str(col_str))
+                if legs != externals:
+                    raise DDMError("color structures over different legs")
 
         if legs is None:
             return None
@@ -592,6 +668,9 @@ class ColorBasis(dict):
         first, last = self._ddm_ends
 
         for col_chain, col_str in colorize_dict.items():
+            # Remove the adjoint deltas of the color singlet vertices (g g H),
+            # leaving a product of f's over the external gluons.
+            col_str = contract_adjoint_deltas(col_str)
             # The decomposition only depends on the tree structure, so
             # normalize the summed indices to make the cache hit as often as
             # possible.
@@ -796,6 +875,10 @@ class ColorBasis(dict):
         update the _list_color_dict object accordingly """
 
         list_color_dict = []
+        try:
+            self._process_name = amplitude.get('process').base_string()
+        except Exception:
+            self._process_name = 'unknown process'
 
         for diagram in amplitude.get('diagrams'):
             colorize_dict = self.colorize(diagram,
@@ -836,7 +919,10 @@ class ColorBasis(dict):
             self.create_color_dict_list(amplitude)
 
         if ddm_basis:
-            self._ddm_ends = self.get_ddm_ends()
+            try:
+                self._ddm_ends = self.find_ddm_ends()
+            except DDMError as error:
+                self.ddm_fall_back(error)
         if self._ddm_ends:
             try:
                 for index, color_dict in enumerate(self._list_color_dict):
@@ -845,13 +931,22 @@ class ColorBasis(dict):
                     self.build_flow_basis()
                 return
             except DDMError as error:
-                logger.debug('Falling back on the trace color basis: %s', error)
                 self.clear()
-                self._ddm_ends = None
-                self._flow_basis = None
+                self.ddm_fall_back(error)
 
         for index, color_dict in enumerate(self._list_color_dict):
             self.update_color_basis(color_dict, index)
+
+    def ddm_fall_back(self, error):
+        """Go back to the trace basis after the DDM one was requested but
+        cannot be used, recording why in ddm_fallbacks."""
+
+        logger.debug('Falling back on the trace color basis for %s: %s',
+                     self._process_name, error)
+        if (self._process_name, str(error)) not in ddm_fallbacks:
+            ddm_fallbacks.append((self._process_name, str(error)))
+        self._ddm_ends = None
+        self._flow_basis = None
 
     def __init__(self, *args):
         """Initialize a new color basis object, either empty or filled (0
@@ -882,6 +977,8 @@ class ColorBasis(dict):
         # Dictionary to save the DDM decompositions already done
         self._ddm_dict = {}
 
+        # The process, for the messages (set by create_color_dict_list)
+        self._process_name = 'unknown process'
 
         if args:
             assert isinstance(args[0], diagram_generation.Amplitude), \

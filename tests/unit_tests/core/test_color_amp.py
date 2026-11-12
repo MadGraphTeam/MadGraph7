@@ -1137,6 +1137,213 @@ class DDMColorBasisTest(unittest.TestCase):
                           {1: 8, 2: 8, 3: 8, 4: 8}, 2)
 
 
+class DDMColorSingletTest(unittest.TestCase):
+    """The DDM basis for gluons next to color singlets, as in the effective
+    g g H theory: a scalar h with g g h (adjoint delta, 2 Tr(a,b)), g g g h (f)
+    and g g g g h (f f) vertices, a second (pseudo)scalar a with g g a and
+    g g g a vertices, and a colorless h h h vertex (QED order) giving
+    color-disconnected structures."""
+
+    mypartlist = base_objects.ParticleList()
+    myinterlist = base_objects.InteractionList()
+    mymodel = base_objects.Model()
+
+    def setUp(self):
+        if not len(self.mypartlist):
+            # the gluon, quark and pure QCD vertices of ColorSquareTest
+            ColorSquareTest.setUp(self)
+            for name, pdg in [('h', 25), ('a', 36)]:
+                self.mypartlist.append(base_objects.Particle({'name': name,
+                      'antiname': name, 'spin': 1, 'color': 1,
+                      'mass': 'M' + name, 'width': 'zero', 'texname': name,
+                      'antitexname': name, 'line': 'dashed', 'charge': 0.,
+                      'pdg_code': pdg, 'propagating': True, 'is_part': True,
+                      'self_antipart': True}))
+            gluon = self.mypartlist[0]
+            delta = color.ColorString([color.Tr(0, 1)],
+                                      fractions.Fraction(2, 1))
+            ggggh = [color.ColorString([color.f(-1, 0, 1), color.f(2, 3, -1)]),
+                     color.ColorString([color.f(-1, 0, 2), color.f(1, 3, -1)]),
+                     color.ColorString([color.f(-1, 0, 3), color.f(1, 2, -1)])]
+            new_id = len(self.myinterlist) + 1
+            for scalar, vertices in [(self.mypartlist[-2],
+                                      [(2, [delta]),
+                                       (3, [color.ColorString([color.f(0, 1, 2)])]),
+                                       (4, ggggh)]),
+                                     (self.mypartlist[-1],
+                                      [(2, [delta]),
+                                       (3, [color.ColorString([color.f(0, 1, 2)])])])]:
+                for nb_gluons, col in vertices:
+                    self.myinterlist.append(base_objects.Interaction({
+                        'id': new_id,
+                        'particles': base_objects.ParticleList(
+                                                [gluon] * nb_gluons + [scalar]),
+                        'color': col,
+                        'lorentz': ['L%d' % i for i in range(len(col))],
+                        'couplings': dict(((i, i), 'GH') for i in range(len(col))),
+                        'orders': {'HIG': 1, 'QCD': nb_gluons - 2}}))
+                    new_id += 1
+            self.myinterlist.append(base_objects.Interaction({
+                'id': new_id,
+                'particles': base_objects.ParticleList([self.mypartlist[-2]] * 3),
+                'color': [],
+                'lorentz': ['L1'],
+                'couplings': {(0, 0): 'GHHH'},
+                'orders': {'QED': 1}}))
+            self.mymodel.set('particles', self.mypartlist)
+            self.mymodel.set('interactions', self.myinterlist)
+        color_amp.set_ddm_basis(True)
+
+    def tearDown(self):
+        color_amp.set_ddm_basis(False)
+
+    def get_amplitude(self, ids, orders=None):
+        """Amplitude for the process with the given pdg codes, the first two
+        being in the initial state. By default one effective vertex per
+        scalar (expansion order 1 per scalar, as in the effective theory) and
+        no h h h vertex."""
+
+        if orders is None:
+            orders = {'QED': 0,
+                      'HIG': sum(1 for pdg in ids if pdg in (25, 36))}
+        myleglist = base_objects.LegList()
+        for i, pdg in enumerate(ids):
+            myleglist.append(base_objects.Leg({'id': pdg, 'state': i > 1}))
+
+        myamplitude = diagram_generation.Amplitude()
+        myamplitude.set('process', base_objects.Process({'legs': myleglist,
+                                                    'model': self.mymodel,
+                                                    'orders': dict(orders)}))
+        myamplitude.generate_diagrams()
+
+        return myamplitude
+
+    def test_contract_adjoint_deltas(self):
+        """The deltas 2 Tr(a,b) are contracted into the f's"""
+
+        def contract(objs, coeff):
+            return color_amp.contract_adjoint_deltas(
+                color.ColorString(objs, fractions.Fraction(coeff, 1)))
+
+        # g g g h diagram: a gluon line emitting the scalar
+        res = contract([color.f(-1, 1, 2), color.Tr(-2, 4),
+                        color.f(-1, -2, 5)], 2)
+        self.assertEqual(res.to_immutable(),
+                         color.ColorString([color.f(-1, 1, 2),
+                                            color.f(-1, 4, 5)]).to_immutable())
+        self.assertEqual(res.coeff, 1)
+        # two scalars on the same internal line: a chain of deltas
+        res = contract([color.Tr(-1, -2), color.Tr(-2, 3), color.f(1, 2, -1)], 4)
+        self.assertEqual(res.to_immutable(), (('f', (1, 2, 3)),))
+        self.assertEqual(res.coeff, 1)
+        # the attributes are kept and the input is not modified
+        col_str = color.ColorString([color.Tr(-1, 3), color.f(1, 2, -1)],
+                                    fractions.Fraction(2, 1), True, -1)
+        res = color_amp.contract_adjoint_deltas(col_str)
+        self.assertEqual((res.is_imaginary, res.Nc_power), (True, -1))
+        self.assertEqual(str(col_str), '2 I 1/Nc^1 Tr(-1,3) f(1,2,-1)')
+        # a delta between two external legs cannot be contracted
+        res = contract([color.Tr(1, 2), color.f(3, 4, 5)], 2)
+        self.assertEqual(res.to_immutable(),
+                         color.ColorString([color.Tr(1, 2),
+                                            color.f(3, 4, 5)]).to_immutable())
+        # a closed delta is not a tree
+        self.assertRaises(color_amp.DDMError, contract,
+                          [color.Tr(-1, -1)], 2)
+
+    def test_ddm_basis_size_scalar_gluons(self):
+        """g g > (scalars) + n g has the (n+2-2)! DDM structures of the gluons,
+        with the first and last gluons at the ends of the half-ladders"""
+
+        for ids, size, ends in [([21, 21, 25, 21], 1, (1, 4)),
+                                ([21, 21, 25, 21, 21], 2, (1, 5)),
+                                ([21, 21, 25, 21, 21, 21], 6, (1, 6)),
+                                ([21, 21, 36, 21, 21, 21], 6, (1, 6)),
+                                ([21, 21, 25, 36, 21, 21], 2, (1, 6)),
+                                ([21, 21, 25, 25, 21, 21], 2, (1, 6))]:
+            col_basis = color_amp.ColorBasis(self.get_amplitude(ids))
+            self.assertEqual(col_basis._ddm_ends, ends)
+            self.assertEqual(len(col_basis), size)
+        self.assertEqual(color_amp.ddm_fallbacks, [])
+
+    def test_ddm_reduction_matches_trace_basis_scalars(self):
+        """Expanding the DDM decomposition of every diagram back on the trace
+        basis must give the direct trace decomposition, including the
+        diagrams with one or two adjoint deltas."""
+
+        def trace_expand(col_str):
+            res = collections.defaultdict(fractions.Fraction)
+            for cs in color.ColorFactor([col_str]).full_simplify():
+                res[(cs.to_immutable(), cs.is_imaginary, cs.Nc_power)] += \
+                                                                     cs.coeff
+            return dict((k, v) for k, v in res.items() if v)
+
+        for ids in ([21, 21, 25, 21, 21], [21, 21, 25, 21, 21, 21],
+                    [21, 21, 25, 36, 21, 21], [21, 21, 36, 21, 21, 21]):
+            col_basis = color_amp.ColorBasis()
+            color_dicts = col_basis.create_color_dict_list(
+                                                    self.get_amplitude(ids))
+            ends = col_basis.get_ddm_ends()
+            nb_deltas = collections.Counter()
+            for color_dict in color_dicts:
+                for col_str in color_dict.values():
+                    nb_deltas[sum(1 for o in col_str
+                                  if isinstance(o, color.Tr))] += 1
+                    via_ddm = collections.defaultdict(fractions.Fraction)
+                    for ddm_str in color_amp.reduce_to_ddm(col_str, *ends):
+                        for k, v in trace_expand(ddm_str).items():
+                            via_ddm[k] += v
+                    self.assertEqual(trace_expand(col_str),
+                                dict((k, v) for k, v in via_ddm.items() if v))
+            # diagrams with and without a delta were both checked
+            self.assertTrue(nb_deltas[0] and nb_deltas[1])
+            if 36 in ids and 25 in ids:
+                self.assertTrue(nb_deltas[2])
+
+    def test_ddm_color_matrix_scalar_is_the_gluon_one(self):
+        """A color singlet does not change the color space: the DDM color
+        matrix of g g > h g g is the one of g g > g g"""
+
+        col_matrix = color_amp.ColorMatrix(
+            color_amp.ColorBasis(self.get_amplitude([21, 21, 25, 21, 21])),
+            Nc=3)
+        for i, j, goal in [(0, 0, 72), (1, 1, 72), (0, 1, 36), (1, 0, 36)]:
+            self.assertEqual(col_matrix.col_matrix_fixed_Nc[(i, j)],
+                             (fractions.Fraction(goal, 1), 0))
+
+    def test_ddm_flow_basis_scalar_gluons(self):
+        """With the flow basis, the (n-1)! trace structures of the gluons are
+        rebuilt from the (n-2)! DDM ones"""
+
+        color_amp.set_ddm_basis(True, with_flow=True)
+        col_basis = color_amp.ColorBasis(
+                            self.get_amplitude([21, 21, 25, 21, 21, 21]))
+        self.assertEqual(len(col_basis), 6)
+        self.assertEqual(len(col_basis.get_flow_basis()), 24)
+        projection = col_basis.get_flow_projection()
+        self.assertEqual(len(projection), 24)
+        self.assertTrue(all(projection))
+
+    def test_ddm_fall_back_disconnected_scalars(self):
+        """g g > h* > h h* > h g g gives delta^12 delta^45, which is not in the
+        span of the half-ladders: trace basis, with the reason recorded"""
+
+        col_basis = color_amp.ColorBasis(
+                    self.get_amplitude([21, 21, 25, 21, 21], orders={}))
+        self.assertEqual(col_basis._ddm_ends, None)
+        self.assertEqual(len(color_amp.ddm_fallbacks), 1)
+        self.assertTrue(color_amp.ddm_fallbacks[0][1].startswith(
+                                        'color structure not connected'))
+        # and a process with quarks says why as well, while g g > h, with
+        # only two colored legs, has nothing to report
+        color_amp.set_ddm_basis(True)
+        color_amp.ColorBasis(self.get_amplitude([2, -2, 21, 21]))
+        color_amp.ColorBasis(self.get_amplitude([21, 21, 25]))
+        self.assertEqual([reason.split(' (')[0] for proc, reason in
+                          color_amp.ddm_fallbacks],
+                         ['not all the colored legs are gluons'])
+
+
 class LoopNcMemoTest(unittest.TestCase):
     """The process-wide canonical color memo must not leak loop_Nc_power."""
 

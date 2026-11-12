@@ -12337,7 +12337,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     def help_set2_color_basis(self):
         logger.info("color_basis <value>",'$MG:color:GREEN')
         logger.info(" > (default: auto) select the color basis used for processes")
-        logger.info("   whose color structure is purely adjoint (multi-gluon).")
+        logger.info("   whose color structure is purely adjoint (all the colored")
+        logger.info("   particles are gluons, next to any number of color singlets,")
+        logger.info("   e.g. g g > h + n g in the Higgs effective theory).")
         logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
         logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
         logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
@@ -12958,13 +12960,32 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.debug('Using the Del Duca-Dixon-Maltoni color basis for '
                          'fully adjoint processes (flow basis: %s)', with_flow)
 
+    def report_ddm_fallbacks(self):
+        """After 'set color_basis ddm', tell the user which processes kept the
+        trace color basis and why (with 'auto' this stays at debug level)."""
+
+        if self.options.get('color_basis', 'auto') != 'ddm' or \
+           not color_amp.ddm_fallbacks:
+            return
+        reasons = collections.OrderedDict()
+        for process, reason in color_amp.ddm_fallbacks:
+            reasons.setdefault(reason.split(' (')[0], []).append(process)
+        for reason, processes in reasons.items():
+            shown = ', '.join(processes[:5])
+            if len(processes) > 5:
+                shown += ', ... (%d processes)' % len(processes)
+            logger.info('color_basis ddm: trace color basis kept for %s: %s',
+                        shown, reason)
+
     def export(self, nojpeg = False, main_file_name = "", group_processes=True,
                                                                        args=[]):
         """Export a generated amplitude to file."""
 
         self.set_color_basis_mode(self._curr_exporter, self._me_curr_exporter)
         try:
-            return self._export(nojpeg, main_file_name, group_processes, args)
+            out = self._export(nojpeg, main_file_name, group_processes, args)
+            self.report_ddm_fallbacks()
+            return out
         finally:
             # the color basis is tied to this output, it must not leak to the
             # next command
