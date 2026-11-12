@@ -29,8 +29,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "5fe7f3920aabd8454442a04143755c4812d9f145",
-      "note": "main 5fe7f392 = the merge of the topic pyamplicol/box-mu-conditioning (71eddb15, same tree: the box mu-expansion's conditioning bound in both engines, a flagged lane decided a posteriori in the binary64 engines, docs/box-mu-conditioning.md) on main 98e223da, whose tree is 5b6a8f57's: main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pins on oneloopmaster a7cf4587 and Symbolica b9eaa735, Symbolica dfe6bd97 and oneloopmaster bd703d09; it reaches main through a merge commit, which the coordinator pushes before this pin lands"
+      "revision": "cf28d8e0018e0555256d3fba51e457d4941dcb0e",
+      "note": "main cf28d8e0 = 5fe7f392 + the scoped Symbolica library licence (NinjaRS registers its own key for the crate ninjars and holds a thread-bound guard only around its own operations; no API change); 5fe7f392 = the merge of the topic pyamplicol/box-mu-conditioning (71eddb15, same tree: the box mu-expansion's conditioning bound in both engines, a flagged lane decided a posteriori in the binary64 engines, docs/box-mu-conditioning.md) on main 98e223da, whose tree is 5b6a8f57's: main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pins on oneloopmaster a7cf4587 and Symbolica b9eaa735, Symbolica dfe6bd97 and oneloopmaster bd703d09; it reaches main through a merge commit, which the coordinator pushes before this pin lands"
     },
     {
       "name": "oneloopmaster",
