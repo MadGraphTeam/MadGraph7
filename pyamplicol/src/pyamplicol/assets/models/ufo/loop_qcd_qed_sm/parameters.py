@@ -22,19 +22,19 @@ lhv = Parameter(name = 'lhv',
                  nature = 'internal',
                  type = 'real',
                  value = '1.0',
-                 texname = '\lambda_{HV}')
+                 texname = r'\lambda_{HV}')
 
 vep = Parameter(name = 'vep',
                 nature = 'internal',
                 type = 'real',
                 value = '0.0',
-                texname = '\eps')
+                texname = r'\eps')
 
 ep = Parameter(name = 'ep',
                nature = 'internal',
                type = 'real',
                value = '1e-10',
-               texname = '\ep')
+               texname = r'\ep')
 
 Ncol = Parameter(name = 'Ncol',
                  nature = 'internal',
@@ -72,7 +72,7 @@ epsUV = Parameter(name = 'epsUV',
                   nature = 'external',
                   type = 'real',
                   value = 1.0,
-                  texname = '\text{\eps_{UV}}',
+                  texname = '\text{\\eps_{UV}}',
                   lhablock = 'TECHNICAL',
                   lhacode = [ 1 ])
 
@@ -80,7 +80,7 @@ epsIR = Parameter(name = 'epsIR',
                   nature = 'external',
                   type = 'real',
                   value = 1.0,
-                  texname = '\text{\eps_{IR}}',
+                  texname = '\text{\\eps_{IR}}',
                   lhablock = 'TECHNICAL',
                   lhacode = [ 2 ])
 

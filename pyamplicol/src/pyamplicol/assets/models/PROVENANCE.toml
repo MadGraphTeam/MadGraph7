@@ -159,6 +159,10 @@ id = "ufomodeldb-issue-1-patch-python3-fold-v1"
 description = "ufomodeldb-issue-1-patch-python3-v1, then tools/developer/fold_ufo_value_appends.py: the patch's module-level string appends to the Laurent terms of eCoup_a0_UV_EW and eCoup_DGmua0_UV_EW folded into their constructors (statements kept as comments); every UFO value string is unchanged (checked by import); ufo-model-loader 1.0.1 certifies no value written after its constructor"
 
 [[transformations]]
+id = "ufo-texname-escape-v1"
+description = "The record's base_transformation_id, then every string literal holding an invalid escape sequence (TeX names such as '\\lambda_{HV}', which Python >= 3.12 reports as a SyntaxWarning at compile time) rewritten with the same value: a raw string when it holds no valid escape, otherwise only its invalid backslashes doubled; each old and new literal evaluated equal"
+
+[[transformations]]
 id = "ufo-python3-conversion-v1"
 description = "Python-3 conversion of a Python-2 UFO module: package-relative imports (__init__.py also imports object_library), .iteritems() -> .items() in object_library.py, write_param_card.py ported to Python 3 (print calls, sort key, exec namespace); no declaration changes"
 
@@ -1548,8 +1552,8 @@ upstream_exact_blob_match = false
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/ufo/loop_qcd_qed_sm/CT_parameters.py"
-package_sha256 = "7c55d3d6f0de20a3e5c7a69312e9fe2d75830bad0d9865abc538c5f988816950"
-package_size = 227467
+package_sha256 = "8cd5039e7fa25708df6b6133a863a8bf02ce331f80f025dd44af1570538cf4e8"
+package_size = 227565
 source_repository = "https://github.com/mg5amcnlo/UFOmodeldb"
 source_revision = "6ca4b12088b354420b1a1cadf26314d9c56980ab loop_qcd_qed_sm.tgz sha256:b6a60603d510e7ab091f2eb202076503bf0d163c599836235be45477b3664e70"
 source_path = "loop_qcd_qed_sm/CT_parameters.py"
@@ -1557,9 +1561,10 @@ source_blob_oid = "2f59d0a5b212ec2619d671a2ed13f948e88de370"
 source_git_mode = "100644"
 source_sha256 = "7c55d3d6f0de20a3e5c7a69312e9fe2d75830bad0d9865abc538c5f988816950"
 license_ids = [ "MadGraph5-aMCatNLO",]
-transformation_id = "verbatim-distribution-file-v1"
+transformation_id = "ufo-texname-escape-v1"
+base_transformation_id = "verbatim-distribution-file-v1"
 upstream_distribution_path = "loop_qcd_qed_sm/CT_parameters.py"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/ufo/loop_qcd_qed_sm/CT_vertices.py"
@@ -1668,8 +1673,8 @@ upstream_exact_blob_match = true
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/ufo/loop_qcd_qed_sm/parameters.py"
-package_sha256 = "379d6228d30df47725c6e0f1c133f45ac6ec119b56f0d4f1f6bd17ba2a833278"
-package_size = 44449
+package_sha256 = "c60b976d5557dfb22781414a10d2b3cce2a8cfb15d35b04a2d7fbd93f31eadf5"
+package_size = 44454
 source_repository = "https://github.com/mg5amcnlo/UFOmodeldb"
 source_revision = "6ca4b12088b354420b1a1cadf26314d9c56980ab loop_qcd_qed_sm.tgz sha256:b6a60603d510e7ab091f2eb202076503bf0d163c599836235be45477b3664e70"
 source_path = "loop_qcd_qed_sm/parameters.py"
@@ -1677,7 +1682,8 @@ source_blob_oid = "dc55833801dc22e4a604f5e8100c2435fa2af9ee"
 source_git_mode = "100644"
 source_sha256 = "df33fa4fb8bc8f3ea1028686cd9bf5194dc4370053d3dee43fa1fd1ae09c01ec"
 license_ids = [ "MadGraph5-aMCatNLO",]
-transformation_id = "ufomodeldb-issue-1-patch-v1"
+transformation_id = "ufo-texname-escape-v1"
+base_transformation_id = "ufomodeldb-issue-1-patch-v1"
 upstream_distribution_path = "loop_qcd_qed_sm/parameters.py"
 upstream_exact_blob_match = false
 
@@ -1848,8 +1854,8 @@ upstream_exact_blob_match = false
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu/CT_parameters.py"
-package_sha256 = "948bc3e3959090d7427cbcd42e0be57b7d757fa251f9d165a6ed7f05a6f23879"
-package_size = 256722
+package_sha256 = "9d46bbd7f8c05e22c6412082127d24c08b478376bdea8e8df5bc0b661604b775"
+package_size = 256822
 source_repository = "https://github.com/mg5amcnlo/UFOmodeldb"
 source_revision = "6ca4b12088b354420b1a1cadf26314d9c56980ab loop_qcd_qed_sm_Gmu.tgz sha256:9f3668e79a8e461f6f9738a18e9b63665c7f970cdade124461867581dd3c9811"
 source_path = "loop_qcd_qed_sm_Gmu/CT_parameters.py"
@@ -1857,7 +1863,8 @@ source_blob_oid = "7b72cb2f583e35708c98785df5dd19585ff5732c"
 source_git_mode = "100644"
 source_sha256 = "275cd4426af5b7b0fe51b34fece99427d9ad02b9916aa8e7c3e80652b8feb18e"
 license_ids = [ "MadGraph5-aMCatNLO",]
-transformation_id = "ufomodeldb-issue-1-patch-python3-fold-v1"
+transformation_id = "ufo-texname-escape-v1"
+base_transformation_id = "ufomodeldb-issue-1-patch-python3-fold-v1"
 upstream_distribution_path = "loop_qcd_qed_sm_Gmu/CT_parameters.py"
 upstream_exact_blob_match = false
 
@@ -1968,8 +1975,8 @@ upstream_exact_blob_match = false
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu/parameters.py"
-package_sha256 = "55f367382153f765efed431fba9b9c5927e1f3636b6e74af4c9dcd7a4888adba"
-package_size = 46231
+package_sha256 = "de452463d0ff4e0fc99d449434a58c6b33cb6adc68ef91431245cb471d0cc765"
+package_size = 46238
 source_repository = "https://github.com/mg5amcnlo/UFOmodeldb"
 source_revision = "6ca4b12088b354420b1a1cadf26314d9c56980ab loop_qcd_qed_sm_Gmu.tgz sha256:9f3668e79a8e461f6f9738a18e9b63665c7f970cdade124461867581dd3c9811"
 source_path = "loop_qcd_qed_sm_Gmu/parameters.py"
@@ -1977,7 +1984,8 @@ source_blob_oid = "7426eb423e4a5d50e01369082bbc7d5455a2828c"
 source_git_mode = "100644"
 source_sha256 = "02e551e6243ceef645178b67582a8799b4de9854abc9feba920528fe581f2cb2"
 license_ids = [ "MadGraph5-aMCatNLO",]
-transformation_id = "ufomodeldb-issue-1-patch-python3-v1"
+transformation_id = "ufo-texname-escape-v1"
+base_transformation_id = "ufomodeldb-issue-1-patch-python3-v1"
 upstream_distribution_path = "loop_qcd_qed_sm_Gmu/parameters.py"
 upstream_exact_blob_match = false
 

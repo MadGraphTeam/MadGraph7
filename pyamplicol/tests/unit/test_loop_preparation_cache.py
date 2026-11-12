@@ -956,6 +956,42 @@ def test_every_switch_turns_the_cache_off(monkeypatch, tmp_path):
         cache.store_for(ModelConfig())
 
 
+@pytest.mark.loop_fast
+def test_the_progress_sentence_is_short_and_has_no_path(tmp_path):
+    """ux-clean: the generation prints one sentence (cache outcome, no
+    statistics dump, no directory); ``report`` keeps the full record."""
+
+    from pyamplicol.loops import preparation_cache as cache
+
+    cold = cache.PreparationMemo(cache.PreparationStore(tmp_path / "store"))
+    cold.counts.update(restrictions=1, lowerings=1, program_saves=1, requests=1)
+    cold.store.events.update(misses=1, saves=1)
+    assert cold.summary() == (
+        "Loop model preparation: 1 scalar program lowered (1 saved)"
+    )
+    warm = cache.PreparationMemo(cache.PreparationStore(tmp_path / "store"))
+    warm.counts.update(restrictions=1, program_loads=1, requests=1)
+    warm.store.events.update(hits=1)
+    assert warm.summary() == (
+        "Loop model preparation: 1 scalar program loaded from the cache"
+    )
+    off = cache.PreparationMemo(None)
+    off.counts.update(lowerings=2)
+    assert (
+        off.summary() == "Loop model preparation: 2 scalar programs lowered (cache off)"
+    )
+    stale = cache.PreparationMemo(cache.PreparationStore(tmp_path / "store"))
+    stale.counts.update(lowerings=1)
+    stale.store.events.update(rejected=1, saves=1)
+    assert stale.summary() == (
+        "Loop model preparation: 1 scalar program lowered "
+        "(1 saved, 1 stale cache entry rebuilt)"
+    )
+    for memo in (cold, warm, off, stale):
+        assert str(tmp_path) not in memo.summary()
+    assert cold.report()["store"]["directory"] == str(tmp_path / "store")
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("switch", ["config", "cli", "environment", "model-cache"])
 def test_an_opted_out_generation_reads_and_writes_no_entry(

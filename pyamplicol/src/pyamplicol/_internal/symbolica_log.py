@@ -16,6 +16,16 @@ Two channels, each restricted to an explicit list of understood classes:
   a filter on its logger counts and drops the records of its known classes
   (``LOADER_CLASSES``) during the capture; any other record passes.
 
+A third channel needs no list: ``ufo_source_warnings(source)``, entered
+wherever pyAmpliCol imports or compiles a UFO model's Python, records the
+Python warnings attributed to a file of that model (for example the
+``SyntaxWarning: invalid escape sequence '\\l'`` Python >= 3.12 raises when it
+compiles a TeX name such as ``'\\lambda_{HV}'`` in a non-raw string) into the
+active capture as ``source="ufo-model"`` (``kind`` = the warning category,
+``message`` = ``file:line: text``), or, outside a capture, logs them at
+DEBUG on ``pyamplicol.models``; every other warning raised in the block is
+re-emitted unchanged after it, under the caller's filters.
+
 Known classes and why they are benign (each root-caused):
 
 - ``WARN symbolica::coefficient: Created infinity by raising 0 to the power
@@ -49,9 +59,11 @@ import re
 import select
 import sys
 import threading
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # Optional ANSI colour codes and the tracing timestamp before the level.
 _ANSI = re.compile(rb"\x1b\[[0-9;]*m")
@@ -235,6 +247,76 @@ def capture(where: str) -> Iterator[Captured]:
             _ACTIVE.clear()
 
 
+_MODEL_LOG = logging.getLogger("pyamplicol.models")
+
+
+def _inside(filename: object, root: Path, directory: bool) -> bool:
+    """Whether ``filename`` is a file of the model: inside its directory
+    ``root``, or ``root`` itself when the model source is one file."""
+
+    try:
+        path = Path(str(filename)).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return path.is_relative_to(root) if directory else path == root
+
+
+@contextmanager
+def ufo_source_warnings(source: os.PathLike[str] | str) -> Iterator[None]:
+    """Record the Python warnings attributed to a file of the UFO model
+    ``source`` (a directory: any file inside it; a single file: that file
+    only) raised while the block imports or compiles it, instead of printing
+    them (module docstring). Scoped: the block runs under
+    ``warnings.catch_warnings(record=True)`` with the caller's filters
+    unchanged (an ``error`` filter still raises); the warnings of other files
+    are re-emitted after the block, also when it raises. Each compile counts:
+    a model compiled twice (an import and a source check) reports each of its
+    warnings twice. ``catch_warnings`` swaps process-wide state, so model
+    loads are not meant to overlap in threads (they do not today)."""
+
+    path = Path(source).expanduser().resolve()
+    directory = path.is_dir()
+    recorded: list[warnings.WarningMessage] = []
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            try:
+                yield
+            finally:
+                recorded = list(caught)
+    finally:
+        # After the caller's filters are restored, also when the block
+        # raises: re-emitted warnings meet the caller's own filters.
+        _dispatch(recorded, path, directory)
+
+
+def _dispatch(
+    recorded: list[warnings.WarningMessage], path: Path, directory: bool
+) -> None:
+    with _GUARD:
+        sink = _ACTIVE[0] if _ACTIVE else None
+    name = path.name if directory else path.parent.name
+    for item in recorded:
+        if not _inside(item.filename, path, directory):
+            # Re-emitted at the original location. The original module's
+            # warning registry is not recorded by catch_warnings, so a
+            # 'default' / 'once' filter deduplicates against the module
+            # derived from the file name (warn_explicit's own default).
+            warnings.warn_explicit(
+                item.message,
+                item.category,
+                item.filename,
+                item.lineno,
+                source=item.source,
+            )
+            continue
+        kind = item.category.__name__
+        message = f"{Path(item.filename).name}:{item.lineno}: {item.message}"
+        if sink is not None:
+            sink.add("ufo-model", kind, message)
+        else:
+            _MODEL_LOG.debug("UFO model %s: %s: %s", name, kind, message)
+
+
 __all__ = [
     "LINGER_SECONDS",
     "LOADER_CLASSES",
@@ -242,4 +324,5 @@ __all__ = [
     "SYMBOLICA_CLASSES",
     "Captured",
     "capture",
+    "ufo_source_warnings",
 ]

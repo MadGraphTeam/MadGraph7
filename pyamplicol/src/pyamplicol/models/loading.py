@@ -996,18 +996,23 @@ def _load_external_model(
         from ufo_model_loader.commands import load_model
         from ufo_model_loader.common import JSONLook
 
+        from .._internal.symbolica_log import ufo_source_warnings
+
         restriction = _loader_restriction_name(source, options.restriction)
         try:
-            model, parameter_card = load_model(
-                str(source),
-                restriction,
-                options.simplify,
-                wrap_indices_in_lorentz_structures=False,
-                # Loop counterterms belong to the exact source program. A tree
-                # projection need not parse or evaluate their finite
-                # coefficients.
-                include_counterterm_finite_parts=not source.is_dir(),
-            )
+            # The model's own compile-time warnings (an invalid escape in a
+            # TeX name) are returned as data, never printed.
+            with ufo_source_warnings(source):
+                model, parameter_card = load_model(
+                    str(source),
+                    restriction,
+                    options.simplify,
+                    wrap_indices_in_lorentz_structures=False,
+                    # Loop counterterms belong to the exact source program. A
+                    # tree projection need not parse or evaluate their finite
+                    # coefficients.
+                    include_counterterm_finite_parts=not source.is_dir(),
+                )
         except Exception as error:
             from .source_refusals import refuse_python2_ufo
 
