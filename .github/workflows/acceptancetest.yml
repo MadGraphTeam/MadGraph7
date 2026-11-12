@@ -392,6 +392,8 @@ jobs:
             ./tests/test_manager.py test_check_gauge_epem_vevex_wpwm -pA -t0 -l INFO
             ./tests/test_manager.py test_check_gauge_pp_wpwm -pA -t0 -l INFO
             ./tests/test_manager.py test_check_pp_wpwm -pA -t0 -l INFO
+            ./tests/test_manager.py test_check_charged_current_flavour_grouping -pA -t0 -l INFO
+            ./tests/test_manager.py test_check_flavour_grouping_nothing_checked -pA -t0 -l INFO
 
       # ---- acceptancetest_standalone_rw_tree_then_virt (from mg5 3.8.2) ----
       # tree then loop standalone_rw output in one session, as the NLO reweighting

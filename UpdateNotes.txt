@@ -4,6 +4,17 @@ ANNOUNCEMENT:
    The 2.9.X LONG TERM STABLE version is now at end of life for bug fixing/support since December 2025.
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
+0.4.0 (XX/XX/XX):
+   OM: check gauge/brs/lorentz/permutation/full with flavour grouping (the default):
+       the flavour of the legs was dropped and every grouped process was evaluated for
+       the first flavour of each group only. A charged-current process such as
+       `u d~ > w+ g` (evaluated as d d~ > w+ g, which vanishes) was checked by nothing:
+       an empty gauge table ("Summary: 0/0 passed"), no Ward check, and a "Passed"
+       0 = 0 permutation check. The checks now evaluate the flavour asked for, and a
+       multiparticle such as `p p > w+ w-` each physical flavour, as without grouping.
+       A check that could check no process now says so instead of printing an empty
+       table.
+
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
