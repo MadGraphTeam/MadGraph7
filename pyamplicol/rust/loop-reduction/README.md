@@ -31,8 +31,9 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `5fe7f3920aabd8454442a04143755c4812d9f145` (main: the merge of
-  71eddb15, the box mu-expansion's conditioning bound: typed refusal of near-planar lanes in every carrier, the
+- NinjaRS `cf28d8e0018e0555256d3fba51e457d4941dcb0e` (main: its scoped Symbolica
+  library licence, a key of its own held only around NinjaRS operations, on
+  5fe7f392, the merge of 71eddb15, the box mu-expansion's conditioning bound: typed refusal of near-planar lanes in every carrier, the
   binary64 engines deciding a flagged lane a posteriori, on
   main `98e223da` = main `b3a29c85`, PRs #7-#12 and #14, the 0BSD relicence,
   and the re-pins on the Symbolica and oneloopmaster revisions below; UV/IR
