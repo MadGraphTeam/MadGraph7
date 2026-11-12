@@ -1,11 +1,12 @@
 c The matrix-element blocks of the FKS integrand from the Fortran of an
-c aMC@NLO output, for fks_fortran.py, the Fortran test provider of
-c madspace. It is linked in a P* directory as check_poles (the objects
-c of madevent_mintFO without its driver) and serves requests over two
-c pipes, whose file descriptors are its two arguments. Every block is
-c taken with the strong coupling g = 1, so that each split-order
-c position carries no power of g. The answers are those of the calls
-c that sigint of driver_mintFO.f and fks_integrand_dump.f make:
+c aMC@NLO output, for madgraph/mg7/fks_provider.py, the Fortran provider
+c of the FKS integrand of madspace. It is linked in a P* directory as
+c check_poles (the objects of madevent_mintFO without its driver) and
+c serves requests over two pipes, whose file descriptors are its two
+c arguments. Every block is taken with the strong coupling g = 1, so
+c that each split-order position carries no power of g. The answers
+c are those of the calls that sigint of driver_mintFO.f and
+c fks_integrand_dump.f make:
 c - REAL: smatrix_real_frame at the event of one FKS configuration,
 c   amp_split per position.
 c - BORN: sborn_frame at the Born with the azimuthal part of the

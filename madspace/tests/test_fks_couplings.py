@@ -20,7 +20,8 @@ the momentum fractions of madspace. ALPHAS of MadFKS interpolates the running
 linearly on a grid of 256 nodes per region (alphas_from_grids), within 1e-5
 of it. madspace itself reads LHAPDF grids, here the same nodes of NNPDF in
 that format, which it interpolates cubically, and alpha_s from a dense grid of
-the 2-loop running.
+the 2-loop running, both as the MG7 NLO driver writes them
+(madgraph/mg7/fks_couplings.py).
 """
 
 import functools
@@ -30,6 +31,14 @@ import os
 import numpy as np
 import pytest
 from fks_testing import evaluate, reference
+from madgraph.mg7.fks_couplings import (
+    COLUMNS,
+    NNPDF_GRID,
+    PIDS,
+    alpha_s_2loop,
+    write_alpha_s_grid,
+    write_lhapdf_grid,
+)
 from madspace_testing import default_context
 from test_fks_integrand import (
     DATA,
@@ -48,16 +57,6 @@ from madspace.fks import (
     underlying_born,
 )
 
-NNPDF_GRID = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    os.pardir,
-    os.pardir,
-    "Template",
-    "LO",
-    "lib",
-    "Pdfdata",
-    "NNPDF23nlo_as_0119_qed_mem0.grid",
-)
 # the kinematics of the weight lines of add_wgt: the event, the Born (the soft
 # counter-event of MadFKS) and the counter-events
 KINEMATICS = {
@@ -86,10 +85,6 @@ FRACTIONS = {
     "collinear": ("collinear_x1", "collinear_x2"),
     "soft_collinear": ("soft_collinear_x1", "soft_collinear_x2"),
 }
-# the flavors that MadFKS takes from NNPDF (fdist of pdf.f: no top) and their
-# columns in its grid (IPDF + 7 of NNevolvePDF, 1-based)
-PIDS = [-5, -4, -3, -2, -1, 21, 1, 2, 3, 4, 5, 22]
-COLUMNS = {pid: (0 if pid == 21 else 7 if pid == 22 else pid) + 7 for pid in PIDS}
 # the Born and its counter-events come back through the boost into the lab
 # and the round trip of the Born mapping (see test_fks_integrand.py)
 RTOL = 1e-10
@@ -202,37 +197,6 @@ class NNPDF:
         return self.polint(x1a, np.stack(nodes, axis=1), x1) / x
 
 
-def alpha_s_2loop(asmz, q):
-    """alphas of alfas_functions.f at two loops with cmass 1.42 and bmass
-    4.7."""
-    b0 = {3: 0.716197243913527, 4: 0.66314559621623, 5: 0.61009394851893}
-    c1 = {3: 0.565884242104515, 4: 0.49019722472304, 5: 0.40134724779695}
-
-    def newton(t, a_in, nf):
-        def f2(a):
-            return 1.0 / a + c1[nf] * math.log((c1[nf] * a) / (1.0 + c1[nf] * a))
-
-        a_out = a_in / (
-            1.0 + b0[nf] * a_in * t + c1[nf] * a_in * math.log(1.0 + a_in * b0[nf] * t)
-        )
-        while True:
-            a = a_out
-            f = b0[nf] * t + f2(a_in) - f2(a)
-            fp = 1.0 / (a**2 * (1.0 + c1[nf] * a))
-            a_out = a - f / fp
-            if abs(f / fp / a) <= 5e-4:
-                return a_out
-
-    zmass, cmass, bmass = 91.188, 1.42, 4.7
-    amb = newton(2.0 * math.log(bmass / zmass), asmz, 5)
-    amc = newton(2.0 * math.log(cmass / bmass), amb, 4)
-    if q < bmass:
-        if q < cmass:
-            return newton(2.0 * math.log(q / cmass), amc, 3)
-        return newton(2.0 * math.log(q / bmass), amb, 4)
-    return newton(2.0 * math.log(q / zmass), asmz, 5)
-
-
 @functools.cache
 def alpha_s_tables(asmz):
     """The tables of alphas_from_grids: 256 nodes in log Q from 0.5 GeV to the c
@@ -265,41 +229,6 @@ def alpha_s_madfks(asmz, q):
 @functools.cache
 def nnpdf():
     return NNPDF(NNPDF_GRID)
-
-
-def write_lhapdf_grid(path):
-    """The nodes of the NNPDF grid as an LHAPDF grid (lhagrid1)."""
-    pdf = nnpdf()
-    with open(path, "w") as f:
-        f.write("PdfType: central\nFormat: lhagrid1\n---\n")
-        f.write(" ".join(f"{v:.17e}" for v in pdf.x) + "\n")
-        f.write(" ".join(f"{math.sqrt(v):.17e}" for v in pdf.q2) + "\n")
-        f.write(" ".join(str(pid) for pid in PIDS) + "\n")
-        columns = [COLUMNS[pid] - 1 for pid in PIDS]
-        for ix in range(len(pdf.x)):
-            for iq in range(len(pdf.q2)):
-                row = pdf.values[columns, ix, iq]
-                f.write(" ".join(f"{v:.17e}" for v in row) + "\n")
-        f.write("---\n")
-
-
-def write_alpha_s_grid(path, asmz):
-    """The 2-loop running from asmz as an LHAPDF alpha_s grid: 200 nodes per
-    decade from 1 GeV to 100 TeV, with a doubled node at the c and b
-    thresholds (the boundary of two subgrids), below and above it."""
-    thresholds = (1.42, 4.7)
-    nodes = [10 ** (k / 200) for k in range(1001)]
-    nodes = sorted([q for q in nodes if min(abs(q / t - 1) for t in thresholds) > 1e-9])
-    qs, values = [], []
-    for q in sorted(nodes + list(thresholds)):
-        if q in thresholds:
-            qs.append(q)
-            values.append(alpha_s_2loop(asmz, q * (1 - 1e-15)))
-        qs.append(q)
-        values.append(alpha_s_2loop(asmz, q))
-    with open(path, "w") as f:
-        f.write(f"AlphaS_Qs: [{', '.join(f'{q:.17e}' for q in qs)}]\n")
-        f.write(f"AlphaS_Vals: [{', '.join(f'{v:.17e}' for v in values)}]\n")
 
 
 # the globals of PdfGrid and AlphaSGrid in the context

@@ -1,5 +1,6 @@
 """Reference cross sections of MG5aMC at fixed order, LO and NLO, for the
-cross sections of the FKS integrand of madspace (fks_integration.py).
+cross sections of the MG7 NLO driver (madgraph/mg7/fks_driver.py) with the
+FKS integrand of madspace.
 
 For every setup below, this script runs a fixed-order integration of an
 aMC@NLO output of MadGraph7 (the outputs of make_fks_integrand_reference.py,

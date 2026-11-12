@@ -1,13 +1,13 @@
-"""The Fortran test provider (fks_fortran.py with fks_reference/fks_provider.f)
-against the references of test_data/fks_integrand. At the points of the
-references its blocks at g = 1 are those MadFKS took there, over their powers
-of g: the real at the event, the Born and its azimuthal part, amp2 of the
-Born diagrams, the colour links of the pairs sbornsoft takes and the virtual
-of MadLoop. Its color-correlated and spin-correlated Borns are those that
-test_fks_integrand builds from the blocks of MadFKS, the latter with the
-phase of k_perp in place of xij_aor. At the madspace kinematics of these
-points FKSCrossSection with its blocks gives the weights it gives with those
-of MadFKS.
+"""The Fortran provider of the MG7 NLO driver (madgraph/mg7/fks_provider.py
+with fks_provider.f of its templates) against the references of
+test_data/fks_integrand. At the points of the references its blocks at g = 1
+are those MadFKS took there, over their powers of g: the real at the event,
+the Born and its azimuthal part, amp2 of the Born diagrams, the colour links
+of the pairs sbornsoft takes and the virtual of MadLoop. Its color-correlated
+and spin-correlated Borns are those that test_fks_integrand builds from the
+blocks of MadFKS, the latter with the phase of k_perp in place of xij_aor. At
+the madspace kinematics of these points FKSCrossSection with its blocks gives
+the weights it gives with those of MadFKS.
 
 The provider is compiled in the aMC@NLO outputs of the references, as a
 fixed-order run leaves them (make_fks_integrand_reference.py --keep DIR
@@ -22,9 +22,9 @@ import os
 
 import numpy as np
 import pytest
-from fks_fortran import FortranProvider, azimuthal_phase, fks_blocks
-from fks_integration import born_topology
 from fks_testing import evaluate, reference
+from madgraph.mg7.fks_driver import born_topology
+from madgraph.mg7.fks_provider import FortranProvider, azimuthal_phase, fks_blocks
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
 
 from madspace.fks import fks_cross_section, fks_splitting_kernels
@@ -178,7 +178,7 @@ def test_correlated_borns(path):
 def test_channels(path):
     """The Born configurations of MadFKS are the channels of amp2, one
     Born diagram each, with a propagator per internal line of the Born, and
-    the topology of each maps the Born (fks_integration.born_topology)."""
+    the topology of each maps the Born (born_topology of fks_driver)."""
     for channel in reference(path)["channels"]:
         p = provider(name_of(path), channel["subprocess"])
         configurations = p.fks_configurations

@@ -1,6 +1,7 @@
-# The Fortran test provider of madspace (fks_provider.f) in a P*
-# directory of an aMC@NLO output, linked as check_poles. The libraries
-# of the output must be built, as a fixed-order run leaves them:
+# The Fortran provider of the FKS integrand of madspace (fks_provider.f)
+# in a P* directory of an aMC@NLO output, linked as check_poles, where
+# madgraph/mg7/fks_provider.py copies it as makefile_provider. The
+# libraries of the output must be built, as a fixed-order run leaves them:
 #     make -f makefile_provider fks_provider
 include makefile
 

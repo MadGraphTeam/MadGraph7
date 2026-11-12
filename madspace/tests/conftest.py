@@ -1,9 +1,11 @@
 """Runs the tests on the device set by MADSPACE_TEST_DEVICE (cpu, cuda or hip).
 
 Tests marked cpu_only (host-side code, e.g. LHE files) are skipped on a GPU.
+The FKS tests also import the MG7 NLO driver (madgraph/mg7) of the repository.
 """
 
 import os
+import sys
 
 import pytest
 import torch
@@ -11,6 +13,10 @@ from madspace_testing import BACKEND, DEVICE, ON_GPU
 
 torch.set_default_dtype(torch.float64)
 torch.set_default_device(DEVICE)
+
+REPOSITORY = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if REPOSITORY not in sys.path:
+    sys.path.append(REPOSITORY)
 
 
 def pytest_configure(config):

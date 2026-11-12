@@ -1,13 +1,15 @@
-"""The Fortran test provider of the FKS integrand: the matrix-element blocks
-that FKSCrossSection takes, from the Fortran of an aMC@NLO output of
-MadGraph7 (output DIR of a process with [QCD]), the code the references of
-test_data/fks_integrand come from.
+"""The Fortran provider of the FKS integrand of madspace: the matrix-element
+blocks that FKSCrossSection takes, from the Fortran of an aMC@NLO output
+(output DIR of a process with [QCD]), until the matrix elements of MadMatrix
+and pyAmpliCol give them through UMAMI. The fixed-order driver of madspace
+(fks_driver.py) and the tests of madspace (madspace/tests) take them from
+here.
 
-fks_reference/fks_provider.f is linked in a P* directory of the output as
-check_poles (make -f makefile_provider fks_provider) and answers requests
-over two pipes. FortranProvider builds and starts it for one subprocess and
-evaluates batches of numpy arrays, every block at the strong coupling g = 1
-(see fks_provider.f):
+fks_provider.f (template_files/mg7) is linked in a P* directory of the
+output as check_poles (make -f makefile_provider fks_provider) and answers
+requests over two pipes. FortranProvider builds and starts it for one
+subprocess and evaluates batches of numpy arrays, every block at the strong
+coupling g = 1 (see fks_provider.f):
 - real: the real at events of one FKS configuration per split-order
   position (smatrix_real);
 - born: the Born per position, its counterterm parts amp_split_cnt (the
@@ -35,16 +37,26 @@ Extra counterterms (mixed QCD-EW corrections with a second mother) and the
 conversion of tagged photons in the virtual are not covered.
 """
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
+import time
 
 import numpy as np
 
-HERE = os.path.dirname(os.path.realpath(__file__))
-SOURCE = os.path.join(HERE, "fks_reference", "fks_provider.f")
-MAKEFILE = os.path.join(HERE, "fks_reference", "makefile_provider")
+TEMPLATES = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+    "iolibs",
+    "template_files",
+    "mg7",
+)
+# the sources and their names in the P* directory
+SOURCES = {
+    "fks_provider.f": os.path.join(TEMPLATES, "fks_provider.f"),
+    "makefile_provider": os.path.join(TEMPLATES, "makefile_fks_provider"),
+}
 
 QUIT, INFO, REAL, BORN, LINKS, VIRTUAL, CHANNELS = range(7)
 INT = np.dtype(np.int32)
@@ -55,8 +67,8 @@ def build(directory, log=None):
     """Compiles fks_provider in a P* directory of an aMC@NLO output whose
     libraries are built (as a fixed-order run leaves them), returns its
     path."""
-    for path in (SOURCE, MAKEFILE):
-        target = os.path.join(directory, os.path.basename(path))
+    for name, path in SOURCES.items():
+        target = os.path.join(directory, name)
         with open(path) as f:
             text = f.read()
         if os.path.isfile(target):
@@ -125,7 +137,9 @@ def azimuthal_phase(mother, k_perp):
 class FortranProvider:
     """The matrix-element blocks of one subprocess (a P* directory of an
     aMC@NLO output) from its Fortran, at g = 1. Use it as a context manager
-    or call close."""
+    or call close. statistics counts per block (real, born, links, virtual)
+    the requests, the points, the evaluations (points times pairs for the
+    links) and the seconds they took, the time of the pipes included."""
 
     def __init__(self, directory, rebuild=True, log=None):
         self.directory = os.path.realpath(directory)
@@ -153,7 +167,21 @@ class FortranProvider:
         os.close(answers)
         self._send = os.fdopen(child_in, "wb", buffering=0)
         self._receive = os.fdopen(child_out, "rb", buffering=0)
+        self.statistics = {
+            name: dict(requests=0, points=0, evaluations=0, seconds=0.0)
+            for name in ("real", "born", "links", "virtual")
+        }
         self._info()
+
+    @contextlib.contextmanager
+    def _timed(self, name, points, evaluations=None):
+        start = time.perf_counter()
+        yield
+        entry = self.statistics[name]
+        entry["requests"] += 1
+        entry["points"] += points
+        entry["evaluations"] += points if evaluations is None else evaluations
+        entry["seconds"] += time.perf_counter() - start
 
     def __enter__(self):
         return self
@@ -241,8 +269,10 @@ class FortranProvider:
         momenta = self._momenta(momenta, self.particle_count)
 
         def evaluate(points, c):
-            self._request(REAL, len(points), c + 1, momenta[points])
-            return self._read(FLOAT, len(points) * self.size).reshape(-1, self.size)
+            with self._timed("real", len(points)):
+                self._request(REAL, len(points), c + 1, momenta[points])
+                out = self._read(FLOAT, len(points) * self.size)
+            return out.reshape(-1, self.size)
 
         return self._by_configuration(fks_index, evaluate)
 
@@ -258,8 +288,10 @@ class FortranProvider:
         width = self.size + counterterm + self.channel_count
 
         def evaluate(points, c):
-            self._request(BORN, len(points), c + 1, momenta[points])
-            return self._read(FLOAT, len(points) * width).reshape(-1, width)
+            with self._timed("born", len(points)):
+                self._request(BORN, len(points), c + 1, momenta[points])
+                out = self._read(FLOAT, len(points) * width)
+            return out.reshape(-1, width)
 
         out = self._by_configuration(fks_index, evaluate)
         parts = out[:, self.size : self.size + counterterm].copy()
@@ -277,17 +309,17 @@ class FortranProvider:
             if (int(m), int(n)) not in allowed and (int(n), int(m)) not in allowed:
                 raise ValueError(f"MadFKS registered no link ({m}, {n})")
         count = len(momenta)
-        self._request(
-            LINKS,
-            count,
-            len(pairs),
-            np.array([configuration + 1], INT),
-            pairs,
-            momenta,
-        )
-        return self._read(FLOAT, count * len(pairs) * self.size).reshape(
-            count, len(pairs), self.size
-        )
+        with self._timed("links", count, count * len(pairs)):
+            self._request(
+                LINKS,
+                count,
+                len(pairs),
+                np.array([configuration + 1], INT),
+                pairs,
+                momenta,
+            )
+            out = self._read(FLOAT, count * len(pairs) * self.size)
+        return out.reshape(count, len(pairs), self.size)
 
     def virtual(self, momenta, ren_scale):
         """MadLoop at Born kinematics (batch, n, 4) and the renormalization
@@ -297,9 +329,11 @@ class FortranProvider:
         momenta = self._momenta(momenta, self.particle_count - 1)
         scale = np.ascontiguousarray(np.broadcast_to(ren_scale, len(momenta)), float)
         count = len(momenta)
-        self._request(VIRTUAL, count, 0, scale, momenta)
-        codes = self._read(INT, count)
-        out = self._read(FLOAT, count * self.size * 4).reshape(count, self.size, 4)
+        with self._timed("virtual", count):
+            self._request(VIRTUAL, count, 0, scale, momenta)
+            codes = self._read(INT, count)
+            out = self._read(FLOAT, count * self.size * 4)
+        out = out.reshape(count, self.size, 4)
         parts = ("finite", "single", "double", "accuracy")
         return {name: out[..., k] for k, name in enumerate(parts)}, codes
 
@@ -453,6 +487,7 @@ def fks_blocks(
     ren_scale=None,
     real_mask=None,
     born_mask=None,
+    virtual_mask=None,
 ):
     """The inputs of FKSCrossSection from matrix elements at the kinematics
     of FKSKinematics (its outputs by name, in the lab frame) with k_perp of
@@ -462,8 +497,10 @@ def fks_blocks(
     weight is not zero) and, with ren_scale, virtual, and amp2 of the Born
     diagrams of the channels (zero where the Born weight is). real_mask and
     born_mask leave out the points where they are false, for example those
-    that the cuts reject. The momenta go to the partonic center-of-mass frame
-    of their kinematics first, k_perp with the Born."""
+    that the cuts reject, and virtual_mask the points of the Born without the
+    virtual (zero there), for the virtual on a fraction of the points. The
+    momenta go to the partonic center-of-mass frame of their kinematics
+    first, k_perp with the Born."""
     incoming = provider.incoming
     fks_index = np.asarray(fks_index, dtype=int)
     count = len(fks_index)
@@ -503,8 +540,13 @@ def fks_blocks(
             born, direction, fks_index[valid], born=evaluated
         )
         if ren_scale is not None:
-            scale = np.broadcast_to(ren_scale, count)[valid]
-            blocks["virtual"][valid] = provider.virtual_orders(born, scale)
+            take = np.ones(len(valid), dtype=bool)
+            if virtual_mask is not None:
+                take = np.asarray(virtual_mask, dtype=bool)[valid]
+            if take.any():
+                scale = np.broadcast_to(ren_scale, count)[valid][take]
+                virtual = provider.virtual_orders(born[take], scale)
+                blocks["virtual"][valid[take]] = virtual
     return blocks
 
 
