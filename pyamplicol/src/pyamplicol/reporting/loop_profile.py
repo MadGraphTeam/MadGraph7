@@ -359,8 +359,11 @@ def interrupted_line(setup: Any, color: bool) -> str | None:
         f"interrupted: {setup.get('measured_points', 0)} of "
         f"{setup.get('requested', 0)} "
         "requested points evaluated"
-        + (f" ({detail})" if len(set(per.values())) > 1 else "")
-        + "; the tables hold those points",
+        + (
+            f" by every backend ({detail}); the tables compare those points"
+            if len(set(per.values())) > 1
+            else "; the tables hold those points"
+        ),
         palette.RECOVERED,
         color=color,
         bold=True,

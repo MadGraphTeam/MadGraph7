@@ -426,3 +426,23 @@ def test_a_loop_induced_view_has_no_born(tmp_path):
     assert len(view.orders) == 1
     (only,) = view.orders
     assert view.sum_orders()[0] == view.for_order(only)[0]
+
+
+def test_interrupted_stability_notice_names_the_common_points():
+    from pyamplicol.reporting.loop_profile import interrupted_line
+
+    assert interrupted_line({"interrupted": False}, color=False) is None
+    setup = {
+        "interrupted": True,
+        "requested": 1000,
+        "measured_points": 68,
+        "evaluated_per_backend": {"ninjars": 68, "tir": 107},
+    }
+    line = interrupted_line(setup, color=False)
+    assert line.startswith("interrupted: 68 of 1000 requested points evaluated")
+    assert "by every backend (" in line and "107" in line
+    assert line.endswith("the tables compare those points")
+    setup["evaluated_per_backend"] = {"ninjars": 68, "tir": 68}
+    assert interrupted_line(setup, color=False).endswith(
+        "evaluated; the tables hold those points"
+    )

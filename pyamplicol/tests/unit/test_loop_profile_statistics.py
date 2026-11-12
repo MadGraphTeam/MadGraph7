@@ -453,3 +453,31 @@ def test_stability_estimate_bounds_a_stream_with_one_probe(monkeypatch):
     assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 5.0)
     clock[0] = 107.0
     assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 3.0)
+
+
+def test_displayed_stability_estimate_is_smoothed(monkeypatch):
+    """The displayed estimate follows the raw one in logarithm with the
+    smoothing time constant: shown at once, a jump damped, a steady
+    estimate kept (counting down)."""
+
+    import math
+
+    import pyamplicol.loop_profile as lp
+
+    clock = [100.0]
+    raw = [60.0]
+    monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
+    tracker = lp._StabilityProgress(None, ("ninjars",), 11, 1)
+    monkeypatch.setattr(tracker, "eta", lambda: raw[0])
+    assert tracker.shown_eta() == pytest.approx(60.0)
+    # A tenfold jump one second later moves it by a small factor only.
+    clock[0], raw[0] = 101.0, 590.0
+    weight = 1.0 - math.exp(-1.0 / tracker.ETA_SMOOTHING_SECONDS)
+    expected = math.exp((1 - weight) * math.log(59.0) + weight * math.log(590.0))
+    assert tracker.shown_eta() == pytest.approx(expected)
+    assert expected < 2 * 59.0
+    # A steady estimate is kept; minutes later the new one has taken over.
+    clock[0], raw[0] = 400.0, 300.0
+    assert tracker.shown_eta() == pytest.approx(300.0, rel=1e-6)
+    monkeypatch.setattr(tracker, "eta", lambda: None)
+    assert tracker.shown_eta() is None

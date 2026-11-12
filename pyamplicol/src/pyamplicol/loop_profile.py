@@ -747,6 +747,8 @@ class _StabilityProgress:
         self.begin = time.perf_counter()
         # When the first task came back: the workers were computing by then.
         self.first_return: float | None = None
+        # The displayed estimate and when it was shown (shown_eta).
+        self._shown: tuple[float, float] | None = None
         if sink is not None:
             sink.emit(
                 ProgressStart(
@@ -861,6 +863,36 @@ class _StabilityProgress:
             remaining += (self.points - done) * known.get(key, fallback)
         return remaining / max(self.workers, 1)
 
+    #: The time constant (seconds) of the displayed estimate's smoothing: a
+    #: display value, it never changes a result.
+    ETA_SMOOTHING_SECONDS = 10.0
+
+    def shown_eta(self) -> float | None:
+        """The displayed estimate: :meth:`eta` smoothed over time, so the
+        refinements of the first returns (a stream's cost known first from
+        its probes, then from its later tasks) do not make it jump. The
+        remaining time is averaged in logarithm, with weight
+        ``1 - exp(-dt / ETA_SMOOTHING_SECONDS)`` for an estimate ``dt``
+        seconds after the previous one: a factor-ten jump moves it by about
+        a factor 1.4 a second later and fully after half a minute."""
+
+        raw = self.eta()
+        now = time.perf_counter()
+        previous = self._shown
+        if raw is None or previous is None:
+            self._shown = None if raw is None else (now, raw)
+            return raw
+        at, value = previous
+        if raw <= 0.0:
+            self._shown = (now, 0.0)
+            return 0.0
+        dt = max(now - at, 0.0)
+        carried = max(value - dt, 1e-3)
+        weight = 1.0 - math.exp(-dt / self.ETA_SMOOTHING_SECONDS)
+        shown = math.exp((1.0 - weight) * math.log(carried) + weight * math.log(raw))
+        self._shown = (now, shown)
+        return shown
+
     def emit(self) -> None:
         from pyamplicol.reporting.progress import ProgressUpdate
 
@@ -876,7 +908,7 @@ class _StabilityProgress:
                 f"{NAMES.get(backend, backend)} b64 {b64}/{self.points} "
                 f"dd {dd}/{self.points}"
             )
-        eta = self.eta()
+        eta = self.shown_eta()
         details: dict[str, Any] = {"step": " | ".join(parts)}
         if eta is not None:
             details["eta_seconds"] = round(eta, 1)
@@ -1033,18 +1065,27 @@ def _stability(
         tracker.close(interrupted)
     rows = []
     complete: dict[str, int] = {}
+    # The evaluated points of each backend: a binary64 record with its
+    # reference, or one without a binary64 value.
+    evaluated = {
+        backend: {
+            index
+            for index, record in b64[backend].items()
+            if index in dd[backend] or record[1] is None
+        }
+        for backend in backends
+        if backend not in refused
+    }
+    # An interrupted run compares the backends like for like: the statistics
+    # are taken over the points every backend evaluated (a complete run
+    # evaluates them all).
+    common = set.intersection(*evaluated.values()) if evaluated else set()
     for backend in backends:
         if backend in refused:
             rows.append(BackendStability(backend, refusal=refused[backend]))
             continue
-        # The evaluated points, in point order: a binary64 record with its
-        # reference, or one without a binary64 value.
-        indices = sorted(
-            index
-            for index, record in b64[backend].items()
-            if index in dd[backend] or record[1] is None
-        )
-        complete[backend] = len(indices)
+        complete[backend] = len(evaluated[backend])
+        indices = sorted(common if interrupted else evaluated[backend])
         rows.append(
             _backend_statistics(
                 backend,
@@ -1065,7 +1106,9 @@ def _stability(
     setup = {
         "points": count,
         "requested": count,
-        "measured_points": min(complete.values(), default=0),
+        "measured_points": (
+            len(common) if interrupted else min(complete.values(), default=0)
+        ),
         "evaluated_per_backend": complete,
         "interrupted": interrupted,
         "n_core": workers,
