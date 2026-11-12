@@ -246,6 +246,39 @@ def _reduction_text(reduction: Any, fallbacks: set[str], color: bool) -> str:
     return text
 
 
+_COLOUR_WORDS = {"lc": "leading colour", "nlc": "next-to-leading colour"}
+
+_POLE_WORDS = {
+    "none": "finite only",
+    "uv": "UV poles of the bare loop amplitude",
+    "ir": "IR poles of the renormalised virtual",
+}
+
+
+def virtual_titles(result: Any) -> tuple[str, str]:
+    """The titles of the Born and the virtual table, with what changes the
+    meaning of their numbers: a colour accuracy other than full colour, LC
+    Born anchors and a pole selection other than all poles."""
+
+    loop_induced = getattr(result, "contribution", "virtual") == "loop-induced"
+    colour = _COLOUR_WORDS.get(str(result.color_accuracy))
+    born = ["Born contributions"]
+    virtual = [
+        "|A_loop|^2 (loop-induced)" if loop_induced else "Born-loop interference"
+    ]
+    if colour is not None:
+        born.append(colour)
+        virtual.append(colour)
+    if result.color_accuracy == "lc" and isinstance(
+        result, ResolvedVirtualEvaluation
+    ):
+        born.append("anchors signed, potentially overcomplete")
+    poles = _POLE_WORDS.get(str(getattr(result.poles, "value", result.poles)))
+    if poles is not None:
+        virtual.append(poles)
+    return ", ".join(born), ", ".join(virtual)
+
+
 def virtual_evaluation_summary(
     result: VirtualEvaluation | ResolvedVirtualEvaluation,
     *,
@@ -264,10 +297,11 @@ def virtual_evaluation_summary(
         else ()
     )
     loop_induced = getattr(result, "contribution", "virtual") == "loop-induced"
+    born_title, virtual_title = virtual_titles(result)
     born = palette.table(
         prettytable,
         ("point", "Born squared order", *axes, "Born"),
-        "Born contributions",
+        born_title,
         color=color,
     )
     virtual = palette.table(
@@ -280,7 +314,7 @@ def virtual_evaluation_summary(
             "single pole [-1]",
             "double pole [-2]",
         ),
-        "|A_loop|^2 (loop-induced)" if loop_induced else "Born-loop interference",
+        virtual_title,
         color=color,
     )
     pairs = palette.table(

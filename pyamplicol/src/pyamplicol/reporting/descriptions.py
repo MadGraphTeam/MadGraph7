@@ -215,36 +215,81 @@ def _virtual(value: Any) -> list[Block]:
     from pyamplicol.api.virtual_results import VirtualOrderEvaluation
 
     result = value.evaluation if isinstance(value, VirtualOrderEvaluation) else value
+    from pyamplicol.reporting.virtual import virtual_titles
+
     loop_induced = getattr(result, "contribution", "virtual") == "loop-induced"
+    born_title, virtual_title = virtual_titles(result)
+    poles = str(getattr(result.poles, "value", result.poles))
+    colour = {
+        "lc": "leading colour",
+        "nlc": "next-to-leading colour",
+    }.get(str(result.color_accuracy), "full colour")
+    single, double = {
+        "uv": (
+            "the 1/epsilon coefficient of the UV poles of the bare loop "
+            "amplitude, before renormalisation",
+            "zero: the bare loop has no UV double pole",
+        ),
+        "ir": (
+            "the 1/epsilon coefficient of the IR poles of the renormalised "
+            "virtual",
+            "the 1/epsilon^2 coefficient, infrared",
+        ),
+        "none": ("not computed", "not computed"),
+    }.get(
+        poles,
+        (
+            "the 1/epsilon coefficient of the renormalised virtual",
+            "the 1/epsilon^2 coefficient of the renormalised virtual",
+        ),
+    )
     lines: list[tuple[str | None, str]] = [
         (
             None,
             "Coefficients of the Laurent series in epsilon with the normalisation "
-            "C_epsilon = (4 pi)^epsilon / Gamma(1 - epsilon); colour accuracy "
-            f"{str(result.color_accuracy).upper()}; R2 "
-            f"{result.r2.effective.value} ({result.r2.reason}).",
+            "C_epsilon = (4 pi)^epsilon / Gamma(1 - epsilon); "
+            f"{colour}; R2 {result.r2.effective.value}: {result.r2.reason}.",
         ),
         ("point", "the phase-space point, in input order"),
         ("virtual squared order", "the coupling powers of this sector"),
-        ("finite [0]", "the finite part"),
-        ("single pole [-1]", "the 1/epsilon coefficient"),
-        ("double pole [-2]", "the 1/epsilon^2 coefficient"),
+        (
+            "finite [0]",
+            "the finite part of the renormalised virtual, the same for every "
+            "pole selection",
+        ),
+        ("single pole [-1]", single),
+        ("double pole [-2]", double),
         (None, "Signed values carry an explicit + so that the digits align."),
     ]
-    blocks: list[Block] = [
-        (
-            "|A_loop|^2 (loop-induced)" if loop_induced else "Born-loop interference",
-            lines,
+    if getattr(result, "correlated", False):
+        lines.append(
+            (
+                None,
+                "Directed colour correlations keep the complex Born and "
+                "Laurent coefficients.",
+            )
         )
-    ]
+    blocks: list[Block] = [(virtual_title, lines)]
     if not loop_induced:
         blocks.insert(
             0,
             (
-                "Born contributions",
+                born_title,
                 [
                     ("Born squared order", "the coupling powers of the Born"),
                     ("Born", "the Born matrix element squared"),
+                    *(
+                        [
+                            (
+                                "Born anchor",
+                                "a leading-colour component of the Born; the "
+                                "anchors are signed and may overlap, so they "
+                                "are not sampling probabilities",
+                            )
+                        ]
+                        if "anchors" in born_title
+                        else []
+                    ),
                 ],
             ),
         )
@@ -269,6 +314,29 @@ def _virtual(value: Any) -> list[Block]:
             ],
         ),
     ]
+    if getattr(result, "pole_parts", None) is not None:
+        blocks.append(
+            (
+                "Pole parts by origin",
+                [
+                    (
+                        None,
+                        "Each pole split by its origin: P/eps = P_UV/eps_UV + "
+                        "P_IR/eps_IR.",
+                    ),
+                    ("origin", "uv or ir"),
+                    (
+                        "component",
+                        "bare: the loop itself; r2: the rational terms; "
+                        "uv_local: the coupling and mass counterterms; "
+                        "uv_external_fields: the external-field factors; "
+                        "uv: the two counterterm parts together",
+                    ),
+                    ("single pole [-1]", "the 1/epsilon coefficient of that part"),
+                    ("double pole [-2]", "the 1/epsilon^2 coefficient of that part"),
+                ],
+            )
+        )
     if result.stability is not None:
         blocks.append(
             (

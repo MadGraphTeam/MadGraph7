@@ -184,12 +184,14 @@ def test_signed_resolved_json_and_human_preserve_axes_precision_and_accuracy():
             assert data["born_shape"] == [1, 1, 2, 2]
             assert data["epsilon_powers"] == [0, -1, -2]
         else:
-            assert "Born anchor" in text and "colour accuracy=LC" in text
-            assert "signed, potentially overcomplete" in text
+            # The titles say what changes the numbers' meaning (tables only).
+            assert "Born anchor" in text and "Born contributions, leading colour" in text
+            assert "anchors signed, potentially overcomplete" in text
+            assert "Born-loop interference, leading colour" in text
             assert "single pole [-1]" in text and "double pole [-2]" in text
     total = replace(value.total(), color_accuracy="nlc")
     stream = io.StringIO()
     write_result(total, format="human", stream=stream)
-    assert "colour accuracy=NLC" in stream.getvalue()
+    assert "Born-loop interference, next-to-leading colour" in stream.getvalue()
     with pytest.raises(ValueError, match="colour accuracy"):
         replace(total, color_accuracy="unknown")

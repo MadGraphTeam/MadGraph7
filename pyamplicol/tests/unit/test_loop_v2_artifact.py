@@ -449,7 +449,7 @@ def test_resolved_pole_parts_follow_the_resolved_axes():
     assert result.for_order((("QCD", 6),)).pole_parts == result.pole_parts
     text = virtual_evaluation_summary(result, prettytable=prettytable)
     assert (
-        "infrared poles of the renormalised virtual" in text
+        "Born-loop interference, IR poles of the renormalised virtual" in text
         and "Pole parts by origin" in text
     )
     assert text.count("uv_external_fields") == 4  # 2 helicities x 2 origins
@@ -1683,7 +1683,8 @@ def test_cli_generates_and_evaluates_through_v2(
     )
     assert code == 0, stderr.getvalue()
     text = stdout.getvalue()
-    assert "Finite-only evaluation" in text and "Stability estimates" in text
+    assert "Born-loop interference, finite only" in text
+    assert "Stability estimates" in text
     assert "reduction-direction" in text and "absent" in text
     stdout = io.StringIO()
     code = run_cli(
@@ -1708,7 +1709,7 @@ def test_cli_generates_and_evaluates_through_v2(
     )
     assert code == 0, stderr.getvalue()
     text = stdout.getvalue()
-    assert "ultraviolet poles of the bare loop amplitude" in text
+    assert "Born-loop interference, UV poles of the bare loop amplitude" in text
     assert "Pole parts by origin" in text and "uv_external_fields" in text
 
 
