@@ -729,7 +729,10 @@ result's warnings into ONE `pyamplicol.NumericalAccuracyWarning` (a
 `UserWarning` subclass, filterable with the standard `warnings` module).
 `Generator.generate` and `pyamplicol.check` return the known, benign
 dependency log events they trigger in their result's `warnings` (source
-`"symbolica"` or `"ufo-model-loader"`) instead of printing them.
+`"symbolica"` or `"ufo-model-loader"`) instead of printing them, and so the
+Python warnings a UFO model's own modules raise when they are compiled (source
+`"ufo-model"`, for example Python 3.12's `SyntaxWarning` for an invalid escape
+such as `'\lambda'` in a TeX name; one entry per compile).
 
 `on_failure` selects the policy: `"best-effort"` (the default; `None`
 means it), `"return"` (such points stay failed lanes, no extra evaluation)
