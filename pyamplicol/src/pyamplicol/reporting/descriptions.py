@@ -173,7 +173,8 @@ def _profile(report: Any) -> list[Block]:
                     ("missed", "truly inaccurate points the checks did not flag"),
                     (
                         "time",
-                        "the backend's binary64 and double-double calls, summed over the workers",
+                        "the backend's binary64 and double-double calls, summed over "
+                        "the workers",
                     ),
                 ],
             ),
