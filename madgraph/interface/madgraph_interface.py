@@ -4349,6 +4349,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # the line being generated ('--gauge=X' of generate/add process)
         self._gauge_models = {}
         self._line_gauge = ''
+        # the line being generated carries '--gauge=X' of the session gauge
+        self._line_gauge_typed = False
         self._auto_gauge_freeze_logged = False
         self._model_v4_path = None
         self._export_dir = None
@@ -4596,9 +4598,11 @@ This implies that with decay chains:
             # and {S} name a piece of a propagator numerator and are valid on
             # an internal line only.
             self.validate_propagator_polarization(myprocdef)
-            # and a polarised propagator of a massive vector only exists in the
-            # unitary gauge (and the axial gauge, which keeps that propagator)
-            self.validate_polarized_propagator_gauge(myprocdef)
+            # and a polarised propagator of a massive vector exists only in
+            # some gauges (all braces in the unitary and axial gauges, some in
+            # FD, none in Feynman): checked in the gauge of this line
+            self.validate_polarized_propagator_gauge(
+                            myprocdef, aloha_gauge=self.line_aloha_gauge())
 
             #Check that we do not have situation like z{T} z
             if not myprocdef.check_polarization():
@@ -4729,7 +4733,8 @@ This implies that with decay chains:
         line = ' '.join(args)
         if gauge == self.options['gauge']:
             # the line itself is recorded (with its option) below, once
-            with misc.TMP_variable(self, '_auto_gauge_replay', True):
+            with misc.TMP_variable(self, '_auto_gauge_replay', True), \
+                 misc.TMP_variable(self, '_line_gauge_typed', True):
                 MadGraphCmd.do_add(self, line, counter=counter)
         else:
             if self.postponed_export_pending():
@@ -4743,18 +4748,16 @@ This implies that with decay chains:
                  misc.TMP_variable(self, '_auto_gauge_replay', True):
                 MadGraphCmd.do_add(self, line, counter=counter)
             new = self._curr_amps[nb_amps:]
+            # a polarised propagator is checked against the FD gauge by
+            # do_add itself (validate_polarized_propagator_gauge, in the gauge
+            # of the line), before any diagram is generated
             if gauge == 'FD' and (_fd_gauge_excluded(new) or
-                                  self.has_onium_amplitude(new) or
-                                  any(abs(pol) > 1
-                                      for amp in iter_tree_amplitudes(new)
-                                      for leg in amp.get('process').get('legs')
-                                      for pol in leg.get('polarization'))):
+                                  self.has_onium_amplitude(new)):
                 del self._curr_amps[nb_amps:]
                 self._curr_proc_defs.pop(-1)
                 self._line_ranges.pop(-1)
                 raise self.InvalidCmd('--gauge=FD: the FD gauge is not available '
-                    'for this process (spin above one, bound state or '
-                    'propagator polarisation).')
+                    'for this process (spin above one or bound state).')
         if not self._auto_gauge_replay:
             self._process_lines.append((raw_line, nb_proc))
             self.apply_automatic_gauge()
@@ -7182,7 +7185,26 @@ This implies that with decay chains:
         return ''.join(signs.get(p) or base_objects.polarization_to_string([p])
                        for p in polarization)
 
-    def validate_polarized_propagator_gauge(self, procdef):
+    def line_aloha_gauge(self):
+        """The aloha.unitary_gauge value of the process line being generated:
+        its '--gauge=X' (self._line_gauge, or the session gauge for a typed
+        '--gauge=' of that gauge); the unitary gauge when the session
+        is in an FD gauge chosen automatically, since apply_automatic_gauge
+        keeps a line with polarised legs out of it (it then generates the
+        line again in the unitary gauge, unless an output waiting for its
+        model fixes the gauge); else the gauge of the session."""
+
+        if self._line_gauge:
+            return {'unitary': True, 'FD': self.FD_GAUGE}[self._line_gauge]
+        if aloha.unitary_gauge == self.FD_GAUGE and self._auto_gauge_active and \
+                not self._explicit_gauge and not self._line_gauge_typed and \
+                self.options.get('auto_gauge', True) and \
+                not self.model_edited_since_import() and \
+                not self.postponed_export_pending():
+            return True
+        return aloha.unitary_gauge
+
+    def validate_polarized_propagator_gauge(self, procdef, aloha_gauge=None):
         """Refuse a polarised propagator of a vector in a gauge where it does
         not exist.
 
@@ -7208,19 +7230,23 @@ This implies that with decay chains:
         output used to stop with an ALOHA error).
         An *external* polarised vector is fine in every gauge (its helicity
         amplitudes are gauge invariant) and is not touched here.
+        `aloha_gauge` is the aloha.unitary_gauge value of the gauge the
+        process is generated in (line_aloha_gauge), the current one if None.
 
         Raises InvalidCmd; returns None."""
 
         if procdef is None:
             return
+        if aloha_gauge is None:
+            aloha_gauge = aloha.unitary_gauge
         complex_mass = bool(self.options.get('complex_mass_scheme'))
-        if aloha.unitary_gauge in self.UNITARY_PROPAGATOR_GAUGES and not complex_mass:
+        if aloha_gauge in self.UNITARY_PROPAGATOR_GAUGES and not complex_mass:
             return
         model = procdef.get('model')
         if not model:
             return
-        fd_gauge = aloha.unitary_gauge == self.FD_GAUGE
-        gauge = self.ALOHA_GAUGE_NAMES.get(aloha.unitary_gauge, str(aloha.unitary_gauge))
+        fd_gauge = aloha_gauge == self.FD_GAUGE
+        gauge = self.ALOHA_GAUGE_NAMES.get(aloha_gauge, str(aloha_gauge))
 
         decayed_ids = set()
         for decay in procdef.get('decay_chains'):
@@ -7247,7 +7273,7 @@ This implies that with decay chains:
                         "available in the complex-mass scheme: its pieces "
                         "decompose the fixed-width propagator. Use 'set "
                         "complex_mass_scheme False'." % values)
-                if aloha.unitary_gauge in self.UNITARY_PROPAGATOR_GAUGES:
+                if aloha_gauge in self.UNITARY_PROPAGATOR_GAUGES:
                     continue
                 if fd_gauge:
                     supported = aloha_writers.FD_MASSLESS_POLARIZED_PROPAGATORS \
@@ -7293,7 +7319,7 @@ This implies that with decay chains:
                     "is supported in every gauge)." % values)
 
         for decay in procdef.get('decay_chains'):
-            self.validate_polarized_propagator_gauge(decay)
+            self.validate_polarized_propagator_gauge(decay, aloha_gauge)
 
     def extract_process(self, line, proc_number = 0, overall_orders = {},
                         avoid_squared_orders=False):
@@ -8563,16 +8589,13 @@ This implies that with decay chains:
         """The process of a 'check' command: a single process, or (for
         'check gauge') a decay chain such as 't > w+{0} b, w+ > ta+ vt',
         whose polarisation braces are validated as by 'generate' (in the
-        current gauge if validate_gauge). Returns a ProcessDefinition."""
+        current gauge if validate_gauge). check_check has already refused
+        '[...]' (loops, perturbed decays) with a decay chain. Returns a
+        ProcessDefinition."""
 
         if ',' not in line:
             return self.extract_process(line)
-        if '[' in line or ']' in line:
-            raise self.InvalidCmd("The '[' and ']' syntax cannot be used "
-                                  "with decay chains.")
         myprocdef, _ = self.extract_decay_chain_process(line)
-        if myprocdef.are_decays_perturbed():
-            raise self.InvalidCmd("Decay processes cannot be perturbed.")
         self.validate_propagator_polarization(myprocdef)
         if validate_gauge:
             self.validate_polarized_propagator_gauge(myprocdef)

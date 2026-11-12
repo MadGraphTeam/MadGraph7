@@ -242,6 +242,24 @@ class TestAutomaticGauge(unittest.TestCase):
         self.do('generate p p > w+{G} w-, w+ > e+ ve')
         self.assertGauge('unitary', automatic=False)
 
+    def test_propagator_polarization_after_automatic_fd(self):
+        """a polarised propagator added to a session put in the FD gauge
+        automatically is validated in the unitary gauge it is generated in:
+        {W}, a piece of the unitary numerator only, is accepted"""
+
+        self.do('generate e+ e- > w+ w-')
+        self.assertGauge('FD', automatic=True)
+        self.do('add process e+ e- > z{W} h, z > mu+ mu-')
+        # the session back to unitary, the w+ w- line alone in FD
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(aloha.unitary_gauge, True)
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
+        gauges = set((amp.get('process').get('legs')[2].get('id'),
+                      amp.get('process').get_gauge('unitary'))
+                     for amp in mg_interface.iter_tree_amplitudes(self.cmd._curr_amps)
+                     if not amp.get('process').get('is_decay_chain'))
+        self.assertEqual(gauges, set([(24, 'FD'), (23, 'unitary')]))
+
     # ------------------------------------------------------------------
     # the user's word
     # ------------------------------------------------------------------
@@ -628,6 +646,21 @@ class TestProcessGauge(unittest.TestCase):
         self.do('generate p p > w+ w-, w+ > e+ ve --gauge=FD')
         self.assertEqual(set(self.gauges()), set([('FD', 'FD')]))
 
+    def test_polarised_propagator_in_the_line_gauge(self):
+        """a polarised propagator is validated in the gauge of its line:
+        {A} exists in FD, {W} only in the unitary gauge"""
+
+        self.do('generate e+ e- > z{A} h, z > mu+ mu- --gauge=FD')
+        self.assertEqual(set(self.gauges()), set([('FD', 'FD')]))
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'add process e+ e- > z{W} h, z > e+ e- --gauge=FD')
+        self.assertEqual(set(self.gauges()), set([('FD', 'FD')]))
+        self.do('set gauge FD')
+        self.do('generate e+ e- > z{W} h, z > mu+ mu- --gauge=unitary')
+        self.assertEqual(set(self.gauges()), set([('unitary', 'unitary')]))
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'add process e+ e- > z{W} h, z > e+ e-')
+
 
 class TestProcessGaugeOutput(unittest.TestCase):
     """What an output of processes in two gauges looks like."""
@@ -679,6 +712,23 @@ class TestProcessGaugeOutput(unittest.TestCase):
             self.assertIn('Hagiwara:2024xdh', fsock.read())
         with open(pjoin(out, 'Cards', 'proc_card_mg5.dat')) as fsock:
             self.assertIn('generate p p > w+ w- --gauge=FD', fsock.read())
+
+    def test_decay_chains_sharing_a_core_process(self):
+        """two decay chains with the same core process in two gauges: one
+        subprocess group each, in its gauge (the core process was matched
+        to two groups)"""
+
+        self.do('generate e+ e- > z h, z > mu+ mu- --gauge=FD')
+        self.do('add process e+ e- > z h, z > e+ e-')
+        out = pjoin(self.path, 'CHAINS')
+        self.do('output standalone_fortran %s -f' % out)
+        pdirs = sorted(os.path.basename(p) for p in
+                       glob.glob(pjoin(out, 'SubProcesses', 'P*')))
+        self.assertEqual(len(pdirs), 2, pdirs)
+        for pdir in pdirs:
+            with open(pjoin(out, 'SubProcesses', pdir, 'makefile')) as fsock:
+                self.assertEqual('dhelas_fd' in fsock.read(), 'mupmum' in pdir,
+                                 pdir)
 
     def test_unsupported_output_refused(self):
         """a format writing every matrix element into one library"""

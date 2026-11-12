@@ -89,8 +89,11 @@ generated with the session model imported in the FD gauge
 carry `Process['gauge']`. The gauge is part of the matrix-element identity
 and of the subprocess grouping keys, so processes of two gauges are never
 merged. Refused with `--gauge=FD`: `[...]` lines (loop, NLO, `[amplicol]`,
-interference), spin above one, bound states, propagator polarisations,
-models without a checked FD gauge, and models that define a coupling,
+interference), spin above one, bound states, the propagator
+polarisations the FD gauge has no counterpart for (`{G}`, `{H}`, `{Q}`,
+`{W}`: a polarised propagator is validated in the gauge of its line, so
+`{0}`, `{T}`, `{A}`, `{S}`, `{0S}` are accepted), models without a checked
+FD gauge, and models that define a coupling,
 parameter or Lorentz name differently in the two gauges (none of sm, heft,
 loop_sm does, measured).
 

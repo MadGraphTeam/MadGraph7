@@ -783,12 +783,16 @@ class DecayChainSubProcessGroup(SubProcessGroup):
 
         # Now calculate the corresponding properties for process
 
-        # Find core process group
+        # Find core process group; the groups are split by gauge as well (an
+        # output whose process lines are in two gauges, --gauge=FD): two lines
+        # with the same core process in two gauges have a group each
         ids = [(l.get('id'),l.get('onshell')) for l in process.get('legs')]
+        gauge = process.get_gauge()
         core_groups = [(i, group) for (i, group) in \
                       enumerate(self.get('core_groups')) \
-                      if ids in [[(l.get('id'),l.get('onshell')) for l in \
-                                  a.get('process').get('legs')] \
+                      if [ids, gauge] in [[[(l.get('id'),l.get('onshell')) for l in \
+                                  a.get('process').get('legs')],
+                                  a.get('process').get_gauge()] \
                                  for a in group.get('amplitudes')] \
                        and process.get('id') == group.get('number')]
 
