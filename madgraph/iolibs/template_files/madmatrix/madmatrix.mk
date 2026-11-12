@@ -165,7 +165,7 @@ endif
 
 #=== Configure the C++ compiler
 
-CXXFLAGS = $(OPTFLAGS) -std=c++17 -Wall -Wshadow -Wextra
+CXXFLAGS = $(OPTFLAGS) -std=c++20 -Wall -Wshadow -Wextra
 ifeq ($(shell $(CXX) --version | grep ^nvc++),)
   CXXFLAGS += -ffast-math # see issue #117
 endif
@@ -307,7 +307,7 @@ ifeq ($(BACKEND),cuda)
   GPUFLAGS += $(CUDA_INC) $(USE_NVTX) 
 
   # C++ standard
-  GPUFLAGS += -std=c++17 # need CUDA >= 11.2 (see #333): this is enforced in mgOnGpuConfig.h
+  GPUFLAGS += -std=c++20 # need CUDA >= 12.0: this is enforced in mgOnGpuConfig.h
 
   # For nvcc, use -maxrregcount to control the maximum number of registries (this does not exist in hipcc)
   # Without -maxrregcount: baseline throughput: 6.5E8 (16384 32 12) up to 7.3E8 (65536 128 12)
@@ -365,7 +365,7 @@ else ifeq ($(BACKEND),hip)
   GPUFLAGS += $(HIP_INC)
 
   # C++ standard
-  GPUFLAGS += -std=c++17
+  GPUFLAGS += -std=c++20
 
 else
 

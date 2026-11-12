@@ -273,10 +273,14 @@ ispoweroftwo( int n )
   return ( n > 0 ) && !( n & ( n - 1 ) );
 }
 
-// Compiler version support (#96): require nvcc from CUDA >= 11.2, e.g. to use C++17 (see #333)
+#if __cplusplus < 202002L
+#error Unsupported C++ standard: please build with -std=c++20 or later
+#endif
+
+// nvcc supports -std=c++20 from CUDA 12.0.
 #ifdef __NVCC__
-#if( __CUDACC_VER_MAJOR__ < 11 ) || ( __CUDACC_VER_MAJOR__ == 11 && __CUDACC_VER_MINOR__ < 2 )
-#error Unsupported CUDA version: please use CUDA >= 11.2
+#if( __CUDACC_VER_MAJOR__ < 12 )
+#error Unsupported CUDA version: please use CUDA >= 12.0
 #endif
 #endif
 

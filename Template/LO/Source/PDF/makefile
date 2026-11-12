@@ -49,7 +49,7 @@ ifdef lhapdf
 	PDF         += pdf_lhapdf6.o
         TOREMOVE += pdf_lhapdf62.o
     else # 6.2.X
-        CXXFLAGS+=-std=c++11
+        CXXFLAGS+=-std=c++20
 	PDF  += pdf_lhapdf62.o
 	TOREMOVE += pdf_lhapdf6.o
     endif    
