@@ -23,7 +23,8 @@ The integration goal is incomplete.
 | [Generic CMS prototype](experiments/generic-owned-CMS-normal-qualification-1/README.md) | Three ordinary controls agree bit for bit. Two forward fixtures retain legacy `420` refusals and candidate-reported `323` QP acceptance. Both caches are disabled; these self-check observations establish neither independent finite accuracy nor generic production coverage. |
 | [Copied-integrand physical pair](experiments/fortran-qp-mass-false-integrand-qualification-1/README.md) | With `UseQPIntegrandForTIRust=False`, original and fresh-CLI mass candidate agree exactly on 100 physical QCD Zgg points per arm, including 13 accepted QP rescues. Histories, accuracy and observed state match. Both caches are disabled; internal copied-coefficient/native-input observations and broader coverage remain open. |
 | [Analytic Fortran repair prototype](experiments/fortran-analytic-repair-qualification-1/README.md) | For QCD `u u~ > z` (2→1), 544 standalone DP/QP wrapper calls pass and 100 full-amplitude points agree exactly. Seven same-flag timing pairs give median candidate/control `0.95279`, with every batch >1 s. This is a shared-host prototype comparison; the patch remains unapplied and formal eight-process performance acceptance is open. |
-| [Original CMS observer refusal](experiments/generic-owned-CMS-observer-refusal-1/README.md) | The original replay remains failed at its first candidate journal. Three legacy workers pass own-plain comparisons; the partial candidate exposes a DP-eligibility/actual-QP flag-semantics mismatch. Exact refusal and incomplete scope are replayable; candidate provenance and a corrected native rerun remain unqualified. |
+| [Original CMS observer refusal](experiments/generic-owned-CMS-observer-refusal-1/README.md) | The original replay remains failed at its first candidate journal. Three legacy workers pass own-plain comparisons; the partial candidate exposes a DP-eligibility/actual-QP flag-semantics mismatch. Exact refusal and incomplete scope are replayable; the corrected run below is retained separately. |
+| [Corrected CMS observer run](experiments/generic-owned-CMS-observer-qualification-1/README.md) | Six workers pass exact own-plain histories and journal checks: 106 calls, 16 recorded vetoes and eight consumed upper-matrix changes. Actual QP ownership is observed in modes 4/5. Only these recorded provenance branches are qualified; independent amplitude truth, general caller/numerator coverage and cache-enabled behavior remain open. Legacy `420` failures remain. |
 
 The [QP-mass correction](experiments/fortran-qp-mass-current-qualification-1/README.md),
 its [fresh-CLI follow-up](experiments/fortran-qp-mass-fresh-cli-qualification-1/README.md),
@@ -37,8 +38,8 @@ measures existing work; it is not an optimization gain.
 Required EW threshold, QCD soft/collinear and complex-mass stress accuracy
 remain unresolved. The [retained physical-stress result](experiments/physical-stress-current-portable-4-terminal-2/evidence-index.json)
 belongs to preceding source `2c13246ffa63`; it cannot qualify current production.
-Candidate constructor/current-point/q/veto provenance, cache-enabled CMS
-behavior, broader physical integration and measured benefit must be established
+Broader constructor/current-point/q/veto coverage, cache-enabled CMS
+behavior, full physical integration and measured benefit must be established
 before any corresponding experimental source promotion. A promotion requires
 a new source identity and fresh validation, rather than reusing this source's
 66 ordinary passes. Native-DP and rescued-QP timing cohorts also remain

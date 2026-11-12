@@ -1,0 +1,12 @@
+{
+  "accuracy_qualified": false,
+  "changes": [],
+  "comparison_complete": true,
+  "full_caller_qualified": false,
+  "independent_finite_truth": false,
+  "performance_qualified": false,
+  "report_only": true,
+  "schema": "cms-observed-native-delta-v1",
+  "scientifically_qualified": false,
+  "unmatched_frames": []
+}

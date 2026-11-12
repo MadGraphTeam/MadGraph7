@@ -1,0 +1,25 @@
+{
+  "actual_QP_frames_in_retained_run": 0,
+  "analyzer_executed": false,
+  "case": {
+    "CTMODE": 4,
+    "consumer_actual_QP_genuine": 0,
+    "current_equal": true,
+    "current_ok_equal": true,
+    "frame_genuine": 1,
+    "mask_equal": true,
+    "reference_equal": true,
+    "reference_width": 128,
+    "snapshot": true,
+    "width": 128
+  },
+  "frozen_line219_comparison": "1 != 0 is true, so the unchanged disjunction refuses this counterexample",
+  "future_constraint": "Distinguishing native-DP sentinel semantics must not delete/loosen the QP genuine equality or turn DP true into QP evidence.",
+  "kind": "synthetic logical counterexample, not native data or an executed test",
+  "native_execution": false,
+  "required_outcome": "refuse: actual QP frame flag must remain coupled to consumer actual-QP flag",
+  "schema": "unchanged-qp-source-contract-counterexample-v1",
+  "scientifically_qualified": false,
+  "source_basis": "QP CT_interface4690-4693 forwards actual OS_GENUINE_QP, unlike the separate DP literal.TRUE. sentinel at4697-4700",
+  "source_modified": false
+}

@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-CMS-plain-run-work-4/run/workers/candidate-critical21/SubProcesses/P0_epem_mupmum/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-CMS-plain-run-work-4/run/workers/candidate-critical21/SubProcesses/P0_epem_mupmum/training.dat",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-CMS-plain-run-work-4/run/workers/candidate-critical21/SubProcesses/P0_epem_mupmum/measurement.dat",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-CMS-plain-run-work-4/run/workers/candidate-critical21/SubProcesses/P0_epem_mupmum/native-protocol.fifo",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-CMS-plain-run-work-4/run/evidence/candidate-critical21/driver.raw64"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generic-owned-CMS-plain-run-work-4/run/workers/candidate-critical21/SubProcesses/P0_epem_mupmum",
+  "new_session": false,
+  "request": {
+    "cohort": "critical21",
+    "expected_legacy_critical_failure_allowed": false,
+    "id": "candidate-critical21",
+    "ids": [
+      21
+    ],
+    "lane": "candidate",
+    "measurement": "inputs/critical21.dat"
+  },
+  "reviewed_build": "be89129beb16a82d65624748aa6948d1d955358d910efc9956845ae6efff98f2",
+  "source_index_sha256": "7cc733efccfcfca4aa9a84a36ef3c64ea3cc4471f71e7a48bafaa16ebef3f925"
+}

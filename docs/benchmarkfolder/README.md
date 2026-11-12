@@ -65,6 +65,15 @@ checked words and masks match. This portable capsule reproduces that refusal
 and preserves the unattempted candidate requests. It establishes no candidate
 constructor/q/veto qualification or repaired native rerun.
 
+The [corrected CMS observer qualification](experiments/generic-owned-CMS-observer-qualification-1/README.md)
+now passes all six workers with exact full-history/reference agreement. It
+records 16 veto decisions and eight consumed upper-matrix changes across the
+two difficult fixtures, including actual genuine-QP states in modes 4/5.
+DP eligibility is kept separate from QP ownership. This qualifies the recorded
+provenance branches; independent amplitude accuracy, broader caller coverage
+and cache-enabled behavior remain open. Legacy `420` refusals and the original
+failed observer run remain retained.
+
 Final precise timings remain
 [Hua-Sheng’s local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
 

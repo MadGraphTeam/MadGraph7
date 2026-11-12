@@ -1,0 +1,104 @@
+[
+  {
+    "direction": "RECV",
+    "fields": [
+      "READY",
+      "2031987"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "LEARN",
+      "1",
+      "0"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "LEARNED",
+      "2031987",
+      "1",
+      "1",
+      "15",
+      "12"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "RUN",
+      "2",
+      "1"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "DONE",
+      "2031987",
+      "2",
+      "1",
+      "1",
+      "219",
+      "2"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "RUN",
+      "3",
+      "2"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "DONE",
+      "2031987",
+      "3",
+      "2",
+      "7",
+      "219",
+      "2"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "RUN",
+      "4",
+      "3"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "DONE",
+      "2031987",
+      "4",
+      "3",
+      "12",
+      "219",
+      "2"
+    ]
+  },
+  {
+    "direction": "SEND",
+    "fields": [
+      "EXIT",
+      "5",
+      "0"
+    ]
+  },
+  {
+    "direction": "RECV",
+    "fields": [
+      "EXIT",
+      "2031987",
+      "5"
+    ]
+  }
+]
