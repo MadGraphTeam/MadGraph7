@@ -536,6 +536,67 @@ class TestFrameBoost(unittest.TestCase):
                 got = (2 - abs(pol), abs(pol))
             self.assertEqual(got, (hel_plus, hel_minus))
 
+    def test_beampol_follows_the_beams(self):
+        """BEAMPOL(J) acts on leg J of the matrix element: when beam 1 (the
+        incoming particle along +z) is its leg 2 -- the events of a madevent
+        mirror process -- the two values are swapped"""
+        options = interface_madspin.MadSpinOptions()
+        options['beampol'] = [-80., 30.]
+        beam1, beam2 = (250., 0., 0., 250.), (250., 0., 0., -250.)
+        self.assertEqual(options.beampol_me(), (-1.8, 1.3))
+        self.assertEqual(options.beampol_me([beam1, beam2]), (-1.8, 1.3))
+        self.assertEqual(options.beampol_me([beam2, beam1]), (1.3, -1.8))
+        # decay.momentum objects, as the v1 driver path hands them
+        self.assertEqual(options.beampol_me([madspin.momentum(*beam2),
+                                             madspin.momentum(*beam1)]),
+                         (1.3, -1.8))
+        # a 1 -> N matrix element has no beam to swap
+        self.assertEqual(options.beampol_me([beam2]), (-1.8, 1.3))
+
+    def test_event_beampol_is_set_on_change(self):
+        """the density modes push the beam polarisation of each event into the
+        library, calling it only when the orientation changes"""
+        class Module(object):
+            def __init__(self):
+                self.calls = []
+            def py_set_beampol(self, pol1, pol2):
+                self.calls.append((pol1, pol2))
+        stub = self._stub(6, beampol=(-80., 30.))
+        set_event = interface_madspin.MadSpinInterface._set_event_beampol
+        module = Module()
+        interface_madspin.MadSpinInterface._set_f2py_beampol(stub, module)
+        beam1, beam2 = (250., 0., 0., 250.), (250., 0., 0., -250.)
+        for incoming in ([beam1, beam2], [beam1, beam2], [beam2, beam1],
+                         [beam2, beam1], [beam1, beam2]):
+            set_event(stub, module, incoming)
+        self.assertEqual(module.calls, [(-1.8, 1.3), (1.3, -1.8), (-1.8, 1.3)])
+        # unpolarised beams never touch the library
+        stub = self._stub(6, beampol=(0., 0.))
+        module = Module()
+        set_event(stub, module, [beam2, beam1])
+        self.assertEqual(module.calls, [])
+
+    def test_v1_driver_beampol_per_event(self):
+        """the v1 driver gets the beam polarisation on the header of each event,
+        for the legs in the order event_map hands them over"""
+        class Stub(object):
+            event_beampol = madspin.decay_all_events.event_beampol
+        stub = Stub()
+        stub.options = interface_madspin.MadSpinOptions()
+        stub.options['beampol'] = [-80., 30.]
+        event = madspin.Event()
+        # particle 1: e- along +z (beam 1), 2: e+ along -z, 3/4: final state
+        event.particle = {
+            1: {'istup': -1, 'momentum': madspin.momentum(250., 0., 0., 250.)},
+            2: {'istup': -1, 'momentum': madspin.momentum(250., 0., 0., -250.)},
+            3: {'istup': 1, 'momentum': madspin.momentum(250., 0., 150., 200.)},
+            4: {'istup': 1, 'momentum': madspin.momentum(250., 0., -150., -200.)}}
+        stub.curr_event = event
+        self.assertEqual(stub.event_beampol({0: 0, 1: 1, 2: 2, 3: 3}), (-1.8, 1.3))
+        self.assertEqual(stub.event_beampol(None), (-1.8, 1.3))
+        # an `e+ e- >` matrix element: its leg 1 is particle 2, beam 2
+        self.assertEqual(stub.event_beampol({0: 1, 1: 0, 2: 2, 3: 3}), (1.3, -1.8))
+
     def test_beampol_needs_both_beams(self):
         """One number is ambiguous -- which beam? -- and used to surface only as
         an IndexError once the run reached a matrix element. It is refused when
@@ -681,28 +742,49 @@ class TestFrameBoost(unittest.TestCase):
         boost = self._stub(6)._frame_boost(_MomentaEvent(self.MOMENTA))
         self.assertIsNone(boost.rest_leg)
 
-    def test_single_leg_frame_goes_through_the_partonic_cms(self):
-        """madevent's boost_to_frame acts on partonic-CM momenta (genps.f;
-        unwgt.f boosts to the lab only when it writes the event). The beams of
-        MOMENTA are unequal, so boosting to leg 3 straight from the lab lands
-        in a frame rotated from madevent's (Wigner rotation), and the
-        quantisation axis of the leg at rest turns with it."""
+    def test_single_leg_frame_is_reached_along_the_beam(self):
+        """A collision reaches the rest frame of the selected legs by a boost
+        along z, to zero rapidity of the selection, and then a transverse one
+        (get_me_frame_boosts in Template/Common/Source/impose_frame_rest.f),
+        the frame madevent, madspace, aMC@NLO and driver.f all use. It is the
+        same from the lab the events come in and from the partonic CM
+        madevent works in; the single boost from either is not (Wigner
+        rotation), and the quantisation axis of the leg at rest turns with
+        it."""
+        def tup(p):
+            return (p.E, p.px, p.py, p.pz)
+
+        def close(moms, refs):
+            for new, want in zip(moms, refs):
+                for x, y in zip(new, want):
+                    self.assertAlmostEqual(x, y, places=8)
+
         stub = self._stub(8)
-        boost = stub._frame_boost(_MomentaEvent(self.MOMENTA))
-        out = stub._boost_momenta(self.MOMENTA, boost)
-        # madevent's route, written out: z boost to the partonic CM, then to leg 3
+        out = stub._boost_momenta(
+            self.MOMENTA, stub._frame_boost(_MomentaEvent(self.MOMENTA)))
+        # the two steps, written out
+        p3 = lhe_parser.FourMomentum(*self.MOMENTA[2])
+        along_z = [lhe_parser.FourMomentum(p).boost(
+                       lhe_parser.FourMomentum(p3.E, 0., 0., -p3.pz))
+                   for p in self.MOMENTA]
+        transverse = lhe_parser.FourMomentum(
+            math.sqrt(p3.E**2 - p3.pz**2), -p3.px, -p3.py, 0.)
+        close(out, [tup(p.boost(transverse)) for p in along_z])
+        # the same frame from the partonic CM
         pcm = lhe_parser.FourMomentum(700., 0., 0., 300.)
-        cm = [lhe_parser.FourMomentum(p).zboost(pcm) for p in self.MOMENTA]
-        neg = lhe_parser.FourMomentum(cm[2].E, -cm[2].px, -cm[2].py, -cm[2].pz)
-        ref = [p.boost(neg) for p in cm]
-        for new, want in zip(out, ref):
-            for x, y in zip(new, (want.E, want.px, want.py, want.pz)):
-                self.assertAlmostEqual(x, y, places=8)
-        # which is not the frame reached from the lab
-        lab3 = lhe_parser.FourMomentum(*self.MOMENTA[2])
-        neg = lhe_parser.FourMomentum(lab3.E, -lab3.px, -lab3.py, -lab3.pz)
-        direct = lhe_parser.FourMomentum(*self.MOMENTA[0]).boost(neg)
-        self.assertGreater(abs(direct.px - out[0][1]), 1.)
+        cm = [tup(lhe_parser.FourMomentum(p).zboost(pcm)) for p in self.MOMENTA]
+        close(stub._boost_momenta(cm, stub._frame_boost(_MomentaEvent(cm))),
+              out)
+        # which the single boost from the partonic CM is not
+        neg = lhe_parser.FourMomentum(cm[2][0], -cm[2][1], -cm[2][2], -cm[2][3])
+        single = lhe_parser.FourMomentum(*cm[0]).boost(neg)
+        self.assertGreater(abs(single.px - out[0][1]), 1.)
+        # the Collins-Soper frame: z bisects beam 1 and minus beam 2
+        n1 = [x / math.sqrt(sum(y**2 for y in out[0][1:])) for x in out[0][1:]]
+        n2 = [-x / math.sqrt(sum(y**2 for y in out[1][1:])) for x in out[1][1:]]
+        self.assertAlmostEqual(n1[0] + n2[0], 0., places=12)
+        self.assertAlmostEqual(n1[1] + n2[1], 0., places=12)
+        self.assertGreater(n1[2] + n2[2], 0.)
 
     def test_massless_frame_is_refused(self):
         """a single massless leg has no rest frame: this used to be a
@@ -1170,6 +1252,94 @@ class TestOnshellProductionNorm(unittest.TestCase):
         before = str(production)
         stub._onshell_production_norm(production, self.STATIC)
         self.assertEqual(str(production), before)
+
+
+class TestFxFxEvent(unittest.TestCase):
+    """FxFx particle tags follow LHE rows through resonance insertion."""
+
+    @staticmethod
+    def event(tags='pt_clust_6="99.999" pt_clust_4="100" pt_clust_5="100"'):
+        import io
+        text = '''<event npNLO="1">
+8 1 1 100 0.01 0.1
+2 -1 0 0 501 0 0 0 95 95 0 0 9
+-2 -1 0 0 0 501 0 0 -95 95 0 0 9
+23 2 1 2 0 0 0 0 0 90 90 0 9
+24 1 1 2 0 0 0 0 0 80 80 0 9
+21 1 1 2 502 503 10 0 0 10 0 0 9
+1 1 1 2 503 0 -10 0 0 10 0 0 9
+11 1 3 3 0 0 0 0 45 45 0 0 9
+-11 1 3 3 0 0 0 0 -45 45 0 0 9
+%s
+</event>
+''' % ('<scales %s></scales>' % tags if tags else '')
+        event = madspin.Event(io.StringIO(text))
+        assert event.get_next_event() == 1
+        return event
+
+    def test_sparse_tags_use_lhe_indices(self):
+        # The resonance occupies row 3. Attribute order and missing tags must
+        # not change which jet has the scale below SCALUP.
+        event = self.event('pt_clust_6 = \'99.999\' pt_clust_5="100"')
+        self.assertEqual(event.particle[5]['pt_scale'], '99.999')
+        self.assertEqual(event.particle[4]['pt_scale'], '100')
+        self.assertNotIn('pt_scale', event.particle[3])
+        self.assertIn('pt_clust_5="100"', event.string_event())
+        self.assertIn('pt_clust_6="99.999"', event.string_event())
+
+    def test_resonance_tag_roundtrip(self):
+        event = self.event('pt_clust_6="99.999" pt_clust_3="100"')
+        self.assertEqual(event.resonance[-1]['pt_scale'], '100')
+        self.assertIn('pt_clust_3="100"', event.string_event())
+        self.assertIn('pt_clust_6="99.999"', event.string_event())
+
+    def test_decay_preserves_jet_tags_and_scalup(self):
+        from types import MethodType, SimpleNamespace
+        stub = SimpleNamespace(pid2color={24: 1, -11: 1, 12: 1},
+                               MC_masses={11: 0.0, 12: 0.0})
+        stub.resolve_merged_pid_with_flavor = MethodType(
+            madspin.decay_all_events.resolve_merged_pid_with_flavor, stub)
+        decay = {3: {'tree': {-1: {'label': 24,
+                                  'd1': {'label': -11, 'index': 1},
+                                  'd2': {'label': 12, 'index': 2}}},
+                     'mg_tree': [(11, 12, 13)]}}
+        momenta = {11: madspin.momentum(80, 0, 0, 0),
+                   12: madspin.momentum(40, 40, 0, 0),
+                   13: madspin.momentum(40, -40, 0, 0)}
+        for jet_scale, scalup in [('100', 100), ('99.999', 100),
+                                  ('99.999', 99.999999)]:
+            with self.subTest(jet_scale=jet_scale, scalup=scalup):
+                event = self.event('pt_clust_6="99.999" pt_clust_4="100" '
+                                   'pt_clust_5="%s"' % jet_scale)
+                # The producer rounds tags to five decimals; the event's
+                # SCALUP can lie just below the rounded tag's 1 MeV bin.
+                event.scale = scalup
+                decayed = madspin.decay_all_events.decay_one_event_new(
+                    stub, event, decay, dict((i, i) for i in range(7)),
+                    momenta, True, [9] * 13)
+                output = decayed.string_event()
+                # W decay inserts two rows before both production jets. The
+                # old Z resonance also occupies a row in the output numbering.
+                self.assertEqual(decayed.particle[4]['istup'], 2)
+                self.assertEqual(decayed.particle[7]['pid'], 21)
+                self.assertEqual(decayed.particle[8]['pid'], 1)
+                self.assertIn('pt_clust_7="%s"' % jet_scale, output)
+                self.assertIn('pt_clust_8="99.999"', output)
+                self.assertIn('pt_clust_5="100"', output)
+                self.assertIn('pt_clust_6="100"', output)
+                # Pythia takes the maximum tagged external scale as SCALUP.
+                # Keep it even when all remaining production jets are EW.
+                parsed = lhe_parser.Event(output)
+                scales = parsed.parse_matching_scale()
+                pythia_scalup = max(scale for particle, scale in zip(parsed, scales)
+                                    if abs(particle.status) == 1)
+                self.assertEqual(pythia_scalup, 100)
+                self.assertLess(scales[7], pythia_scalup)
+                self.assertNotEqual(math.trunc(1000 * scales[7]),
+                                    math.trunc(1000 * pythia_scalup))
+
+    def test_without_fxfx_tags_no_scales_are_added(self):
+        self.assertNotIn('<scales', self.event(tags='').string_event())
 
 
 class TestDecayBranchPairing(unittest.TestCase):

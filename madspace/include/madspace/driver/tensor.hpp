@@ -230,7 +230,7 @@ using TensorVec = std::vector<Tensor>;
 enum class DeviceType { cpu, cuda, hip };
 
 /// Hint passed to @ref Device::allocate describing how a tensor will be used,
-/// so the allocator can reuse scratch buffers or skip a zero-fill.
+/// so the allocator can pool scratch buffers; gradient hints request zeroed storage.
 enum class AllocHint {
     normal,
     output,
@@ -242,7 +242,7 @@ enum class AllocHint {
     global_grad,
 };
 
-/// Whether newly allocated storage for `hint` must be zero-initialized.
+/// Whether newly allocated storage for `hint` is zero-initialized (gradients).
 inline bool needs_zero_init(AllocHint hint) {
     return hint == AllocHint::input_grad || hint == AllocHint::local_grad ||
         hint == AllocHint::global_grad;
@@ -448,11 +448,7 @@ public:
     /// Single-value tensor holding `value`, allocated on `device`.
     template <ScalarType T>
     Tensor(T value, DevicePtr device, AllocHint hint = AllocHint::normal) :
-        impl(new TensorImpl{
-            std::is_same_v<T, me_int_t> ? DataType::dt_int : DataType::dt_float,
-            {1},
-            device
-        }) {
+        impl(new TensorImpl{dtype_of<T>(), {1}, device}) {
         auto size = init_stride();
         allocate(size, *device, hint);
         device->memcpy(impl->data, &value, sizeof(value));
@@ -463,11 +459,7 @@ public:
 
     template <ScalarType T, typename D>
     Tensor(T value, const D& device, AllocHint hint = AllocHint::normal) :
-        impl(new TensorImpl{
-            std::is_same_v<T, me_int_t> ? DataType::dt_int : DataType::dt_float,
-            {1},
-            device.device_ptr()
-        }) {
+        impl(new TensorImpl{dtype_of<T>(), {1}, device.device_ptr()}) {
         auto size = init_stride();
         allocate(size, device, hint);
         device.memcpy(impl->data, &value, sizeof(value));
@@ -481,8 +473,8 @@ public:
         impl(new TensorImpl{
             std::visit(
                 Overloaded{
-                    [](std::vector<me_int_t>) { return DataType::dt_int; },
-                    [](std::vector<double>) { return DataType::dt_float; },
+                    [](std::vector<me_int_t>) { return DataType::dt_int32; },
+                    [](std::vector<double>) { return DataType::dt_float64; },
                 },
                 std::get<1>(value)
             ),
@@ -532,6 +524,7 @@ public:
     TensorView<T, dim> view() {
         check_impl();
         check_view_dim(dim, impl->shape.size());
+        check_view_dtype<T>();
         T* data = static_cast<T*>(impl->data);
         return TensorView<T, dim>(data, impl->stride.data(), impl->shape.data());
     }
@@ -541,6 +534,7 @@ public:
     const TensorView<T, dim> view() const {
         check_impl();
         check_view_dim(dim, impl->shape.size());
+        check_view_dtype<T>();
         T* data = static_cast<T*>(impl->data);
         return TensorView<T, dim>(data, impl->stride.data(), impl->shape.data());
     }
@@ -549,6 +543,7 @@ public:
     /// Like @ref view, with the leading `flatten_count` dimensions merged into one.
     PackedTensorView<T, dim> flat_view(std::size_t flatten_count) const {
         check_impl();
+        check_view_dtype<T>();
         T* data = static_cast<T*>(impl->data);
         if (flatten_count <= 1) {
             check_view_dim(dim, impl->shape.size());
@@ -620,7 +615,7 @@ public:
             storage()->stream = stream;
         }
     }
-    /// The single integer value of a scalar `DataType::batch_sizes` tensor.
+    /// The value of a single-element integer tensor.
     std::size_t index_value() const {
         check_impl();
         if (impl->batch_sizes.size() > 0) {
@@ -634,9 +629,11 @@ public:
     std::size_t dtype_size() const {
         check_impl();
         switch (impl->dtype) {
-        case DataType::dt_int:
+        case DataType::dt_int32:
             return sizeof(me_int_t);
-        case DataType::dt_float:
+        case DataType::dt_float32:
+            return sizeof(float);
+        case DataType::dt_float64:
             return sizeof(double);
         case DataType::batch_sizes:
             return 0;
@@ -683,16 +680,17 @@ public:
     Tensor unsqueeze(std::size_t axis) const;
     /// Broadcasts size-1 dimensions to `shape`, without copying.
     Tensor expand(const Sizes& shape) const;
-    /// A view with a different `shape` over the same elements.
+    /// A view with a different `shape` over the same elements; requires a
+    /// contiguous tensor.
     Tensor reshape(const Sizes& shape) const;
-    /// Splits dimension `axis` into two, the second of size `factor`.
+    /// Splits dimension `axis` into two, the first of size `factor`.
     Tensor factor_dim(std::size_t axis, std::size_t factor);
-    /// Splits along the batch dimension and reshapes each piece.
+    /// Splits a 1-dimensional contiguous tensor into pieces of `shapes`.
     std::vector<Tensor> split_and_reshape(const std::vector<Sizes>& shapes) const;
 
     template <typename D>
-    /// A copy of this tensor on the CPU, allocated through `device`, or
-    /// `*this` if it is already there.
+    /// A copy of this tensor on the CPU, made using `device`, or `*this` if it
+    /// is already there.
     Tensor cpu(const D& device) const {
         check_impl();
         if (impl->device == cpu_device()) {
@@ -705,6 +703,9 @@ public:
     }
     /// A copy of this tensor on the CPU, or `*this` if it is already there.
     Tensor cpu() const { return cpu(*impl->device); }
+    /// A contiguous CPU copy with the element type converted to `dtype`, or the
+    /// CPU tensor itself if it already has that type.
+    Tensor cast(DataType dtype) const;
 
     template <typename D>
     /// Sets every element to zero.
@@ -723,7 +724,15 @@ public:
             device.tensor_copy(source, *this);
         } else if (is_contiguous()) {
             auto contig_source = source.contiguous();
-            device.memcpy(data(), contig_source.data(), byte_size());
+            // The CPU device copies with std::copy, which cannot read GPU memory:
+            // when copying from a GPU into a CPU tensor, the GPU device copies.
+            if (this->device() == cpu_device()) {
+                contig_source.device()->memcpy(
+                    data(), contig_source.data(), byte_size()
+                );
+            } else {
+                device.memcpy(data(), contig_source.data(), byte_size());
+            }
         } else {
             throw std::runtime_error(
                 "tensor must be contiguous for copy across devices"
@@ -809,7 +818,7 @@ public:
 
     /// Maximum number of stored elements (value elements times lanes) of a
     /// literal for which @ref simd_padded_literal pads the storage.
-    static constexpr std::size_t max_simd_padded_size = 256;
+    static constexpr std::size_t max_simd_padded_size = 512;
 
     /**
      * Literal constant for the CPU SIMD kernels.
@@ -920,6 +929,16 @@ private:
                 "view of dimension " + std::to_string(view_dim) +
                 " of a tensor of dimension " + std::to_string(tensor_dim)
             );
+        }
+    }
+
+    // reading a tensor through the wrong element type gives garbage without an error
+    template <typename T>
+    void check_view_dtype() const {
+        if constexpr (ScalarType<T>) {
+            if (impl->dtype != dtype_of<T>() && impl->dtype != DataType::batch_sizes) {
+                throw std::invalid_argument("view element type does not match dtype");
+            }
         }
     }
 

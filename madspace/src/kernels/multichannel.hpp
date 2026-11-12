@@ -25,22 +25,42 @@ KERNELSPEC void kernel_collect_channel_weights(
         norm = norm + amp2_val;
         channel_weights[chan_index] += amp2_val;
     }
-    // Every amplitude can vanish at once -- a channel whose matrix element is
-    // identically zero (an FCNC subprocess whose Wilson coefficients are all zero,
-    // say) has amp2 == 0 for every diagram, so norm == 0. Dividing by it would give
-    // 0/0 = nan for every channel weight, and that nan reaches the event weight and
-    // aborts the whole integration instead of contributing nothing. Fall back to the
-    // uniform distribution: the channel weights have to stay a normalised
-    // distribution over the channels, and with no amplitude to prefer one, none is
-    // preferred. The event weight is zero either way, since the amplitudes are.
-    // norm is substituted before the division rather than the result being repaired
-    // after it, so that the degenerate 0/0 is never formed in the first place.
+    // If all amplitudes vanish, norm == 0; use uniform weights instead of 0/0 = nan.
     auto degenerate = norm == 0.;
     auto safe_norm = where(degenerate, FVal<T>(1.), norm);
     FVal<T> uniform_weight(1. / static_cast<double>(channel_weights.size()));
     for (std::size_t i = 0; i < channel_weights.size(); ++i) {
         channel_weights[i] =
             where(degenerate, uniform_weight, channel_weights[i] / safe_norm);
+    }
+}
+
+template <typename T>
+KERNELSPEC void kernel_density_channel_weights(
+    FIn<T, 1> densities, FIn<T, 1> mask, FOut<T, 1> channel_weights
+) {
+    // A density that is not a finite positive number (an inverse mapping that
+    // failed) counts as zero: that channel cannot have produced the event.
+    FVal<T> norm(0.), mask_count(0.);
+    for (std::size_t i = 0; i < channel_weights.size(); ++i) {
+        auto density = densities[i];
+        auto masked = mask[i] > 0.;
+        auto valid = (density > 0.) & (density < 1e300) & masked;
+        channel_weights[i] = where(valid, density, FVal<T>(0.));
+        norm = norm + channel_weights[i];
+        mask_count = mask_count + where(masked, FVal<T>(1.), FVal<T>(0.));
+    }
+    // if all inverses failed numerically, uniform over the masked channels, so
+    // that the weights stay a function of the event alone
+    auto degenerate = norm == 0.;
+    auto safe_norm = where(degenerate, FVal<T>(1.), norm);
+    auto uniform = 1. / where(mask_count > 0., mask_count, FVal<T>(1.));
+    for (std::size_t i = 0; i < channel_weights.size(); ++i) {
+        channel_weights[i] = where(
+            degenerate,
+            where(mask[i] > 0., uniform, FVal<T>(0.)),
+            channel_weights[i] / safe_norm
+        );
     }
 }
 

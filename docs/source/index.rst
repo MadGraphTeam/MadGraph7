@@ -12,8 +12,9 @@ Alpha release
 This is an **alpha release**, meant for testing and feedback, **not for production**.
 The MadGraph7 workflow currently covers leading-order event generation. The LO workflow
 from MG5_aMC@NLO is still reachable through the ``output madevent`` mode. The NLO
-workflow is also available (with only minor updates). AmpliCol mode is not included in
-this release.
+workflow is also available (with only minor updates). The AmpliCol backend is available
+for the MG7 output: ``generate p p > j j j [amplicol]`` takes the matrix elements from
+AmpliCol instead of Feynman diagrams (see the pyAmpliCol pages below).
 
 If you need a stable release, use the
 `MadGraph5_aMC@NLO repository <https://github.com/mg5amcnlo/mg5amcnlo>`_ or the
@@ -26,10 +27,12 @@ If you need a stable release, use the
 
    installation
    first_steps
+   standalone
    run_card
    custom_functions
    diagram_filters
    gridpacks
+   event_stream
    madevent_to_mg7
 
 .. toctree::
@@ -42,3 +45,17 @@ If you need a stable release, use the
    madspace/umami-api
    madspace/python-api
    madspace/cpp-api
+
+.. toctree::
+   :maxdepth: 1
+   :caption: pyAmpliCol
+   :hidden:
+
+   pyamplicol/README
+   pyamplicol/user/installation
+   pyamplicol/user/gentle-walkthrough
+   pyamplicol/user/configuration
+   pyamplicol/user/python-api
+   pyamplicol/user/profiling-and-benchmarking
+   pyamplicol/user/architecture-overview
+   pyamplicol/development/README

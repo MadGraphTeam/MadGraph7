@@ -87,6 +87,31 @@ class TestMadMatrixDensityDispatch(unittest.TestCase):
 
 
 @needs_numpy
+class TestMadMatrixDensitySpinReference(unittest.TestCase):
+    """The massive fermions of an output --axial_gauge=True (spin_reference
+    in madmatrix_processes.json) are not in a helicity state: no density
+    matrix may be asked for them, while summing over their states is fine."""
+
+    def subprocess(self, legs):
+        sub = density._Subprocess.__new__(density._Subprocess)
+        sub.path = 'P1_gg_ttxgg'
+        sub.spin_reference = frozenset(legs)
+        return sub
+
+    def test_open_spin_reference_leg_is_refused(self):
+        sub = self.subprocess([3, 4])
+        for pos in ([3], [4], [3, 4], [4, 5]):
+            hel = density._Helicities(pos, [1, -1] * len(pos))
+            self.assertRaises(density.MadDensityError, sub.check_open_legs, hel)
+
+    def test_other_open_legs(self):
+        hel = density._Helicities([5, 6], [1, 1, -1, -1])
+        self.subprocess([3, 4]).check_open_legs(hel)
+        # a table written before spin_reference: nothing to refuse
+        self.subprocess([]).check_open_legs(density._Helicities([3], [1, -1]))
+
+
+@needs_numpy
 class TestMadMatrixDensityFiles(unittest.TestCase):
 
     def setUp(self):
@@ -102,10 +127,10 @@ class TestMadMatrixDensityFiles(unittest.TestCase):
 
     def test_make_variables(self):
         self.assertEqual(density.make_variables(),
-                         ['PGOAL=lib', 'BACKEND=scalar', 'DENSITY=1'])
+                         ['PGOAL=lib', 'BACKEND=scalar', 'FPTYPE=m', 'DENSITY=1'])
         self.assertEqual(density.build_command(4, 'simd_128', '_ms2d'),
-                         ['make', '-j4', 'PGOAL=lib', 'BACKEND=simd_128', 'DENSITY=1',
-                          'LIBTAG=_ms2d'])
+                         ['make', '-j4', 'PGOAL=lib', 'BACKEND=simd_128', 'FPTYPE=m',
+                          'DENSITY=1', 'LIBTAG=_ms2d'])
 
     def test_find_libtag(self):
         self.assertRaises(density.MadDensityError, density.find_libtag, self.tmp)
@@ -114,6 +139,21 @@ class TestMadMatrixDensityFiles(unittest.TestCase):
         self.assertEqual(density.find_libtag(self.tmp), '_ms1p')
         self.assertEqual(density.find_libtag(self.tmp, 'simd_128'), '_ms1p')
         self.touch('libmadmatrix_common_scalar.so')
+        self.assertRaises(density.MadDensityError, density.find_libtag, self.tmp)
+
+    def test_find_libtag_model_fptype(self):
+        """An output whose process table names the common library (with the
+        model and FPTYPE): the tag is read off that name."""
+        with open(os.path.join(self.tmp, 'SubProcesses', density.PROCESSES_FILE), 'w') as f:
+            json.dump({'common_library': 'libmadmatrix_common{libtag}_sm_{backend}_{fptype}.so',
+                       'subprocesses': []}, f)
+        self.assertRaises(density.MadDensityError, density.find_libtag, self.tmp)
+        self.touch('libmadmatrix_common_ms1p_sm_scalar_m.so')
+        self.touch('libmadmatrix_common_ms1p_sm_scalar_d.so')
+        self.assertEqual(density.find_libtag(self.tmp), '_ms1p')
+        self.assertEqual(density.common_library_path(self.tmp, '_ms1p'),
+                         os.path.join(self.tmp, 'lib', 'libmadmatrix_common_ms1p_sm_scalar_m.so'))
+        self.touch('libmadmatrix_common_sm_scalar_m.so')
         self.assertRaises(density.MadDensityError, density.find_libtag, self.tmp)
 
     def test_is_output(self):

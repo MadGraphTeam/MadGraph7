@@ -287,9 +287,9 @@ C
       DATA REF/0.0D0/
       COMMON/ML5_0_INIT/NTRY,CHECKPHASE,HELDOUBLECHECKED,REF
 
-C     THE LOGICAL VARIABLES BELOW ARE JUST TO KEEP TRACK OF WHETHER THE MP_PS
-C      HAS BEEN SET YET OR NOT AND WHETHER THE MP EXTERNAL WFS HAVE
-C      BEEN COMPUTED YET.
+C     THE LOGICAL VARIABLES BELOW ARE JUST TO KEEP TRACK OF WHETHER
+C      THE MP_PS HAS BEEN SET YET OR NOT AND WHETHER THE MP EXTERNAL
+C      WFS HAVE BEEN COMPUTED YET.
       LOGICAL MP_DONE
       DATA MP_DONE/.FALSE./
       COMMON/ML5_0_MP_DONE/MP_DONE
@@ -297,8 +297,8 @@ C      BEEN COMPUTED YET.
       DATA MP_PS_SET/.FALSE./
       COMMON/ML5_0_MP_PS_SET/MP_PS_SET
 
-C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT
-C      MODIFIED FOR THE PURPOSE OF THE STABILITY TEST	  
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED
+C      FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
 C      USED ANYWHERE ELSE
       REAL*8 PS(0:3,NEXTERNAL)
@@ -459,12 +459,18 @@ C       Setup the file paths
         CALL JOINPATH(TMP,COLORDENOMFNAME,COLORDENOMFN)
         CALL JOINPATH(TMP,HELFILTERFNAME,HELFILTERFN)
 
-C       Make sure that the loop filter is disabled when there is
-C        spin-2 particles for 2>1 or 1>2 processes
-        IF(MAX_SPIN_EXTERNAL_PARTICLE.GT.3.AND.(NEXTERNAL.LE.3.AND.HELI
-     $CITYFILTERLEVEL.NE.0)) THEN
-          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1'
-     $     //' processes involving spin 2 particles.'
+C       Disable the helicity filter for 2>1 and 1>2 processes.
+C       In the c.m. frame one particle is then at rest (the
+C       final state of a 2>1, the decaying one of a 1>2), and
+C       which helicities vanish depends on the frame: at rest
+C       the helicity is defined along z, a boost changes it.
+C       A filter learned in one frame silently drops part of
+C       the result in another (u d~ > w+: virtual = 0 with the
+C       W along -z) and the stability test cannot see it.
+C       The tree-level standalone output does the same.
+        IF(NEXTERNAL.LE.3.AND.HELICITYFILTERLEVEL.NE.0) THEN
+          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and'
+     $     //' 1>2 processes.'
           HELICITYFILTERLEVEL = 0
 C         We write a dummy filter for structural reasons here
           OPEN(1, FILE=HELFILTERFN, ERR=6116, STATUS='NEW'

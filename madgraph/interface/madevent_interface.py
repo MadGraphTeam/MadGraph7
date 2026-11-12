@@ -71,6 +71,7 @@ except ImportError as error:
     import internal.sum_html as sum_html
     import internal.combine_runs as combine_runs
     import internal.lhe_parser as lhe_parser
+    import internal.py8_bstrahl as py8_bstrahl
 #    import internal.histograms as histograms # imported later to not slow down the loading of the code
     from internal.files import ln
 else:
@@ -88,6 +89,7 @@ else:
     import madgraph.various.misc as misc
     import madgraph.madevent.combine_runs as combine_runs
     import madgraph.various.lhe_parser as lhe_parser
+    import madgraph.various.py8_bstrahl as py8_bstrahl
 #    import madgraph.various.histograms as histograms  # imported later to not slow down the loading of the code
     import madgraph.models.check_param_card as check_param_card
     from madgraph.iolibs.files import ln    
@@ -523,8 +525,8 @@ class AskRun(cmd.ControlSwitch):
     def __init__(self, question, line_args=[], mode=None, force=False,
                                                                   *args, **opt):
         
-        self.check_available_module(opt['mother_interface'].options)
         self.me_dir = opt['mother_interface'].me_dir
+        self.check_available_module(opt['mother_interface'].options)
         super(AskRun,self).__init__(self.to_control, opt['mother_interface'],
                                      *args, **opt)
         
@@ -555,6 +557,18 @@ class AskRun(cmd.ControlSwitch):
         if not MADEVENT or ('mg5_path' in options and options['mg5_path']):
             self.available_module.add('MadSpin')
             if misc.has_f2py() or options['f2py_compiler']:
+                self.available_module.add('reweight')
+
+        # An MG7 output reweights with the classic module or with MadtRex
+        # (see madgraph/various/reweight_backend.py): reweighting is
+        # available when either one can run.
+        self.reweight_env = None
+        if not MADEVENT and os.path.exists(pjoin(self.me_dir, 'Cards', 'run_card.toml')):
+            from madgraph.various import reweight_backend
+            self.reweight_env = reweight_backend.probe_environment(
+                self.me_dir, dict(options, mg5_path=options.get('mg5_path') or MG5DIR),
+                has_f2py='reweight' in self.available_module)
+            if reweight_backend.available_backends(self.reweight_env):
                 self.available_module.add('reweight')
 
 #   old mode to activate the shower            
@@ -907,7 +921,16 @@ class AskRun(cmd.ControlSwitch):
         if 'reweight' not in self.available_module:
             self.allowed_reweight = []
             return self.allowed_reweight
-        self.allowed_reweight = ['OFF', 'ON', 'density']
+        if self.reweight_env is not None:
+            # MG7 output: ON is auto; then the backends that can run here
+            from madgraph.various import reweight_backend
+            backends = reweight_backend.available_backends(self.reweight_env)
+            self.allowed_reweight = ['OFF', 'ON'] + backends
+            if 'classic' not in backends:
+                return self.allowed_reweight
+            self.allowed_reweight.append('density')
+        else:
+            self.allowed_reweight = ['OFF', 'ON', 'density']
         
         # check for plugin mode
         plugin_path = self.mother_interface.plugin_path
@@ -920,13 +943,7 @@ class AskRun(cmd.ControlSwitch):
         
         if 'reweight' in self.available_module:
             if os.path.exists(pjoin(self.me_dir,'Cards','reweight_card.dat')):
-                reweightcard = open(pjoin(self.me_dir,'Cards','reweight_card.dat'), 'r')
-                content = reweightcard.read()
-                if 'change particle_in_density_matrix' in content:
-                    self.switch['reweight'] = 'density'
-                else:
-                    self.switch['reweight'] = 'ON'
-                reweightcard.close()
+                self.switch['reweight'] = self.switch_value_from_card_reweight()
             else:
                 self.switch['reweight'] = 'OFF'
         else:
@@ -934,6 +951,9 @@ class AskRun(cmd.ControlSwitch):
 
     def get_cardcmd_for_reweight(self, value):
         """set some command to run before allowing the user to modify the cards."""
+        if value in ['classic', 'madtrex']:
+            # the two backends of an MG7 output read the same card as ON
+            value = 'ON'
         if value in ['density']:
             content_rwgt_card = open(pjoin(self.me_dir, "Cards", "reweight_card.dat"), "r")
             if 'change particle_in_density_matrix' in content_rwgt_card.read():
@@ -961,14 +981,26 @@ class AskRun(cmd.ControlSwitch):
 
     def switch_value_from_card_reweight(self):
         """re-derive the reweight switch (ON vs density) from the content of
-        reweight_card.dat (called after the user has edited the cards)."""
+        reweight_card.dat (called after the user has edited the cards). For
+        an MG7 output, a "change backend classic|madtrex" line of the card
+        gives that backend (when it can run here)."""
 
         path = pjoin(self.me_dir, 'Cards', 'reweight_card.dat')
         if not os.path.exists(path):
             return None
         with open(path) as fsock:
-            if 'change particle_in_density_matrix' in fsock.read():
-                return 'density'
+            content = fsock.read()
+        if 'change particle_in_density_matrix' in content:
+            return 'density'
+        if getattr(self, 'reweight_env', None) is not None:
+            # a backend picked in the question outranks the card's line
+            # (the run warns when the two disagree)
+            current = getattr(self, 'switch', {}).get('reweight')
+            if current in ('classic', 'madtrex'):
+                return current
+            match = re.search(r'^\s*change\s+backend\s+(\w+)', content, re.M | re.I)
+            if match and match.group(1).lower() in self.get_allowed_reweight():
+                return match.group(1).lower()
         return 'ON'
 
 
@@ -4656,6 +4688,13 @@ already exists and is not a fifo file."""%fifo_path)
             # Also make sure to use the shower starting scales specified in the LHE
             # unless the user specified it
             PY8_Card.systemSet('Beams:setProductionScalesFromLHEF',True)
+            # Pythia8 then starts the initial-state shower from the largest
+            # pt_clust. Without this, a sample with no light parton in the final
+            # state (0 jets) radiates up to the kinematic limit regardless. The
+            # mg7 output writes the event's hardest scale for the non-jet
+            # particles (beam.mlm_shower_start), so its shower starts there;
+            # madevent writes sqrt(s) for them, where this changes nothing.
+            PY8_Card.MadGraphSet('SpaceShower:pTmaxMatch', 1)
 
 
             if PY8_Card['SysCalc:qCutList']!='auto':
@@ -4709,6 +4748,15 @@ already exists and is not a fifo file."""%fifo_path)
                     " specify the option 'Merging:Process' in pythia8_card.dat.\n"+
                     "Read section 'Defining the hard process' of "+\
                     "http://home.thep.lu.se/~torbjorn/pythia81html/CKKWLMerging.html for more information.")
+
+            # Since Pythia8 8.318, main164 loads its merging hook as a plugin with
+            # a readString after reading the card. Pythia8 ignores that readString
+            # for a card with 'Main:subrun' lines, as ours always has: without
+            # the hook, 'Merging:Process = guess' crashes and UMEPS loses
+            # their subtractive samples. Load the hook from the card instead.
+            merging_plugin = misc.get_pythia8_merging_plugin(self.options['pythia8_path'])
+            if merging_plugin:
+                PY8_Card.add_plugin(merging_plugin)
 
             # When running CKKWL make sure that we do not write out the parameter
             # JetMatching:xxx as this can interfere with the MLM merging in older
@@ -4886,6 +4934,48 @@ already exists and is not a fifo file."""%fifo_path)
         # which selects a main164 that also splits them per jet sample
         pythia_main = self.get_pythia8_main164(PY8_Card)
 
+        # An event file from a dressed-lepton density that includes
+        # beamstrahlung carries the split of x into its beamstrahlung and ISR
+        # parts, and only a main that consumes it can shower the file
+        # correctly. Every other main leaves the beams at full energy and
+        # gives the whole of 1-x to the ISR shower, so falling back to one is
+        # not an option: this has to be an error rather than a warning.
+        # The file to inspect is the one Pythia8 will actually read, which is
+        # not necessarily unweighted_events.lhe.gz: setup_Pythia8RunAndCard
+        # sets Beams:LHEF with systemSet, so a value the user put in
+        # pythia8_card.dat survives. Asking the card rather than guessing is
+        # what keeps this check from silently passing on the wrong file.
+        lhe_path = pjoin(self.me_dir, 'Events', self.run_name,
+                         PY8_Card.subruns[0]['Beams:LHEF'])
+        if py8_bstrahl.event_file_needs_bstrahl(lhe_path):
+            # generation refuses these already; a file produced elsewhere, or
+            # before that check existed, has to be refused here too
+            error = py8_bstrahl.beamstrahlung_setup_error(
+                self.run_card['pdlabel'],
+                self.run_card['ebeam1'], self.run_card['ebeam2'],
+                self.run_card['ickkw'] > 0)
+            if error:
+                raise self.InvalidCmd(error)
+            # A standalone process directory has no MadGraph tree to build
+            # from, so there the main must already have been built, normally
+            # when Pythia8 was installed.
+            bstrahl_main = py8_bstrahl.get_main(self.options['pythia8_path'],
+                                                None if MADEVENT else MG5DIR)
+            if not bstrahl_main:
+                raise self.InvalidCmd(
+"""This event file was generated with a lepton density that includes
+beamstrahlung, so it carries the per-event beamstrahlung fractions and needs
+the dedicated Pythia8 main to be showered correctly. That main could not be
+built against the Pythia8 installation in:
+    %s
+Showering with any other main would leave the beams at their nominal energy
+and attribute the beamstrahlung energy loss to initial-state radiation, so
+MadEvent will not do it. See vendor/py8main/README.""" %
+                    self.options['pythia8_path'])
+            if pythia_main != bstrahl_main:
+                logger.info('Event file carries beamstrahlung fractions: '
+                            'showering with %s.' % os.path.basename(bstrahl_main))
+            pythia_main = bstrahl_main
 
         if self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):
             PY8_Card['Main:numberOfEvents']= self.run_card['nevents']
@@ -6609,10 +6699,12 @@ tar -czf split_$1.tar.gz split_$1
             self.make_opts_var['pdlabel1'] = 'eva'
         if self.run_card['pdlabel2'] in ['eva', 'iww']:
             self.make_opts_var['pdlabel2'] = 'eva'
-        if self.run_card['pdlabel1'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel1']):
             self.make_opts_var['pdlabel1'] = self.run_card['pdlabel1']
-        if self.run_card['pdlabel2'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel2']):
             self.make_opts_var['pdlabel2'] = self.run_card['pdlabel2']
+        # also in RunCard.check_validity (only a warning on some read paths): stop before compiling
+        banner_mod.check_upc_neutron_tagging(self.run_card, self.run_card['pdlabel1'])
 
 
         # set  lhapdf.
@@ -6642,6 +6734,15 @@ tar -czf split_$1.tar.gz split_$1
                     self.copy_lep_densities(self.run_card['pdlabel'], pjoin(self.me_dir, 'Source'))
                     self.make_opts_var['pdlabel1'] = 'ee'
                     self.make_opts_var['pdlabel2'] = 'ee'
+                    # refuse before the survey what could not be showered
+                    if py8_bstrahl.density_has_bstrahl(
+                            self.run_card['pdlabel'], pjoin(self.me_dir, 'Source')):
+                        error = py8_bstrahl.beamstrahlung_setup_error(
+                            self.run_card['pdlabel'],
+                            self.run_card['ebeam1'], self.run_card['ebeam2'],
+                            self.run_card['ickkw'] > 0)
+                        if error:
+                            raise self.InvalidCmd(error)
         
         # set random number
         if self.run_card['iseed'] != 0:

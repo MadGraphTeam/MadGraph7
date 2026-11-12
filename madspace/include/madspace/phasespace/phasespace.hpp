@@ -14,7 +14,8 @@
 namespace madspace {
 
 /**
- * Full @f$2 \to n@f$ phase-space mapping for one diagram topology.
+ * Full @f$2 \to n@f$ (or @f$1 \to n@f$ decay) phase-space mapping for one
+ * diagram topology.
  *
  * Assembles a complete mapping from the elementary building blocks along the
  * recursive decomposition of the tree-level phase space (Sec. 2.2 of [1]),
@@ -29,8 +30,9 @@ namespace madspace {
  * @f]
  *
  * The time-like invariants are sampled with @ref Invariant, the s-channel
- * decays with @ref TwoBodyDecay / @ref ThreeBodyDecay, and the PDF convolution
- * with @ref Luminosity. @ref TChannelMode selects the t-channel strategy. The
+ * decays with @ref TwoBodyDecay / @ref ThreeBodyDecay (@ref FastRamboMapping
+ * for more children), and the PDF convolution with the @ref Luminosity
+ * parametrization. @ref TChannelMode selects the t-channel strategy. The
  * second constructor takes a flat list of external masses instead of a
  * @ref Topology and is used for the topology-free @ref TChannelMode::rambo and
  * @ref TChannelMode::chili modes.
@@ -54,10 +56,12 @@ namespace madspace {
  * **Outputs**
  * - `momenta` – `float`, shape `(batch, n_out + 2, 4)` – all momenta (incoming
  *   beams first, then outgoing).
- * - `x1` – `float`, shape `(batch,)` – first parton momentum fraction.
- * - `x2` – `float`, shape `(batch,)` – second parton momentum fraction.
+ * - `x1` – `float`, shape `(batch,)` – first parton momentum fraction (1 for
+ *   every event if `leptonic` and for a decay).
+ * - `x2` – `float`, shape `(batch,)` – second parton momentum fraction (1 for
+ *   every event if `leptonic` and for a decay).
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**
@@ -115,6 +119,18 @@ public:
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
+     * @param lepton_sampling_power
+     *                         Nonzero switches the beam split from the
+     *                         hadronic @f$x_1 = \tau^r@f$ to the
+     *                         dressed-lepton one of @ref lepton_split, which
+     *                         puts its weight at @f$x \to 1@f$ where a
+     *                         dressed-lepton density lives. It must equal the
+     *                         exponent the density was reduced with. One
+     *                         further random number is consumed, the mapping
+     *                         also returns `omx1`/`omx2` (1 - x, kept exact),
+     *                         and the inverse map is not available. Not
+     *                         compatible with @p mirror_beams or a 2 -> 1
+     *                         topology.
      */
     PhaseSpaceMapping(
         const Topology& topology,
@@ -127,7 +143,8 @@ public:
         const std::optional<ColorOrderedMapping::Options>& color_ordered = std::nullopt,
         double beam_rapidity = 0.,
         bool mirror_beams = false,
-        std::optional<double> s_hat_power = std::nullopt
+        std::optional<double> s_hat_power = std::nullopt,
+        double lepton_sampling_power = 0.
     );
 
     /**
@@ -169,6 +186,18 @@ public:
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
+     * @param lepton_sampling_power
+     *                         Nonzero switches the beam split from the
+     *                         hadronic @f$x_1 = \tau^r@f$ to the
+     *                         dressed-lepton one of @ref lepton_split, which
+     *                         puts its weight at @f$x \to 1@f$ where a
+     *                         dressed-lepton density lives. It must equal the
+     *                         exponent the density was reduced with. One
+     *                         further random number is consumed, the mapping
+     *                         also returns `omx1`/`omx2` (1 - x, kept exact),
+     *                         and the inverse map is not available. Not
+     *                         compatible with @p mirror_beams or a 2 -> 1
+     *                         topology.
      */
     PhaseSpaceMapping(
         const std::vector<double>& external_masses,
@@ -180,7 +209,8 @@ public:
         const std::optional<ColorOrderedMapping::Options>& color_ordered = std::nullopt,
         double beam_rapidity = 0.,
         bool mirror_beams = false,
-        std::optional<double> s_hat_power = std::nullopt
+        std::optional<double> s_hat_power = std::nullopt,
+        double lepton_sampling_power = 0.
     );
 
     /**
@@ -197,7 +227,9 @@ public:
      * @param leptonic  If true, skip the PDF convolution.
      * @throws std::invalid_argument for a 2 -> 1 topology without PDFs.
      */
-    static std::size_t random_dim_for(const Topology& topology, bool leptonic) {
+    static std::size_t random_dim_for(
+        const Topology& topology, bool leptonic, double lepton_sampling_power = 0.
+    ) {
         if (topology.outgoing_masses().size() == 1 &&
             (leptonic || topology.is_decay())) {
             throw std::invalid_argument(
@@ -205,11 +237,16 @@ public:
                 "energies s_hat is fixed and there is nothing to integrate"
             );
         }
-        return 3 * topology.outgoing_masses().size() -
+        std::size_t base = 3 * topology.outgoing_masses().size() -
             ((leptonic || topology.is_decay()) ? 4 : 2);
+        // the dressed split also decides which beam carries the drawn fraction
+        bool splits = !leptonic && !topology.is_decay();
+        return base + ((splits && lepton_sampling_power != 0.) ? 1 : 0);
     }
     /// Number of continuous unit-hypercube inputs consumed by the forward map.
-    std::size_t random_dim() const { return random_dim_for(_topology, _leptonic); }
+    std::size_t random_dim() const {
+        return random_dim_for(_topology, _leptonic, _lepton_power);
+    }
     /// Number of discrete channel choices.
     std::size_t discrete_dim() const override { return _n_discrete; }
     /// Total number of particles, incoming and outgoing.
@@ -226,8 +263,7 @@ public:
     const Cuts& cuts() const { return _cuts; }
     /// True when the cuts exclude the whole region this mapping samples: a
     /// pair mass cut puts a propagator's floor at or above the upper end of
-    /// its on-shell window. Every point then fails the cuts, so the channel
-    /// contributes nothing and should be dropped rather than sampled.
+    /// its on-shell window. The channel contributes nothing and can be dropped.
     bool empty() const { return _empty; }
 
 private:
@@ -241,15 +277,14 @@ private:
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions
     ) const override;
-    // partonic centre-of-mass frame <-> lab frame (partonic boost, mirror,
-    // beam_rapidity boost)
     // x1, x2 scaled so that log(x1 / x2) / 2 is the rapidity of the partonic
-    // system in the lab frame, which is what the rapidity windows of the
-    // decays and the t-channel need (a mirrored event has the opposite sign of
-    // the beam rapidity relative to the frame the mapping works in)
+    // system in the lab frame, as the rapidity windows of the decays and the
+    // t-channel need (a mirrored event flips the sign of the beam rapidity)
     std::pair<Value, Value> lab_fractions(
         FunctionBuilder& fb, Value x1, Value x2, const NamedVector<Value>& conditions
     ) const;
+    // partonic centre-of-mass frame <-> lab frame (partonic boost, mirror,
+    // beam_rapidity boost)
     Value to_lab(
         FunctionBuilder& fb,
         Value momenta,
@@ -273,6 +308,7 @@ private:
     bool _mirror_beams;
     bool _leptonic;
     bool _map_luminosity;
+    double _lepton_power;
     bool _two_to_one;
     // bound on the absolute rapidity of the partonic system, log(x1 / x2) / 2,
     // implied by the cuts; negative when they imply none

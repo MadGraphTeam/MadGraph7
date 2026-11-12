@@ -17,9 +17,11 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <array>
+#include <memory>
 #include <utility>
 
 using namespace madmatrix;
@@ -56,7 +58,10 @@ namespace
   }
 
 
-  void* initialize_impl(
+  // Choose the good helicities of an instance on the events of a call
+  void initialize(
+    ProcessParameters& params,
+    DeviceProcessParameters& deviceParams,
     const fptype_momenta* momenta,
     const fptype* couplings,
     const unsigned int* flavor_indices,
@@ -68,30 +73,12 @@ namespace
   {
     bool is_good_hel[ProcessData::ncomb];
     sigmaKin_getGoodHel(
-      momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
+      deviceParams.arg( params ), momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       color_jamps,
       is_good_hel,
       count );
-    sigmaKin_setGoodHel( is_good_hel );
-    return nullptr;
-  }
-
-  void initialize(
-    const fptype_momenta* momenta,
-    const fptype* couplings,
-    const unsigned int* flavor_indices,
-    fptype* matrix_elements,
-    fptype_amp* color_jamps,
-    fptype_amp* numerators,
-    fptype_amp* denominators,
-    std::size_t count )
-  {
-    // static local initialization is called exactly once in a thread-safe way
-    static void* dummy = initialize_impl( momenta, couplings, flavor_indices, matrix_elements,
-                                          color_jamps,
-                                          numerators,
-                                          denominators,
-                                          count );
+    sigmaKin_setGoodHel( params, is_good_hel );
+    deviceParams.update( params );
   }
 
   __device__
@@ -120,12 +107,14 @@ namespace
     const double* diagram_random_in,
     const double* alpha_s_in,
     const unsigned int* flavor_indices_in,
+    const int* helicity_in,
     fptype_momenta* momenta,
     fptype* helicity_random,
     fptype* color_random,
     fptype* diagram_random,
     fptype* g_s,
     unsigned int* flavor_indices,
+    int* helicity_given,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -144,6 +133,14 @@ namespace
     color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
     g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
     flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
+    if( helicity_in )
+    {
+      // an index out of [0,ncomb) cannot be reported from here (umami_matrix_element returns
+      // before the kernels run): evaluate helicity 0 instead, never out of the helicity table,
+      // and let copy_outputs flag the event (see umami_matrix_element)
+      const int ihel = helicity_in[i_in + offset];
+      helicity_given[i_event] = ( ihel >= 0 && ihel < ProcessData::ncomb ? ihel : 0 );
+    }
   }
 
   __global__ void copy_outputs(
@@ -158,12 +155,24 @@ namespace
     int* diagram_out,
     int* color_out,
     int* helicity_out,
+    const int* helicity_in,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
   {
     std::size_t i_event = blockDim.x * blockIdx.x + threadIdx.x;
     if( i_event >= count ) return;
+    if( helicity_in )
+    {
+      const int ihel = helicity_in[i_event + offset];
+      if( ihel < 0 || ihel >= ProcessData::ncomb )
+      {
+        // an invalid given helicity: no |M|^2 and no helicity, see umami_matrix_element
+        if( m2_out ) m2_out[i_event + offset] = 0;
+        if( helicity_out ) helicity_out[i_event + offset] = -1;
+        return;
+      }
+    }
 
     if( m2_out ) m2_out[i_event + offset] = matrix_elements[i_event];
     if( amp2_out )
@@ -180,8 +189,18 @@ namespace
   }
 
 
+  // What a UMAMI handle points to. Everything the matrix element of an instance depends
+  // on is in here, and not shared with the other instances of the library: the
+  // parameters (its CPPProcess), the good helicities and the device it lives on.
   struct InterfaceInstance
   {
+    // The model parameters, and the parameters the matrix element is evaluated with
+    CPPProcess process;
+    // The latter on the device, when the kernels do not take them by value
+    DeviceProcessParameters deviceParams;
+    // The device the instance was created on (the current one in umami_initialize)
+    int device = 0;
+    // whether the good helicities of process.parameters() have been chosen
     bool initialized = false;
     // parameter interference_helicity_summed (run card [generation]
     // interference_helicity = "summed"): an interference |M|^2 stays the helicity
@@ -189,9 +208,34 @@ namespace
     bool summed_helicity = false;
   };
 
+  // Makes the device of an instance the current one for the duration of a call on it,
+  // so that its kernels run there whatever the caller has as its current device
+  class DeviceGuard
+  {
+  public:
+    DeviceGuard( const int device )
+    {
+      checkGpu( gpuGetDevice( &m_previous ) );
+      if( m_previous != device ) checkGpu( gpuSetDevice( device ) );
+      m_device = device;
+    }
+    ~DeviceGuard()
+    {
+      if( m_previous != m_device ) gpuSetDevice( m_previous );
+    }
+    DeviceGuard( const DeviceGuard& ) = delete;
+    DeviceGuard& operator=( const DeviceGuard& ) = delete;
+  private:
+    int m_previous;
+    int m_device;
+  };
+
+  // The masses of the most recently initialized or modified instance, for
+  // umami_get_meta(UMAMI_META_MASSES), which takes no handle
   std::vector<double> g_externalMasses;
 
-  // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
+  // The helicity filter (sigmaKin_getGoodHel) runs once per instance, and again when
+  // its parameters change, and keeps a
   // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
   // umami_matrix_element call, it depended on what that call held: a first batch of
   // special points, where some helicities happen to vanish (the forward direction of
@@ -217,12 +261,13 @@ namespace
     return false;
   }
 
-  void choose_good_helicities( UmamiHandle handle )
+  void choose_good_helicities( InterfaceInstance* instance )
   {
     constexpr int npar = ProcessData::npar;
     constexpr int npari = ProcessData::npari;
     constexpr std::size_t nevt = 16; // the events sigmaKin_getGoodHel looks at
-    std::vector<double> masses( g_externalMasses.begin(), g_externalMasses.end() );
+    const std::vector<fptype>& instanceMasses = instance->process.getMasses();
+    std::vector<double> masses( instanceMasses.begin(), instanceMasses.end() );
     double mfinal = 0, mtotal = 0;
     for( int ipar = 0; ipar < npar; ++ipar )
     {
@@ -280,7 +325,7 @@ namespace
     const void* inputs[] = { device_momenta };
     const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
     void* outputs[] = { device_matrix_elements };
-    umami_matrix_element( handle, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
+    umami_matrix_element( instance, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
     // umami_matrix_element returns before its kernels end: wait before freeing
     gpuStreamSynchronize( nullptr );
     gpuFree( device_matrix_elements );
@@ -333,8 +378,8 @@ extern "C"
   UmamiStatus umami_supported_inputs( bool const** supported, int* count )
   {
     // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
-    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true };
+    // HELICITY_INDEX, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true };
     *supported = data;
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
@@ -359,18 +404,17 @@ extern "C"
 
   UmamiStatus umami_initialize( UmamiHandle* handle, char const* param_card_path )
   {
-    CPPProcess process;
-    process.initProc( param_card_path );
+    // The instance lives on the current device
+    std::unique_ptr<InterfaceInstance> instance( new InterfaceInstance() );
+    checkGpu( gpuGetDevice( &instance->device ) );
+    instance->process.initProc( param_card_path );
+    instance->deviceParams.update( instance->process.parameters() );
 
-    const std::vector<fptype>& masses = process.getMasses();
+    const std::vector<fptype>& masses = instance->process.getMasses();
     g_externalMasses.assign( masses.begin(), masses.end() );
 
-    auto instance = new InterfaceInstance();
-    *handle = instance;
-    // once per library, like the filter (a thread-safe static initialization), on
-    // the device current here, which initProc has just set the parameters of
-    static const bool good_helicities = ( choose_good_helicities( instance ), true );
-    (void)good_helicities;
+    choose_good_helicities( instance.get() );
+    *handle = instance.release();
     return UMAMI_SUCCESS;
   }
 
@@ -380,12 +424,14 @@ extern "C"
     double parameter_real,
     [[maybe_unused]] double parameter_imag )
   {
-    // The run card bw_cutoff (the $-excluded propagator window). It is shared
-    // by all the instances of this library, like the model parameters read by
-    // umami_initialize.
+    InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
+    DeviceGuard guard( instance->device );
+    // The run card bw_cutoff (the $-excluded propagator window). Per instance, like
+    // the model parameters read by umami_initialize.
     if( std::string( name ) == "bwcutoff" )
     {
-      setBwCutoff( parameter_real );
+      instance->process.parameters().bwcutoff = parameter_real;
+      instance->deviceParams.update( instance->process.parameters() );
       return UMAMI_SUCCESS;
     }
     // Non-zero: the helicity choice of an interference |M|^2 keeps the helicity
@@ -394,10 +440,28 @@ extern "C"
     // convention, see umami_matrix_element. Per instance.
     if( std::string( name ) == "interference_helicity_summed" )
     {
-      static_cast<InterfaceInstance*>( handle )->summed_helicity = parameter_real != 0;
+      instance->summed_helicity = parameter_real != 0;
       return UMAMI_SUCCESS;
     }
+    // The model parameters are the instance's own (those of its CPPProcess)
+#ifdef MGONGPU_HARDCODE_PARAM
+    // Hardcoded parameters are compile-time constants: there is nothing to set.
     return UMAMI_ERROR_NOT_IMPLEMENTED;
+#else
+    if( !instance->process.modelParameters().setParameterByName( name, parameter_real, parameter_imag ) )
+      return UMAMI_ERROR_UNKNOWN_PARAMETER;
+    // sigmaKin() and friends read copies of the independent parameters/couplings
+    // (cIPD/cIPC/cIPF/bsmIndepParam) and of the masses, not the model parameters
+    // themselves, for performance; refresh them so that the override takes effect.
+    instance->process.refreshIndependentParams();
+    instance->deviceParams.update( instance->process.parameters() );
+    const std::vector<fptype>& masses = instance->process.getMasses();
+    g_externalMasses.assign( masses.begin(), masses.end() );
+    // A helicity may vanish with some parameters and not with others: choose again
+    instance->initialized = false;
+    choose_good_helicities( instance );
+    return UMAMI_SUCCESS;
+#endif
   }
 
   UmamiStatus umami_get_parameter(
@@ -406,7 +470,13 @@ extern "C"
     [[maybe_unused]] double* parameter_real,
     [[maybe_unused]] double* parameter_imag )
   {
+#ifdef MGONGPU_HARDCODE_PARAM
     return UMAMI_ERROR_NOT_IMPLEMENTED;
+#else
+    if( !static_cast<InterfaceInstance*>( handle )->process.modelParameters().getParameterByName( name, parameter_real, parameter_imag ) )
+      return UMAMI_ERROR_UNKNOWN_PARAMETER;
+    return UMAMI_SUCCESS;
+#endif
   }
 
   UmamiStatus umami_matrix_element(
@@ -421,12 +491,17 @@ extern "C"
     UmamiOutputKey const* output_keys,
     void* const* outputs )
   {
+    InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
+    DeviceGuard guard( instance->device );
+    ProcessParameters& params = instance->process.parameters();
+
     const double* momenta_in = nullptr;
     const double* alpha_s_in = nullptr;
     const unsigned int* flavor_indices_in = nullptr;
     const double* random_color_in = nullptr;
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
+    const int* helicity_in = nullptr;
     [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
 
     for( std::size_t i = 0; i < input_count; ++i )
@@ -453,7 +528,8 @@ extern "C"
           random_diagram_in = static_cast<const double*>( input );
           break;
         case UMAMI_IN_HELICITY_INDEX:
-          return UMAMI_ERROR_UNSUPPORTED_INPUT;
+          helicity_in = static_cast<const int*>( input );
+          break;
         case UMAMI_IN_DIAGRAM_INDEX:
           diagram_in = static_cast<const int*>( input );
           break;
@@ -462,6 +538,14 @@ extern "C"
       }
     }
     if( !momenta_in ) return UMAMI_ERROR_MISSING_INPUT;
+    // UMAMI_IN_HELICITY_INDEX: evaluate each event for the one helicity it is given, an index
+    // into the full helicity table [0,ncomb) (the UMAMI_OUT_HELICITY_INDEX convention), instead
+    // of summing over the helicities. The |M|^2 is then the contribution of that helicity to
+    // the helicity-summed (and averaged) |M|^2, so that the sum over all ncomb helicities gives
+    // back the |M|^2 without this input; UMAMI_OUT_HELICITY_INDEX returns the given helicity,
+    // the color and diagram are chosen for it, and UMAMI_IN_RANDOM_HELICITY is not used. The
+    // indices live on the device and are only read by the kernels, so that an index out of
+    // [0,ncomb) cannot fail the call as on the CPU: that event gets |M|^2 = 0 and helicity -1.
 
     gpuStream_t gpu_stream = nullptr;
     double* m2_out = nullptr;
@@ -507,11 +591,11 @@ extern "C"
     fptype *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
     fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
-    int *helicity_index, *color_index;
+    int *helicity_index, *color_index, *helicity_given;
     unsigned int *flavor_indices, *diagram_index;
 
     std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 17> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -530,6 +614,7 @@ extern "C"
         {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
+        {reinterpret_cast<void**>(&helicity_given), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * ProcessData::ncomb * sizeof( fptype )},
         // njampso = ncolor per amplitude split order (just ncolor without split orders)
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
@@ -557,19 +642,20 @@ extern "C"
       random_diagram_in,
       alpha_s_in,
       flavor_indices_in,
+      helicity_in,
       momenta,
       helicity_random,
       color_random,
       diagram_random,
       g_s,
       flavor_indices,
+      helicity_given,
       count,
       stride,
       offset );
-    computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( g_s, couplings );
+    computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( instance->deviceParams.arg( params ), g_s, couplings );
     checkGpu( gpuPeekAtLastError() );
 
-    InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     if( !instance->initialized )
     {
       // the helicity filtering runs on the default stream: wait for the inputs copied on
@@ -579,11 +665,13 @@ extern "C"
       // the jamp scratch of the helicity filtering (one helicity, njampso jamps, a few
       // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
       initialize(
-        momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
+        params, instance->deviceParams, momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
       instance->initialized = true;
     }
 
     sigmaKin(
+      params,
+      instance->deviceParams.arg( params ),
       momenta,
       couplings,
       flavor_indices,
@@ -611,7 +699,8 @@ extern "C"
       // an interference |M|^2 (see add_and_select_hel), unless the instance was asked to
       // keep the helicity sum (interference_helicity_summed); without the random number
       // the |M|^2 stays the helicity sum (systematics re-evaluation, standalone checks)
-      random_helicity_in != nullptr && !instance->summed_helicity );
+      random_helicity_in != nullptr && !instance->summed_helicity,
+      helicity_in ? helicity_given : nullptr );
 
     copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       denominators,
@@ -625,6 +714,7 @@ extern "C"
       diagram_out,
       color_out,
       helicity_out,
+      helicity_in,
       count,
       stride,
       offset );
@@ -637,16 +727,17 @@ extern "C"
   UmamiStatus umami_free( UmamiHandle handle )
   {
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
+    DeviceGuard guard( instance->device ); // its device memory is freed there
     delete instance;
     return UMAMI_SUCCESS;
   }
 
   // A madmatrix extension, not part of UMAMI: the number of helicity combinations
-  // kept by the good-helicity filter, which runs at the first umami_initialize (at
-  // the first umami_matrix_element call where RAMBO has no phase space; 0 before
-  // it). Like the filter, it is shared by every instance.
-  int madmatrix_good_helicity_count()
+  // kept by the good-helicity filter of an instance, which runs at umami_initialize
+  // (at the first umami_matrix_element call where RAMBO has no phase space; 0 before
+  // it), and again when umami_set_parameter changes a model parameter.
+  int madmatrix_good_helicity_count( UmamiHandle handle )
   {
-    return sigmaKin_getNGoodHel();
+    return static_cast<InterfaceInstance*>( handle )->process.parameters().nGoodHel;
   }
 }

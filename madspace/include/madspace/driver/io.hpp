@@ -20,6 +20,11 @@ Tensor load_tensor(TarReader& tar, const std::string& name);
 /// Append `tensor` as an npy file called `name` to the tar archive `tar`.
 void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
 
+/// Field names, in order, from the "descr" entry of the header of the npy event
+/// file `file`. Particle fields are repeated per particle with a "partN_"
+/// prefix. Allows detecting optional fields before choosing a @ref DataLayout.
+std::vector<std::string> peek_npy_field_names(const std::string& file);
+
 struct FieldLayout {
     enum Type { i32, f64 };
 
@@ -80,12 +85,12 @@ public:
     static constexpr int f_lhe_particle = 2;
     static constexpr int f_clustering = 4;
     // MLM alpha_s reweighting: the scale of the clustering vertex stored on
-    // outgoing particle 2 + i is vertex i's. Only kept in the combined buffer
-    // the systematics read, never written to an event file.
+    // outgoing particle 2 + i is vertex i's. Only the systematics read it; it
+    // is not written to the final event file.
     static constexpr int f_alphas_scales = 8;
     // MLM pdf reweighting ladder: step s (each one that can carry a pdf
     // ratio) on particle s, each beam's leading density on particle 0 and 1.
-    // Like f_alphas_scales only in the combined buffer, for the systematics.
+    // Like f_alphas_scales, only for the systematics.
     static constexpr int f_pdf_ladder = 16;
 
     static std::vector<FieldLayout> layout(int fields) {
@@ -180,6 +185,10 @@ public:
     UnalignedRef<double> ladder_info() { return &_data[_offsets[2] + 24]; }
     UnalignedRef<double> ladder_lead_q() { return &_data[_offsets[2] + 32]; }
 
+    // weight files with re- and unweighting steps store one record per step
+    UnalignedRef<double> step_ratio() { return &_data[0]; }
+    UnalignedRef<double> step_max_weight() { return &_data[8]; }
+
     void from_lhe_particle(const LHEParticle& particle, bool has_clustering = false) {
         lhe_pdg_id() = particle.pdg_id;
         lhe_status_code() = particle.status_code;
@@ -216,9 +225,11 @@ public:
     static constexpr int f_partial_weights = 64;
     static constexpr int f_syst_weights = 128;
     static constexpr int f_bias = 256;
+    static constexpr int f_matrix_element = 512;
+    static constexpr int f_beamstrahlung = 1024;
 
-    // `syst_weight_count` columns of systematic variation weights are appended
-    // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
+    // With f_syst_weights, one column rwgt_<id> is added per entry of
+    // `syst_weight_ids`.
     static std::vector<FieldLayout>
     layout(int fields, const std::vector<int>& syst_weight_ids = {}) {
         std::vector<FieldLayout> ret;
@@ -271,6 +282,17 @@ public:
                 }
             );
         }
+        if (fields & f_beamstrahlung) {
+            // the fraction each beam kept after beamstrahlung; written to the
+            // event file as <beamstrahlung>, and not part of the weight
+            ret.insert(
+                ret.end(),
+                {
+                    {"xbs1", FieldLayout::f64, 6},
+                    {"xbs2", FieldLayout::f64, 6},
+                }
+            );
+        }
         if (fields & f_partial_weights) {
             ret.push_back({"partial_weight_product", FieldLayout::f64, 6});
         }
@@ -281,6 +303,9 @@ public:
         }
         if (fields & f_bias) {
             ret.push_back({"bias", FieldLayout::f64, 8});
+        }
+        if (fields & f_matrix_element) {
+            ret.push_back({"matrix_element", FieldLayout::f64, 9});
         }
         return ret;
     }
@@ -327,6 +352,9 @@ public:
 
     // event bias, divided out of the weight when the channels are combined
     UnalignedRef<double> bias() { return &_data[_offsets[7] + 0]; }
+
+    // squared matrix element the event was generated with, before PDFs and flux
+    UnalignedRef<double> matrix_element() { return &_data[_offsets[8] + 0]; }
 
     void from_lhe_event(const LHEEvent& event) {
         lhe_process_id() = event.process_id;
@@ -389,6 +417,14 @@ private:
 inline const DataLayout weight_file_layout = DataLayout(
     EventRecord::layout(EventRecord::f_weight),
     ParticleRecord::layout(ParticleRecord::f_none)
+);
+
+/// Weight file of a channel with re- and unweighting steps: the event weight
+/// and, as "particles", the ratio and maximum weight of the generation stage
+/// (particle 0) and of each step.
+inline const DataLayout step_weight_file_layout = DataLayout(
+    EventRecord::layout(EventRecord::f_weight),
+    {{"ratio", FieldLayout::f64, 0}, {"max_weight", FieldLayout::f64, 0}}
 );
 
 class EventBuffer {
@@ -486,6 +522,8 @@ public:
     void clear();
     std::size_t particle_count() const { return _particle_count; }
     std::size_t event_count() const { return _event_count; }
+    // The DataLayout this file was opened with, for building a matching EventBuffer.
+    const DataLayout& layout() const { return _layout; }
     ~EventFile();
 
     void write(EventBuffer& buffer) {
@@ -533,6 +571,7 @@ private:
     std::size_t _event_size;
     Mode _mode;
     bool _delete_on_close;
+    DataLayout _layout;
 };
 
 } // namespace madspace

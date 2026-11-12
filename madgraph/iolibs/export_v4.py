@@ -337,6 +337,21 @@ COLOR_MATRIX_ENCODING_TEMPLATES = frozenset((
     'matrix_madevent_group_v4_onia_pwave.inc',
 ))
 
+# The initial states a dressed-lepton beam (pdlabel='dressed') can be made of.
+# Source/PDF/eepdf.f only provides the lepton densities of an electron or a
+# muon beam (|lpp| = 3 or 4), and only these get a <part><beam>_components
+# array written out next to their PDG2PDF call, so only these may take the
+# ee_comp_prod path below.
+DRESSED_LEPTON_PDGS = frozenset((11, 13))
+
+
+def is_dressed_lepton_beam(pdgs):
+    """Whether every initial state of one beam carries lepton-density
+    components, i.e. whether that beam can be a dressed-lepton beam."""
+
+    return bool(pdgs) and all(abs(pdg) in DRESSED_LEPTON_PDGS for pdg in pdgs)
+
+
 #===============================================================================
 # ProcessExporterFortran
 #===============================================================================
@@ -392,10 +407,14 @@ class ProcessExporterFortran(VirtualExporter,
         if isinstance(self.cmd_options, dict) and 'axial_gauge' in self.cmd_options:
             self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
                   self.cmd_options['axial_gauge'], bool, 'axial_gauge')
+            # once per output: says so if the FD gauge drops the option
+            helas_call_writers.axial_gauge_requested(self.opt, warn=True)
         self._configure_flavor_mask_from_cmd_options()
         
         #place holder to pass information to the run_interface
         self.proc_characteristic = banner_mod.ProcCharacteristic()
+        self.proc_characteristic['density_matrix'] = \
+            isinstance(self.cmd_options, dict) and 'density' in self.cmd_options
         # call mother class
         super(ProcessExporterFortran,self).__init__(dir_path, opt)
 
@@ -1167,6 +1186,16 @@ C
         """
         pass
 
+    def get_unknown_helicity_lines(self, matrix_element, indent='   '):
+        """Fortran lines for get_helicities: the helicity reported for a
+        massive fermion whose spin is quantised along a reference (IXXXXXR /
+        OXXXXXR) is 9, unknown, since its state is not a helicity state."""
+
+        refs = helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                         self.cmd_options)
+        return ['%snhel(%d) = 9' % (indent, leg) for leg in
+                helas_call_writers.get_spin_reference_legs(matrix_element, refs)]
+
     def _configure_flavor_mask_from_cmd_options(self):
         """Honor `--mask=True|False` from the output command line."""
 
@@ -1740,11 +1769,11 @@ C
         set_of_lib = ' '.join(self.get_source_libraries_list()+['$(LIBRARIES)'])
         if self.opt['model'] == 'mssm' or self.opt['model'].startswith('mssm-'):
             model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
-MODEL/MG5_param.dat: ../Cards/param_card.dat\n\t../bin/madevent treatcards param
-param_card.inc: MODEL/MG5_param.dat\n\t../bin/madevent treatcards param\n'''
+MODEL/MG5_param.dat: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatcards param
+param_card.inc: MODEL/MG5_param.dat\n\t../bin/madevent --allow-stdin treatcards param\n'''
         else:
             model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
-param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
+param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatcards param\n'''
         
         dual_libs = ''
         dhelas_dual = ''
@@ -4208,6 +4237,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         ENDIF
         DO IWARP=1, warp_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+c         the dressed-lepton densities read 1-x from OMX_EE, not from x
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
           """
 
 
@@ -4251,10 +4282,43 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             one_initial_state += [-i for i in self.model['merged_particles'][-pdg]]
 
 
-            if tuple(initial_states) in [([-11],[11]), ([11],[-11]), ([-13],[13]),([13],[-13])]:
-                dressed_lep = True
-            else:
-                dressed_lep = False
+            # With pdlabel='dressed' a lepton density is not one number but
+            # n_ee components which have to be contracted beam by beam
+            # (ee_comp_prod), so the two beams may take that path only if
+            # every one of their initial states has such components. Testing
+            # tuple(initial_states) against a list of pdg pairs used to stand
+            # in for that, but the loop just above expands the merged
+            # particles of the model into initial_states: with
+            # apply_flavor_grouping on, 'e+ e- > mu+ mu-' gives
+            # ([-11,-13],[11,13]), which no list of pairs covers, and the
+            # components were silently dropped (leaving only the first one,
+            # i.e. no beamstrahlung, 13% low at FCC-ee).
+            dressed_lep = all(is_dressed_lepton_beam(one_initial_state)
+                              for one_initial_state in initial_states)
+
+            if not dressed_lep and all(any(abs(pdg) in DRESSED_LEPTON_PDGS
+                                           for pdg in one_initial_state)
+                                       for one_initial_state in initial_states):
+                # Both beams are (partly) leptonic but one of them also holds
+                # something with no lepton density -- a tau, say. Contracting
+                # the components is then only half right and multiplying the
+                # plain PDG2PDF values is not right at all, so refuse at run
+                # time, where pdlabel is known: it is a card entry, so
+                # generation cannot tell whether this directory will ever see
+                # 'dressed'. A beam with no lepton at all (a quark or a photon
+                # facing a lepton beam) does not come here: that subprocess is
+                # simply absent from the density, and pdg2pdf answers 0 for
+                # it, which is the right answer and not a mis-sum.
+                pdf_lines += "IF (PDLABEL.EQ.'dressed') THEN\n" + \
+                    "WRITE(*,*) 'ERROR: dressed lepton densities are not " + \
+                    "supported for this subprocess:'\n" + \
+                    "WRITE(*,*) '       its initial states are not all " + \
+                    "electrons/muons, so the'\n" + \
+                    "WRITE(*,*) '       luminosity components cannot be " + \
+                    "combined.'\n" + \
+                    "STOP 1\n" + \
+                    "ENDIF\n"
+
             ee_pdf_definition_lines += "DOUBLE PRECISION dummy_components(n_ee)\n"
 
    
@@ -4292,7 +4356,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 ee_pdf_definition_lines += "DOUBLE PRECISION " + \
                                        ",".join(["%s%d_components(n_ee %s)" % (pdf_codes[pdg],i+1, vector_ext2) \
                                                  for pdg in \
-                                                 initial_states[i] if abs(pdg) in [11,13]]) + \
+                                                 initial_states[i] if abs(pdg) in DRESSED_LEPTON_PDGS]) + \
                                                  "\n"
                 
 
@@ -4315,13 +4379,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             if 22 in initial_states[0] and 22 in initial_states[1]:
                 if subproc_group:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(IB(1)),XBK(IB(2)))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
                 else:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(1),XBK(2))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
@@ -5001,12 +5065,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # Try to find the correct one.
         if default_compiler['f2py'] and misc.which(default_compiler['f2py']):
             f2py_compiler = default_compiler['f2py']
-        elif misc.which('f2py%d.%d' %(sys.version_info.major, sys.version_info.minor)):
-            f2py_compiler = 'f2py%d.%d' %(sys.version_info.major, sys.version_info.minor)
-        elif misc.which('f2py%d' %(sys.version_info.major)):
-            f2py_compiler = 'f2py%d' %(sys.version_info.major)            
-        elif misc.which('f2py'):
-            f2py_compiler = 'f2py'
+        elif misc.default_f2py():
+            # this Python's own f2py first: f2py3 on the PATH may build
+            # modules for another Python
+            f2py_compiler = misc.default_f2py()
 
 
         to_replace = {'fortran': f77_compiler, 'f2py': f2py_compiler}
@@ -6173,8 +6235,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
                                                                    self.opt)
         fortran_model.axial_gauge_refs = \
-            helas_call_writers.get_axial_gauge_refs(matrix_element) \
-            if fortran_model.axial_gauge else {}
+            helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                           self.cmd_options)
         # the propagators of the --zerowidth_decay particles of this matrix
         # element, if any, are written with a zero width. Not with
         # misc.TMP_variable: the writer is a dict, which it addresses by key.
@@ -6889,7 +6951,11 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')         
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')         
 
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
@@ -7647,7 +7713,9 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                                        'axial_gauge' in opt['output_options']:
             self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
                   opt['output_options']['axial_gauge'], bool, 'axial_gauge')
-            if self.opt['axial_gauge']:
+            # False if the FD gauge drops it (ProcessExporterFortran.__init__
+            # already said so)
+            if helas_call_writers.axial_gauge_requested(self.opt):
                 # AMP2 -- the single diagram enhancement weight of
                 # sde_strategy 1 -- is gauge dependent: the axial gauge moves
                 # amplitude between diagrams, so |AMP_i|^2 stops following the
@@ -7755,7 +7823,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')                        
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')                        
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
         cp(_file_path+'/various/histograms.py', 
@@ -8274,8 +8346,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
                                                                    self.opt)
         fortran_model.axial_gauge_refs = \
-            helas_call_writers.get_axial_gauge_refs(matrix_element) \
-            if fortran_model.axial_gauge else {}
+            helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                           self.cmd_options)
         try:
             helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
         finally:
@@ -8461,31 +8533,46 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # probabilities keep using the (n-1)! trace one
         ncolor = self.set_color_flow_lines(matrix_element, replace_dict, ncolor)
 
+        # POL(B) is the polarisation of beam B. In a grouped output, a mirror
+        # process (IMIRROR=2, IM=2) evaluates leg 1 on the parton of beam 2
+        # and leg 2 on the one of beam 1, so leg JJ takes POL(JB), JB the beam
+        # it comes from. A non-grouped output has no mirror process.
+        if isinstance(self, ProcessExporterFortranMEGroup):
+            beam_of_leg = """
+               JB = %(leg)s
+               IF (IM.EQ.2) JB = 3-%(leg)s"""
+            pol = 'JB'
+        else:
+            beam_of_leg = ''
+            pol = '%(leg)s'
         if self.beam_polarization == [True, True]:
-            replace_dict['beam_polarization'] = """
-                         DO JJ=1,nincoming
+            leg = 'JJ'
+            replace_dict['beam_polarization'] = ("""
+                         DO JJ=1,nincoming"""+ beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-               IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                 T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-               ELSE IF(POL(JJ).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+               IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
                ENDIF
              ENDDO
-            """
+            """) % {'leg': leg, 'pol': pol % {'leg': leg}}
         else:
             replace_dict['beam_polarization'] = ""
             for i in [0,1]:
                 if self.beam_polarization[i]:
-                    replace_dict['beam_polarization'] = """
-                                   ! handling only one beam polarization here. Second beam can be handle via the pdf.
+                    leg = '%i' % (i+1)
+                    replace_dict['beam_polarization'] = ("""
+                                   ! handling only one beam polarization here. Second beam can be handle via the pdf."""
+                                   + beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-                                   IF(POL(%(bid)i).NE.1d0.AND.NHEL(%(bid)i,I).EQ.INT(SIGN(1d0,POL(%(bid)i)))) THEN
-                 T=T*ABS(POL(%(bid)i))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ELSE IF(POL(%(bid)i).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(%(bid)i)))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ENDIF """ % {'bid': i+1}
+                                   IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ENDIF """) % {'leg': leg, 'pol': pol % {'leg': leg}}
 
         if matrix_element.get_nonia() > 0:
             tmpl = self.matrix_file.replace('.inc', '_onia_pwave.inc'
@@ -8688,6 +8775,7 @@ c of an explicit polarisation in the process
             get_helicity.append(
                     "        nhel(i) = get_nhel(ihel,i)")
             get_helicity.append("enddo")
+            get_helicity += self.get_unknown_helicity_lines(matrix_element)
             replace_dict['call_to_local_get_helicities'] = "\n".join(get_helicity)
             replace_dict['definition_of_local_get_nhel'] = "\n".join(get_nhel)
 
@@ -10404,6 +10492,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             get_helicity.append(
                 "        nhel(i) = get_nhel%i(ihel,i)" % ( iproc + 1))
             get_helicity.append("enddo")
+            get_helicity += self.get_unknown_helicity_lines(
+                                                      matrix_elements[iproc])
         get_helicity.append(" endif" ) 
 
         replace_dict['call_to_local_get_helicities'] = "\n".join(get_helicity)
@@ -11153,10 +11243,11 @@ class UFO_model_to_mg4(object):
         else:
             raise MadGraph5Error('Unknown format')
 
-        if self.opt['export_format'].startswith('standalone'):
-            cp( MG5DIR + '/Template/LO/Source/alfas_functions.f', 
+        if self.opt['export_format'].startswith('standalone') or \
+                                                self.running_in_model_library():
+            cp( MG5DIR + '/Template/LO/Source/alfas_functions.f',
                 self.dir_path)
-            cp( MG5DIR + '/Template/LO/Source/alfas.inc', 
+            cp( MG5DIR + '/Template/LO/Source/alfas.inc',
                 self.dir_path)
 
             fsock = open(pjoin(self.dir_path, '..', 'cuts.inc'),'w')
@@ -11171,7 +11262,21 @@ class UFO_model_to_mg4(object):
             if self.model['running_elements']:
                 cp( MG5DIR + '/Template/Running',  pjoin(self.dir_path, '..', 'RUNNING'))
 
+        if self.running_in_model_library():
+            # the evolution routines go into the model library itself (see
+            # create_makeinc): the shared libraries of these formats link
+            # Source/MODEL/*.o or libmodel, never librunning
+            for name in self.running_sources:
+                cp(pjoin(MG5DIR, 'Template', 'Running', name), self.dir_path)
 
+    running_sources = ['matrix_exponential.f', 'c8lib.f', 'r8lib.f']
+
+    def running_in_model_library(self):
+        """True for a model with running parameters (running.py) exported
+        with makefile_standalone (standalone, MadLoop, reweighting, ...)"""
+        return bool(self.model['running_elements']) and not (
+            self.opt['export_format'] in ['madevent', 'FKS5_default', 'FKS5_optimized']
+            or self.opt['loop_induced'])
 
     def create_coupl_inc(self):
         """ write coupling.inc """
@@ -11221,7 +11326,7 @@ C
                     %(complex_mp_format)s %(mp_prefix)sgal(2)
                     common/MP_weak/ %(mp_prefix)sgal
                     
-                    %(complex_mp_format)s %(mp_prefix)sMU_R
+                    %(real_mp_format)s %(mp_prefix)sMU_R
                     common/MP_rscale/ %(mp_prefix)sMU_R
 
                 """
@@ -13710,8 +13815,11 @@ c         segments from -DABS(tiny*Ga) to Ga
             text += ' rw_onia.o'
         text += ' model_functions.o get_color.o '
         
-        if self.opt['export_format'].startswith('standalone'):
+        if self.opt['export_format'].startswith('standalone') or \
+                                                self.running_in_model_library():
             text += ' alfas_functions.o '
+        if self.running_in_model_library():
+            text += ' '.join(f.replace('.f', '.o') for f in self.running_sources) + ' '
 
         nb_coup_indep_noloop = 1 + len(self.coups_indep_noloop) // self.nb_def_by_file 
         nb_coup_indep_loop = 1 + len(self.coups_indep_loop) // self.nb_def_by_file

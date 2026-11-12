@@ -16,6 +16,11 @@ void ThreadPool::set_thread_count(int new_count) {
         _thread_count = new_count < 0 ? std::thread::hardware_concurrency() : new_count;
     }
 
+    // the per-thread resources grow before the new threads can run a job
+    for (auto& [id, listener] : _listeners) {
+        listener(_thread_count);
+    }
+
     if (_threads.size() < _thread_count) {
         for (int i = _threads.size(); i < _thread_count; ++i) {
             _threads.emplace_back(&ThreadPool::thread_loop, this, i);
@@ -29,15 +34,9 @@ void ThreadPool::set_thread_count(int new_count) {
         );
         _threads.erase(_threads.begin() + _thread_count, _threads.end());
     }
-
-    for (auto& [id, listener] : _listeners) {
-        listener(_thread_count);
-    }
 }
 
 void ThreadPool::submit(JobFunc job) {
-    // Spin until there is space in the queue. The queue should be sufficiently large
-    // such that this never happens.
     std::unique_lock<std::mutex> lock(_mutex);
     _job_queue.push_back(job);
     if (!_done_queue.empty()) {
@@ -150,10 +149,8 @@ void ThreadPool::thread_loop(std::size_t index) {
         try {
             result = job();
         } catch (...) {
-            // A job must never let an exception escape: it would unwind out of
-            // the thread function and terminate the process. Hand the first one
-            // to whoever is waiting, and drop the jobs still queued -- the
-            // waiter is about to unwind and they capture its locals.
+            // Keep the first exception for the waiter and drop the queued jobs,
+            // which capture the waiter's locals.
             lock.lock();
             if (!_exception) {
                 _exception = std::current_exception();

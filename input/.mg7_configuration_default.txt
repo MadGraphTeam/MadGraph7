@@ -85,14 +85,14 @@
 #!  If using a relative path, that starts from the mg5 directory
 # hepmc3_path = ./HEPTools/hepmc3
 
-#! Herwig++/Herwig7 paths
+#! Herwig7 paths
 #!  specify here the paths also to HepMC ant ThePEG
-#!  define the path to the herwig++, thepeg and hepmc directories.
+#!  define the path to the herwig7, thepeg and hepmc directories.
 #!  paths can be absolute or relative from mg5 directory
 #!  WARNING: if Herwig7 has been installed with the bootstrap script,
 #!  then please set thepeg_path and hepmc_path to the same value as
-#!  hwpp_path
-# hwpp_path = 
+#!  herwig7_path
+# herwig7_path =
 # thepeg_path = 
 # hepmc_path = 
 
