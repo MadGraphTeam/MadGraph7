@@ -25,6 +25,7 @@ from pyamplicol.reporting.progress import (
     ProgressUpdate,
 )
 
+
 @dataclass(frozen=True, slots=True)
 class ChunkPolicy:
     """How ``evaluate`` sizes its successive calls on a live display.
