@@ -542,6 +542,9 @@ def test_loop_induced_sdk_estimates_equal_the_python_api(
         str(artifact).encode(), b"p", None, None, ctypes.byref(handle)
     )
     assert status == 0, _error(sdk)
+    # The Python side runs on_failure="return": the same policy here (the
+    # default best-effort serves refused points, test_loop_v2_best_effort).
+    assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0
     estimated = 0
     try:
         for configuration in INDUCED_CONFIGURATIONS:

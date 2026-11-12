@@ -679,23 +679,45 @@ for warning in result.warnings:  # ResultWarning: one per kind
 lane = result.diagnostics[1]
 lane.best_effort.refusal      # e.g. "TIRust Unstable: ill-conditioned Gram ..."
 lane.best_effort.uncertainty  # relative uncertainty, or None
-lane.best_effort.source       # "stability-checks" | "recommended-checks" | "none"
+lane.best_effort.source       # "stability-and-recommended-checks" | "stability-checks"
+                              # | "recommended-checks" | "none"
 ```
 
 `VirtualBestEffort` (the lane's `reduction.best_effort`, also
 `lane.best_effort`) holds `refusal` (one message per distinct reason class,
 with the count of the others), `uncertainty` (the relative estimate of the
 value, the `"relative"` metric: each squared-order sector against its own
-magnitude), its `source` (`"stability-checks"`: the call's own checks, which
-then also give the lane's public `stability` estimate;
-`"recommended-checks"`: the recommended checks (a rotation and the rescaled
-reduction-direction check) run on that point alone because the call asked
-for no checks; measured on u u~ > t t~ g g's 219 TIRust best-effort points,
-every true error lay within it, while one rotation alone covered 30 %; `"none"`: no estimate could be formed, `uncertainty` is
-None, said so in the lane's detail, never invented) and
-`backend_deviation` (TIRust's own measure where its refusal states one: the
-largest method-choice deviation between its two frames relative to the
-lane's term scale; None otherwise). The lane's `reduction` records the
+magnitude), its `source`, `backend_deviation` and `gram_conditioning`. The uncertainty always
+includes the recommended checks (a rotation and the rescaled
+reduction-direction check, `VirtualStabilityChecks(1, True, rescaled=True)`),
+run on the refused points only, whatever checks the call asked for:
+`"stability-and-recommended-checks"`: the call's own checks together with
+the recommended ones (at least the larger of the two estimates; the lane's
+public `stability` estimate stays that of the call's own checks);
+`"stability-checks"`: the call's checks already include the recommended
+ones; `"recommended-checks"`: the call asked for no checks (the public
+result then carries no estimate); `"none"`: no estimate could be formed,
+`uncertainty` is None, said so in the lane's detail, never invented. Why:
+one rotation alone (the profile cards' check set) under-states the error of
+an unchecked TIRust value of a Born-interfered process. Measured with the
+shipped profile cards' check set (one default rotation; explicit TIRust,
+binary64, flat points seed 1 at sqrt(s) = 1000, truth = double-double), the
+one-rotation estimate covered the true error of 220 of 722 u u~ > t t~ g g
+best-effort points and 39 of 65 u u~ > d d~ e+ e- ones; with the
+recommended checks included, 722 of 722 and 65 of 65 (the C ABI alike: 221
+-> 722 of 722 and 42 -> 64 of 65). A user who runs weak checks (one
+rotation) thus still gets an uncertainty that covers the measured errors;
+the lane's public `stability` estimate is that of the checks asked for and
+can be optimistic for a best-effort value (compare it with
+`best_effort.uncertainty`). `backend_deviation` and `gram_conditioning` are
+TIRust's own lane-level measures of the refused lanes, returned by the native
+reduction as data next to the reason texts (never read from them; the C ABI's
+record carries the same two numbers): the largest method-choice deviation
+between a lane's two frames relative to its term scale, and the smallest
+conditioning estimate of a lane its stability threshold refused (Gram,
+Cayley or coordinate-system measure; zero for an exactly singular pivot);
+None where no refused lane states one (e.g. NinjaRS's refusals). Neither is
+the value's accuracy: that is `uncertainty`. The lane's `reduction` records the
 backend whose unchecked reduction gave the value (`unchecked=True`).
 
 `result.warnings` is data, computed from the lanes, never emitted: a tuple
@@ -714,8 +736,9 @@ means it), `"return"` (such points stay failed lanes, no extra evaluation)
 and `"raise"` (the default before 1.0.3: `EvaluationError` at the first such
 point). Accepted points are evaluated exactly as before, bitwise and at the
 same cost; only refused points pay for their best-effort evaluation (one
-unchecked evaluation, plus the recommended checks when the call has no
-checks). A runtime already loaded with `reduction_unchecked=True` has no
+unchecked evaluation with the call's checks and the recommended checks;
+two when the call runs the cached reduction-direction check, which does not
+combine with the rescaled one in one evaluation). A runtime already loaded with `reduction_unchecked=True` has no
 checks to override: its failed points stay failed. Under a rescue policy
 only the last level serves best-effort values (`rescue_counts` counts them
 under `"best-effort"`).

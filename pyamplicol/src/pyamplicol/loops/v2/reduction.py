@@ -111,7 +111,6 @@ from __future__ import annotations
 import functools
 import json
 import math
-import re
 from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -729,7 +728,9 @@ def _with_fallback(
                 estimate=estimate,
                 target=target,
             )
-            failures[index] = [reason]
+            from .plan_export import measures_of, with_measures
+
+            failures[index] = with_measures([reason], measures_of(failures[index]))
             records[index] = VirtualReduction(
                 choice.requested,
                 fallback,
@@ -775,30 +776,38 @@ def with_fallback(
     return results, failures, records
 
 
-# A TIRust method-choice refusal's measure: its two frames' deviation and
-# the lane's term scale (``v2_tir``'s reason text).
-_DEVIATION = re.compile(
-    r"deviation ([-+0-9.eE]+) of term scale ([-+0-9.eE]+) between its two frames"
-)
-
-
 def backend_deviation(reasons: Collection[str]) -> float | None:
-    """The backend's own accuracy measure stated by refusal ``reasons``: the
+    """The backend's own accuracy measure of refusal ``reasons``: the
     largest deviation of a TIRust method-choice lane between its two frames
     relative to that lane's term scale (a lane-level measure), None when no
-    reason states one."""
+    refused lane states one. Read from the measures the native executor
+    returns as data with the reasons (``plan_export.Refusal``, m-lit
+    ux-polish item 4), never from their text."""
 
-    found: list[float] = []
-    for reason in reasons:
-        for deviation, scale in _DEVIATION.findall(reason):
-            try:
-                size = float(scale)
-                value = float(deviation) / size if size > 0 else math.inf
-            except ValueError:
-                continue
-            if not math.isnan(value):
-                found.append(value)
-    return max(found) if found else None
+    return _measure(reasons, "method-choice-deviation", max)
+
+
+def gram_conditioning(reasons: Collection[str]) -> float | None:
+    """TIRust's smallest conditioning estimate of the lanes refusal
+    ``reasons`` refused (``"gram-conditioning"``: the Gram, Cayley or
+    coordinate-system measure its stability threshold refused; zero for an
+    exactly singular pivot), None when no refused lane states one; data as
+    ``backend_deviation``."""
+
+    return _measure(reasons, "gram-conditioning", min)
+
+
+def _measure(
+    reasons: Collection[str], kind: str, pick: Callable[[list[float]], float]
+) -> float | None:
+    from .plan_export import measures_of
+
+    found = [
+        value
+        for name, value in measures_of(reasons)
+        if name == kind and not math.isnan(value)
+    ]
+    return pick(found) if found else None
 
 
 def _point_estimate(result: Any) -> float:
@@ -834,11 +843,10 @@ def _best_effort(
     checks (``choice`` with ``unchecked``: what ``reduction_unchecked=True``
     returns for the point, bitwise), on those points only, from their
     original exact inputs, at the call's carrier. Its uncertainty is the
-    relative estimate of the call's own checks (less the cross-backend
-    check, as for a fallback point, m-lit R6) when the call runs checks,
-    else of the recommended rotation re-test (``guard_rotation``) run on
-    these points alone, whose estimate the public result then does not
-    carry. A point the unchecked reduction fails too stays failed with
+    relative estimate of the call's checks together with the recommended
+    checks (``best_effort_checks``), run on these points alone; the public
+    result carries the estimate of the call's own checks only (none when
+    the call ran none). A point the unchecked reduction fails too stays failed with
     every reason; a served point's record (``VirtualReduction.best_effort``)
     keeps the refusals it overrides (bounded, ``bounded_reasons``)."""
 
@@ -847,26 +855,7 @@ def _best_effort(
     from .plan_export import bounded_reasons
 
     indices = sorted(failures)
-    enabled = checks is not None and bool(
-        getattr(checks, "rotations", ())
-        or getattr(checks, "reduction_direction", False)
-    )
-    if enabled:
-        own = (
-            replace(checks, cross_backend=False)
-            if getattr(checks, "cross_backend", False)
-            else checks
-        )
-    else:
-        # The recommended checks (the guard's rotation and the rescaled
-        # reduction-direction check): one rotation alone under-states the
-        # error of an unchecked TIRust value (ux-besteffort measurement:
-        # 220 of 722 u u~ > t t~ g g points within it; 219 of 219 with both).
-        own = replace(
-            _guard_check(checks if checks is not None else None),
-            reduction_direction=True,
-            rescaled=True,
-        )
+    runs, source, names = best_effort_checks(checks)
 
     def again(chosen: list[int] | None, with_checks: Any) -> Any:
         return run(
@@ -874,9 +863,28 @@ def _best_effort(
         )
 
     unchecked = replace(choice, unchecked=True)
-    values, still, served = _with_fallback(again, unchecked, len(indices), own, carrier)
+    values, still, served = _with_fallback(
+        again, unchecked, len(indices), runs[0], carrier
+    )
+    estimates = [
+        _point_estimate(value) if value is not None else math.nan for value in values
+    ]
+    for extra in runs[1:]:
+        # The call's checks and the recommended ones do not combine into one
+        # set (two reduction checks): the larger of the two estimates.
+        more, _, _ = _with_fallback(again, unchecked, len(indices), extra, carrier)
+        for local, value in enumerate(more):
+            other = _point_estimate(value) if value is not None else math.nan
+            # A run without an estimate leaves none (NaN), as in the SDK.
+            estimates[local] = (
+                math.nan
+                if math.isnan(other) or math.isnan(estimates[local])
+                else max(estimates[local], other)
+            )
     for local, index in enumerate(indices):
         refusal = bounded_reasons(failures[index])
+        deviation = backend_deviation(failures[index])
+        conditioning = gram_conditioning(failures[index])
         if local in still or values[local] is None:
             failures[index] = bounded_reasons(
                 [
@@ -889,14 +897,8 @@ def _best_effort(
             )
             continue
         value = values[local]
-        estimate = _point_estimate(value)
-        if math.isnan(estimate):
-            uncertainty, source = None, "none"
-        else:
-            uncertainty, source = (
-                estimate,
-                ("stability-checks" if enabled else "recommended-checks"),
-            )
+        estimate = estimates[local]
+        uncertainty = None if math.isnan(estimate) else estimate
         record = served.get(local)
         effective = choice.effective if record is None else record.effective
         guard = None if record is None else record.guard_estimate
@@ -913,12 +915,83 @@ def _best_effort(
             best_effort=VirtualBestEffort(
                 "; ".join(refusal),
                 uncertainty,
-                source,
-                backend_deviation(refusal),
+                source if uncertainty is not None else "none",
+                deviation,
+                conditioning,
             ),
         )
-        results[index] = value if enabled else _without_checks(value)
+        results[index] = (
+            _without_checks(value) if names is None else _restricted(value, names)
+        )
         del failures[index]
+
+
+def best_effort_checks(checks: Any) -> tuple[list[Any], str, tuple[str, ...] | None]:
+    """The checks of a call's best-effort evaluation (m-lit ux-polish item
+    2): the runs, the uncertainty's source, and the names of the call's own
+    checks (None: the call ran none), whose estimate the public result
+    carries. The uncertainty is the estimate of the call's checks (less the
+    cross-backend check, as for a fallback point, m-lit R6) TOGETHER with
+    the recommended checks (the guard's rotation and the rescaled
+    reduction-direction check): one rotation alone under-states the error
+    of an unchecked TIRust value of a Born-interfered process
+    (ux-besteffort FINDING B1: 220 of 722 u u~ > t t~ g g points within it;
+    219 of 219 with the recommended set). One run when the two sets combine
+    (no reduction check, or the rescaled one: rotations max-combined, the
+    reduction check added, so its estimate is at least the larger of the
+    two); two runs whose larger estimate counts when the call runs the
+    cached reduction-direction check (one reduction check per run). The
+    native SDKs choose alike (``best_effort.rs``)."""
+
+    from .stability import REDUCTION, RESCALED, ROTATION
+
+    rotation = guard_rotation()
+    recommended = replace(
+        _guard_check(checks if checks is not None else None),
+        reduction_direction=True,
+        rescaled=True,
+    )
+    enabled = checks is not None and bool(
+        getattr(checks, "rotations", ())
+        or getattr(checks, "reduction_direction", False)
+    )
+    if not enabled:
+        return [recommended], "recommended-checks", None
+    own = (
+        replace(checks, cross_backend=False)
+        if getattr(checks, "cross_backend", False)
+        else checks
+    )
+    rotations = tuple(own.rotations)
+    names = tuple(ROTATION.format(k) for k in range(len(rotations)))
+    if own.reduction_direction:
+        names += (RESCALED if own.rescaled else REDUCTION,)
+    if own.rescaled and rotation in rotations:
+        return [own], "stability-checks", names
+    if own.reduction_direction and not own.rescaled:
+        return [own, recommended], "stability-and-recommended-checks", names
+    union = replace(
+        own,
+        rotations=rotations if rotation in rotations else (*rotations, rotation),
+        reduction_direction=True,
+        rescaled=True,
+    )
+    return [union], "stability-and-recommended-checks", names
+
+
+def _restricted(result: Any, names: tuple[str, ...]) -> Any:
+    """``result`` with the estimate of the checks ``names`` only (the call's
+    own checks of a best-effort value evaluated with more,
+    ``best_effort_checks``)."""
+
+    if isinstance(result, Mapping):
+        return {key: _restricted(item, names) for key, item in result.items()}
+    estimate = getattr(result, "stability", None)
+    if estimate is None or set(estimate.budgets) == set(names):
+        return result
+    if not set(names) <= set(estimate.budgets):
+        return result
+    return replace(result, stability=estimate.subset(names))
 
 
 __all__ = [
@@ -929,6 +1002,7 @@ __all__ = [
     "Route",
     "auto_default",
     "backend_deviation",
+    "best_effort_checks",
     "cross",
     "current",
     "current_target",

@@ -846,11 +846,20 @@ artifact = "artifacts/virtual"
 momenta = "data/points.json"
 arithmetic = "double"
 mu_r2 = "1000000"
-on_failure = "return"         # default: "raise"
+on_failure = "return"         # default: "best-effort"
 ```
 
-With `on_failure = "return"`, numerical failures become unavailable whole-point
-rows with diagnostics (`null` in JSON); valid zero values remain zero. Invalid
+`on_failure` takes `"best-effort"` (the default, also when unset or null),
+`"return"` or `"raise"`. With the default, a point that no configured
+alternative accepts (the reduction backend's own acceptance checks, `auto`'s
+per-point fallback) is returned with its best available value (the unchecked
+reduction's), its refusal and an uncertainty, status `best-effort`; a point
+with no value at all is an unavailable row; nothing is printed per point (the
+result's `statuses` and `warnings` carry it). With `on_failure = "return"`,
+numerical failures become unavailable whole-point rows with diagnostics
+(`null` in JSON), without a best-effort evaluation; `"raise"` (the default
+before 1.0.3) stops the call at the first such point with `EvaluationError`.
+Valid zero values remain zero. Invalid
 inputs and unsupported features still raise errors for the whole call; on v2
 runtimes this includes a non-positive `mu_r2` (`ValueError`). A scale at which
 a counterterm coupling is not finite in the lane's arithmetic (for example

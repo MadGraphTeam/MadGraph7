@@ -224,7 +224,9 @@ or both: per backend the time per point and stage (a coloured bar per stage
 group) with the ratio between the backends (the faster highlighted), and the
 stable digits of pure binary64
 against a double-double re-run over flat points at the percentiles 1 per mil,
-1 %, 10 % and 50 % (points a backend fails in binary64 ranked at 0 digits), with the accuracy of the default rotation estimate against
+1 %, 10 % and 50 % (a point a backend refuses in binary64 measured with its
+best-effort value at its true digits; only a point with no binary64 value
+ranked at 0 digits), with the accuracy of the default rotation estimate against
 that truth (the measure of MadLoop, arXiv:1103.0621 sect. 3.4, and
 arXiv:1405.0301). The definitions, flags and JSON are in the
 [command-line guide](command-line-interface.md#profile). `--reduction-unchecked`

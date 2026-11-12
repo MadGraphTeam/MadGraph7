@@ -1918,6 +1918,57 @@ def point_estimate(
 _NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 
 
+class Refusal(str):
+    """A failure reason that also carries, as data, the reduction backend's
+    measures of the point's refused lanes (m-lit ux-polish item 4): ``(kind,
+    value)`` pairs from the native executor (``PointResult::measures``),
+    kind ``"method-choice-deviation"`` (a TIRust method-choice lane's
+    deviation between its two frames relative to its term scale) or
+    ``"gram-conditioning"`` (TIRust's conditioning estimate of a refused
+    lane: the Gram, Cayley or coordinate-system measure compared with its
+    stability threshold, zero for an exactly singular pivot). The text is
+    the reason as before; the measures are never parsed from it."""
+
+    measures: tuple[tuple[str, float], ...]
+
+    def __new__(cls, text: str, measures: Iterable[tuple[str, float]] = ()):
+        self = super().__new__(cls, text)
+        self.measures = tuple((str(kind), float(value)) for kind, value in measures)
+        return self
+
+    def __reduce__(self):
+        return (Refusal, (str(self), self.measures))
+
+
+def measures_of(reasons: Iterable[str]) -> tuple[tuple[str, float], ...]:
+    """Every measure the ``reasons`` carry (``Refusal``), in order."""
+
+    return tuple(
+        measure for reason in reasons for measure in getattr(reason, "measures", ())
+    )
+
+
+def with_measures(
+    reasons: list[str], measures: Iterable[tuple[str, float]]
+) -> list[str]:
+    """``reasons`` with ``measures`` attached to their first entry
+    (``Refusal``); unchanged when there are none."""
+
+    measures = tuple(measures)
+    if not measures or not reasons:
+        return reasons
+    first = reasons[0]
+    return [Refusal(first, (*measures_of([first]), *measures)), *reasons[1:]]
+
+
+def relabelled(text: str, reason: str) -> str:
+    """``text`` (a reason's relabelled message) keeping ``reason``'s
+    measures."""
+
+    measures = getattr(reason, "measures", ())
+    return Refusal(text, measures) if measures else text
+
+
 def bounded_reasons(reasons: Sequence[str]) -> list[str]:
     """``reasons`` (one failed point's, one message per failed lane or
     check) with one message per distinct reason CLASS, the message with its
@@ -1938,10 +1989,26 @@ def bounded_reasons(reasons: Sequence[str]) -> list[str]:
         else:
             first[key] = reason
             counts[key] = 0
-    return [
+    bounded = [
         message if counts[key] == 0 else f"{message} (+{counts[key]} more like this)"
         for key, message in first.items()
     ]
+    # The measures of every reason are kept (data, not text).
+    return with_measures(bounded, measures_of(reasons))
+
+
+def point_measures(
+    output: Mapping[str, Any], extra: Mapping[str, Any] | None, index: int
+) -> tuple[tuple[str, float], ...]:
+    """The refused-lane measures of point ``index`` of a native executor
+    output (``"refusal_measures"``) and of its companion's (``extra``)."""
+
+    found: list[tuple[str, float]] = []
+    for part in (output, extra):
+        measures = None if part is None else part.get("refusal_measures")
+        if measures is not None:
+            found.extend(measures[index])
+    return tuple(found)
 
 
 class FailedPoints(ArithmeticError):
@@ -2666,7 +2733,8 @@ class NativeExecutor:
             rotated.append(runs)
             for index, reasons in failed.items():
                 failures.setdefault(index, []).extend(
-                    f"{ROTATION.format(k)}: {reason}" for reason in reasons
+                    relabelled(f"{ROTATION.format(k)}: {reason}", reason)
+                    for reason in reasons
                 )
         if stability.cross_backend:
             self._cross_runs(
@@ -2975,7 +3043,10 @@ class NativeExecutor:
             if extra is not None and extra["failures"][index]:
                 failures = [*failures, *extra["failures"][index]]
             if failures:
-                failed[index] = [str(failure) for failure in failures]
+                failed[index] = with_measures(
+                    [str(failure) for failure in failures],
+                    point_measures(output, extra, index),
+                )
                 continue
             numbers = evaluation.numbers
 

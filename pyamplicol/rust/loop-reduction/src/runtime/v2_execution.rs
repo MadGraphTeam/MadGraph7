@@ -14,7 +14,7 @@ use super::v2_reduce::{
 };
 use crate::Complex;
 use rusticol_core::loop_execution::v2::{
-    BackendStatistics, FamilyLanes, LaneOutcome, Reduced, V2Backend,
+    BackendStatistics, FamilyLanes, LaneOutcome, MeasuredLane, Reduced, V2Backend,
 };
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::{RusticolError, RusticolResult};
@@ -333,6 +333,14 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
             Self::NinjaRs(backend) => V2Backend::<T>::take_statistics(backend),
             #[cfg(feature = "tir")]
             Self::TiRust(backend) => backend.take_statistics(),
+        }
+    }
+
+    fn take_lane_measures(&mut self) -> Vec<MeasuredLane> {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::take_lane_measures(backend),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.take_lane_measures(),
         }
     }
 

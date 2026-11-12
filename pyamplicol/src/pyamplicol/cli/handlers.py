@@ -476,7 +476,7 @@ class DefaultCliServices:
             or evaluation.mu_r2 is not None
             or evaluation.mu_r2_file is not None
             or config.loop.r2_strategy != "auto"
-            or evaluation.on_failure not in (None, "raise")
+            or evaluation.on_failure not in (None, "best-effort", "raise")
             or evaluation.reduction is not None
             or evaluation.reduction_target is not None
             or evaluation.reduction_unchecked

@@ -42,7 +42,9 @@
 use super::columns::{ColumnPoint, ColumnValues, INCLUSIVE};
 pub use super::induced::{Exact, Row, Vectors};
 use super::induced::{Induced, Squaring, VectorParts, carrier};
-use super::{Lift, Native, V2Poles, V2Precision, V2Runtime, contraction, invalid, v2_batch};
+use super::{
+    Lift, Native, PointFailure, V2Poles, V2Precision, V2Runtime, contraction, invalid, v2_batch,
+};
 use crate::Complex;
 use crate::v2_decimal::{Arith, C, Decimal, DecimalArith, DecimalContext, cadd, cmul};
 use rusticol_core::RusticolResult;
@@ -1269,7 +1271,7 @@ impl V2Runtime {
         zero: &T,
         arith: &A,
         mut per_point: impl FnMut(usize, &Vectors<A::N>, usize) -> RusticolResult<R>,
-    ) -> RusticolResult<Vec<Result<R, Vec<String>>>>
+    ) -> RusticolResult<Vec<Result<R, PointFailure>>>
     where
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
@@ -1306,7 +1308,7 @@ impl V2Runtime {
         mut monitoring: Monitoring<'_, A::N>,
         rows: Option<&[bool]>,
         per_point: &mut impl FnMut(usize, &Vectors<A::N>, usize) -> RusticolResult<R>,
-    ) -> RusticolResult<Vec<Result<R, Vec<String>>>>
+    ) -> RusticolResult<Vec<Result<R, PointFailure>>>
     where
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
@@ -1350,12 +1352,15 @@ impl V2Runtime {
                 .evaluate_live(lanes, &batch, zero, backend, options, liveness)?,
         };
         let mut out = Vec::with_capacity(results.len());
-        for (index, result) in results.into_iter().enumerate() {
+        for (index, mut result) in results.into_iter().enumerate() {
             if !result.failures.is_empty() {
                 if let Some(collected) = monitoring.collected.as_deref_mut() {
                     collected.push(None);
                 }
-                out.push(Err(result.failures));
+                out.push(Err(PointFailure::new(
+                    std::mem::take(&mut result.failures),
+                    std::mem::take(&mut result.measures),
+                )));
                 continue;
             }
             let point_kets = kets.as_ref().map(|kets| kets[index].as_slice());

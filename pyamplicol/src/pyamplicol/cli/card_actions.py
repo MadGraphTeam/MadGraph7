@@ -13,7 +13,10 @@ and ``--set PATH=VALUE``.
 
 The rewrite is ``ACTION --card CARD [--set <path>=<DIR>] [options]``; the
 older forms (``pyamplicol CARD``, ``pyamplicol check CARD``,
-``pyamplicol ACTION --card CARD``) are unchanged.
+``pyamplicol ACTION --card CARD``) are unchanged. ``pyamplicol CARD
+[options]`` with options only the card's own action takes (for example
+``pyamplicol loop_gg_zgg_profile.toml --stability``) is
+``CARD <the card's action> [options]`` (``card_action_options``).
 """
 
 from __future__ import annotations
@@ -82,4 +85,29 @@ def rewrite_card_action(arguments: Sequence[str]) -> list[str] | None:
     return rewritten + rest
 
 
-__all__ = ["CARD_ACTIONS", "rewrite_card_action"]
+def card_action_options(arguments: Sequence[str]) -> list[str] | None:
+    """``CARD ACTION [options]`` for ``CARD [options]``, ACTION the card's
+    own top-level ``action`` (``benchmark`` is ``profile``), when it is one
+    of ``CARD_ACTIONS``; None otherwise (not a readable card, no options,
+    or no such action). The caller uses it only for options the card form
+    does not take."""
+
+    import tomllib
+
+    if len(arguments) < 2 or not _is_card(arguments[0]):
+        return None
+    if not arguments[1].startswith("-"):
+        return None
+    try:
+        with Path(arguments[0]).expanduser().open("rb") as handle:
+            action = tomllib.load(handle).get("action")
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    if action == "benchmark":
+        action = "profile"
+    if not isinstance(action, str) or action not in CARD_ACTIONS:
+        return None
+    return [arguments[0], action, *arguments[1:]]
+
+
+__all__ = ["CARD_ACTIONS", "card_action_options", "rewrite_card_action"]

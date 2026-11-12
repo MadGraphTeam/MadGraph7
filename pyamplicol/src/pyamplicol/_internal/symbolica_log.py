@@ -31,7 +31,14 @@ Known classes and why they are benign (each root-caused):
 
 The capture is process-wide for its duration (a file-descriptor level
 redirect: other threads' standard output is forwarded too, a line at a
-time), never nested (an inner capture adds to the outer one).
+time), never nested (an inner capture adds to the outer one). A partial
+line is forwarded promptly: everything up to a carriage return at once (a
+progress line), any other unterminated text once the pipe has been quiet
+for ``PARTIAL_SECONDS``. Leaving the capture never waits indefinitely: a
+descendant process that inherited the redirected descriptor and outlives the
+block keeps the pipe open, so after ``LINGER_SECONDS`` the reader is left
+to forward that process's output unchanged (nothing more is captured) and
+closes its descriptors itself at the end of the pipe.
 """
 
 from __future__ import annotations
@@ -39,6 +46,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import select
 import sys
 import threading
 from collections.abc import Iterator
@@ -56,6 +64,11 @@ SYMBOLICA_CLASSES = (
         ),
     ),
 )
+# A partial line is forwarded once the pipe is quiet this long (seconds).
+PARTIAL_SECONDS = 0.05
+# How long leaving a capture waits for the end of the pipe (seconds).
+LINGER_SECONDS = 2.0
+_CHUNK = 65536
 LOADER_LOGGER = "UFOModelLoader"
 LOADER_CLASSES = (
     re.compile(r"^Expression contains the following floating point values"),
@@ -119,35 +132,56 @@ def _classify(line: bytes) -> tuple[str, str] | None:
     return None
 
 
-def _forward(read_fd: int, out_fd: int, sink: Captured) -> None:
-    """Read the pipe line by line; count the known classes, forward the rest
-    to the original standard output (``out_fd``) unchanged."""
+def _forward(read_fd: int, out_fd: int, sink: Captured, done: threading.Event) -> None:
+    """Read the pipe until its end: count the lines of the known classes
+    (while the capture lasts, until ``done``), forward every other byte to
+    the original standard output (``out_fd``) unchanged; a partial line is
+    forwarded up to its last carriage return at once and in full once the
+    pipe is quiet (module docstring). Closes both descriptors at the end."""
+
+    def emit(line: bytes) -> bytes:
+        known = None if done.is_set() else _classify(line)
+        if known is None:
+            return line
+        sink.add("symbolica", known[0], known[1])
+        return b""
+
+    def quiet() -> bool:
+        try:
+            ready, _, _ = select.select([read_fd], [], [], PARTIAL_SECONDS)
+        except (OSError, ValueError):
+            return False
+        return not ready
 
     pending = b""
-    while True:
-        try:
-            chunk = os.read(read_fd, 65536)
-        except OSError:
-            chunk = b""
-        if not chunk:
-            break
-        pending += chunk
-        *lines, pending = pending.split(b"\n")
-        passed = []
-        for line in lines:
-            known = _classify(line)
-            if known is None:
-                passed.append(line + b"\n")
-            else:
-                sink.add("symbolica", known[0], known[1])
-        if passed:
-            os.write(out_fd, b"".join(passed))
-    if pending:
-        known = _classify(pending)
-        if known is None:
-            os.write(out_fd, pending)
-        else:
-            sink.add("symbolica", known[0], known[1])
+    try:
+        while True:
+            if pending and (len(pending) >= _CHUNK or quiet()):
+                os.write(out_fd, emit(pending))
+                pending = b""
+            try:
+                chunk = os.read(read_fd, _CHUNK)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                break
+            pending += chunk
+            *lines, pending = pending.split(b"\n")
+            passed = [emit(line + b"\n") for line in lines]
+            cut = pending.rfind(b"\r")
+            if cut >= 0:
+                passed.append(emit(pending[: cut + 1]))
+                pending = pending[cut + 1 :]
+            if any(passed):
+                os.write(out_fd, b"".join(passed))
+        if pending:
+            os.write(out_fd, emit(pending))
+    except OSError:
+        pass
+    finally:
+        for fd in (read_fd, out_fd):
+            with suppress(OSError):
+                os.close(fd)
 
 
 @contextmanager
@@ -174,11 +208,12 @@ def capture(where: str) -> Iterator[Captured]:
             read_fd, write_fd = os.pipe()
             os.dup2(write_fd, 1)
             os.close(write_fd)
+            done = threading.Event()
             reader = threading.Thread(
-                target=_forward, args=(read_fd, saved, sink), daemon=True
+                target=_forward, args=(read_fd, saved, sink, done), daemon=True
             )
             reader.start()
-            redirected = (saved, read_fd, reader)
+            redirected = (saved, reader, done)
         except (OSError, ValueError, AttributeError):
             # No file-descriptor level standard output (an embedded
             # interpreter): nothing is captured on this channel.
@@ -186,16 +221,25 @@ def capture(where: str) -> Iterator[Captured]:
         yield sink
     finally:
         if redirected is not None:
-            saved, read_fd, reader = redirected
+            saved, reader, done = redirected
             with suppress(OSError, ValueError, AttributeError):
                 sys.stdout.flush()
-            os.dup2(saved, 1)  # closes the pipe's last write end
-            reader.join()
-            os.close(read_fd)
-            os.close(saved)
+            os.dup2(saved, 1)  # closes this process's write end of the pipe
+            # The end of the pipe, unless a descendant still holds a write
+            # end: then the reader forwards its output on its own, capturing
+            # nothing more, and closes the descriptors when the pipe ends.
+            reader.join(LINGER_SECONDS)
+            done.set()
         logger.removeFilter(_FILTER)
         with _GUARD:
             _ACTIVE.clear()
 
 
-__all__ = ["LOADER_CLASSES", "SYMBOLICA_CLASSES", "Captured", "capture"]
+__all__ = [
+    "LINGER_SECONDS",
+    "LOADER_CLASSES",
+    "PARTIAL_SECONDS",
+    "SYMBOLICA_CLASSES",
+    "Captured",
+    "capture",
+]

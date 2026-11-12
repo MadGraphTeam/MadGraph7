@@ -352,7 +352,12 @@ REDUCTION_CHECKS = ("none", "reversed", "rescaled")
 RESCUE_METRICS = ("relative", "finite", "scale")
 
 
-BEST_EFFORT_SOURCES = ("stability-checks", "recommended-checks", "none")
+BEST_EFFORT_SOURCES = (
+    "stability-checks",
+    "stability-and-recommended-checks",
+    "recommended-checks",
+    "none",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,27 +377,42 @@ class VirtualBestEffort:
     ``uncertainty`` is the relative accuracy estimate of the value (the
     ``"relative"`` metric of the stability estimate: each squared-order
     sector against its own magnitude, an output that vanishes against the
-    largest returned output) from ``source``: ``"stability-checks"``, the
-    call's own checks, run on the best-effort evaluation as on any other
-    point; ``"recommended-checks"``, the recommended checks (the guard's
-    rotation and the rescaled reduction-direction check,
-    ``VirtualStabilityChecks(1, True, rescaled=True)``'s kind) run on the
-    best-effort point alone when the call requested no checks (the public
-    result then carries no estimate, as the call asked; measured on
-    u u~ > t t~ g g's 219 TIRust best-effort points: every one within its
-    uncertainty, where one rotation alone covers 30 %); ``"none"``, no
+    largest returned output), run on the best-effort points alone, from
+    ``source``: ``"stability-and-recommended-checks"``, the call's own
+    checks together with the recommended checks (the guard's rotation and
+    the rescaled reduction-direction check,
+    ``VirtualStabilityChecks(1, True, rescaled=True)``'s kind), at least the
+    larger of the two estimates (the public result still carries the
+    estimate of the call's own checks); ``"stability-checks"``, the call's
+    own checks when they already include the recommended ones;
+    ``"recommended-checks"``, the recommended checks alone when the call
+    requested none (the public result then carries no estimate, as the call
+    asked). Why the recommended checks always count: one rotation alone
+    under-states the error of an unchecked TIRust value of a Born-interfered
+    process (u u~ > t t~ g g: 220 of 722 best-effort points within a
+    one-rotation estimate; 219 of 219 within the recommended one).
+    ``"none"``: no
     estimate could be formed (the re-test failed or was not a number), and
-    ``uncertainty`` is None. ``backend_deviation`` is the backend's own
-    accuracy measure where its refusal states one: the largest deviation
+    ``uncertainty`` is None. ``backend_deviation`` and
+    ``gram_conditioning`` are the backend's own lane-level measures where
+    its refused lanes state one (data from the native reduction, never read
+    from the reason text; not the result's accuracy): the largest deviation
     of a TIRust method-choice lane between its two frames relative to that
-    lane's term scale (a lane-level measure, not the result's accuracy);
-    None when the refusals state none (e.g. an ill-conditioned Gram matrix,
-    NinjaRS's thresholds)."""
+    lane's term scale, and TIRust's smallest conditioning estimate of a
+    refused lane (the Gram, Cayley or coordinate-system measure its
+    stability threshold refused; zero for an exactly singular pivot); None
+    when no refused lane states one (e.g. NinjaRS's thresholds)."""
 
     refusal: str
     uncertainty: float | None
-    source: Literal["stability-checks", "recommended-checks", "none"]
+    source: Literal[
+        "stability-checks",
+        "stability-and-recommended-checks",
+        "recommended-checks",
+        "none",
+    ]
     backend_deviation: float | None = None
+    gram_conditioning: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.refusal, str) or not self.refusal:
@@ -404,7 +424,7 @@ class VirtualBestEffort:
                 "a best-effort uncertainty is given exactly when its source is "
                 "not 'none'"
             )
-        for name in ("uncertainty", "backend_deviation"):
+        for name in ("uncertainty", "backend_deviation", "gram_conditioning"):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -421,6 +441,7 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
 
     where = {
         "stability-checks": "call's checks",
+        "stability-and-recommended-checks": "call's and recommended checks",
         "recommended-checks": "recommended checks",
     }
     head = "refused; value of the unchecked reduction (best effort)"
@@ -430,6 +451,8 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
         tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
     if record.backend_deviation is not None:
         tail += f"; backend deviation {record.backend_deviation:.2e}"
+    if record.gram_conditioning is not None:
+        tail += f"; Gram conditioning {record.gram_conditioning:.2e}"
     return f"{head}; {tail}; refusal in failures / --json"
 
 

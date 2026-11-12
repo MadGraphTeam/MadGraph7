@@ -198,13 +198,16 @@ class StabilityPoint:
     with its best-effort value, the unchecked reduction's, m-lit
     ux-besteffort; "binary64-failed": no binary64 value at all, 0 true digits
     and no estimate; "reference-failed": no double-double reference, not
-    measured), the digits and the refusal or failure ``reason``."""
+    measured), the digits and the refusal or failure ``reason``;
+    ``uncertainty_digits``: a best-effort point's stated uncertainty
+    (``VirtualBestEffort.uncertainty``, m-lit ux-polish) in digits."""
 
     index: int
     status: str
     true_digits: float | None
     estimated_digits: float | None
     reason: str | None = None
+    uncertainty_digits: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -453,6 +456,7 @@ def _stability(
             estimates: list[Any] = []
             reasons: list[str | None] = []
             statuses: list[str] = []
+            uncertainties: list[float | None] = []
             reference: list[Any] = []
             reference_reasons: list[str | None] = []
             for start in range(0, len(points), chunk):
@@ -476,6 +480,7 @@ def _stability(
                 estimates.extend(checked.stability)
                 reasons.extend(_reasons(checked))
                 statuses.extend(checked.statuses)
+                uncertainties.extend(_uncertainties(checked))
                 exact = runtime.evaluate(
                     batch, arithmetic="double-double", on_failure="return", **common
                 )
@@ -495,6 +500,7 @@ def _stability(
                 reasons=reasons,
                 reference_reasons=reference_reasons,
                 statuses=statuses,
+                uncertainties=uncertainties,
             )
         )
     setup = {
@@ -519,6 +525,16 @@ def _stability(
         "mu_r2": evaluation.mu_r2 or "s of the initial state",
     }
     return tuple(rows), setup
+
+
+def _uncertainties(result: Any) -> list[float | None]:
+    """Per point the best-effort uncertainty (relative; None: no
+    best-effort value, or none could be estimated)."""
+
+    return [
+        None if best is None else best.uncertainty
+        for best in (getattr(lane, "best_effort", None) for lane in result.diagnostics)
+    ]
 
 
 def _reasons(result: Any) -> list[str | None]:
@@ -548,6 +564,7 @@ def _backend_statistics(
     reasons: Sequence[str | None] | None = None,
     reference_reasons: Sequence[str | None] | None = None,
     statuses: Sequence[str] | None = None,
+    uncertainties: Sequence[float | None] | None = None,
 ) -> BackendStability:
     true_digits: list[float] = []
     estimated_digits: list[float | None] = []
@@ -560,7 +577,16 @@ def _backend_statistics(
     reference_reasons = (
         reference_reasons if reference_reasons is not None else [None] * count
     )
-    for index, (value, estimate, exact, reason, reference_reason, status) in enumerate(
+    uncertainties = uncertainties if uncertainties is not None else [None] * count
+    for index, (
+        value,
+        estimate,
+        exact,
+        reason,
+        reference_reason,
+        status,
+        uncertainty,
+    ) in enumerate(
         zip(
             plain,
             estimates,
@@ -568,6 +594,7 @@ def _backend_statistics(
             reasons,
             reference_reasons,
             statuses,
+            uncertainties,
             strict=True,
         )
     ):
@@ -622,13 +649,18 @@ def _backend_statistics(
                 digits,
                 estimated,
                 reason if served else None,
+                None
+                if not served or uncertainty is None
+                else stable_digits(uncertainty),
             )
         )
         if served:
-            # Never accepted: flagged whatever its estimate says.
+            # Never accepted: flagged whatever its estimate says. Its stated
+            # uncertainty (the call's and the recommended checks, m-lit
+            # ux-polish) covers the truth or not.
             best_effort += 1
-            if estimate is not None:
-                covered += true_relative <= _estimated_relative(estimate, total)
+            if uncertainty is not None:
+                covered += true_relative <= uncertainty
         flag = served or float(estimate.relative) > target
         wrong = true_relative > target
         flagged += flag

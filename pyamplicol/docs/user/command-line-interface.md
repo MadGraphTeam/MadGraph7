@@ -611,8 +611,8 @@ unavailable row. Nothing is printed per point: the human tables end with one
 dim summary line (`N captured warning(s) (...); see --json /
 result.warnings`), and `--json` carries `statuses` and `warnings` (per kind:
 source, kind, first message, count, where, point indices; each lane's
-`reduction.best_effort` record holds `refusal`, `uncertainty`, `source` and
-`backend_deviation`). `--on-failure return` preserves successful
+`reduction.best_effort` record holds `refusal`, `uncertainty`, `source`,
+`backend_deviation` and `gram_conditioning`). `--on-failure return` preserves successful
 points and returns an unavailable whole-point row for each numerical failure
 (no best-effort evaluation): `null` in JSON, with its failure diagnostics.
 `--on-failure raise` (the default before 1.0.3) stops at the first such
@@ -719,7 +719,8 @@ succeeds. What is measured:
 ```console
 pyamplicol profile artifacts/loop_gg_zgg                      # runtime, both backends
 pyamplicol profile --card loop_gg_zgg_profile.toml --stability
-pyamplicol loop_generate.toml profile --runtime --stability   # the master card
+pyamplicol loop_gg_zgg_profile.toml --stability               # the same (the card's action)
+pyamplicol loop_generate.toml profile --output=./my_loop_output --runtime --stability  # the master card
 pyamplicol profile artifacts/loop_uux_ttxgg --runtime --stability \
   --stability-points 200 --seed 7 --sqrt-s 2000 --loop-reduction tirust
 ```
@@ -805,7 +806,11 @@ best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true
 digits (min / median / max), the median digits of their uncertainty, the
 median |uncertainty - true| digits and how many uncertainties cover the
-true error (true relative error within the uncertainty). Digits are coloured red below the
+true error (true relative error within the uncertainty). The uncertainty is
+the best-effort record's (`VirtualBestEffort.uncertainty`: the card's checks
+together with the recommended checks, a rotation and the rescaled
+reduction-direction check), not the card's own estimate shown in the first
+table. Digits are coloured red below the
 target's digits (5 for 1e-5), yellow in the lower half of the margin between
 the target's digits and binary64's 15.95 (a display convention) and green
 above. The footnotes under the tables state these definitions; every table

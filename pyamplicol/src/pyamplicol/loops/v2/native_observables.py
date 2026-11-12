@@ -2073,7 +2073,7 @@ class StoredColumns:
             _rotated_point,
             _rotated_spin,
         )
-        from .plan_export import FailedPoints
+        from .plan_export import FailedPoints, relabelled
         from .stability import ROTATION, StabilityChecks
 
         if ward is not None:
@@ -2114,7 +2114,8 @@ class StoredColumns:
             runs.append(evaluations)
             for index, reasons in failed.items():
                 failures.setdefault(index, []).extend(
-                    f"{ROTATION.format(k)}: {reason}" for reason in reasons
+                    relabelled(f"{ROTATION.format(k)}: {reason}", reason)
+                    for reason in reasons
                 )
         crossed = None
         if stability.cross_backend:
@@ -2274,6 +2275,8 @@ class StoredColumns:
             if self.meta["companion_orders"] is None
             else [_orders_of(o) for o in self.meta["companion_orders"]]
         )
+        from .plan_export import point_measures, with_measures
+
         failed: dict[int, list[str]] = {}
         for index, (evaluation, lanes, checks, failures) in enumerate(
             zip(
@@ -2287,7 +2290,10 @@ class StoredColumns:
             if extra is not None and extra["failures"][index]:
                 failures = [*failures, *extra["failures"][index]]
             if failures:
-                failed[index] = [str(failure) for failure in failures]
+                failed[index] = with_measures(
+                    [str(failure) for failure in failures],
+                    point_measures(output, extra, index),
+                )
                 continue
             numbers = evaluation.numbers
 
