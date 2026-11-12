@@ -307,7 +307,7 @@ fn gate_refused(lane: &LaneOutcome<f64>) -> bool {
             assert!(
                 reason.contains("refused by the conditioning gates")
                     || reason.contains("refused by the gates, then by the method choice")
-                    || reason.contains("method-choice lane refused by its check"),
+                    || reason.contains("lane refused by its check"),
                 "not a gate refusal: {reason}"
             );
             true
@@ -1545,8 +1545,10 @@ fn the_rescaled_acceptance_refuses_the_rotation_blind_lanes() {
                 let reason = default[0][lane]
                     .as_ref()
                     .expect_err("a blind lane is refused");
+                // A method-choice lane, or a lane of the verified last
+                // resort (tir-uuzggg), refused by the acceptance check.
                 assert!(
-                    reason.contains("method-choice lane refused by its check"),
+                    reason.contains("lane refused by its check"),
                     "lane {lane}: {reason}"
                 );
             }
@@ -1622,7 +1624,7 @@ fn refused_lanes_state_their_measures_as_data() {
             .find(|m| !m.check && m.group == 0 && m.lane == lane);
         match outcome {
             Ok(_) => assert!(measure.is_none(), "lane {lane}"),
-            Err(reason) if reason.contains("method-choice lane refused by its check") => {
+            Err(reason) if reason.contains("lane refused by its check") => {
                 deviations += 1;
                 let measure = measure.expect("a deviation measure").measure;
                 assert_eq!(measure.kind, MeasureKind::MethodChoiceDeviation);
@@ -2001,7 +2003,19 @@ fn the_verified_last_resort_serves_method_choice_refusals_its_check_accepts() {
     let choice = count(&statistics, "TIR method-choice rows");
     assert!(refused > choice, "the method choice refuses rows");
     assert_eq!(count(&statistics, "TIR last-resort rows"), refused - choice);
-    let (mut rescued, mut still) = (0, 0);
+    // The method-choice lanes and their check are untouched: the same
+    // method-choice refusals as with the option off.
+    assert_eq!(
+        count(
+            &statistics,
+            "TIR method-choice lanes refused by their check"
+        ),
+        count(
+            &closed_statistics,
+            "TIR method-choice lanes refused by their check"
+        )
+    );
+    let (mut rescued, mut still, mut checked_out) = (0, 0, 0);
     for (g, group) in found.iter().enumerate() {
         for (lane, value) in group.iter().enumerate() {
             match (&closed[g][lane], value) {
@@ -2023,19 +2037,39 @@ fn the_verified_last_resort_serves_method_choice_refusals_its_check_accepts() {
                     );
                     rescued += 1;
                 }
-                (Err(_), Err(after)) => {
+                (Err(before), Err(after)) => {
                     assert!(
                         after.contains("refused by its check")
                             || after.contains("check row failed")
                             || after.contains("gate-0 last resort"),
                         "family {g} lane {lane}: {after}"
                     );
+                    // A lane the method choice refused and the last resort
+                    // served is refused by the check as a LAST-RESORT lane,
+                    // never labelled as a method-choice lane.
+                    if before.contains("then by the method choice")
+                        && (after.contains("refused by its check")
+                            || after.contains("check row failed"))
+                    {
+                        assert!(
+                            after.contains("TIRust last-resort (gate-0 plain PV) lane"),
+                            "family {g} lane {lane}: {after}"
+                        );
+                        checked_out += 1;
+                    }
                     still += 1;
                 }
             }
         }
     }
-    eprintln!("verified last resort: {rescued} lanes served, {still} still refused");
+    eprintln!(
+        "verified last resort: {rescued} lanes served, {still} still refused \
+         ({checked_out} by its check)"
+    );
+    assert_eq!(
+        count(&statistics, "TIR last-resort lanes refused by their check"),
+        checked_out
+    );
     assert!(
         rescued > 0,
         "the verified last resort serves a refused lane"

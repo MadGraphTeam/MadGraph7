@@ -910,7 +910,8 @@ run no monitoring (`AccuracyNotEstablished`, no estimate). The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the
-calibrated acceptance of TIRust's checked method choice, as the Python API's
+calibrated acceptance of TIRust's checked method choice and verified last
+resort, as the Python API's
 `reduction_target=`, and in double-double and arbitrary precision the
 fallback guard's threshold, never below 1e-5; a value that is not a finite
 positive number is an

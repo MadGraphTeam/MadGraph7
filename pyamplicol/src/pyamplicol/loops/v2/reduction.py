@@ -778,8 +778,9 @@ def with_fallback(
 
 def backend_deviation(reasons: Collection[str]) -> float | None:
     """The backend's own accuracy measure of refusal ``reasons``: the
-    largest deviation of a TIRust method-choice lane between its two frames
-    relative to that lane's term scale (a lane-level measure), None when no
+    largest deviation of a checked TIRust lane (a method-choice lane or a
+    verified last-resort lane) between its two frames relative to that
+    lane's term scale (a lane-level measure), None when no
     refused lane states one. Read from the measures the native executor
     returns as data with the reasons (``plan_export.Refusal``, m-lit
     ux-polish item 4), never from their text."""

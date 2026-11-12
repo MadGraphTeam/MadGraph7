@@ -210,8 +210,9 @@ pub mod v2 {
     /// The kind of a refused lane's measure ([`LaneMeasure`]).
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum MeasureKind {
-        /// A method-choice lane's deviation between its two frames relative
-        /// to its term scale (what TIRust's acceptance bounds).
+        /// A checked TIRust lane's deviation between its two frames relative
+        /// to its term scale (what TIRust's acceptance bounds): a
+        /// method-choice lane's, or a verified last-resort lane's.
         MethodChoiceDeviation,
         /// The reducer's conditioning estimate of a refused lane (TIRust's
         /// `last_conditions`: the Gram, Cayley or coordinate-system measure

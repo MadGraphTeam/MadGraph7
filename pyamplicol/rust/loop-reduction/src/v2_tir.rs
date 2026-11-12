@@ -135,10 +135,28 @@
 //! measured deviation otherwise. Where the method choice is off (the
 //! extended carriers by default), gate-refused rows still fail closed.
 //! Lanes the gates or the method choice serve are bitwise unchanged; only
-//! lanes that were refused can be served. Measured on u u~ > z g g g
+//! lanes that were refused can be served. A last-resort lane its check
+//! refuses keeps the acceptance's deviation as its measure (the
+//! `MethodChoiceDeviation` kind: the same frame deviation) but is labelled
+//! 'TIRust last-resort (gate-0 plain PV) lane refused by its check' and
+//! counted as "TIR last-resort lanes refused by their check", apart from
+//! the method-choice lanes. Measured on u u~ > z g g g
 //! [QCD] (every flat point refused by one or two rank-4 boxes of Gram
 //! conditioning 1e-4 to 5e-10 with a near-degenerate sub-triangle;
 //! reports/engine-v2/m-lit/tir-uuzggg-report.md).
+//!
+//! The acceptance's calibration ([`UNDERSTATEMENT`], the largest ratio of
+//! true error to frame deviation) was derived on method-choice lanes and is
+//! CARRIED OVER to the last-resort lanes, not re-derived for them: no
+//! per-lane error/deviation ratio of plain-PV last-resort lanes was
+//! measured. The evidence is at the point level and at the default target
+//! (1e-5): over about 450 flat points of five processes (u u~ > z g g g,
+//! the four shipped examples) no point the last resort newly served was
+//! farther than about 7e-9 from a NinjaRS double-double reference, every
+//! refused point's best-effort uncertainty covered its true error, and the
+//! targeted Rust test checks served lanes against an 80-digit truth.
+//! Coverage at much tighter targets (e.g. 1e-8) is not demonstrated; a
+//! caller who needs it can turn the option off.
 //!
 //! **Check frames (lit-spike-tir F3; the rotation copy, m-lit lit-stab-t,
 //! Q21 (b)).** `q -> -q` leaves the moments bitwise (odd moments flip
@@ -681,6 +699,10 @@ struct Row {
 struct Moments<T> {
     values: Vec<[Complex<T>; 4]>,
     choice: bool,
+    /// Served by the checked mode's verified last resort (plain PV at gate
+    /// 0, then checked as a method-choice lane; its refusals are labelled
+    /// and counted as last-resort lanes, not method-choice lanes).
+    resort: bool,
 }
 
 /// A row's moments in one frame, with its frame map's origin and undo,
@@ -712,6 +734,10 @@ struct Counters {
     expansion_rows: u64,
     acceptance_rows: u64,
     unverified: u64,
+    /// [`TirOptions::verified_last_resort`]: lanes of rows the gate-0 last
+    /// resort served that its check refused (counted apart from
+    /// `unverified`, the method-choice lanes).
+    resort_unverified: u64,
     /// [`TirOptions::unchecked`] and [`TirOptions::verified_last_resort`]:
     /// rows the gate-0 last resort served.
     last_resort_rows: u64,
@@ -955,6 +981,7 @@ fn gated<T: Carrier>(
                 out[index].moments = Ok(Moments {
                     values: permuted(values, position),
                     choice: false,
+                    resort: false,
                 });
             }
             Err(status @ LaneStatus::Unstable(_)) => {
@@ -995,6 +1022,7 @@ fn retried<T: Carrier>(
                 out[index].moments = Ok(Moments {
                     values: permuted(values, position),
                     choice: true,
+                    resort: false,
                 });
                 out[index].measure = None;
             }
@@ -1019,6 +1047,17 @@ fn retried<T: Carrier>(
     refused
 }
 
+/// The class of a checked lane in its refusal reason: a method-choice lane,
+/// or a lane of the verified last resort (plain PV at gate 0; module docs
+/// 'Verified last resort').
+fn lane_class<T>(moments: &Moments<T>) -> &'static str {
+    if moments.resort {
+        "last-resort (gate-0 plain PV)"
+    } else {
+        "method-choice"
+    }
+}
+
 /// The last-resort pass into `out` (module docs 'Unchecked mode' and
 /// 'Verified last resort'): lane `r` of `result` is the refused row
 /// `rows[r]`, served by plain PV at gate 0 (with `verify`, the checked
@@ -1039,6 +1078,7 @@ fn resorted<T: Carrier>(
                 out[index].moments = Ok(Moments {
                     values: permuted(values, position),
                     choice: verify,
+                    resort: verify,
                 });
                 out[index].measure = None;
             }
@@ -1076,8 +1116,8 @@ impl TirReductionBackend {
     }
 
     /// The measures of the refused lanes of the last [`Self::reduce`]
-    /// (m-lit ux-polish item 4): a method-choice lane refused by its
-    /// acceptance, its deviation between its two frames relative to its
+    /// (m-lit ux-polish item 4): a method-choice lane (or a lane of the
+    /// verified last resort) refused by its acceptance, its deviation between its two frames relative to its
     /// term scale; any other refused lane, TIRust's conditioning estimate
     /// where it states one (`last_conditions`). The reason texts are
     /// unchanged.
@@ -1205,6 +1245,12 @@ impl TirReductionBackend {
             .chain(
                 (self.options.unchecked || c.last_resort_rows > 0)
                     .then_some(("TIR last-resort rows", c.last_resort_rows)),
+            )
+            .chain(
+                (c.last_resort_rows > 0 && !self.options.unchecked).then_some((
+                    "TIR last-resort lanes refused by their check",
+                    c.resort_unverified,
+                )),
             )
             .chain(c.store.into_iter().flat_map(|[mr, mc, sr, sc, or, oc]| {
                 [
@@ -1780,7 +1826,11 @@ impl TirReductionBackend {
                                 if deviation <= tolerance * scale {
                                     Ok(value.clone())
                                 } else {
-                                    self.counters.unverified += 1;
+                                    if m.resort {
+                                        self.counters.resort_unverified += 1;
+                                    } else {
+                                        self.counters.unverified += 1;
+                                    }
                                     measure = Some(LaneMeasure {
                                         kind: MeasureKind::MethodChoiceDeviation,
                                         value: if scale > 0.0 {
@@ -1790,16 +1840,22 @@ impl TirReductionBackend {
                                         },
                                     });
                                     Err(format!(
-                                        "TIRust method-choice lane refused by its check: deviation \
+                                        "TIRust {} lane refused by its check: deviation \
                                          {deviation:e} of term scale {scale:e} between its two frames \
-                                         exceeds {tolerance:e}"
+                                         exceeds {tolerance:e}",
+                                        lane_class(m)
                                     ))
                                 }
                             }
                             Err(status) => {
-                                self.counters.unverified += 1;
+                                if m.resort {
+                                    self.counters.resort_unverified += 1;
+                                } else {
+                                    self.counters.unverified += 1;
+                                }
                                 Err(format!(
-                                    "TIRust method-choice lane unverified: its check row failed ({status})"
+                                    "TIRust {} lane unverified: its check row failed ({status})",
+                                    lane_class(m)
                                 ))
                             }
                         }
