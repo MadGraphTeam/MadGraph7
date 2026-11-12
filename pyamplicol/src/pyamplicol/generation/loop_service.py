@@ -1421,7 +1421,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                 # The process's runtime: from its request's contribution.
                 record["runtime_capability"] = loop_v2_capability(request.contribution)
                 coverage.append(record)
-            _LOGGER.info("loop preparation: %s", json.dumps(memo.report()))
+            _LOGGER.debug("loop preparation: %s", json.dumps(memo.report()))
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
@@ -1881,8 +1881,10 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     )
                     phase.update(index + 1, message=name)
             # The preparation memo and store state (log only: the artifact
-            # is the same whatever the cache state).
-            _LOGGER.info("loop preparation: %s", json.dumps(memo.report()))
+            # is the same whatever the cache state): one sentence at INFO,
+            # the full statistics at DEBUG.
+            _LOGGER.info("%s", memo.summary())
+            _LOGGER.debug("loop preparation: %s", json.dumps(memo.report()))
             process_groups = None
             if grouping:
                 artifacts = [

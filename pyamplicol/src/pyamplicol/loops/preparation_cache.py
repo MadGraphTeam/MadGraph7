@@ -168,6 +168,40 @@ class PreparationMemo:
         record["store"] = None if self.store is None else self.store.report()
         return record
 
+    def summary(self) -> str:
+        """One short sentence for the generation's progress output: what
+        was prepared and the cache outcome (``report`` holds the details)."""
+
+        def count(number: int, noun: str) -> str:
+            return f"{number} {noun}{'' if number == 1 else 's'}"
+
+        lowered = self.counts["lowerings"]
+        loaded = self.counts["program_loads"]
+        parts = []
+        if loaded:
+            parts.append(f"{count(loaded, 'scalar program')} loaded from the cache")
+        if lowered:
+            parts.append(f"{count(lowered, 'scalar program')} lowered")
+        if not parts:
+            parts.append("nothing to prepare")
+        if self.store is None:
+            cache = "cache off"
+        else:
+            events = self.store.events
+            cache = ", ".join(
+                text
+                for text in (
+                    f"{events['saves']} saved" if events.get("saves") else "",
+                    count(events["rejected"], "stale cache entry") + " rebuilt"
+                    if events.get("rejected")
+                    else "",
+                    "cache unusable" if events.get("unusable") else "",
+                )
+                if text
+            )
+        tail = f" ({cache})" if cache else ""
+        return f"Loop model preparation: {', '.join(parts)}{tail}"
+
     # -- the restricted declarations and their scalar program --------------
 
     def restrictions(self, raw: Any, *, simplify: bool = True) -> Any:
