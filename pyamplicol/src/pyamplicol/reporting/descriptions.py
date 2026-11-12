@@ -171,7 +171,10 @@ def _profile(report: Any) -> list[Block]:
                     ("flagged", "points the default checks call unstable"),
                     ("flagged inacc.", "of those, the truly inaccurate ones"),
                     ("missed", "truly inaccurate points the checks did not flag"),
-                    ("time", "the backend's binary64 and double-double calls"),
+                    (
+                        "time",
+                        "the backend's binary64 and double-double calls, summed over the workers",
+                    ),
                 ],
             ),
             (
