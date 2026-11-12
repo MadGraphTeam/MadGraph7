@@ -2783,8 +2783,8 @@ def test_report_builder_backend_table_and_missing_box(tmp_path):
     assert (
         "2",
         "validation",
-        "partial: L3, L6; TIRust fails 2 of 3 binary64 fixture points"
-        " closed (checked default; lit.json)",
+        "partial: pole cancellation, TIRust-NinjaRS agreement; TIRust fails"
+        " 2 of 3 binary64 validation points (checked default)",
     ) in texts
     assert (
         "2",
@@ -2835,12 +2835,45 @@ def test_report_builder_missing_box_labels_a_cross_backend_difference_once():
     missing = builder.build_missing({"groups": []}, {"groups": [{"rows": [row]}]})
     acc = [e for e in missing if e["kind"] == "accuracy"]
     assert len(acc) == 1 and acc[0]["rows"] == ["g g -> a a g g"]
-    assert "cross-backend, not a truth" in acc[0]["text"]
+    assert "no 256-bit truth (a difference, not an error)" in acc[0]["text"]
     assert "TIRust unchecked" not in acc[0]["text"]
     assert acc[0]["text"].endswith(
         "at its 2 largest-difference points against the 256-bit truth:"
         " TIRust 1.3e-04, NinjaRS 7.6e-02"
     )
+
+
+def test_report_builder_prints_record_reasons_in_reader_words():
+    """The campaign records' free text reaches the report in plain words:
+    planning references and project shorthand dropped, the reason kept;
+    any other text unchanged."""
+
+    words = _report_builder()._reader_text
+    assert (
+        words(
+            "no designated OpenLoops loop-squared (ls) library serves this"
+            " process (PLAN §4.1, Q34 = (b))"
+        )
+        == "no OpenLoops loop-squared library serves this process"
+    )
+    assert (
+        words(
+            "no OpenLoops ls library serves g g > z g g: the public channel"
+            " database of OpenLoops 2.1.5 (proclib/channels_public.rinfo,"
+            " 2026-11-06) has zgg/zggg (ppvj2) but no zgggg channel; row"
+            " ML/RC only (PLAN §3.2)"
+        )
+        == "no OpenLoops loop-squared library serves g g > z g g (none in the"
+        " public process list of OpenLoops 2.1.5)"
+    )
+    assert (
+        words("decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries")
+        == "a decay: OpenLoops' loop-squared libraries cover 2 \u2192 n scattering only"
+    )
+    assert words("lane status TIRust Unstable") == "TIRust status Unstable"
+    assert words("lane status Unstable") == "status Unstable"
+    assert words("delegated (lit-eft)") == "execution check"
+    assert words("beyond 45 min") == "beyond 45 min" and words(None) is None
 
 
 def test_report_builder_missing_box_other_cell_and_born_note():
@@ -2903,7 +2936,7 @@ def test_report_builder_missing_box_other_cell_and_born_note():
     assert texts[("2", "no value", other)] == ["g g -> z z z z"]
     born_lines = [e for e in missing if e["table"] == "3"]
     assert len(born_lines) == 1 and born_lines[0]["rows"] == ["g g -> g g g"]
-    assert "cross-backend, not a truth" in born_lines[0]["text"]
+    assert "(a difference, not an error)" in born_lines[0]["text"]
     assert "2.1e-03" in born_lines[0]["text"]
 
 
