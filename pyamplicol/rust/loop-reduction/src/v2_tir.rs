@@ -1527,11 +1527,25 @@ impl TirReductionBackend {
         let verify = !options.unchecked;
         if let Some(result) = direct_result {
             let rows = indices(direct);
-            resorted(&result, &rows, &bin.position, verify, out, &mut self.counters);
+            resorted(
+                &result,
+                &rows,
+                &bin.position,
+                verify,
+                out,
+                &mut self.counters,
+            );
         }
         if let (Some(result), Some(copies)) = (copy_result, copies) {
             let rows = indices(copied);
-            resorted(&result, &rows, &bin.position, false, copies, &mut self.counters);
+            resorted(
+                &result,
+                &rows,
+                &bin.position,
+                false,
+                copies,
+                &mut self.counters,
+            );
         }
         Ok(())
     }

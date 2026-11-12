@@ -1965,6 +1965,83 @@ fn the_unchecked_mode_skips_the_acceptance_and_serves_by_the_last_resort() {
     assert_eq!(statistics.counts, checked_statistics.counts);
 }
 
+/// The verified last resort of the checked mode (m-lit tir-uuzggg,
+/// `TirOptions::verified_last_resort`, on by default): the rows the method
+/// choice refuses (here forced by an expert's method-choice gate of 1, which
+/// its PV systems never pass) are served by the gate-0 last resort and each
+/// of their lanes is verified like a method-choice lane. Off: those lanes
+/// fail closed with the method choice's reason. On: the same lanes the off
+/// run serves, bitwise; every other lane either served within the target of
+/// the 80-digit truth or refused by the acceptance check with its measure;
+/// the last resort counts exactly the rows the method choice refused; at
+/// least one refused lane is now served.
+#[test]
+fn the_verified_last_resort_serves_method_choice_refusals_its_check_accepts() {
+    let groups = unchecked_groups();
+    let truth = consistent_truth(&groups, 80);
+    let refusing = TirOptions {
+        method_choice_gate: 1.0,
+        ..TirOptions::default()
+    };
+    assert!(refusing.verified_last_resort, "on by default");
+    let run = |options: TirOptions| {
+        let mut backend = V2Backends::TiRust(Box::new(TirReductionBackend::new(options)));
+        let (found, _) = reduce(&mut backend, &groups, Poles::All, None);
+        (found, V2Backend::<f64>::take_statistics(&mut backend))
+    };
+    let (closed, closed_statistics) = run(TirOptions {
+        verified_last_resort: false,
+        ..refusing
+    });
+    eprintln!("off: {:?}", closed_statistics.counts);
+    assert_eq!(count(&closed_statistics, "TIR last-resort rows"), 0);
+    let (found, statistics) = run(refusing);
+    eprintln!("on: {:?}", statistics.counts);
+    let refused = count(&statistics, "TIR gate refusals");
+    let choice = count(&statistics, "TIR method-choice rows");
+    assert!(refused > choice, "the method choice refuses rows");
+    assert_eq!(count(&statistics, "TIR last-resort rows"), refused - choice);
+    let (mut rescued, mut still) = (0, 0);
+    for (g, group) in found.iter().enumerate() {
+        for (lane, value) in group.iter().enumerate() {
+            match (&closed[g][lane], value) {
+                (Ok(before), after) => {
+                    assert_eq!(Ok(before), after.as_ref(), "family {g} lane {lane}");
+                }
+                (Err(before), Ok(after)) => {
+                    assert!(
+                        before.contains("then by the method choice"),
+                        "family {g} lane {lane}: {before}"
+                    );
+                    let error = relative(after, truth[g][lane].as_ref().unwrap());
+                    eprintln!(
+                        "family {g} lane {lane}: served by the verified last resort, {error:e} from the truth"
+                    );
+                    assert!(
+                        error <= rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
+                        "family {g} lane {lane}: {error:e}"
+                    );
+                    rescued += 1;
+                }
+                (Err(_), Err(after)) => {
+                    assert!(
+                        after.contains("refused by its check")
+                            || after.contains("check row failed")
+                            || after.contains("gate-0 last resort"),
+                        "family {g} lane {lane}: {after}"
+                    );
+                    still += 1;
+                }
+            }
+        }
+    }
+    eprintln!("verified last resort: {rescued} lanes served, {still} still refused");
+    assert!(
+        rescued > 0,
+        "the verified last resort serves a refused lane"
+    );
+}
+
 /// The unchecked mode in the extended carriers (m-lit lit-unchecked; their
 /// method choice is off, DECISIONS 2026-11-08 06:08 R4): the conditioning
 /// gates stay as the selection and the gate-0 last resort serves the rows
