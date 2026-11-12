@@ -123,10 +123,26 @@ NamedVector<Type> fks_output_types(const PhaseSpaceMapping& born, bool lepton = 
     return types;
 }
 
-// the light-cone components (up to a factor) whose ratio is exp(2 y) for the
-// rapidity y of the center-of-mass frame of the Born in the lab frame, from
-// its momentum fractions (the arguments of fks_beam_boost)
-std::pair<Value, Value> fks_born_frame(
+// between the orientation of the beams (mirror_index) and the one of the
+// emission, the first incoming parton along +z (an involution)
+Value fks_standard_orientation(
+    FunctionBuilder& fb,
+    const PhaseSpaceMapping& born,
+    Value momenta,
+    const NamedVector<Value>& conditions
+) {
+    // the emission needs the first incoming parton along +z: with
+    // mirror_index 1 it comes along -z, and the mirror (a rotation by pi about
+    // the x axis) turns it around, in either direction
+    if (!born.mirror_beams()) {
+        return momenta;
+    }
+    return fb.mirror_momenta(momenta, conditions.at("mirror_index"));
+}
+
+} // namespace
+
+std::pair<Value, Value> madspace::fks_born_frame(
     FunctionBuilder& fb,
     const PhaseSpaceMapping& born,
     Value x1,
@@ -155,25 +171,6 @@ std::pair<Value, Value> fks_born_frame(
     }
     return {fb.mul(x_plus, exp_plus), fb.mul(x_minus, exp_minus)};
 }
-
-// between the orientation of the beams (mirror_index) and the one of the
-// emission, the first incoming parton along +z (an involution)
-Value fks_standard_orientation(
-    FunctionBuilder& fb,
-    const PhaseSpaceMapping& born,
-    Value momenta,
-    const NamedVector<Value>& conditions
-) {
-    // the emission needs the first incoming parton along +z: with
-    // mirror_index 1 it comes along -z, and the mirror (a rotation by pi about
-    // the x axis) turns it around, in either direction
-    if (!born.mirror_beams()) {
-        return momenta;
-    }
-    return fb.mirror_momenta(momenta, conditions.at("mirror_index"));
-}
-
-} // namespace
 
 double madspace::fks_sqrt_s_hat_min(
     const Cuts& cuts, const std::vector<double>& outgoing_masses

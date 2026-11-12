@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chili.hpp"
+#include "cs.hpp"
 #include "cuts.hpp"
 #include "discrete.hpp"
 #include "ew_sudakov.hpp"

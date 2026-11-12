@@ -272,6 +272,7 @@ add_library(
     src/phasespace/matrix_element.cpp
     src/phasespace/mlm_clustering.cpp
     src/phasespace/cross_section.cpp
+    src/phasespace/cs_mapping.cpp
     src/phasespace/scale.cpp
     src/phasespace/weighting_step.cpp
     include/madspace/util.hpp
@@ -340,6 +341,7 @@ add_library(
     include/madspace/phasespace/matrix_element.hpp
     include/madspace/phasespace/mlm_clustering.hpp
     include/madspace/phasespace/cross_section.hpp
+    include/madspace/phasespace/cs_mapping.hpp
     include/madspace/phasespace/scale.hpp
     include/madspace/phasespace/weighting_step.hpp
     include/madspace/mixmax/mixmax.hpp

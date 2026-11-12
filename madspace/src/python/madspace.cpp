@@ -2092,6 +2092,38 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSMapping::counter_event_types")
         );
 
+    py::classh<CSMapping, Mapping> cs_mapping(m, "CSMapping", pydoc::doc("CSMapping"));
+    add_enum<CSMapping::Family>(
+        cs_mapping,
+        "Family",
+        {
+            {"final_final", CSMapping::final_final},
+            {"final_initial", CSMapping::final_initial},
+            {"initial_final", CSMapping::initial_final},
+            {"initial_initial", CSMapping::initial_initial},
+        }
+    );
+    cs_mapping
+        .def(
+            py::init<const PhaseSpaceMapping&, std::size_t, std::size_t, std::size_t>(),
+            py::arg("born"),
+            py::arg("emitted"),
+            py::arg("emitter"),
+            py::arg("spectator"),
+            pydoc::doc("CSMapping::CSMapping")
+        )
+        .def("random_dim", &CSMapping::random_dim, pydoc::doc("CSMapping::random_dim"))
+        .def(
+            "particle_count",
+            &CSMapping::particle_count,
+            pydoc::doc("CSMapping::particle_count")
+        )
+        .def("emitted", &CSMapping::emitted, pydoc::doc("CSMapping::emitted"))
+        .def("emitter", &CSMapping::emitter, pydoc::doc("CSMapping::emitter"))
+        .def("spectator", &CSMapping::spectator, pydoc::doc("CSMapping::spectator"))
+        .def("family", &CSMapping::family, pydoc::doc("CSMapping::family"))
+        .def("born", &CSMapping::born, pydoc::doc("CSMapping::born"));
+
     m.def(
         "fks_sqrt_s_hat_min",
         &fks_sqrt_s_hat_min,

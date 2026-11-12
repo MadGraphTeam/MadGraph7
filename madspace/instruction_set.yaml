@@ -4347,6 +4347,273 @@ fks_histogram_weights:
   desc: "The weights of the kinematics of one point for a histogram, as HwU_fill and HwU_add_points of HwU.f: the kinematics in one bin add up before the square of the point enters the error. A kinematics with fewer jets than needed or an observable that is not finite does not count. The histogram of the centers with the merged weights has the sums per bin of each point, and their squares. See @ref FKSHistograms."
 
 ---
+title: CS radiation
+
+cs_final_final_radiate:
+  inputs:
+    - name: r_y
+      type: [float]
+      desc: "random number for y, y = y_max r_y^2"
+    - name: r_z
+      type: [float]
+      desc: "random number for z, z = z_min + (z_max - z_min) r_z^2"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: p_ij
+      type: [float, 4]
+      desc: "Born emitter, of mass m_j"
+    - name: p_k
+      type: [float, 4]
+      desc: "Born spectator, of mass m_k"
+    - name: m_j
+      type: [float]
+      desc: "mass of the emitter"
+    - name: m_k
+      type: [float]
+      desc: "mass of the spectator"
+  outputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_j
+      type: [float, 4]
+      desc: "emitter after the emission"
+    - name: p_k_out
+      type: [float, 4]
+      desc: "spectator after the emission"
+    - name: y
+      type: [float]
+      desc: "y_ij,k = p_i.p_j / (p_i.p_j + p_i.p_k + p_j.p_k)"
+    - name: z
+      type: [float]
+      desc: "z_i = p_i.p_k / (p_i.p_k + p_j.p_k)"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the map to the phase space of the real emission in units of the Born one"
+  desc: "Catani-Seymour emission off a final-state emitter with a final-state spectator (CS section 5.1, CDST section 5.1 for m_i = 0 and m_ij = m_j). The spectator is rescaled in the frame of Q = p_ij + p_k, with the full ranges of y and z of CDST eqs. 5.11-5.13. The azimuth of i about the spectator in the rest frame of Q is taken from the x axis of the momenta, which boosts along z leave unchanged. See @ref CSMapping."
+
+cs_final_final_project:
+  inputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_j
+      type: [float, 4]
+      desc: "emitter, of mass m_j"
+    - name: p_k
+      type: [float, 4]
+      desc: "spectator, of mass m_k"
+    - name: m_j
+      type: [float]
+      desc: "mass of the emitter"
+    - name: m_k
+      type: [float]
+      desc: "mass of the spectator"
+  outputs:
+    - name: p_ij
+      type: [float, 4]
+      desc: "Born emitter"
+    - name: p_k_out
+      type: [float, 4]
+      desc: "Born spectator"
+    - name: r_y
+      type: [float]
+      desc: "random number for y"
+    - name: r_z
+      type: [float]
+      desc: "random number for z"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: y
+      type: [float]
+      desc: "y_ij,k"
+    - name: z
+      type: [float]
+      desc: "z_i"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the inverse map"
+  desc: "Inverse of @ref cs_final_final_radiate, the momenta of the dipole V_ij,k (CDST eq. 5.8)."
+
+cs_initial_final_radiate:
+  inputs:
+    - name: r_x
+      type: [float]
+      desc: "random number for x, 1 - x = (1 - x_min) r_x^2"
+    - name: r_z
+      type: [float]
+      desc: "random number for z, z = z_max r_z^2"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: p_a
+      type: [float, 4]
+      desc: "massless incoming parton of the Born"
+    - name: p_f
+      type: [float, 4]
+      desc: "final-state parton of the Born, of mass m_f"
+    - name: x_min
+      type: [float]
+      desc: "smallest x, the momentum fraction of the Born incoming parton in its beam"
+    - name: m_f
+      type: [float]
+      desc: "mass of the final-state parton"
+  outputs:
+    - name: p_a_out
+      type: [float, 4]
+      desc: "incoming parton of the real emission, p_a / x"
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_f_out
+      type: [float, 4]
+      desc: "final-state parton after the emission"
+    - name: x
+      type: [float]
+      desc: "x = 1 - p_i.p_f / (p_i.p_a + p_f.p_a)"
+    - name: z
+      type: [float]
+      desc: "z = p_i.p_a / (p_i.p_a + p_f.p_a)"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the map to the phase space of the real emission in units of the Born one, with the factor 1 / x of the momentum fraction of the incoming parton"
+  desc: "Catani-Seymour emission with one incoming and one final-state parton, the same map for a final-state emitter with an initial-state spectator (CS section 5.2, CDST section 5.2, x_ij,a and z_i) and for an initial-state emitter with a final-state spectator (CS section 5.3, CDST section 5.3, x_ik,a and u_i = z), for a massless emitted parton and m_ij = m_j. The other momenta are unchanged and z runs up to (1 - x) / (1 - x + m_f^2 / (2 p_f.p_a)). The azimuth of i is defined as in @ref cs_final_final_radiate. The momenta are built from their components along and against the beam, p_i = z p_f + beta p_a + k_perp with k_perp orthogonal to both, which keeps their precision when p_f is close to the beam. See @ref CSMapping."
+
+cs_initial_final_project:
+  inputs:
+    - name: p_a
+      type: [float, 4]
+      desc: "massless incoming parton"
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_f
+      type: [float, 4]
+      desc: "final-state parton, of mass m_f"
+    - name: x_real
+      type: [float]
+      desc: "momentum fraction of the incoming parton in its beam"
+    - name: m_f
+      type: [float]
+      desc: "mass of the final-state parton"
+  outputs:
+    - name: p_a_out
+      type: [float, 4]
+      desc: "incoming parton of the Born, x p_a"
+    - name: p_f_out
+      type: [float, 4]
+      desc: "final-state parton of the Born"
+    - name: r_x
+      type: [float]
+      desc: "random number for x"
+    - name: r_z
+      type: [float]
+      desc: "random number for z"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: x
+      type: [float]
+      desc: "x"
+    - name: z
+      type: [float]
+      desc: "z"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the inverse map"
+  desc: "Inverse of @ref cs_initial_final_radiate. The Born momentum fraction x_min is x x_real."
+
+cs_initial_initial_radiate:
+  inputs:
+    - name: r_x
+      type: [float]
+      desc: "random number for x, 1 - x = (1 - x_min) r_x^2"
+    - name: r_v
+      type: [float]
+      desc: "random number for v, v = (1 - x) r_v^2"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: p_a
+      type: [float, 4]
+      desc: "massless incoming emitter of the Born"
+    - name: p_b
+      type: [float, 4]
+      desc: "massless incoming spectator"
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the Born"
+    - name: x_min
+      type: [float]
+      desc: "smallest x, the momentum fraction of the Born emitter in its beam"
+  outputs:
+    - name: p_a_out
+      type: [float, 4]
+      desc: "incoming emitter of the real emission, p_a / x"
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_out
+      type: [float, n, 4]
+      desc: "final-state momenta of the real emission besides i"
+    - name: x
+      type: [float]
+      desc: "x_i,ab = 1 - (p_i.p_a + p_i.p_b) / p_a.p_b"
+    - name: v
+      type: [float]
+      desc: "v_i = p_a.p_i / p_a.p_b, in [0, 1 - x]"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the map to the phase space of the real emission in units of the Born one, with the factor 1 / x of the momentum fraction of the emitter"
+  desc: "Catani-Seymour emission off an incoming parton with an incoming spectator (CS section 5.5). The spectator is unchanged, the final state is Lorentz transformed from K~ = p_a x + p_b to K = p_a + p_b - p_i with the inverse of Lambda(K, K~) of CS eq. 5.143. The azimuth of i is defined as in @ref cs_final_final_radiate. See @ref CSMapping."
+
+cs_initial_initial_project:
+  inputs:
+    - name: p_a
+      type: [float, 4]
+      desc: "massless incoming emitter"
+    - name: p_b
+      type: [float, 4]
+      desc: "massless incoming spectator"
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta besides i"
+    - name: x_real
+      type: [float]
+      desc: "momentum fraction of the emitter in its beam"
+  outputs:
+    - name: p_a_out
+      type: [float, 4]
+      desc: "incoming emitter of the Born, x p_a"
+    - name: p_out
+      type: [float, n, 4]
+      desc: "final-state momenta of the Born, Lambda(K, K~) p"
+    - name: r_x
+      type: [float]
+      desc: "random number for x"
+    - name: r_v
+      type: [float]
+      desc: "random number for v"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: x
+      type: [float]
+      desc: "x_i,ab"
+    - name: v
+      type: [float]
+      desc: "v_i"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the inverse map"
+  desc: "Inverse of @ref cs_initial_initial_radiate, the momenta of the dipole V^ai,b (CS eqs. 5.137-5.143). The Born momentum fraction x_min is x x_real."
+
+---
 title: Invariants
 
 uniform_invariant:
