@@ -52,9 +52,11 @@ the earlier missing-identifier startup failure and the exact resource correction
 The [actual EW export and ordinary mass-pair qualification](experiments/fortran-qp-mass-ew-qualification-1/README.md)
 retains fresh CLI generation and compilation of `e+ e- > t t~ a [virt=QED]`
 with the pinned Gmu model. The original and mass candidate agree exactly across
-100 ordinary physical points per arm, including steady learning, coefficients,
-accuracy, histories and observed IEEE/software state. Both actual cohorts are
-100 DP acceptances; the changed QP mass path is untested here. The `3e-6` and
+100 ordinary physical points per arm, including steady warmup, coefficients,
+accuracy, histories and observed IEEE/software state. Explicit `LoopPoleMode=0`
+evaluates full sums and restores stored filter state after each call; these
+warmup records do not qualify persistent filter learning. Both actual cohorts
+are 100 DP acceptances; the changed QP mass path is untested here. The `3e-6` and
 `1e-8` gates compare the two arms and do not establish independent accuracy.
 Threshold/soft-photon behavior, cache coverage, performance and promotion
 remain separate open items.
