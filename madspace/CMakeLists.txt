@@ -244,6 +244,7 @@ add_library(
     src/phasespace/fks_configuration.cpp
     src/phasespace/fks_limits.cpp
     src/phasespace/fks_couplings.cpp
+    src/phasespace/fks_histograms.cpp
     src/phasespace/fks_mapping.cpp
     src/phasespace/fks_radiation.cpp
     src/phasespace/fks_sector.cpp
@@ -311,6 +312,7 @@ add_library(
     include/madspace/phasespace/t_propagator_mapping.hpp
     include/madspace/phasespace/color_ordered_mapping.hpp
     include/madspace/phasespace/fks_configuration.hpp
+    include/madspace/phasespace/fks_histograms.hpp
     include/madspace/phasespace/fks_limits.hpp
     include/madspace/phasespace/fks_mapping.hpp
     include/madspace/phasespace/fks_radiation.hpp

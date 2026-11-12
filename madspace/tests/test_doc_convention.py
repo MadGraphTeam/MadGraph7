@@ -149,6 +149,31 @@ CASES = {
         orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
     ),
     "FKSCuts": dict(configurations=FKS_CONFIGURATIONS, ptj=10.0),
+    "FKSJets": dict(
+        configurations=FKS_CONFIGURATIONS,
+        born=True,
+        jetalgo=1.0,
+        jetradius=0.7,
+        ptj=10.0,
+        etaj=2.5,
+        maxjetflavor=5,
+    ),
+    "FKSHistograms": dict(
+        histograms=[ms.FKSHistograms.HistItem(0.0, 1.0, 4, 1)], kinematics_count=5
+    ),
+    "FKSObservableHistograms": dict(
+        configurations=FKS_CONFIGURATIONS,
+        histograms=[
+            ms.FKSObservableHistograms.HistItem(
+                ms.Observable([2, -2, 11, -11, 21], "pt", [[11]]), 0.0, 1.0, 4
+            )
+        ],
+        jetalgo=-1.0,
+        jetradius=0.4,
+        ptj=20.0,
+        etaj=4.5,
+        maxjetflavor=4,
+    ),
     "FKSScale": dict(particle_count=5, dynamical_scale_choice=1),
     "FKSLuminosity": dict(flavors=[[[2, -2], [4, -4]], [[21, -2]]]),
     "FKSCrossSection": dict(

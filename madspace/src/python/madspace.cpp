@@ -2603,6 +2603,189 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("options", &FKSCuts::options, pydoc::doc("FKSCuts::options"));
 
+    py::classh<FKSJets, FunctionGenerator>(m, "FKSJets", pydoc::doc("FKSJets"))
+        .def(
+            py::init<
+                const std::vector<FKSConfiguration>&,
+                bool,
+                double,
+                double,
+                double,
+                double,
+                int>(),
+            py::arg("configurations"),
+            py::arg("born") = false,
+            py::arg("jetalgo") = -1.,
+            py::arg("jetradius") = 0.4,
+            py::arg("ptj") = 0.,
+            py::arg("etaj") = -1.,
+            py::arg("maxjetflavor") = 4,
+            pydoc::doc("FKSJets::FKSJets")
+        )
+        .def(
+            "particle_count",
+            &FKSJets::particle_count,
+            pydoc::doc("FKSJets::particle_count")
+        )
+        .def(
+            "jet_particle_count",
+            &FKSJets::jet_particle_count,
+            pydoc::doc("FKSJets::jet_particle_count")
+        )
+        .def("slot_count", &FKSJets::slot_count, pydoc::doc("FKSJets::slot_count"))
+        .def("pids", &FKSJets::pids, pydoc::doc("FKSJets::pids"))
+        .def("born", &FKSJets::born, pydoc::doc("FKSJets::born"))
+        .def("options", &FKSJets::options, pydoc::doc("FKSJets::options"))
+        .def_readonly_static(
+            "parton_max", &FKSJets::parton_max, pydoc::doc("FKSJets::parton_max")
+        );
+
+    py::classh<FKSHistograms, FunctionGenerator> fks_histograms(
+        m, "FKSHistograms", pydoc::doc("FKSHistograms")
+    );
+    py::classh<FKSHistograms::HistItem>(
+        fks_histograms, "HistItem", pydoc::doc("FKSHistograms::HistItem")
+    )
+        .def(
+            py::init(
+                [](double min, double max, std::size_t bin_count, std::size_t jets) {
+                    return FKSHistograms::HistItem{min, max, bin_count, jets};
+                }
+            ),
+            py::arg("min"),
+            py::arg("max"),
+            py::arg("bin_count"),
+            py::arg("jet_count") = 0
+        )
+        .def_readonly(
+            "min",
+            &FKSHistograms::HistItem::min,
+            pydoc::doc("FKSHistograms::HistItem::min")
+        )
+        .def_readonly(
+            "max",
+            &FKSHistograms::HistItem::max,
+            pydoc::doc("FKSHistograms::HistItem::max")
+        )
+        .def_readonly(
+            "bin_count",
+            &FKSHistograms::HistItem::bin_count,
+            pydoc::doc("FKSHistograms::HistItem::bin_count")
+        )
+        .def_readonly(
+            "jet_count",
+            &FKSHistograms::HistItem::jet_count,
+            pydoc::doc("FKSHistograms::HistItem::jet_count")
+        );
+    fks_histograms
+        .def(
+            py::init<const std::vector<FKSHistograms::HistItem>&, std::size_t>(),
+            py::arg("histograms"),
+            py::arg("kinematics_count"),
+            pydoc::doc("FKSHistograms::FKSHistograms")
+        )
+        .def(
+            "histograms",
+            &FKSHistograms::histograms,
+            pydoc::doc("FKSHistograms::histograms")
+        )
+        .def(
+            "kinematics_count",
+            &FKSHistograms::kinematics_count,
+            pydoc::doc("FKSHistograms::kinematics_count")
+        );
+
+    py::classh<FKSObservableHistograms, FunctionGenerator> fks_observable_histograms(
+        m, "FKSObservableHistograms", pydoc::doc("FKSObservableHistograms")
+    );
+    py::classh<FKSObservableHistograms::HistItem>(
+        fks_observable_histograms,
+        "HistItem",
+        pydoc::doc("FKSObservableHistograms::HistItem")
+    )
+        .def(
+            py::init([](const Observable& observable,
+                        double min,
+                        double max,
+                        std::size_t bin_count,
+                        std::size_t jets) {
+                return FKSObservableHistograms::HistItem{
+                    observable, min, max, bin_count, jets
+                };
+            }),
+            py::arg("observable"),
+            py::arg("min"),
+            py::arg("max"),
+            py::arg("bin_count"),
+            py::arg("jet_count") = 0
+        )
+        .def_readonly(
+            "observable",
+            &FKSObservableHistograms::HistItem::observable,
+            pydoc::doc("FKSObservableHistograms::HistItem::observable")
+        )
+        .def_readonly(
+            "min",
+            &FKSObservableHistograms::HistItem::min,
+            pydoc::doc("FKSObservableHistograms::HistItem::min")
+        )
+        .def_readonly(
+            "max",
+            &FKSObservableHistograms::HistItem::max,
+            pydoc::doc("FKSObservableHistograms::HistItem::max")
+        )
+        .def_readonly(
+            "bin_count",
+            &FKSObservableHistograms::HistItem::bin_count,
+            pydoc::doc("FKSObservableHistograms::HistItem::bin_count")
+        )
+        .def_readonly(
+            "jet_count",
+            &FKSObservableHistograms::HistItem::jet_count,
+            pydoc::doc("FKSObservableHistograms::HistItem::jet_count")
+        );
+    fks_observable_histograms
+        .def(
+            py::init<
+                const std::vector<FKSConfiguration>&,
+                const std::vector<FKSObservableHistograms::HistItem>&,
+                double,
+                double,
+                double,
+                double,
+                int>(),
+            py::arg("configurations"),
+            py::arg("histograms"),
+            py::arg("jetalgo") = -1.,
+            py::arg("jetradius") = 0.4,
+            py::arg("ptj") = 0.,
+            py::arg("etaj") = -1.,
+            py::arg("maxjetflavor") = 4,
+            pydoc::doc("FKSObservableHistograms::FKSObservableHistograms")
+        )
+        .def(
+            "histograms",
+            &FKSObservableHistograms::histograms,
+            pydoc::doc("FKSObservableHistograms::histograms")
+        )
+        .def(
+            "jets",
+            &FKSObservableHistograms::jets,
+            py::return_value_policy::reference_internal,
+            pydoc::doc("FKSObservableHistograms::jets")
+        )
+        .def(
+            "born_jets",
+            &FKSObservableHistograms::born_jets,
+            py::return_value_policy::reference_internal,
+            pydoc::doc("FKSObservableHistograms::born_jets")
+        )
+        .def_readonly_static(
+            "kinematics",
+            &FKSObservableHistograms::kinematics,
+            pydoc::doc("FKSObservableHistograms::kinematics")
+        );
+
     py::classh<FKSScale, FunctionGenerator>(m, "FKSScale", pydoc::doc("FKSScale"))
         .def(
             py::init<

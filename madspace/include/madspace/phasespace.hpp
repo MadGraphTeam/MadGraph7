@@ -14,6 +14,7 @@
 #include "phasespace/ew_sudakov.hpp"
 #include "phasespace/fks_configuration.hpp"
 #include "phasespace/fks_couplings.hpp"
+#include "phasespace/fks_histograms.hpp"
 #include "phasespace/fks_limits.hpp"
 #include "phasespace/fks_mapping.hpp"
 #include "phasespace/fks_radiation.hpp"

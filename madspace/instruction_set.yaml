@@ -4293,6 +4293,60 @@ ew_sudakov:
   desc: "The Sudakov approximation of the EW corrections of ewsudakov_wrapper.f and ewsudakov_functions.f, without the factor f_b / g^k of compute_ewsudakov. With a = alpha / (4 pi), L = a log^2(s / M_W^2), l = a log(s / M_W^2) and for every pair the invariant r of sdk_get_invariants (set to +-M_W^2 below it in size with rij_ge_mw), ell = log(|r| / s) and i pi = -i pi for r > 0, F = 2 l (ell + i pi) + a (ell^2 + 2 ell i pi) and G = 2 a ell log(M_W^2 / M_Z^2), the second terms only with s_to_rij. The coefficients C are the combinations of these with the factors of the tables, and the correction is 2 Re(sum_h C_h diagonal_h + sum_t C_t interference_t) + l sum_h sum_p par_p derivatives_hp + 2 Q sum_h lo2_h with Q = alpha_s / (2 pi) (q_1 log(mu_R^2 / m_t^2) + q_2 log(s / m_t^2))."
 
 ---
+title: FKS histograms
+
+fks_jets:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta of one kinematics, in the order of the process of its configuration"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: parton
+      type: [int, single, c, n]
+      desc: "1 for a final-state QCD parton of the process of each configuration, else 0"
+    - name: options
+      type: [float, single, 4]
+      desc: "jetalgo, jetradius, ptj and etaj of the jets"
+    - name: particle_count
+      type: [size, m]
+      desc: "number m of the momenta with jets, the other particles and a slot for each final-state parton"
+  outputs:
+    - name: jet_momenta
+      type: [float, m, 4]
+      desc: "the incoming and the other final-state particles in their order, then the jets by decreasing pt and zero momenta in the slots without a jet"
+    - name: jet_count
+      type: [int]
+      desc: "number of jets"
+  vectorized: False
+  desc: "The QCD partons of one kinematics clustered into jets with the pp generalized kT algorithm of fastjet (power jetalgo, radius jetradius, E scheme), those with pt >= ptj and |eta| <= etaj (etaj <= 0 for none), as the cuts of FKSCuts cluster them. Partons without transverse momentum make no jet. See @ref FKSJets."
+
+fks_histogram_weights:
+  inputs:
+    - name: values
+      type: [float, k]
+      desc: "the observable at each kinematics of the point"
+    - name: weights
+      type: [float, k]
+      desc: "the weight of each kinematics"
+    - name: jets
+      type: [int, k]
+      desc: "the number of jets of each kinematics"
+    - name: options
+      type: [float, single, 4]
+      desc: "min, max and bin_count of the histogram and the jets the observable needs"
+  outputs:
+    - name: center
+      type: [float, k]
+      desc: "a value in the bin of each kinematics"
+    - name: merged
+      type: [float, k]
+      desc: "the sum of the weights of the bin at its first kinematics, else zero"
+  vectorized: False
+  desc: "The weights of the kinematics of one point for a histogram, as HwU_fill and HwU_add_points of HwU.f: the kinematics in one bin add up before the square of the point enters the error. A kinematics with fewer jets than needed or an observable that is not finite does not count. The histogram of the centers with the merged weights has the sums per bin of each point, and their squares. See @ref FKSHistograms."
+
+---
 title: Invariants
 
 uniform_invariant:

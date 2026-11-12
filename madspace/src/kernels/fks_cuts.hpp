@@ -65,6 +65,93 @@ KERNELSPEC void fks_jet_rap_phi(const FourMom<T>& p, FVal<T>& rapidity, FVal<T>&
     }
 }
 
+// The jets of partons (parton_count of them, at most FKS_JET_PARTONS_MAX) with
+// the pp generalized kT algorithm of fastjet (power jetalgo, radius
+// jetradius, rapidity and azimuth, E scheme), those with pt >= ptj and
+// |eta| <= etaj (etaj <= 0 for none), in jets in the order the clustering
+// finds them, and their number. Partons without transverse momentum make no
+// pseudojet (with ptj > 0 they never make a jet).
+template <typename T>
+KERNELSPEC std::size_t fks_cluster_jets(
+    const FourMom<T>* partons,
+    std::size_t parton_count,
+    FVal<T> jetalgo,
+    FVal<T> jetradius,
+    FVal<T> ptj,
+    FVal<T> etaj,
+    FourMom<T>* jets
+) {
+    FourMom<T> pseudo[FKS_JET_PARTONS_MAX];
+    FVal<T> kt2[FKS_JET_PARTONS_MAX], rap[FKS_JET_PARTONS_MAX],
+        phi[FKS_JET_PARTONS_MAX];
+    std::size_t active = 0;
+    for (std::size_t i = 0; i < parton_count; ++i) {
+        FVal<T> k2 = partons[i][1] * partons[i][1] + partons[i][2] * partons[i][2];
+        if (!(k2 > 0.)) {
+            continue;
+        }
+        pseudo[active] = partons[i];
+        kt2[active] = k2;
+        fks_jet_rap_phi<T>(partons[i], rap[active], phi[active]);
+        ++active;
+    }
+    constexpr double pi = 3.14159265358979323846;
+    FVal<T> r2_jet = jetradius * jetradius;
+    std::size_t jet_count = 0;
+    while (active > 0) {
+        // the smallest of the beam distances and the pair distances
+        std::size_t best_i = 0, best_j = 0;
+        FVal<T> best = pow(kt2[0], jetalgo);
+        for (std::size_t i = 0; i < active; ++i) {
+            FVal<T> d_ib = pow(kt2[i], jetalgo);
+            if (d_ib < best) {
+                best = d_ib;
+                best_i = i;
+                best_j = i;
+            }
+            for (std::size_t j = i + 1; j < active; ++j) {
+                FVal<T> dphi = fabs(phi[i] - phi[j]);
+                if (dphi > pi) {
+                    dphi = 2. * pi - dphi;
+                }
+                FVal<T> drap = rap[i] - rap[j];
+                FVal<T> d_ij = min(d_ib, pow(kt2[j], jetalgo)) *
+                    (drap * drap + dphi * dphi) / r2_jet;
+                if (d_ij < best) {
+                    best = d_ij;
+                    best_i = i;
+                    best_j = j;
+                }
+            }
+        }
+        if (best_i == best_j) {
+            // a jet: pt and |eta| of the selection
+            auto jet = pseudo[best_i];
+            if (kt2[best_i] >= ptj * ptj &&
+                (etaj <= 0. || fabs(fks_jet_eta<T>(jet)) <= etaj)) {
+                jets[jet_count] = jet;
+                ++jet_count;
+            }
+        } else {
+            // E-scheme recombination of the pair into best_i
+            for (std::size_t k = 0; k < 4; ++k) {
+                pseudo[best_i][k] = pseudo[best_i][k] + pseudo[best_j][k];
+            }
+            kt2[best_i] = pseudo[best_i][1] * pseudo[best_i][1] +
+                pseudo[best_i][2] * pseudo[best_i][2];
+            fks_jet_rap_phi<T>(pseudo[best_i], rap[best_i], phi[best_i]);
+        }
+        // drop best_j: the jet, or the pseudojet merged into best_i
+        std::size_t drop = best_j;
+        --active;
+        pseudo[drop] = pseudo[active];
+        kt2[drop] = kt2[active];
+        rap[drop] = rap[active];
+        phi[drop] = phi[active];
+    }
+    return jet_count;
+}
+
 // The generation cuts of cuts.f of MadFKS on one kinematics: 1 where it
 // passes, else 0. The leptons (charged, of either sign) pass ptl and etal,
 // and each pair of opposite charge drll and mll, and drll_sf and mll_sf for
@@ -178,76 +265,10 @@ KERNELSPEC void kernel_fks_cuts(
         if (soft_count > 1 || parton_count > FKS_JET_PARTONS_MAX) {
             return;
         }
-        // the pseudojets, without those of zero pt, which never make a jet
-        // above ptj
         FourMom<T> jets[FKS_JET_PARTONS_MAX];
-        FVal<T> kt2[FKS_JET_PARTONS_MAX], rap[FKS_JET_PARTONS_MAX],
-            phi[FKS_JET_PARTONS_MAX];
-        std::size_t active = 0;
-        for (std::size_t i = 0; i < parton_count; ++i) {
-            FVal<T> k2 = partons[i][1] * partons[i][1] + partons[i][2] * partons[i][2];
-            if (!(k2 > 0.)) {
-                continue;
-            }
-            jets[active] = partons[i];
-            kt2[active] = k2;
-            fks_jet_rap_phi<T>(partons[i], rap[active], phi[active]);
-            ++active;
-        }
-        constexpr double pi = 3.14159265358979323846;
-        FVal<T> r2_jet = jetradius * jetradius;
-        std::size_t jet_count = 0;
-        while (active > 0) {
-            // the smallest of the beam distances and the pair distances
-            std::size_t best_i = 0, best_j = 0;
-            FVal<T> best = pow(kt2[0], jetalgo);
-            for (std::size_t i = 0; i < active; ++i) {
-                FVal<T> d_ib = pow(kt2[i], jetalgo);
-                if (d_ib < best) {
-                    best = d_ib;
-                    best_i = i;
-                    best_j = i;
-                }
-                for (std::size_t j = i + 1; j < active; ++j) {
-                    FVal<T> dphi = fabs(phi[i] - phi[j]);
-                    if (dphi > pi) {
-                        dphi = 2. * pi - dphi;
-                    }
-                    FVal<T> drap = rap[i] - rap[j];
-                    FVal<T> d_ij = min(d_ib, pow(kt2[j], jetalgo)) *
-                        (drap * drap + dphi * dphi) / r2_jet;
-                    if (d_ij < best) {
-                        best = d_ij;
-                        best_i = i;
-                        best_j = j;
-                    }
-                }
-            }
-            if (best_i == best_j) {
-                // a jet: pt and |eta| of the selection
-                auto jet = jets[best_i];
-                FVal<T> jet_pt2 = kt2[best_i];
-                if (jet_pt2 >= ptj * ptj &&
-                    (etaj <= 0. || fabs(fks_jet_eta<T>(jet)) <= etaj)) {
-                    ++jet_count;
-                }
-            } else {
-                // E-scheme recombination of the pair into best_i
-                for (std::size_t k = 0; k < 4; ++k) {
-                    jets[best_i][k] = jets[best_i][k] + jets[best_j][k];
-                }
-                kt2[best_i] = jets[best_i][1] * jets[best_i][1] +
-                    jets[best_i][2] * jets[best_i][2];
-                fks_jet_rap_phi<T>(jets[best_i], rap[best_i], phi[best_i]);
-            }
-            // drop best_j: the jet, or the pseudojet merged into best_i
-            std::size_t drop = best_j;
-            --active;
-            jets[drop] = jets[active];
-            kt2[drop] = kt2[active];
-            rap[drop] = rap[active];
-            phi[drop] = phi[active];
-        }
+        std::size_t jet_count = fks_cluster_jets<T>(
+            partons, parton_count, jetalgo, jetradius, ptj, etaj, jets
+        );
         if (jet_count != parton_count && jet_count + 1 != parton_count) {
             return;
         }
