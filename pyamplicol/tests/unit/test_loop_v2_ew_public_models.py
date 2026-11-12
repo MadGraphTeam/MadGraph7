@@ -175,7 +175,7 @@ def test_shipped_qcd_qed_model_is_the_reference_and_selected_by_name(
     converted = sorted(
         file
         for file, entry in records.items()
-        if entry["transformation_id"]
+        if entry.get("base_transformation_id", entry["transformation_id"])
         in (
             "ufo-python3-conversion-v1",
             "ufomodeldb-issue-1-patch-python3-v1",
