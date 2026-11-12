@@ -47,8 +47,13 @@ class Dialect:
     # the HELAS routines that build an external wavefunction (compared upper case)
     # VXXXXXR is VXXXXX with an axial-gauge reference momentum appended after
     # nsv; it is still an external wavefunction, and its first arguments are
-    # the ones read here (P(0,i) and NHEL(i)).
-    external_routines = ('OXXXXX', 'IXXXXX', 'VXXXXX', 'SXXXXX', 'VXXXXXR')
+    # the ones read here (P(0,i) and NHEL(i)). So are IXXXXXR and OXXXXXR, a
+    # massive fermion whose spin axis is fixed by a reference momentum
+    # (appended after the flavor): like the gauge of a vector, the reference
+    # is the same for every helicity row, so that such a wavefunction still
+    # depends on the helicity of its own leg only.
+    external_routines = ('OXXXXX', 'IXXXXX', 'VXXXXX', 'SXXXXX', 'VXXXXXR',
+                         'OXXXXXR', 'IXXXXXR')
     # which argument of a call receives its result
     output_index = -1
     # which argument of an external call carries the helicity

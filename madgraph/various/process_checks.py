@@ -78,7 +78,8 @@ from madgraph.iolibs.files import cp
 import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
-     ixxxxx, oxxxxx, vxxxxx, sxxxxx, txxxxx, irxxxx, orxxxx, sfdxxx, vfdxxxx
+     ixxxxx, oxxxxx, vxxxxx, sxxxxx, txxxxx, irxxxx, orxxxx, sfdxxx, vfdxxxx, \
+     ixxxxxr, oxxxxxr, vxxxxxr
 import io
 import io as StringIO
 file = io.FileIO
@@ -89,6 +90,14 @@ ADDED_GLOBAL = []
 temp_dir_prefix = "TMP_CHECK"
 
 pjoin = os.path.join
+
+def zero_widths(evaluator):
+    """Set every width of the model of this evaluator to zero: a fixed width
+    breaks gauge invariance, which the gauge, BRS and Lorentz checks would
+    see (not for the complex-mass scheme, which keeps it)."""
+    for particle in evaluator.full_model.get('particles'):
+        if particle.get('width') != 'ZERO':
+            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
 
 def clean_added_globals(to_clean):
     for value in list(to_clean):
@@ -3156,9 +3165,13 @@ def check_gauge(processes, param_card = None,cuttools="", tir={}, reuse = False,
         if not cmass_scheme and multiprocess.get('perturbation_couplings')==[]:
             # Set all widths to zero for gauge check
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            zero_widths(evaluator)
+        if multiprocess.get('perturbation_couplings')==[] and \
+                                                   aloha.unitary_gauge != 3:
+            # the standard matrix element is compared with the one of the
+            # reference momenta of output --axial_gauge=True as well
+            evaluator.reference_evaluator = reference_momenta_evaluator(
+                                    model, param_card, cmass_scheme, cmd)
         results = run_multiprocs_no_crossings(check_gauge_process,
                                            multiprocess,
                                            evaluator,
@@ -3192,6 +3205,14 @@ def check_gauge(processes, param_card = None,cuttools="", tir={}, reuse = False,
                                            model=model, param_card=param_card,
                                            auth_skipping = False, reuse = False,
                                            output_path=output_path, cmd = cmd)
+    cmass_scheme = cmd.options['complex_mass_scheme']
+    if not cmass_scheme and processes[0].get('perturbation_couplings')==[]:
+        # as for a ProcessDefinition, in every gauge
+        zero_widths(evaluator)
+    if processes[0].get('perturbation_couplings')==[] and \
+                                                   aloha.unitary_gauge != 3:
+        evaluator.reference_evaluator = reference_momenta_evaluator(model,
+                    param_card, cmass_scheme, cmd)
     comparison_results = []
     comparison_explicit_flip = []
 
@@ -3273,18 +3294,41 @@ def check_gauge_process(process, evaluator, options=None):
 #    brsvalue = evaluator.evaluate_matrix_element(matrix_element, gauge_check = True,
 #                                  output='jamp',MLOptions=MLOptions, options=options)
 
+    reference = getattr(evaluator, 'reference_evaluator', None)
+    if reference is not None and not isinstance(matrix_element,
+                                    loop_helas_objects.LoopHelasMatrixElement) \
+            and not helas_call_writers.get_axial_gauge_refs(matrix_element,
+                            massive_fermions=reference.helas_writer.fermion_reference):
+        # no leg gets a reference: the reference code would be the standard
+        # one, nothing to compare
+        reference = None
+    p = None
+    if reference is not None:
+        # the same point for the standard and the reference matrix elements
+        p, w_rambo = evaluator.get_momenta(process, options)
+
     brsvalue = evaluator.evaluate_matrix_element(matrix_element, gauge_check = True,
-                                                 output='jamp', options=options)
+                                                 p=p, output='jamp', options=options)
 
     if not isinstance(amplitude,loop_diagram_generation.LoopAmplitude):
         matrix_element = helas_objects.HelasMatrixElement(amplitude,
                                                       gen_color = False)
           
     mvalue = evaluator.evaluate_matrix_element(matrix_element, gauge_check = False,
-                                               output='jamp', options=options)
-    
+                                               p=p, output='jamp', options=options)
+
+    refvalue = None
+    if reference is not None and mvalue and mvalue['m2']:
+        matrix_element = helas_objects.HelasMatrixElement(amplitude,
+                                                          gen_color = False)
+        refvalue = reference.evaluate_matrix_element(matrix_element, p=p,
+                                                output='jamp', options=options)
+
     if mvalue and mvalue['m2']:
-        return {'process':process,'value':mvalue,'brs':brsvalue}
+        result = {'process':process,'value':mvalue,'brs':brsvalue}
+        if refvalue:
+            result['ref'] = refvalue
+        return result
 
 def output_gauge(comparison_results, output='text'):
     """Present the results of a comparison in a nice list format"""
@@ -3315,6 +3359,10 @@ def output_gauge(comparison_results, output='text'):
             proc_col_size = len(proc) + 1
 
     col_size = 18
+    # the matrix element with the reference momenta of output
+    # --axial_gauge=True (tree level), compared with the standard one
+    use_ref = any('ref' in one_comp for one_comp in comparison_results)
+    ref_threshold = 1e-8
 
     pass_proc = 0
     fail_proc = 0
@@ -3325,20 +3373,31 @@ def output_gauge(comparison_results, output='text'):
     res_str = fixed_string_length(process_header, proc_col_size) + \
               fixed_string_length("matrix", col_size) + \
               fixed_string_length("BRS", col_size) + \
-              fixed_string_length("ratio", col_size) + \
-              "Result"
+              fixed_string_length("ratio", col_size)
+    if use_ref:
+        res_str += fixed_string_length("Reference", col_size) + \
+                   fixed_string_length("Relative diff.", col_size)
+    res_str += "Result"
 
     for  one_comp in comparison_results:
         proc = one_comp['process'].base_string()
         mvalue = one_comp['value']
         brsvalue = one_comp['brs']
+        refvalue = one_comp.get('ref')
         ratio = (abs(brsvalue['m2'])/abs(mvalue['m2']))
         res_str += '\n' + fixed_string_length(proc, proc_col_size) + \
                     fixed_string_length("%1.10e" % mvalue['m2'], col_size)+ \
                     fixed_string_length("%1.10e" % brsvalue['m2'], col_size)+ \
                     fixed_string_length("%1.10e" % ratio, col_size)
+        ref_diff = 0.
+        if refvalue:
+            ref_diff = abs(refvalue['m2'] - mvalue['m2'])/abs(mvalue['m2'])
+            res_str += fixed_string_length("%1.10e" % refvalue['m2'], col_size)+ \
+                       fixed_string_length("%1.10e" % ref_diff, col_size)
+        elif use_ref:
+            res_str += fixed_string_length("-", col_size) * 2
          
-        if ratio > threshold:
+        if ratio > threshold or ref_diff > ref_threshold:
             fail_proc += 1
             proc_succeed = False
             failed_proc_list.append(proc)
@@ -3371,8 +3430,17 @@ def output_gauge(comparison_results, output='text'):
                        fixed_string_length("%1.10e" % m_sum, col_size) + \
                        fixed_string_length("%1.10e" % brs_sum, col_size) + \
                        fixed_string_length("%1.10e" % ratio, col_size)        
-                       
-                if ratio > 1e-15:
+                # the reference momenta: the sum over the helicities of each
+                # colour flow is unchanged (the spin axis changes the basis)
+                ref_jdiff = 0.
+                if refvalue and len(refvalue['jamp']) == len(mvalue['jamp']):
+                    ref_sum = sum(abs(refvalue['jamp'][j][k])**2
+                                  for j in range(len(refvalue['jamp'])))
+                    ref_jdiff = abs(ref_sum - m_sum) / abs(m_sum)
+                    tmp_str += fixed_string_length("%1.10e" % ref_sum, col_size) + \
+                               fixed_string_length("%1.10e" % ref_jdiff, col_size)
+
+                if ratio > 1e-15 or ref_jdiff > ref_threshold:
                     if not len(failed_proc_list) or failed_proc_list[-1] != proc:
                         fail_proc += 1
                         pass_proc -= 1
@@ -3419,10 +3487,7 @@ def check_lorentz(processes, param_card = None,cuttools="", tir={}, options=None
         if not cmass_scheme and processes.get('perturbation_couplings')==[]:
             # Set all widths to zero for lorentz check
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[\
-                                                     particle.get('width')] = 0.
+            zero_widths(evaluator)
 
         results = run_multiprocs_no_crossings(check_lorentz_process,
                                            multiprocess,
@@ -3662,10 +3727,7 @@ def check_flavor(process_definition, param_card=None, options=None,
                                               auth_skipping=False, reuse=False)
     if not cmass_scheme and multiprocess.get('perturbation_couplings') == []:
         logger.info('Setting all widths to zero for flavor check')
-        for particle in evaluator_merged.full_model.get('particles'):
-            if particle.get('width') != 'ZERO':
-                evaluator_merged.full_model.get('parameter_dict')[
-                    particle.get('width')] = 0.
+        zero_widths(evaluator_merged)
 
     # ── 2. Import the same model *without* flavor grouping ───────────────────
     # Using unmerge_flavors() on a deep-copy can leave color-algebra objects in
@@ -3679,10 +3741,7 @@ def check_flavor(process_definition, param_card=None, options=None,
                                                 cmd=cmd,
                                                 auth_skipping=False, reuse=False)
     if not cmass_scheme:
-        for particle in evaluator_unmerged.full_model.get('particles'):
-            if particle.get('width') != 'ZERO':
-                evaluator_unmerged.full_model.get('parameter_dict')[
-                    particle.get('width')] = 0.
+        zero_widths(evaluator_unmerged)
 
     # ── 3. Build the list of individual-flavor processes to check ────────────
     # For each multileg combination in the process definition, expand every
@@ -5152,11 +5211,47 @@ def output_language(comparison_results, output='text'):
 #===============================================================================
 # check_gauge
 #===============================================================================
+def reference_momenta_evaluator(model, param_card, cmass_scheme, cmd):
+    """A tree-level evaluator whose external wavefunctions are those of
+    output --axial_gauge=True: the massless vectors in the axial gauge of a
+    reference momentum (vxxxxxr), the massive fermions quantised along it
+    (ixxxxxr / oxxxxxr), see helas_call_writers.get_axial_gauge_refs. It
+    defines its matrix elements in a namespace of its own (reuse=False): the
+    class names are those of the standard evaluator."""
+
+    evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
+                                       auth_skipping=False, reuse=False)
+    evaluator.helas_writer.axial_gauge = True
+    if not cmass_scheme:
+        zero_widths(evaluator)
+    return evaluator
+
+
+def evaluate_with_reference_momenta(processes, param_card, momentum, options,
+                                    cmass_scheme, cmd):
+    """get_value for the processes of check gauge, at the same momenta, with
+    the reference momenta of reference_momenta_evaluator, in the unitary
+    gauge."""
+
+    with misc.TMP_variable(aloha, 'unitary_gauge', 1):
+        # the ALOHA routines are re-created in this gauge by the new evaluator
+        clean_added_globals(ADDED_GLOBAL)
+        evaluator = reference_momenta_evaluator(processes.get('model'),
+                                                param_card, cmass_scheme, cmd)
+        return run_multiprocs_no_crossings(get_value, processes, evaluator,
+                                           momentum, options=options)
+
+
 def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None, processes_fd=None, param_card=None, 
                                options=None, tir={}, output_path=None,
-                               cuttools="", reuse=False, cmd = FakeInterface()):
+                               cuttools="", reuse=False, cmd = FakeInterface(),
+                               processes_reference=None):
     """Check gauge invariance of the processes by flipping
-       the gauge of the model
+       the gauge of the model. With processes_reference (tree level), the
+       processes are evaluated once more in the unitary gauge with the
+       external wavefunctions of output --axial_gauge=True: the massless
+       vectors in the axial gauge of a reference momentum and the massive
+       fermions quantised along it (column "Reference").
     """
     
     mg_root = cmd._mgme_dir
@@ -5195,9 +5290,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                            reuse = False)
         if not cmass_scheme and multiprocess_unit.get('perturbation_couplings')==[]:
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            zero_widths(evaluator)
 
         output_u = run_multiprocs_no_crossings(get_value,
                                            multiprocess_unit,
@@ -5234,9 +5327,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
 
         if not cmass_scheme and multiprocess_feynm.get('perturbation_couplings')==[]:
             # Set all widths to zero for gauge check
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            zero_widths(evaluator)
 
         output_f = run_multiprocs_no_crossings(get_value, multiprocess_feynm,
                                                             evaluator, momentum,
@@ -5259,9 +5350,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                                 reuse = False)
 
                 if not cmass_scheme and multiprocess_axial.get('perturbation_couplings')==[]:
-                    for particle in evaluator.full_model.get('particles'):
-                        if particle.get('width') != 'ZERO':
-                            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+                    zero_widths(evaluator)
 
                 output_axial = run_multiprocs_no_crossings(get_value, multiprocess_axial,
                                                                    evaluator, momentum,
@@ -5284,26 +5373,35 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                                 reuse = False)
 
                 if not cmass_scheme and multiprocess_fd.get('perturbation_couplings')==[]:
-                    for particle in evaluator.full_model.get('particles'):
-                        if particle.get('width') != 'ZERO':
-                            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+                    zero_widths(evaluator)
 
                 output_fd = run_multiprocs_no_crossings(get_value, multiprocess_fd,
                                                                     evaluator, momentum,
                                                                     options=options)
+        output_ref = None
+        if processes_reference is not None:
+            output_ref = evaluate_with_reference_momenta(processes_reference,
+                            param_card, momentum, options, cmass_scheme, cmd)
+        def value_of(results, process):
+            # None when that evaluation gave no result for the process:
+            # reported as a failure by output_unitary_feynman
+            for d in results:
+                if d['process'] == process:
+                    return d['value']
+            return None
+
         output = [processes_unit]        
         for data in output_f:
             local_dico = {}
             local_dico['process'] = data['process']
             local_dico['value_feynm'] = data['value']
-            local_dico['value_unit'] = [d['value'] for d in output_u 
-                                      if d['process'] == data['process']][0]
+            local_dico['value_unit'] = value_of(output_u, data['process'])
             if output_axial is not None:
-                local_dico['value_axial'] = [d['value'] for d in output_axial
-                                             if d['process'] == data['process']][0]
+                local_dico['value_axial'] = value_of(output_axial, data['process'])
             if output_fd is not None:
-                local_dico['value_fd'] = [d['value'] for d in output_fd
-                                          if d['process'] == data['process']][0]
+                local_dico['value_fd'] = value_of(output_fd, data['process'])
+            if output_ref is not None:
+                local_dico['value_ref'] = value_of(output_ref, data['process'])
             output.append(local_dico)
         
         if processes_feynm.get('perturbation_couplings')!=[] and not reuse:
@@ -6752,11 +6850,14 @@ def output_unitary_feynman(comparison_results, output='text'):
     col_size = 18
     use_axial = any('value_axial' in comp for comp in comparison_results)
     use_fd = any('value_fd' in comp for comp in comparison_results)
+    use_ref = any('value_ref' in comp for comp in comparison_results)
     gauge_columns = [("Unitary", 'value_unit'), ("Feynman", 'value_feynm')]
     if use_axial:
         gauge_columns.append(("Axial", 'value_axial'))
     if use_fd:
         gauge_columns.append(("FD", 'value_fd'))
+    if use_ref:
+        gauge_columns.append(("Reference", 'value_ref'))
 
     res_str = fixed_string_length(process_header, proc_col_size)
     for label, _ in gauge_columns:
@@ -6771,6 +6872,17 @@ def output_unitary_feynman(comparison_results, output='text'):
         if data[0] == 'pass':
             no_check_proc += 1
             no_check_proc_list.append(proc)
+            continue
+
+        missing = [label for (label, _), value in zip(gauge_columns, data)
+                   if value is None]
+        if missing:
+            # an evaluation gave no result for this process
+            res_str += '\n' + fixed_string_length(proc, proc_col_size) + \
+                       'no value in the %s gauge' % '/'.join(missing) + \
+                       ' ' * 3 + "Failed"
+            fail_proc += 1
+            failed_proc_list.append(proc)
             continue
         
         values = [data[i]['m2'] for i in range(len(data))]

@@ -4126,12 +4126,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     def get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):
         """Return a list of strings, corresponding to the Helas calls for the matrix element"""
         # --axial_gauge: the massless external vectors are written out as
-        # vxxxxxr, in the axial gauge of the momentum of another external leg
+        # vxxxxxr, in the axial gauge of the momentum of another external leg,
+        # and the massive external fermions as ixxxxxr/oxxxxxr, with their
+        # spin quantised along the momentum of a massless leg
         # (see helas_call_writers.get_axial_gauge_refs)
         self.axial_gauge = helas_call_writers.axial_gauge_requested(
                                             getattr(self, 'cmd_options', None))
-        self.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(
-                            matrix_element) if self.axial_gauge else {}
+        self.axial_gauge_refs = helas_call_writers.get_output_axial_gauge_refs(
+                     matrix_element, getattr(self, 'cmd_options', None))
         try:
             res = self.super_get_matrix_element_calls(matrix_element, color_amplitudes, multi_channel_map)
         finally:
@@ -4184,9 +4186,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         call = call + 'x' * (6 - len(call))
         # Axial gauge: a vector leg that got a reference (a massless one, see
         # helas_call_writers.get_axial_gauge_refs) is written out as vxxxxxr,
-        # which takes the (lightlike) momentum of another external leg as its
-        # gauge reference; any other leg keeps vxxxxx
-        axial = argument.get('spin') == 3 and self.has_axial_gauge_ref(wf)
+        # which takes the momentum of another external leg as its gauge
+        # reference; any other leg keeps vxxxxx. A massive fermion that got a
+        # reference is ixxxxxr/oxxxxxr in the same way: the reference fixes
+        # the axis its spin is quantised along
+        axial = argument.get('spin') in (2, 3) and self.has_axial_gauge_ref(wf)
         if axial:
             call = call + 'r'
         # Specify namespace for Helas calls
@@ -4217,8 +4221,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             return self.format_coupling(call % \
                             (wf.get('mass'),
                                 wf.get('number_external')-1,
-                                # For boson, need initial/final here
-                                (-1) ** (wf.get('state') == 'initial'),
+                                # For boson, need initial/final here; for
+                                # fermions, particle/antiparticle
+                                (-1) ** (wf.get('state') == 'initial')
+                                if argument.is_boson() else
+                                - (-1) ** wf.get_with_flow('is_part'),
                                 wf.get('number_external')-1,
                                 wf.get('me_id')-1,
                                 wf.get('number_external')-1,

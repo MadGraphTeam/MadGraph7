@@ -1186,6 +1186,16 @@ C
         """
         pass
 
+    def get_unknown_helicity_lines(self, matrix_element, indent='   '):
+        """Fortran lines for get_helicities: the helicity reported for a
+        massive fermion whose spin is quantised along a reference (IXXXXXR /
+        OXXXXXR) is 9, unknown, since its state is not a helicity state."""
+
+        refs = helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                         self.cmd_options)
+        return ['%snhel(%d) = 9' % (indent, leg) for leg in
+                helas_call_writers.get_spin_reference_legs(matrix_element, refs)]
+
     def _configure_flavor_mask_from_cmd_options(self):
         """Honor `--mask=True|False` from the output command line."""
 
@@ -6225,8 +6235,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
                                                                    self.opt)
         fortran_model.axial_gauge_refs = \
-            helas_call_writers.get_axial_gauge_refs(matrix_element) \
-            if fortran_model.axial_gauge else {}
+            helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                           self.cmd_options)
         # the propagators of the --zerowidth_decay particles of this matrix
         # element, if any, are written with a zero width. Not with
         # misc.TMP_variable: the writer is a dict, which it addresses by key.
@@ -8336,8 +8346,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
                                                                    self.opt)
         fortran_model.axial_gauge_refs = \
-            helas_call_writers.get_axial_gauge_refs(matrix_element) \
-            if fortran_model.axial_gauge else {}
+            helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                           self.cmd_options)
         try:
             helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
         finally:
@@ -8765,6 +8775,7 @@ c of an explicit polarisation in the process
             get_helicity.append(
                     "        nhel(i) = get_nhel(ihel,i)")
             get_helicity.append("enddo")
+            get_helicity += self.get_unknown_helicity_lines(matrix_element)
             replace_dict['call_to_local_get_helicities'] = "\n".join(get_helicity)
             replace_dict['definition_of_local_get_nhel'] = "\n".join(get_nhel)
 
@@ -10481,6 +10492,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             get_helicity.append(
                 "        nhel(i) = get_nhel%i(ihel,i)" % ( iproc + 1))
             get_helicity.append("enddo")
+            get_helicity += self.get_unknown_helicity_lines(
+                                                      matrix_elements[iproc])
         get_helicity.append(" endif" ) 
 
         replace_dict['call_to_local_get_helicities'] = "\n".join(get_helicity)
