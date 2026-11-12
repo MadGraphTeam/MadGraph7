@@ -20,6 +20,7 @@ import re
 from madgraph import MadGraph5Error
 from madgraph.core import helas_objects
 from madgraph.fks import fks_common
+from madgraph.fks import fks_onia
 
 
 def freeze(value):
@@ -94,9 +95,11 @@ def worker_record(exporter, me, amp_orders):
     born = me.born_me
     proc = born['processes'][0]
     sq, amps = born.get_split_orders_mapping()
+    onia = born.get_nonia() > 0
     entry.update(directory=name, nexternal=me.get_nexternal_ninitial()[0],
                  nincoming=born.get_nexternal_ninitial()[1],
-                 born_pdgs=[[leg['id'] for leg in process.get_legs_with_decays()]
+                 born_pdgs=[fks_onia.physical_pdgs(process.get_legs_with_decays()) if onia else
+                            [leg['id'] for leg in process.get_legs_with_decays()]
                             for process in born['processes']],
                  nprocesses=len(born['processes']),
                  ngraphs=born.get_number_of_amplitudes(),
@@ -107,7 +110,8 @@ def worker_record(exporter, me, amp_orders):
                  born_orders=sq,
                  links=[link['link'] for link in me.color_links],
                  extra=len(me.extra_cnt_me_list),
-                 frame_map=list(getattr(me, 'user_leg_order', []) or
+                 frame_map=list(range(1, me.get_nexternal_ninitial()[0])) if onia else
+                           list(getattr(me, 'user_leg_order', []) or
                                 range(1, len(proc.get_legs_with_decays())+1)),
                  born_identity=born['identical_particle_factor'], sectors=[],
                  helicity_matrices=[helicity_matrix_metadata(matrix, proc['model'])
@@ -117,7 +121,21 @@ def worker_record(exporter, me, amp_orders):
     # sum. Off-diagonal entries include the second half of the symmetric sum.
     entry['colour_matrices'] = []
     legs = fks_common.to_fks_legs(proc.get_legs_with_decays(), proc['model'])
-    for link in me.color_links:
+    if onia:
+        # bound states (fks_onia): the links between physical legs, in the
+        # projected Born colour basis; the LDME factor of the projection
+        # kernel scales the colour-density traces
+        entry['onia_fac'] = 'onia_amp_bornfac'
+        for link in fks_onia.born_color_links(born, me.perturbation):
+            matrix = link['matrix']
+            if any(value[1] != 0 for value in matrix.values()):
+                entry['colour_matrices'] = None
+                break
+            entry['colour_matrices'].append([
+                [value.numerator, value.denominator]
+                for i in range(entry['ncolor']) for j in range(i, entry['ncolor'])
+                for value in [Fraction(matrix.get((i, j), (0, 0))[0])*(1 if i == j else 2)]])
+    for link in (me.color_links if not onia else []):
         m, n = link['link']
         insertion = fks_common.legs_to_color_link_string(
             legs[m-1], legs[n-1], pert=me.perturbation)
@@ -135,7 +153,8 @@ def worker_record(exporter, me, amp_orders):
         fks = info['fks_info']
         entry['sectors'].append(dict(
             sector=sector, real=info['n_me'], fks=fks,
-            processes=[fks_common.external_process_identity(p, real.particle_tags)
+            processes=[fks_common.external_process_identity(
+                           fks_onia.physical_process(p), real.particle_tags)
                        for p in real.matrix_element['processes']],
             real_identity=real.matrix_element['identical_particle_factor'],
             allowed=sorted((i, j) for i, js in real.fks_j_from_i.items()
@@ -1158,6 +1177,9 @@ def color_density_lines(lines, record, source):
                'integer amp_orders(nsplitorders)',
                'integer GETORDPOWFROMINDEX_B,orders_to_amp_split_pos']
     result += color_density_declarations(record)
+    if record.get('onia_fac'):
+        result += ['double precision %s' % record['onia_fac'],
+                   'external %s' % record['onia_fac']]
     # IDEN includes the native FKS statistical normalization, and therefore
     # stays outside the sector-independent colour density.
     den_lines = routine((source/'born.f').read_text(), 'sborn_splitorders')
@@ -1165,7 +1187,9 @@ def color_density_lines(lines, record, source):
     result += ['iden=iden_values(nfksprocess)', 'ans=0d0',
                'do i=1,%d' % record['nsqamps'], 'do j=1,%d' % pairs,
                'ans(i)=ans(i)+cf(j,link)*colour_density(j,i)', 'enddo',
-               'ans(i)=ans(i)/dble(iden)', 'enddo',
+               'ans(i)=ans(i)/dble(iden)%s' % ('*%s()' % record['onia_fac']
+                                                 if record.get('onia_fac') else ''),
+               'enddo',
                'max_val=maxval(abs(ans))', 'ans_summed=0d0',
                'amp_split_cnt=(0d0,0d0)', 'do i=1,%d' % record['nsqamps'],
                'if(.not.keep_order_cnt(qcd_pos,i))cycle',

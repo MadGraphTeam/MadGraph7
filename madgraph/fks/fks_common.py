@@ -1132,6 +1132,8 @@ class FKSLegList(MG.LegList):
 
     def sort(self,pert='QCD'):
         """Sorting routine, sorting chosen to be optimal for madfks"""
+        if any(l.get('onium') for l in self):
+            return self._sort_with_onia(pert)
         sorted_leglist = FKSLegList()
         #find initial state legs
         initial_legs = FKSLegList([l for l in copy.copy(self) if not l['state']])
@@ -1177,6 +1179,46 @@ class FKSLegList(MG.LegList):
 
         for i, l in enumerate(sorted_leglist):
             self[i] = l
+
+
+    def _sort_with_onia(self, pert='QCD'):
+        """As sort, with the two constituents of each bound state kept adjacent
+        (in their original order): the first one is sorted as the bound state
+        and the second one follows it (fks_onia)."""
+        pairs = {}
+        for leg in self:
+            onium = leg.get('onium')
+            if onium:
+                pairs.setdefault((onium['index'], leg['state']), []).append(leg)
+        seconds = {}
+        for key, pair in pairs.items():
+            if len(pair) != 2:
+                raise FKSProcessError('a bound state without its two constituents')
+            pair.sort(key=lambda l: l['number'])
+            seconds[id(pair[0])] = pair[1]
+        hidden = set(id(p) for p in seconds.values())
+        reduced = [l for l in self if id(l) not in hidden]
+        ordered = []
+        for l in _plain_sort(reduced, pert):
+            ordered.append(l)
+            if id(l) in seconds:
+                ordered.append(seconds[id(l)])
+        for i, l in enumerate(ordered):
+            self[i] = l
+
+
+def _plain_sort(leglist, pert='QCD'):
+    """The MadFKS ordering of leglist, ignoring bound states."""
+    saved = [(l, l.get('onium')) for l in leglist]
+    copy_list = FKSLegList(list(leglist))
+    for l in copy_list:
+        dict.__setitem__(l, 'onium', {})
+    try:
+        FKSLegList.sort(copy_list, pert=pert)
+    finally:
+        for l, onium in saved:
+            dict.__setitem__(l, 'onium', onium)
+    return list(copy_list)
 
 
 class FKSLeg(MG.Leg):

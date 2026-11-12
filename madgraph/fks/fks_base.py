@@ -24,6 +24,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.color_algebra as color_algebra
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_onia as fks_onia
 import madgraph.fks.sudakov as sudakov
 import copy
 import logging
@@ -395,6 +396,12 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                 myproc['orders'] = loop_orders
             elif not myproc['orders']:
                     myproc['perturbation_couplings'] = myproc['model']['coupling_orders']
+            # bound states: no MadLoop virtual (fks_onia); the virtual comes
+            # from the built-in 2 -> 1 expressions or from the user hook
+            if fks_onia.has_onia(myproc.get('legs')):
+                born.virt_amp = None
+                born.onia_virtual = True
+                continue
             # take the orders that are actually used by the matrix element
             upc = [[l['is_tagged'], l['id'] in [22]] for l in [ll for ll in myproc.get('legs') if not ll['state'] and 'is_tagged'in ll]]
             myproc['legs'] = fks_common.to_legs(copy.copy(myproc['legs']))
@@ -512,11 +519,20 @@ class FKSRealProcess(object):
         """Returns a dictionary with the entries i : [j_from_i], if the born pdgs are in 
         born_pdg_list"""
         fks_j_from_i = {}
+        legs = self.process.get('legs')
+        onia = fks_onia.has_onia(legs)
         for i in self.process.get('legs'):
             fks_j_from_i[i.get('number')] = []
+            if onia and fks_onia.onium_of(i):
+                # a constituent is never FKS parton i
+                continue
             if i.get('state'):
                 for j in [l for l in self.process.get('legs') if \
                         l.get('number') != i.get('number')]:
+                    if onia and fks_onia.onium_of(j):
+                        # the constituents are never partners of i: the bound
+                        # state is, as one particle (see below)
+                        continue
                     for pert_order in self.process.get('perturbation_couplings'):
                         ijlist = fks_common.combine_ij(i, j, self.process.get('model'), {},\
                                                        pert=pert_order)
@@ -532,6 +548,22 @@ class FKSRealProcess(object):
                                and not j.get('number') in fks_j_from_i[i.get('number')]:
                                 fks_j_from_i[i.get('number')].append(\
                                                         j.get('number'))                                
+                if onia:
+                    # a final-state gluon is soft against a colour-octet or
+                    # P-wave quarkonium (arXiv:2402.19221): the onium, labelled
+                    # by its first constituent, is a soft-only partner
+                    partners = [l for l in fks_onia.physical_legs(legs) if
+                                fks_onia.onium_is_soft_partner(l, self.process.get('model'))]
+                    if partners and i.get('massless') and i.get('color') == 8 and \
+                            i.get('spin') == 3:
+                        born_leglist = fks_common.to_fks_legs(
+                            copy.deepcopy([l for l in legs if l.get('number') != i.get('number')]),
+                            self.process.get('model'))
+                        born_leglist.sort(pert = self.perturbation)
+                        if [leg['id'] for leg in born_leglist] in born_pdg_list:
+                            for l in partners:
+                                if l.get('number') not in fks_j_from_i[i.get('number')]:
+                                    fks_j_from_i[i.get('number')].append(l.get('number'))
 
         self.fks_j_from_i = fks_j_from_i
         return fks_j_from_i
@@ -978,14 +1010,20 @@ class FKSProcess(object):
         ninit_ph = [l['id'] in [22] and not l['state'] for l in leglist].count(True)
         ninit_tag = [not l['state'] and l['is_tagged'] for l in leglist].count(True)
 
+        # bound states (fks_onia): the constituents of an onium are never
+        # split, and the onium counts as one particle
+        nphysical = len(fks_onia.physical_legs(leglist)) if \
+                    fks_onia.has_onia(leglist) else len(leglist)
         for i in leglist:
             i_i = i['number'] - 1
             self.reals.append([])
 
+            if fks_onia.onium_of(i):
+                continue
             # for 2->1 processes, map only the initial-state singularities
             # this is because final-state mapping preserves shat, which
             # is not possible in 2->1
-            if len(leglist) == 3 and not decay_process and i['state']: 
+            if nphysical == 3 and not decay_process and i['state']:
                 continue
             for pert_order in pert_orders:
                 # no splittings for initial states in decay processes

@@ -25,7 +25,7 @@ _DECL = re.compile(r'^\s*(?:implicit|include|common|save|data|parameter|dimensio
                    r'public|private|use|import|sequence|type\b|end\s*type\b|'
                    r'integer\b|real\b|complex\b|logical\b|character\b|'
                    r'double\s+(?:precision|complex)\b)', re.I)
-_INTRINSICS = set(('abs acos acosh adjustl adjustr aimag aint all allocated anint any '
+_INTRINSICS = set(('abs acos acosh adjustl adjustr aimag aint all allocated anint any findloc ibits '
                   'asin asinh associated atan atan2 atanh bessel_j0 bessel_j1 btest '
                   'ceiling char cmplx conjg cos cosh count cshift dabs dacos dasin '
                   'datan datan2 dble dcmplx dconjg dcos dcosh ddim dexp dim dimag '

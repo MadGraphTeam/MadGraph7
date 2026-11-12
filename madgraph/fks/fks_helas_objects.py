@@ -26,6 +26,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.color_algebra as color_algebra
 import madgraph.fks.fks_base as fks_base
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_onia as fks_onia
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 from madgraph import InvalidCmd
@@ -791,6 +792,12 @@ class FKSHelasProcess(object):
         if not self.color_links:
             legs = self.born_me.get('base_amplitude').get('process').get('legs')
             model = self.born_me.get('base_amplitude').get('process').get('model')
+            if fks_onia.has_onia(legs):
+                # bound states: links between physical legs, in the Born
+                # colour basis (the onium is a massive octet or colourless)
+                self.color_links = fks_onia.born_color_links(self.born_me,
+                                                             self.perturbation)
+                return
             color_links_info = fks_common.find_color_links(fks_common.to_fks_legs(legs, model),
                         symm = True, pert = self.perturbation)
             col_basis = self.born_me.get('color_basis')
@@ -805,7 +812,9 @@ class FKSHelasProcess(object):
         belongs to"""
         info_list = []
         for n, real in enumerate(self.real_processes):
-            pdgs = [l['id'] for l in real.matrix_element.get_base_amplitude()['process']['legs']]
+            legs = real.matrix_element.get_base_amplitude()['process']['legs']
+            pdgs = fks_onia.physical_pdgs(legs) if fks_onia.has_onia(legs) else \
+                   [l['id'] for l in legs]
             for info in real.fks_infos:
                 info_list.append({'n_me' : n + 1,'pdgs' : pdgs, 'fks_info' : info})
         return info_list
@@ -1023,6 +1032,15 @@ class FKSHelasRealProcess(object): #test written
                                         self.matrix_element.get('color_basis')))
             #self.fks_j_from_i = fksrealproc.find_fks_j_from_i()
             self.fks_j_from_i = fksrealproc.fks_j_from_i
+            real_legs = fksrealproc.process.get('legs')
+            if fks_onia.has_onia(real_legs):
+                # bound states: everything the exporter writes is numbered
+                # by physical particle (one per onium), see fks_onia
+                (self.fks_infos, self.fks_j_from_i, self.colors,
+                 self.particle_tags, self.charges) = fks_onia.to_physical_fks(
+                    real_legs, fksrealproc.process.get('model'), fksrealproc.fks_infos,
+                    fksrealproc.fks_j_from_i, fksrealproc.colors,
+                    fksrealproc.particle_tags, fksrealproc.charges)
 
     def get_nexternal_ninitial(self, constituents=False):
         """Refers to the matrix_element function"""

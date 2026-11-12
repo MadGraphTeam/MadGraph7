@@ -1,0 +1,350 @@
+
+      SUBROUTINE %(kname)s(P,NHEL,AMP_OUT)
+C
+%(info_lines)s
+C
+C Bound states at NLO (FKS, arXiv:2402.19221; madgraph/fks/fks_onia.py),
+C with P waves: the projected amplitudes AMP_OUT(NGRAPHS) of the diagrams
+C for the physical momenta P and helicities NHEL (J_z for an onium). The
+C constituents of an onium of momentum K and mass M = m1+m2 have
+C k1 = m1/M K + q, k2 = m2/M K - q. A P wave is the derivative
+C eps*(L_z).d/dq at q = 0 of the spin-projected amplitude, combined with
+C the spin S_z = J_z - L_z by Clebsch-Gordan coefficients (as the dual
+C numbers of the LO templates). Here the derivative is taken numerically
+C along three real directions e_a orthogonal to K (eps* = sum_a c_a e_a),
+C with the five-point stencil (error O(h**4), h = 1d-3 M): the plain HELAS
+C library serves S and P waves, and the native Born providers of the NLO
+C runtime need no dual-number library. The LDME and averages are the
+C factor %(kname)sFAC().
+%(process_lines)s
+C
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=%(ngraphs)d)
+      INTEGER    NWAVEFUNCS
+      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(onia_nexternal)d)
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1=(0D0,1D0))
+      REAL*8     HREL
+      PARAMETER (HREL=1D-3)
+%(onia_data)s
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      COMPLEX*16 AMP_OUT(NGRAPHS)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I, J, K, QQ, Q1, Q2, MU, A, IPT, NPT, ISZ, NSZ
+      INTEGER SZ(NONIA), NSZ_ONIA(NONIA), SZ_LIST(3,NONIA)
+      INTEGER DIR(NONIA), STEP(NONIA)
+      REAL*8 FRAC, NORM, CG, KDOTN, WEIGHT
+      REAL*8 Q(0:3,NONIA), E3(0:3,3,NONIA), H(NONIA)
+      REAL*8 STENCIL(4), SWEIGHT(4)
+      DATA STENCIL /-2D0, -1D0, 1D0, 2D0/
+      DATA SWEIGHT /1D0, -8D0, 8D0, -1D0/
+      COMPLEX*16 AMP(NGRAPHS), PROJ, CA(3,NONIA), COEF
+      COMPLEX*16 D(NGRAPHS)
+      type(aloha) W(NWAVEFUNCS), EPS_L
+      REAL*8 P_ONIA(0:3,NEXTERNAL+NONIA)
+      REAL*8 PMASS_ONIA(NEXTERNAL+NONIA), PMASS_RESH(NEXTERNAL)
+      INTEGER NHEL_ONIA(NEXTERNAL+NONIA), IC_ONIA(NEXTERNAL+NONIA)
+      INTEGER FLAVOR_ONIA(NEXTERNAL+NONIA)
+      COMPLEX*16 PROJ_SAVED(NONIA,-1:1,-1:1)
+      INTEGER HELQ(2)
+      DATA HELQ/-1, 1/
+      INCLUDE 'coupl.inc'
+C ----------
+C BEGIN CODE
+C ----------
+%(pmassonia_lines)s
+      PMASS_RESH = 0D0
+      DO I = 1, NEXTERNAL+NONIA
+        PMASS_RESH(MAPPING(I)) = PMASS_RESH(MAPPING(I))+PMASS_ONIA(I)
+      ENDDO
+      DO I = 1, NEXTERNAL+NONIA
+        NHEL_ONIA(I) = NHEL(MAPPING(I))
+        IC_ONIA(I) = 1
+        FLAVOR_ONIA(I) = 1
+      ENDDO
+C     for each onium: the S_z it can have, the colour norm, and for a P
+C     wave the real directions orthogonal to K (rest-frame axes boosted to
+C     the frame of P)
+      NORM = 1D0
+      DO I = 1, NONIA
+        QQ = ONIA(I)
+        IF (C_ONIA(I).EQ.1) THEN
+          NORM = NORM/3D0
+        ELSE IF (C_ONIA(I).EQ.8) THEN
+          NORM = NORM*2D0
+        ENDIF
+        NSZ_ONIA(I) = 0
+        DO K = -S_ONIA(I), S_ONIA(I)
+          IF (ABS(NHEL(QQ)-K).LE.L_ONIA(I)) THEN
+            NSZ_ONIA(I) = NSZ_ONIA(I)+1
+            SZ_LIST(NSZ_ONIA(I),I) = K
+          ENDIF
+        ENDDO
+        H(I) = HREL*PMASS_RESH(QQ)
+        IF (L_ONIA(I).EQ.1) THEN
+          DO A = 1, 3
+            KDOTN = P(A,QQ)
+            E3(0,A,I) = KDOTN/PMASS_RESH(QQ)
+            DO MU = 1, 3
+              E3(MU,A,I) = P(MU,QQ)*KDOTN/(PMASS_RESH(QQ)*(P(0,QQ)
+     &          +PMASS_RESH(QQ)))
+            ENDDO
+            E3(A,A,I) = E3(A,A,I)+1D0
+          ENDDO
+        ENDIF
+      ENDDO
+      AMP_OUT(:) = (0D0,0D0)
+C     the combinations of S_z of the onia (ISZ codes them)
+      NSZ = 1
+      DO I = 1, NONIA
+        NSZ = NSZ*NSZ_ONIA(I)
+      ENDDO
+      DO ISZ = 1, NSZ
+        K = ISZ-1
+        CG = 1D0
+        DO I = 1, NONIA
+          SZ(I) = SZ_LIST(MOD(K,NSZ_ONIA(I))+1,I)
+          K = K/NSZ_ONIA(I)
+          CALL %(kname)sCG(L_ONIA(I),NHEL(ONIA(I))-SZ(I),S_ONIA(I),
+     &      SZ(I),J_ONIA(I),NHEL(ONIA(I)),WEIGHT)
+          CG = CG*WEIGHT
+        ENDDO
+        IF (CG.EQ.0D0) CYCLE
+C       eps*(L_z) = sum_a CA(a) e_a for each P wave, L_z = J_z - S_z
+        DO I = 1, NONIA
+          IF (L_ONIA(I).NE.1) CYCLE
+          QQ = ONIA(I)
+          CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),1,EPS_L)
+          DO A = 1, 3
+            CA(A,I) = -(EPS_L%%W(1)*E3(0,A,I)-EPS_L%%W(2)*E3(1,A,I)
+     &        -EPS_L%%W(3)*E3(2,A,I)-EPS_L%%W(4)*E3(3,A,I))
+          ENDDO
+        ENDDO
+C       the derivatives: the directions and stencil points of every P wave
+        NPT = 12**NPWAVE
+        DO IPT = 1, NPT
+          K = IPT-1
+          COEF = DCMPLX(CG, 0D0)
+          DO I = 1, NONIA
+            Q(:,I) = 0D0
+            IF (L_ONIA(I).NE.1) CYCLE
+            STEP(I) = MOD(K,4)+1
+            K = K/4
+            DIR(I) = MOD(K,3)+1
+            K = K/3
+            Q(:,I) = STENCIL(STEP(I))*H(I)*E3(:,DIR(I),I)
+            COEF = COEF*CA(DIR(I),I)*SWEIGHT(STEP(I))/(12D0*H(I))
+          ENDDO
+C         the constituent momenta and spin projectors at these q
+          DO I = 1, NEXTERNAL+NONIA
+            IF (PAIRS(I).NE.0) THEN
+              J = FINDLOC(PAIRS,-PAIRS(I),DIM=1)
+              FRAC = PMASS_ONIA(I)/(PMASS_ONIA(I)+PMASS_ONIA(J))
+              P_ONIA(:,I) = FRAC*P(:,MAPPING(I))
+     &          +SIGN(1,PAIRS(I))*Q(:,ABS(PAIRS(I)))
+            ELSE
+              P_ONIA(:,I) = P(:,MAPPING(I))
+            ENDIF
+          ENDDO
+          DO I = 1, NONIA
+            QQ = ONIA(I)
+            Q1 = FINDLOC(PAIRS, I, DIM=1)
+            Q2 = FINDLOC(PAIRS,-I, DIM=1)
+            DO J = 1, 2
+              DO A = 1, 2
+                CALL ONIA_PROJ(P_ONIA(:,Q1),PMASS_ONIA(Q1),HELQ(J),
+     &            P_ONIA(:,Q2),PMASS_ONIA(Q2),HELQ(A),P(:,QQ),
+     &            PMASS_RESH(QQ),SZ(I),S_ONIA(I),PROJ)
+                PROJ_SAVED(I,HELQ(J),HELQ(A)) = PROJ
+              ENDDO
+            ENDDO
+          ENDDO
+          D(:) = (0D0,0D0)
+          DO J = 1, 4**NONIA
+            PROJ = SQRT(NORM)
+            DO I = 1, NONIA
+              Q1 = FINDLOC(PAIRS, I, DIM=1)
+              Q2 = FINDLOC(PAIRS,-I, DIM=1)
+              NHEL_ONIA(Q1) = HELQ(IBITS(J-1,2*I-2,1)+1)
+              NHEL_ONIA(Q2) = HELQ(IBITS(J-1,2*I-1,1)+1)
+              PROJ = PROJ*PROJ_SAVED(I,NHEL_ONIA(Q1),NHEL_ONIA(Q2))
+            ENDDO
+            IF (PROJ.NE.(0D0,0D0)) THEN
+%(helas_calls)s
+              D(:) = D(:)+AMP(:)*PROJ
+            ENDIF
+          ENDDO
+          AMP_OUT(:) = AMP_OUT(:)+COEF*D(:)
+        ENDDO
+      ENDDO
+      END
+
+
+      SUBROUTINE %(kname)sCG(L, LZ, S, SZ, J, JZ, CG)
+C     <L L_z; S S_z | J J_z> for L, S <= 1 (as CLEBSCH_GORDAN of the
+C     dual-number HELAS library, which the NLO output does not build)
+      IMPLICIT NONE
+      INTEGER L, LZ, S, SZ, J, JZ
+      DOUBLE PRECISION CG
+      IF (JZ.NE.LZ+SZ .OR. ABS(LZ).GT.L .OR. ABS(SZ).GT.S) THEN
+        CG = 0D0
+      ELSE IF (L.EQ.0 .OR. S.EQ.0) THEN
+        CG = 1D0
+      ELSE IF (J.EQ.2) THEN
+        IF (LZ.EQ.0 .AND. SZ.EQ.0) THEN
+          CG = DSQRT(2D0/3D0)
+        ELSE IF (LZ.EQ.0 .OR. SZ.EQ.0) THEN
+          CG = 1D0/DSQRT(2D0)
+        ELSE IF (LZ.EQ.SZ) THEN
+          CG = 1D0
+        ELSE
+          CG = 1D0/DSQRT(6D0)
+        ENDIF
+      ELSE IF (J.EQ.1) THEN
+        IF (LZ.EQ.1 .OR. SZ.EQ.-1) THEN
+          CG = 1D0/DSQRT(2D0)
+        ELSE IF (LZ.EQ.-1 .OR. SZ.EQ.1) THEN
+          CG = -1D0/DSQRT(2D0)
+        ELSE
+          CG = 0D0
+        ENDIF
+      ELSE IF (J.EQ.0) THEN
+        IF (LZ.EQ.0 .AND. SZ.EQ.0) THEN
+          CG = -1D0/DSQRT(3D0)
+        ELSE
+          CG = 1D0/DSQRT(3D0)
+        ENDIF
+      ELSE
+        CG = 0D0
+      ENDIF
+      END
+
+
+      DOUBLE PRECISION FUNCTION %(kname)sFAC()
+C
+C The LDME factor of the bound states of %(kname)s: for each onium
+C <O_n> (m1+m2)/(2 m1 m2)/(N_[C] (2J+1)), N_[1] = 6, N_[8] = 8
+C (arXiv:2402.19221, eq. 2.9), with the LDMEs of the onia card.
+C
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(onia_nexternal)d)
+%(onia_data)s
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      INTEGER I, Q1, Q2
+      REAL*8 LDME, PMASS_ONIA(NEXTERNAL+NONIA)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME/.TRUE./
+      REAL*8 SAVED
+      SAVE FIRSTTIME, SAVED
+      INCLUDE 'coupl.inc'
+%(ldme_decl)s
+      INTEGER NLDME
+      PARAMETER (NLDME=%(nldme)d)
+      INTEGER LDME_PDG(NLDME+1)
+      DATA LDME_PDG/%(ldme_pdgs)s/
+      DOUBLE PRECISION LDME_VAL(NLDME+1)
+      IF (FIRSTTIME) THEN
+        CALL %(kname)sREADCARD(NLDME, LDME_PDG, LDME_VAL)
+%(ldme_assign)s
+%(pmassonia_lines)s
+        LDME = 1D0
+        DO I = 1, NONIA
+          Q1 = FINDLOC(PAIRS, I, DIM=1)
+          Q2 = FINDLOC(PAIRS,-I, DIM=1)
+          LDME = LDME*(PMASS_ONIA(Q1)+PMASS_ONIA(Q2))
+     &      /(2D0*PMASS_ONIA(Q1)*PMASS_ONIA(Q2))
+          IF (C_ONIA(I).EQ.1) THEN
+            LDME = LDME/6D0/(2D0*J_ONIA(I)+1D0)
+          ELSE IF (C_ONIA(I).EQ.8) THEN
+            LDME = LDME/8D0/(2D0*J_ONIA(I)+1D0)
+          ENDIF
+        ENDDO
+C       perturbative (leptonium) LDMEs
+        %(ldme_perturbative)s
+        SAVED = LDME*%(ldme_product)s
+        FIRSTTIME = .FALSE.
+      ENDIF
+      %(kname)sFAC = SAVED
+      END
+
+
+      SUBROUTINE %(kname)sREADCARD(N, PDG, VAL)
+C
+C The LDMEs of Block ldme of the onia card for the codes PDG(1:N), read
+C directly (no COMMON: the native Born providers keep private copies of
+C the COMMON blocks of their sources).
+C
+      IMPLICIT NONE
+      INTEGER N, PDG(*)
+      DOUBLE PRECISION VAL(*)
+      CHARACTER*256 LINE
+      CHARACTER*16 WORD, BNAME
+      CHARACTER*40 FILES(4)
+      DATA FILES /'onia_card.dat', '../onia_card.dat',
+     &  '../../Cards/onia_card.dat', '../../../Cards/onia_card.dat'/
+      INTEGER I, K, IUNIT, IOS, ID
+      DOUBLE PRECISION X
+      LOGICAL INBLOCK, FOUND(64)
+      IF (N.EQ.0) RETURN
+      IUNIT = 97
+      DO K = 1, 4
+        OPEN(UNIT=IUNIT, FILE=FILES(K), STATUS='OLD', IOSTAT=IOS)
+        IF (IOS.EQ.0) GOTO 10
+      ENDDO
+      WRITE(*,*) 'Error: the onia card onia_card.dat was not found'
+      STOP 1
+ 10   CONTINUE
+      INBLOCK = .FALSE.
+      DO I = 1, N
+        FOUND(I) = .FALSE.
+      ENDDO
+ 20   CONTINUE
+      READ(IUNIT,'(A)',IOSTAT=IOS) LINE
+      IF (IOS.NE.0) GOTO 30
+      IF (INDEX(ADJUSTL(LINE),'#').EQ.1) GOTO 20
+      WORD = ' '
+      BNAME = ' '
+      READ(LINE,*,IOSTAT=IOS) WORD, BNAME
+      IF (WORD.EQ.'Block' .OR. WORD.EQ.'BLOCK' .OR. WORD.EQ.'block') THEN
+        INBLOCK = BNAME.EQ.'ldme' .OR. BNAME.EQ.'LDME' .OR. BNAME.EQ.'Ldme'
+        GOTO 20
+      ENDIF
+      IF (INBLOCK) THEN
+        READ(LINE,*,IOSTAT=IOS) ID, X
+        IF (IOS.EQ.0) THEN
+          DO I = 1, N
+            IF (PDG(I).EQ.ID) THEN
+              VAL(I) = X
+              FOUND(I) = .TRUE.
+            ENDIF
+          ENDDO
+        ENDIF
+      ENDIF
+      GOTO 20
+ 30   CONTINUE
+      CLOSE(IUNIT)
+      DO I = 1, N
+        IF (.NOT.FOUND(I)) THEN
+          WRITE(*,*) 'Error: no LDME for ', PDG(I), ' in Block ldme'
+     &      //' of the onia card'
+          STOP 1
+        ENDIF
+      ENDDO
+      END

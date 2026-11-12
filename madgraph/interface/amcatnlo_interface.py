@@ -687,7 +687,12 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                            'They will not include contributions of QCD origin ' + \
                            'stemming from the LO2, if it exists.')
 
-        self.validate_model(proc_type[1], coupling_type=proc_type[2])
+        # bound states (fks_onia): the tree model is kept for [QCD] too; their
+        # virtual is not computed by MadLoop (built-in 2 -> 1 or the user hook)
+        if self.has_fock_state(self.split_arg(line)):
+            self.validate_model('real', coupling_type=proc_type[2])
+        else:
+            self.validate_model(proc_type[1], coupling_type=proc_type[2])
         self._generate_info = geninfo
 
         #now generate the amplitudes as usual

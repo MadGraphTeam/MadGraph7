@@ -36,6 +36,8 @@ import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_onia as fks_onia
+import aloha
 import madgraph.fks.fks_real_channels_auto as fks_real_channels_auto
 import fractions
 import math
@@ -346,10 +348,20 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     def convert_model(self, model, wanted_lorentz = [], 
                                             wanted_couplings = [], **opts):
 
-        # npwave (if any) is deliberately not forwarded: the FKS output has no
-        # dual-number HELAS library.
-        super(ProcessExporterFortranFKS,self).convert_model(model, 
+        # The FKS output has no dual-number HELAS library: a P-wave bound
+        # state takes its derivative numerically in the projection kernel
+        # (onia_amp_kernel_fks_pwave.inc), with the plain HELAS routines, so
+        # that the native Born providers share one library. The pass of the
+        # interface for each number of P waves (npwave > 0) is skipped.
+        if opts.get('npwave', 0):
+            return
+        old_dual_mode = aloha.dual_mode
+        aloha.dual_mode = 0
+        try:
+            super(ProcessExporterFortranFKS,self).convert_model(model, 
                                                wanted_lorentz, wanted_couplings)
+        finally:
+            aloha.dual_mode = old_dual_mode
         
         IGNORE_PATTERNS = ('*.pyc','*.dat','*.py~')
         try:
@@ -830,6 +842,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for file in linkfiles:
             ln('../' + file , '.')
         os.system("ln -s ../../Cards/param_card.dat .")
+        if matrix_element.born_me.get_nonia() > 0:
+            # bound states (fks_onia): the LDMEs of the onia card, and the
+            # record of the bound states for finalize
+            os.system("ln -s ../../Cards/onia_card.dat .")
+            os.system("ln -s ../ldme.inc .")
+            fks_onia.OniaRecord.write(matrix_element.born_me, 'onia_fks.json')
 
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")
@@ -905,12 +923,30 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             self.born_processes = cmd.born_processes
         else:
             self.born_processes = []
+        # bound states (fks_onia): rw_onia.f in the model library, and the
+        # colour and spin of a bound state for the event record
+        self.has_boundstates = bool(getattr(cmd, '_fockstates', []))
+        self.boundstates = sorted(set(
+            (fock.get('pdg_code'), fock.get('color'), 2 * fock.get('J') + 1)
+            for fock in getattr(cmd, '_fockstates', [])))
         return
 
     def finalize(self, matrix_elements, history, mg5options, flaglist):
         """Finalize FKS directory by creating jpeg diagrams, html
                 pages,proc_card_mg5.dat and madevent.tar.gz and create the MA5 card if
         necessary."""
+
+        # bound states (fks_onia): the onia card (LDMEs), ldme.inc and
+        # onia_read.inc, from the bound states recorded by each P* directory
+        # (onia_fks.json, also written by the workers of a parallel output),
+        # and the constituents of each bound state (its mass m1+m2 in
+        # get_mass_from_id)
+        onia_mes = fks_onia.OniaRecord.load_all(pjoin(self.dir_path, 'SubProcesses'))
+        if onia_mes:
+            self.export_onia_files(onia_mes)
+        self.onia_constituents = {}
+        for me in onia_mes:
+            self.onia_constituents.update(me.constituents())
         
         devnull = os.open(os.devnull, os.O_RDWR)
         try:
@@ -1500,6 +1536,18 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                         (ifstring, part.get_pdg_code(), part.get_anti_pdg_code())
             iflines_mass += 'get_mass_from_id=abs(%s)\n' % part.get('mass')
 
+        # bound states at NLO (fks_onia): the mass m1+m2 of the constituents
+        for pdg, constituents in sorted(getattr(self, 'onia_constituents', {}).items()):
+            masses = []
+            for pid in constituents[:2]:
+                mass = model.get('particle_dict')[pid].get('mass')
+                if mass.lower() != 'zero':
+                    masses.append('abs(%s)' % mass)
+            iflines_mass += '%s (id.eq.%d.or.id.eq.%d) then\n' % (
+                'else if' if iflines_mass else 'if', pdg, -pdg)
+            iflines_mass += 'get_mass_from_id=%s\n' % ('+'.join(masses) or '0d0')
+            mass_particles = mass_particles or [None]
+
         if mass_particles:
             iflines_mass += 'else\n'
         else:
@@ -1608,8 +1656,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
     
                 # Need to reorganize the topology so that we start with all
                 # final state external particles and work our way inwards
-                schannels, tchannels = helas_diag.get('amplitudes')[0].\
-                    get_s_and_t_channels(ninitial, model, 990)
+                schannels, tchannels = self.get_fks_s_and_t_channels(
+                    fks_matrix_element, helas_diag, ninitial, model)
     
                 s_and_t_channels.append([schannels, tchannels])
     
@@ -1841,6 +1889,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         nexternal_born = len(born_legs)
 
         user_order = getattr(matrix_element, 'user_leg_order', [])
+        if fks_onia.has_onia(born_legs):
+            # bound states: one entry per physical particle; me_frame does not
+            # apply to them (no polarisation or density at NLO with onia)
+            nexternal_born = len(fks_onia.physical_legs(born_legs))
+            user_order = []
         if len(user_order) != nexternal_born:
             # No recorded ordering (e.g. a matrix element built by hand in the
             # tests). Fall back to the identity: correct whenever the FKS sort
@@ -2350,6 +2403,13 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)    
         replace_dict['nb_temp_jamp'] = nb_temp_jamp
         
+        onia_kname = None
+        if matrix_element.get_nonia() > 0:
+            # bound states (fks_onia): the projected amplitudes of the diagrams
+            # come from a kernel written below, the colour sums are scaled by
+            # its LDME factor
+            onia_kname = self.get_onia_kernel_name(proc_type, proc_prefix)
+
         if proc_type=='born':
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
@@ -2367,13 +2427,185 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             file = open(pjoin(_file_path, \
             'iolibs/template_files/born_cnt_splitorders_fks.inc')).read()
 
+        if onia_kname:
+            file = self.onia_patch_fks_template(file, proc_type, onia_kname)
+
         file = file % replace_dict
 
         # Write the file
         writer.writelines(file)
+        if onia_kname:
+            writer.writelines(self.get_onia_kernel(matrix_element, replace_dict,
+                                                   onia_kname))
 
         return len(list([call for call in helas_calls if call.find('#') != 0])), ncolor, \
                 replace_dict['nAmpSplitOrders'], replace_dict['nSqAmpSplitOrders']
+
+    #===========================================================================
+    # bound states (fks_onia)
+    #===========================================================================
+    def write_pmass_file(self, writer, matrix_element):
+        """pmass.inc; a bound state at NLO has the mass m1+m2 of its
+        constituents (strict NRQCD, no momentum reshuffling: fks_onia)."""
+        if not hasattr(matrix_element, 'get_nonia') or matrix_element.get_nonia() == 0:
+            return super(ProcessExporterFortranFKS, self).write_pmass_file(writer, matrix_element)
+        model = matrix_element.get('processes')[0].get('model')
+        wfs = matrix_element.get_external_wavefunctions()
+        def mass_of(wf):
+            mass = model.get('particle_dict')[wf.get('pdg_code')].get('mass')
+            return mass if mass.lower() == 'zero' else 'abs(%s)' % mass
+        lines = []
+        done = set()
+        number = 0
+        for wf in wfs:
+            onium = wf.get('onium')
+            if onium:
+                if onium['index'] in done:
+                    continue
+                done.add(onium['index'])
+                pair = [w for w in wfs if w.get('onium') and
+                        w.get('onium')['index'] == onium['index']]
+                mass = '+'.join(mass_of(w) for w in pair)
+            else:
+                mass = mass_of(wf)
+            number += 1
+            lines.append("pmass(%d)=%s" % (number, mass))
+        writer.writelines(lines)
+        return True
+
+    @staticmethod
+    def get_fks_s_and_t_channels(matrix_element, helas_diag, ninitial, model):
+        """The s- and t-channels of a phase-space configuration. With bound
+        states, they are those of the diagram over the physical legs (the
+        constituents of an onium merged into one particle,
+        ProcessExporterFortranME.get_onia_production_channels)."""
+        if hasattr(matrix_element, 'get_nonia') and matrix_element.get_nonia() > 0:
+            channels = export_v4.ProcessExporterFortranME.get_onia_production_channels(
+                helas_diag, matrix_element.get_onia_leg_map(), model, 990)
+            if channels is None:
+                raise MadGraph5Error('Bound states: no phase-space channel over the '
+                                     'physical particles for diagram %d of %s' % (
+                    helas_diag.get('number'), matrix_element.get('processes')[0].nice_string()))
+            return channels
+        return helas_diag.get('amplitudes')[0].get_s_and_t_channels(ninitial, model, 990)
+
+    @staticmethod
+    def get_onia_kernel_name(proc_type, proc_prefix=''):
+        """The name of the projection kernel of a matrix-element file."""
+        if proc_type in ['born', 'born_links']:
+            return 'ONIA_AMP_BORN'
+        elif proc_type == 'bhel':
+            return 'ONIA_AMP_BHEL'
+        elif proc_type == 'real':
+            return 'ONIA_AMP_R%s' % proc_prefix
+        raise MadGraph5Error('Bound states: no NLO template for the %s matrix element' % proc_type)
+
+    @staticmethod
+    def onia_patch_fks_template(text, proc_type, kname):
+        """The FKS template of a matrix element with bound states: the HELAS
+        calls become the projection kernel (projected amplitudes of the
+        diagrams, the colour-flow lines are unchanged), and every colour sum
+        is scaled by its LDME factor <kname>FAC()."""
+        def sub(old, new, count=1):
+            if text.count(old) < count:
+                raise MadGraph5Error('Bound states: unexpected FKS template '
+                                     '(%s: %r)' % (proc_type, old))
+            return text.replace(old, new)
+        fac = '%sFAC' % kname
+        call = '      CALL %s(P,NHEL,AMP)' % kname
+        if proc_type == 'born':
+            text = sub('%(helas_calls)s', call)
+            text = sub('      INTEGER SQSOINDEXB\n',
+                       '      INTEGER SQSOINDEXB\n      DOUBLE PRECISION %s\n'
+                       '      EXTERNAL %s\n' % (fac, fac))
+            text = sub('      borns(:,:) = borns(:,:)/DENOM',
+                       '      borns(:,:) = borns(:,:)/DENOM*%s()' % fac)
+            text = sub('      ANS(2,:) = ANS(2,:)/(2d0*DENOM)',
+                       '      ANS(2,:) = ANS(2,:)/(2d0*DENOM)*%s()' % fac)
+        elif proc_type == 'real':
+            text = sub('%(helas_calls)s', call)
+            text = sub("      include 'real_matrix_weights.inc'",
+                       "      include 'real_matrix_weights.inc'\n"
+                       "      DOUBLE PRECISION %s\n      EXTERNAL %s" % (fac, fac))
+            text = sub('      RES(:) = RES(:)/DENOM',
+                       '      RES(:) = RES(:)/DENOM*%s()' % fac)
+        elif proc_type == 'born_links':
+            text = sub('%(helas_calls)s', call)
+            text = sub('      INTEGER SQSOINDEXB\n',
+                       '      INTEGER SQSOINDEXB\n      DOUBLE PRECISION %s\n'
+                       '      EXTERNAL %s\n' % (fac, fac), 2)
+            text = sub('      RES(:) = RES(:)/(2d0*DENOM(ILINK))',
+                       '      RES(:) = RES(:)/(2d0*DENOM(ILINK))*%s()' % fac)
+            text = sub('      RES(:) = RES(:)/DENOM(ILINK)',
+                       '      RES(:) = RES(:)/DENOM(ILINK)*%s()' % fac)
+            text = sub('      DOUBLE PRECISION TEMP\n',
+                       '      DOUBLE PRECISION TEMP\n      DOUBLE PRECISION %s\n'
+                       '      EXTERNAL %s\n' % (fac, fac))
+            text = sub('        RES(K) = TEMP/DENOM(ILINK)',
+                       '        RES(K) = TEMP/DENOM(ILINK)*%s()' % fac)
+        elif proc_type == 'bhel':
+            text = sub('      INTEGER SQSOINDEXB\n',
+                       '      INTEGER SQSOINDEXB\n      DOUBLE PRECISION %s\n'
+                       '      EXTERNAL %s\n' % (fac, fac))
+            text = sub('    ANS(:) = ANS(:)/DENOM',
+                       '    ANS(:) = ANS(:)/DENOM*%s()' % fac)
+        else:
+            raise MadGraph5Error('Bound states: no NLO template for the %s matrix element' % proc_type)
+        return text
+
+    def get_onia_kernel(self, matrix_element, replace_dict, kname):
+        """The projection kernel <kname> of a matrix element with bound states
+        (template onia_amp_kernel_fks[_pwave].inc) and its LDME factor
+        <kname>FAC: projected amplitudes of the diagrams for physical momenta
+        and helicities, with the constituents of each onium at q = 0
+        (derivative by dual numbers for P waves)."""
+        class _Lines(object):
+            def __init__(self):
+                self.lines = []
+            def writelines(self, lines):
+                if isinstance(lines, str):
+                    lines = lines.split('\n')
+                self.lines.extend(lines)
+        onia = _Lines()
+        self.write_onia_file(onia, matrix_element)
+        pmass = _Lines()
+        self.write_pmassonia_file(pmass, matrix_element)
+        helas_calls = replace_dict['helas_calls']
+        for old, new in [('P(0', 'P_ONIA(0'), ('NHEL(', 'NHEL_ONIA('),
+                         ('IC(', 'IC_ONIA('), ('FLAVOR(', 'FLAVOR_ONIA(')]:
+            helas_calls = helas_calls.replace(old, new)
+        # the LDMEs of the Fock states: quarkonia from Block ldme of the onia
+        # card, leptonia from their Coulomb wave function (ldme_perturbative)
+        model = matrix_element.get('processes')[0].get('model')
+        ids, card_ids = [], []
+        for leg in matrix_element.get('processes')[0].get('legs'):
+            onium = leg.get('onium')
+            if onium and abs(onium['id']) not in ids:
+                ids.append(abs(onium['id']))
+                if abs(model.get('particle_dict')[leg.get('id')].get_color()) == 3:
+                    card_ids.append(abs(onium['id']))
+        ldme_decl = '\n'.join('      DOUBLE PRECISION LDME_%d' % i for i in ids)
+        ldme_assign = '\n'.join('        LDME_%d = LDME_VAL(%d)' % (pdg, k + 1)
+                                for k, pdg in enumerate(card_ids))
+        kernel_dict = {'kname': kname,
+                       'ldme_decl': ldme_decl,
+                       'nldme': len(card_ids),
+                       'ldme_pdgs': ','.join(str(i) for i in card_ids + [0]),
+                       'ldme_assign': ldme_assign,
+                       'info_lines': replace_dict['info_lines'],
+                       'process_lines': replace_dict['process_lines'],
+                       'ngraphs': replace_dict['ngraphs'],
+                       'nwavefuncs': replace_dict['nwavefuncs'],
+                       'onia_nexternal': matrix_element.get_nexternal_ninitial()[0],
+                       'onia_data': '\n'.join(l for l in onia.lines if l.strip()),
+                       'pmassonia_lines': '\n'.join(l for l in pmass.lines if l.strip()),
+                       'helas_calls': helas_calls,
+                       'ldme_perturbative': self.get_ldme_perturbative(matrix_element),
+                       'ldme_product': self.get_ldme_product(matrix_element)}
+        template = 'onia_amp_kernel_fks_pwave.inc' if matrix_element.get_npwave() \
+                   else 'onia_amp_kernel_fks.inc'
+        text = open(pjoin(_file_path, 'iolibs', 'template_files', template)).read()
+        return text % kernel_dict
 
 
     def write_pdf_calls(self, matrix_element, fortran_model):
@@ -2492,6 +2724,23 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             if self.born_color_links_in_born:
                 # the colour-linked Borns live in born.f (SB_SF_LINK)
                 break
+            if born_me.get_nonia() > 0:
+                # bound states: the colour-linked Borns come from the colour
+                # density of the native provider (born_support), whose link
+                # matrices are those of fks_onia.born_color_links; the
+                # routines of the b_sf files are replaced there
+                filename = 'b_sf_%3.3d.f' % (j + 1)
+                self.color_link_files.append(filename)
+                writers.FortranWriter(filename).writelines(
+                    ['SUBROUTINE SB_SF_%3.3d(P_BORN,WGT_COL)' % (j + 1),
+                     'IMPLICIT NONE',
+                     'INCLUDE "nexternal.inc"',
+                     'DOUBLE PRECISION P_BORN(0:3,NEXTERNAL-1), WGT_COL',
+                     "WRITE(*,*) 'Error: bound states: the colour-linked Born "
+                     "%d is computed by the native Born provider'" % (j + 1),
+                     'STOP 1',
+                     'END'])
+                continue
             filename = 'b_sf_%3.3d.f' % (j + 1)
             self.color_link_files.append(filename)
             self.write_b_sf_fks(writers.FortranWriter(filename),
@@ -3190,7 +3439,15 @@ Parameters              %(params)s\n\
         matrices = [born]
 
         # the colour links, found exactly as FKSHelasProcess.set_color_links
-        if len(col_basis):
+        if len(col_basis) and fks_onia.has_onia(
+                born_me.get('base_amplitude').get('process').get('legs')):
+            link_mats = fks_onia.born_color_links(born_me, matrix_element.perturbation)
+            if [l['link'] for l in link_mats] != \
+               [l['link'] for l in matrix_element.color_links]:
+                raise MadGraph5Error('colour links in the Born basis do not '
+                                     'match the ones of the matrix element')
+            matrices += [l['matrix'] for l in link_mats]
+        elif len(col_basis):
             legs = born_me.get('base_amplitude').get('process').get('legs')
             model = born_me.get('base_amplitude').get('process').get('model')
             links_info = fks_common.find_color_links(
@@ -3427,7 +3684,11 @@ Parameters              %(params)s\n\
         replace_dict['ncomb'] = ncomb
 
         ifsign_dict = {True: 1, False: -1}
-        replace_dict['iflist'] = "iflist = (/%s/)" % ','.join([str(ifsign_dict[leg['state']]) for leg in born_me['processes'][0]['legs']])
+        born_legs = born_me['processes'][0]['legs']
+        if fks_onia.has_onia(born_legs):
+            # bound states: one entry per physical particle
+            born_legs = fks_onia.physical_legs(born_legs)
+        replace_dict['iflist'] = "iflist = (/%s/)" % ','.join([str(ifsign_dict[leg['state']]) for leg in born_legs])
 
         calls_to_me = ""
 
@@ -4296,6 +4557,7 @@ Parameters              %(params)s\n\
             if proc['decay_chains']:
                 raise MadGraph5Error('MC histories require explicit resonance ancestry '
                                      'for decay-chain processes')
+            proc = fks_onia.physical_process(proc)
             legs = proc.get_legs_with_decays()
             if len(legs) != nexternal or len(tags) != nexternal:
                 raise MadGraph5Error('Inconsistent external states in MC history export')
@@ -4562,6 +4824,29 @@ Parameters              %(params)s\n\
 
         for iproc, proc in enumerate(me.get('processes')):
             legs = proc.get_legs_with_decays()
+            if fks_onia.has_onia(legs):
+                # bound states: one particle per onium (fks_onia.leshouche_view)
+                ids, flows = fks_onia.leshouche_view(
+                    proc, me.get('color_basis') if iproc == 0 else None, ninitial)
+                lines.append("DATA (IDUP(i,%d),i=1,%d)/%s/" % \
+                             (iproc + 1, nexternal, ",".join([str(i) for i in ids])))
+                for i in [1, 2]:
+                    lines.append("DATA (MOTHUP(%d,i,%3r),i=1,%2r)/%s/" % \
+                             (i, iproc + 1, nexternal,
+                              ",".join([ "%3r" % 0 ] * ninitial + \
+                                       [ "%3r" % i ] * (nexternal - ninitial))))
+                if iproc == 0:
+                    if not flows:
+                        for i in [1, 2]:
+                            lines.append("DATA (ICOLUP(%d,i,  1),i=1,%2r)/%s/" % \
+                                     (i, nexternal, ",".join([ "%3r" % 0 ] * nexternal)))
+                    color_flow_list = flows
+                    for cf_i, flow in enumerate(flows):
+                        for i in [0, 1]:
+                            lines.append("DATA (ICOLUP(%d,i,%3r),i=1,%2r)/%s/" % \
+                                 (i + 1, cf_i + 1, nexternal,
+                                  ",".join(["%3r" % f[i] for f in flow])))
+                continue
             lines.append("DATA (IDUP(i,%d),i=1,%d)/%s/" % \
                          (iproc + 1, nexternal,
                           ",".join([str(l.get('id')) for l in legs])))
@@ -4659,8 +4944,8 @@ Parameters              %(params)s\n\
     
             # Need to reorganize the topology so that we start with all
             # final state external particles and work our way inwards
-            schannels, tchannels = helas_diag.get('amplitudes')[0].\
-                                         get_s_and_t_channels(ninitial, model, 990)
+            schannels, tchannels = self.get_fks_s_and_t_channels(
+                                        me, helas_diag, ninitial, model)
     
             s_and_t_channels.append([schannels, tchannels])
     
@@ -4835,6 +5120,31 @@ Parameters              %(params)s\n\
         lines = []
         for iproc, proc in enumerate(matrix_element.get('processes')):
             legs = proc.get_legs_with_decays()
+            if fks_onia.has_onia(legs):
+                # bound states: one particle per onium (fks_onia.leshouche_view)
+                ids, flows = fks_onia.leshouche_view(
+                    proc, matrix_element.get('color_basis') if iproc == 0 else None, ninitial)
+                lines.append("I   %4d   %4d       %s" % \
+                             (ime, iproc + 1, " ".join([str(i) for i in ids])))
+                for i in [1, 2]:
+                    lines.append("M   %4d   %4d   %4d      %s" % \
+                             (ime, i, iproc + 1,
+                              " ".join([ "%3d" % 0 ] * ninitial + \
+                                       [ "%3d" % i ] * (nexternal - ninitial))))
+                if iproc == 0:
+                    if not flows:
+                        for i in [1, 2]:
+                            lines.append("C   %4d   %4d   1      %s" % \
+                                     (ime, i, " ".join([ "%3d" % 0 ] * nexternal)))
+                        nflow = 1
+                    else:
+                        for cf_i, flow in enumerate(flows):
+                            for i in [0, 1]:
+                                lines.append("C   %4d   %4d   %4d      %s" % \
+                                     (ime, i + 1, cf_i + 1,
+                                      " ".join(["%3d" % f[i] for f in flow])))
+                        nflow = len(flows)
+                continue
             lines.append("I   %4d   %4d       %s" % \
                          (ime, iproc + 1,
                           " ".join([str(l.get('id')) for l in legs])))
@@ -5035,8 +5345,12 @@ Parameters              %(params)s\n\
         if info_list:
             # if the reals have been generated, fill with the corresponding value of ij if
             # ij is massless, or with 0 if ij is massive (no collinear singularity)
+            born_legs = fks_born.born_me['processes'][0]['legs']
+            if fks_onia.has_onia(born_legs):
+                # bound states: ij is a physical number
+                born_legs = fks_onia.physical_legs(born_legs)
             ij_list = [info['fks_info']['ij']if \
-                    fks_born.born_me['processes'][0]['legs'][info['fks_info']['ij']-1]['massless'] \
+                    born_legs[info['fks_info']['ij']-1]['massless'] \
                     else 0 for info in info_list]
             lines.append('INTEGER IJ_VALUES(%d)' % len(info_list))
             lines.append('DATA IJ_VALUES /' + ', '.join(['%d' % ij for ij in ij_list]) + '/')
@@ -5971,6 +6285,12 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         for file in linkfiles:
             ln('../' + file , '.')
         os.system("ln -s ../../Cards/param_card.dat .")
+        if matrix_element.born_me.get_nonia() > 0:
+            # bound states (fks_onia): the LDMEs of the onia card, and the
+            # record of the bound states for finalize
+            os.system("ln -s ../../Cards/onia_card.dat .")
+            os.system("ln -s ../ldme.inc .")
+            fks_onia.OniaRecord.write(matrix_element.born_me, 'onia_fks.json')
 
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")

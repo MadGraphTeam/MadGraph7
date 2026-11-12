@@ -99,6 +99,7 @@ import madgraph.various.misc as misc
 import madgraph.various.cluster as cluster
 
 import madgraph.fks.fks_tag as fks_tag
+import madgraph.fks.fks_onia as fks_onia
 
 import madgraph.models as ufomodels
 import madgraph.models.import_ufo as import_ufo
@@ -6643,6 +6644,10 @@ This implies that with decay chains:
                 process = f" ".join(["process"]+copy_args)
                 logger.info("INFO: Trying to generate "+process)
                 if not idx==last:
+                    # keep the NLO mode ([QCD], [real=QCD], ...) for every
+                    # combination of Fock states, not only the last one
+                    process += fks_onia.fock_state_perturbation_tag(
+                        LoopOption, perturbation_couplings.split())
                     for order in model_orders:
                         try:
                             (order_val,order_op) = squared_orders[order]
@@ -6937,18 +6942,26 @@ This implies that with decay chains:
                     aloha.dual_mode += 1
                 for i in range(2):
                     mypart = self._curr_model['particles'].get_copy(constituents[i])
-
-                    myleglist.append(base_objects.MultiLeg({'ids':[mypart.get_pdg_code()],
+                    onium_dict = {'id':onium_id, 'name':onium_name,
+                                  'N':onium_principal, 'S':onium_spin,
+                                  'L':onium_orbit, 'J':onium_j,
+                                  'C':onium_color, 'charge':onium_charge,
+                                  'index':onium_index, 'mass':onium_mass,
+                                  'ldme':onium_ldme}
+                    if LoopOption in ['tree', 'virt', 'sqrvirt', 'noborn']:
+                        myleglist.append(base_objects.MultiLeg({'ids':[mypart.get_pdg_code()],
                                                         'state':state,
                                                         'polarization': polarization,
-                                                        'onium': {'id':onium_id, 'name':onium_name,
-                                                                  'N':onium_principal, 'S':onium_spin,
-                                                                  'L':onium_orbit, 'J':onium_j,
-                                                                  'C':onium_color, 'charge':onium_charge,
-                                                                  'index':onium_index, 'mass':onium_mass,
-                                                                  'ldme':onium_ldme
-                                                                 }
-                                                        	}))
+                                                        'onium': onium_dict}))
+                    else:
+                        # FKS modes: the other legs are MultiTagLegs, and the
+                        # tags of the final state are zipped with its legs
+                        # (diagram_generation.generate_multi_amplitudes)
+                        myleglist.append(fks_tag.MultiTagLeg({'ids':[mypart.get_pdg_code()],
+                                                        'state':state,
+                                                        'polarization': polarization,
+                                                        'onium': onium_dict,
+                                                        'is_tagged': False}))
                 onium_index += 1
             elif part_name.isdigit() or part_name.startswith('-') and part_name[1:].isdigit():
                 if abs(int(part_name)) in sum(self._curr_model.merged_particles.values(),[]):
@@ -7006,15 +7019,19 @@ This implies that with decay chains:
             else:
                 raise self.InvalidCmd("No particle %s in model" % part_name)
 
-        # Bound states are handled by the LO exporters only: nothing in the
-        # FKS/loop path reads back the 'onium' leg properties and there is no
-        # onia matrix-element template for it, so a perturbed process would
-        # silently produce a wrong result rather than fail.
+        # Bound states at NLO: FKS subtraction (arXiv:2402.19221) for the
+        # category of fks_onia.check_nlo_onia (QCD corrections, final-state
+        # onia, at most one P-wave quarkonium); everything else is refused.
         if onium_index and perturbation_couplings.strip():
-            raise self.InvalidCmd(
-                "Onia are only supported at leading order: the perturbation "
-                "'[%s]' can not be combined with a bound state."
-                % perturbation_couplings.strip())
+            pert_list = perturbation_couplings.split()
+            if perturbation_couplings.strip().lower() in ['all', 'loonly']:
+                pert_list = list(self._curr_model['perturbation_couplings']) or ['QCD']
+            try:
+                fks_onia.check_nlo_onia(myleglist, pert_list,
+                    'LOonly' if perturbation_couplings.strip().lower() == 'loonly' else LoopOption,
+                    self._curr_model)
+            except fks_onia.OniaNLOError as error:
+                raise self.InvalidCmd(str(error))
 
         if aloha.dual_mode:
             aloha.npwave.append(aloha.dual_mode)
@@ -7056,7 +7073,10 @@ This implies that with decay chains:
             # then empty the perturbation_couplings_list at this stage.
             if LoopOption=='tree':
                 perturbation_couplings_list = []
-            if perturbation_couplings_list and LoopOption not in ['real', 'LOonly']:
+            # bound states at NLO keep the tree model: their virtual is not
+            # computed by MadLoop (fks_onia), so no loop model is required
+            if perturbation_couplings_list and LoopOption not in ['real', 'LOonly'] \
+                    and not onium_index:
                 if not isinstance(self._curr_model,loop_base_objects.LoopModel):
                     raise self.InvalidCmd(\
                       "The current model does not allow for loop computations.")
