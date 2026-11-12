@@ -738,13 +738,19 @@ after `--warmup-runs` warm-up calls in the default setup, which the table
 header names: binary64, finite part only, the checked reduction (the
 backends' own acceptance checks; `--reduction-unchecked` profiles the
 unchecked timing mode, no accuracy certificate), no stability checks and no
-rescue; the default backend runs as `auto` (its per-point NinjaRS fallback
-included, as a user gets it). The first table gives each backend's time per
-point (median call, fastest and slowest), the ratio to the fastest
-(highlighted; "only one served" when the other backend served no point), the
-timed points per effective backend ("lanes") and the failed points; a backend
-that failed every timed point shows its time as "failing" and is not
-compared, and the reasons of failed points are listed under the table. The
+rescue; the default backend runs as `auto` (its per-point fallback
+included, as a user gets it) and a refused point is returned with its
+best-effort value and timed as such (the default `on_failure`). The first
+table gives each backend's name (`*`: the default backend of the process
+type), its time per point (median call), the fastest and slowest call and the
+ratio to the fastest; a `best-effort` column appears when some timed points
+were served best-effort, a `lanes` column when points were served by more
+than one backend, a `failed` column when points got no value. Under the
+table, after a `---` line, the failed or refused points are listed per
+backend and cause, most frequent first, in the form
+`<count> (<fraction> %) <backend> | <kind>: <cause>` (causes grouped with
+their numbers masked; also in `--json` as `failure_causes`); nothing is
+printed when nothing failed. The
 second table gives the time per point in each stage group (trees: the native
 trees and counterterm kets; dressing: seeds, factors and dressing of a
 Born-interfered process, the dressing of a loop-induced one; scatter;
@@ -755,7 +761,16 @@ backend's share (and a bar per group) and the ratio between the two backends.
 its initial state).
 
 **Stability.** Over N flat points (`benchmark.stability_points` /
-`--stability-points`, drawn with `evaluation.phase_space`'s seed and energy),
+`--stability-points`, default 1000, drawn with `evaluation.phase_space`'s
+seed and energy), evaluated in parallel on `benchmark.n_core` / `--n_core`
+(also `--n-core`) worker processes (default 10, at most the usable cores; 1
+runs in-process; each worker loads the artifact once and runs one thread per
+pool; the tables do not depend on the worker count), with a progress display
+of the points done per backend and precision and an estimated time to
+completion; Ctrl-C stops the run and prints the tables of the points
+evaluated so far with a one-line notice (`stability_setup.requested`,
+`measured`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
+The runtime timing runs before the pool, in one process.
 each backend evaluates every point in pure binary64 with the default rotation
 test (one default rotation, what `evaluation.stability_checks` gives by
 default; `evaluation.stability_checks` replaces it when set; the rescue's own
@@ -1021,7 +1036,21 @@ The common presentation options are:
 | `--json` | flag | Emit stable machine-readable stdout instead of the human-facing table |
 | `--color` | `auto`, `always`, `never` | Detect a terminal, force ANSI color, or disable it |
 | `--progress` | `auto`, `tty`, `log`, `off` | Select live bars, rate-limited log progress, or silence |
-| `--log-level` | `debug`, `info`, `warning`, `error` | Control diagnostic verbosity |
+| `--log-level` | `debug`, `info`, `warning`, `error` | Logger records shown (default `warning`; `info`/`debug` for developers) |
+| `--fields-description-help` | flag | After the tables, describe every table and column in plain words |
+
+By default every command prints its tables and short status lines only: no
+legends, footnotes or logger-format lines. A few short notice lines
+(`process`, `model`, `output`, `widths`, `check`) say what is being done;
+they are printed above the progress display, which they never tear.
+`--fields-description-help` adds, after the tables, a short heading per table
+and one line per column (the command runs as usual). Every command shows its
+progress (a live display on a terminal, plain lines with `--progress log`)
+and handles Ctrl-C: no traceback, worker processes stopped, exit code 130;
+`profile` prints the tables of what was measured so far, `check` the tests
+completed (the rest marked "not run"), `self-test` the checks run so far, and
+an interrupted `generate` writes nothing (an artifact is published only when
+complete).
 
 JSON mode keeps stdout machine-readable; progress and diagnostics use stderr.
 This makes pipelines predictable:

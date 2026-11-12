@@ -1892,7 +1892,8 @@ point the squared invariant mass of its initial state). The loop settings of
 [benchmark]
 runtime = false          # --runtime: time per point and stage
 stability = true         # --stability (neither set: the runtime only)
-stability_points = 20    # --stability-points: flat (RAMBO) points
+stability_points = 1000  # --stability-points: flat (RAMBO) points (default 1000)
+n_core = 10              # --n_core / --n-core: worker processes of --stability
 
 [evaluation.phase_space]
 seed = 1                 # --seed: point i from seed + i
@@ -1916,7 +1917,7 @@ semantics.
 format = "human"
 color = "auto"
 progress = "auto"
-log_level = "info"
+log_level = "warning"
 ```
 
 - The `pyamplicol` CLI always produces aligned colored terminal tables unless

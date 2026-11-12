@@ -148,6 +148,22 @@ orders, QCD^3 and QCD QED^2) failed with `Could not create evaluator: function
 value_N(..) is not in a parameter map`, so nothing was stored and no value was
 wrong; such requests now store.
 
+**Command-line output: tables only, progress everywhere, Ctrl-C safe.**
+Every command prints its tables and short status lines only;
+`--fields-description-help` adds a plain-words description of every table
+and column. The CLI shows no logger-format lines by default (`--log-level`
+defaults to `warning`; a few short notice lines say what is being done) and
+`--progress log` writes plain lines. `check`, `evaluate`, `profile` and
+`self-test` show their progress like `generate`, and Ctrl-C ends any command
+cleanly (exit code 130): `profile` and `check` report what was measured or
+checked so far, an interrupted `generate` writes nothing. Value tables print
+an explicit `+` on positive values. `profile`: one-line backend names (`*`:
+the default), a lean runtime table that times best-effort points as served,
+the distribution of failure causes under the tables (`failure_causes` in
+`--json`), and `--stability` over 1000 points by default on `--n_core`
+worker processes (default 10; `benchmark.n_core`) with an estimated time to
+completion.
+
 Version `1.0.3` uses the Python dependencies of 1.0.2 (Symbolica 3.0.3
 from PyPI, SymJIT 2.28.3, ufo-model-loader 1.0.1). The native code builds
 Symbolica at the head of symbolica-dev/symbolica#163 (`dfe6bd97`), NinjaRS
