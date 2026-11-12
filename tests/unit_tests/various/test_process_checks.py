@@ -46,6 +46,14 @@ class TestMatrixElementChecker(unittest.TestCase):
         self.base_model = import_ufo.import_model('sm', options={'apply_flavor_grouping':False})
         #sm_path = import_ufo.find_ufo_path('sm')
         #self.base_model = import_ufo.import_model(sm_path)
+        # the tests that 'set gauge' change the global ALOHA gauge; a test
+        # run after them (e.g. the reference momenta of 'check brs', not
+        # built in the FD gauge) must not inherit it
+        import aloha
+        saved = (aloha.unitary_gauge, aloha.complex_mass)
+        def restore():
+            aloha.unitary_gauge, aloha.complex_mass = saved
+        self.addCleanup(restore)
     
     def test_get_momenta(self):
         """Test the get_momenta function"""
