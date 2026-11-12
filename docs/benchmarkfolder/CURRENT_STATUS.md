@@ -22,15 +22,18 @@ pin to signed TIRust `10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1`. Its scoped acti
 bridge qualification are recorded separately. Numerical acceptance evidence
 below remains bound to production revision `0fcd2cd873d6`; signing does not
 transfer that evidence to the new source or close the outstanding physics and
-local timing gates. The canonical 44-page PDF and its frozen inputs are
-unchanged.
+local timing gates. The original 44-page PDF, ledger and owner are archived
+byte-identically; the canonical 45-page PDF appends the separately bound
+original signed-source Zggg timing pilot, including its TIRust initialization
+timeout. This does not transfer earlier acceptance evidence.
 
 | Evidence | Current result and scope |
 |---|---|
 | [Ordinary process matrix](campaigns/entry-latch-cache-guard-1/QUALIFICATION_PROGRESS.md) | Eleven CLI-generated processes, six lanes and 100 saved points per lane. All 66 lanes pass `3e-6`; 54 also pass the separate `1e-8` target. The remaining target misses and independent-reference limitations are retained. |
 | [Frozen ordinary selection](campaigns/entry-latch-cache-guard-1/report-supplements/progress-3/selection.json) | Selects the closed checkpoints for this production source, including both four-particle processes, interruption history and source-specific evidence. It does not import predecessor results as new measurements. |
 | [Subprocess/event cache lifecycle](experiments/subprocess-cache-lifecycle-successor-qualification-1/README.md) | Closed for real-SM `N≤3`, rank≤2 native-DP amplitudes and separate DP/QP tensor-key diagnostics. It covers prefix isolation, entry-latch reset, invalidation, independent checks and context recreation. Physical-QP rescues, EW, loop-induced, rank-six physical and poles-only amplitudes remain outside this proof. |
-| [Published benchmark](benchmark.pdf) | The current 44-page PDF preserves all 43 preceding pages and adds the ordinary EW and threshold qualification page. Its [ledger](report-build.json) binds PDF SHA256 `f8454f71dcd3a8614d777a3a91a6a71aa86bb5e0cfb45062cb87d41daeb3b321`. The analytic Fortran repair timing study and five-backend timings remain preserved. |
+| [Published benchmark](benchmark.pdf) | The current 45-page PDF preserves all 44 preceding pages and adds the original QCD Zggg timing page. Its [ledger](report-build.json) binds PDF SHA256 `fa83602d57a43f25bc469e8d7185ba54b3236031eb861b12193a8788afd38678`. All historical timing, analytic-repair and EW qualification pages remain preserved. |
+| [Original signed-source Zggg pilot](experiments/zggg-five-backend-timing-report-1/rendered-1/README.md) | Actual QCD `u u~ > z g g g` (2→4), first ten of 100 frozen points, ten cycles and 40 timed batches. Four warmed native-DP rows pass `3e-6`; reducers 6/7/8 miss the separate `1e-8` finite-term target at points 1, 2, 4 and 5. TIRust 9 retains its original 600 s READY timeout with no warmed timing; partial 1 DP + 3 QP warmup is separate. Actual batches span 33.6448–41.9097 s. Descriptive intervals do not close precise local acceptance. |
 | [Five-reducer timing appendix](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md) | Twenty descriptive full-amplitude timing lanes cover four SM processes, including a fresh QCD `2→4` process. All twenty pass their retained `3e-6` and `1e-8` numerical gates. Shared-host timings do not satisfy precise performance acceptance. |
 | [Stability comparisons](stability_appendix_c/current-source-qcd3-raw-delivery-2/README.md) | Current-source QCD Zgg comparisons supplement the preserved Appendix-C-style plots. Internal consistency estimates, unavailable diagnostics and independent numerical error retain distinct scopes. |
 | [Generic CMS prototype](experiments/generic-owned-CMS-normal-qualification-1/README.md) | Three ordinary controls agree bit for bit. Two forward fixtures retain legacy `420` refusals and candidate-reported `323` QP acceptance. Both caches are disabled; these self-check observations establish neither independent finite accuracy nor generic production coverage. |
@@ -77,5 +80,5 @@ selection. Their references to DSO `095e`, candidate `c91cb85f` and pending
 successor physics describe those earlier snapshots. Frozen checkpoint documents
 may likewise describe the report page count at their creation. The current
 PDF and its reproduction commands are selected by the [current report ledger](report-build.json)
-and [matching report instructions](experiments/ew-qp-mass-report-1/rendered-1/README.md).
+and [matching report instructions](experiments/zggg-five-backend-timing-report-1/rendered-1/README.md).
 No historical failure or unmeasured result is converted into a pass here.

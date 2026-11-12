@@ -1,0 +1,82 @@
+{
+  "closed": true,
+  "files": {
+    "README.md": {
+      "bytes": 5635,
+      "sha256": "ae92ae3526d1cd45e2e049fb0fe2ce233dc921a9fddb5d3303164459cee26dec"
+    },
+    "derive_zggg_timings.py": {
+      "bytes": 21254,
+      "sha256": "a183282fa9fc920392f1c2f3c22608a2eca2042cee45b7f8c55c34fffe3d4f17"
+    },
+    "independent-review.json": {
+      "bytes": 1504,
+      "sha256": "23af7c24db82ebe5fc7317184a6126f32fa19b780c9f95d4ccc1ab10dd75ea63"
+    },
+    "layout-text.txt": {
+      "bytes": 4824,
+      "sha256": "3b78f6e54496b807faa6818990d7783fe80906fa9856028ea672c9b245c34b30"
+    },
+    "page-1.png": {
+      "bytes": 329196,
+      "sha256": "90115f7d05e6aa33a45ffa492c6ab2b8ee8a4c9e6a95ab11839a98d6598f3548"
+    },
+    "pdffonts.txt": {
+      "bytes": 759,
+      "sha256": "e63f29e271391194aa3144c8814bf3543bc0df40ad4708d593694dd76b5d082b"
+    },
+    "pdfinfo.txt": {
+      "bytes": 468,
+      "sha256": "7ca3a304980654e2173344f03c11cfd9642d6daaa7c47f9c6a214a148fe80364"
+    },
+    "render-receipt.json": {
+      "bytes": 11856,
+      "sha256": "3851e359d724f63ad06593a135d1061630938b761b5d38a7de1ef5b6c2247759"
+    },
+    "source-path-reproduction.json": {
+      "bytes": 1302,
+      "sha256": "b28e07fa4ed30d7f414cb914fd10614e3d1774729730f7385a7b9d3685e72087"
+    },
+    "style-provenance.json": {
+      "bytes": 732,
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    },
+    "timing-summary.csv": {
+      "bytes": 1424,
+      "sha256": "c0117c65a2b40d1a2d5d78ce8fcd40ede2287e146a9402cfca45aa43bc21171f"
+    },
+    "visual-review.json": {
+      "bytes": 524,
+      "sha256": "c63bd078f468c1b6f25cdb9be8f385a634b63e48a95c8c168c4f64977d9012e5"
+    },
+    "zggg-source-binding.json": {
+      "bytes": 377,
+      "sha256": "64989dfbc859beda0c52a65d31e82c26c87e173d9cd3f94efb2628e1953facc0"
+    },
+    "zggg-timing-data.json": {
+      "bytes": 6773078,
+      "sha256": "57a644e5cf076c4854cdb44898807da8d04ac20e3b734eeb2d4cbb7e4c36cc7f"
+    },
+    "zggg-timing-selection.json": {
+      "bytes": 725,
+      "sha256": "f47c93c68e5dfc0bd502458a99ee7b1f10dabd4b5f05ddd9e5929a0d856fb8e3"
+    },
+    "zggg-timing-supplement.pdf": {
+      "bytes": 75997,
+      "sha256": "b30762fe56e19d25c5d0626c0a4b82bef7b80ee6fc1d630d4362cf260ca3588f"
+    },
+    "zggg-timings.typ": {
+      "bytes": 4314,
+      "sha256": "9ace0e7ea5d8d9fb7be65b01012b23fe5c50427f6dcefa917e4321e2438b48df"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "page_count": 1,
+  "performance_acceptance": false,
+  "production_source_promotion": false,
+  "schema": "madloop-zggg-original-timing-render-capsule-v1"
+}

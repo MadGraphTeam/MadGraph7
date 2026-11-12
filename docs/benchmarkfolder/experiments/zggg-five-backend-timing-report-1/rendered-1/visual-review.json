@@ -1,0 +1,18 @@
+{
+  "PDF": {
+    "bytes": 75997,
+    "sha256": "b30762fe56e19d25c5d0626c0a4b82bef7b80ee6fc1d630d4362cf260ca3588f"
+  },
+  "image": {
+    "bytes": 329196,
+    "sha256": "90115f7d05e6aa33a45ffa492c6ab2b8ee8a4c9e6a95ab11839a98d6598f3548"
+  },
+  "native_executions": 0,
+  "overflow_observed": false,
+  "page_count": 1,
+  "readable": true,
+  "reviewer": "/root/zggg_report_prepare",
+  "schema": "madloop-zggg-timing-report-visual-review-v1",
+  "stray_template_text_observed": false,
+  "timing_palette_and_style_preserved": true
+}

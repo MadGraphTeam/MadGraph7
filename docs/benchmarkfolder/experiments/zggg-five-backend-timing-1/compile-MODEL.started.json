@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "make",
+    "--always-make",
+    "-j2"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/zggg-five-backend-timing-1/output/Source/MODEL",
+  "identity": {
+    "parent_pid": 3816752,
+    "pid": 3909327,
+    "process_group": 3909327,
+    "session": 3909327,
+    "start_time_ticks": 254246425,
+    "state": "R"
+  },
+  "pid": 3909327
+}

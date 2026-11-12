@@ -1,0 +1,32 @@
+{
+  "mg-additional-source.tar": {
+    "compressed": {
+      "bytes": 356170,
+      "sha256": "aa322b5bd388e16244e0da26f854eb456550d0c852d010b18b76769925773dbd"
+    },
+    "decompressed_identity_verified": true,
+    "gzip_filename_header": "",
+    "gzip_mtime": 0,
+    "original": {
+      "bytes": 1443840,
+      "sha256": "0c973879360c6e622608d78aaccecaadcb9e7e2a2314fa4619308ef9b2b56c4b"
+    },
+    "original_private_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/zggg-five-backend-timing-1/mg-additional-source.tar",
+    "retained_path": "source-archives/mg-additional-source.tar.gz"
+  },
+  "mg-source.tar": {
+    "compressed": {
+      "bytes": 16397022,
+      "sha256": "408464bfc83c7d87dc45e52fa819c99f0f759e2cea7cbce1ae233ec36e25b2f1"
+    },
+    "decompressed_identity_verified": true,
+    "gzip_filename_header": "",
+    "gzip_mtime": 0,
+    "original": {
+      "bytes": 81633280,
+      "sha256": "83333481403311e9d3615d6f1b5cbdd571c4bd11077e2050c5798d5aa2f800a0"
+    },
+    "original_private_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/zggg-five-backend-timing-1/mg-source.tar",
+    "retained_path": "source-archives/mg-source.tar.gz"
+  }
+}

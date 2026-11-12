@@ -1,0 +1,64 @@
+QCD 𝑢𝑢 → 𝑍𝑔𝑔𝑔: five reducers
+  Descriptive timings on a shared host. This 2 → 4 study requests all five reducers; TIRust times out before READY. There is no
+  CPU reservation or formal performance-acceptance claim. The preceding 44 pages are preserved.
+
+
+GNU Fortran (GCC) 15.2.0; AMD EPYC 9754 128-Core Processor; affinity CPU 12; one-thread settings; shared, unreserved host. Exact flags/
+runtime hashes are retained.
+                                                                                                          √
+CLI generation: loop_sm; u u~ > z g g g [virt=QCD]. Each traversal uses all 10 saved points at 𝑠 = 1000 GeV.
+This pilot uses the unselected first ten of a 100-point fixture frozen before amplitudes; no failed point is removed. The
+main campaign remains separate. Ten frozen Latin/reversed cycles skip unavailable TIRust slots; four live positions are
+near-balanced. Two calibrations fix one full traversal per timed batch.
+Table 1: Warmed full-amplitude wall time: median ± unscaled MAD. Ratios use matched cycles relative to NinjaRS8; bracketed 95% intervals
+are descriptive.
+Reducer              READY s        Warmed ms/point              Ratio / 8              Accepted timed                  3e-6 / 1e-8
+                                    median ± MAD                                        backend:precision calls
+
+CutTools             41.65          3708 ± 118.6                 ×1.056                 1:DP=100                        pass / pass
+                                                                 [1.023, 1.093]
+
+Ninja                36.91          3490 ± 81.71                 ×0.9715                6:DP=100                        pass / miss
+                                                                 [0.9505, 1.017]
+
+COLLIER              38.91          3950 ± 114.0                 ×1.111                 7:DP=100                        pass / miss
+                                                                 [1.070, 1.127]
+
+NinjaRS              35.36          3564 ± 63.52                 ×1.000                 8:DP=100                        pass / miss
+                                                                 [1.000, 1.000]
+
+TIRust               600 s          unavailable                  —                      —                               unqualified
+                     timeout
+
+
+Fortran SYSTEM_CLOCK wall time is divided by actual points × loops. The minimum whole-cohort batch exceeds
+the nominal 1.1 s target; no points are thinned. 95% intervals use 10,000 percentile bootstrap resamples of the median
+matched-cycle ratio (seed 20261112), resampling ten whole cycles; they do not test baseline acceptance. Actual timed
+batches span 33.64–41.91 s. READY includes the first amplitude and warmup, excluding startup and SETPARA. TIRust
+was cleanly terminated at its original 600 s READY budget; its initialization and warmed timings are unavailable.
+Numerical results and precision
+All four completed lanes pass MadLoop’s 3e-6 regression criterion against same-source CutTools DP. Reducers 6/7/8
+miss the separate 1e-8 target in finite terms at points 1, 2, 4, 5; the maximum raw relative residual is 4.2473e-08 at point
+4. Overall/sole-order duplicate rows are not extra physical points. TIRust’s incomplete ten-point lane is unqualified.
+Its point-4 QP finite value clusters with 6/7/8 (spread 4.765e-12); this neither supplies a timing nor establishes absolute
+truth or fault. Every miss and the original timeout remain retained.
+All four timed lanes have native-DP accepted outputs. TIRust’s partial warmup has 4 calls (9:DP=1, 9:QP=3); these are
+neither timed counts nor a complete ten-point traversal. Accepted counts do not expose internal retries or exception
+flags. Cards use full finite+UV+IR (LoopPoleMode=0), explicit COLLIER poles and normal stability/rescue. Four READY
+lanes have live DSO-map witnesses. TIRust9 has executable/loader/ldd/shared-file binding, with no startup live-map
+claim.
+
+  Hua-Sheng’s local TODO remains: source-matched baseline/rescue-chain comparisons and upper-95% paired runtime-ratio bound
+  ≤1.05 for every main process.
+
+
+TIRust      source:     10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1;                DSO       SHA-256        (runtime    scope  described    above):
+85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0. Original closed capsule: experiments/zggg-five-backend-
+timing-1; index SHA-256 e401cf5d4efb7708c277172eaa3be9f29bcadf54c5b3b484e7311109cf9a26cb. Reproduce with source binding, pure derivation and CSV.
+CSV retains full precision. Style: pyAmpliCol 7266c1600f6e…; complete revision and attribution are in style-provenance.json.
+
+
+
+
+                                                                     1/1
+

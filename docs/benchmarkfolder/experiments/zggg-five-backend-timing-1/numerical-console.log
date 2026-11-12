@@ -1,0 +1,55 @@
+INITIALIZE backend=1
+READY backend=1 seconds=41.65379714
+INITIALIZE backend=6
+READY backend=6 seconds=36.907466461
+INITIALIZE backend=7
+READY backend=7 seconds=38.906438485
+INITIALIZE backend=8
+READY backend=8 seconds=35.364457115
+INITIALIZE backend=9
+FAILED backend=9 ProtocolError('Worker protocol timeout; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/zggg-five-backend-timing-1/measurements/lanes/9/output.log')
+CALIBRATED backend=1 loops=1
+CALIBRATED backend=6 loops=1
+CALIBRATED backend=7 loops=1
+CALIBRATED backend=8 loops=1
+CYCLE 1 backend=1 ms=3849.1154752
+CYCLE 1 backend=6 ms=3456.5575873999996
+CYCLE 1 backend=7 ms=3972.6898138
+CYCLE 1 backend=8 ms=3522.2709243
+CYCLE 2 backend=6 ms=3364.4750731000004
+CYCLE 2 backend=7 ms=3823.7571725000003
+CYCLE 2 backend=8 ms=3636.5636594999996
+CYCLE 2 backend=1 ms=3738.9400025
+CYCLE 3 backend=7 ms=3839.0423229000003
+CYCLE 3 backend=8 ms=3669.7523886
+CYCLE 3 backend=1 ms=4065.1666184
+CYCLE 3 backend=6 ms=3692.5564872
+CYCLE 4 backend=8 ms=3580.3962359
+CYCLE 4 backend=1 ms=4075.1534764
+CYCLE 4 backend=6 ms=3665.8422946
+CYCLE 4 backend=7 ms=4007.2594147
+CYCLE 5 backend=1 ms=3641.7646936
+CYCLE 5 backend=6 ms=3395.8015101
+CYCLE 5 backend=7 ms=3840.1160431000003
+CYCLE 5 backend=8 ms=3530.8854876
+CYCLE 6 backend=8 ms=3548.5838674
+CYCLE 6 backend=7 ms=3801.1223936999995
+CYCLE 6 backend=6 ms=3369.3396931
+CYCLE 6 backend=1 ms=3597.8465921999996
+CYCLE 7 backend=1 ms=3631.0438173000002
+CYCLE 7 backend=8 ms=3688.4246714
+CYCLE 7 backend=7 ms=4067.0822344
+CYCLE 7 backend=6 ms=3522.8899514
+CYCLE 8 backend=6 ms=3440.4193896
+CYCLE 8 backend=1 ms=3835.1018441999995
+CYCLE 8 backend=8 ms=3619.4543867999996
+CYCLE 8 backend=7 ms=4076.3277141000003
+CYCLE 9 backend=7 ms=4190.968599299999
+CYCLE 9 backend=6 ms=3559.2163899
+CYCLE 9 backend=1 ms=3578.908845
+CYCLE 9 backend=8 ms=3383.7970605
+CYCLE 10 backend=8 ms=3486.3060249
+CYCLE 10 backend=7 ms=3927.4588728
+CYCLE 10 backend=6 ms=3546.7320464
+CYCLE 10 backend=1 ms=3676.0794292999994
+CLOSED numerical observations; pure replay summary is next

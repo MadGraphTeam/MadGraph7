@@ -1,0 +1,21 @@
+{
+  "case_ids": [
+    "qcd_n4_uux_zggg"
+  ],
+  "closed": true,
+  "confidence_intervals": true,
+  "new_native_physics_evaluations": 0,
+  "packets": [
+    {
+      "index_name": "index.json",
+      "index_sha256": "e401cf5d4efb7708c277172eaa3be9f29bcadf54c5b3b484e7311109cf9a26cb",
+      "path": "experiments/zggg-five-backend-timing-1"
+    }
+  ],
+  "performance_acceptance": false,
+  "production_source_promotion": false,
+  "schema": "madloop-zggg-timing-report-selection-v1",
+  "style_sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e",
+  "tirust_dso_sha256": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0",
+  "tirust_source_revision": "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1"
+}

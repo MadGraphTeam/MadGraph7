@@ -1,0 +1,28 @@
+{
+  "actual_cli_counts": {
+    "born": 50,
+    "equivalent_loop": 748,
+    "loop": 2387,
+    "r2": 1168,
+    "uv": 1932
+  },
+  "failed_attempts_retained": [
+    "failed-start-1",
+    "failed-compile-1"
+  ],
+  "files": {
+    "compilation-pending.json": "faeea84834b2437432bffee3579efa6845a34aafa5b4b5cad9c17b7fa300b179",
+    "compile-DHELAS.log": "6dc19c9b050aee530785816c65f859120f776e692cc71fda55620d67db398b19",
+    "compile-MODEL.log": "542748b864f5b33e43942d794f63ab6401b55737372a2778be055be4ed9b4964",
+    "compile-process.log": "4608ce79175ee895dd7d6f355c3f4413a66811630b25c95aadeeb9d79e2fd87d",
+    "generate.mg5": "9a94444db1042650572d6d8c4c2b6deb602fe1e271eeb148f52b25332b8e4048",
+    "generation.log": "e13b5c82242400c899b28ff46648b821e8677f5ce72fdafc7152d1328caf34b7",
+    "mg-additional-source.tar": "0c973879360c6e622608d78aaccecaadcb9e7e2a2314fa4619308ef9b2b56c4b",
+    "mg-source.tar": "83333481403311e9d3615d6f1b5cbdd571c4bd11077e2050c5798d5aa2f800a0"
+  },
+  "generated_loop_groups": 1160,
+  "max_propagators": 6,
+  "max_rank": 5,
+  "mg_revision": "cd0145922977fcfdc4e3cb3183ddc974c31a7897",
+  "native_numerical_executions": 0
+}

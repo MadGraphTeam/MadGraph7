@@ -4,7 +4,9 @@ The [current acceptance selection](CURRENT_STATUS.md) distinguishes production
 evidence, unapplied experiments and preserved historical indices.
 The [OEM signing and rebuild note](OEM_SIGNING.md) records the signed TIRust
 pin, installation upgrade and its separate qualification. Existing measured
-campaigns and the 44-page PDF retain their original source identities. The
+campaigns and the preserved 44-page prefix retain their original source
+identities. The current 45-page PDF adds the separately bound original
+signed-source Zggg timing pilot. The
 [fresh signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
 provides the current installation, numerical, timing and report commands. Its
 eleven cases are registered with all new numerical/runtime qualifications pending.
@@ -15,16 +17,25 @@ targets `main`.
 
 **Current status.** Production registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
-target. The [44-page benchmark PDF](benchmark.pdf) preserves all preceding 43
+target. The [45-page benchmark PDF](benchmark.pdf) preserves all preceding 44
 pages, including [two pages of actual shared-host timings](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md)
 for four SM processes and all five reducers, including a fresh QCD 2→4
 four-lepton process and the [implementation qualifications](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md).
 It includes [one page on the analytic Fortran repair](experiments/fortran-analytic-repair-report-1/rendered-1/README.md)
 with colored paired timings, and adds the [ordinary EW and threshold qualification page](experiments/ew-qp-mass-report-1/rendered-1/README.md).
-The new page separates exact ordinary DP agreement from both threshold refusals.
+The EW page separates exact ordinary DP agreement from both threshold refusals.
+The added [QCD Zggg timing page](experiments/zggg-five-backend-timing-report-1/rendered-1/README.md)
+reports the unselected first ten of a frozen 100-point fixture, ten cycles and
+40 complete timed batches for CutTools, Ninja, COLLIER and NinjaRS. Their warmed
+medians are respectively 3707.51, 3489.72, 3950.07 and 3564.49 ms per point.
+TIRust did not reach READY within its original 600-second budget; its timing
+remains unavailable, and its partial DP/QP warmup is retained separately. All
+four completed lanes pass `3e-6`; reducers 6/7/8 miss the separate `1e-8` target
+at finite-term points 1, 2, 4 and 5. The [five-row CSV](experiments/zggg-five-backend-timing-report-1/rendered-1/timing-summary.csv)
+retains exact values, MAD, paired descriptive intervals and usage counts.
 Typst source and reproduction inputs accompany each appendix; the
 [failed document-build history](experiments/ew-qp-mass-report-1/document-history-1/README.md) is retained separately. The experimental
-patches remain unapplied. All twenty timing lanes pass the retained `3e-6` and
+patches remain unapplied. The earlier twenty timing lanes pass the retained `3e-6` and
 ordinary `1e-8` numerical gates; these descriptive timings are separate from
 local performance acceptance. The reusable
 [20-row timing CSV](experiments/current-source-five-backend-timing-report-1/rendered-1/timing-summary.csv)
@@ -42,25 +53,32 @@ remain unqualified.
 
 
 The matching owner for the current canonical report is
-`build_ew_qualification_report.py`. Verify it without launching programs:
+`build_zggg_timing_report.py`. Verify it without launching programs:
 
 ```sh
-python3 -B docs/benchmarkfolder/build_ew_qualification_report.py --root docs/benchmarkfolder --verify-only
+python3 -B docs/benchmarkfolder/build_zggg_timing_report.py --root docs/benchmarkfolder --verify-only
 ```
 
-Reproduce the 44-page composite into a fresh output path:
+Reproduce the 45-page composite into a fresh output path:
 
 ```sh
-python3 -B docs/benchmarkfolder/build_ew_qualification_report.py --root docs/benchmarkfolder \
-  --archive docs/benchmarkfolder/history/report-before-ew-qualification-1 \
-  --archive-index-sha256 ba450936ed08d52f02831aa6e0662b811d852a51393dc83e077416018bba68a0 \
-  --report docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1 \
-  --report-index-sha256 0d083085e20a4ba8b836727df2a9ae49eb16dd83684ccd228eb18eb77f2d7b50 \
-  --output /tmp/madloop-tirust-benchmark44.pdf
+python3 -B docs/benchmarkfolder/build_zggg_timing_report.py --root docs/benchmarkfolder \
+  --archive docs/benchmarkfolder/history/report-before-zggg-timing-1 \
+  --archive-index-sha256 71143dd678e81ab4862ab01794cfbe7c59915a47766a0a569f543d2eef059974 \
+  --report docs/benchmarkfolder/experiments/zggg-five-backend-timing-report-1/rendered-1 \
+  --report-index-sha256 47e117760ba63517fba8114cc7239abcb1fc429a8283e24b340255146a903f8e \
+  --output /tmp/madloop-tirust-benchmark45.pdf
 ```
 
+The archived original 44-page PDF, ledger and EW owner remain byte-identical under
+`history/report-before-zggg-timing-1`. The current ledger proves preservation
+of all 44 prefix pages and the new timing tail in paired 144 dpi RGB pixels,
+text, fonts and geometry. Its PDF SHA256 is
+`fa83602d57a43f25bc469e8d7185ba54b3236031eb861b12193a8788afd38678`.
 The checkpoint sections below retain their historical commands and page
-counts; use this owner for the current canonical PDF.
+counts; use this owner for the current canonical PDF. Precise local baseline/
+rescue-chain acceptance and the original TIRust timeout remain open; later
+initialization-repair results must be appended as a separately bound phase.
 
 The [generic CMS prototype's normal run](experiments/generic-owned-CMS-normal-qualification-1/README.md)
 now closes six fresh workers at `MLStabThres=1e-6`, with both caches disabled.
@@ -924,8 +942,8 @@ in the campaign report-snapshots directory.
 The closed11 PDF, ledger, context and changed report sources from commit
 `772b15ed39cc` are preserved under `history/report-before-closed-provisional/`.
 
-The report builders do not run numerical measurements. The current timing
-`report-build.json` binds the archived 39-page PDF and ledger, sealed two-page
+The report builders do not run numerical measurements. The historical five-backend timing
+ledger binds the archived 39-page PDF and ledger, sealed two-page
 timing tail, final PDF and page-preservation receipt. The archived composite
 ledger separately retains its original35-page ledger and four-page CMS tail. The archived original
 ledger retains its exact Typst version, creation timestamp and font search paths. Typst 0.15.1, Libertinus

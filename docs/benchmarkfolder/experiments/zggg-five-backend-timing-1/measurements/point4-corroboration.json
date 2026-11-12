@@ -1,0 +1,82 @@
+{
+  "cluster_backends": [
+    6,
+    7,
+    8,
+    9
+  ],
+  "cluster_relative_spread": 4.7654762114449835e-12,
+  "coefficient": "finite",
+  "cuttools_raw_relative_residuals": {
+    "6": 4.247340758311359e-08,
+    "7": 4.246871052255223e-08,
+    "8": 4.246864210710452e-08,
+    "9": 4.246884035186672e-08
+  },
+  "inference": "Independent reducers 6/7/8 and available TIRust 9 partial QP output cluster more closely than their difference from the CutTools 1 DP value. This does not identify a mathematical truth or automatically assign fault. The separate 3e-6 regression criterion remains the qualification gate.",
+  "input_sha256": {
+    "lanes/1/learning.json": "8973e680820abe654f9981f64374a9f7a15d8b0ec135a63bbe796750cd72ec8a",
+    "lanes/6/learning.json": "cf5e7c7aac14b2539fde55c4ef99939e1c776d215342239db3ab62af3ae156b9",
+    "lanes/7/learning.json": "ca7c6ffe4f20b2fc6503ae9a1c72706e4dfa9b3d3b2c24dfeb7fbcfded8987a1",
+    "lanes/8/learning.json": "7b683d94dca63dbcff08c3dfa0b772411e1da2f35bf0775d801273c26c358fe1",
+    "lanes/9/failed-startup-raw/warmup.dat": "e94855b28c75cebd3ba0f18b7489db987d144e35892b64fcab0db62b64b2c70f"
+  },
+  "new_native_evaluations": 0,
+  "order": 0,
+  "performance_acceptance": false,
+  "point": 4,
+  "records": {
+    "1": {
+      "finite": -6.460888836503822e-11,
+      "precision": "DP",
+      "source_phase": "last complete steady warm-up traversal",
+      "status": 211
+    },
+    "6": {
+      "finite": -6.460889110919798e-11,
+      "precision": "DP",
+      "source_phase": "last complete steady warm-up traversal",
+      "status": 216
+    },
+    "7": {
+      "finite": -6.460889110889451e-11,
+      "precision": "DP",
+      "source_phase": "last complete steady warm-up traversal",
+      "status": 217
+    },
+    "8": {
+      "finite": -6.460889110889009e-11,
+      "precision": "DP",
+      "source_phase": "last complete steady warm-up traversal",
+      "status": 218
+    },
+    "9": {
+      "call": 4,
+      "finite": -6.46088911089029e-11,
+      "precision": "QP",
+      "source_phase": "partial steady warm-up trace; no complete READY/timing qualification inferred",
+      "status": 323
+    }
+  },
+  "schema": "madloop-zggg-point4-finite-corroboration-v1",
+  "tirust_partial_warmup": {
+    "backend_precision_counts": {
+      "9:DP": 1,
+      "9:QP": 3
+    },
+    "calls": 4,
+    "complete_ten_point_traversal": false,
+    "phase": "partial steady warm-up",
+    "points_one_based": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "status_counts": {
+      "219": 1,
+      "323": 3
+    },
+    "timing_available": false
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 3816752,
+        "pid": 3909327,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246425,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3909327,
+        "pid": 3909428,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246443,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3909327,
+        "pid": 3909439,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246445,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3909428,
+        "pid": 3909437,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246445,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3909439,
+        "pid": 3909442,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246446,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3909327,
+        "pid": 3909541,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246466,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3909327,
+        "pid": 3909683,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246483,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3909327,
+        "pid": 3909692,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246484,
+        "state": "S"
+      },
+      {
+        "parent_pid": 3909692,
+        "pid": 3909699,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246486,
+        "state": "R"
+      },
+      {
+        "parent_pid": 3909683,
+        "pid": 3909691,
+        "process_group": 3909327,
+        "session": 3909327,
+        "start_time_ticks": 254246484,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "returncode": 0,
+  "sha256": "542748b864f5b33e43942d794f63ab6401b55737372a2778be055be4ed9b4964"
+}

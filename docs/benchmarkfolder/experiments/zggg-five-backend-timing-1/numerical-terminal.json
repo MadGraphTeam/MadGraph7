@@ -1,0 +1,68 @@
+{
+  "cap_seconds": 3600.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 4079551,
+        "pid": 4079572,
+        "process_group": 4079572,
+        "session": 4079572,
+        "start_time_ticks": 254291979,
+        "state": "R"
+      },
+      {
+        "parent_pid": 4079572,
+        "pid": 4084605,
+        "process_group": 4084605,
+        "session": 4084605,
+        "start_time_ticks": 254293107,
+        "state": "R"
+      },
+      {
+        "parent_pid": 4079572,
+        "pid": 4104010,
+        "process_group": 4104010,
+        "session": 4104010,
+        "start_time_ticks": 254297841,
+        "state": "S"
+      },
+      {
+        "parent_pid": 4079572,
+        "pid": 4120959,
+        "process_group": 4120959,
+        "session": 4120959,
+        "start_time_ticks": 254302206,
+        "state": "S"
+      },
+      {
+        "parent_pid": 4079572,
+        "pid": 4149818,
+        "process_group": 4149818,
+        "session": 4149818,
+        "start_time_ticks": 254306872,
+        "state": "S"
+      },
+      {
+        "parent_pid": 4079572,
+        "pid": 4170874,
+        "process_group": 4170874,
+        "session": 4170874,
+        "start_time_ticks": 254310968,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60,
+  "console_sha256": "e15419155b4964db7d6d05c8473f9c9242469a7946d39d9b0600993ec8a9cc67",
+  "controller_sha256": "154711f0312162e1b892801b2e8d8e58eaf6cbd6b140a70ddce753c222bc2f6a",
+  "cpu_reservation": false,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "elapsed_seconds": 2568.6454347511753,
+  "performance_acceptance": false,
+  "physics_regression_pass": false,
+  "returncode": 0,
+  "status": "observations-collected"
+}

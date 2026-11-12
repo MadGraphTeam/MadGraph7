@@ -1,0 +1,22 @@
+{
+  "closed": true,
+  "failed_backend": 9,
+  "failure": "600 second READY timeout, all partial evidence retained",
+  "matched_owned_processes_alive": [],
+  "mutex_free_at_check": true,
+  "next_native_window": "initialization_profile_prepare baseline-1 only",
+  "performance_acceptance": false,
+  "physics_regression_pass": false,
+  "reported_survivors": [],
+  "schema": "madloop-zggg-native-release-v1",
+  "shared_unchanged": true,
+  "ten_cycles_closed": true,
+  "terminal_sha256": "3d2514f4fc3f05fdec968120c82fc4a13290e707149589d2b6dfb422ad63ecfe",
+  "timed_backends": [
+    1,
+    6,
+    7,
+    8
+  ],
+  "utc": "2026-11-12T19:30:38.531823+00:00"
+}
