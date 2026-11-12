@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+    "--version"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "environment": {
+    "RAYON_NUM_THREADS": "1"
+  },
+  "owned_session": 1801989,
+  "start_new_session": false,
+  "started_monotonic": 2519769.797623686
+}

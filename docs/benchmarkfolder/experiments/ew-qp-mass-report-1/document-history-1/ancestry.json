@@ -1,0 +1,222 @@
+{
+  "attempt2_partial_PDF_identity_excluded_bytes": {
+    "bytes": 69661,
+    "sha256": "46dc2126a33e508656a7b7df2cfaa9b3e1d2ca5c36e74036dfcf136e263d2363",
+    "source": ".tirust-build/ew-qp-mass-report-document-work-2/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification-supplement.pdf"
+  },
+  "files": {
+    "attempt1/prepare-terminal.json": {
+      "bytes": 864,
+      "sha256": "940a1453b27f553ee981a2a8655ead01c788f78bdb27bdb8ca0b01ab13d932f0",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/prepare/terminal.json"
+    },
+    "attempt1/render/actual-limits.json": {
+      "bytes": 238,
+      "sha256": "bbf4dccad3bf1445bb0d91e87027d2e486231553bc34eb76020af0df506ba32d",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/actual-limits.json"
+    },
+    "attempt1/render/admission.json": {
+      "bytes": 949,
+      "sha256": "382c15d7e4deb5d15eae1f930e92aa470fbe3991b4e4af9032ad5accb289756a",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/admission.json"
+    },
+    "attempt1/render/commands/0001.command.json": {
+      "bytes": 279,
+      "sha256": "c7cc1cf68d8f8dcb6cdc3db97746a41b2fe0df0c6be8d3eeafa06fa4537095d9",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0001.command.json"
+    },
+    "attempt1/render/commands/0001.stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0001.stderr.txt"
+    },
+    "attempt1/render/commands/0001.stdout.txt": {
+      "bytes": 24,
+      "sha256": "20ad20e86d85d168643624dc3e3388e7cbcc5a8384d17835db3a0ab04c496fba",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0001.stdout.txt"
+    },
+    "attempt1/render/commands/0001.terminal.json": {
+      "bytes": 398,
+      "sha256": "4a7e259ea64c9e931b997dbdff40920f25080bd9dcfb0aad22f4102a2bb85d4a",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0001.terminal.json"
+    },
+    "attempt1/render/commands/0002.command.json": {
+      "bytes": 949,
+      "sha256": "b2bea0b2d294e44089ee8bf127870a040c592215e6cc7314e754b6b84cd0ab32",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0002.command.json"
+    },
+    "attempt1/render/commands/0002.stderr.txt": {
+      "bytes": 371,
+      "sha256": "d200e8ee5a00cf7a75974a13ea74affe4f68f6b43935ac5150dae6505f1b976a",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0002.stderr.txt"
+    },
+    "attempt1/render/commands/0002.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0002.stdout.txt"
+    },
+    "attempt1/render/commands/0002.terminal.json": {
+      "bytes": 1421,
+      "sha256": "44917a6949837bcb88278aa096a5191884a40fb9d08920777f20c0ee5a23d5a5",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/commands/0002.terminal.json"
+    },
+    "attempt1/render/console.log": {
+      "bytes": 1620,
+      "sha256": "97d85ae818d08b725b893133e19854cfad3d32c2f49bf28ab0cd1527f1246313",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/console.log"
+    },
+    "attempt1/render/started.json": {
+      "bytes": 377,
+      "sha256": "3e86adb798daa6a302b14725bfb20725ff8cd0c05a96fa9ac9bceda25b046d18",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/started.json"
+    },
+    "attempt1/render/terminal.json": {
+      "bytes": 1047,
+      "sha256": "b1c5419c743f61bacae116d66152eb76e082de4831721d1eb47340659053e0b5",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-1/render/terminal.json"
+    },
+    "attempt1/source-index.json": {
+      "bytes": 2061,
+      "sha256": "51edd02cc0463fdb084e4fba1046184cc6e505642286aff83c7a89eadc63d542",
+      "source": ".tirust-build/ew-qp-mass-report-document-proposal-1/source-index.json"
+    },
+    "attempt2/prepare-terminal.json": {
+      "bytes": 864,
+      "sha256": "70e93c27b4404e599c08d3a47296685704229a4f3f221f34e8e0712356eecafb",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/prepare/terminal.json"
+    },
+    "attempt2/render/actual-limits.json": {
+      "bytes": 238,
+      "sha256": "6374e019376ca29f8dcbbed388d9361ca70276b0ff96a7a159e9bb0e5b66dd4f",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/actual-limits.json"
+    },
+    "attempt2/render/admission.json": {
+      "bytes": 949,
+      "sha256": "736bcf8a3861087ceff99cd90492bb4641306995b0c14292d906c3cef4b64b52",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/admission.json"
+    },
+    "attempt2/render/commands/0001.command.json": {
+      "bytes": 332,
+      "sha256": "384cd852f768720a31fa1b3d59bf90ca7e7772b3a392225069db2cb75b8e8a5e",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0001.command.json"
+    },
+    "attempt2/render/commands/0001.stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0001.stderr.txt"
+    },
+    "attempt2/render/commands/0001.stdout.txt": {
+      "bytes": 24,
+      "sha256": "20ad20e86d85d168643624dc3e3388e7cbcc5a8384d17835db3a0ab04c496fba",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0001.stdout.txt"
+    },
+    "attempt2/render/commands/0001.terminal.json": {
+      "bytes": 449,
+      "sha256": "07bd50d41bdfb1f3923b562ad7b87528c46dd1a104017568d7abc430a918e646",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0001.terminal.json"
+    },
+    "attempt2/render/commands/0002.command.json": {
+      "bytes": 1002,
+      "sha256": "c7219dbf5e50cc03b7a5361ab0370aae719d7d701bfb08f04cdcc13a327b9fd2",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0002.command.json"
+    },
+    "attempt2/render/commands/0002.stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0002.stderr.txt"
+    },
+    "attempt2/render/commands/0002.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0002.stdout.txt"
+    },
+    "attempt2/render/commands/0002.terminal.json": {
+      "bytes": 1094,
+      "sha256": "cba517328177ee17c3f5c5606d2053c555bb970ebaca2e317ce81893e22fe735",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0002.terminal.json"
+    },
+    "attempt2/render/commands/0003.command.json": {
+      "bytes": 544,
+      "sha256": "ce1e329b104a0db323e92a202c039bff626a28b89b39f1783c6f50c63625892a",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0003.command.json"
+    },
+    "attempt2/render/commands/0003.stderr.txt": {
+      "bytes": 54,
+      "sha256": "1caba36976fd3bbea2009a8fa6ea9c450e613e879e11190e8757b7df6e9f7b71",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0003.stderr.txt"
+    },
+    "attempt2/render/commands/0003.stdout.txt": {
+      "bytes": 468,
+      "sha256": "4b2c71378b8340a70a2e151a740fe75a1f5b72b3e79983f16a2f51318a4be08f",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0003.stdout.txt"
+    },
+    "attempt2/render/commands/0003.terminal.json": {
+      "bytes": 1183,
+      "sha256": "6abd19785c643e8850aa7bcbe8bb2a11116d339f1fa64d939f44b4e47676ec0c",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0003.terminal.json"
+    },
+    "attempt2/render/commands/0004.command.json": {
+      "bytes": 570,
+      "sha256": "767a51bb073b70576aebadc4f8e9d936e7f67412b2e3fdacc9d8002e0a9a5c58",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0004.command.json"
+    },
+    "attempt2/render/commands/0004.stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0004.stderr.txt"
+    },
+    "attempt2/render/commands/0004.stdout.txt": {
+      "bytes": 4119,
+      "sha256": "0849e683f0816864a72599bca57b08934af283d8c0db029684130568ba26756e",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0004.stdout.txt"
+    },
+    "attempt2/render/commands/0004.terminal.json": {
+      "bytes": 4866,
+      "sha256": "4e7be1c9de2f4eb80c501db6f82b0e08d9ab5f1232667dad88f368be5d5e902d",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0004.terminal.json"
+    },
+    "attempt2/render/commands/0005.command.json": {
+      "bytes": 546,
+      "sha256": "56a8f1be2665dc1c093dbe26322af69b33f3d6e7bba4f39d59cdf46c06b91d73",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0005.command.json"
+    },
+    "attempt2/render/commands/0005.stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0005.stderr.txt"
+    },
+    "attempt2/render/commands/0005.stdout.txt": {
+      "bytes": 665,
+      "sha256": "e5d00eb153cca44514b1e6aa87822c6740e436d4947760705aac4e900dffc93a",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0005.stdout.txt"
+    },
+    "attempt2/render/commands/0005.terminal.json": {
+      "bytes": 1312,
+      "sha256": "bf3625ed80cfc1a93aa02ff4e2211b892f45f3580286883a2a9d9fcd48439596",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/commands/0005.terminal.json"
+    },
+    "attempt2/render/console.log": {
+      "bytes": 2093,
+      "sha256": "8af09b5241c6a9e95ee3fbd175b573b0effcf7c2193c0ad8f16f86bf2da591e0",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/console.log"
+    },
+    "attempt2/render/started.json": {
+      "bytes": 377,
+      "sha256": "dffa9e6255a3fbee9f2f92cde0549058b6866e0f5fde2bbdc873f27387f0ddc6",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/started.json"
+    },
+    "attempt2/render/terminal.json": {
+      "bytes": 1241,
+      "sha256": "b52d9722a3ccabc55e33a7a842f3cdffe4da5154d8826b2a19d3ad03091e04e5",
+      "source": ".tirust-build/ew-qp-mass-report-document-execution-2/render/terminal.json"
+    },
+    "attempt2/source-index.json": {
+      "bytes": 6578,
+      "sha256": "144a3b5c3ad94aee94cf9b9674557a4a35a3c08a9336ef941809125565555ff2",
+      "source": ".tirust-build/ew-qp-mass-report-document-proposal-2/source-index.json"
+    }
+  },
+  "scope": "Exact failed-render report metadata and source indices; no complete controller/source/clone replay claim",
+  "source_namespaces_complete": false,
+  "work_clones_packaged": false
+}

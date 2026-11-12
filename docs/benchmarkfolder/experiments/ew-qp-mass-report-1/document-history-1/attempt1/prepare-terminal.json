@@ -1,0 +1,31 @@
+{
+  "cap_seconds": 300.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1348283,
+        "pid": 1352339,
+        "process_group": 1352339,
+        "session": 1352339,
+        "start_time_ticks": 251883639,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60.0,
+  "deadline_monotonic": 2519126.104538838,
+  "pid": 1352339,
+  "resource_limits": {
+    "address_space_bytes": 8589934592,
+    "core_bytes": 0,
+    "file_bytes": 1073741824
+  },
+  "result_sha256": "c0c9458310b9ed9b76b0d57d604173454288ea2f25d4b427f9f8e66808dbc178",
+  "returncode": 0,
+  "source_index_sha256": "51edd02cc0463fdb084e4fba1046184cc6e505642286aff83c7a89eadc63d542",
+  "stage": "prepare",
+  "status": "passed"
+}

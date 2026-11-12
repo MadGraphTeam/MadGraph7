@@ -1,0 +1,25 @@
+{
+  "new_native_physics_evaluations": 0,
+  "packets": [
+    {
+      "index_name": "index.json",
+      "index_sha256": "48a8b22cdb652cb173ebe2714aab7cf8efee07ec5793b1a30ceedfabdec6b04a",
+      "label": "Ordinary EW exact-control qualification",
+      "path": "experiments/fortran-qp-mass-ew-qualification-1"
+    },
+    {
+      "index_name": "index.json",
+      "index_sha256": "df6f4e453f5787eb31d5bfd42d80030af61ce5cd36a1f9965e5e2a919337df15",
+      "label": "EW threshold refusal in both arms",
+      "path": "experiments/fortran-qp-mass-ew-threshold-qualification-1"
+    }
+  ],
+  "performance_acceptance": false,
+  "persistent_filter_learning_qualified": false,
+  "production_revision": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "production_source_promotion": false,
+  "schema": "madloop-tirust-ew-qualification-report-selection-v1",
+  "source_promoted": false,
+  "style_sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e",
+  "threshold_accepted_coefficient_comparison": null
+}

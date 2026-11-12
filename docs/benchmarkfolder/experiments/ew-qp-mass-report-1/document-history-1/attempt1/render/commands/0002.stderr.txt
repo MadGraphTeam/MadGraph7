@@ -1,0 +1,4 @@
+
+thread 'main' (1435234) panicked at /build/typst-0.15.1-vendor/source-registry-0/rayon-core-1.13.0/src/registry.rs:171:10:
+The global thread pool has not been initialized.: ThreadPoolBuildError { kind: IOError(Os { code: 11, kind: WouldBlock, message: "Resource temporarily unavailable" }) }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

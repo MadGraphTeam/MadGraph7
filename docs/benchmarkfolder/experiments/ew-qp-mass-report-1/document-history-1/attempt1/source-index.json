@@ -1,0 +1,64 @@
+{
+  "appendix_source_sha256": "a68166a04f3ac6c0a9acc347dc34ed2fed8c696ace2675248caf1bb543e9db8a",
+  "caps_seconds": {
+    "composite": 600,
+    "prepare": 300,
+    "render": 120
+  },
+  "cleanup_reserve_seconds": 60,
+  "dependency_bytes": 984231635,
+  "dependency_count": 22907,
+  "document_commands_executed": 0,
+  "files": {
+    "README.md": {
+      "bytes": 4191,
+      "sha256": "e84bac9f289e87f138bf6364f4f4f207baf535fcebd86564375672bab75226de"
+    },
+    "controller.py": {
+      "bytes": 21952,
+      "sha256": "849a54f563f759490e57c749bebe6018dc88e926dab4a13bd292f24a500c0049"
+    },
+    "dependencies.json": {
+      "bytes": 10035868,
+      "sha256": "d21f928eb314d4caf6f8ef417570a2708e78e968b602abf58b975a9f15570061"
+    },
+    "dependencies.py": {
+      "bytes": 6409,
+      "sha256": "6532491f0f7cb46388650c8c0bdbb43a07d5602a9fadbd3e54b622acabe62460"
+    },
+    "document-tools.json": {
+      "bytes": 14681,
+      "sha256": "409a26b4b8b5ab9233eceb1543f0481c4a0a0bd4069818ecde5cff8505d70580"
+    },
+    "ownership.py": {
+      "bytes": 3064,
+      "sha256": "a7a741337b40788e480fd32c13ae9132be6d7eb2b96a2ca426041b9db44f9f80"
+    },
+    "process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "tail-README.md": {
+      "bytes": 2360,
+      "sha256": "8c274531022c7083c5a3696be365e61b7d170709ad07034e1f5acbe114e02380"
+    },
+    "test_controller.py": {
+      "bytes": 5370,
+      "sha256": "93af975bb1b259f132d92298c40047524b1c11234cb456a26170871214ae5a8e"
+    },
+    "tests-normal.log": {
+      "bytes": 1199,
+      "sha256": "0bfff276b03a730b82334424206586e3c6c6c5b2a1ae3efd0c29b7fb9d2075c8"
+    },
+    "tests-optimized.log": {
+      "bytes": 1199,
+      "sha256": "24c832deebbebbd8e01b5b557ef808f4a71f0c93978de523f839c3efcc53abaf"
+    }
+  },
+  "public_writes_permitted": false,
+  "pure_tests_normal": 14,
+  "pure_tests_optimized": 14,
+  "schema": "ew-report-private-document-controller-source-v1",
+  "scientific_commands_permitted": false,
+  "stages_executed": []
+}

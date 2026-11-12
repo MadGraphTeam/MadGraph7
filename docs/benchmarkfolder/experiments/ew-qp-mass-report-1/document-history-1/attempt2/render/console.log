@@ -1,0 +1,24 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-2/controller.py", line 374, in <module>
+    if __name__ == "__main__": main()
+                               ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-2/controller.py", line 365, in main
+    if args.child: child(args.child); return
+                   ~~~~~^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-2/controller.py", line 302, in child
+    {"prepare": prepare, "render": render, "composite": composite}[stage]()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-2/controller.py", line 227, in render
+    recorded_run([tool["pdftoppm"], "-r", "144", "-png", str(CLONE / TAIL / "ew-qualification-supplement.pdf"),
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  str(REPORT / "render/preview")])
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-2/controller.py", line 179, in recorded_run
+    argv = allowed_command(argv)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-2/controller.py", line 174, in allowed_command
+    require(path.is_relative_to(WORK), "Document path escapes private workspace")
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-2/controller.py", line 42, in require
+    if not value: raise ValueError(message)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Document path escapes private workspace

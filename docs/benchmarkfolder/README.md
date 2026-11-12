@@ -9,12 +9,15 @@ targets `main`.
 
 **Current status.** Production registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
-target. The [43-page benchmark PDF](benchmark.pdf) preserves all preceding 42
+target. The [44-page benchmark PDF](benchmark.pdf) preserves all preceding 43
 pages, including [two pages of actual shared-host timings](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md)
 for four SM processes and all five reducers, including a fresh QCD 2→4
 four-lepton process and the [implementation qualifications](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md).
-It adds [one page on the analytic Fortran repair](experiments/fortran-analytic-repair-report-1/rendered-1/README.md),
-with colored paired timings, Typst source and complete report reproduction commands. The experimental
+It includes [one page on the analytic Fortran repair](experiments/fortran-analytic-repair-report-1/rendered-1/README.md)
+with colored paired timings, and adds the [ordinary EW and threshold qualification page](experiments/ew-qp-mass-report-1/rendered-1/README.md).
+The new page separates exact ordinary DP agreement from both threshold refusals.
+Typst source and reproduction inputs accompany each appendix; the
+[failed document-build history](experiments/ew-qp-mass-report-1/document-history-1/README.md) is retained separately. The experimental
 patches remain unapplied. All twenty timing lanes pass the retained `3e-6` and
 ordinary `1e-8` numerical gates; these descriptive timings are separate from
 local performance acceptance. The reusable
@@ -30,6 +33,28 @@ also passes MadLoop's automatic DP-to-QP rescue and independent stability checks
 retaining six failed DP reductions before the accepted QP result. That fixture
 uses cache disabled. Independent amplitude truth and generic production coverage
 remain unqualified.
+
+
+The matching owner for the current canonical report is
+`build_ew_qualification_report.py`. Verify it without launching programs:
+
+```sh
+python3 -B docs/benchmarkfolder/build_ew_qualification_report.py --root docs/benchmarkfolder --verify-only
+```
+
+Reproduce the 44-page composite into a fresh output path:
+
+```sh
+python3 -B docs/benchmarkfolder/build_ew_qualification_report.py --root docs/benchmarkfolder \
+  --archive docs/benchmarkfolder/history/report-before-ew-qualification-1 \
+  --archive-index-sha256 ba450936ed08d52f02831aa6e0662b811d852a51393dc83e077416018bba68a0 \
+  --report docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1 \
+  --report-index-sha256 0d083085e20a4ba8b836727df2a9ae49eb16dd83684ccd228eb18eb77f2d7b50 \
+  --output /tmp/madloop-tirust-benchmark44.pdf
+```
+
+The checkpoint sections below retain their historical commands and page
+counts; use this owner for the current canonical PDF.
 
 The [generic CMS prototype's normal run](experiments/generic-owned-CMS-normal-qualification-1/README.md)
 now closes six fresh workers at `MLStabThres=1e-6`, with both caches disabled.
@@ -864,7 +889,7 @@ refuse to overwrite this canonical timing composite; explicit historical
 custom outputs remain available. The main historical Typst source and
 NinjaRS report PDF/source remain unchanged.
 
-The current 42-page PDF appends the sealed [implementation qualification page](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md)
+The preserved 42-page checkpoint appends the sealed [implementation qualification page](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md)
 to that exact 41-page archive. Its matching owner is
 `build_qualification_report.py`; the linked README gives Typst and full-report
 reproduction commands. The builder authenticates all five selected evidence

@@ -191,6 +191,12 @@ def output_state(output, ledger, canonical):
     return {"PDF": None, "ledger": None}
 
 
+def guard_ew_successor(root, output, ledger):
+    """The later EW owner owns its canonical composite; old archives stay valid."""
+    if output == root / "benchmark.pdf" and ledger.exists() and read(ledger).get("schema") == "madloop-tirust-ew-qualification-composite-report-v1":
+        raise ValueError("Canonical report contains the EW appendix. Use build_ew_qualification_report.py to build or verify it; --output CUSTOM.pdf remains available for this historical append owner.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
@@ -207,6 +213,7 @@ def main():
     output = Path(os.path.abspath(args.output or root / "benchmark.pdf"))
     canonical = output == root / "benchmark.pdf"
     ledger = root / "report-build.json" if canonical else output.with_suffix(".build.json")
+    guard_ew_successor(root, output, ledger)
     require(not args.verify_pages or args.verify_only, "Page verification requires --verify-only")
     if args.verify_only:
         require(not args.publish_canonical, "Verification never publishes")

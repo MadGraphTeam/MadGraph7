@@ -1,0 +1,14 @@
+{
+  "cap_seconds": 120.0,
+  "cleanup_reserve_seconds": 60.0,
+  "deadline_monotonic": 2519874.672631028,
+  "pid": 1801989,
+  "resource_limits": {
+    "address_space_bytes": 8589934592,
+    "core_bytes": 0,
+    "file_bytes": 1073741824
+  },
+  "source_index_sha256": "144a3b5c3ad94aee94cf9b9674557a4a35a3c08a9336ef941809125565555ff2",
+  "stage": "render",
+  "status": "running"
+}

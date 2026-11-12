@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+    "compile",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-2/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification.typ",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-2/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification-supplement.pdf",
+    "--creation-timestamp",
+    "1794441600",
+    "--font-path",
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+    "--font-path",
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "elapsed_seconds": 0.1432639011181891,
+  "environment": {
+    "RAYON_NUM_THREADS": "1"
+  },
+  "owned_session": 1801989,
+  "returncode": 0,
+  "start_new_session": false,
+  "started_monotonic": 2519769.808451146,
+  "stderr": "",
+  "stdout": ""
+}

@@ -1,0 +1,404 @@
+{
+  "PDF": {
+    "bytes": 69661,
+    "sha256": "46dc2126a33e508656a7b7df2cfaa9b3e1d2ca5c36e74036dfcf136e263d2363"
+  },
+  "canonical_publication": false,
+  "closed": true,
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "--version"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.008110831025987864,
+      "environment": {
+        "RAYON_NUM_THREADS": "1"
+      },
+      "owned_session": 2298809,
+      "returncode": 0,
+      "start_new_session": false,
+      "started_monotonic": 2520570.258645538,
+      "stderr": "",
+      "stdout": "typst 0.15.1 (9dfd3a08)\n"
+    },
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "compile",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-3/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification.typ",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-3/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification-supplement.pdf",
+        "--creation-timestamp",
+        "1794441600",
+        "--font-path",
+        "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+        "--font-path",
+        "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.14950949558988214,
+      "environment": {
+        "RAYON_NUM_THREADS": "1"
+      },
+      "owned_session": 2298809,
+      "returncode": 0,
+      "start_new_session": false,
+      "started_monotonic": 2520570.271841239,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-3/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification-supplement.pdf"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.11253511114045978,
+      "environment": {
+        "RAYON_NUM_THREADS": "1"
+      },
+      "owned_session": 2298809,
+      "returncode": 0,
+      "start_new_session": false,
+      "started_monotonic": 2520570.422355888,
+      "stderr": "Syntax Error: Suspects object is wrong type (boolean)\n",
+      "stdout": "Title:           MadLoop with TIRust \u2014 numerical validation and benchmarks\nAuthor:          MadLoop\u2013TIRust development\nCreator:         Typst 0.15.1\nCustom Metadata: no\nMetadata Stream: yes\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           1\nEncrypted:       no\nPage size:       595.276 x 841.89 pts (A4)\nPage rot:        0\nFile size:       69661 bytes\nOptimized:       no\nPDF version:     1.7\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext",
+        "-layout",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-3/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification-supplement.pdf",
+        "-"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.026010341942310333,
+      "environment": {
+        "RAYON_NUM_THREADS": "1"
+      },
+      "owned_session": 2298809,
+      "returncode": 0,
+      "start_new_session": false,
+      "started_monotonic": 2520570.537289949,
+      "stderr": "",
+      "stdout": "Electroweak mass-interface qualification\n  Ordinary DP regression passes; the threshold failure remains open. The QP-mass source patch is unapplied. These controls\n  establish neither independent physical accuracy nor performance acceptance.\n\n\nBoth studies use e+ e- > t t~ a [virt=QED] in the pinned loop_qcd_qed_sm_Gmu model, with TIRust backend 9, cache\ndisabled and normal stability handling at MLStabThres=1e-6. Fresh CLI generation, generated-source correspondence\nand compilation are retained for the original integration and the mass prototype. The comparison concerns this one\nEW process.\nOrdinary sample: 100 accepted DP points per arm\n Observed per arm                                                                      Original              Mass candidate\n\n Physical points                                                                            100                            100\n\n Accepted DP / QP points                                                                 100 / 0                       100 / 0\n\n Public accepted status                                                                     219                            219\n\n Returned coefficient / accuracy slots                                                800 / 200                      800 / 200\n\n\nAll returned coefficient, accuracy, status, history and observed IEEE/software-state words agree exactly. The pair passes\nboth the 3e-6 regression gate and 1e-8 target with zero pair difference. Its maximum reported accuracy estimate is\n1.0098069303873654e-7, below the checked threshold. These are agreement and estimator observations, not an inde\u00ad\npendent finite-answer oracle. No accepted QP point or changed native QP-mass input is observed; unobserved internal\nQP attempts are not excluded.\nEach worker retains 101 initialization calls, including one scientifically unqualified bootstrap. The remaining 100-point\nwarmup and final sample each return 200 overall/sole-order rows; those duplicate rows are not additional physical\npoints. Explicit LoopPoleMode=0 evaluates full sums and restores stored filter state after each call. These records do not\nqualify persistent filter learning.\nThreshold / soft-photon fixture: both arms refuse\n Target and observation                                                                Original              Mass candidate\n\n Ordinary control                                                                 Accepted 219                   Accepted 219\n\n Saved threshold fixture                                                          Refused 420                    Refused 420\n\n Reported threshold accuracy                                                                  1                              1\n\n QP software latch before \u2192 after                                                         0\u21921                            0\u21921\n\n\nThe ordinary control and complete 100-point initialization records agree exactly. At the threshold, four changed words\nin failed return buffers are retained only as diagnostics. They are not accepted coefficients and receive no numerical\naccuracy, improvement or degradation comparison. Caller momentum/scale words remain unchanged and observed\nIEEE vectors agree, but neither is a witness of repaired or native reducer inputs. The mass correction does not resolve\nthis stress failure.\nThe earlier pre-READY refusal and corrected pole-policy readiness check are preserved. Five later policy snapshots per\narm retain the source-derived full-sum bypass and stored initialization flags; those flags are not learned filters. Native\nQP inputs, independent physical truth, genuine >53-bit physical masses, broader stress/cache coverage and promotion\nremain unqualified. No timings are added; Hua-Sheng\u2019s precise local performance acceptance remains pending.\nEvidence: ordinary index 48a8b22cdb65\u2026, threshold index df6f4e453f57\u2026. Exact identities and pure reproduction: ew-qualification-\nselection.json, derive_evidence.py. Style follows preserved pyAmpliCol revision 7266c1600f6e\u2026.\n\n\n\n\n                                                             1/1\n\f"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-3/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification-supplement.pdf"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.019850158132612705,
+      "environment": {
+        "RAYON_NUM_THREADS": "1"
+      },
+      "owned_session": 2298809,
+      "returncode": 0,
+      "start_new_session": false,
+      "started_monotonic": 2520570.564743016,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nDRDGKE+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes     86  0\nTDCSSX+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes     89  0\nZCYYGS+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes     92  0\nJMZIZF+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes     95  0\nPHEAAQ+DejaVuSans                    CID TrueType      Identity-H       yes yes yes     98  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm",
+        "-r",
+        "144",
+        "-png",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-work-3/repository/docs/benchmarkfolder/experiments/ew-qp-mass-report-1/rendered-1/ew-qualification-supplement.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-execution-3/render/preview"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.5085328607819974,
+      "environment": {
+        "RAYON_NUM_THREADS": "1"
+      },
+      "owned_session": 2298809,
+      "returncode": 0,
+      "start_new_session": false,
+      "started_monotonic": 2520570.585790459,
+      "stderr": "",
+      "stdout": ""
+    }
+  ],
+  "creation_timestamp": 1794441600,
+  "font_paths": [
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+  ],
+  "inputs": {
+    "derive_evidence.py": {
+      "bytes": 6983,
+      "sha256": "dfc3195589c144038a20fd19892c4d44a3fe834ce9b182fdfc2bcd8e338775cd"
+    },
+    "ew-qualification-data.json": {
+      "bytes": 4844,
+      "sha256": "56f39a035ca500fc0ec1bcd498dff44972e9f7e8b7d07a1f02b86f089c80ba12"
+    },
+    "ew-qualification-selection.json": {
+      "bytes": 1008,
+      "sha256": "0bbc7bd75f144b645b7504c1f27e6f71f762412fb95297e568d1f50f88ca6c04"
+    },
+    "ew-qualification.typ": {
+      "bytes": 3974,
+      "sha256": "98900f641b8e77fee699f509f7f67f4aacc7cb4c3ec135e1ac7623adcc84a847"
+    },
+    "style-provenance.json": {
+      "bytes": 732,
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "page_count": 1,
+  "performance_acceptance": false,
+  "production_source_promotion": false,
+  "schema": "madloop-tirust-ew-qualification-tail-render-v1",
+  "tool_and_font_identities": {
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuMathTeXGyre.ttf": {
+      "bytes": 577148,
+      "sha256": "8dd821fddd2039255cb768eea018407e1b802957f9b84c4ff9089fda3dc6f645"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-Bold.ttf": {
+      "bytes": 708876,
+      "sha256": "7c7aef63328a765586cda41bf9d2c227ff1ad82816326dae4d7fe2fd1b7f613a"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-BoldOblique.ttf": {
+      "bytes": 645556,
+      "sha256": "e48430d7032060dd108a7e700c71660dad2ef174102b9d286ff7b6e15ed94e4a"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-ExtraLight.ttf": {
+      "bytes": 355776,
+      "sha256": "3e233f7406fde4bdc5474e3a404788453605ccb66af58b6528b6130b0a96360c"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-Oblique.ttf": {
+      "bytes": 637604,
+      "sha256": "9cc622e9843a9f903aae6468b6c8460d12457a8a5f5e1c8fa9d5706b1321d11d"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans.ttf": {
+      "bytes": 759676,
+      "sha256": "58568c88a01b80dfc056daca3eeafd434a0380df1a48dda53f0de0d716109bbd"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-Bold.ttf": {
+      "bytes": 667800,
+      "sha256": "49e2aa8299ccdad6d7c52f12c7321afbbf3d197cb3803392fa46ea7817dfac4b"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-BoldOblique.ttf": {
+      "bytes": 614024,
+      "sha256": "ad7309faf69cb8a0acd83dfa0c678f329ccc38098e0832eaeff46127b62406ad"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-Oblique.ttf": {
+      "bytes": 601404,
+      "sha256": "22d62e773b6d0f608a3d2368ef4d4a8c7093be7275e0f36509a382d1c78422c1"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed.ttf": {
+      "bytes": 682784,
+      "sha256": "9e52ed45c72aec14dcee2868bbe3c9b503b973bc55f6971e5eae3b1576cd1fa5"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono-Bold.ttf": {
+      "bytes": 334224,
+      "sha256": "b15cfba08019d57dddc0e4c61ba21d7907245411ba17525d3d2405c0b858798a"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono-BoldOblique.ttf": {
+      "bytes": 254916,
+      "sha256": "79e7136a593be1c1fe2cb15b4202911993f9726eca67b67bb89bb8f45fef2f14"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono-Oblique.ttf": {
+      "bytes": 253404,
+      "sha256": "81447433552a1b79c5cf22878c9f8e42d0132f7ab5fcc8db54eeba39b0e3e65c"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono.ttf": {
+      "bytes": 343096,
+      "sha256": "9d9bfebceb1c3f6f4ad383ded568a6926086208f43f7f92f92f7e93a1383fa38"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif-Bold.ttf": {
+      "bytes": 356624,
+      "sha256": "844fd36f74ce71aed7c396bc36f39e7307977799e7465f420f2f312b3aaca886"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif-BoldItalic.ttf": {
+      "bytes": 347976,
+      "sha256": "5e0bc4a8d767e5cb66b30fde71e06d6970d7f2802127e860b05945a8adcbffa4"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif-Italic.ttf": {
+      "bytes": 346500,
+      "sha256": "44e60e8cf30e41e6d790f9856b17722c8969773c229d16c92d3360d85ec02976"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif.ttf": {
+      "bytes": 380616,
+      "sha256": "47d363d2d6235e8177f6077035a3079034c9b01236ed5fa844285130b56315a3"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-Bold.ttf": {
+      "bytes": 331776,
+      "sha256": "7908c56666924ce1b53f60b0e82f7208a7f0b68e99010150356ac9e0e8285551"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-BoldItalic.ttf": {
+      "bytes": 347032,
+      "sha256": "61ef065811c55dbb3e3d728ef78c33fd44721fdc417db2308212ce4db138d40e"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-Italic.ttf": {
+      "bytes": 345824,
+      "sha256": "cd69a4cdd9295ff452a14940ccace8e4fc6efdf18893f95eba9d15ead1cec339"
+    },
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed.ttf": {
+      "bytes": 347164,
+      "sha256": "2aa0299b87b9943fb100bea74c10edf686918906f41e450acb7615d0d06e6d57"
+    },
+    "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst": {
+      "bytes": 50003320,
+      "sha256": "0853d8127e24e822d1650f7fa1baf9bfa31bb68ecc2dcf481bd4a5d54aa30e34"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts": {
+      "bytes": 26592,
+      "sha256": "a287b3ee30e5096b7b41241dffbc6e7a09e7a6d0a4c976c8a4a088ee5af6bf77"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo": {
+      "bytes": 89440,
+      "sha256": "5635b694c8d69109ed276f3e904dc89843d28b78c634092aa35ba44412ecd576"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm": {
+      "bytes": 51704,
+      "sha256": "24f132d9e81eb7ced02f2dd567bc89abcf6a89c573bd57a26cf51949a2e22be5"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext": {
+      "bytes": 69304,
+      "sha256": "5306835f5f3f2e3f8e769e10c22fd03787ad03e748d45d92023aa0a285ad7a7f"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfunite": {
+      "bytes": 36792,
+      "sha256": "9af95e5f32b609c6ed40bc9dfbfac250246fe305d54292369b26cd335a2b9f8b"
+    },
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13": {
+      "bytes": 16528,
+      "sha256": "b62e17653c7f9b57b7888b94e7eeaf5bce5bd3538002daff47f17cad1d984799"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusKeyboard-Regular.otf": {
+      "bytes": 56716,
+      "sha256": "66293634ed77ae4dc2b79fa49cf8630225e5d5a2cd6dd3f4762f837a5e36d2e9"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusMath-Regular.otf": {
+      "bytes": 588848,
+      "sha256": "ded714b0d3808af527438ed7a85f16933133f66a12104c4a83db4cc248888011"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusMono-Regular.otf": {
+      "bytes": 59264,
+      "sha256": "c1872d14ecedecc5fbf069ebd778a242c5f20f2687c5443f3409ff0a3b945d0d"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSans-Bold.otf": {
+      "bytes": 290244,
+      "sha256": "51bdd322b60ceabd9e137225273b2eb493acd7ca9abd2b2395c4a5dd67c39cc9"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSans-Italic.otf": {
+      "bytes": 298720,
+      "sha256": "e5a3083685b8aeca96e1820ad9478de95056e129177c35d6c31537bff8ddd515"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSans-Regular.otf": {
+      "bytes": 267824,
+      "sha256": "8f897bcf5b209f7c4b2a18a688dab10b723961b87690cbf54c927d7a68e0c442"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Bold.otf": {
+      "bytes": 293908,
+      "sha256": "0264914210ed51b3231ebc92ce529e9f2e166ba9eebf0cd4a579558690a27b64"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerif-BoldItalic.otf": {
+      "bytes": 259176,
+      "sha256": "47a665259f09f554f5d133d7718cdad43ff462c6a6b2328f38023465e62d57ce"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Italic.otf": {
+      "bytes": 332312,
+      "sha256": "9a393d63d6e05f620d3dc0190dfd35a8ede58c0808cf0fc9de7fcb9c723e4c24"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Regular.otf": {
+      "bytes": 337132,
+      "sha256": "fcf06307a77367394fcb0ccb241e59eea70dba3d732be309647611224679c733"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Semibold.otf": {
+      "bytes": 291640,
+      "sha256": "a4b3f28e85881db34695c1f005e4c79233a6caf3a2bd286c9b418c025fb99308"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerif-SemiboldItalic.otf": {
+      "bytes": 343148,
+      "sha256": "397f0d7aba35ae6a988948ae046c14c6b1e0d270fcc6e292b8bc29fd625c6101"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerifDisplay-Regular.otf": {
+      "bytes": 263688,
+      "sha256": "7734b4d4cc5f3b98926f47a1389d775107496c813269cfed238dae5bd9329d44"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/opentype/LibertinusSerifInitials-Regular.otf": {
+      "bytes": 125540,
+      "sha256": "ad9f35e1c6e940d9c481ee200b777278d5a6a3d8ab6560798b60af881fbd72de"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusKeyboard-Regular.ttf": {
+      "bytes": 204448,
+      "sha256": "4de3a6b50673166455b42b95050bf6225f5fe83de563c0b2e096e07c62b21db1"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusMath-Regular.ttf": {
+      "bytes": 1229260,
+      "sha256": "1fefc861d5063b15ec39fea604913dcc858ce29cec7168514192775ac7a1a629"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusMono-Regular.ttf": {
+      "bytes": 153992,
+      "sha256": "4e27caf67e612d17857ccd6353a683c73c4b960e02c9019b61202a85430e22e7"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSans-Bold.ttf": {
+      "bytes": 453840,
+      "sha256": "9ebce4e4463c806336ee7ab353c06fe40a6ee8691b5187f32118458726e3ed82"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSans-Italic.ttf": {
+      "bytes": 625672,
+      "sha256": "8cdc179ffe4c3fd3f63b504b30c8b2e872d90e4686ce1d6a5d9a5eb9c53b7802"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSans-Regular.ttf": {
+      "bytes": 424224,
+      "sha256": "a488d956f64d88b14df8a01708c5b480815107695e711d45e13561038004f0af"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Bold.ttf": {
+      "bytes": 462900,
+      "sha256": "03d3a3f7417405cc6a5ffc6729580da48251026bd55b6084530c986b589344d3"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerif-BoldItalic.ttf": {
+      "bytes": 499608,
+      "sha256": "7dda1251164e1a6a8f1232c1ba2665ab3a5486e13ac83d3fdc815321583083b2"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Italic.ttf": {
+      "bytes": 586600,
+      "sha256": "ce19c44f7d111c3d028c61a4adab9654075b2243edd654c5343eb880963a1027"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Regular.ttf": {
+      "bytes": 560864,
+      "sha256": "fd58bcc87cf6782b445723f49c298eec083efb87334af3bbb5bd970fc744f51b"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Semibold.ttf": {
+      "bytes": 456324,
+      "sha256": "a51b4c1c5664750f4e5a758b33735863c33b6db577fa68cc236b05002f11f077"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerif-SemiboldItalic.ttf": {
+      "bytes": 582032,
+      "sha256": "c0a6e923a18c1123d56f847dc86c478a826c3eded1106a3f152ad08dbd2a5e18"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerifDisplay-Regular.ttf": {
+      "bytes": 728776,
+      "sha256": "50400bb783b80acf81d63f042f68e60de5886f884074533c59c1d0603617bb5e"
+    },
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts/truetype/LibertinusSerifInitials-Regular.ttf": {
+      "bytes": 323892,
+      "sha256": "470c066171b86e27cec027a01dc0b3c3aab55c4c8750ebbac5eec22fd5d32eac"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-host-repair-profile-proposal-1/ownership.py": {
+      "bytes": 3064,
+      "sha256": "a7a741337b40788e480fd32c13ae9132be6d7eb2b96a2ca426041b9db44f9f80"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    }
+  },
+  "tool_paths": {
+    "poppler": "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin",
+    "typst": "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst"
+  }
+}

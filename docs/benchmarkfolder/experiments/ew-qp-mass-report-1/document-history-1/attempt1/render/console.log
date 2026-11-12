@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-1/controller.py", line 364, in <module>
+    if __name__ == "__main__": main()
+                               ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-1/controller.py", line 355, in main
+    if args.child: child(args.child); return
+                   ~~~~~^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-1/controller.py", line 292, in child
+    {"prepare": prepare, "render": render, "composite": composite}[stage]()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-1/controller.py", line 211, in render
+    recorded_run(argv)
+    ~~~~~~~~~~~~^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-1/controller.py", line 191, in recorded_run
+    require(done.returncode == 0, "Document command failed; no automatic retry")
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-report-document-proposal-1/controller.py", line 42, in require
+    if not value: raise ValueError(message)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Document command failed; no automatic retry

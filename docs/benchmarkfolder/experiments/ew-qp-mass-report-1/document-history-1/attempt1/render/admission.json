@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+    "-B",
+    ".tirust-build/ew-qp-mass-report-document-proposal-1/controller.py",
+    "--child",
+    "render",
+    "--source",
+    "51edd02cc0463fdb084e4fba1046184cc6e505642286aff83c7a89eadc63d542",
+    "--reviewed-prepare",
+    "940a1453b27f553ee981a2a8655ead01c788f78bdb27bdb8ca0b01ab13d932f0"
+  ],
+  "cap_seconds": 120.0,
+  "cleanup_reserve_seconds": 60.0,
+  "deadline_monotonic": 2519118.042640409,
+  "parent_pid": 1427959,
+  "resource_limits": {
+    "address_space_bytes": 8589934592,
+    "core_bytes": 0,
+    "file_bytes": 1073741824
+  },
+  "reviewed_prepare": "940a1453b27f553ee981a2a8655ead01c788f78bdb27bdb8ca0b01ab13d932f0",
+  "reviewed_render": null,
+  "source_index_sha256": "51edd02cc0463fdb084e4fba1046184cc6e505642286aff83c7a89eadc63d542",
+  "stage": "render",
+  "status": "running",
+  "work_deadline_monotonic": 2519058.042640409
+}
