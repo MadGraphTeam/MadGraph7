@@ -541,6 +541,7 @@ def test_slice_request_records_round_trip():
         alpha0_conversion="dZe_conversion",
         alpha0_inverse="ainv0",
         reduction="tirust",
+        squared_orders=("QCD^2<=6", "QED^2<=2"),
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
     # A loop-induced request is full colour without a selection (m-lit Q8):
@@ -570,6 +571,7 @@ def test_slice_request_records_round_trip():
         "alpha0_inverse",
         "contribution",
         "reduction",
+        "squared_orders",
     } & set(single)
     assert request_from_record(single) == default
     with pytest.raises(ArtifactError, match=r"unknown.*future_option"):
