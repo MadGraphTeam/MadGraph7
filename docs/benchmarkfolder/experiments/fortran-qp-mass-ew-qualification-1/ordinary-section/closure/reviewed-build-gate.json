@@ -1,0 +1,18 @@
+{
+  "build_accepted": true,
+  "build_raw_inventory": {
+    "path": ".tirust-build/ew-qp-mass-build-raw-inventory-2.json",
+    "sha256": "c1e46e69465817ec0e43b6df490eeac8ec5d0d7fd96548ea4b36baf71edec82a"
+  },
+  "build_result_sha256": "60a99e609b0aae3576c31f3f49cf6a250f21dfa1e7dbc670e95f4c49ac72d603",
+  "build_source_index_sha256": "f245a10696fea62dad8a7bb116675ea43e09d5e3376686d3433bbc3f47d24f2f",
+  "build_terminal_sha256": "f7cac8b007f41e09964b95c9a0fb6172cb0f4eaa249ed3192188f9fa1af46b22",
+  "independent_review": {
+    "path": ".tirust-build/ew-qp-mass-build-independent-review-2/receipt.json",
+    "sha256": "fa3e423b60d76d840efe66376ec47d00b8ffb73642192f3504eb3bfcbbefa9be"
+  },
+  "independent_review_accepted": true,
+  "qualification_scope": "closed-build-compiler-ABI-runtime-only",
+  "schema": "ew-qp-mass-closed-build-run-gate-v1",
+  "source_qualified": false
+}

@@ -1,0 +1,25 @@
+{
+  "forbidden_effect_attempts": [],
+  "preflight": {
+    "CLI_calls": 0,
+    "EW_model_files": 175,
+    "MG_import_execution": 0,
+    "bootstrap_bindings": 12,
+    "caps_seconds_per_role": 600.0,
+    "cleanup_seconds_inside_cap": 60.0,
+    "compiler_queries": 0,
+    "cpu": 12,
+    "cpu_reservation": false,
+    "limits": {
+      "address_space_bytes": 17179869184,
+      "core_bytes": 0,
+      "file_bytes": 536870912
+    },
+    "scientific_native_calls": 0,
+    "source_bindings": 2666,
+    "source_index_sha256": "6fb69ba7da6fe07e702047c211c04329be2003ea577f6bf1574eeb1dd210f917",
+    "status": "source-only-preflight-passed"
+  },
+  "source_index_sha256": "6fb69ba7da6fe07e702047c211c04329be2003ea577f6bf1574eeb1dd210f917",
+  "status": "guarded-source-only-preflight-passed"
+}

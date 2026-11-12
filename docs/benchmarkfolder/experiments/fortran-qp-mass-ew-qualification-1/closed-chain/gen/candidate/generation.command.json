@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "./bin/madgraph",
+    "--plain",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-cli-generation-proposal-1/generate-candidate.mg5"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-cli-generation-work-1/candidate/mg",
+  "expected_children": "stock MODEL/DHELAS compiles/archives and compiler/version metadata only",
+  "make_internal_children_individually_recorded": false,
+  "model_files": 175,
+  "role": "candidate"
+}

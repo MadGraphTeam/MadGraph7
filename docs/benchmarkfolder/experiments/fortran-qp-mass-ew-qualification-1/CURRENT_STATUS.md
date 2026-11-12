@@ -1,0 +1,3 @@
+The actual EW ordinary source/GEN/correspondence/BUILD chain and 100-point DP regression pair are closed and independently reviewed. Both accepted cohorts are DP219 only; all recorded candidate/original words and observed states agree. The 1e-8 comparison target is a pairwise regression gate, not an independent accuracy statement.
+
+The QP-mass change remains unapplied. Its changed QP path, native mass-input improvement, true 113-bit physical masses, complex/derived-MW inputs, independent finite truth, broader stress/cache qualification, local timing acceptance and production promotion remain open. This capsule carries no new timing measurement or performance claim.

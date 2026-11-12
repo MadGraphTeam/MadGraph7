@@ -1,0 +1,565 @@
+{
+  "QP_mass_path_covered": false,
+  "closed_chain_state_sha256": "6804182635afed62c4e0f35308816806834a4905760eca502791301cab1bb706",
+  "excluded_binaries": {
+    "mapped//nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+    },
+    "mapped//nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+    },
+    "mapped//nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+    },
+    "mapped//nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+    },
+    "mapped//nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+    },
+    "mapped//shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-work-1/candidate/SubProcesses/P0_epem_ttxa/check": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "b3f3dedd11a89fbe872aad1be033d17aed5b9a66eb24406f1ae2920104b1a3ad"
+    },
+    "mapped//shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-work-1/original/SubProcesses/P0_epem_ttxa/check": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "3fb33436bf4e737bdd4c56c46db00f4f070f41e23198e0d3f247e59929ac8804"
+    },
+    "mapped//shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+    },
+    "mapped//shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+    },
+    "mapped//shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0": {
+      "reason": "Actual mapped file identity only",
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+    },
+    "ordinary/candidate/check": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-work-1/candidate/SubProcesses/P0_epem_ttxa/check",
+      "reason": "Actual worker ELF identity only",
+      "sha256": "b3f3dedd11a89fbe872aad1be033d17aed5b9a66eb24406f1ae2920104b1a3ad"
+    },
+    "ordinary/original/check": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-work-1/original/SubProcesses/P0_epem_ttxa/check",
+      "reason": "Actual worker ELF identity only",
+      "sha256": "3fb33436bf4e737bdd4c56c46db00f4f070f41e23198e0d3f247e59929ac8804"
+    }
+  },
+  "final_capsule_sealed": false,
+  "independent_pair_review_pending": true,
+  "logical_files": {
+    "closure/ew-qp-mass-ordinary-candidate-root-admission-1.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-candidate-root-admission-1.json",
+      "path": "closure/ew-qp-mass-ordinary-candidate-root-admission-1.json",
+      "raw_bytes": 1127,
+      "raw_sha256": "8cc0e3c8ad9c7abf72524a770bd46431ccba1c667c47fcbecfebd5a9d693801d"
+    },
+    "closure/ew-qp-mass-ordinary-original-root-admission-1.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-original-root-admission-1.json",
+      "path": "closure/ew-qp-mass-ordinary-original-root-admission-1.json",
+      "raw_bytes": 1023,
+      "raw_sha256": "f307f32d48fdfe52a59fe54dbbe2a0f50ba2a5b2e569c640d7fd66de8aa1c290"
+    },
+    "closure/reviewed-build-gate.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-root-reviewed-build-1.json",
+      "path": "closure/reviewed-build-gate.json",
+      "raw_bytes": 874,
+      "raw_sha256": "d19814faae3c2e5e6ae2235e2b7b87dbb25337021ff497cdec8bc7b204576ebf"
+    },
+    "ordinary-source/README.md": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/README.md",
+      "path": "compressed/ordinary-source/README.md.gz",
+      "raw_bytes": 6788,
+      "raw_sha256": "45b050cf993633c71880dd9eee408e4e1ddf8c5cc5abc3782be0118b353e3917"
+    },
+    "ordinary-source/REVIEWED_BUILD_GATE.example.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/REVIEWED_BUILD_GATE.example.json",
+      "path": "ordinary-source/REVIEWED_BUILD_GATE.example.json",
+      "raw_bytes": 876,
+      "raw_sha256": "60c4540608382e0835ea053516f34bbf561c79daf8651752dae9edcf79475eec"
+    },
+    "ordinary-source/binding.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/binding.py",
+      "path": "compressed/ordinary-source/binding.py.gz",
+      "raw_bytes": 6184,
+      "raw_sha256": "5697f8645a40727c26c4e8d7987cfcc868797a2864a873cb370fa821f7a2cfeb"
+    },
+    "ordinary-source/collector.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/collector.py",
+      "path": "compressed/ordinary-source/collector.py.gz",
+      "raw_bytes": 7614,
+      "raw_sha256": "873a5446671e5db4570b91c9377b7e1d5d66acf146fc52b12ce0eaf4fd98c4e7"
+    },
+    "ordinary-source/comparison.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/comparison.py",
+      "path": "compressed/ordinary-source/comparison.py.gz",
+      "raw_bytes": 2432,
+      "raw_sha256": "336de8400f2cf744e5780ca71925229216a150a4886a0417a9b3822a270c687b"
+    },
+    "ordinary-source/controller.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/controller.py",
+      "path": "compressed/ordinary-source/controller.py.gz",
+      "raw_bytes": 16204,
+      "raw_sha256": "ca246e8f6fb6c90a4b4c05caa1f1a2c3d8f87f5b596382f61e62af2d0e82c726"
+    },
+    "ordinary-source/independent-BUILD-review.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/independent-BUILD-review.json",
+      "path": "compressed/ordinary-source/independent-BUILD-review.json.gz",
+      "raw_bytes": 5868,
+      "raw_sha256": "fa3e423b60d76d840efe66376ec47d00b8ffb73642192f3504eb3bfcbbefa9be"
+    },
+    "ordinary-source/input-pins.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/input-pins.json",
+      "path": "compressed/ordinary-source/input-pins.json.gz",
+      "raw_bytes": 14750,
+      "raw_sha256": "3b73f0f58c71e0c798b50d8db414004b50bc7c796db2da2b7ab4521040a50126"
+    },
+    "ordinary-source/inputs/cache0.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/inputs/cache0.dat",
+      "path": "compressed/ordinary-source/inputs/cache0.dat.gz",
+      "raw_bytes": 14622,
+      "raw_sha256": "97aaad78a84d4fd4b122caab7ed56c8cff63988b53ff6b29dd16d463b61b69a1"
+    },
+    "ordinary-source/inputs/ordinary100.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/inputs/ordinary100.dat",
+      "path": "compressed/ordinary-source/inputs/ordinary100.dat.gz",
+      "raw_bytes": 48556,
+      "raw_sha256": "56294e1d42f0524d9d04ac451cf0f5a098dace5dd10d2a4970b27286ed0e955f"
+    },
+    "ordinary-source/inputs/param_card.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/inputs/param_card.dat",
+      "path": "compressed/ordinary-source/inputs/param_card.dat.gz",
+      "raw_bytes": 4538,
+      "raw_sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "ordinary-source/ownership.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/ownership.py",
+      "path": "compressed/ordinary-source/ownership.py.gz",
+      "raw_bytes": 3446,
+      "raw_sha256": "51ca38f0621c3d57a15b8ac08b7c37be1e6023843af9a1fca1b48dd4242a2b97"
+    },
+    "ordinary-source/process_cleanup.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/process_cleanup.py",
+      "path": "compressed/ordinary-source/process_cleanup.py.gz",
+      "raw_bytes": 5554,
+      "raw_sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "ordinary-source/source-index.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/source-index.json",
+      "path": "compressed/ordinary-source/source-index.json.gz",
+      "raw_bytes": 4297,
+      "raw_sha256": "0c6792e4531a9da678f098f9b9ceb93479f21734c9c06e731316139a9f45cd41"
+    },
+    "ordinary-source/startup-audit.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-audit.json",
+      "path": "compressed/ordinary-source/startup-audit.json.gz",
+      "raw_bytes": 3627,
+      "raw_sha256": "55eeff6146ca98f1acedd078f5f38c829de5b7cedc37426219ea9114e22a1063"
+    },
+    "ordinary-source/startup-source/MadLoopCommons.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/MadLoopCommons.f",
+      "path": "compressed/ordinary-source/startup-source/MadLoopCommons.f.gz",
+      "raw_bytes": 23708,
+      "raw_sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd"
+    },
+    "ordinary-source/startup-source/MadLoopParamReader.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/MadLoopParamReader.f",
+      "path": "compressed/ordinary-source/startup-source/MadLoopParamReader.f.gz",
+      "raw_bytes": 18289,
+      "raw_sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4"
+    },
+    "ordinary-source/startup-source/actualize_mp_ext_params.inc": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/actualize_mp_ext_params.inc",
+      "path": "ordinary-source/startup-source/actualize_mp_ext_params.inc",
+      "raw_bytes": 243,
+      "raw_sha256": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac"
+    },
+    "ordinary-source/startup-source/couplings.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/couplings.f",
+      "path": "compressed/ordinary-source/startup-source/couplings.f.gz",
+      "raw_bytes": 3287,
+      "raw_sha256": "991286ede404546a6d1806056177f9f24c19d6d5f10723dc5b5a710921a7e8d1"
+    },
+    "ordinary-source/startup-source/lha_read.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/lha_read.f",
+      "path": "compressed/ordinary-source/startup-source/lha_read.f.gz",
+      "raw_bytes": 13600,
+      "raw_sha256": "319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca"
+    },
+    "ordinary-source/startup-source/mp_intparam_definition.inc": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/mp_intparam_definition.inc",
+      "path": "compressed/ordinary-source/startup-source/mp_intparam_definition.inc.gz",
+      "raw_bytes": 418463,
+      "raw_sha256": "258ecab1758b539252a4843e97a81accadf77a491e29ec06a25b4419def7cced"
+    },
+    "ordinary-source/startup-source/param_read.inc": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/param_read.inc",
+      "path": "compressed/ordinary-source/startup-source/param_read.inc.gz",
+      "raw_bytes": 2147,
+      "raw_sha256": "12ddee970e7400f12cc324d676196120b0fa6b71c13d56dfdf36aae0cac6b5da"
+    },
+    "ordinary-source/startup-source/rw_para.f": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/startup-source/rw_para.f",
+      "path": "compressed/ordinary-source/startup-source/rw_para.f.gz",
+      "raw_bytes": 2707,
+      "raw_sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c"
+    },
+    "ordinary-source/test_gate.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/test_gate.py",
+      "path": "compressed/ordinary-source/test_gate.py.gz",
+      "raw_bytes": 9710,
+      "raw_sha256": "74d01fc53ebcc5d8b471e5681e885b2691b6fb4445a82c865766b655cca6cfd3"
+    },
+    "ordinary-source/tool_environment.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/tool_environment.py",
+      "path": "compressed/ordinary-source/tool_environment.py.gz",
+      "raw_bytes": 3682,
+      "raw_sha256": "10ca7340f1e1ed95e372c0ed0fde4a8072cbcd4b9dede3ddb5726586d8b8f88e"
+    },
+    "ordinary-source/toolchain-pins.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/toolchain-pins.json",
+      "path": "compressed/ordinary-source/toolchain-pins.json.gz",
+      "raw_bytes": 13420,
+      "raw_sha256": "81b878250ea9ae4908aaaa913ebf999bc686d2619359da92eb1b6a37ca1c53b0"
+    },
+    "ordinary-source/worker.py": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/worker.py",
+      "path": "ordinary-source/worker.py",
+      "raw_bytes": 1917,
+      "raw_sha256": "045e25c9259af3df05d5d6c3e0a1cdc1923da108f03251070a8dd45e0498464d"
+    },
+    "ordinary-source/worker_base.py": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/worker_base.py",
+      "path": "compressed/ordinary-source/worker_base.py.gz",
+      "raw_bytes": 18869,
+      "raw_sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "ordinary/candidate/admission.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/admission.json",
+      "path": "ordinary/candidate/admission.json",
+      "raw_bytes": 1479,
+      "raw_sha256": "d89d769ca7add2ee570366e9134f0f9f5da6eca2971390d9569c327845facaf1"
+    },
+    "ordinary/candidate/collected.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/collected.json",
+      "path": "compressed/ordinary/candidate/collected.json.gz",
+      "raw_bytes": 365961,
+      "raw_sha256": "6f1f1eaea02b2a70318f0c2204761a4bb286559e6b20338fc7915731f1600f98"
+    },
+    "ordinary/candidate/comparison.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/comparison.json",
+      "path": "compressed/ordinary/candidate/comparison.json.gz",
+      "raw_bytes": 1081343,
+      "raw_sha256": "708273b958e4291d7ba48e7ce5887e26b612dd8b89c673f41d76488b1b3a4447"
+    },
+    "ordinary/candidate/console.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/console.log",
+      "path": "ordinary/candidate/console.log",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ordinary/candidate/dimensions.dat": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/dimensions.dat",
+      "path": "ordinary/candidate/dimensions.dat",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "ordinary/candidate/exact-ieee.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/exact-ieee.dat",
+      "path": "compressed/ordinary/candidate/exact-ieee.dat.gz",
+      "raw_bytes": 13000,
+      "raw_sha256": "3c56b56af8f631089b806b05aeccc51b1b513ca1353c65fdf951c9b5a0cac1d0"
+    },
+    "ordinary/candidate/exact-words.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/exact-words.dat",
+      "path": "compressed/ordinary/candidate/exact-words.dat.gz",
+      "raw_bytes": 22000,
+      "raw_sha256": "e9d2312249fed04f6bdf6e3c80c21e900715245bf248929edbc837ca544ea06f"
+    },
+    "ordinary/candidate/maps-after.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/maps-after.json",
+      "path": "compressed/ordinary/candidate/maps-after.json.gz",
+      "raw_bytes": 16704,
+      "raw_sha256": "0794ab3658cb70219c3ae2391cb34b26fd0477ad3f0451ffde5a50da00f2d742"
+    },
+    "ordinary/candidate/maps-before.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/maps-before.json",
+      "path": "compressed/ordinary/candidate/maps-before.json.gz",
+      "raw_bytes": 16704,
+      "raw_sha256": "9813036c46e55c2858ba4258d0e1ed0eb5b9fb37e93e1d8cf784e3964b2e497f"
+    },
+    "ordinary/candidate/protocol.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/protocol.json",
+      "path": "ordinary/candidate/protocol.json",
+      "raw_bytes": 518,
+      "raw_sha256": "efd4f65d16875e4dfc22501a6a5dd3d01b652c325d7f7b3aba7e0d42e3a174d6"
+    },
+    "ordinary/candidate/ready.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/ready.json",
+      "path": "ordinary/candidate/ready.json",
+      "raw_bytes": 89,
+      "raw_sha256": "76241b85b0b59908a32fad3e08e939b02a0189dcd669471933bdc9b1fe723748"
+    },
+    "ordinary/candidate/result.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/result.json",
+      "path": "compressed/ordinary/candidate/result.json.gz",
+      "raw_bytes": 1562484,
+      "raw_sha256": "f1c3c7eaae4f7dc8175860637964073f94aadfcfc4a3db1c55ea093d2036a89e"
+    },
+    "ordinary/candidate/software-flags.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/software-flags.dat",
+      "path": "compressed/ordinary/candidate/software-flags.dat.gz",
+      "raw_bytes": 5000,
+      "raw_sha256": "65a1f796f075f0332d8a076822ef5d413bb6fef30ea0763a2b6e22e25f2f1b32"
+    },
+    "ordinary/candidate/started.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/started.json",
+      "path": "ordinary/candidate/started.json",
+      "raw_bytes": 720,
+      "raw_sha256": "b61b774fb6c9fac6b850163d9cd72c07fe8c6906a0a06cf03c9b0df2824feaea"
+    },
+    "ordinary/candidate/terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/terminal.json",
+      "path": "ordinary/candidate/terminal.json",
+      "raw_bytes": 1400,
+      "raw_sha256": "0614cdc57afeb21551151e7ea53c2f5ff9e1a64700d08e0d5a86bbc00f3e3b60"
+    },
+    "ordinary/candidate/warmup.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/warmup.dat",
+      "path": "compressed/ordinary/candidate/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "f69a4ab5636ada444c152c27c8b842589d23f43203eb9494b64068a7daedaa08"
+    },
+    "ordinary/candidate/worker-command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/worker-command.json",
+      "path": "ordinary/candidate/worker-command.json",
+      "raw_bytes": 746,
+      "raw_sha256": "ab05048f6ae7bf8564603f1f8a90fdca537b8e8fce7141ce84a588192225afa4"
+    },
+    "ordinary/candidate/worker.log": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/candidate/worker.log",
+      "path": "compressed/ordinary/candidate/worker.log.gz",
+      "raw_bytes": 4054,
+      "raw_sha256": "eea92dfb73465b45768cdffca78e0663ca5b4830b36bb5a35c94a453bdf30164"
+    },
+    "ordinary/original/admission.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/admission.json",
+      "path": "ordinary/original/admission.json",
+      "raw_bytes": 1316,
+      "raw_sha256": "1d62af08de3632b447e1f1894992474db9400679c07ef29b7781fafab9216312"
+    },
+    "ordinary/original/collected.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/collected.json",
+      "path": "compressed/ordinary/original/collected.json.gz",
+      "raw_bytes": 365961,
+      "raw_sha256": "6f1f1eaea02b2a70318f0c2204761a4bb286559e6b20338fc7915731f1600f98"
+    },
+    "ordinary/original/console.log": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/console.log",
+      "path": "ordinary/original/console.log",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ordinary/original/dimensions.dat": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/dimensions.dat",
+      "path": "ordinary/original/dimensions.dat",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "ordinary/original/exact-ieee.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/exact-ieee.dat",
+      "path": "compressed/ordinary/original/exact-ieee.dat.gz",
+      "raw_bytes": 13000,
+      "raw_sha256": "3c56b56af8f631089b806b05aeccc51b1b513ca1353c65fdf951c9b5a0cac1d0"
+    },
+    "ordinary/original/exact-words.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/exact-words.dat",
+      "path": "compressed/ordinary/original/exact-words.dat.gz",
+      "raw_bytes": 22000,
+      "raw_sha256": "e9d2312249fed04f6bdf6e3c80c21e900715245bf248929edbc837ca544ea06f"
+    },
+    "ordinary/original/maps-after.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/maps-after.json",
+      "path": "compressed/ordinary/original/maps-after.json.gz",
+      "raw_bytes": 16698,
+      "raw_sha256": "326263bb1fe5365d80e8110dd9d27093525534cb1fa48705f5bb2597391834bf"
+    },
+    "ordinary/original/maps-before.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/maps-before.json",
+      "path": "compressed/ordinary/original/maps-before.json.gz",
+      "raw_bytes": 16698,
+      "raw_sha256": "9acfa080b663c90795e2da5cbbb8133ceff62833904d39d4b31c8db2624e7be7"
+    },
+    "ordinary/original/protocol.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/protocol.json",
+      "path": "ordinary/original/protocol.json",
+      "raw_bytes": 518,
+      "raw_sha256": "26f8a93138f240dfdeef6b3f638529c53e55ca03890ba2a34427c02a8bfd7a89"
+    },
+    "ordinary/original/ready.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/ready.json",
+      "path": "ordinary/original/ready.json",
+      "raw_bytes": 91,
+      "raw_sha256": "4b7027a67e86d53035bbd49f0f9ea1582f70001b2fe106a4143d4d886ddbfa28"
+    },
+    "ordinary/original/result.json": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/result.json",
+      "path": "compressed/ordinary/original/result.json.gz",
+      "raw_bytes": 406402,
+      "raw_sha256": "e9e8c7f35dacc0264157d9edf93d0d7b1c2654b924a169ce4b533e714f7eef30"
+    },
+    "ordinary/original/software-flags.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/software-flags.dat",
+      "path": "compressed/ordinary/original/software-flags.dat.gz",
+      "raw_bytes": 5000,
+      "raw_sha256": "65a1f796f075f0332d8a076822ef5d413bb6fef30ea0763a2b6e22e25f2f1b32"
+    },
+    "ordinary/original/started.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/started.json",
+      "path": "ordinary/original/started.json",
+      "raw_bytes": 657,
+      "raw_sha256": "332a020ce4fc5e27ff64ed8f9c7d32bf6a18a488871c1032df7dc336a7f08c19"
+    },
+    "ordinary/original/terminal.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/terminal.json",
+      "path": "ordinary/original/terminal.json",
+      "raw_bytes": 1337,
+      "raw_sha256": "9663923d31ee9a87238aa564380c435dc3a81ab631649d9b604cfa05a4110173"
+    },
+    "ordinary/original/warmup.dat": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/warmup.dat",
+      "path": "compressed/ordinary/original/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "f69a4ab5636ada444c152c27c8b842589d23f43203eb9494b64068a7daedaa08"
+    },
+    "ordinary/original/worker-command.json": {
+      "compression": "none",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/worker-command.json",
+      "path": "ordinary/original/worker-command.json",
+      "raw_bytes": 744,
+      "raw_sha256": "6d50dc4e39eb6f5ea398d4ddffab6b579eaef1a214130c87d69f5baf978adf68"
+    },
+    "ordinary/original/worker.log": {
+      "compression": "gzip",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-execution-1/original/worker.log",
+      "path": "compressed/ordinary/original/worker.log.gz",
+      "raw_bytes": 4054,
+      "raw_sha256": "eea92dfb73465b45768cdffca78e0663ca5b4830b36bb5a35c94a453bdf30164"
+    }
+  },
+  "new_native_executions": 0,
+  "observed_QP_points": [],
+  "pair_pins": {
+    "candidate": [
+      "0614cdc57afeb21551151e7ea53c2f5ff9e1a64700d08e0d5a86bbc00f3e3b60",
+      "f1c3c7eaae4f7dc8175860637964073f94aadfcfc4a3db1c55ea093d2036a89e"
+    ],
+    "original": [
+      "9663923d31ee9a87238aa564380c435dc3a81ab631649d9b604cfa05a4110173",
+      "e9e8c7f35dacc0264157d9edf93d0d7b1c2654b924a169ce4b533e714f7eef30"
+    ]
+  },
+  "public_writes": false,
+  "schema": "EW-QP-mass-ordinary-pair-draft-v1",
+  "source_sha256": "0c6792e4531a9da678f098f9b9ceb93479f21734c9c06e731316139a9f45cd41"
+}

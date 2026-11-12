@@ -1,0 +1,12 @@
+{
+  "schema": "source-only-preparation-history-v1",
+  "native_executions": 0,
+  "compiler_make_loader_queries": 0,
+  "unsealed_corrections": [
+    "GEN source inventory uses bytes/SHA256 records, not bare hashes; corrected before input seal.",
+    "PROCESS parser anchored to avoid matching OLP_PROCESS and polynomial self-USE removed from ordering users.",
+    "Literal INCLUDE type-insertion followed by declaration continuation is treated as a standalone directive.",
+    "Root source admission explicitly accepts generated text while full source_qualified remains false."
+  ],
+  "actual_EW_source_or_generation_changes": false
+}

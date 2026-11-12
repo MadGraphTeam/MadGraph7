@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make",
+    "--no-print-directory",
+    "--dry-run",
+    "--always-make",
+    "SHELL=/nix/store/lw117lsr8d585xs63kx5k233impyrq7q-bash-5.3p3/bin/bash",
+    "check"
+  ],
+  "controller_pid": 1317770,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-build-work-2/build/original/SubProcesses/P0_epem_ttxa",
+  "new_session": false,
+  "process_group": 1317770,
+  "session": 1317770
+}

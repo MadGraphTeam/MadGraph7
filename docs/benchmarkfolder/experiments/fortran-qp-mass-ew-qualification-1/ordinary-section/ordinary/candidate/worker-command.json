@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-work-1/candidate/SubProcesses/P0_epem_ttxa/check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-proposal-1/inputs/ordinary100.dat"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-ordinary-run-work-1/candidate/SubProcesses/P0_epem_ttxa",
+  "driver_source_sha256": "cf2816e4d8ef9a176522f319ae44982e9f07c2003088daccab4313700c5b990b",
+  "executable_sha256": "b3f3dedd11a89fbe872aad1be033d17aed5b9a66eb24406f1ae2920104b1a3ad"
+}

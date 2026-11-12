@@ -1,0 +1,20 @@
+{
+  "BUILD_gate": ".tirust-build/ew-qp-mass-root-reviewed-build-1.json",
+  "BUILD_gate_sha256": "d19814faae3c2e5e6ae2235e2b7b87dbb25337021ff497cdec8bc7b204576ebf",
+  "cap_seconds": 600.0,
+  "cleanup_reserve_seconds": 60.0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2505578.532108912,
+  "original_end_monotonic": 2505578.532108912,
+  "pid": 2435423,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "reviewed_original": null,
+  "role": "original",
+  "source_index_sha256": "0c6792e4531a9da678f098f9b9ceb93479f21734c9c06e731316139a9f45cd41",
+  "status": "running"
+}

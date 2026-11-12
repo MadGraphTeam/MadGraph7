@@ -1,0 +1,12 @@
+{
+  "compiler_calls": 0,
+  "errors": 0,
+  "failures": 0,
+  "forbidden_API_attempts": [],
+  "loader_queries": 0,
+  "native_physical_or_unit_executions": 0,
+  "passed": true,
+  "schema": "current-qp-mass-dormant-qualification-pure-tests-v1",
+  "synthetic_observer_text_is_not_native_evidence": true,
+  "tests": 19
+}

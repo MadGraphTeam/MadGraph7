@@ -1,0 +1,20 @@
+{
+  "compiler_queries": 0,
+  "passed": true,
+  "roles": {
+    "candidate": {
+      "NEEDED_resolution_edges": 49,
+      "actual_selected_argv_matches_per_source_policy": 21,
+      "first_existing_and_already_loaded_bindings_valid": true,
+      "policy_classes_equal_original": true,
+      "reused_support_modules_current_hashes": 4
+    },
+    "original": {
+      "NEEDED_resolution_edges": 49,
+      "actual_selected_argv_matches_per_source_policy": 21,
+      "first_existing_and_already_loaded_bindings_valid": true,
+      "policy_classes_equal_original": true,
+      "reused_support_modules_current_hashes": 4
+    }
+  }
+}

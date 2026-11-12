@@ -1,0 +1,21 @@
+test_analyze_is_file_process_and_import_free (__main__.ReviewTests.test_analyze_is_file_process_and_import_free) ... ok
+test_balanced_arguments_preserve_nested_literals (__main__.ReviewTests.test_balanced_arguments_preserve_nested_literals) ... ok
+test_comment_cannot_declare_an_mp_model_symbol (__main__.ReviewTests.test_comment_cannot_declare_an_mp_model_symbol) ... ok
+test_common_width_change_is_refused (__main__.ReviewTests.test_common_width_change_is_refused) ... ok
+test_missing_declared_mp_symbol_is_refused (__main__.ReviewTests.test_missing_declared_mp_symbol_is_refused) ... ok
+test_missing_guard_in_unchanged_caller_is_refused (__main__.ReviewTests.test_missing_guard_in_unchanged_caller_is_refused) ... ok
+test_non9_mass_policy_change_is_refused (__main__.ReviewTests.test_non9_mass_policy_change_is_refused) ... ok
+test_other_public_adapter_must_remain_raw_exact (__main__.ReviewTests.test_other_public_adapter_must_remain_raw_exact) ... ok
+test_private_cyclic_order_change_is_refused (__main__.ReviewTests.test_private_cyclic_order_change_is_refused) ... ok
+test_private_literal_bytes_are_preserved (__main__.ReviewTests.test_private_literal_bytes_are_preserved) ... ok
+test_public_comment_bytes_are_strict (__main__.ReviewTests.test_public_comment_bytes_are_strict) ... ok
+test_qp_wrong_symbol_or_kind_is_refused (__main__.ReviewTests.test_qp_wrong_symbol_or_kind_is_refused) ... ok
+test_raw_unknown_scientific_addition_is_reported (__main__.ReviewTests.test_raw_unknown_scientific_addition_is_reported) ... ok
+test_second_actual_call_changes_counts (__main__.ReviewTests.test_second_actual_call_changes_counts) ... ok
+test_valid_source_only_pair_counts_come_from_actual_bytes (__main__.ReviewTests.test_valid_source_only_pair_counts_come_from_actual_bytes) ... ok
+test_wrong_selected_backend_is_refused (__main__.ReviewTests.test_wrong_selected_backend_is_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.046s
+
+OK

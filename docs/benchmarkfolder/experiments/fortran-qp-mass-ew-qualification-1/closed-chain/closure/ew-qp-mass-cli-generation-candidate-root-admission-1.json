@@ -1,0 +1,18 @@
+{
+  "admitted_utc": "2026-11-12T06:29:14.484545+00:00",
+  "role": "candidate",
+  "source_index_sha256": "6fb69ba7da6fe07e702047c211c04329be2003ea577f6bf1574eeb1dd210f917",
+  "reviewed_original_terminal_sha256": "026f54e26f163c6cacec3262ae9b6a27273e59447e9302038a12979be18761d9",
+  "reviewed_original_result_sha256": "f0c85c95311e1f73c0782a5f9e2ecec6d67a7861d704d27b4d7d4c0334750555",
+  "reviewed_original_generated_inputs": 427,
+  "scope": "One fresh stock EW CLI export of0fcd plus exact five-file mass correction using nine pinned overlay payloads. Original427 generated inputs/cards and344 support objects checked, no original numerical execution. Stock private MODEL/DHELAS compiler/archive/metadata children allowed; no SubProcesses compile, scientific executable/probe/reducer or installer. Result remains generated_pending_source_review until independent pair correspondence; no BUILD or RUN admission.",
+  "cap_seconds": 600,
+  "cleanup_reserve_seconds": 60,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 536870912,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "retry_allowed": false,
+  "production_promotion": false
+}

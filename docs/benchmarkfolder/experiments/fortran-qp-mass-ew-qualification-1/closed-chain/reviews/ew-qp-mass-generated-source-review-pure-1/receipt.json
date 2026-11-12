@@ -1,0 +1,28 @@
+{
+  "MG_runtime_imports": 0,
+  "compiler_calls": 0,
+  "file_process_import_attempts_in_pure_API": 0,
+  "future_EW_output_counts_assumed": false,
+  "logs": {
+    "closed-QCD-source-control.json": {
+      "bytes": 4552,
+      "sha256": "e6aff4de3235837a371f116504c7c23b1417130dc85f05d616e8cd022a63c0f5"
+    },
+    "normal.log": {
+      "bytes": 1989,
+      "sha256": "3ccffcba826df245d0ca8c2ee7b9c809c319bb7f001f5c6cadf3008b000196b2"
+    },
+    "optimized.log": {
+      "bytes": 1989,
+      "sha256": "41ae4b73fe16a20378c2ed0307ba709629885180cd9c88d4c6fecbbb15641097"
+    }
+  },
+  "native_calls": 0,
+  "normal_tests": 16,
+  "optimized_tests": 16,
+  "phase_admission": false,
+  "production_reference_installed_writes": 0,
+  "source_index_sha256": "4c7ea15770fa256346e99b7e5a38d83c4924a993374f3082ab58a02b5790366c",
+  "source_qualified": false,
+  "status": "source-only-reviewer-checks-passed"
+}

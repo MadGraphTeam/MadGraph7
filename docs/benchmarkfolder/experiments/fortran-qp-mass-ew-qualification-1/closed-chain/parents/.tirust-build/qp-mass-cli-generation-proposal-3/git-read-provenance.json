@@ -1,0 +1,27 @@
+{
+  "CLI_invocations": 0,
+  "Git_mutations": 0,
+  "MG_imports": 0,
+  "command": [
+    "git",
+    "ls-tree",
+    "-r",
+    "-z",
+    "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+    "--",
+    "bin",
+    "madgraph",
+    "aloha",
+    "models",
+    "mg5decay",
+    "MadSpin",
+    "madmatrix",
+    "PLUGIN"
+  ],
+  "compiler_queries": 0,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "raw_stdout_sha256": "45a5703415603c34e4952fd489c7110bfc06a95edfbfe3075b204b4e37b0ecbe",
+  "read_only": true,
+  "retained_utf8_tree": "tracked-bootstrap-tree.json",
+  "tree_entries": 678
+}

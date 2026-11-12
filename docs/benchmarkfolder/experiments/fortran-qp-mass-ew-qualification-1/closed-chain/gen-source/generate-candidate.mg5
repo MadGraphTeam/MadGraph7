@@ -1,0 +1,16 @@
+set automatic_html_opening False --no_save
+set auto_update 0 --no_save
+set nb_core 1 --no_save
+set loop_optimized_output True --no_save
+set output_dependencies external --no_save
+set complex_mass_scheme False --no_save
+set fortran_compiler /nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran --no_save
+set cpp_compiler /nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/g++ --no_save
+set ninja /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib --no_save
+set collier /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier --no_save
+set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib --no_save
+set tirust /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib --no_save
+import model /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-cli-generation-work-1/candidate/mg/models/loop_qcd_qed_sm_Gmu
+generate e+ e- > t t~ a [virt=QED]
+output standalone /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-cli-generation-work-1/candidate/output/ew_n3_epem_ttxa -nojpeg
+quit

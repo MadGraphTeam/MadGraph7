@@ -1,0 +1,17 @@
+test_caps_are_fixed_and_no_preparation_work_exists (__main__.GateTests.test_caps_are_fixed_and_no_preparation_work_exists) ... ok
+test_cli_argv_only_uses_stock_frontend (__main__.GateTests.test_cli_argv_only_uses_stock_frontend) ... ok
+test_exact_ew_cli_cards (__main__.GateTests.test_exact_ew_cli_cards) ... ok
+test_frozen_ordinary_and_target_and_physical_cards (__main__.GateTests.test_frozen_ordinary_and_target_and_physical_cards) ... ok
+test_guarded_real_preflight_has_no_effects (__main__.GateTests.test_guarded_real_preflight_has_no_effects) ... ok
+test_inventory_rejects_extra_symlink_and_empty_dir (__main__.GateTests.test_inventory_rejects_extra_symlink_and_empty_dir) ... ok
+test_model_manifest_is_exact_and_excludes_origin_generated_cache (__main__.GateTests.test_model_manifest_is_exact_and_excludes_origin_generated_cache) ... ok
+test_model_missing_changed_alias_or_escape_rejected (__main__.GateTests.test_model_missing_changed_alias_or_escape_rejected) ... ok
+test_original_is_0fcd_not_starting_performance_baseline (__main__.GateTests.test_original_is_0fcd_not_starting_performance_baseline) ... ok
+test_post_popen_owned_constructor_failure_cleans_raw_child (__main__.GateTests.test_post_popen_owned_constructor_failure_cleans_raw_child) ... ok
+test_qualified_owner_is_unchanged (__main__.GateTests.test_qualified_owner_is_unchanged) ... ok
+test_request_roles_need_separate_review (__main__.GateTests.test_request_roles_need_separate_review) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 8.266s
+
+OK

@@ -1,0 +1,16 @@
+{
+  "admitted_utc": "2026-11-12T06:18:04.030758+00:00",
+  "role": "original",
+  "source_index_sha256": "6fb69ba7da6fe07e702047c211c04329be2003ea577f6bf1574eeb1dd210f917",
+  "independent_source_review_sha256": "037cb8a191b6c05ba08d62f954d3291eb19a61ee53ec79c645e8f63f25c596d7",
+  "scope": "One actual stock CLI export of e+ e- > t t~ a [virt=QED], pinned converted model and unmodified0fcd source. Stock Source/MODEL and Source/DHELAS compiler/archive/metadata children allowed in exact isolated staging. No SubProcesses compilation, scientific executable/model probe, installer or numerical evaluation. End generated_pending_source_review; candidate role separately admitted after original closure review.",
+  "cap_seconds": 600,
+  "cleanup_reserve_seconds": 60,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 536870912,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "retry_allowed": false,
+  "production_promotion": false
+}
