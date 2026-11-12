@@ -33,7 +33,7 @@
  * _gfortran_cpu_time_4 below is defined in the executable, so the static linker
  * binds all "call cpu_time" of the executable (including the Source libraries)
  * to it rather than to libgfortran: no MG5 source file needs to be changed.
- * If this ever breaks, build with -DAV_NO_CPU_TIME_INTERPOSE and replace
+ * If this ever breaks, build with -DVFOLD_NO_CPU_TIME_INTERPOSE and replace
  * "call cpu_time(" by "call vfold_cpu_time(" in the Fortran sources instead.
  *
  * This file is compiled with $(CXX) by makefile_fks_dir (%.o: %.c rule).
