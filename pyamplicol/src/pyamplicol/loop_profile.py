@@ -874,7 +874,7 @@ class _StabilityProgress:
         remaining time is averaged in logarithm, with weight
         ``1 - exp(-dt / ETA_SMOOTHING_SECONDS)`` for an estimate ``dt``
         seconds after the previous one: a factor-ten jump moves it by about
-        a factor 1.4 a second later and fully after half a minute."""
+        a factor 1.25 a second later and fully after half a minute."""
 
         raw = self.eta()
         now = time.perf_counter()
