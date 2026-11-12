@@ -61,6 +61,15 @@ are 100 DP acceptances; the changed QP mass path is untested here. The `3e-6` an
 Threshold/soft-photon behavior, cache coverage, performance and promotion
 remain separate open items.
 
+The [EW threshold follow-up](experiments/fortran-qp-mass-ew-threshold-qualification-1/README.md)
+runs the unmodified TIRust integration and the mass prototype on the same saved
+threshold/soft-photon fixture. Both return refusal `420`, with reported accuracy
+`1`; the mass correction does not resolve this stress failure. The ordinary
+control and full initialization records agree exactly. Four changed words in
+failed return buffers remain diagnostics and supply no accuracy comparison.
+Native QP inputs and independent physical truth remain unobserved. The earlier
+driver readiness refusal and its pole-policy correction are retained separately.
+
 The [analytic Fortran repair qualification](experiments/fortran-analytic-repair-qualification-1/README.md)
 retains a same-flag prototype for `u u~ > z [virt=QCD]` (2→1). Its 544 DP/QP
 repair calls pass the frozen safeguards and physical-residual gates, and its
