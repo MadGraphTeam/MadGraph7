@@ -23,6 +23,7 @@ import os
 import numpy as np
 import pytest
 from fks_fortran import FortranProvider, azimuthal_phase, fks_blocks
+from fks_integration import born_topology
 from fks_testing import evaluate, reference
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
 
@@ -171,6 +172,26 @@ def test_correlated_borns(path):
             mother = np.array(point["p_born"][j_fks - 1 - (j_fks > i_fks)])
             ours = azimuthal_phase(mother[None], k_perp[k : k + 1])[0]
             assert abs(ours - complex(*phases[k])) < 1e-14
+
+
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_channels(path):
+    """The Born configurations of MadFKS are the channels of amp2, one
+    Born diagram each, with a propagator per internal line of the Born, and
+    the topology of each maps the Born (fks_integration.born_topology)."""
+    for channel in reference(path)["channels"]:
+        p = provider(name_of(path), channel["subprocess"])
+        configurations = p.fks_configurations
+        n = len(configurations["born_pdgs"])
+        channels = p.channels()
+        assert len(channels) == p.channel_count
+        assert len({c["diagram"] for c in channels}) == len(channels)
+        masses = [0.0] * n
+        for c in channels:
+            assert len(c["forest"]) == len(c["props"]) == n - 1 - p.incoming
+            assert all(mass >= 0 and width >= 0 for mass, width in c["props"])
+            topology = born_topology(masses, p.incoming, c)
+            assert topology is not None
 
 
 @pytest.mark.parametrize("path", DATA, ids=IDS)

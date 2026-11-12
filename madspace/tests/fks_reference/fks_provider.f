@@ -17,6 +17,10 @@ c   process of one configuration, amp_split_soft per position.
 c - VIRTUAL: sloopmatrix_thres of MadLoop at the Born with mu_R given,
 c   the finite part, the poles and the accuracy per position, for the
 c   orders of the NLO, with the return code of MadLoop.
+c - CHANNELS: the Born configurations (born_conf.inc, born_props.inc),
+c   per configuration its diagram, for each propagator its two daughters,
+c   sprop and tprid, then the masses and widths of the propagators, as
+c   write_born_forest of fks_kinematics_dump.f writes them.
 c A request is three integers (command, number of points, argument)
 c then its data, an answer is a status (0 for success) then its data,
 c all in the native byte order. Command 0 stops the server, 1 gives
@@ -118,6 +122,8 @@ c the sizes and the orders of the split-order positions.
             call provider_links(header(2),header(3))
          case (5)
             call provider_virtual(header(2))
+         case (6)
+            call provider_channels
          case default
             call write_status(1)
          end select
@@ -397,6 +403,55 @@ c the couplings of the loops as well, as BinothLHA updates them
       call write_ints(count,codes)
       call write_reals(4*amp_split_size*count,out)
       deallocate(scales,p,out,codes)
+      end
+
+
+c The Born configurations: their number and that of the propagators,
+c then per configuration its diagram (mapconfig) and per propagator
+c iforest(1:2), sprop and tprid, then per configuration and propagator
+c the mass and the width.
+      subroutine provider_channels
+      use fks_provider_io
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'born_conf.inc'
+      include 'coupl.inc'
+      double precision pmass(-nexternal:0,lmaxconfigs)
+      double precision pwidth(-nexternal:0,lmaxconfigs)
+      integer pow(-nexternal:0,lmaxconfigs)
+      integer i,k,branches,l
+      integer(c_int32_t), allocatable :: ints(:)
+      double precision, allocatable :: reals(:)
+      pmass=0d0
+      pwidth=0d0
+      include 'born_props.inc'
+      branches=nexternal-(2+nincoming)
+      allocate(ints(2+mapconfig(0)*(1+4*branches))
+     $     ,reals(2*branches*mapconfig(0)))
+      ints(1)=mapconfig(0)
+      ints(2)=branches
+      l=2
+      do i=1,mapconfig(0)
+         ints(l+1)=mapconfig(i)
+         l=l+1
+         do k=-1,-branches,-1
+            ints(l+1:l+4)=[iforest(1,k,i),iforest(2,k,i),sprop(k,i)
+     $           ,tprid(k,i)]
+            l=l+4
+         enddo
+      enddo
+      l=0
+      do i=1,mapconfig(0)
+         do k=-1,-branches,-1
+            reals(l+1:l+2)=[pmass(k,i),pwidth(k,i)]
+            l=l+2
+         enddo
+      enddo
+      call write_status(0)
+      call write_ints(size(ints),ints)
+      call write_reals(size(reals),reals)
+      deallocate(ints,reals)
       end
 
 

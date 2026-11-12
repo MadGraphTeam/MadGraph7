@@ -17,7 +17,9 @@ evaluates batches of numpy arrays, every block at the strong coupling g = 1
   one configuration (sborn_sf), only for the pairs MadFKS registered, those
   of fks_j_from_i of i_fks;
 - virtual: the finite part, the poles and the accuracy of MadLoop at a
-  renormalization scale per point, summed over helicities.
+  renormalization scale per point, summed over helicities;
+- channels: the Born configurations of MadFKS, the diagrams of its
+  integration channels.
 
 From these it gives the blocks of madspace: the real per NLO order, the
 Born per Born order, the color-correlated Borns of all pairs of Born legs
@@ -44,7 +46,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 SOURCE = os.path.join(HERE, "fks_reference", "fks_provider.f")
 MAKEFILE = os.path.join(HERE, "fks_reference", "makefile_provider")
 
-QUIT, INFO, REAL, BORN, LINKS, VIRTUAL = range(6)
+QUIT, INFO, REAL, BORN, LINKS, VIRTUAL, CHANNELS = range(7)
 INT = np.dtype(np.int32)
 FLOAT = np.dtype(np.float64)
 
@@ -301,6 +303,27 @@ class FortranProvider:
         parts = ("finite", "single", "double", "accuracy")
         return {name: out[..., k] for k, name in enumerate(parts)}, codes
 
+    def channels(self):
+        """The Born configurations of MadFKS (born_conf.inc), per
+        configuration its Born diagram, its forest (per propagator, from -1,
+        the propagator, its two daughters, sprop and tprid) and the masses
+        and widths of the propagators."""
+        self._request(CHANNELS, 0, 0)
+        count, branches = (int(v) for v in self._read(INT, 2))
+        rows = self._read(INT, count * (1 + 4 * branches)).reshape(count, -1)
+        props = self._read(FLOAT, 2 * branches * count).reshape(count, branches, 2)
+        return [
+            dict(
+                diagram=int(row[0]),
+                forest=[
+                    [-(b + 1)] + [int(v) for v in row[1 + 4 * b : 5 + 4 * b]]
+                    for b in range(branches)
+                ],
+                props=props[c].tolist(),
+            )
+            for c, row in enumerate(rows)
+        ]
+
     # the layout of madspace
 
     def position(self, orders):
@@ -428,15 +451,19 @@ def fks_blocks(
     fks_index,
     k_perp,
     ren_scale=None,
+    real_mask=None,
+    born_mask=None,
 ):
     """The inputs of FKSCrossSection from matrix elements at the kinematics
     of FKSKinematics (its outputs by name, in the lab frame) with k_perp of
     FKSSplittingKernels at the collinear counter-event: matrix_element
     (the real at the event, where its weight is not zero), born,
     color_correlated and spin_correlated (at the Born, where the Born
-    weight is not zero) and, with ren_scale, virtual. The momenta go to the
-    partonic center-of-mass frame of their kinematics first, k_perp with
-    the Born."""
+    weight is not zero) and, with ren_scale, virtual, and amp2 of the Born
+    diagrams of the channels (zero where the Born weight is). real_mask and
+    born_mask leave out the points where they are false, for example those
+    that the cuts reject. The momenta go to the partonic center-of-mass frame
+    of their kinematics first, k_perp with the Born."""
     incoming = provider.incoming
     fks_index = np.asarray(fks_index, dtype=int)
     count = len(fks_index)
@@ -447,15 +474,22 @@ def fks_blocks(
         born=np.zeros((count, b)),
         color_correlated=np.zeros((count, b, n, n)),
         spin_correlated=np.zeros((count, b)),
+        amp2=np.zeros((count, provider.channel_count)),
     )
     if ren_scale is not None:
         blocks["virtual"] = np.zeros((count, o))
-    event = np.flatnonzero(np.asarray(kinematics["weight"]) != 0)
+    event = np.asarray(kinematics["weight"]) != 0
+    if real_mask is not None:
+        event &= np.asarray(real_mask, dtype=bool)
+    event = np.flatnonzero(event)
     if len(event):
         real = np.asarray(kinematics["momenta"])[event]
         real = boost_z(real, -partonic_rapidity(real, incoming))
         blocks["matrix_element"][event] = provider.real_orders(real, fks_index[event])
-    valid = np.flatnonzero(np.asarray(kinematics["born_weight"]) != 0)
+    valid = np.asarray(kinematics["born_weight"]) != 0
+    if born_mask is not None:
+        valid &= np.asarray(born_mask, dtype=bool)
+    valid = np.flatnonzero(valid)
     if len(valid):
         born = np.asarray(kinematics["born_momenta"])[valid]
         y = -partonic_rapidity(born, incoming)
@@ -463,6 +497,7 @@ def fks_blocks(
         direction = boost_z(np.asarray(k_perp)[valid][:, None], y)[:, 0]
         evaluated = provider.born(born, fks_index[valid])
         blocks["born"][valid] = provider.born_orders_of(evaluated[0])
+        blocks["amp2"][valid] = evaluated[2]
         blocks["color_correlated"][valid] = provider.color_correlated(born)
         blocks["spin_correlated"][valid] = provider.spin_correlated(
             born, direction, fks_index[valid], born=evaluated
