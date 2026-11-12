@@ -8,7 +8,7 @@ complex-mass bubble. The largest tested rank is four. The scaleless bubble has
 separate nonzero UV and IR residues even though their sum vanishes. Tensor
 triangles and boxes also include nonzero UV residues.
 
-The current qualification uses upstream NinjaRS
+The retained October pole-selection qualification uses upstream NinjaRS
 [`41a4c00e`](https://github.com/alphal00p/ninjars/commit/41a4c00e7635e3ab188fc26bacf0aae6941e8082)
 and oneloopmaster
 [`5b710437`](https://github.com/alphal00p/oneloopmaster/commit/5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5).
@@ -32,8 +32,11 @@ can also be selected explicitly with `--precision dp` or `--precision mp`.
 Every context cycles through `both, UV, IR, none, both, IR, UV, none`; repeated
 evaluations of the same mode must agree exactly, including all printed rescue
 digits. Binary128 inputs and selected poles traverse the production Fortran ABI.
-Run the two precisions serially: the restricted Symbolica license permits one
-active numerical worker per user.
+The driver runs the two precisions serially. With the current NinjaRS package
+key, valid scoped authorization also permits concurrent MadLoop processes
+without a personal Symbolica key. The separate `../oem.py` lifecycle regression
+checks that case; historical records below retain their original dependency
+pins and should not be read as measurements of the new package-key build.
 
 Each output directory records the input stream, raw numerical values, statuses,
 comparison results, compiler logs and hashes of the reference and installed

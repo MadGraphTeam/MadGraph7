@@ -2,12 +2,14 @@ SHELL := bash
 FC = gfortran
 AR ?= ar
 CARGO ?= cargo
+PYTHON ?= python3
 PREFIX ?= $(CURDIR)/install
 CARGO_TARGET_DIR ?= $(CURDIR)/target
+OEM_TEST_OUTPUT ?= $(CARGO_TARGET_DIR)/oem-check
 export CARGO_TARGET_DIR
 FFLAGS ?= -O3 -fPIC
 
-.PHONY: all rust compiler-runtime install check clean
+.PHONY: all rust compiler-runtime install check check-oem clean
 all: libninjars.a
 
 rust:
@@ -35,6 +37,9 @@ check: libninjars.a
 	$(CARGO) test --locked --features fenv-test-support -- --test-threads=1
 	$(FC) $(FFLAGS) smoke.f90 -I. $$(cat ninjars-link-before.txt) -L. -lninjars $$(cat ninjars-native-libs.txt) -o smoke
 	./smoke
+
+check-oem: libninjars.a
+	$(PYTHON) tests/oem.py --lib "$(CURDIR)" --output "$(OEM_TEST_OUTPUT)"
 
 clean:
 	rm -f mninjars.o mninjars.mod libninjars.a smoke build.log ninjars-native-libs.txt ninjars-link-before.txt

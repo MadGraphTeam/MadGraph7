@@ -203,8 +203,23 @@ class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
                 with self.subTest(producer=name):
                     source = (root / name).read_text()
                     start = source.index('      if (ntot.ne.0) then')
-                    writer = source[start:source.index(
-                        "      write (*,*) 'counters for the granny resonances'", start)]
+                    # Extract the statistics conditional itself, including its
+                    # nested bucket conditional, independently of whatever
+                    # timing/reporting statements follow it in the driver.
+                    writer_lines = []
+                    depth = 0
+                    for line in source[start:].splitlines(keepends=True):
+                        writer_lines.append(line)
+                        statement = line[6:].strip().lower()
+                        if re.match(r'if\s*\(.*\)\s*then\b', statement):
+                            depth += 1
+                        elif re.match(r'end\s*if\b', statement):
+                            depth -= 1
+                            if depth == 0:
+                                break
+                    else:
+                        self.fail('Unterminated MadLoop statistics block in ' + name)
+                    writer = ''.join(writer_lines)
                     output = self.run_producer(work, tally, writer)
                     path = work / 'log.txt'
                     path.write_text(output)

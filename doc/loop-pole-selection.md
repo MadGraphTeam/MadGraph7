@@ -72,8 +72,10 @@ which computes the selected residues. The MadLoop bridge contains no separate
 UV/IR residue formulas.
 UV-only and IR-only evaluations use the generic NinjaRS engine in double
 precision and in higher-precision rescue so that scaleless-bubble coefficients
-are retained. These modes share the Symbolica worker and licensing requirements
-of higher-precision rescue. A UV-only or IR-only retry through the compensated-DP entry also
+are retained. These modes share the Symbolica worker of higher-precision
+rescue. The pinned NinjaRS library key covers its operations while valid,
+including oneloopmaster evaluation, without a separate personal Symbolica key.
+A UV-only or IR-only retry through the compensated-DP entry also
 uses this generic DP engine; the fast-engine compensated numerator callback
 does not apply. Higher-precision rescue remains available. Combined and
 no-pole double-precision evaluations retain the fast reduction engine.

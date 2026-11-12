@@ -895,9 +895,10 @@ struct MpRequest {
     scale: Vec<u8>,
     reply: mpsc::SyncSender<Result<(i32, Vec<u8>)>>,
 }
-// Symbolica's restricted license grants one active thread per user. Route all
-// contexts through one process worker, retaining independent numerical state
-// for each context. The last context's destroy joins and releases the worker.
+// Retain one large-stack worker for Symbolica kernel construction and reuse
+// independent numerical state for each context. Its scoped NinjaRS license
+// covers initialization, evaluation and destruction on that worker. If the
+// package key is unavailable, the single worker also respects restricted mode.
 struct MpContext {
     id: u64,
     sender: mpsc::Sender<MpMessage>,
@@ -947,7 +948,8 @@ impl Drop for MpContext {
         manager.users -= 1;
         if manager.users == 0 {
             // Hold the manager lock through join so another creation cannot
-            // start a second worker before this one's license permit is freed.
+            // overlap the old worker's teardown, including restricted-mode
+            // license-permit release when the package key is unavailable.
             drop(manager.worker.take());
         }
     }
@@ -967,6 +969,7 @@ impl MpWorker {
             .name("madloop-ninjars-mp".into())
             .stack_size(128 * 1024 * 1024)
             .spawn(move || {
+                let _license = ninjars::licensing::unlock_for_ninjars_operation();
                 let mut states = HashMap::new();
                 let mut dp_states = HashMap::new();
                 while let Ok(message) = recv.recv() {
