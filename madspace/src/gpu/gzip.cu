@@ -4,7 +4,6 @@
 #include "madspace/driver/logger.hpp"
 
 #include <algorithm>
-#include <cstring>
 #include <mutex>
 #include <vector>
 
@@ -89,8 +88,8 @@ private:
     T* _ptr = nullptr;
 };
 
-/// Compresses through a pinned staging buffer: one H2D copy of the text and one
-/// D2H copy of the packed gzip members per call.
+/// One H2D copy of the text and one D2H copy of the packed gzip members per call,
+/// both pageable: on H100 faster than staging through pinned memory.
 class GpuGzipCompressor : public GzipCompressor {
 public:
     GpuGzipCompressor(const GpuDevice& device, int algorithm) : _device(device) {
@@ -120,9 +119,6 @@ public:
     GpuGzipCompressor& operator=(const GpuGzipCompressor&) = delete;
 
     ~GpuGzipCompressor() override {
-        if (_host_data != nullptr) {
-            ignore_error(gpuFreeHost(_host_data));
-        }
         if (_stream != nullptr) {
             ignore_error(gpuStreamDestroy(_stream));
         }
@@ -135,9 +131,8 @@ public:
         _device.activate();
         reserve(data.size());
         std::size_t chunk_count = (data.size() + chunk_bytes - 1) / chunk_bytes;
-        std::memcpy(_host_data, data.data(), data.size());
         check_error(gpuMemcpyAsync(
-            _data.get(), _host_data, data.size(), gpuMemcpyHostToDevice, _stream
+            _data.get(), data.data(), data.size(), gpuMemcpyHostToDevice, _stream
         ));
         unsigned table_blocks = static_cast<unsigned>((chunk_count + 255) / 256);
         kernel_chunk_tables<<<table_blocks, 256, 0, _stream>>>(
@@ -221,10 +216,6 @@ private:
         }
         _capacity = round_up(data_bytes, chunk_bytes);
         std::size_t chunk_count = _capacity / chunk_bytes;
-        if (_host_data != nullptr) {
-            check_error(gpuFreeHost(_host_data));
-        }
-        check_error(gpuMallocHost(&_host_data, _capacity));
         _host_statuses.resize(chunk_count);
         _data.resize(_capacity);
         _chunks_out.resize(chunk_count * _out_stride);
@@ -261,7 +252,6 @@ private:
     std::size_t _out_stride;
     std::size_t _capacity = 0;
     gpuStream_t _stream = nullptr;
-    char* _host_data = nullptr;
     std::vector<gpucompStatus_t> _host_statuses;
     DeviceArray<char> _data;
     DeviceArray<char> _chunks_out;

@@ -1010,9 +1010,15 @@ void LHEFileWriter::emit(std::string_view text) {
         _file_stream << text;
         return;
     }
-    _pending += text;
-    if (_pending.size() >= compress_flush_bytes) {
-        start_compression();
+    // Fixed-size blocks: compressor buffers are allocated once, whatever the batch.
+    while (!text.empty()) {
+        std::size_t take =
+            std::min(text.size(), compress_flush_bytes - _pending.size());
+        _pending.append(text.substr(0, take));
+        text.remove_prefix(take);
+        if (_pending.size() == compress_flush_bytes) {
+            start_compression();
+        }
     }
 }
 
