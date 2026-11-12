@@ -2368,6 +2368,7 @@ name = "rusticol-capi"
 version = "1.0.3"
 dependencies = [
  "gmp-mpfr-sys",
+ "pyamplicol",
  "rusticol-core",
  "rusticol-loop-sdk",
  "serde_json",
