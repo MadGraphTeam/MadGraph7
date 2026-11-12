@@ -621,8 +621,8 @@ def _phase_line(
         (f"  {count} ", None),
         (bar, "GREEN"),
         (percent, None),
-        (f"  phase {_duration_text(elapsed)}", None),
         (f"  ETA {_duration_text(eta)}" if eta is not None else "", None),
+        (f"  phase {_duration_text(elapsed)}", None),
         (active_text, None),
     ]
     return _paint_fragments(fragments, width=width, enabled=color)

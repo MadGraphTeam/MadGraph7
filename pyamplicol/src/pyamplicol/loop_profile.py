@@ -742,9 +742,8 @@ class _StabilityProgress:
             sink.emit(
                 ProgressStart(
                     "loop-stability",
-                    f"Stability: {points} flat points x {len(backends)} "
-                    f"backend(s), binary64 and double-double, {workers} "
-                    f"core(s)",
+                    f"Stability: {points} points, {len(backends)} backend(s), "
+                    f"{workers} core(s)",
                     total=points * len(self.done),
                     unit="evaluations",
                     details={"step": "loading the artifact in the workers"},
@@ -870,9 +869,12 @@ def _stability(
     count = len(points)
     workers = max(1, min(bench.n_core, usable_cores()))
     chunk = _chunk_size(count, workers, bench.batch_size)
-    chunks = [
+    # The first point alone: every backend and precision returns its cost
+    # per point early (the time estimate); then batches of ``chunk``.
+    chunks = [[0]] if count else []
+    chunks += [
         list(range(start, min(start + chunk, count)))
-        for start in range(0, count, chunk)
+        for start in range(1, count, chunk)
     ]
     # Interleaved: every backend and precision is sampled from the start,
     # so the time estimate covers the slowest early.
