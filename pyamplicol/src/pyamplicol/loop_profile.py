@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import statistics
 import time
 from collections.abc import Mapping, Sequence
@@ -278,7 +279,8 @@ def failure_causes(
     first: dict[tuple[str, str, str, str], str] = {}
     counts: dict[tuple[str, str, str, str], int] = {}
     for backend, table, kind, reason in items:
-        key = (backend, table, kind, _NUMBER.sub("#", reason))
+        masked = _NONFINITE.sub("#", _NUMBER.sub("#", reason))
+        key = (backend, table, kind, masked)
         first.setdefault(key, reason)
         counts[key] = counts.get(key, 0) + 1
     order = {key: index for index, key in enumerate(first)}
@@ -293,14 +295,24 @@ def failure_causes(
     )
 
 
+# Non-finite numbers, masked with the finite ones.
+_NONFINITE = re.compile(r"\b(?:[-+]?inf|nan)\b")
+_MORE = re.compile(r"(?: \(\+\d+ more(?: like this)?\))+$")
+
+
 def _strip_status(reason: str, status: str) -> str:
-    """A ``benchmarking.failure_reason`` text without its status and the
-    executor's stage name (the kind column says it)."""
+    """A point's failure cause: the first of its "; "-joined messages (one
+    per refused lane or check, ``benchmarking._first_message``) without the
+    status and the executor's stage name (the kind says it) and without the
+    "(+N more ...)" counts, which differ from point to point."""
+
+    from pyamplicol.benchmarking import _first_message
 
     for prefix in (f"{status}: v2-evaluation: ", f"{status}: "):
         if reason.startswith(prefix):
-            return reason[len(prefix) :]
-    return reason
+            reason = reason[len(prefix) :]
+            break
+    return _MORE.sub("", _MORE.sub("", _first_message(reason)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -486,7 +498,10 @@ def profile_loop(
         for point in stability_row.per_point:
             kind = _CAUSE_KINDS.get(point.status)
             if kind is not None:
-                text = _strip_status(point.reason or kind, "failed")
+                text = _strip_status(
+                    point.reason or kind,
+                    "best-effort" if kind == "best-effort" else "failed",
+                )
                 causes.append((stability_row.backend, "stability", kind, text))
     return LoopProfileReport(
         physics.process_id,
