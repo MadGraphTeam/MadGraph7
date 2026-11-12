@@ -1047,7 +1047,9 @@ they are printed above the progress display, which they never tear.
 and one line per column (the command runs as usual). Every command shows its
 progress (a live display on a terminal, plain lines with `--progress log`)
 and handles Ctrl-C: no traceback, worker processes stopped, exit code 130;
-`profile` prints the tables of what was measured so far, `check` the tests
+`profile` and `evaluate` print the tables of what was measured or
+evaluated so far with a one-line notice (for `evaluate` in `--json` as
+`interrupted`, `requested_points` and `measured_points`), `check` the tests
 completed (the rest marked "not run"), `self-test` the checks run so far, and
 an interrupted `generate` writes nothing (an artifact is published only when
 complete).

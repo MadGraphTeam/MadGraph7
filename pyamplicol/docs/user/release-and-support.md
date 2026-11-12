@@ -155,8 +155,9 @@ and column. The CLI shows no logger-format lines by default (`--log-level`
 defaults to `warning`; a few short notice lines say what is being done) and
 `--progress log` writes plain lines. `check`, `evaluate`, `profile` and
 `self-test` show their progress like `generate`, and Ctrl-C ends any command
-cleanly (exit code 130): `profile` and `check` report what was measured or
-checked so far, an interrupted `generate` writes nothing. Value tables print
+cleanly (exit code 130): `profile`, `evaluate` and `check` report what was
+measured, evaluated or checked so far, an interrupted `generate` writes
+nothing. Value tables print
 an explicit `+` on positive values. `profile`: one-line backend names (`*`:
 the default), a lean runtime table that times best-effort points as served,
 the distribution of failure causes under the tables (`failure_causes` in
