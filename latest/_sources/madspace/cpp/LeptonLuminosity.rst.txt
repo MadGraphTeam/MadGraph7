@@ -1,0 +1,6 @@
+LeptonLuminosity
+================
+
+.. doxygenclass:: madspace::LeptonLuminosity
+   :members:
+   :undoc-members:

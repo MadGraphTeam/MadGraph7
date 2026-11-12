@@ -21,6 +21,8 @@ Invertible maps between the unit hypercube and physical phase space; each also r
    python/FastRamboMapping
    python/Flow
    python/Invariant
+   python/LeptonLuminosity
+   python/LeptonLuminosityInvariant
    python/Luminosity
    python/Mapping
    python/MultiChannelMapping
@@ -49,6 +51,8 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/Cuts
    python/DifferentialCrossSection
    python/DiscreteHistogram
+   python/EELuminosity
+   python/EEPartonDensity
    python/EnergyScale
    python/FunctionGenerator
    python/HistItem
@@ -83,6 +87,8 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    :maxdepth: 1
 
    python/AlphaSGrid
+   python/BeamstrahlungParameters
+   python/BeamstrahlungSampler
    python/CustomPdf
    python/Decay
    python/Diagram
@@ -191,6 +197,7 @@ Lower-level helpers and containers.
 .. toctree::
    :maxdepth: 1
 
+   python/BeamstrahlungQTerm
    python/NamedTypes
    python/NamedValues
    python/PythonFunction

@@ -21,6 +21,8 @@ Invertible maps between the unit hypercube and physical phase space; each also r
    cpp/FastRamboMapping
    cpp/Flow
    cpp/Invariant
+   cpp/LeptonLuminosity
+   cpp/LeptonLuminosityInvariant
    cpp/Luminosity
    cpp/Mapping
    cpp/MultiChannelMapping
@@ -47,6 +49,8 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/Cuts
    cpp/DifferentialCrossSection
    cpp/DiscreteHistogram
+   cpp/EELuminosity
+   cpp/EEPartonDensity
    cpp/EnergyScale
    cpp/FunctionGenerator
    cpp/GradientClipper
@@ -85,8 +89,12 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    :maxdepth: 1
 
    cpp/AlphaSGrid
+   cpp/BeamstrahlungParameters
+   cpp/BeamstrahlungSampler
    cpp/CustomPdf
    cpp/Diagram
+   cpp/LeptonSHatResult
+   cpp/LeptonSplitResult
    cpp/PdfGrid
    cpp/Propagator
    cpp/Topology

@@ -1,0 +1,7 @@
+LeptonLuminosityInvariant
+=========================
+
+.. autoclass:: madspace.LeptonLuminosityInvariant
+   :members:
+   :undoc-members:
+   :show-inheritance:

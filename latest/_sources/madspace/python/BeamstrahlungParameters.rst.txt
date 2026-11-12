@@ -1,0 +1,7 @@
+BeamstrahlungParameters
+=======================
+
+.. autoclass:: madspace.BeamstrahlungParameters
+   :members:
+   :undoc-members:
+   :show-inheritance:

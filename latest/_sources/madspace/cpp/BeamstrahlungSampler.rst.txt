@@ -1,0 +1,6 @@
+BeamstrahlungSampler
+====================
+
+.. doxygenclass:: madspace::BeamstrahlungSampler
+   :members:
+   :undoc-members:

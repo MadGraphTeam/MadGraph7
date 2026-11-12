@@ -1,0 +1,6 @@
+EEPartonDensity
+===============
+
+.. doxygenclass:: madspace::EEPartonDensity
+   :members:
+   :undoc-members:
