@@ -338,9 +338,17 @@ diagnostics carry `"best_effort"` per point id (`refusal`, `uncertainty`,
 `source`: `"stability-and-recommended-checks"` | `"stability-checks"` (the
 call's checks already include the recommended ones) | `"recommended-checks"`
 (the call runs none) | `"none"`, `detail`,
-`reduction`) and `"warnings"` (per kind `best-effort` / `failed`: the first
+`reduction`, and the backend's own lane-level measures of the refusal,
+`backend_deviation` (TIRust's largest method-choice deviation relative to the
+term scale) and `gram_conditioning` (its smallest conditioning estimate of a
+refused lane), null where none is stated: the Python API's
+`VirtualBestEffort` fields, returned as data by the native reduction) and
+`"warnings"` (per kind `best-effort` / `failed`: the first
 reason, the count and the point ids; the Python API's `ResultWarning`);
-`"failures"` keeps one message per reason class with the count of the others.
+`"failures"` keeps one message per reason class with the count of the others;
+`"refusal_measures"` gives, per still-failed point whose refused lanes the
+backend states a measure for, its `[kind, value]` pairs
+(`"method-choice-deviation"`, `"gram-conditioning"`).
 Nothing is printed. `"return"` keeps such points `Failed` without the extra
 evaluation; `"raise"` is the opt-in strict mode (a call with such a point is
 an evaluation error). Points the configured alternatives accept are

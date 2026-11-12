@@ -1564,6 +1564,87 @@ fn the_rescaled_acceptance_refuses_the_rotation_blind_lanes() {
     eprintln!("rotation-blind lanes at this TIRust pin: {blind}");
 }
 
+/// m-lit ux-polish item 4: the refused lanes' measures come as data next
+/// to the unchanged reasons (`V2Backend::take_lane_measures`): a gate-refused
+/// lane without the method choice carries TIRust's conditioning estimate
+/// (direct and check frame), a lane the method choice's acceptance refuses
+/// its deviation relative to its term scale (the numbers its reason states);
+/// a served lane carries none, and the next call starts afresh.
+#[test]
+fn refused_lanes_state_their_measures_as_data() {
+    use rusticol_core::loop_execution::v2::MeasureKind;
+
+    let groups = near_forward_boxes();
+    let mut backend = tir_without_method_choice();
+    let (found, check) = reduce(
+        &mut backend,
+        &groups,
+        Poles::All,
+        Some(ReductionCheck::REVERSED),
+    );
+    let check = check.unwrap();
+    let measures = V2Backend::<f64>::take_lane_measures(&mut backend);
+    let mut refused = 0;
+    for measured in &measures {
+        let outcome = if measured.check {
+            &check[measured.group][measured.lane]
+        } else {
+            &found[measured.group][measured.lane]
+        };
+        assert!(outcome.is_err(), "a measure belongs to a refused lane");
+        assert_eq!(measured.measure.kind, MeasureKind::GramConditioning);
+        assert!(measured.measure.value >= 0.0 && measured.measure.value < 1.0);
+    }
+    for (g, lanes) in found.iter().enumerate() {
+        for (lane, outcome) in lanes.iter().enumerate() {
+            if outcome.is_err() {
+                refused += 1;
+                assert!(
+                    measures
+                        .iter()
+                        .any(|m| !m.check && m.group == g && m.lane == lane),
+                    "family {g} lane {lane}: no measure"
+                );
+            }
+        }
+    }
+    assert!(refused > 0);
+    assert!(V2Backend::<f64>::take_lane_measures(&mut backend).is_empty());
+
+    let groups = rotation_blind_row();
+    let mut backend = tir();
+    let (found, _) = reduce(&mut backend, &groups, Poles::All, None);
+    let measures = V2Backend::<f64>::take_lane_measures(&mut backend);
+    let mut deviations = 0;
+    for (lane, outcome) in found[0].iter().enumerate() {
+        let measure = measures
+            .iter()
+            .find(|m| !m.check && m.group == 0 && m.lane == lane);
+        match outcome {
+            Ok(_) => assert!(measure.is_none(), "lane {lane}"),
+            Err(reason) if reason.contains("method-choice lane refused by its check") => {
+                deviations += 1;
+                let measure = measure.expect("a deviation measure").measure;
+                assert_eq!(measure.kind, MeasureKind::MethodChoiceDeviation);
+                // The numbers the reason states (this test only reads them
+                // to compare; nothing parses them in production).
+                let number = |after: &str| -> f64 {
+                    let start = reason.find(after).unwrap() + after.len();
+                    reason[start..].split(' ').next().unwrap().parse().unwrap()
+                };
+                let stated = number("deviation ") / number("of term scale ");
+                assert!(
+                    (measure.value - stated).abs() <= 1e-12 * stated,
+                    "lane {lane}: {} vs {stated}",
+                    measure.value
+                );
+            }
+            Err(_) => {}
+        }
+    }
+    eprintln!("method-choice deviation measures: {deviations}");
+}
+
 /// `TirOptions::store` (m-lit lit-cache STEP 3): a box family and its
 /// pinched triangle (the box's first three propagators, the same shifts)
 /// at the same points share TIRust's per-subset results through the

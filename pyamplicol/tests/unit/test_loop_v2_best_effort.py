@@ -95,6 +95,49 @@ def test_a_best_effort_record_states_its_refusal_and_uncertainty():
         VirtualReduction("tirust", "tirust", "x", unchecked=False, best_effort=record)
 
 
+def test_refusal_measures_are_data_kept_by_the_bounded_reasons():
+    """m-lit ux-polish item 4: the backend's lane measures travel as data
+    next to the unchanged reason texts (``plan_export.Refusal``): bounding,
+    relabelling and pickling keep them; ``backend_deviation`` and
+    ``gram_conditioning`` read them, never the text."""
+
+    import pickle
+
+    from pyamplicol.loops.v2.plan_export import (
+        Refusal,
+        bounded_reasons,
+        measures_of,
+        relabelled,
+        with_measures,
+    )
+    from pyamplicol.loops.v2.reduction import backend_deviation, gram_conditioning
+
+    text = "deviation 1e-3 of term scale 1e+0 between its two frames"
+    reasons = with_measures(
+        [text, text, "TIRust Unstable: singular"],
+        [("method-choice-deviation", 4e-9), ("gram-conditioning", 2e-13)],
+    )
+    more = [relabelled(f"rotation 0: {r}", r) for r in reasons]
+    more.append(Refusal("other", [("method-choice-deviation", 7e-8)]))
+    bounded = bounded_reasons(more)
+    assert [str(r) for r in bounded] == [
+        f"rotation 0: {text} (+1 more like this)",
+        "rotation 0: TIRust Unstable: singular",
+        "other",
+    ]
+    assert sorted(measures_of(bounded)) == [
+        ("gram-conditioning", 2e-13),
+        ("method-choice-deviation", 4e-9),
+        ("method-choice-deviation", 7e-8),
+    ]
+    assert backend_deviation(bounded) == 7e-8
+    assert gram_conditioning(bounded) == 2e-13
+    # The text alone states nothing (no parsing).
+    assert backend_deviation([text]) is None and gram_conditioning([text]) is None
+    again = pickle.loads(pickle.dumps(bounded))
+    assert measures_of(again) == measures_of(bounded)
+
+
 def test_numerical_warnings_summarise_the_lanes_and_emit_only_on_request():
     from pyamplicol.api.result_warnings import (
         NumericalAccuracyWarning,
@@ -206,6 +249,13 @@ def test_refused_points_carry_the_unchecked_value_by_default(aag, capfd):
             assert record.source == "recommended-checks"
             assert math.isfinite(record.uncertainty) and record.uncertainty >= 0
         assert lane.failures and lane.failures[0].detail == record.refusal
+    # m-lit ux-polish item 4: TIRust states its measure of the refused
+    # lanes as data (the method-choice deviation or the conditioning).
+    assert all(
+        found.diagnostics[p].best_effort.backend_deviation is not None
+        or found.diagnostics[p].best_effort.gram_conditioning is not None
+        for p in refused
+    )
     # The call ran no checks: the public result carries no estimate.
     assert found.stability is None
     (warning,) = found.warnings
@@ -578,6 +628,14 @@ def test_every_sdk_returns_refused_points_with_their_best_effort_value(
                 "TIRust" in entry["refusal"] and entry["source"] == "recommended-checks"
             )
             assert math.isfinite(entry["uncertainty"])
+        # The backend's measures (m-lit ux-polish item 4): the Python API's.
+        for p in refused:
+            mine = python.diagnostics[p].best_effort
+            entry = record["best_effort"][str(p)]
+            assert (entry["backend_deviation"], entry["gram_conditioning"]) == (
+                mine.backend_deviation,
+                mine.gram_conditioning,
+            ), p
         (warning,) = record["warnings"]
         assert warning["kind"] == "best-effort" and warning["count"] == len(refused)
         assert record["on_failure"] == "best-effort"

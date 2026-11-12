@@ -687,7 +687,7 @@ lane.best_effort.source       # "stability-and-recommended-checks" | "stability-
 `lane.best_effort`) holds `refusal` (one message per distinct reason class,
 with the count of the others), `uncertainty` (the relative estimate of the
 value, the `"relative"` metric: each squared-order sector against its own
-magnitude), its `source` and `backend_deviation`. The uncertainty always
+magnitude), its `source`, `backend_deviation` and `gram_conditioning`. The uncertainty always
 includes the recommended checks (a rotation and the rescaled
 reduction-direction check, `VirtualStabilityChecks(1, True, rescaled=True)`),
 run on the refused points only, whatever checks the call asked for:
@@ -709,9 +709,15 @@ recommended checks included, 722 of 722 and 65 of 65 (the C ABI alike: 221
 rotation) thus still gets an uncertainty that covers the measured errors;
 the lane's public `stability` estimate is that of the checks asked for and
 can be optimistic for a best-effort value (compare it with
-`best_effort.uncertainty`). `backend_deviation` is TIRust's own measure
-where its refusal states one (the largest method-choice deviation between
-its two frames relative to the lane's term scale; None otherwise). The lane's `reduction` records the
+`best_effort.uncertainty`). `backend_deviation` and `gram_conditioning` are
+TIRust's own lane-level measures of the refused lanes, returned by the native
+reduction as data next to the reason texts (never read from them; the C ABI's
+record carries the same two numbers): the largest method-choice deviation
+between a lane's two frames relative to its term scale, and the smallest
+conditioning estimate of a lane its stability threshold refused (Gram,
+Cayley or coordinate-system measure; zero for an exactly singular pivot);
+None where no refused lane states one (e.g. NinjaRS's refusals). Neither is
+the value's accuracy: that is `uncertainty`. The lane's `reduction` records the
 backend whose unchecked reduction gave the value (`unchecked=True`).
 
 `result.warnings` is data, computed from the lanes, never emitted: a tuple

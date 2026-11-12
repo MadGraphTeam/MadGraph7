@@ -213,7 +213,10 @@ int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
  * that gives a value, returned as a row with status
  * RUSTICOL_VIRTUAL_BEST_EFFORT, its refusal in the diagnostics'
  * "best_effort" {"<id>": {"refusal","uncertainty","source","detail",
- * "reduction"}} and its relative uncertainty
+ * "reduction","backend_deviation","gram_conditioning"}} (the last two: the
+ * backend's own lane-level measures of the refusal as data, null where none
+ * is stated; per still-failed point "refusal_measures" {"<id>": [[kind,
+ * value], ...]}) and its relative uncertainty
  * (rusticol_virtual_result_copy_uncertainties): the binary64 stability
  * estimate of the call's checks together with the recommended checks (the
  * first default rotation and the rescaled reduction-direction check), run
