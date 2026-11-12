@@ -1995,6 +1995,11 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             self.tir_available_dict.get('tirust', False) and
             tirust_install.supports_quad_precision(getattr(self, 'tirust_dir', '')))
 
+        context['tirust_dp_route_statistics_available'] = (
+            self.tir_available_dict.get('tirust', False) and
+            tirust_install.supports_dp_route_statistics(
+                getattr(self, 'tirust_dir', '')))
+
         for tir in self.all_tir:
             context['%s_available'%tir]=self.tir_available_dict[tir]
             # safety check

@@ -15,6 +15,28 @@ PARAMS = ROOT / 'Template/loop_material/StandAlone/SubProcesses'
 
 
 class TensorPermutationTest(unittest.TestCase):
+    def test_optional_route_query_keeps_old_modules_linkable(self):
+        source = (TEMPLATES / 'TIRUST_interface.inc').read_text()
+        start = source.index('      SUBROUTINE %(proc_prefix)sGET_TIRUST_DP_ROUTE_STATISTICS(')
+        routine = source[start:source.index('\n      END\n', start)+len('\n      END\n')]
+        for context in ({'tirust_dp_route_statistics_available': True},
+                        {'tirust_dp_route_statistics_available': False},
+                        {'legacy_template_context': True}):
+            with self.subTest(context=context), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / 'query.f'
+                with FortranWriter(str(output)) as writer:
+                    writer.writelines(routine % {'proc_prefix': 'TEST_'}, context=context)
+                compact = ''.join(output.read_text().split()).upper()
+                self.assertIn('COUNTS(20)', compact)
+                if context.get('tirust_dp_route_statistics_available', False):
+                    self.assertIn('USEMTIRUST,ONLY:TIRUST_DP_ROUTE_STATISTICS', compact)
+                    self.assertIn('CALLTIRUST_DP_ROUTE_STATISTICS(COUNTS,STATUS)', compact)
+                else:
+                    self.assertNotIn('USEMTIRUST', compact)
+                    self.assertNotIn('CALLTIRUST_DP_ROUTE_STATISTICS', compact)
+                    self.assertIn('COUNTS=0_C_INT64_T', compact)
+                    self.assertIn('STATUS=3', compact)
+
     def test_all_components_through_rank_six(self):
         generator = FortranPolynomialRoutines(6)
         permutation = generator.get_TIRUST_mapping()
@@ -115,6 +137,39 @@ C MODE 3 starts at the final QP entry and wraps immediately.
                     self.assertNotIn('out of bounds', failed.stdout)
                     for mode in (1, 2, 3):
                         self.run_command(str(self.work / 'check'), str(mode))
+
+    def test_optional_route_query_compiles_with_old_and_new_modules(self):
+        source = (TEMPLATES / 'TIRUST_interface.inc').read_text()
+        start = source.index('      SUBROUTINE %(proc_prefix)sGET_TIRUST_DP_ROUTE_STATISTICS(')
+        routine = source[start:source.index('\n      END\n', start)+len('\n      END\n')]
+        with tempfile.TemporaryDirectory(prefix='tirust-route-query-') as directory:
+            self.work = Path(directory)
+            for available in (False, True):
+                with self.subTest(available=available):
+                    # An older module deliberately has no new statistics member.
+                    module = 'module mtirust\nuse iso_c_binding\nimplicit none\n'
+                    if available:
+                        module += ('contains\nsubroutine tirust_dp_route_statistics(counts,status)\n'
+                            'integer(c_int64_t), intent(out) :: counts(20)\n'
+                            'integer, intent(out) :: status\ninteger :: i\n'
+                            'counts=[(int(i,c_int64_t),i=1,20)]\nstatus=0\nend subroutine\n')
+                    (self.work / 'module.f90').write_text(module + 'end module\n')
+                    with FortranWriter(str(self.work / 'query.f')) as writer:
+                        writer.writelines(routine % {'proc_prefix': 'TEST_'}, context={
+                            'tirust_dp_route_statistics_available': available})
+                    driver = ('program query\nuse iso_c_binding\nimplicit none\n'
+                        'integer(c_int64_t) :: counts(20)\ninteger :: status,i\n'
+                        'counts=-1\nstatus=-1\n'
+                        'call TEST_GET_TIRUST_DP_ROUTE_STATISTICS(counts,status)\n')
+                    driver += ('if(status/=0.or.any(counts/=[(int(i,c_int64_t),i=1,20)])) stop 1\n'
+                               if available else 'if(status/=3.or.any(counts/=0)) stop 2\n')
+                    (self.work / 'driver.f90').write_text(driver + 'end program\n')
+                    for optimization in ('-O0', '-O3'):
+                        with self.subTest(optimization=optimization):
+                            self.run_command('gfortran', optimization, '-fcheck=all',
+                                '-ffixed-line-length-132', 'module.f90', 'query.f',
+                                'driver.f90', '-o', 'check')
+                            self.run_command(str(self.work / 'check'))
 
     def test_recorded_dp_qp_tensors_and_failure_lifecycle(self):
         with tempfile.TemporaryDirectory(prefix='tirust-adapter-') as directory:

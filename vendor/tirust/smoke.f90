@@ -7,7 +7,7 @@ program smoke
   complex(KI_TIR) :: m(1),r(1,4),reference(1,4),bm(2)
   real(KI_QTIR) :: qp(0:3,1),qs(1,1),mass_qp
   complex(KI_QTIR) :: qm(1),qr(1,4),qreference(1,4)
-  integer(c_int64_t) :: counts(9),qp_counts(6),qp_before(6)
+  integer(c_int64_t) :: counts(9),qp_counts(6),qp_before(6),route_counts(20)
   integer :: status,pole_mode,first_generation
   character(len=512) :: message
   character(len=32) :: option
@@ -16,6 +16,10 @@ program smoke
   if (tirust_context_generation() /= -1) stop 25
   if (trim(option) == '--require-poles' .and. .not.tirust_supports(1,0,.false.)) stop 24
   if (tirust_context_generation() /= -1) stop 26
+
+  call tirust_dp_route_statistics(route_counts,status)
+  call require_success('unused tensor-route statistics')
+  if (any(route_counts /= 0_c_int64_t) .or. tirust_context_generation() /= -1) stop 42
 
   call check_rounding()
   p = 0
@@ -32,6 +36,9 @@ program smoke
   if (tirust_supports(7,0,.true.) .or. tirust_supports(1,7,.true.)) stop 23
   call tirust_tensor_evaluate(1,0,p,s,m,4.0_KI_TIR,r,status)
   call require_success('DP tadpole')
+  call tirust_dp_route_statistics(route_counts,status)
+  call require_success('primary tensor-route statistics')
+  if (route_counts(1) /= 1_c_int64_t .or. sum(route_counts) /= 1_c_int64_t) stop 43
   if (abs(r(1,1)-4)>1e-12_KI_TIR .or. any(abs(r(1,2:3))>1e-12_KI_TIR) .or. &
       abs(r(1,4)-4)>1e-12_KI_TIR) stop 2
   reference = r
@@ -40,6 +47,10 @@ program smoke
   if (any(abs(r-reference)>1e-12_KI_TIR)) stop 3
   call tirust_tensor_evaluate(1,0,p,s,m,4.0_KI_TIR,r,status,check_pass=.true.)
   call require_success('independent check pass')
+  call tirust_dp_route_statistics(route_counts,status)
+  call require_success('independent tensor-route statistics')
+  if (route_counts(1) /= 2_c_int64_t .or. route_counts(11) /= 1_c_int64_t .or. &
+      sum(route_counts) /= 3_c_int64_t) stop 44
   if (any(abs(r-reference)>1e-12_KI_TIR)) stop 4
   call tirust_tensor_evaluate(1,0,p,s,m,4.0_KI_TIR,r,status,cache_enabled=.false.)
   call require_success('uncached DP tadpole')
@@ -49,6 +60,10 @@ program smoke
   if (any(counts<0_c_int64_t)) stop 6
   call tirust_clear_cache(status)
   call require_success('clear cache')
+  call tirust_dp_route_statistics(route_counts,status)
+  call require_success('tensor routes survive event cache clear')
+  if (route_counts(1) /= 3_c_int64_t .or. route_counts(11) /= 1_c_int64_t .or. &
+      sum(route_counts) /= 4_c_int64_t) stop 45
   if (tirust_context_generation() /= first_generation) stop 29
   call tirust_set_cache_budget(0_c_int64_t,status)
   call require_success('disable cache insertion')
@@ -141,6 +156,7 @@ program smoke
   call require_success('final teardown')
   if (tirust_context_generation() /= -1) stop 35
   call check_rounding()
+  print *, 'TIRust tensor-route statistics passed'
   print *, 'TIRust ABI1: DP, binary128 input, UV/IR poles and cache checks passed'
 contains
   subroutine require_success(label)

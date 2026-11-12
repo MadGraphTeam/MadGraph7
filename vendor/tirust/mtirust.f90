@@ -21,6 +21,7 @@ module mtirust
   public :: tirust_clear_cache, tirust_finalize, tirust_error_message
   public :: tirust_register_plan, tirust_cache_statistics, tirust_set_cache_budget, tirust_supports
   public :: tirust_context_generation, tirust_qp_cache_statistics
+  public :: tirust_dp_route_statistics
 
   interface tirust_tensor_evaluate
     module procedure tensor_dp, tensor_mp
@@ -57,6 +58,13 @@ module mtirust
       integer(c_int) :: status
     end function
     function qp_cache_statistics(handle,counts,count) bind(C,name="ml_tirust_qp_cache_statistics") result(status)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int64_t), intent(out) :: counts(*)
+      integer(c_size_t), value :: count
+      integer(c_int) :: status
+    end function
+    function dp_route_statistics(handle,counts,count) bind(C,name="ml_tirust_dp_route_statistics") result(status)
       import
       type(c_ptr), value :: handle
       integer(c_int64_t), intent(out) :: counts(*)
@@ -171,6 +179,23 @@ contains
     counts = 0_c_int64_t
     call ensure_context(result)
     if (result == TIRUST_SUCCESS) result = qp_cache_statistics(context,counts,6_c_size_t)
+    if (result /= TIRUST_SUCCESS) counts = 0_c_int64_t
+    if (present(status)) status = result
+  end subroutine
+
+  subroutine tirust_dp_route_statistics(counts,status)
+    ! Cumulative bridge executions, primary/check blocks of ten:
+    ! Direct, MethodChoice, Tier106, Tier256, Tier512, Refused,
+    ! unreported/reduction-error, attempted106, attempted256, attempted512.
+    ! A nonzero unreported bucket makes tier-attempt counts lower bounds.
+    ! Internal tiers use binary64 inputs and a DP numerator, not genuine QP.
+    ! A query must not create a context or erase a local reduction diagnostic.
+    integer(c_int64_t), intent(out) :: counts(20)
+    integer, intent(out), optional :: status
+    integer :: result
+    counts = 0_c_int64_t
+    result = TIRUST_SUCCESS
+    if (c_associated(context)) result = dp_route_statistics(context,counts,20_c_size_t)
     if (result /= TIRUST_SUCCESS) counts = 0_c_int64_t
     if (present(status)) status = result
   end subroutine

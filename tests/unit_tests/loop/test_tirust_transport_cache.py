@@ -100,6 +100,13 @@ class QPTransportCacheTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn("FAIL rejected entries must be absent", result.stdout)
 
+    def test_optional_route_statistics_preserves_context_and_diagnostics(self):
+        for executable in ('actual', 'actual-o3'):
+            with self.subTest(executable=executable):
+                result = self.invoke(executable, 'routes')
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn('PASS routes cases=4', result.stdout)
+
     def test_finite_underflow_transport_is_unchanged(self):
         observed = []
         for executable in ("actual", "actual-o3", "without-invalidation"):
@@ -165,6 +172,11 @@ int ml_tirust_qp_cache_statistics(void *ctx, int64_t *out, size_t count) {
     out[2] = entry_count;
     out[3] = entry_count * WIDTH * RECORDS;
     return 0;
+}
+int ml_tirust_dp_route_statistics(void *ctx, uint64_t *out, size_t count) {
+    if (count != 20) return 2;
+    for (size_t i = 0; i < count; ++i) out[i] = (uint64_t)(i + 1);
+    return error_kind == 7 ? 2 : 0;
 }
 int ml_tirust_cache_statistics(void *ctx, int64_t *out, size_t count) {
     memset(out, 0, count * sizeof(*out));
@@ -272,6 +284,10 @@ DRIVER = r"""program transport_cache
   s = 0
   m = cmplx(1, 0, kind=KI_QTIR)
   count = 0
+  if (trim(action) == 'routes') then
+    call check_routes()
+    stop
+  endif
   if (trim(action) == 'underflow') then
     do bad = 5, 6
       call mock_reset(int(bad,c_int), 0_c_int)
@@ -343,6 +359,43 @@ DRIVER = r"""program transport_cache
   call ieee_set_halting_mode(ieee_all, old_halts)
   write(*,'(A,A,A,I0)') 'PASS ', trim(action), ' cases=', count
 contains
+  subroutine check_routes()
+    integer(c_int64_t) :: routes(20)
+    integer :: i,epoch
+    character(512) :: before_message,after_message
+    call tirust_set_cache_budget(-1_c_int64_t,status)
+    call tirust_error_message(before_message)
+    call tirust_dp_route_statistics(routes,status)
+    call require(status == TIRUST_SUCCESS.and.all(routes == 0), 'unused route counters')
+    call require(tirust_context_generation() == -1, 'route query must not create')
+    call tirust_error_message(after_message)
+    call require(before_message == after_message, 'unused local diagnostic preserved')
+    call tirust_register_plan(1,0,status)
+    epoch=tirust_context_generation()
+    call tirust_error_message(before_message)
+    call tirust_dp_route_statistics(routes,status)
+    call require(status == TIRUST_SUCCESS, 'native diagnostic route status')
+    call tirust_error_message(after_message)
+    call require(before_message == after_message, 'C diagnostic preserved by module query')
+    call tirust_set_cache_budget(-1_c_int64_t,status)
+    call tirust_error_message(before_message)
+    call tirust_dp_route_statistics(routes,status)
+    call require(status == TIRUST_SUCCESS, 'active route status')
+    call require(all(routes == [(int(i,c_int64_t),i=1,20)]), 'both ten-slot route blocks')
+    call require(tirust_context_generation() == epoch, 'active generation preserved')
+    call tirust_error_message(after_message)
+    call require(before_message == after_message, 'active local diagnostic preserved')
+    call mock_reset(7_c_int,0_c_int)
+    call tirust_dp_route_statistics(routes,status)
+    call require(status == TIRUST_ERROR.and.all(routes == 0), 'failed route counts unusable')
+    call tirust_error_message(after_message)
+    call require(before_message == after_message, 'failed query local diagnostic preserved')
+    call tirust_finalize(status)
+    call tirust_dp_route_statistics(routes,status)
+    call require(status == TIRUST_SUCCESS.and.all(routes == 0), 'finalized route counters')
+    call require(tirust_context_generation() == -1, 'finalized query must not create')
+    write(*,'(A)') 'PASS routes cases=4'
+  end subroutine
   subroutine require(condition, description)
     logical, intent(in) :: condition
     character(*), intent(in) :: description

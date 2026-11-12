@@ -48,8 +48,17 @@ an unsupported status when that feature has not been built.
 The low-level ABI pads the unevaluated finite slot with zero in this mode; that
 placeholder must be ignored. MadLoop marks it NaN in partial-result diagnostics.
 
-Double precision uses the embedded numerical reduction with the host's stability
-checks. Genuine Fortran binary128 inputs use 64-byte, 40-significant-digit ASCII
+Full finite-term DP requests use the embedded reduction with local tensor
+precision tiers: 106-bit DD, then 256-bit and 512-bit MPFR when conditioning
+requires them. The tiers lift the binary64 inputs exactly and return DP tensor
+coefficients for contraction with the DP numerator. They preserve the existing
+conditioning gates and MadLoop's independent stability checks. Refused tensor
+groups can therefore recover before MadLoop constructs an entire QP numerator.
+These local tiers do not provide a binary128-input amplitude. Select backend 9
+explicitly through `MLReductionLib`; use `install tirust --update` to rebuild an
+existing installation with this policy.
+
+Genuine Fortran binary128 inputs use 64-byte, 40-significant-digit ASCII
 records, parsed at 113 bits and then widened to 256-bit MPFR. Signed zero is kept.
 Fortran contracts the returned moments in binary128 before the final amplitude
 is rounded to the existing MadLoop result type. Double-double is not called
@@ -68,9 +77,12 @@ its caches. Call `tirust_finalize` before retrying; the next request creates a
 fresh context. Full-DP primary and independent-check workspaces share one
 immutable reduction plan per `(N,rank)`, while retaining separate structural
 variants and scratch buffers. Check passes still recompute the numerical
-results. A failed full-DP reduction clears its store and discards both
-directional workspaces while retaining the immutable plan; a failed pole-only
-reduction discards its separate store and affected workspace.
+results. A failed full-DP reduction clears its numerical store. Ordinary
+numerical refusals retain warmed structural workspaces; a Rust reduction error
+or invalid lane discards both directional owners while retaining the immutable
+plan. Every accepted route other than `Direct` also clears numerical entries,
+so intermediate results from an earlier refused pass cannot survive a retry.
+The separate pole-only evaluator retains its existing failure cleanup.
 
 Register each `(N,rank)` plan before reducing a point. Clear numerical caches at
 the end of each phase-space point while retaining plans/workspaces. Full and
@@ -114,3 +126,27 @@ checks the actual C ABI against the pinned upstream NinjaRS reference values.
 It accounts for the MadLoop odd-rank sign and contracts all tensor moments.
 DP refusals are reported explicitly; every QP reference lane must succeed.
 The `gate_passed_lanes.json` stress fixture uses its documented `--dp-limit 1e-5`.
+
+## Optional reduction-route diagnostics
+
+New installations advertise `dp_route_statistics: true` in their existing ABI-1
+metadata. `tirust_dp_route_statistics(counts,status)` returns twenty cumulative
+**bridge execution** counters, with a primary block followed by an independent
+check block. Each block contains `[Direct, MethodChoice, Tier106, Tier256,
+Tier512, Refused, unreported/reduction-error, attempted106, attempted256,
+attempted512]`. Event-cache clearing preserves these counters. Fortran coefficient
+cache hits bypass the bridge and are outside their scope. A nonzero unreported
+bucket makes attempted-tier totals lower bounds.
+
+Tier106 is DD. Tier256/512 process binary64 inputs with a DP numerator. None of
+these routes is the genuine binary128-input, 256-bit QP interface. The historical
+`TIRust DP` amplitude counter and return code `(H,U)=(2,9)` identify the DP-input
+interface; they do not prove native-only tensor evaluation. Genuine QP retains
+its existing counter and `(H,U)=(3,3)` return-code alias.
+
+The generated `GET_TIRUST_DP_ROUTE_STATISTICS` routine returns zero counters and
+status `UNSUPPORTED` when an older ABI-1 installation lacks this optional
+capability. Existing installations and exports remain supported; unavailable
+route data must be reported as unavailable. Use `install tirust --update` to
+obtain the new diagnostics. A statistics query does not initialize an unused
+context or clear a prior local diagnostic.

@@ -41,6 +41,16 @@ int32_t ml_tirust_cache_statistics(ml_tirust_context *context, uint64_t *counts,
  * misses. Full/poles-only requests and pole selectors have distinct keys. */
 int32_t ml_tirust_qp_cache_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
 
+/* Optional cumulative full-DP diagnostics, since context creation. count=20.
+ * Primary then check blocks: Direct, MethodChoice, Tier106, Tier256, Tier512,
+ * Refused, unreported/reduction-error, attempted106, attempted256, attempted512.
+ * Accepted routes require successful finite DP output; attempts include failed
+ * tiers. Public argument-validation failures are outside these counters.
+ * Successful queries preserve the existing thread-local last error.
+ * Cache clears preserve counters. Tier106 is DD; Tier256/512 evaluate
+ * binary64 inputs with a DP numerator. None is genuine binary128-input QP. */
+int32_t ml_tirust_dp_route_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
+
 /*
  * Denominators: (q+p_i)^2 - m_i^2, metric (+,-,-,-). shifts[4*n] stores
  * time,x,y,z per propagator. invariants[n*n] is the symmetric column-major

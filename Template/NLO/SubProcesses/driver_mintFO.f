@@ -259,6 +259,8 @@ c
          write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
          write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
          write(*,*) '#TIRust DP = ',TIRUST_DP_USAGE
+         write(*,*) '#TIRust precision note: DP denotes input'
+     &        //' precision; tensor routes can use higher precision.'
          write(*,*) '#TIRust QP = ',TIRUST_QP_USAGE
       endif
 

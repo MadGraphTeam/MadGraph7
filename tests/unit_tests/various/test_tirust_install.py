@@ -109,6 +109,25 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
             self.assertEqual(self.install(), lib)
             self.assertEqual(run.call_count, count)
 
+    def test_optional_dp_route_statistics_preserves_legacy_installations(self):
+        with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run):
+            lib = self.install()
+        config = tirust_install.read_config(lib)
+        self.assertIs(config['dp_route_statistics'], True)
+        self.assertTrue(tirust_install.supports_dp_route_statistics(lib))
+        for capability in (None, False, 'true', 1):
+            with self.subTest(capability=capability):
+                legacy = dict(config)
+                if capability is None:
+                    legacy.pop('dp_route_statistics')
+                else:
+                    legacy['dp_route_statistics'] = capability
+                (lib / tirust_install.CONFIG_NAME).write_text(json.dumps(legacy))
+                self.assertTrue(tirust_install.is_available(lib))
+                self.assertTrue(tirust_install.supports_quad_precision(lib))
+                self.assertFalse(tirust_install.supports_dp_route_statistics(lib))
+
     def test_default_source_fetch_is_pinned_and_then_patched(self):
         with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
                 mock.patch.object(tirust_install, '_run', side_effect=self.fake_run) as run:

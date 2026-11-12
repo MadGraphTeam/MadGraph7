@@ -3,7 +3,7 @@
 //! separate. Full and truncated results have independent stores/workspaces.
 use iregi_rust::{
     Convention, DirectReductionPlan, DirectWorkspace, EmbedderOptions, InvariantInput,
-    KinematicsBatch, LaneStatus, ReductionSettings, ScaleInput, TensorReductionPlan, TensorStore,
+    KinematicsBatch, LaneRoute, LaneStatus, ReductionSettings, ScaleInput, TensorEngineExecution, TensorReductionPlan, TensorStore,
     TensorStoreOptions, TensorWeights, TensorWorkspace,
 };
 use std::{
@@ -26,6 +26,8 @@ const UNSUPPORTED: i32 = 3;
 const RECORD: usize = 64;
 const MP_BITS: u32 = 256;
 const DEFAULT_BUDGET: u64 = 268_435_456;
+const DP_ROUTE_FIELDS: usize = 10;
+const DP_ROUTE_STATS_COUNT: usize = 2 * DP_ROUTE_FIELDS;
 type Key = (usize, u16);
 type Result<T> = std::result::Result<T, String>;
 
@@ -47,6 +49,8 @@ struct State {
     mp: HashMap<Key, DirectWorkspace<Float>>,
     store: TensorStore,
     qp_cache: QpCache,
+    dp_routes: [u64; DP_ROUTE_STATS_COUNT],
+    last_dp_route: Option<usize>,
     #[cfg(feature = "poles-only")]
     pole_dp: HashMap<Key, DirectPoleWorkspace<f64>>,
     #[cfg(feature = "poles-only")]
@@ -64,6 +68,8 @@ impl State {
             dp: HashMap::new(),
             mp: HashMap::new(),
             qp_cache: QpCache::new(DEFAULT_BUDGET / 2),
+            dp_routes: [0; DP_ROUTE_STATS_COUNT],
+            last_dp_route: None,
             store: TensorStore::with_options(TensorStoreOptions {
                 byte_budget: Some(store_budget(DEFAULT_BUDGET)),
                 ..Default::default()
@@ -89,6 +95,7 @@ impl State {
     }
 
     fn dp(&mut self, key: Key, batch: KinematicsBatch<f64>, mode: Mode) -> Result<(i32, Vec<C64>)> {
+        self.last_dp_route = None;
         self.register(key)?;
         if !mode.finite {
             #[cfg(feature = "poles-only")]
@@ -106,8 +113,10 @@ impl State {
                 std::collections::hash_map::Entry::Vacant(entry) => entry
                     .insert(TensorReductionPlan::new(settings(key)).map_err(|e| e.to_string())?),
             };
-            let workspace = TensorWorkspace::new_embedded(plan, 0.0f64, EmbedderOptions::default())
-                .map_err(|e| e.to_string())?;
+            let workspace = TensorWorkspace::new_embedded(
+                plan, 0.0f64,
+                EmbedderOptions { precision_tiers: true, ..EmbedderOptions::default() },
+            ).map_err(|e| e.to_string())?;
             self.dp.insert(workspace_key, workspace);
         }
         // check_view() may alias the primary when no master provider exists.
@@ -116,6 +125,25 @@ impl State {
         let workspace = self.dp.get_mut(&workspace_key).unwrap();
         workspace.set_tensor_store(store.as_ref());
         let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
+        self.last_dp_route = workspace.last_lane_routes().and_then(|routes| routes.first()).map(|route| {
+            match route {
+                LaneRoute::Direct => 0,
+                LaneRoute::MethodChoice => 1,
+                LaneRoute::Tier(106) => 2,
+                LaneRoute::Tier(256) => 3,
+                LaneRoute::Tier(512) => 4,
+                LaneRoute::Refused => 5,
+                LaneRoute::Tier(_) => 6,
+            }
+        });
+        // Attempts include work whose rounded DP output is later rejected.
+        if let TensorEngineExecution::Direct(execution) = workspace.engine_execution() {
+            let offset = usize::from(mode.check) * DP_ROUTE_FIELDS;
+            for tier in execution.precision_rescue {
+                let index = match tier.bits { 106 => 7, 256 => 8, 512 => 9, _ => continue };
+                self.dp_routes[offset + index] += tier.rows as u64;
+            }
+        }
         match result.lane(0) {
             Ok(values) => Ok((SUCCESS, pack_dp(values, mode.poles, 4))),
             Err(status) => {
@@ -141,19 +169,30 @@ impl State {
                 result = Ok((UNSTABLE, Vec::new()));
             }
         }
-        if !matches!(&result, Ok((SUCCESS, _))) {
-            // Upstream stores intermediate masters/moments before the final
-            // status check. A failed reduction must not retain those entries.
-            if mode.finite {
+        let failed = !matches!(&result, Ok((SUCCESS, _)));
+        if mode.finite {
+            let offset = usize::from(mode.check) * DP_ROUTE_FIELDS;
+            let final_route = match &result {
+                Ok((SUCCESS, _)) => self.last_dp_route.unwrap_or(6),
+                Ok(_) => 5,
+                Err(_) => 6,
+            };
+            self.dp_routes[offset + final_route] += 1;
+            // A successful retry may follow a refused primary/method pass.
+            // Discard numerical entries from every non-Direct route.
+            if failed || self.last_dp_route != Some(0) {
                 self.store.clear();
+            }
+            // Retain structural preparation after ordinary numerical refusals.
+            if failed && !matches!(&result, Ok((UNSTABLE, _))) {
                 self.dp.remove(&(key, false));
                 self.dp.remove(&(key, true));
-            } else {
-                #[cfg(feature = "poles-only")]
-                {
-                    self.pole_store.clear();
-                    self.pole_dp.remove(&key);
-                }
+            }
+        } else if failed {
+            #[cfg(feature = "poles-only")]
+            {
+                self.pole_store.clear();
+                self.pole_dp.remove(&key);
             }
         }
         result
@@ -419,6 +458,24 @@ fn guard(f: impl FnOnce() -> Result<i32>) -> i32 {
             set_error(&error);
             ERROR
         }
+        Err(_) => {
+            set_error("TIRust panic contained at the C boundary");
+            ERROR
+        }
+    }
+}
+// Successful diagnostic queries must not erase the reduction error that a
+// caller may still need. Keep ordinary guard semantics on a failed query.
+fn query_guard(f: impl FnOnce() -> Result<i32>) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        let previous = LAST_ERROR.with(|error| error.borrow().clone());
+        let status = guard(f);
+        if status == SUCCESS {
+            LAST_ERROR.with(|error| *error.borrow_mut() = previous);
+        }
+        status
+    })) {
+        Ok(status) => status,
         Err(_) => {
             set_error("TIRust panic contained at the C boundary");
             ERROR
@@ -761,6 +818,28 @@ pub unsafe extern "C" fn ml_tirust_qp_cache_statistics(
     })
 }
 
+/// Cumulative full-DP final routes and actual tier attempts, primary then check.
+/// Each ten-counter block: Direct, MethodChoice, Tier106, Tier256, Tier512,
+/// Refused, unreported/reduction-error, attempt106, attempt256, attempt512.
+/// A finite SUCCESS is required for an accepted route. Tensor rescue with
+/// DP inputs is distinct from the genuine binary128-input evaluation path.
+/// Cache clears do not reset these context-lifetime diagnostic counters.
+/// # Safety
+/// Live handle and exactly twenty writable u64 entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_dp_route_statistics(
+    handle: *mut Context, out: *mut u64, count: usize,
+) -> i32 {
+    query_guard(|| {
+        length("DP route statistics", count, DP_ROUTE_STATS_COUNT)?;
+        validate_output(out)?;
+        let state = unsafe { context(handle)? }
+            .state.lock().map_err(|_| "TIRust context poisoned")?;
+        unsafe { write(out, &state.dp_routes); }
+        Ok(SUCCESS)
+    })
+}
+
 /// Evaluate binary64 tensor moments. Inputs use Fortran column-major matrices.
 /// # Safety
 /// Live context and aligned buffers of the stated lengths; output does not alias inputs.
@@ -1060,6 +1139,28 @@ mod tests {
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
     }
     #[test]
+    fn route_query_preserves_existing_error_after_success() {
+        let c = handle();
+        assert_eq!(tadpole(c, 0, f64::NAN).0, ERROR);
+        let previous = LAST_ERROR.with(|error| error.borrow().clone());
+        assert!(!previous.is_empty());
+        let mut counts = [0; DP_ROUTE_STATS_COUNT];
+        assert_eq!(unsafe {
+            ml_tirust_dp_route_statistics(c, counts.as_mut_ptr(), DP_ROUTE_STATS_COUNT)
+        }, SUCCESS);
+        assert_eq!(LAST_ERROR.with(|error| error.borrow().clone()), previous);
+        assert_eq!(unsafe {
+            ml_tirust_dp_route_statistics(c, counts.as_mut_ptr(), DP_ROUTE_STATS_COUNT - 1)
+        }, ERROR);
+        let query_error = LAST_ERROR.with(|error| error.borrow().clone());
+        assert_ne!(query_error, previous);
+        assert_eq!(unsafe {
+            ml_tirust_dp_route_statistics(c, counts.as_mut_ptr(), DP_ROUTE_STATS_COUNT)
+        }, SUCCESS);
+        assert_eq!(LAST_ERROR.with(|error| error.borrow().clone()), query_error);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
     fn invalid_requests_leave_output_untouched() {
         let c = handle();
         let (status, out) = tadpole(c, 0, f64::NAN);
@@ -1176,7 +1277,7 @@ mod tests {
         }
     }
     #[test]
-    fn failed_dp_call_invalidates_both_directions_but_retains_plan() {
+    fn unstable_dp_call_clears_numerics_but_retains_direction_workspaces() {
         let key = (1, 0);
         let evaluate = |state: &mut State, check: bool, mass: f64| {
             state
@@ -1192,6 +1293,9 @@ mod tests {
                 )
                 .unwrap()
         };
+        let workspace_addresses = |state: &State| {
+            [false, true].map(|check| &state.dp[&(key, check)] as *const TensorWorkspace<f64>)
+        };
         for failed_check in [false, true] {
             let mut state = State::new();
             let primary = evaluate(&mut state, false, 4.);
@@ -1201,16 +1305,52 @@ mod tests {
             assert_eq!(state.dp.len(), 2);
             assert!(state.store.statistics().entries > 0);
             let plan = &state.dp_plans[&key] as *const TensorReductionPlan;
-            assert_ne!(evaluate(&mut state, failed_check, 1e308).0, SUCCESS);
-            assert!(state.dp.is_empty());
-            assert_eq!(state.store.statistics().entries, 0);
-            assert_eq!(state.dp_plans.len(), 1);
-            assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
-            assert_eq!(evaluate(&mut state, false, 4.), primary);
-            assert_eq!(evaluate(&mut state, true, 4.), checked);
-            assert_eq!(state.dp.len(), 2);
-            assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
+            let workspaces = workspace_addresses(&state);
+            assert_ne!(workspaces[0], workspaces[1]);
+            // This existing overflow fixture exercises a returned unstable
+            // lane, not a Rust error. No failed tensor or intermediate remains
+            // in the event store, while both structural owners survive.
+            for _ in 0..2 {
+                assert_eq!(evaluate(&mut state, failed_check, 1e308), (UNSTABLE, Vec::new()));
+                assert_eq!(state.store.statistics().entries, 0);
+                assert_eq!(workspace_addresses(&state), workspaces);
+                assert_eq!(state.dp_plans.len(), 1);
+                assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
+                // Change the input after the overflow and check recovery
+                // against a fresh state, then return to the original point.
+                let changed = evaluate(&mut State::new(), false, 9.);
+                assert_eq!(evaluate(&mut state, false, 9.), changed);
+                let before_check = state.store.statistics();
+                assert_eq!(evaluate(&mut state, true, 9.), changed);
+                let after_check = state.store.statistics();
+                assert_eq!(before_check, after_check);
+                assert_eq!(evaluate(&mut state, false, 4.), primary);
+                let before_check = state.store.statistics();
+                assert_eq!(evaluate(&mut state, true, 4.), checked);
+                assert_eq!(before_check, state.store.statistics());
+                assert_eq!(workspace_addresses(&state), workspaces);
+            }
         }
+    }
+    #[test]
+    fn rust_dp_error_discards_both_workspaces_but_retains_plan() {
+        let key = (1, 0);
+        let mode = Mode { poles: 0, finite: true, check: false, cache: true };
+        let batch = || dp_batch(1, &[0.; 4], &[0.], &[C64 { re: 4., im: 0. }], 4.).unwrap();
+        let mut state = State::new();
+        let reference = state.dp_checked(key, batch(), mode).unwrap();
+        assert_eq!(reference.0, SUCCESS);
+        let check_mode = Mode { check: true, ..mode };
+        assert_eq!(state.dp_checked(key, batch(), check_mode).unwrap(), reference);
+        assert_eq!(state.dp.len(), 2);
+        let plan = &state.dp_plans[&key] as *const TensorReductionPlan;
+        let malformed = KinematicsBatch { rows: 1, components: 2, values: Vec::new() };
+        assert!(state.dp_checked(key, malformed, mode).is_err());
+        assert!(state.dp.is_empty());
+        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
+        assert_eq!(state.dp_checked(key, batch(), mode).unwrap(), reference);
+        assert_eq!(state.dp_checked(key, batch(), check_mode).unwrap(), reference);
     }
     #[test]
     fn binary128_last_bit_and_signed_zero_transport() {
@@ -1358,3 +1498,6 @@ mod tests {
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
     }
 }
+
+#[cfg(test)]
+mod captured_failures;

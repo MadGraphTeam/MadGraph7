@@ -140,6 +140,12 @@ def supports_quad_precision(libdir):
     return read_config(libdir).get('quad_precision') is True
 
 
+def supports_dp_route_statistics(libdir):
+    """Optional ABI-1 diagnostics; older installations remain usable."""
+    return (is_available(libdir) and
+            read_config(libdir).get('dp_route_statistics') is True)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='install tirust',
         description='Install the pinned TIRust/oneloopmaster Fortran interface.')
@@ -490,6 +496,7 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None,
         raise MadGraph5Error("TIRust build did not produce native link metadata. "
                              "See %s" % log) from error
     config = {'abi_version': ABI_VERSION, 'quad_precision': True,
+              'dp_route_statistics': True,
               'native_libs': native_libs, 'local_sources': provenance,
               'fortran_compiler': compiler, 'link_before': link_before,
               'link_order_version': 1,

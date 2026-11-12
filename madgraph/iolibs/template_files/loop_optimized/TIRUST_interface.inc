@@ -322,6 +322,24 @@ C     Classify every entry through integer bits before any FP comparison.
       END
 ## }
 
+C     Optional bridge execution routes. Legacy ABI-1 installations return
+C     UNSUPPORTED; the amplitude return code does not establish tensor tiers.
+      SUBROUTINE %(proc_prefix)sGET_TIRUST_DP_ROUTE_STATISTICS(COUNTS,STATUS)
+## if(locals().get('tirust_dp_route_statistics_available', False)){
+      USE MTIRUST, ONLY: TIRUST_DP_ROUTE_STATISTICS
+## }
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T
+      IMPLICIT NONE
+      INTEGER(C_INT64_T) COUNTS(20)
+      INTEGER STATUS
+## if(locals().get('tirust_dp_route_statistics_available', False)){
+      CALL TIRUST_DP_ROUTE_STATISTICS(COUNTS,STATUS)
+## }else{
+      COUNTS=0_C_INT64_T
+      STATUS=3
+## }
+      END
+
       SUBROUTINE %(proc_prefix)sINITIALIZE_TIRUST(STATUS)
       USE MTIRUST
       IMPLICIT NONE
