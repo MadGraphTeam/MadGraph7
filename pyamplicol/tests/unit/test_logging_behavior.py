@@ -55,6 +55,17 @@ def test_cli_logging_is_package_local_idempotent_and_resettable() -> None:
     )
 
 
+def test_a_notice_keeps_its_label_in_the_logger_format() -> None:
+    stream = io.StringIO()
+    reset_cli_logging()
+    try:
+        configure_cli_logging("info", stream=stream)
+        notice(get_logger("unit"), "model", "built-in-sm %s", "x")
+        assert stream.getvalue() == "INFO pyamplicol.unit: model: built-in-sm x\n"
+    finally:
+        reset_cli_logging()
+
+
 def test_cli_logging_restores_embedding_application_state() -> None:
     logger = get_logger()
     reset_cli_logging()

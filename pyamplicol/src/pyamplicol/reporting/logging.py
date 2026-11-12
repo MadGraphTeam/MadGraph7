@@ -69,6 +69,14 @@ class _CliFormatter(logging.Formatter):
         self._color = color
 
     def format(self, record: logging.LogRecord) -> str:
+        label = getattr(record, NOTICE_ATTRIBUTE, None)
+        if label:
+            # A notice keeps its label in the logger format (--log-level
+            # info / debug): "model: built-in-sm", not a bare value.
+            record = logging.makeLogRecord(
+                {**record.__dict__, "msg": f"{label}: {record.getMessage()}"}
+                | {"args": None}
+            )
         rendered = super().format(record)
         if not self._color:
             return rendered
