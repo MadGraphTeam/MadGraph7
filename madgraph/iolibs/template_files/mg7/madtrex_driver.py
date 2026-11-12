@@ -156,6 +156,51 @@ Regenerator = Callable[..., str]
 
 logger = logging.getLogger("madgraph7")
 
+# --hel_recycling: the recycled build of a subprocess drops the amplitudes that
+# vanish at the parameters it was made for, which a launch at other parameters
+# may not have vanish. Before a directory's libraries are loaded, this hook
+# (directory, cards, launches, base_card) has them made right at the
+# generation card(s) and at the param_card of every launch (mg7/madtrex.py's
+# update_hel_recycling(), which sets it: it needs MadGraph). None in a
+# standalone driver, which can only warn (_warn_hel_recycling()).
+hel_recycling_update: Callable[..., None] | None = None
+_HR_RECIPE = "HelRecyclingRecipe.json"
+
+
+def _recycled_subprocesses(directory: str) -> list[str]:
+    """The --hel_recycling subprocesses of directory (see hel_recycling_update)."""
+    try:
+        with open(os.path.join(directory, "SubProcesses", "subprocesses.json")) as f:
+            entries = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return [entry["path"] for entry in entries
+            if os.path.isfile(os.path.join(directory, entry.get("path", ""), _HR_RECIPE))]
+
+
+def _resolved_launches(launches: list, card_path: str) -> list:
+    """launches with the parameters given by name in "set BLOCK ID VALUE" form."""
+    if launches and param_rwgt_card.has_parameter_names(launches):
+        with open(card_path) as f:
+            return param_rwgt_card.resolve_parameter_names(launches, f.read())
+    return launches
+
+
+def _prepare_hel_recycling(directory: str, cards: list[str], launches: list,
+                           base_card: str) -> None:
+    """Have the --hel_recycling subprocesses of directory right at cards and
+    at every one of launches (from base_card), before anything loads them."""
+    if not _recycled_subprocesses(directory):
+        return
+    if hel_recycling_update is None:
+        logger.warning(
+            "MadtRex: %s has --hel_recycling subprocesses, built for the parameters "
+            "of their last generation: the launches are right only where they keep "
+            "the amplitudes that vanish there vanishing (reweight through MadGraph "
+            "to have them rebuilt for the launches)", directory)
+        return
+    hel_recycling_update(directory, cards, launches, base_card)
+
 
 def find_latest_run_dir(events_dir: str = "Events") -> str:
     """Returns the most recently modified Events/<run_name>_NN run directory."""
@@ -1046,6 +1091,16 @@ def _run_parameter_reweighting(
 
     devices = _read_devices(process_directory)
     threads = reweighting_threads(process_directory, source_path)
+    # --hel_recycling: the original directory is evaluated at the generation
+    # card (the normaliser) and at every launch of the original model -- all
+    # of them before any of its libraries is loaded
+    original_card = param_card or generation_card
+    _prepare_hel_recycling(
+        process_directory, [generation_card],
+        _resolved_launches([launch for group in groups if group.model_spec is None
+                            for launch in group.launches], original_card),
+        original_card)
+    prepared = {os.path.realpath(process_directory)}
     _compile_subprocesses(process_directory, devices, original_fptype)
     _check_stored_matrix_elements(
         events_path, init_meta, process_directory, generation_card, devices, original_fptype,
@@ -1072,6 +1127,16 @@ def _run_parameter_reweighting(
                 fptype=group.fptype,
             )
             group_param_card = ""
+            if os.path.realpath(load_directory) not in prepared:
+                # every launch of this model, whatever its fptype: one directory
+                model_card = os.path.join(load_directory, "Cards", "param_card.dat")
+                _prepare_hel_recycling(
+                    load_directory, [],
+                    _resolved_launches([launch for other in groups
+                                        if other.model_spec == group.model_spec
+                                        for launch in other.launches], model_card),
+                    model_card)
+                prepared.add(os.path.realpath(load_directory))
 
         # Guarantees group.fptype is actually compiled for load_directory,
         # regardless of whether regenerate() just did so

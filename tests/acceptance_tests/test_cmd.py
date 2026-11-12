@@ -23,6 +23,7 @@ import shutil
 import sys
 import logging
 import tempfile
+import glob
 
 pjoin = os.path.join
 
@@ -2250,9 +2251,10 @@ class TestCmdShell2(unittest.TestCase,
         at simd_128, two events per lane in mixed precision. FPTYPE=d keeps the
         two builds within rounding of each other (1e-12); the warm-up must have
         produced the recycled build (HelRecycling.inc), or the test would compare
-        plain with plain.
+        plain with plain. The recycled side is the default output (helicity
+        recycling is on unless --hel_recycling=False).
         """
-        self._hel_recycling_vs_plain('g g > t t~ g')
+        self._hel_recycling_vs_plain('g g > t t~ g', recycled_flag='')
 
     def test_madmatrix_fd_hel_recycling_vs_plain(self):
         """--hel_recycling in the FD gauge must not change |M|^2 either.
@@ -2347,7 +2349,7 @@ print(json.dumps(out))
         self.do('import model MSSM_SLHA2')
         try:
             self.do('generate p p > go go j')
-            self.do('output standalone %s -f' % dirs['plain'])
+            self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
             self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
         finally:
             self.do('import model sm')
@@ -2406,10 +2408,13 @@ print(json.dumps(out))
                            'coupling in the recycled build: nothing was tested')
         self.assertGreater(compared, len(info['subprocesses']))
 
-    def _hel_recycling_vs_plain(self, process):
-        """plain and --hel_recycling standalone outputs of `process`, |M|^2
-        compared event by event (see test_madmatrix_hel_recycling_vs_plain);
-        returns the recycled subprocess directory"""
+    def _hel_recycling_vs_plain(self, process,
+                                recycled_flag=' --hel_recycling=True'):
+        """plain (--hel_recycling=False) and recycled standalone outputs of
+        `process`, |M|^2 compared event by event (see
+        test_madmatrix_hel_recycling_vs_plain); recycled_flag is what the
+        recycled output passes ('' for the default); returns the recycled
+        subprocess directory"""
         devnull = open(os.devnull, 'w')
         root = self.out_dir + '_hr'
         dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
@@ -2418,8 +2423,8 @@ print(json.dumps(out))
                 shutil.rmtree(path)
         self.do('import model sm')
         self.do('generate %s' % process)
-        self.do('output standalone %s -f' % dirs['plain'])
-        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f%s' % (dirs['recycled'], recycled_flag))
         proc = {}
         for name, path in dirs.items():
             proc_root = pjoin(path, 'SubProcesses')
@@ -2429,6 +2434,8 @@ print(json.dumps(out))
             proc[name] = pjoin(proc_root, found[0])
         self.assertTrue(os.path.exists(pjoin(proc['recycled'], 'HelRecycling.inc')),
                         'the --hel_recycling warm-up did not produce the recycled build')
+        self.assertFalse(os.path.exists(pjoin(proc['plain'], 'HelRecycling.inc')),
+                         '--hel_recycling=False still produced a recycled build')
         ncomb = int(re.search(r'constexpr int ncomb = (\d+)',
                               open(pjoin(proc['plain'], 'ProcessData.h')).read()).group(1))
         nevt = 512
@@ -2546,6 +2553,182 @@ print(json.dumps(out))
                 self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
                                      'call %d (%s), event %d: alone %r, after the '
                                      'other libraries %r' % (ncall, proc, i, a, b))
+
+    # b b~ > t t~ QCD=0: the photon, Z, W and Higgs diagrams. The Higgs one is
+    # proportional to ymb, which is a parameter of the card (the b mass is
+    # MB): at ymb = 0 its amplitude vanishes at every helicity, at the
+    # default card only at half of them.
+    _HR_CARD_PROCESS = 'b b~ > t t~ QCD=0'
+
+    @staticmethod
+    def _hr_card_with(card, block, code, value):
+        """The text of param_card `card` with the entry `code` of `block` set to
+        `value` (a number, or a scan:[...] string)."""
+        out, current = [], None
+        for line in open(card).read().split('\n'):
+            words = line.split('#')[0].split()
+            if words and words[0].lower() == 'block':
+                current = words[1].lower()
+            elif current == block and words[:-1] == [str(code)]:
+                line = '    %s %s # changed' % (code, value)
+            out.append(line)
+        return '\n'.join(out)
+
+    def test_madmatrix_hel_recycling_launch_parameters(self):
+        """--hel_recycling: a run at other parameters than the output's must get
+        a recycled build for those (madmatrix/hel_recycling_filter.update, what
+        the mg7 launch runs on its param_card).
+
+        The recycled build drops the amplitudes that vanish at the parameters
+        it is measured at. Measured at ymb = 0 it drops the Higgs diagram at
+        every helicity, which is wrong at the default card: there the build's
+        run-time check (hr_check_stale, what a standalone user who edits the
+        card relies on) must see that a skipped amplitude is alive, say so and
+        use the plain code. Measured again at the default card it recycles
+        again. A card at which the filter comes out the same rewrites nothing,
+        and the card it was measured at measures nothing. Each build is
+        compared with the plain matrix element at its card, event by event, and
+        must say it is stale exactly where its filter does not hold."""
+        import glob
+        from madmatrix import hel_recycling_filter as hrf
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrcard'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        found = sorted(d for d in os.listdir(pjoin(dirs['recycled'], 'SubProcesses'))
+                       if re.match(r'P\d+_', d))
+        self.assertEqual(len(found), 1, found)
+        pdir = 'SubProcesses/' + found[0]
+        recycled = pjoin(dirs['recycled'], pdir)
+        self.assertEqual(sorted(d for d in os.listdir(pjoin(dirs['plain'], 'SubProcesses'))
+                                if re.match(r'P\d+_', d)), found)
+        default = root + '_default.dat'
+        shutil.copy(pjoin(dirs['plain'], 'Cards', 'param_card.dat'), default)
+        ymb0 = root + '_ymb0.dat'
+        with open(ymb0, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'yukawa', 5, '0.000000e+00'))
+        mt = root + '_mt.dat'
+        with open(mt, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'mass', 6, '1.750000e+02'))
+
+        def me(output, card):
+            proc_dir = pjoin(output, pdir)
+            shutil.copy(card, pjoin(output, 'Cards', 'param_card.dat'))
+            exe = pjoin(proc_dir, 'check_sa.exe')
+            if os.path.exists(exe):
+                os.remove(exe)
+            subprocess.call(['make', 'BACKEND=scalar', 'FPTYPE=d', 'USEBUILDDIR=1', '-j4'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(exe), 'no check_sa.exe in %s' % proc_dir)
+            out = pjoin(proc_dir, 'me.bin')
+            run = subprocess.run(['./check_sa.exe', 'perf', '--dump-me', out, '16', '32', '1'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 cwd=proc_dir)
+            stale = 'do not vanish at these parameters' in \
+                run.stdout.decode(errors='replace')
+            return array.array('d', open(out, 'rb').read()), stale
+
+        def worst(card, stale=False):
+            (plain, _), (values, said) = me(dirs['plain'], card), me(dirs['recycled'], card)
+            self.assertEqual(len(plain), len(values))
+            self.assertTrue(any(plain))
+            self.assertEqual(said, stale, 'the run-time check %s at %s'
+                             % ('missed the stale build' if stale else
+                                'took a right build for stale', os.path.basename(card)))
+            return max(abs(a - b) / abs(a) for a, b in zip(plain, values))
+
+        def update(card):
+            return hrf.update(dirs['recycled'], [card], [pdir])
+
+        output_zeros = len(hrf.read_state(recycled)['zero_perhel'])
+        self.assertEqual(update(default), {})          # the output's own card
+        self.assertLessEqual(worst(default), 1e-12)
+
+        tags = update(ymb0)
+        self.assertRegex(tags.get(pdir, ''), r'^_hr[0-9a-f]{8}$')
+        self.assertGreater(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(ymb0), 1e-12)
+        self.assertTrue(glob.glob(pjoin(dirs['recycled'], 'lib',
+                                        'libmadmatrix_*_%s%s_scalar_d.so'
+                                        % (found[0], tags[pdir]))))
+        # that build at the default card skips the Higgs diagram, which is
+        # alive there: the run-time check sees it and the plain code is used
+        self.assertLessEqual(worst(default, stale=True), 1e-12)
+
+        self.assertEqual(update(default), {pdir: ''})  # back to the output's own
+        self.assertEqual(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(default), 1e-12)
+        stamp = os.path.getmtime(pjoin(recycled, 'HelRecycling.inc'))
+        self.assertEqual(update(default), {})          # measured there already
+        self.assertEqual(update(mt), {})               # the same filter
+        self.assertEqual(os.path.getmtime(pjoin(recycled, 'HelRecycling.inc')), stamp)
+        self.assertLessEqual(worst(mt), 1e-12)
+
+    def test_mg7_hel_recycling_param_scan(self):
+        """--hel_recycling through the mg7 launch: a scan whose points need
+        other recycled builds must give, at every point, the cross section of
+        the plain matrix element.
+
+        ymb = 0, 4.7, 0: the first point drops the Higgs diagram, the second
+        needs it back and the third goes back to the first. The libraries of a
+        point stay loaded in the process while the next one is built, so each
+        build has a library name of its own (the third finds the first's)."""
+        import glob as _glob
+        import json as _json
+        from tests.acceptance_tests.test_cmd_madevent import _mg7_datadir_or_skip
+        _mg7_datadir_or_skip(self)
+        root = self.out_dir + '_hrscan'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output mg7 %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output mg7 %s -f --hel_recycling=True' % dirs['recycled'])
+        xsec = {}
+        for name, path in dirs.items():
+            toml = pjoin(path, 'Cards', 'run_card.toml')
+            lines, section = [], None
+            settings = {('run', 'seed'): '4242', ('run', 'precision'): '"all64"',
+                        ('generation', 'events'): '2000', ('madnis', 'enable'): 'false'}
+            for line in open(toml).read().split('\n'):
+                found = re.match(r'^\[(\w+)\]', line)
+                if found:
+                    section = found.group(1)
+                key = line.split('=')[0].strip()
+                if (section, key) in settings:
+                    line = '%s = %s' % (key, settings.pop((section, key)))
+                lines.append(line)
+            self.assertEqual(settings, {}, 'not in the run_card')
+            with open(toml, 'w') as fsock:
+                fsock.write('\n'.join(lines))
+            card = pjoin(path, 'Cards', 'param_card.dat')
+            text = self._hr_card_with(card, 'yukawa', 5, 'scan:[0.0, 4.7, 0.0]')
+            with open(card, 'w') as fsock:
+                fsock.write(text)
+            log = pjoin(path, 'generate_events.log')
+            with open(log, 'w') as fsock:
+                status = subprocess.call([sys.executable, pjoin(path, 'bin', 'generate_events'),
+                                          '-f'], cwd=path, stdout=fsock,
+                                         stderr=subprocess.STDOUT)
+            self.assertEqual(status, 0, 'mg7 failed, see %s' % log)
+            infos = sorted(_glob.glob(pjoin(path, 'Events', 'run_*', 'info.json')))
+            self.assertEqual(len(infos), 3, infos)
+            xsec[name] = [float(_json.load(open(info))['process']['mean']) for info in infos]
+        for point, (a, b) in enumerate(zip(xsec['plain'], xsec['recycled'])):
+            self.assertLessEqual(abs(a - b), 1e-10 * abs(a),
+                                 'scan point %d: plain %r, recycled %r' % (point + 1, a, b))
+        # one library per filter: the third point reused the first's
+        libs = [lib for lib in _glob.glob(pjoin(dirs['recycled'], 'lib', 'libmadmatrix_*.so'))
+                if 'common' not in os.path.basename(lib)]
+        self.assertEqual(len(libs), 2, libs)
 
     def test_standalone_cpp_perf_alpha_s_from_param_card(self):
         """check_sa.exe 'perf' mode must use the alpha_s of the param card,
@@ -5482,6 +5665,48 @@ C
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
          
+
+    def test_madevent_dressed_lepton_components(self):
+        """The dressed-lepton luminosity must survive flavor grouping.
+
+        With apply_flavor_grouping on (the default) 'e+ e- > mu+ mu-' is
+        written out as the merged process '_anti_lepton _lepton >
+        _anti_lepton _lepton', whose initial states expand to
+        ([-11,-13],[11,13]). get_pdf_lines used to recognize a dressed-lepton
+        beam by comparing that pair against a hard-coded list of single-flavor
+        pairs, so the grouped process fell through to PD(IPROC)=EP1*EM2 and
+        lost every lepton-density component but the first -- the
+        beamstrahlung ones, 13% of the luminosity at FCC-ee, silently.
+        """
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate e+ e- > mu+ mu-')
+        self.do('output madevent %s -nojpeg' % self.out_dir)
+
+        auto_dsig = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*',
+                                    'auto_dsig1.f'))
+        self.assertEqual(len(auto_dsig), 1)
+        content = open(auto_dsig[0]).read()
+
+        # the luminosity is the contraction of the two beams' components,
+        # once in the scalar routine and once in the vectorized one
+        self.assertIn('EE_COMP_PROD', content)
+        self.assertEqual(content.count('=EE_COMP_PROD('), 2)
+        # and every PDG2PDF call keeps the components it just filled, since
+        # the next call overwrites the ee_components common block
+        self.assertEqual(content.count('=PDG2PDF('),
+                         content.count('EE_COMPONENTS(1:4)'))
+        # The densities read 1-x from OMX_EE, which genps sets per generated
+        # point: the vectorized routine has to restore each lane's value
+        # before its PDFs (and before UNWGT samples the beamstrahlung split),
+        # or every lane uses the 1-x of the last point -- which doubled the
+        # FCC-ee 240 GeV cross section at vector_size 16.
+        self.assertEqual(
+            content.replace(' ', '').upper().count(
+                'OMX_EE(:)=ALL_OMX_EE(:,IVEC)'), 3)
 
     def test_madevent_subproc_group(self):
         """Test MadEvent output using the SubProcess group functionality"""
