@@ -607,9 +607,10 @@ def _phase_line(
         filled = min(bar_width, max(0, round(fraction * bar_width)))
         bar = "[" + "#" * filled + "-" * (bar_width - filled) + "]"
         percent = f" {fraction:>5.1%}"
-        eta = (
-            elapsed * (total - completed) / completed if completed > 0 else None
-        )
+        # A task that knows its costs reports its own estimate.
+        eta = _detail_float(phase.details, "eta_seconds")
+        if eta is None and completed > 0:
+            eta = elapsed * (total - completed) / completed
     else:
         bar = "[...]"
         percent = ""
@@ -866,6 +867,13 @@ def _format_event(
         message = _benchmark_statistics_message(event.details, color=color)
         if message is None:
             message = event.message
+        if message is None and isinstance(event.details.get("step"), str):
+            message = str(event.details["step"])
+        eta = _detail_float(event.details, "eta_seconds")
+        if eta is not None:
+            message = (message + "; " if message else "") + (
+                f"ETA {_duration_text(eta)}"
+            )
         suffix = f": {message}" if message else ""
         context = _log_detail_text(event.details)
         return (

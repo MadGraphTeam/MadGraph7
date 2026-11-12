@@ -353,9 +353,13 @@ def interrupted_line(setup: Any, color: bool) -> str | None:
 
     if not setup or not setup.get("interrupted"):
         return None
+    per = setup.get("evaluated_per_backend") or {}
+    detail = ", ".join(f"{_name(name)} {count}" for name, count in per.items())
     return palette.paint(
         f"interrupted: {setup.get('measured', 0)} of {setup.get('requested', 0)} "
-        "requested points evaluated; the tables hold those points",
+        "requested points evaluated"
+        + (f" ({detail})" if len(set(per.values())) > 1 else "")
+        + "; the tables hold those points",
         palette.RECOVERED,
         color=color,
         bold=True,
@@ -368,8 +372,13 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     target_digits = -math.log10(target)
     rows = report.stability
     served = [row for row in rows if row.refusal is None and row.points]
+    points = (
+        f"{setup.get('measured', 0)} of {setup['points']}"
+        if setup.get("interrupted")
+        else str(setup["points"])
+    )
     title = (
-        f"Stable digits of binary64 vs double-double, {setup['points']} flat "
+        f"Stable digits of binary64 vs double-double, {points} flat "
         f"points (sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']})"
     )
     table = palette.table(
@@ -592,6 +601,15 @@ def loop_profile_summary(report: Any, *, prettytable: Any, color: bool) -> str:
     blocks = [_header(report, prettytable, color)]
     if report.runtime is not None:
         blocks += _runtime_tables(report, prettytable, color)
+    if report.interrupted and report.stability is None:
+        blocks.append(
+            palette.paint(
+                "interrupted: the runtime table holds the backends timed so far",
+                palette.RECOVERED,
+                color=color,
+                bold=True,
+            )
+        )
     if report.stability is not None:
         blocks += _stability_tables(report, prettytable, color)
     return "\n\n".join(blocks)

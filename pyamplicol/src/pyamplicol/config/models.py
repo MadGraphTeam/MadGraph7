@@ -1660,7 +1660,11 @@ class BenchmarkConfig:
     # ``evaluation.phase_space`` sets: its seed and energy).
     runtime: bool = field(default=False, metadata=_setting("bool"))
     stability: bool = field(default=False, metadata=_setting("bool"))
-    stability_points: int = field(default=100, metadata=_setting("int"))
+    stability_points: int = field(default=1000, metadata=_setting("int"))
+    # The worker processes of the stability run (``--n_core``): capped by
+    # the usable cores; 1 runs it in-process. The result does not depend on
+    # it. The runtime timing stays in one process.
+    n_core: int = field(default=10, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability"):
@@ -1671,6 +1675,7 @@ class BenchmarkConfig:
             "stability_points",
             _integer(self.stability_points, "benchmark.stability_points"),
         )
+        object.__setattr__(self, "n_core", _integer(self.n_core, "benchmark.n_core"))
         object.__setattr__(
             self,
             "target_runtime",

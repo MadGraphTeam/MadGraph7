@@ -39,7 +39,20 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=argparse.SUPPRESS,
         metavar="COUNT",
-        help="loop artifacts: number of flat points of --stability",
+        help="loop artifacts: number of flat points of --stability (default 1000)",
+    )
+    parser.add_argument(
+        "--n_core",
+        "--n-core",
+        dest="benchmark.n_core",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="N",
+        help=(
+            "loop artifacts: worker processes of --stability (default 10, at "
+            "most the usable cores; 1 runs in-process; the result does not "
+            "depend on it)"
+        ),
     )
     parser.add_argument(
         "--seed",

@@ -641,7 +641,9 @@ class DefaultCliServices:
             # runtime and/or the stability statistics (``loop_profile``).
             from pyamplicol.loop_profile import profile_loop
 
-            return profile_loop(config.evaluation.artifact, config, points=points)
+            return profile_loop(
+                config.evaluation.artifact, config, points=points, progress=progress
+            )
         return BenchmarkRunner(config=config, progress=progress).run(
             config.evaluation.artifact,
             points=points,
