@@ -66,6 +66,13 @@ STATUS_INVALID_ARGUMENT = 1
 STATUS_RUNTIME_ERROR = 3
 SUCCESS_STATUS = 4  # RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED
 FAILED_STATUS = 3
+BEST_EFFORT_STATUS = 5  # RUSTICOL_VIRTUAL_BEST_EFFORT
+# The Python API's lane statuses as the C ABI's point statuses.
+STATUS_CODES = {
+    "success": SUCCESS_STATUS,
+    "failed": FAILED_STATUS,
+    "best-effort": BEST_EFFORT_STATUS,
+}
 BACKENDS = ("auto", "ninjars", "tirust")
 # The row whose extended-precision runs take minutes (as
 # test_loop_v2_sdk_induced.SLOW_EXTENDED): its clients run binary64 only.
@@ -295,25 +302,55 @@ def _moved(expected, choice) -> dict:
     }
 
 
-def _compare(label, found: dict, expected, resolved: bool, choice) -> None:
-    """Values bitwise, statuses, failure reasons and the reduction record
-    (the call's, from its resolved ``choice``; per point, the fallback's)."""
+def _set_on_failure(sdk, handle, on_failure: str) -> None:
+    """The handle's failure policy, the Python call's ``on_failure`` (the
+    C ABI's default is the Python API's, "best-effort")."""
 
-    assert found["status"] == 0, (label, found.get("error"))
-    served = [value is not None for value in expected.values]
-    assert found["statuses"] == [
-        SUCCESS_STATUS if ok else FAILED_STATUS for ok in served
+    sdk.rusticol_virtual_set_on_failure.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    assert sdk.rusticol_virtual_set_on_failure(handle, on_failure.encode()) == 0, (
+        _error(sdk)
+    )
+
+
+def _statuses_and_reasons(label, found: dict, expected) -> None:
+    """Per point the Python lane's status (a best-effort point carries the
+    unchecked value in both, a failed one none), the failure reasons of the
+    failed points and the best-effort records of the others."""
+
+    statuses = [lane.status for lane in expected.diagnostics]
+    assert [v is not None for v in expected.values] == [
+        s != "failed" for s in statuses
     ], label
-    assert _bitwise(found["virtual"], _python_values(expected, resolved)), label
-    failures = found["diagnostics"]["failures"]
-    for index, ok in enumerate(served):
-        if not ok:
+    assert found["statuses"] == [STATUS_CODES[s] for s in statuses], label
+    diagnostics = found["diagnostics"]
+    failures = diagnostics["failures"]
+    for index, status in enumerate(statuses):
+        if status == "failed":
             # The SDK lists the reasons; the Python API joins them in the
             # point's failure record (failures[0].detail; the point-level
             # detail adds the executor's prefix "v2 native executor: ").
             assert "; ".join(failures[str(index)]) == (
                 expected.diagnostics[index].failures[0].detail
             ), label
+    best = {index for index, status in enumerate(statuses) if status == "best-effort"}
+    assert {int(k) for k in diagnostics.get("best_effort", {})} == best, label
+    for index in best:
+        # The backend's own measures of the refusal (m-lit ux-polish).
+        mine = expected.diagnostics[index].best_effort
+        entry = diagnostics["best_effort"][str(index)]
+        assert (entry["backend_deviation"], entry["gram_conditioning"]) == (
+            mine.backend_deviation,
+            mine.gram_conditioning,
+        ), (label, index)
+
+
+def _compare(label, found: dict, expected, resolved: bool, choice) -> None:
+    """Values bitwise, statuses, failure reasons and the reduction record
+    (the call's, from its resolved ``choice``; per point, the fallback's)."""
+
+    assert found["status"] == 0, (label, found.get("error"))
+    _statuses_and_reasons(label, found, expected)
+    assert _bitwise(found["virtual"], _python_values(expected, resolved)), label
     # The call-level record with m-lit F3's per-point fallback: the call's
     # resolved choice (also when every point falls back) and how many points
     # its fallback evaluated again (the lanes recording another backend than
@@ -341,7 +378,7 @@ def _compare(label, found: dict, expected, resolved: bool, choice) -> None:
         assert found["axes"] == {"helicity_ids": [], "color_ids": []}, label
 
 
-def _per_point(runtime, exact, scales, by_point, **options):
+def _per_point(runtime, exact, scales, by_point, on_failure="return", **options):
     """The Python API's per-point selection: each point's own
     ``evaluate(helicities=[its ID])``, as one result's lists."""
 
@@ -353,7 +390,7 @@ def _per_point(runtime, exact, scales, by_point, **options):
             [exact[p]],
             mu_r2=[scales[p]],
             helicities=[f"h{row}"],
-            on_failure="return",
+            on_failure=on_failure,
             **options,
         )
         values += list(found.values)
@@ -370,9 +407,13 @@ def _check_selections(sdk, handle, runtime, inputs, selectors, tag, **options):
     points, scales, exact, exact_scales = inputs
     one, subset, by_point = selectors
     choice = _choice(runtime, options)
-    # The per-point reference takes the call's options (its backend, target
-    # and unchecked setting; DECISIONS 2026-11-09 02:02 (a)).
-    per_point = {key: value for key, value in options.items() if key != "on_failure"}
+    # Both sides run the same failure policy (the Python default when
+    # ``options`` names none).
+    options = {"on_failure": "best-effort", **options}
+    _set_on_failure(sdk, handle, options["on_failure"])
+    # The per-point reference takes the call's options (its backend, target,
+    # unchecked setting and failure policy; DECISIONS 2026-11-09 02:02 (a)).
+    per_point = dict(options)
     calls = {
         "anchors": (
             {"resolved": True, "resolution": "amplitude-basis"},
@@ -425,19 +466,10 @@ def _check_selections(sdk, handle, runtime, inputs, selectors, tag, **options):
             # The per-point reference is one call per point: values,
             # statuses and reasons (its record is the same call's).
             assert found[label]["status"] == 0, found[label].get("error")
-            served = [v is not None for v in expected.values]
-            assert found[label]["statuses"] == [
-                SUCCESS_STATUS if ok else FAILED_STATUS for ok in served
-            ], label
+            _statuses_and_reasons(f"{tag}:{label}", found[label], expected)
             assert _bitwise(found[label]["virtual"], _python_values(expected, False)), (
                 label
             )
-            failures = found[label]["diagnostics"]["failures"]
-            for index, ok in enumerate(served):
-                if not ok:
-                    assert "; ".join(failures[str(index)]) == (
-                        expected.diagnostics[index].failures[0].detail
-                    ), label
             assert found[label]["diagnostics"]["selection"] == {
                 "helicity_ids": [[f"h{row}"] for row in by_point]
             }
@@ -629,17 +661,30 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
             )
             by_point[refused[0]] = refused[1]
         assert len(set(by_point)) < len(by_point)
-        calls = _check_selections(
-            sdk,
-            handle,
-            runtime,
-            inputs,
-            (one, subset, by_point),
-            f"fresh:{backend}",
-            reduction=backend,
-            on_failure="return",
-            **({} if target is None else {"reduction_target": target}),
-        )
+        # "return" keeps the refused points failed; the default "best-effort"
+        # returns them with the unchecked value (status BEST_EFFORT) in every
+        # selection, the per-point row groups included (m-lit ux-besteffort).
+        for on_failure in ("best-effort", "return"):
+            calls = _check_selections(
+                sdk,
+                handle,
+                runtime,
+                inputs,
+                (one, subset, by_point),
+                f"fresh:{backend}:{on_failure}",
+                reduction=backend,
+                on_failure=on_failure,
+                **({} if target is None else {"reduction_target": target}),
+            )
+            if backend == "tirust" and on_failure == "best-effort":
+                # Every row (the anchors) and the row groups holding the
+                # refused point's own row: best-effort points in both.
+                for label in ("anchors", "by-point"):
+                    statuses = [d.status for d in calls[label][1].diagnostics]
+                    assert "best-effort" in statuses, (
+                        f"no best-effort point in the {label} selection: extend "
+                        "the point set"
+                    )
         if backend == "auto" and target is not None:
             # The row-grouped per-point selection exercises the per-point
             # fallback (several row groups, a fallback point in them).
@@ -1594,6 +1639,7 @@ def test_born_interfered_c_abi_selections_equal_the_python_api(
                     exact, mu_r2=exact_scales, helicities=["h0"], **options
                 )
             return
+        _set_on_failure(sdk, handle, options["on_failure"])
         one, subset, by_point = _selectors(capabilities, len(points))
         choice = _choice(runtime, options)
         per_point = {k: v for k, v in options.items() if k != "on_failure"}
