@@ -2738,6 +2738,160 @@ class TestMECmdShell(unittest.TestCase):
         )
 
 
+    @staticmethod
+    def _onia_card_value(card, block, key):
+        """A value of the onia card (Block <block>, entry <key>)."""
+        text = open(card).read()
+        body = re.search(r'(?ims)^block\s+%s\b(.*?)(?=^block|\Z)' % block, text).group(1)
+        return float(re.search(r'^\s*%s\s+([0-9.Ee+-]+)' % key, body, re.M).group(1))
+
+    def test_onium_decay_width(self):
+        """Onium decays in madevent: Gamma(eta_c -> gamma gamma) at LO NRQCD,
+        12 e_c^4 alpha^2 |R(0)|^2 / M^2 with M = 2 m_c when the onium_mass of
+        the onia card is 2 m_c, and at the onium_mass of the card by default
+        (the same mass as in production), where the 2-body width scales as
+        M/M_phys."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate etac(1|1S01) > a a')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        self.assertNotIn('onia_decay', open(card).read())
+        mphys = self._onia_card_value(card, 'onium_mass', 441)
+        mc, alpha = 1.55, 1 / 132.507
+        M = 2 * mc
+
+        # strict LO: the onium_mass set to m1+m2
+        text = open(card).read()
+        text = re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>%.12e\2' % M, text)
+        open(card, 'w').write(text)
+        self.do('generate_events -f')
+        width = self.cmd_line.results.current['cross']
+        # the decay LDME of the eta_c (J_H = 0): <O_1>_H = N_[1] |R(0)|^2 / (4 pi)
+        r2 = self._onia_card_value(card, 'ldme_decay', 441) * 4 * math.pi / 6
+        expected = 12 * (2. / 3) ** 4 * alpha ** 2 * r2 / M ** 2
+        self.assertLess(abs(width - expected) / expected, 1e-4,
+                        '%s against %s' % (width, expected))
+
+        # the default onium_mass (the physical mass): flux and phase space at
+        # M_phys, the |M|^2 at m1+m2
+        self.assertNotAlmostEqual(mphys, M, places=3)
+        text = open(card).read()
+        text = re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>%.12e\2' % mphys, text)
+        open(card, 'w').write(text)
+        self.do('generate_events -f')
+        width2 = self.cmd_line.results.current['cross']
+        self.assertLess(abs(width2 / width - M / mphys), 1e-4,
+                        '%s / %s against %s' % (width2, width, M / mphys))
+
+    def test_onium_decay_massive_products(self):
+        """An onium decaying into massive particles in madevent: the symmetry
+        program of the survey reads the onia card, so the decaying onium has
+        its onium_mass there too. Without it sqrt(s) was 0, every channel of
+        etab > c c~ g failed its threshold and the run stopped with "No Phase
+        Space"."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate etab(1|1S01) > c c~ g QED=0')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.assertIn('call setonia', open(pjoin(self.run_dir, 'SubProcesses', 'symmetry.f')).read())
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        run_card = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        text = open(run_card).read()
+        text = re.sub(r'(?m)^\s*\S+\s*=\s*nevents\b', ' 1000 = nevents', text)
+        open(run_card, 'w').write(text)
+        self.do('generate_events -f')
+        self.assertGreater(self.cmd_line.results.current['cross'], 0)
+
+    def test_onium_production_default_scale(self):
+        """Onium production at a hadron collider with madevent's default
+        scale (dynamical_scale_choice -1): the clustering reads the s-channel
+        particle of every grouped subprocess (sprop), which the onium
+        channels wrote for the first one only; for g q > Jpsi q and q g >
+        Jpsi q in one directory the second had 0, and the run stopped in
+        get_color(0)."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate p p > Jpsi(1|3S11) j')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        # every subprocess of a group has the particle of an s-channel
+        import glob
+        for configs in glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*', 'configs.inc')):
+            maxsproc = int(re.search(r'MAXSPROC=(\d+)', open(pjoin(
+                os.path.dirname(configs), 'maxamps.inc')).read().replace(' ', '')).group(1))
+            for vals in re.findall(r'SPROP\(I,-\d+,\d+\),I=1,(\d+)\)/([-\d,]+)/',
+                                   open(configs).read()):
+                self.assertEqual(int(vals[0]), maxsproc)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        run_card = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        text = open(run_card).read()
+        for key, value in (('nevents', '1000'), ('pdlabel', 'nn23lo1'), ('ptj', '10.0'),
+                           ('dynamical_scale_choice', '-1')):
+            text = re.sub(r'(?m)^\s*\S+\s*=\s*%s\b' % key, ' %s = %s' % (value, key), text)
+        open(run_card, 'w').write(text)
+        self.do('generate_events -f')
+        self.assertGreater(self.cmd_line.results.current['cross'], 0)
+
+    def test_onium_production_in_decay(self):
+        """Onia produced in a decay: Gamma(Z -> eta_c gamma) through the vector
+        coupling of the Z, (2/3) M Gamma(eta_c -> gamma gamma) (v_c/(e_c s_W
+        c_W))^2 (m_Z^2 - M^2)/m_Z^3; with the physical onium mass the momenta
+        are reshuffled at the fixed Z mass, and the 2-body width follows the
+        physical phase space."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate z > etac(1|1S01) a')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        # the onium at m1+m2: no reshuffling
+        mphys = self._onia_card_value(card, 'onium_mass', 441)
+        text = open(card).read()
+        open(card, 'w').write(re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)',
+                                     r'\g<1>3.1\2', text))
+        self.do('generate_events -f')
+        width = self.cmd_line.results.current['cross']
+
+        mc, alpha, mz, gf = 1.55, 1 / 132.507, 91.188, 1.16639e-5
+        M = 2 * mc
+        mw = math.sqrt(mz ** 2 / 2 + math.sqrt(mz ** 4 / 4 - alpha * math.pi * mz ** 2 / (gf * math.sqrt(2))))
+        sw2 = 1 - mw ** 2 / mz ** 2
+        vc = 0.25 - 2. / 3 * sw2
+        r2 = self._onia_card_value(card, 'ldme', 441) * 4 * math.pi / 6
+        gaa = 12 * (2. / 3) ** 4 * alpha ** 2 * r2 / M ** 2
+        expected = 2. / 3 * M * gaa * (vc / (2. / 3)) ** 2 / (sw2 * (1 - sw2)) \
+                   * (mz ** 2 - M ** 2) / mz ** 3
+        self.assertLess(abs(width - expected) / expected, 1e-4,
+                        '%s against %s' % (width, expected))
+
+        # physical mass: reshuffled matrix element, physical phase space
+        text = re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)',
+                      r'\g<1>%r\2' % mphys, open(card).read())
+        open(card, 'w').write(text)
+        self.do('generate_events -f')
+        width2 = self.cmd_line.results.current['cross']
+        ratio = (mz ** 2 - mphys ** 2) / (mz ** 2 - M ** 2)
+        self.assertLess(abs(width2 / width - ratio), 1e-4,
+                        '%s / %s against %s' % (width2, width, ratio))
+
+
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat

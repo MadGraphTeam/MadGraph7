@@ -15301,3 +15301,680 @@ class TestDensityLibtag(unittest.TestCase):
             self.assertIn('LIBTAG=_ms2p', str(error))
         else:
             self.fail('no library, yet a LIBTAG was found')
+
+
+class TestOniaSpinTransfer(unittest.TestCase):
+    """The spin of a colour-octet Fock state given to its hadron at LO in v
+    (heavy-quark spin symmetry, MadSpin/onia_madspin.py): M1 isotropic, the
+    spin kept in E1, the orbital part isotropic for L = 0 > L_H = 1 and traced
+    over for L = 1 > L_H = 0. Every transfer keeps the trace, the production
+    |M|^2 of the event."""
+
+    @staticmethod
+    def fock(name, pdg, S, L, J, colour):
+        return {'name': name, 'pdg_code': pdg, 'spin': 2 * S + 1, 'orbital': L,
+                'J': J, 'color': colour, 'principal': 1, 'charge': 0}
+
+    def setUp(self):
+        import numpy
+        import MadSpin.onia_madspin as onia_madspin
+        self.np = numpy
+        self.om = onia_madspin
+        F = self.fock
+        self.psi = F('Jpsi(1|3S11)', 443, 1, 0, 1, 1)
+        self.psi_1s08 = F('Jpsi(1|1S08)', 9941003, 0, 0, 0, 8)
+        self.psi_3s18 = F('Jpsi(1|3S18)', 9942003, 1, 0, 1, 8)
+        self.psi_3pj8 = [F('Jpsi(1|3P%d8)' % J, 9943003 + 1000 * J, 1, 1, J, 8) for J in range(3)]
+        self.chi = [F('chi%d(1|3P%d1)' % (J, J), (10441, 20443, 445)[J], 1, 1, J, 1)
+                    for J in range(3)]
+        self.chi2_3s18 = F('chi2(1|3S18)', 9940445, 1, 0, 1, 8)
+
+        class Cmd(object):
+            pass
+        cmd = Cmd()
+        cmd._fockstates = [self.psi, self.psi_1s08, self.psi_3s18] + self.psi_3pj8 + \
+            self.chi + [self.chi2_3s18]
+        cmd._boundstates = {'Jpsi': [f['name'] for f in cmd._fockstates[:6]]}
+        self.registry = onia_madspin.OniaRegistry(cmd)
+        self.rng = numpy.random.RandomState(7)
+
+    def random_density(self, n):
+        a = self.rng.normal(size=(n, n)) + 1j * self.rng.normal(size=(n, n))
+        return a @ a.conj().T
+
+    def test_clebsch_gordan(self):
+        cg = self.om.clebsch_gordan
+        r = math.sqrt
+        self.assertAlmostEqual(cg(1, 1, 1, -1, 0, 0), 1 / r(3), 14)
+        self.assertAlmostEqual(cg(1, 0, 1, 0, 0, 0), -1 / r(3), 14)
+        self.assertAlmostEqual(cg(1, 1, 1, 0, 1, 1), 1 / r(2), 14)
+        self.assertAlmostEqual(cg(1, 0, 1, 0, 2, 0), r(2. / 3), 14)
+        self.assertAlmostEqual(cg(1, -1, 1, 1, 2, 0), 1 / r(6), 14)
+        # orthonormal: sum over (m1, m2) of CG(J M) CG(J' M') = delta
+        for J in range(3):
+            for Jp in range(3):
+                for M in range(-J, J + 1):
+                    for Mp in range(-Jp, Jp + 1):
+                        s = sum(cg(1, m1, 1, M - m1, J, M) * cg(1, m1, 1, Mp - m1, Jp, Mp)
+                                for m1 in (-1, 0, 1) if M - m1 == Mp - m1)
+                        self.assertAlmostEqual(s, float(J == Jp and M == Mp), 14)
+
+    def test_m1_isotropic(self):
+        """1S0[8] > J/psi (spin flipped): isotropic J/psi."""
+        out = self.om.spin_transfer(self.psi_1s08, self.psi, self.np.array([[2.5]]),
+                                    [0], [-1, 0, 1])
+        self.assertTrue(self.np.allclose(out, 2.5 / 3 * self.np.eye(3), atol=1e-14))
+
+    def test_s_wave_kept(self):
+        """3S1[8] > J/psi: the density is the J/psi's."""
+        rho = self.random_density(3)
+        out = self.om.spin_transfer(self.psi_3s18, self.psi, rho, [-1, 0, 1], [-1, 0, 1])
+        self.assertTrue(self.np.allclose(out, rho, atol=1e-14))
+
+    def test_s_to_p_wave(self):
+        """3S1[8] > chi_cJ: the orbital L_z of the chi_cJ isotropic. From
+        S_z = +1, chi_c2 has J_z = 2, 1, 0 with 1/3, 1/6, 1/18 (normalised:
+        0.6, 0.3, 0.1); an unpolarised octet gives an unpolarised chi_cJ;
+        before normalisation the chi_cJ share the trace as (2J+1)/9."""
+        np = self.np
+        rho = np.diag([1., 0., 0.]).astype(complex)[::-1, ::-1]  # S_z = +1 in [-1, 0, 1]
+        hels = [-2, -1, 0, 1, 2]
+        out = self.om.spin_transfer(self.chi2_3s18, self.chi[2], rho, [-1, 0, 1], hels)
+        self.assertTrue(np.allclose(np.diag(out).real, [0, 0, 0.1, 0.3, 0.6], atol=1e-14))
+        self.assertAlmostEqual(np.trace(out).real, 1., 14)
+        total = 0.
+        for J in range(3):
+            hJ = list(range(-J, J + 1))
+            iso = self.om.spin_transfer(self.chi2_3s18, self.chi[J], np.eye(3) * 2., [-1, 0, 1], hJ)
+            self.assertTrue(np.allclose(iso, np.eye(2 * J + 1) * 6. / (2 * J + 1), atol=1e-14))
+            raw = self.om.spin_transfer(self.chi2_3s18, self.chi[J], rho, [-1, 0, 1], hJ,
+                                        renormalise=False)
+            self.assertAlmostEqual(np.trace(raw).real, (2 * J + 1) / 9., 14)
+            total += np.trace(raw).real
+        self.assertAlmostEqual(total, np.trace(rho).real, 14)
+
+    def test_p_to_s_wave(self):
+        """3PJ[8] > J/psi: the partial trace over L_z. A J_z = +-2 octet gives
+        a transverse J/psi, a 3P0[8] an isotropic one; the uncoupled
+        (L_z, S_z) density of a single J gives the result of its J-resolved
+        density, and its trace is the sum of the J-resolved traces."""
+        np, cg = self.np, self.om.clebsch_gordan
+        out = self.om.spin_transfer(self.psi_3pj8[2], self.psi, np.diag([1., 0, 0, 0, 1.]),
+                                    [-2, -1, 0, 1, 2], [-1, 0, 1])
+        self.assertTrue(np.allclose(out, np.diag([1., 0, 1.]), atol=1e-14))
+        out = self.om.spin_transfer(self.psi_3pj8[0], self.psi, np.array([[3.]]), [0], [-1, 0, 1])
+        self.assertTrue(np.allclose(out, np.eye(3), atol=1e-14))
+        pairs = [(Lz, Sz) for Lz in (-1, 0, 1) for Sz in (-1, 0, 1)]
+        A = self.rng.normal(size=9) + 1j * self.rng.normal(size=9)  # A(L_z, S_z)
+        AJ = [np.array([sum(cg(1, Lz, 1, Sz, J, M) * A[i] for i, (Lz, Sz) in enumerate(pairs))
+                        for M in range(-J, J + 1)]) for J in range(3)]
+        unc = np.outer(A, A.conj())
+        self.assertAlmostEqual(np.trace(unc).real,
+                               sum(np.vdot(a, a).real for a in AJ), 12)
+        for J in range(3):
+            # a single J: A(L_z, S_z) = sum_M CG A_J(M)
+            AJunc = np.array([sum(cg(1, Lz, 1, Sz, J, M) * AJ[J][k]
+                                  for k, M in enumerate(range(-J, J + 1))) for Lz, Sz in pairs])
+            coupled = self.om.spin_transfer(self.psi_3pj8[J], self.psi, np.outer(AJ[J], AJ[J].conj()),
+                                            list(range(-J, J + 1)), [-1, 0, 1])
+            uncoupled = self.om.spin_transfer(self.psi_3pj8[J], self.psi, np.outer(AJ[J], AJ[J].conj()),
+                                              list(range(-J, J + 1)), [-1, 0, 1],
+                                              rho_uncoupled=(pairs, np.outer(AJunc, AJunc.conj())))
+            self.assertTrue(np.allclose(coupled, uncoupled, atol=1e-12))
+        # the J-summed partial trace
+        ref = np.array([[sum(unc[pairs.index((Lz, Sz)), pairs.index((Lz, Szp))] for Lz in (-1, 0, 1))
+                         for Szp in (-1, 0, 1)] for Sz in (-1, 0, 1)])
+        out = self.om.spin_transfer(self.psi_3pj8[1], self.psi, np.outer(AJ[1], AJ[1].conj()),
+                                    [-1, 0, 1], [-1, 0, 1], rho_uncoupled=(pairs, unc),
+                                    renormalise=False)
+        self.assertTrue(np.allclose(out, ref, atol=1e-12))
+
+    def test_apply_transfer(self):
+        """The production density of a process with a colour-octet onium. A
+        colour octet decays to its hadron and a soft gluon (onia_radiative) in
+        its own J_z, so its density is the matrix element's, untouched; a 3P
+        octet of an S-wave hadron decays in the uncoupled (L_z, S_z) basis
+        (helicity codes -4..4), whose density, from the uncoupled matrix
+        element, is kept, at the trace of the event's own |M|^2."""
+        np = self.np
+        reg = self.registry
+        self.assertTrue(reg.needs_uncoupled(self.psi_3pj8[2]))
+        self.assertFalse(reg.needs_uncoupled(self.psi_3s18))
+        self.assertIs(reg.singlet_of(self.psi_3pj8[2]), self.psi)
+        codes = list(range(-4, 5))
+        plan = reg.transfer_plan([21, 21, 9945003], [3], codes)
+        self.assertEqual(plan['fock_hels'], [[-2, -1, 0, 1, 2]])
+        self.assertEqual(plan['unc_legs'], [0])
+        self.assertEqual(plan['unc_allow'], codes)
+        unc = self.random_density(9)
+        out = reg.unpack(reg.apply_transfer(plan, reg.pack(unc), uncoupled=True,
+                                            target_trace=2.), 9)
+        self.assertTrue(np.allclose(out, unc * 2. / np.trace(unc).real, atol=1e-12))
+        # two decaying legs, the octet second: the map acts on that leg only
+        plan = reg.transfer_plan([21, 21, 443, 9945003], [3, 4],
+                                 [h for a in (-1, 0, 1) for b in codes for h in (a, b)])
+        self.assertIsNone(plan['legs'][0])
+        r1, r2 = self.random_density(3), self.random_density(9)
+        out = reg.unpack(reg.apply_transfer(plan, reg.pack(np.kron(r1, r2)), uncoupled=True,
+                                            target_trace=5.), 27)
+        self.assertTrue(np.allclose(out, np.kron(r1, r2) * 5. / np.trace(np.kron(r1, r2)).real,
+                                    atol=1e-12))
+        # an S-wave octet, or a 3P octet of a P-wave hadron: no transfer
+        for octet in (9942003, 9941003):
+            self.assertIsNone(reg.transfer_plan([21, 21, 443, octet], [3, 4],
+                                                [h for a in (-1, 0, 1) for b in (-1, 0, 1)
+                                                 for h in (a, b)]))
+        # the pseudo-particles: the octet's own spin, the uncoupled 3P in nine pairs
+        self.assertEqual(reg.pseudo_particle(self.psi_3s18).get('spin'), 3)
+        self.assertEqual(reg.pseudo_particle(self.psi_1s08).get('spin'), 1)
+        self.assertEqual(reg.pseudo_particle(self.psi_3pj8[2]).get('spin'), 9)
+        self.assertEqual(reg.pseudo_particle(self.psi_3pj8[2]).get('color'), 8)
+
+    def test_p_to_s_wave_against_shao_chao(self):
+        """The trace over L_z of a 3PJ density (the L = 1 > L_H = 0 transfer) is
+        the J/psi density of an E1 decay chi_cJ > J/psi gamma, eq. (19) of
+        arXiv:1209.4610 (Shao, Chao): with eq. (17) there (the mu+ mu- angular
+        coefficients of a J/psi density) it must give the closed forms of their
+        eq. (18) for chi_c1 and chi_c2, for any density matrix, the
+        off-diagonal (lambda_phi, lambda_thetaphi) and T-odd ones included."""
+        np = self.np
+
+        def jpsi_lambdas(r):
+            # eq. (17), r in the order J_z = -1, 0, +1
+            N = np.trace(r).real
+            d = N + r[1, 1].real
+            return np.array([(N - 3 * r[1, 1].real) / d, 2 * r[2, 0].real / d,
+                             math.sqrt(2) * (r[2, 1].real - r[0, 1].real) / d,
+                             -2 * r[2, 0].imag / d, -math.sqrt(2) * (r[2, 1].imag + r[0, 1].imag) / d])
+
+        def chi1(r):
+            # eq. (18), chi_c1; r[J_z + 1, J'_z + 1]
+            R = lambda a, b: r[a + 1, b + 1]  # noqa: E731
+            N = np.trace(r).real
+            d = 3 * N - R(0, 0).real
+            return np.array([(-N + 3 * R(0, 0).real) / d, -2 * R(1, -1).real / d,
+                             -math.sqrt(2) * (R(1, 0).real - R(-1, 0).real) / d,
+                             2 * R(1, -1).imag / d, math.sqrt(2) * (R(1, 0).imag + R(-1, 0).imag) / d])
+
+        def chi2(r):
+            # eq. (18), chi_c2; r[J_z + 2, J'_z + 2]
+            R = lambda a, b: r[a + 2, b + 2]  # noqa: E731
+            N = np.trace(r).real
+            d = 6 * N + 3 * (R(1, 1) + R(-1, -1)).real + 4 * R(0, 0).real
+            s6 = math.sqrt(6)
+            return np.array([
+                (6 * N - 9 * (R(1, 1) + R(-1, -1)).real - 12 * R(0, 0).real) / d,
+                (2 * s6 * (R(2, 0) + R(-2, 0)).real + 6 * R(1, -1).real) / d,
+                (6 * (R(2, 1) - R(-2, -1)).real + s6 * (R(1, 0) - R(-1, 0)).real) / d,
+                (2 * s6 * (R(0, 2) - R(0, -2)).imag - 6 * R(1, -1).imag) / d,
+                (6 * (R(1, 2) + R(-1, -2)).imag + s6 * (R(0, 1) + R(0, -1)).imag) / d])
+
+        for J, closed in ((1, chi1), (2, chi2)):
+            hels = list(range(-J, J + 1))
+            for trial in range(5):
+                rho = self.random_density(2 * J + 1)
+                out = self.om.spin_transfer(self.psi_3pj8[J], self.psi, rho, hels, [-1, 0, 1],
+                                            renormalise=False)
+                self.assertTrue(np.allclose(jpsi_lambdas(out), closed(rho), atol=1e-12), (J, trial))
+
+    def test_hqss_ldmes(self):
+        """The 3PJ[8] LDMEs of the onia card checked against
+        <O(3PJ[8])> = (2J+1) <O(3P0[8])>."""
+        reg = self.registry
+        card = ('Block ldme\n  9943003  0.0343  # 3P08\n  9944003  0.1029\n  9945003  %s\n'
+                'Block onium_mass\n  9943003  3.3\n')
+        self.assertEqual(reg.hqss_ldme_mismatch(card % '0.1715', self.psi), [])
+        out = reg.hqss_ldme_mismatch(card % '0.2', self.psi)
+        self.assertEqual([o[0] for o in out], ['Jpsi(1|3P28)'])
+        self.assertAlmostEqual(out[0][2], 5 * 0.0343, 14)
+        self.assertEqual(reg.onia_masses(card % '0.2'), {9943003: 3.3})
+
+
+class TestOniaRadiative(unittest.TestCase):
+    """Radiative transitions between bound states as MadSpin decays
+    (MadSpin/onia_radiative.py): E1 and M1 amplitudes in the J_z basis of the
+    bound-state matrix elements, against the textbook distributions (the
+    photon of psi(2S) > chi_cJ gamma from a transverse psi(2S) goes as 1 +
+    alpha_J cos^2 with alpha_J = 1, -1/3, 1/13; 1 + cos^2 for M1 and for h_c >
+    eta_c gamma) and Eq. (18) of arXiv:1209.4610 (chi_cJ > J/psi gamma,
+    chi_bJ > Upsilon gamma); the spin transfer of a cascade integrated over the
+    photons against the E1 rules (orbital part isotropic, then traced over);
+    the decay lines, the branching ratios, the decay events and the density
+    library."""
+
+    DECAY_CARD = """
+DECAY 100443 2.94e-04
+   9.75e-02  2  20443  22
+DECAY 20443 8.40e-04
+   3.43e-01  2  443  22
+DECAY 443 9.26e-05
+   5.961e-02  2  13  -13
+"""
+
+    class F(dict):
+        def get(self, key, default=None):
+            return dict.get(self, key, default)
+
+    def fock(self, name, pdg, S, L, J, quark='c', colour=1):
+        return self.F(name=name, pdg_code=pdg, spin=2 * S + 1, orbital=L, J=J, color=colour,
+                      principal=1, charge=0, particles=[quark, quark + '~'])
+
+    def setUp(self):
+        import numpy
+        import MadSpin.onia_radiative as onia_radiative
+        self.np = numpy
+        self.R = onia_radiative
+        F = self.fock
+        self.jpsi = F('Jpsi(1|3S11)', 443, 1, 0, 1)
+        self.psi2 = F('psi(2|3S11)', 100443, 1, 0, 1)
+        self.etac = F('etac(1|1S01)', 441, 0, 0, 0)
+        self.hc = F('hc(1|1P11)', 10443, 0, 1, 1)
+        self.chi = [F('chic%d(1|3P%d1)' % (J, J), (10441, 20443, 445)[J], 1, 1, J) for J in range(3)]
+        self.ups = F('Upsilon(1|3S11)', 553, 1, 0, 1, 'b')
+        self.chib = [F('chib%d(1|3P%d1)' % (J, J), (10551, 20553, 555)[J], 1, 1, J, 'b') for J in range(3)]
+        self.masses = {443: 3.0969, 100443: 3.6861, 441: 2.9839, 10443: 3.5254, 10441: 3.4147,
+                       20443: 3.5107, 445: 3.5562, 553: 9.4603, 10551: 9.8594, 20553: 9.8928, 555: 9.9122}
+        self.rng = numpy.random.RandomState(11)
+
+    def directions(self, n=8):
+        np = self.np
+        gl, gw = np.polynomial.legendre.leggauss(n)
+        for c, w in zip(gl, gw):
+            s = math.sqrt(1 - c * c)
+            for phi in np.linspace(0, 2 * math.pi, n, endpoint=False):
+                yield np.array([s * math.cos(phi), s * math.sin(phi), c]), w / (2. * n)
+
+    def photon_alpha(self, parent, daughter, rho, M, Mf):
+        """alpha of 1 + alpha cos^2 of the photon, parent at rest."""
+        np, R = self.np, self.R
+        P = np.array([M, 0., 0., 0.])
+        W = []
+        for d in ([0., 0., 1.], [1., 0., 0.]):
+            k, pf = R.two_body(M, 0., Mf, d)
+            A = R.amplitudes(parent, daughter, P, M, k, pf, Mf)
+            W.append(np.einsum('ab,ab->', rho, R.transfer(A, np.eye(A.shape[1]))).real)
+        return W[0] / W[1] - 1
+
+    def test_e1_m1_photon_distributions(self):
+        np = self.np
+        transverse = np.diag([0.5, 0., 0.5]).astype(complex)
+        M = self.masses[100443]
+        for J, alpha in enumerate((1., -1. / 3, 1. / 13)):
+            self.assertLess(abs(self.photon_alpha(self.psi2, self.chi[J], transverse, M, M * (1 - 1e-7))
+                                - alpha), 1e-6)
+            # with the recoil of the physical masses, corrections of order (k/M)^2
+            self.assertLess(abs(self.photon_alpha(self.psi2, self.chi[J], transverse, M,
+                                                  self.masses[self.chi[J]['pdg_code']]) - alpha), 2e-3)
+        for parent, daughter in ((self.jpsi, self.etac), (self.hc, self.etac)):
+            M, Mf = self.masses[parent['pdg_code']], self.masses[daughter['pdg_code']]
+            self.assertLess(abs(self.photon_alpha(parent, daughter, transverse, M, Mf) - 1.), 1e-10)
+            self.assertLess(abs(self.photon_alpha(parent, daughter, np.diag([0., 1., 0.]).astype(complex),
+                                                  M, Mf) + 1.), 1e-10)
+        self.assertEqual(self.R.transition_type(self.chi[1], self.jpsi), 'E1')
+        self.assertEqual(self.R.transition_type(self.jpsi, self.etac), 'M1')
+        self.assertIsNone(self.R.transition_type(self.chi[1], self.chi[0]))
+        self.assertIsNone(self.R.transition_type(self.chib[1], self.jpsi))
+
+    @staticmethod
+    def eq18(rho, J):
+        R = lambda a, b: rho[a + J, b + J]
+        N = sum(rho[k, k].real for k in range(2 * J + 1))
+        if J == 1:
+            d = 3 * N - R(0, 0).real
+            return [(-N + 3 * R(0, 0).real) / d, -2 * R(1, -1).real / d,
+                    -math.sqrt(2) * (R(1, 0).real - R(-1, 0).real) / d]
+        s6 = math.sqrt(6)
+        d = 6 * N + 3 * (R(1, 1) + R(-1, -1)).real + 4 * R(0, 0).real
+        return [(6 * N - 9 * (R(1, 1) + R(-1, -1)).real - 12 * R(0, 0).real) / d,
+                (2 * s6 * (R(2, 0) + R(-2, 0)).real + 6 * R(1, -1).real) / d,
+                (6 * (R(2, 1) - R(-2, -1)).real + s6 * (R(1, 0) - R(-1, 0)).real) / d]
+
+    def test_eq18_moving_parent(self):
+        """A polarised chi_cJ or chi_bJ moving in the laboratory, its density
+        in the HELAS basis (the helicity frame): the photon of the E1 decay
+        has the lambda_theta, lambda_phi, lambda_thetaphi of Eq. (18)."""
+        np, R = self.np, self.R
+        for parent, daughter in ((self.chi[1], self.jpsi), (self.chi[2], self.jpsi),
+                                 (self.chib[1], self.ups), (self.chib[2], self.ups)):
+            J = parent['J']
+            a = self.rng.normal(size=(2 * J + 1,) * 2) + 1j * self.rng.normal(size=(2 * J + 1,) * 2)
+            rho = a @ a.conj().T
+            M = self.masses[parent['pdg_code']]
+            Mf = M * (1 - 1e-6)
+            u = np.array([0.3, -0.5, 0.81])
+            u /= np.linalg.norm(u)
+            P = np.concatenate([[math.sqrt(49 + M * M)], 7 * u])
+            th, ph = math.acos(u[2]), math.atan2(u[1], u[0])
+            x = np.array([math.cos(th) * math.cos(ph), math.cos(th) * math.sin(ph), -math.sin(th)])
+            y = np.array([-math.sin(ph), math.cos(ph), 0.])
+            Ek = (M * M - Mf * Mf) / (2 * M)
+            m, norm = np.zeros(3), 0.
+            for d, w in self.directions(6):
+                n = d[0] * x + d[1] * y + d[2] * u
+                k = R.boost(np.concatenate([[Ek], Ek * n]), P)
+                A = R.amplitudes(parent, daughter, P, M, k, P - k, Mf)
+                W = w * np.einsum('ab,ab->', rho, R.transfer(A, np.eye(3))).real
+                s2 = 1 - d[2] ** 2
+                cphi = d[0] / math.sqrt(s2)
+                m += W * np.array([d[2] ** 2, s2 * (2 * cphi ** 2 - 1), 2 * d[2] * d[0]])
+                norm += W
+            c2, s2c2p, s2tcp = m / norm
+            lt = (3 * c2 - 1) / (0.6 - c2)
+            got = [lt, s2c2p * 5 * (3 + lt) / 4, s2tcp * 5 * (3 + lt) / 4]
+            for g, e in zip(got, self.eq18(rho, J)):
+                self.assertLess(abs(g - e), 1e-5)
+
+    def test_rate_and_cascade(self):
+        """The integrated rate is the same for every J_z; a cascade psi(2S) >
+        chi_cJ gamma > J/psi gamma gamma integrated over the photons gives the
+        J/psi the spin density of the E1 rules (spin_transfer)."""
+        np, R = self.np, self.R
+        import MadSpin.onia_madspin as onia_madspin
+        M = self.masses[100443]
+        for J in range(3):
+            chi = self.chi[J]
+            for parent, daughter in ((self.psi2, chi), (chi, self.jpsi)):
+                P = np.array([M, 0., 0., 0.])
+                tot = 0.
+                for d, w in self.directions(6):
+                    k, pf = R.two_body(M, 0., M * (1 - 1e-6), d)
+                    A = R.amplitudes(parent, daughter, P, M, k, pf, M * (1 - 1e-6))
+                    tot = tot + w * np.diag(R.transfer(A, np.eye(A.shape[1]))).real
+                self.assertLess(np.ptp(tot / tot.mean()), 1e-10)
+            # the cascade, both transitions nearly degenerate, the psi(2S) fast:
+            # every daughter moves along with it, in its helicity basis
+            a = self.rng.normal(size=(3, 3)) + 1j * self.rng.normal(size=(3, 3))
+            rho = a @ a.conj().T
+            m1, m2 = M * (1 - 1e-7), M * (1 - 2e-7)
+            u = np.array([0.3, -0.5, 0.81])
+            P = np.concatenate([[math.sqrt(1e6 + M * M)], 1e3 * u / np.linalg.norm(u)])
+            out = np.zeros((3, 3), dtype=complex)
+            for d1, w1 in self.directions(4):
+                k1, p1 = R.two_body(M, 0., m1, d1)
+                k1, p1 = R.boost(k1, P), R.boost(p1, P)
+                rho_chi = R.daughter_density(R.amplitudes(self.psi2, chi, P, M, k1, p1, m1), rho)
+                for d2, w2 in self.directions(4):
+                    k2, p2 = R.two_body(m1, 0., m2, d2)
+                    k2, p2 = R.boost(k2, p1), R.boost(p2, p1)
+                    A2 = R.amplitudes(chi, self.jpsi, p1, m1, k2, p2, m2)
+                    out += w1 * w2 * R.daughter_density(A2, rho_chi)
+            hels = list(range(-J, J + 1))
+            ref = onia_madspin.spin_transfer(chi, self.psi2, onia_madspin.spin_transfer(
+                self.psi2, chi, rho, [-1, 0, 1], hels), hels, [-1, 0, 1])
+            self.assertLess(np.abs(out / np.trace(out) - ref / np.trace(ref)).max(), 1e-5, J)
+
+    def registry(self):
+        import MadSpin.onia_madspin as onia_madspin
+
+        class Cmd(object):
+            pass
+        cmd = Cmd()
+        cmd._fockstates = [self.jpsi, self.psi2, self.etac, self.hc] + self.chi + [self.ups] + self.chib
+        cmd._boundstates = {'Jpsi': ['Jpsi(1|3S11)'], 'psi(2S)': ['psi(2|3S11)'], 'chic1': ['chic1(1|3P11)'],
+                            'chic2': ['chic2(1|3P21)'],
+                            'chib2': ['chib2(1|3P21)'], 'Upsilon': ['Upsilon(1|3S11)'],
+                            'etac': ['etac(1|1S01)']}
+        return onia_madspin.OniaRegistry(cmd)
+
+    def test_decay_lines_and_branching_ratios(self):
+        R = self.R
+        reg = self.registry()
+        name2pdg = {'mu+': -13, 'mu-': 13, 'a': 22, 'e+': -11, 'e-': 11}
+        chain = R.parse_chain(reg, 'psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > mu+ mu-', name2pdg)
+        self.assertEqual([s.kind for s in chain.steps()], ['E1', 'E1'])
+        self.assertEqual(chain.order(), (100443, 22, 22, -13, 13))
+        self.assertEqual(chain.terminal().process, 'Jpsi_1_3S11 > mu+ mu-')
+        self.assertEqual(R.parse_chain(reg, 'Jpsi > etac a', name2pdg).kind, 'M1')
+        self.assertIsNone(R.parse_chain(reg, 'Jpsi > etac a', name2pdg).sub)
+        self.assertIsNone(R.parse_chain(reg, 'Jpsi > mu+ mu-', name2pdg))
+        self.assertIsNone(R.parse_chain(reg, 'chic1 > Jpsi mu+ mu-', name2pdg))
+        for bad in ('chic1 > chic0(1|3P01) a', 'chib2 > Jpsi a', 'chic1 > Jpsi a, Jpsi > l+ l-',
+                    'chic1 > Jpsi a, Upsilon > mu+ mu-'):
+            self.assertRaises(ValueError, R.parse_chain, reg, bad, name2pdg)
+        import madgraph.models.check_param_card as check_param_card
+        card = check_param_card.ParamCard()
+        card.read(self.DECAY_CARD.split('\n'))
+        self.assertAlmostEqual(R.branching_ratio(chain, card['decay']), 9.75e-2 * 0.343 * 5.961e-2, 15)
+        chain2 = R.parse_chain(reg, 'psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > e+ e-', name2pdg)
+        self.assertRaises(ValueError, R.branching_ratio, chain2, card['decay'])
+        # colour octets: the soft gluon has branching ratio 1. The LO partial width (lo_widths)
+        # stands in for a missing BR line only in the ordinary decay of the hadron the octet
+        # turns into; a radiative chain after the gluon ends as for the colour singlet, with
+        # its BR line or the default
+        jpsi, chic1 = chain2.terminal().fock, chain2.sub.parent
+        ee = chain2.terminal().process
+        o_psi = self.fock('Jpsi(1|3S18)', 9940003, 1, 0, 1, colour=8)
+        o_chi = self.fock('chic1(1|3S18)', 9940023, 1, 0, 1, colour=8)
+        direct = R.Chain(o_psi, jpsi, 'kept', chain2.terminal(), boson=R.GLUON)
+        radiative = R.Chain(o_chi, chic1, 'E1', chain2.sub, boson=R.GLUON)
+        self.assertTrue(R.direct_octet(direct))
+        self.assertFalse(R.direct_octet(radiative))
+        self.assertAlmostEqual(R.branching_ratio(direct, card['decay'], lo_widths={ee: 1e-6}),
+                               1e-6 / 9.26e-05, 12)
+        self.assertRaises(ValueError, R.branching_ratio, radiative, card['decay'], None, None,
+                          {ee: 1e-6})
+        self.assertAlmostEqual(R.branching_ratio(radiative, card['decay'], {443: (9.26e-05, {(-11, 11): 0.05971})},
+                                                 lo_widths={ee: 1e-6}), 0.343 * 0.05971, 12)
+
+    def test_model_defaults(self):
+        """The PDG 2026 widths and branching fractions of the onia
+        (madgraph/models/onia_decays.py), a model's own values in place of
+        them, and their use for a chain without BR lines: a BR line of the
+        param_card wins, the defaults fill the others in."""
+        import madgraph.models.onia_decays as onia_decays
+        import madgraph.models.check_param_card as check_param_card
+        R = self.R
+        defaults = onia_decays.PDG_2026
+        # the colour-singlet onia of sm_onia, by their PDG codes
+        pdgs = set([441, 100441, 443, 100443, 10443, 10441, 20443, 445, 551, 100551, 200551, 553,
+                    100553, 200553, 10553, 110553, 210553, 10551, 20553, 555, 110551, 120553,
+                    100555, 210551, 220553, 200555])
+        self.assertIn(20443, defaults)
+        for pdg, (width, brs) in defaults.items():
+            self.assertIn(pdg, pdgs)
+            self.assertTrue(width is None or 0 < width < 0.1, pdg)
+            self.assertLessEqual(sum(brs.values()), 1., pdg)
+            for products, fraction in brs.items():
+                self.assertEqual(products, tuple(sorted(products)))
+                self.assertTrue(0 < fraction <= 1)
+                for q in products:
+                    self.assertTrue(abs(q) in (11, 13, 15, 22) or abs(q) in pdgs, (pdg, products))
+        self.assertEqual(defaults[20443][1][(22, 443)], 0.339)
+        self.assertIsNone(defaults[20553][0])
+        # a model with its own values (all_boundstate_decays of its boundstates.py) overrides
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        try:
+            with open(pjoin(tmp, 'object_library.py'), 'w') as fsock:
+                fsock.write('all_boundstates = []\n')
+            with open(pjoin(tmp, 'boundstates.py'), 'w') as fsock:
+                fsock.write('import object_library\nall_boundstates = []\n'
+                            'all_boundstate_decays = {20443: (1e-3, {(22, 443): 0.5})}\n')
+            merged = onia_decays.boundstate_decays(tmp)
+        finally:
+            shutil.rmtree(tmp)
+        self.assertEqual(merged[20443], (1e-3, {(22, 443): 0.5}))
+        self.assertEqual(merged[445], defaults[445])
+        reg = self.registry()
+        chain = R.parse_chain(reg, 'psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > mu+ mu-',
+                              {'mu+': -13, 'mu-': 13, 'a': 22})
+        card = check_param_card.ParamCard()
+        card.read('\nDECAY 20443 8.40e-04\n   3.43e-01  2  443  22\nDECAY 443 9.26e-05\n'.split('\n'))
+        used = []
+        br = R.branching_ratio(chain, card['decay'], defaults, used)
+        self.assertAlmostEqual(br, 9.85e-02 * 0.343 * 5.961e-02, 15)
+        self.assertEqual([u[1] for u in used], [9.85e-02, 5.961e-02])
+        self.assertRaises(ValueError, R.branching_ratio, chain, card['decay'])
+
+    def test_octet_gluon_transfer(self):
+        """The soft gluon of a colour octet (chromo-E1, chromo-M1, or with the
+        spins kept), integrated over its direction, passes the octet's spin to
+        the hadron as heavy-quark spin symmetry does (spin_transfer); the 3P[8]
+        octet of an S-wave hadron in the uncoupled basis gives the partial
+        trace over L_z of its (L_z, S_z) density, with the interference
+        between J. The decay events of an octet give the gluon its colour."""
+        np, R = self.np, self.R
+        import MadSpin.onia_madspin as onia_madspin
+        F = self.fock
+        o3s1 = F('Jpsi(1|3S18)', 9940003, 1, 0, 1, colour=8)
+        o1s0 = F('Jpsi(1|1S08)', 9941003, 0, 0, 0, colour=8)
+        o1p1 = F('etac(1|1P18)', 9946001, 0, 1, 1, colour=8)
+        o3p = F('Jpsi(1|3P18)', 9944003, 1, 1, 1, colour=8)
+        M = 3.5
+
+        def integrated(parent, daughter, rho, uncoupled=False):
+            m1 = M * (1 - 1e-7)
+            u = np.array([0.3, -0.5, 0.81])
+            P = np.concatenate([[math.sqrt(1e6 + M * M)], 1e3 * u / np.linalg.norm(u)])
+            out = 0.
+            for d, w in self.directions(4):
+                k, p1 = R.two_body(M, 0., m1, d)
+                k, p1 = R.boost(k, P), R.boost(p1, P)
+                A = R.amplitudes(parent, daughter, P, M, k, p1, m1,
+                                 R.transition_type(parent, daughter, R.GLUON), uncoupled)
+                out = out + w * R.daughter_density(A, rho)
+            return out / np.trace(out)
+
+        cases = [(o3s1, c) for c in self.chi] + [(o1s0, self.jpsi), (o3s1, self.etac), (o3s1, self.jpsi),
+                                                 (o1s0, self.etac), (o1s0, self.hc), (o1p1, self.etac)]
+        kinds = []
+        for octet, hadron in cases:
+            kinds.append(R.transition_type(octet, hadron, R.GLUON))
+            n = 2 * octet['J'] + 1
+            a = self.rng.normal(size=(n, n)) + 1j * self.rng.normal(size=(n, n))
+            rho = a @ a.conj().T
+            got = integrated(octet, hadron, rho)
+            ref = onia_madspin.spin_transfer(octet, hadron, rho, list(range(-octet['J'], octet['J'] + 1)),
+                                             list(range(-hadron['J'], hadron['J'] + 1)))
+            self.assertLess(np.abs(got - ref / np.trace(ref)).max(), 1e-5, (octet['name'], hadron['name']))
+        self.assertEqual(kinds, ['E1', 'E1', 'E1', 'M1', 'M1', 'kept', 'kept', 'E1', 'E1'])
+        self.assertIsNone(R.transition_type(o3s1, self.jpsi))          # no photon from an octet
+        self.assertIsNone(R.transition_type(self.chi[1], self.jpsi, R.GLUON))
+        # the uncoupled 3P[8] > J/psi: the partial trace over L_z, interference between J included
+        a = self.rng.normal(size=(9, 9)) + 1j * self.rng.normal(size=(9, 9))
+        unc = a @ a.conj().T
+        got = integrated(o3p, self.jpsi, unc, uncoupled=True)
+        pairs = [R.uncoupled_pair(c) for c in range(-4, 5)]
+        ref = onia_madspin.spin_transfer(o3p, self.jpsi, np.eye(3), [-1, 0, 1], [-1, 0, 1],
+                                         rho_uncoupled=(pairs, unc))
+        self.assertLess(np.abs(got - ref / np.trace(ref)).max(), 1e-5)
+        # decay events of an octet: the gluon takes its colour
+        import random
+        chain = R.Chain(o3s1, self.jpsi, 'kept', None, boson=R.GLUON)
+        evaluator = R.Evaluator(None, {9940003: 3.3, 443: 3.0969})
+        gen = R.PoolGenerator(evaluator, {9940003: 3.3, 443: 3.0969, 21: 0.}, random.Random(2),
+                              colour_of=lambda q: 8 if q == 21 else 1)
+        ev = gen.generate(chain, 5, 3.3, scan=10)[0]
+        lines = [l.split() for l in gen.lhe_event(ev, 3.1).split('\n')[2:-1]]
+        self.assertEqual([l[0] for l in lines], ['9940003', '21', '443'])
+        self.assertEqual(lines[0][4:6], ['501', '502'])
+        self.assertEqual(lines[1][4:6], ['501', '502'])
+        self.assertEqual(lines[2][4:6], ['0', '0'])
+
+    def test_decay_events_and_library(self):
+        """The decay events of psi(2S) > chi_c1 gamma, chi_c1 > J/psi gamma
+        (no J/psi decay): on shell, four-momentum conserved, the first photon
+        as 1 - cos^2/3 for a transverse psi(2S) once weighted by the density
+        library's contraction, and the library answering the chain's calls."""
+        np, R = self.np, self.R
+        reg = self.registry()
+        chain = R.parse_chain(reg, 'psi(2S) > chic1 a, chic1 > Jpsi a', {'a': 22})
+        evaluator = R.Evaluator(None, self.masses)
+        import random
+        masses = dict(self.masses)
+        masses[22] = 0.
+        gen = R.PoolGenerator(evaluator, masses, random.Random(3))
+        M = self.masses[100443]
+        events = gen.generate(chain, 3000, M, scan=200)
+        self.assertEqual(len(events), 3000)
+        lib = R.RadiativeLibrary(None, evaluator, [chain])
+        transverse = np.diag([0.5, 0., 0.5]).astype(complex)
+        c2, wsum = 0., 0.
+        for ev in events:
+            finals = [e for e in ev if e[1] == 1]
+            self.assertLess(np.abs(sum(e[3] for e in finals) - ev[0][3]).max(), 1e-9)
+            for pdg, status, mother, p in ev[1:]:
+                if pdg in self.masses:
+                    self.assertAlmostEqual(math.sqrt(R.dot(p, p)), self.masses[pdg], 7)
+            P = np.array([e[3] for e in [ev[0]] + finals]).T
+            packed = lib.py_get_density([100443, 22, 22, 443], -1, P, [1], [-1, 0, 1], 0.118, 9.)
+            D = R.unpack(packed, 3)
+            w = np.einsum('ab,ab->', transverse, D).real / np.trace(D).real * 3
+            g1 = [e for e in ev if e[0] == 22 and e[2] == 0][0][3]
+            c2 += w * g1[3] ** 2 / (g1[1:] @ g1[1:])
+            wsum += w
+            self.assertAlmostEqual(lib.smatrixhel([100443, 22, 22, 443], 0, P, 0.118, 9., -1),
+                                   np.trace(D).real / 3, 12)
+        m2 = c2 / wsum
+        alpha = (3 * m2 - 1) / (0.6 - m2)
+        self.assertLess(abs(alpha + 1. / 3), 0.08, alpha)
+        self.assertIsNone(lib.chain([443, -13, 13]))
+        text = gen.lhe_event(events[0], 3.1)
+        self.assertEqual(text.count('\n'), len(events[0]) + 2)
+        # two decay lines with the same legs (chi_c1 and chi_c2): each event is evaluated with its
+        # own chain, the one whose intermediate state its photons put on shell
+        chain2 = R.parse_chain(reg, 'psi(2S) > chic2 a, chic2 > Jpsi a', {'a': 22})
+        lib2 = R.RadiativeLibrary(None, evaluator, [chain, chain2])
+        self.assertEqual(len(lib2.chain([100443, 22, 22, 443])), 2)
+        for c in (chain, chain2):
+            for ev in gen.generate(c, 50, M, scan=20):
+                finals = [e for e in ev if e[1] == 1]
+                P = np.array([e[3] for e in [ev[0]] + finals]).T
+                self.assertIs(lib2._density(lib2.chain([100443, 22, 22, 443]), P)[0], c)
+        self.assertEqual(R.ambiguous([chain, chain2], self.masses), [])
+        same = dict(self.masses)
+        same[445] = same[20443]
+        self.assertEqual(len(R.ambiguous([chain, chain2], same)), 1)
+
+
+class TestMassShuffleRecordPrecision(unittest.TestCase):
+    """Event.mass_shuffle and mass_shuffle_frame map the final state to its
+    rest frame. In a strongly boosted event of the record (11 digits), e.g.
+    g g > J/psi g with a soft jet and the system at several TeV along the beam,
+    the final-state invariant mass differs from sqrt(s) of the incoming partons
+    by more than the 1e-6 of the Lorentz map: the reshuffling then works at the
+    final state's own invariant mass (Event.rest_sqrts) instead of stopping
+    MadSpin; any other event is unchanged."""
+
+    @staticmethod
+    def rounded(p):
+        return lhe_parser.FourMomentum(*[float('%.11e' % x) for x in (p.E, p.px, p.py, p.pz)])
+
+    def event(self, eta=8.0):
+        # g g > J/psi g at sqrt(shat) = 14.5 GeV (pT = 5 GeV), boosted by rapidity eta
+        M, rs = 3.1, 14.5
+        Epsi = (rs ** 2 + M ** 2) / (2 * rs)
+        k = rs - Epsi
+        pt = 5.0
+        pz = math.sqrt(k * k - pt * pt)
+        moms = [lhe_parser.FourMomentum(rs / 2, 0, 0, rs / 2), lhe_parser.FourMomentum(rs / 2, 0, 0, -rs / 2),
+                lhe_parser.FourMomentum(Epsi, -pt, 0, -pz), lhe_parser.FourMomentum(k, pt, 0, pz)]
+        ch, sh = math.cosh(eta), math.sinh(eta)
+        boosted = [lhe_parser.FourMomentum(ch * p.E + sh * p.pz, p.px, p.py, sh * p.E + ch * p.pz) for p in moms]
+        return [self.rounded(p) for p in boosted], M
+
+    def test_boosted_event_of_the_record(self):
+        moms, M = self.event()
+        sqrts = (moms[0] + moms[1]).mass
+        final = moms[2:]
+        tot = final[0] + final[1]
+        # the record's rounding is beyond the tolerance of the Lorentz map ...
+        self.assertGreater(abs(tot.mass_sqr - sqrts ** 2), 1e-6 * sqrts ** 2)
+        self.assertLess(abs(tot.mass_sqr - sqrts ** 2), 1e-9 * tot.E ** 2)
+        self.assertAlmostEqual(lhe_parser.Event.rest_sqrts(tot, sqrts) ** 2, tot.mass_sqr, delta=1e-9 * tot.mass_sqr)
+        # ... and the reshuffling at unchanged masses leaves the event as it was
+        new, jac = lhe_parser.Event.mass_shuffle([lhe_parser.FourMomentum(p) for p in final], sqrts, [M, 0.])
+        self.assertLess(abs(jac - 1), 1e-5)
+        for a, b in zip(new, final):
+            self.assertLess(abs(a.E - b.E) / b.E, 1e-5)
+        frame = lhe_parser.Event.mass_shuffle_frame([lhe_parser.FourMomentum(p) for p in final], sqrts)
+        self.assertEqual(len(frame[0]), 2)
+
+    def test_other_events_unchanged(self):
+        moms, M = self.event(eta=0.3)
+        sqrts = (moms[0] + moms[1]).mass
+        tot = moms[2] + moms[3]
+        self.assertEqual(lhe_parser.Event.rest_sqrts(tot, sqrts), sqrts)
+        # a genuine mismatch is still refused
+        self.assertRaises(ValueError, lhe_parser.Event.mass_shuffle,
+                          [lhe_parser.FourMomentum(p) for p in moms[2:]], sqrts * 1.01, [M, 0.])

@@ -3073,6 +3073,559 @@ print(json.dumps(out))
             self.assertTrue(passed)
 
          
+    @staticmethod
+    def _onia_check_me(proc_dir, momenta=None):
+        """Build ./check of a standalone directory and return its matrix
+        element, at the momenta given (written to PS.input) if any."""
+
+        subprocess.check_call(['make'], cwd=proc_dir, stdout=subprocess.DEVNULL)
+        if momenta is not None:
+            with open(pjoin(proc_dir, 'PS.input'), 'w') as fsock:
+                for p in momenta:
+                    fsock.write(' '.join('%.17e' % x for x in p) + '\n')
+        output = subprocess.check_output(['./check'], cwd=proc_dir).decode()
+        match = re.search(r'Matrix element\s*=\s*([0-9Ee\+\-\.]+)', output)
+        return float(match.group(1))
+
+    def test_onia_decay_standalone(self):
+        """Onium decays in standalone: the |M|^2 of n > X Y is the time
+        reverse of the production X Y > n (validated against HELAC-Onia) at
+        the same momenta, for S and P waves, colour singlet and octet; and the
+        decay output carries one incoming particle and the decay averages."""
+
+        import glob
+        import math
+        import madgraph.interface.master_interface as MGCmd
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mc = 1.55   # mdl_MC of sm_onia-c_mass; the onium at m1+m2
+        M = 2 * mc
+
+        # P -> k1 k2 at rest, in a generic direction
+        k = M / 2
+        nx, ny, nz = 0.36, -0.48, 0.80
+        k1 = [k, k * nx, k * ny, k * nz]
+        k2 = [k, -k * nx, -k * ny, -k * nz]
+        P = [M, 0., 0., 0.]
+
+        # (decay, production, IDEN decay, IDEN production, (2J_H+1)/(2J_n+1))
+        cases = [('etac(1|1S01) > g g', 'g g > etac(1|1S01)', 2, 256, 1),
+                 ('chic2(1|3P21) > a a', 'a a > chic2(1|3P21)', 10, 4, 1),
+                 ('Jpsi(1|3S18) > u u~', 'u u~ > Jpsi(1|3S18)', 3, 36, 1),
+                 ('Jpsi(1|1S08) > g g', 'g g > Jpsi(1|1S08)', 2, 256, 3)]
+        for decay, production, iden_d, iden_p, jratio in cases:
+            values = []
+            for proc, moms, iden in [(decay, [P, k1, k2], iden_d),
+                                     (production, [k1, k2, P], iden_p)]:
+                if os.path.isdir(self.out_dir):
+                    shutil.rmtree(self.out_dir)
+                mg_cmd.exec_cmd('generate %s' % proc)
+                mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+                proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+                matrix = open(pjoin(proc_dir, 'matrix.f')).read()
+                self.assertIn('DATAIDEN/%d/' % iden, matrix.replace(' ', ''))
+                nexternal = open(pjoin(proc_dir, 'nexternal.inc')).read()
+                values.append(self._onia_check_me(proc_dir, moms) * iden)
+                if proc == decay:
+                    self.assertIn('PARAMETER (NINCOMING=1)', nexternal)
+                    onia = open(pjoin(proc_dir, 'onia.inc')).read()
+                    self.assertIn('DATA (ONIA_IN(I),I=1,1)/1/', onia)
+                    pmass = open(pjoin(proc_dir, 'pmass.inc')).read()
+                    # the same mass as in production: the onium_mass of the card
+                    self.assertIn('MDL_M', pmass.upper())
+                    card = open(pjoin(self.out_dir, 'Cards', 'onia_card.dat')).read()
+                    self.assertNotIn('onia_decay', card)
+            # the decay LDME is <O^H>/(2J_H+1), production divides by 2J_n+1
+            dec, pro = values[0] * jratio, values[1]
+            self.assertLess(abs(dec - pro) / max(abs(dec), abs(pro)), 1e-12,
+                            '%s: %s against %s' % (decay, dec, pro))
+
+        # Gamma(eta_c -> g g) = 8 alpha_s^2 |R(0)|^2 / (3 M^2), from the LDME
+        # of the card: <O^H> = 2 N_c (2J+1) |R(0)|^2 / (4 pi)
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate etac(1|1S01) > g g')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        me = self._onia_check_me(proc_dir, [P, k1, k2])
+        card = open(pjoin(self.out_dir, 'Cards', 'onia_card.dat')).read()
+        ldme = float(re.search(r'^\s*441\s+([0-9.Ee+-]+)', card, re.M).group(1))
+        r2 = ldme * 4 * math.pi / 6
+        alphas = 0.118
+        width = me * (M / 2) / (8 * math.pi * M ** 2)
+        expected = 8 * alphas ** 2 * r2 / (3 * M ** 2)
+        self.assertLess(abs(width - expected) / expected, 1e-10)
+
+        # a decaying quarkonium has its own decay LDME (Block ldme_decay; for
+        # a colour octet it is not related to the production one), by default
+        # <O^H>/(2J_H+1): Gamma(1S0[8] -> g g) =
+        # 5 pi alpha_s^2 <O_8>_H / (6 m_c^2), and it scales with that entry only
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate Jpsi(1|1S08) > g g')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = open(card).read()
+        self.assertNotIn('Block ldme\n', text)
+        decay_ldme = float(re.search(r'(?ms)^Block ldme_decay\n.*?^\s*9941003\s+([0-9.Ee+-]+)',
+                                     text).group(1))
+        # the default is the vacuum-saturation value <O^H>/(2J_H+1) of the
+        # production LDME of sm_onia, 0.0146 GeV^3 (J_H = 1 for the J/psi)
+        self.assertAlmostEqual(decay_ldme, 0.0146 / 3, places=12)
+        me = self._onia_check_me(proc_dir, [P, k1, k2])
+        width = me * (M / 2) / (8 * math.pi * M ** 2)
+        expected = 5 * math.pi * alphas ** 2 * decay_ldme / (6 * mc ** 2)
+        self.assertLess(abs(width - expected) / expected, 1e-10)
+        # (the card reader keeps 20 characters per value)
+        open(card, 'w').write(re.sub(r'(?m)^(\s*9941003\s+)[0-9.Ee+-]+', r'\g<1>%.12e' % (2 * decay_ldme),
+                                     text))
+        me2 = self._onia_check_me(proc_dir, [P, k1, k2])
+        self.assertLess(abs(me2 / me - 2), 1e-12)
+
+        # a decaying onium at its physical mass (its onium_mass): the decay
+        # products are rescaled onto m1+m2 in its rest frame. A soft gluon
+        # must stay on shell: the |M|^2 of Jpsi > g g g is smooth as one gluon
+        # goes soft (it was 1d37 below 3d-4 GeV, from a cut-off on |p|^2)
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate Jpsi(1|3S11) > g g g')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = open(card).read()
+        text = re.sub(r'(?m)^(\s*443\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>3.0969\2', text)
+        open(card, 'w').write(text)
+        Mphys = 3.0969
+        g2 = [1.5484078569, -0.79031221670, 0.68500128333, 1.1418172942]
+        soft = [1.4442820687e-4, 1.2633814623e-4, -0.57265598391e-4, 0.40234698810e-4]
+        values = []
+        for scale in (1., 1e-3, 1e-6):
+            g3 = [x * scale for x in soft]
+            g1 = [Mphys - g2[0] - g3[0]] + [-(g2[i] + g3[i]) for i in (1, 2, 3)]
+            values.append(self._onia_check_me(proc_dir, [[Mphys, 0., 0., 0.], g1, g2, g3]))
+        for v in values[1:]:
+            self.assertLess(abs(v / values[0] - 1), 1e-3, values)
+
+    def test_onia_full_model_fock_states(self):
+        """The unrestricted model (import model sm_onia-full) has the Fock
+        states of its boundstates.py, as the restricted ones do, so that a
+        leptonium and a charmonium can be in one process."""
+
+        import madgraph.interface.master_interface as MGCmd
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-full')
+        names = set(f.get('name') for f in mg_cmd._fockstates)
+        self.assertEqual(len(names), 192)
+        self.assertIn('tata(1|1S0)', names)
+        self.assertIn('Jpsi(1|3S11)', names)
+        mg_cmd.exec_cmd('generate tata(1|1S0) > Jpsi(1|3S11) a / z h')
+        self.assertTrue(mg_cmd._curr_amps[0].get('diagrams'))
+
+    def test_onia_fock_states_not_combined(self):
+        """Fock states with the same diagrams but a different J (or L, S,
+        colour, hadron) have different projectors and LDMEs, so they never
+        share a matrix element. 'g g > Jpsi(1|3PJ8)' is three matrix
+        elements, also in an ungrouped output (standalone_fortran, or
+        madevent with group_subprocesses False), where identical matrix
+        elements are combined; the quark channels of one J still share
+        theirs."""
+
+        import madgraph.interface.master_interface as MGCmd
+        import madgraph.core.helas_objects as helas_objects
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate g g > Jpsi(1|3PJ8)')
+        mg_cmd.exec_cmd('add process u u~ > Jpsi(1|3PJ8)')
+        mg_cmd.exec_cmd('add process d d~ > Jpsi(1|3PJ8)')
+        mes = helas_objects.HelasMultiProcess(
+            mg_cmd._curr_amps, combine_matrix_elements=True).get_matrix_elements()
+        js = sorted(sorted(set(l.get('onium').get('J')
+                               for p in me.get('processes')
+                               for l in p.get('legs') if l.get('onium')))
+                    for me in mes)
+        self.assertEqual(js, [[0], [0], [1], [1], [2], [2]])
+        self.assertEqual(sorted(len(me.get('processes')) for me in mes),
+                         [1, 1, 1, 2, 2, 2])
+
+    def test_onia_density_matrix(self):
+        """Spin-density matrices of onia (output standalone_fortran
+        --density, the input of MadSpin's spin correlations): the onium leg
+        has its J_z open. The trace is the summed |M|^2, and production and
+        decay contract over J_z into the full correlation: e+ e- > J/psi >
+        mu+ mu- goes as 1 + cos^2(theta) and gamma gamma > chi_c2 > gamma
+        gamma as 1 + 6 cos^2(theta) + cos^4(theta) (helicity-2 dominance at
+        LO), theta between beam and decay axis, the beams along a generic
+        direction so that the density matrices are not diagonal."""
+
+        import glob
+        import importlib.util
+        import math
+        import numpy
+        import madgraph.interface.master_interface as MGCmd
+
+        f2py = misc.default_f2py()
+        if not f2py:
+            raise unittest.SkipTest('no f2py')
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        M = 3.1  # onium_mass of both bound states, = 2 m_c (no reshuffling)
+
+        def module(proc, pos, menum):
+            out = '%s_density%d' % (self.out_dir, menum)
+            if os.path.isdir(out):
+                shutil.rmtree(out)
+            mg_cmd.exec_cmd('generate %s' % proc)
+            mg_cmd.exec_cmd('output standalone_fortran %s --prefix=int --density=%d -f' % (out, pos))
+            card = pjoin(out, 'Cards', 'onia_card.dat')
+            text = re.sub(r'(?m)^(\s*445\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>3.1\2', open(card).read())
+            open(card, 'w').write(text)
+            sp = pjoin(out, 'SubProcesses')
+            subprocess.check_call(['make', 'all_matrix%dpy.so' % menum, 'MENUM=%d' % menum,
+                                   'F2PY=%s' % f2py], cwd=sp, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL)
+            lib = [f for f in glob.glob(pjoin(sp, 'all_matrix%dpy*.so' % menum)) if os.path.getsize(f)][0]
+            spec = importlib.util.spec_from_file_location('all_matrix%dpy' % menum, lib)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.initialise(pjoin(out, 'Cards', 'param_card.dat'))
+            return mod
+
+        def density(mod, pdgs, moms, pos, hel):
+            p = numpy.asfortranarray(numpy.array(moms, float).T)
+            inter = mod.py_get_density(pdgs, -1, p, [pos], hel, 0.118, 0.0)
+            n = len(hel)
+            rho = numpy.zeros((n, n), complex)
+            k = 0
+            for i in range(n):
+                for j in range(i, n):
+                    rho[i, j] = inter[k]
+                    rho[j, i] = numpy.conj(inter[k])
+                    k += 1
+            total = mod.smatrixhel(pdgs, -1, p, 0.118, 0.0, -1)
+            self.assertLess(abs(numpy.trace(rho).real / total - 1), 1e-12)
+            return rho
+
+        beam = numpy.array([0.36, -0.48, 0.80])
+        beam = beam / numpy.linalg.norm(beam)
+        rng = numpy.random.default_rng(3)
+        cases = [('e+ e- > Jpsi(1|3S11) / z h', 'Jpsi(1|3S11) > mu+ mu- / z h', [-11, 11, 443],
+                  [443, -13, 13], 1, lambda c: 1 + c * c),
+                 ('a a > chic2(1|3P21)', 'chic2(1|3P21) > a a', [22, 22, 445], [445, 22, 22], 2,
+                  lambda c: 1 + 6 * c * c + c ** 4)]
+        for k, (production, decay, ppdg, dpdg, J, shape) in enumerate(cases):
+            hel = list(range(-J, J + 1))
+            prod = module(production, 3, 2 * k + 2)
+            dec = module(decay, 1, 2 * k + 1)
+            rho_p = density(prod, ppdg, [[M / 2] + list(M / 2 * beam), [M / 2] + list(-M / 2 * beam),
+                                         [M, 0., 0., 0.]], 3, hel)
+            ratios = []
+            for i in range(5):
+                u = rng.normal(size=3)
+                u = u / numpy.linalg.norm(u)
+                rho_d = density(dec, dpdg, [[M, 0., 0., 0.], [M / 2] + list(M / 2 * u),
+                                            [M / 2] + list(-M / 2 * u)], 1, hel)
+                ratios.append(numpy.sum(rho_p * rho_d).real / shape(beam @ u))
+            for r in ratios[1:]:
+                self.assertLess(abs(r / ratios[0] - 1), 1e-12, (production, ratios))
+
+    def test_onia_reshuffle_mirrored_beams(self):
+        """The momentum reshuffling of a bound state (onia_reshuffle_momenta)
+        keeps the incoming legs along their own beam directions. A standalone
+        call -- MadSpin's production normalisation -- may have the first leg
+        along -z (the mirror of a subprocess), and an onium at the 11-digit
+        precision of an event record is reshuffled: the beams used to be put
+        back with the first one along +z, which reversed them and gave
+        |M|^2 ~ 1e-9 instead of 2e3 for this u g > chi_c1 u event of p p at
+        7 TeV. Now the record event, its mirror in z, and the same event with
+        the chi_c1 exactly on its mass shell (no reshuffling) agree."""
+
+        import glob
+        import importlib.util
+        import math
+        import numpy
+        import madgraph.interface.master_interface as MGCmd
+
+        f2py = misc.default_f2py()
+        if not f2py:
+            raise unittest.SkipTest('no f2py')
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('set group_subprocesses False')
+        mg_cmd.exec_cmd('generate u g > chic1(1|3P11) u')
+        mg_cmd.exec_cmd('output standalone_fortran %s --prefix=int -f' % self.out_dir)
+        # the chi_c1 at 2 m_c = 3 GeV (m_c = 1.5): only the rounding of the record reshuffles
+        param = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        text = re.sub(r'(?m)^(\s*4\s+)[0-9.Ee+-]+(\s+#\s*MC)', r'\g<1>1.5\2', open(param).read())
+        open(param, 'w').write(text)
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = re.sub(r'(?m)^(\s*20443\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>3.0\2', open(card).read())
+        open(card, 'w').write(text)
+        sp = pjoin(self.out_dir, 'SubProcesses')
+        subprocess.check_call(['make', 'all_matrix5py.so', 'MENUM=5', 'F2PY=%s' % f2py], cwd=sp,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        lib = [f for f in glob.glob(pjoin(sp, 'all_matrix5py*.so')) if os.path.getsize(f)][0]
+        spec = importlib.util.spec_from_file_location('all_matrix5py', lib)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with misc.chdir(sp):
+            mod.initialise(param)
+
+        def me(moms):
+            p = numpy.asfortranarray(numpy.array(moms, float).T)
+            return mod.smatrixhel([2, 21, 20443, 2], -1, p, 0.118, 100., -1)
+
+        # an event of the record (11 digits), the u quark along -z
+        record = [[1851.0030904, 0., 0., -1851.0030904], [7.4474214402, 0., 0., 7.4474214402],
+                  [8.9497416689, -5.5512345996, -2.2478092298, 5.935404285],
+                  [1849.5007702, 5.5512345996, 2.2478092298, -1849.4910732]]
+        mirror = [[m[0], m[1], m[2], -m[3]] for m in record]
+        exact = [list(m) for m in record]
+        exact[2][0] = math.sqrt(9. + sum(x * x for x in record[2][1:]))
+        values = [me(record), me(mirror), me(exact)]
+        self.assertGreater(values[2], 1e2)
+        # the record and its mirror: the same reshuffled event
+        self.assertLess(abs(values[0] / values[1] - 1), 1e-9, values)
+        # against no reshuffling: the rounding of the record (its u quark is off shell by
+        # 3e-4 GeV^2) moves |M|^2 by 8e-6
+        self.assertLess(abs(values[0] / values[2] - 1), 1e-4, values)
+
+    def test_onia_reshuffle_two_to_one(self):
+        """The final-state momentum reshuffling of a 2 -> 1 process: without
+        a recoil system the partonic energy is the reshuffled mass of the
+        onium. It was kept near the physical one (PHI), which left the onium
+        off its mass shell and the event without momentum conservation, so
+        that g g > Jpsi(1|3S18) -- zero at LO -- came out at 2.7% of the
+        q q~ rate in madevent with the octet at 3.3 GeV. For every
+        mom_resh_type the reshuffled 2 -> 1 event is now the event at
+        2 m_c: g g > 3S1[8] vanishes and u u~ > 3S1[8] has its value at
+        3.1 GeV. The f2py library reshuffles as madevent by default
+        (mom_resh_type 1; it used to leave the type unset, i.e. 0) and
+        PY_SET_MOM_RESH_TYPE sets another."""
+
+        import glob
+        import importlib.util
+        import math
+        import numpy
+        import madgraph.interface.master_interface as MGCmd
+
+        f2py = misc.default_f2py()
+        if not f2py:
+            raise unittest.SkipTest('no f2py')
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('set group_subprocesses False')
+        mg_cmd.exec_cmd('generate p p > Jpsi(1|3S18)')
+        mg_cmd.exec_cmd('output standalone_fortran %s --prefix=int -f' % self.out_dir)
+        param = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        sp = pjoin(self.out_dir, 'SubProcesses')
+        subprocess.check_call(['make', 'all_matrix6py.so', 'MENUM=6', 'F2PY=%s' % f2py], cwd=sp,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        lib = [f for f in glob.glob(pjoin(sp, 'all_matrix6py*.so')) if os.path.getsize(f)][0]
+        spec = importlib.util.spec_from_file_location('all_matrix6py', lib)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with misc.chdir(sp):
+            mod.initialise(param)
+        self.assertTrue(hasattr(mod, 'py_set_mom_resh_type'))
+
+        def me(pdgs, M, eta):
+            # p p > onium at rapidity eta, the onium at mass M (2 m_c = 3.1)
+            e1, e2 = 0.5 * M * math.exp(eta), 0.5 * M * math.exp(-eta)
+            moms = [[e1, 0., 0., e1], [e2, 0., 0., -e2], [e1 + e2, 0., 0., e1 - e2]]
+            p = numpy.asfortranarray(numpy.array(moms, float).T)
+            return mod.smatrixhel(pdgs + [9940003], -1, p, 0.118, 100., -1)
+
+        lo = me([2, -2], 3.1, 0.)
+        self.assertGreater(lo, 1e-5)
+        for kind in (None, 0, 1, 2, 3):
+            if kind is not None:
+                mod.py_set_mom_resh_type(kind)
+            for eta in (0., 1.3, -2.1):
+                self.assertLess(abs(me([2, -2], 3.3, eta) / lo - 1), 1e-10, (kind, eta))
+                self.assertLess(me([21, 21], 3.3, eta), 1e-20 * lo, (kind, eta))
+
+    def test_leptonium_decay_without_photon_vertex(self):
+        """A leptonium decaying without a photon vertex: ortho-ditauonium into
+        nu_e nubar_e through the Z. The Coulomb LDME takes alpha from the
+        photon coupling of the leptons, which the output now declares although
+        no amplitude uses it (matrix.f did not compile). The width is the LO
+        result of arXiv:2204.07269 (p. 14) for Gamma_Z = 0,
+        Gamma = alpha^5 m_tau/6 m_tau^4 (1-4s_W^2)^2/(8 s_W^4 c_W^4 (m_Z^2-4m_tau^2)^2)."""
+
+        import glob
+        import math
+        import madgraph.interface.master_interface as MGCmd
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-lepton_masses')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate tata(1|3S1) > ve ve~')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        mta, mz, gf, alpha = 1.777, 91.188, 1.16639e-5, 1 / 132.507
+        M = 2 * mta
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = re.sub(r'(?m)^(\s*\d+\s+)[0-9.Ee+-]+(\s+# mass for tata\(1\|3S1\))', r'\g<1>%.12e\2' % M,
+                      open(card).read())
+        open(card, 'w').write(text)
+        param = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        text, n = re.subn(r'(?mi)^(DECAY\s+23\s+)\S+', r'\g<1>0.000000e+00', open(param).read())
+        self.assertEqual(n, 1)
+        open(param, 'w').write(text)
+        k, nx, ny, nz = M / 2, 0.36, -0.48, 0.80
+        me = self._onia_check_me(proc_dir, [[M, 0., 0., 0.], [k, k * nx, k * ny, k * nz],
+                                            [k, -k * nx, -k * ny, -k * nz]])
+        width = me * (M / 2) / (8 * math.pi * M ** 2)
+        mw = math.sqrt(mz ** 2 / 2 + math.sqrt(mz ** 4 / 4 - math.pi * alpha * mz ** 2 / (math.sqrt(2) * gf)))
+        s2 = 1 - mw ** 2 / mz ** 2
+        expected = alpha ** 5 * mta / 6 * mta ** 4 * (1 - 4 * s2) ** 2 / (
+            8 * s2 ** 2 * (1 - s2) ** 2 * (mz ** 2 - 4 * mta ** 2) ** 2)
+        self.assertLess(abs(width - expected) / expected, 1e-9, '%s against %s' % (width, expected))
+
+    def test_onia_decay_channels(self):
+        """The madevent channels of a 1 -> N process with onia follow the
+        propagators of their diagram, over the physical final state:
+        z > Bc+ b c~ maps m(B_c cbar) in the bbar-fragmentation diagrams and
+        m(B_c b) in the c-fragmentation ones (the bbar* or c* propagator
+        carries the whole B_c); an incoming onium (Jpsi > g g g) maps a pair
+        of gluons. Each channel ends on the decaying particle."""
+
+        import glob
+        import madgraph.interface.master_interface as MGCmd
+
+        def channels(proc_dir):
+            text = open(pjoin(proc_dir, 'configs.inc')).read()
+            out = {}
+            for m in re.finditer(r'IFOREST\(I,(-\d+),(\d+)\),I=1,2\)/(-?\d+),(-?\d+)/\s*\n\s*'
+                                 r'DATA \(SPROP\(I,-\d+,\d+\),I=1,1\)/(-?\d+)/', text):
+                out.setdefault(int(m.group(2)), []).append(
+                    (int(m.group(3)), int(m.group(4)), int(m.group(5))))
+            return out
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+
+        # legs: 1 z, 2 Bc+, 3 b, 4 c~
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate z > Bc+(1|1S01) b c~ QED=1')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        self.assertEqual(len(chans), 4)
+        first = sorted(tuple(sorted(c[0][:2])) for c in chans.values())
+        self.assertEqual(first, [(2, 3), (2, 3), (2, 4), (2, 4)])
+        # the bbar* (c*) propagator carries the whole B_c: a quark propagator;
+        # the gluon carries one constituent: massless
+        self.assertEqual(sorted(abs(c[0][2]) for c in chans.values()), [4, 5, 21, 21])
+        self.assertTrue(all(len(c) == 2 and c[-1][2] == 23 for c in chans.values()))
+
+        # an incoming onium: legs 1 Jpsi, 2-4 gluons
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate Jpsi(1|3S11) > g g g')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        self.assertTrue(all(len(c) == 2 and c[-1][2] == 443 for c in chans.values()))
+        self.assertTrue(all(set(c[0][:2]) <= set([2, 3, 4]) for c in chans.values()))
+        self.assertEqual(len(set(tuple(sorted(c[0][:2])) for c in chans.values())), 3)
+
+        # a diagram that enters no colour flow (a single gluon making the
+        # colour-singlet Upsilon) has a channel but no multi-channel weight
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate t > w+ Upsilon(1|3S11) b QED=1')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        self.assertEqual(len(channels(proc_dir)), 4)
+        amp2 = re.findall(r'AMP2\((\d+)\)=AMP2', open(pjoin(proc_dir, 'matrix1.f')).read())
+        self.assertEqual(sorted(int(n) for n in amp2), [1, 4])
+
+    def test_onia_production_channels(self):
+        """The madevent channels of a 2 -> N process with onia follow the s-
+        and t-channels of their diagram over the physical legs, and props.inc
+        follows them: g g > Jpsi g has the t-channel gluon exchange, and in
+        e+ e- > Jpsi c c~ the c (c~) propagator carrying J/psi c (c~) has the
+        charm mass; diagrams that enter no colour flow get no weight."""
+
+        import glob
+        import madgraph.interface.master_interface as MGCmd
+
+        def channels(proc_dir):
+            text = open(pjoin(proc_dir, 'configs.inc')).read()
+            out = {}
+            for m in re.finditer(r'IFOREST\(I,(-\d+),(\d+)\),I=1,2\)/(-?\d+),(-?\d+)/\s*\n\s*'
+                                 r'(?:DATA \(SPROP\(I,-\d+,\d+\),I=1,1\)/(-?\d+)/\s*\n\s*'
+                                 r'DATA TPRID\(-\d+,\d+\)/0/|DATA TPRID\(-\d+,\d+\)/(\d+)/)', text):
+                out.setdefault(int(m.group(2)), []).append(
+                    (int(m.group(3)), int(m.group(4)),
+                     ('s', int(m.group(5))) if m.group(5) else ('t', int(m.group(6)))))
+            return out
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+
+        # legs: 1, 2 gluons, 3 J/psi, 4 gluon
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate g g > Jpsi(1|3S11) g')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        topologies = set(tuple(c) for c in chans.values())
+        self.assertIn(((4, 3, ('s', 21)),), topologies)
+        self.assertIn(((1, 4, ('t', 21)), (-1, 3, ('t', 21))), topologies)
+        self.assertIn(((1, 3, ('t', 21)), (-1, 4, ('t', 21))), topologies)
+        matrix = open(pjoin(proc_dir, 'matrix1.f')).read()
+        self.assertLess(len(re.findall(r'AMP2\(\d+\)=AMP2', matrix)), len(chans))
+
+        # legs: 3 J/psi, 4 c, 5 c~
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate e+ e- > Jpsi(1|3S11) c c~')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        props = dict(((int(v), int(c)), m.strip().upper()) for v, c, m in re.findall(
+            r'PRMASS\((-\d+),(\d+)\)\s*=\s*(\S+)', open(pjoin(proc_dir, 'props.inc')).read()))
+        for iconf, verts in chans.items():
+            self.assertIn(verts[-1][2], [('s', 22), ('s', 23)])
+            for ivert, (d1, d2, (kind, pdg)) in enumerate(verts, 1):
+                if abs(pdg) == 4:
+                    # J/psi with the c or the c~
+                    self.assertIn(sorted([d1, d2]), [[3, 4], [3, 5]])
+                    self.assertEqual(props[(-ivert, iconf)], 'ABS(MDL_MC)')
+                elif pdg == 21:
+                    self.assertEqual(props[(-ivert, iconf)], 'ZERO')
+
     def test_standalone_density(self):
         """test that standalone density is working"""
 

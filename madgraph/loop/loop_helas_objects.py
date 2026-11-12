@@ -2235,7 +2235,7 @@ class LoopHelasMatrixElement(helas_objects.HelasMatrixElement):
                     [lwf for ldiag in self.get_loop_diagrams() for lwf in
                      ldiag.get('loop_wavefunctions')])
 
-    def get_nexternal_ninitial(self):
+    def get_nexternal_ninitial(self, constituents=False):
         """Gives (number or external particles, number of
         incoming particles)"""
 

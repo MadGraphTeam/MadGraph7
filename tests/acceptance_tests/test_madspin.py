@@ -60,6 +60,372 @@ class TestMadSpin(unittest.TestCase):
             shutil.rmtree(self.path)
         self.assertFalse(self.debuging)
 
+    def test_madspin_onium_decay(self):
+        """Spin-correlated decay of a bound state: q q~ > gamma* > J/psi
+        (colour singlet) along the beam is transverse, so its MadSpin decay
+        into mu+ mu- goes as 1 + cos^2(theta) in the J/psi rest frame (theta
+        from the beam), and as 1 with spinmode none. The onia card travels
+        in the banner (onium_mass 3.1 = 2 m_c), the total width is the DECAY
+        block of the J/psi in the param_card, and the branching ratio is the
+        LO partial width over it, or a BR line of that block."""
+
+        if not misc.default_f2py():
+            raise unittest.SkipTest('no f2py')
+
+        def madgraph(name, lines):
+            # through bin/madgraph, as a user: the proc card of the events then
+            # has the generate line MadSpin rebuilds the production from
+            script = pjoin(self.path, name)
+            with open(script, 'w') as fsock:
+                fsock.write('set automatic_html_opening False\n' + '\n'.join(lines) + '\n')
+            subprocess.call([pjoin(MG5DIR, 'bin', 'madgraph'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+
+        madgraph('output.mg', ['import model sm_onia-c_mass',
+                               'generate p p > Jpsi(1|3S11) QCD=0 / z h',
+                               'output madevent %s -f -nojpeg' % self.run_dir])
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        text = re.sub(r'(?m)^(\s*443\s+)[0-9.Ee+-]+(\s+# mass for)', r'\g<1>3.1\2', open(card).read())
+        open(card, 'w').write(text)
+        with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
+            fsock.write('\nDECAY  443  9.26e-05\n')
+        madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 400',
+                               'set pdlabel nn23lo1', 'set iseed 31'])
+        events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        production = lhe_parser.EventFile(events).cross
+        lhe = pjoin(self.path, 'jpsi.lhe.gz')
+        shutil.copy(events, lhe)
+        self.assertIn('<MGOniaCard>', gzip.open(lhe, 'rt').read())
+
+        def decay(spinmode, tag):
+            script = pjoin(self.path, 'ms_%s' % tag)
+            with open(script, 'w') as fsock:
+                fsock.write('import jpsi.lhe.gz\nset spinmode %s\nset seed 5\n'
+                            'decay Jpsi > mu+ mu-\nlaunch\n' % spinmode)
+            for d in glob.glob(pjoin(self.path, 'madspin_*')) + glob.glob(pjoin(self.path, 'decay_*')):
+                shutil.rmtree(d)
+            subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+            out = pjoin(self.path, 'jpsi_decayed.lhe.gz')
+            self.assertTrue(os.path.exists(out), spinmode)
+            events = lhe_parser.EventFile(out)
+            cross = events.cross
+            cos = []
+            for event in events:
+                psi = [p for p in event if p.pdg == 443]
+                mu = [p for p in event if p.pdg == 13 and p.status == 1]
+                self.assertEqual(len(psi), 1)
+                self.assertEqual(psi[0].status, 2)
+                self.assertEqual(len(mu), 1)
+                rest = lhe_parser.FourMomentum(mu[0]).boost_to_restframe(
+                    lhe_parser.FourMomentum(psi[0]))
+                cos.append(rest.pz / math.sqrt(rest.px**2 + rest.py**2 + rest.pz**2))
+            os.rename(out, pjoin(self.path, 'jpsi_decayed_%s.lhe.gz' % tag))
+            # 1 + a cos^2: <cos^2> = (1/3 + a/5) / (1 + a/3)
+            m2 = sum(c * c for c in cos) / len(cos)
+            m4 = sum(c ** 4 for c in cos) / len(cos)
+            err_m2 = math.sqrt((m4 - m2 * m2) / len(cos))
+            return cross, m2, err_m2, len(cos)
+
+        cross, m2, err, n = decay('madspin', 'madspin')
+        self.assertEqual(n, 400)
+        self.assertLess(abs(m2 - (1. / 3 + 1. / 5) / (1 + 1. / 3)), 4 * err, (m2, err))
+        # BR = Gamma_LO(J/psi > mu+ mu-) / Gamma = 4 e_c^2 alpha^2 |R(0)|^2 / M^2 / Gamma
+        alpha, M = 1 / 132.507, 3.1
+        r2 = 1.16 * 4 * math.pi / 18
+        br = 4 * (2. / 3) ** 2 * alpha ** 2 * r2 / M ** 2 / 9.26e-05
+        self.assertLess(abs(cross / production / br - 1), 1e-3, (cross, production, br))
+
+        cross, m2, err, n = decay('none', 'none')
+        self.assertLess(abs(m2 - 1. / 3), 4 * err, (m2, err))
+
+    def test_madspin_onium_octet_decay(self):
+        """Spin-correlated decay of a hadron produced as colour octets, by
+        heavy-quark spin symmetry: g g > Jpsi(1|3PJ8) (J = 0, 1, 2 with the
+        HQSS LDMEs) gives the J/psi the spin of the (L_z, S_z) density traced
+        over L_z, from the uncoupled 3P[8] matrix element. At LO the 3P2[8]
+        has J_z = +-2 (S_z = +-1) and the 3P0[8] gives S_z = 0 with 1/3 of its
+        rate; sigma_2 / sigma_0 = 4/3, so rho_00 = 1/7 and the mu+ mu- go as
+        1 + cos^2(theta)/2. Each octet (status 2, at its onium_mass 3.3 GeV,
+        200 MeV above the J/psi as in Pythia8's Onia:massSplit) decays to the
+        J/psi (status 2, 3.1 GeV) and a soft gluon (onia_radiative, E1) that
+        carries the octet's colour; the J/psi spin, summed over the gluon, is
+        the partial trace. The rate is the production one times the BR of the
+        J/psi."""
+
+        if not misc.default_f2py():
+            raise unittest.SkipTest('no f2py')
+
+        def madgraph(name, lines):
+            script = pjoin(self.path, name)
+            with open(script, 'w') as fsock:
+                fsock.write('set automatic_html_opening False\n' + '\n'.join(lines) + '\n')
+            subprocess.call([pjoin(MG5DIR, 'bin', 'madgraph'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+
+        madgraph('output.mg', ['import model sm_onia-c_mass',
+                               'generate g g > Jpsi(1|3PJ8)',
+                               'output madevent %s -f -nojpeg' % self.run_dir])
+        with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
+            fsock.write('\nDECAY  443  9.26e-05\n')
+        madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 3000',
+                               'set pdlabel nn23lo1', 'set iseed 21'])
+        events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        production = lhe_parser.EventFile(events).cross
+        shutil.copy(events, pjoin(self.path, 'octet.lhe.gz'))
+        script = pjoin(self.path, 'ms_octet')
+        with open(script, 'w') as fsock:
+            fsock.write('import octet.lhe.gz\nset spinmode madspin\nset seed 5\n'
+                        'decay Jpsi > mu+ mu-\nlaunch\n')
+        subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL)
+        out = pjoin(self.path, 'octet_decayed.lhe.gz')
+        self.assertTrue(os.path.exists(out))
+        self.assertTrue(os.path.isdir(pjoin(self.path, 'madspin_me_unc')))
+        events = lhe_parser.EventFile(out)
+        cross = events.cross
+        cos = []
+        for event in events:
+            octet = [p for p in event if abs(p.pdg) in (9943003, 9944003, 9945003)]
+            psi = [p for p in event if p.pdg == 443]
+            gluon = [p for p in event if p.pdg == 21 and p.status == 1]
+            mu = [p for p in event if abs(p.pdg) == 13 and p.status == 1]
+            self.assertEqual((len(octet), len(psi), len(gluon), len(mu)), (1, 1, 1, 2))
+            self.assertEqual((octet[0].status, psi[0].status), (2, 2))
+            self.assertIs(psi[0].mother1, octet[0])
+            self.assertIs(gluon[0].mother1, octet[0])
+            self.assertLess(abs(octet[0].mass - 3.3), 1e-6)
+            self.assertLess(abs(psi[0].mass - 3.1), 1e-6)
+            # the gluon takes the colour of the octet, the J/psi none
+            self.assertEqual((gluon[0].color1, gluon[0].color2),
+                             (octet[0].color1, octet[0].color2))
+            self.assertNotEqual(octet[0].color1, 0)
+            self.assertEqual((psi[0].color1, psi[0].color2), (0, 0))
+            total = lhe_parser.FourMomentum(psi[0]) + lhe_parser.FourMomentum(gluon[0])
+            for a, b in zip((total.E, total.px, total.py, total.pz),
+                            (octet[0].E, octet[0].px, octet[0].py, octet[0].pz)):
+                self.assertLess(abs(a - b), 1e-5 * octet[0].E)
+            pair = lhe_parser.FourMomentum(mu[0]) + lhe_parser.FourMomentum(mu[1])
+            # the record keeps 11 digits: a J/psi of a few TeV (g g > octet reaches |y| ~ 8)
+            # has its pair mass to ~ 1e-11 E^2 / m
+            self.assertLess(abs(pair.mass - psi[0].mass), 1e-4 + 1e-10 * psi[0].E ** 2 / psi[0].mass)
+            muon = [p for p in mu if p.pdg == 13][0]
+            rest = lhe_parser.FourMomentum(muon).boost_to_restframe(
+                lhe_parser.FourMomentum(psi[0]))
+            cos.append(rest.pz / math.sqrt(rest.px**2 + rest.py**2 + rest.pz**2))
+        self.assertEqual(len(cos), 3000)
+        # 1 + a cos^2 from <cos^2> = (1/3 + a/5) / (1 + a/3)
+        m2 = sum(c * c for c in cos) / len(cos)
+        m4 = sum(c ** 4 for c in cos) / len(cos)
+        err_m2 = math.sqrt((m4 - m2 * m2) / len(cos))
+        a = (m2 - 1. / 3) / (1. / 5 - m2 / 3)
+        err_a = err_m2 * (1. / 5 - 1. / 9) / (1. / 5 - m2 / 3) ** 2
+        self.assertLess(abs(a - 0.5), 3 * err_a, (a, err_a))
+        # BR of the J/psi: its LO partial width at its own onium_mass (3.1)
+        alpha, M = 1 / 132.507, 3.1
+        r2 = 1.16 * 4 * math.pi / 18
+        br = 4 * (2. / 3) ** 2 * alpha ** 2 * r2 / M ** 2 / 9.26e-05
+        self.assertLess(abs(cross / production / br - 1), 1e-3, (cross, production, br))
+
+    def test_madspin_onium_radiative(self):
+        """Radiative transitions of bound states (MadSpin/onia_radiative.py):
+        q q~ > gamma* > psi(2S), transverse along the beam, decayed through
+        psi(2S) > chi_cJ gamma (E1), chi_cJ > J/psi gamma (E1), J/psi > mu+
+        mu-, for J = 1 and 2 (two decay lines with the same final state). The
+        cross section is the production one times the summed products of the
+        BR lines, every bound state is on its mass shell (those of the model
+        for the daughters), the chain is in the event record, and the first
+        photon goes as 1 + alpha_J cos^2(theta) in the psi(2S) rest frame,
+        alpha_1 = -1/3, alpha_2 = 1/13. spinmode none is refused."""
+
+        if not misc.default_f2py():
+            raise unittest.SkipTest('no f2py')
+
+        def madgraph(name, lines):
+            script = pjoin(self.path, name)
+            with open(script, 'w') as fsock:
+                fsock.write('set automatic_html_opening False\n' + '\n'.join(lines) + '\n')
+            subprocess.call([pjoin(MG5DIR, 'bin', 'madgraph'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+
+        madgraph('output.mg', ['import model sm_onia-c_mass',
+                               'generate p p > psi(2|3S11) QCD=0 / z h',
+                               'output madevent %s -f -nojpeg' % self.run_dir])
+        with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
+            fsock.write('\nDECAY 100443 2.94e-04\n   9.75e-02  2  20443  22\n   9.36e-02  2  445  22\n'
+                        'DECAY  20443 8.40e-04\n   3.43e-01  2  443  22\n'
+                        'DECAY    445 1.94e-03\n   1.90e-01  2  443  22\n'
+                        'DECAY    443 9.26e-05\n   5.961e-02  2  13  -13\n')
+        madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 2000',
+                               'set pdlabel nn23lo1', 'set iseed 51'])
+        events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        production = lhe_parser.EventFile(events).cross
+        # MadSpin unpacks the file it imports: keep the events aside and put the input back
+        # before each run
+        text = gzip.open(events, 'rt').read()
+
+        def run(spinmode, events_text=text):
+            for name in ('psi2s.lhe.gz', 'psi2s.lhe'):
+                if os.path.exists(pjoin(self.path, name)):
+                    os.remove(pjoin(self.path, name))
+            with gzip.open(pjoin(self.path, 'psi2s.lhe.gz'), 'wt') as fsock:
+                fsock.write(events_text)
+            script = pjoin(self.path, 'ms_rad')
+            with open(script, 'w') as fsock:
+                fsock.write('import psi2s.lhe.gz\nset spinmode %s\nset seed 13\n'
+                            'decay psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > mu+ mu-\n'
+                            'decay psi(2S) > chic2 a, chic2 > Jpsi a, Jpsi > mu+ mu-\n'
+                            'launch\n' % spinmode)
+            for d in glob.glob(pjoin(self.path, 'madspin_*')) + glob.glob(pjoin(self.path, 'decay_*')):
+                shutil.rmtree(d)
+            subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+            return pjoin(self.path, 'psi2s_decayed.lhe.gz')
+
+        out = run('none')
+        self.assertFalse(os.path.exists(out))
+
+        # the same events without the DECAY blocks of the bound states: the widths and branching
+        # fractions are the PDG 2026 values (madgraph/models/onia_decays.py)
+        import madgraph.models.onia_decays as onia_decays
+        defaults = onia_decays.PDG_2026
+        stripped = re.sub(r'(?ims)^\s*DECAY\s+(100443|20443|445|443)\s.*?(?=^\s*(?:DECAY|BLOCK)\s|</slha>)',
+                          '', text)
+        slha = stripped.split('</slha>')[0].split('<slha>')[-1]
+        self.assertIsNone(re.search(r'(?im)^\s*DECAY\s+(100443|20443|445|443)\s', slha))
+        self.assertIsNotNone(re.search(r'(?im)^\s*DECAY\s+23\s', slha))
+        out = run('madspin', stripped)
+        self.assertTrue(os.path.exists(out))
+        br_model = defaults[443][1][(-13, 13)] * (
+            defaults[100443][1][(22, 20443)] * defaults[20443][1][(22, 443)]
+            + defaults[100443][1][(22, 445)] * defaults[445][1][(22, 443)])
+        self.assertLess(abs(lhe_parser.EventFile(out).cross / production / br_model - 1), 1e-6)
+        os.rename(out, pjoin(self.path, 'psi2s_decayed_model.lhe.gz'))
+
+        out = run('madspin')
+        self.assertTrue(os.path.exists(out))
+        events = lhe_parser.EventFile(out)
+        br = 5.961e-02 * (9.75e-02 * 0.343 + 9.36e-02 * 0.19)
+        self.assertLess(abs(events.cross / production / br - 1), 1e-6)
+        masses = {100443: 3.69, 20443: 3.51, 445: 3.56, 443: 3.1}
+        cos = {20443: [], 445: []}
+        for event in events:
+            states = dict((p.pdg, p) for p in event if p.pdg in masses)
+            chi = [pdg for pdg in (20443, 445) if pdg in states]
+            self.assertEqual(len(chi), 1)
+            chi = chi[0]
+            self.assertEqual(sorted(states), sorted([100443, chi, 443]))
+            for pdg, p in states.items():
+                self.assertEqual(p.status, 2)
+                self.assertLess(abs(lhe_parser.FourMomentum(p).mass - masses[pdg]), 1e-3 * (1 + p.E))
+            photons = [p for p in event if p.pdg == 22]
+            self.assertEqual(len(photons), 2)
+            first = [g for g in photons if g.mother1 is states[100443]]
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len([g for g in photons if g.mother1 is states[chi]]), 1)
+            self.assertEqual(len([p for p in event if abs(p.pdg) == 13 and p.mother1 is states[443]]), 2)
+            rest = lhe_parser.FourMomentum(first[0]).boost_to_restframe(
+                lhe_parser.FourMomentum(states[100443]))
+            cos[chi].append(rest.pz / math.sqrt(rest.px ** 2 + rest.py ** 2 + rest.pz ** 2))
+        self.assertEqual(len(cos[20443]) + len(cos[445]), 2000)
+        # the two lines in the ratio of their BR products (binomial, 4 sigma)
+        f = 9.75e-02 * 0.343 / (9.75e-02 * 0.343 + 9.36e-02 * 0.19)
+        self.assertLess(abs(len(cos[20443]) / 2000. - f), 4 * math.sqrt(f * (1 - f) / 2000))
+        # 1 + a cos^2: <cos^2> = (1/3 + a/5) / (1 + a/3)
+        for pdg, a in ((20443, -1. / 3), (445, 1. / 13)):
+            c = cos[pdg]
+            m2 = sum(x * x for x in c) / len(c)
+            m4 = sum(x ** 4 for x in c) / len(c)
+            err = math.sqrt((m4 - m2 * m2) / len(c))
+            self.assertLess(abs(m2 - (1. / 3 + a / 5) / (1 + a / 3)), 4 * err, (pdg, m2, err))
+
+    def test_madspin_onium_decay_2to2(self):
+        """MadSpin after a 2 -> 2 onium production, g g > J/psi g with a soft
+        jet: every event is decayed (the momentum reshuffling of a strongly
+        boosted event works at the precision of the event record), and the
+        cross section is the production one times the BR line of the DECAY
+        block, with no Breit-Wigner truncation (the onium decays on shell)."""
+
+        if not misc.default_f2py():
+            raise unittest.SkipTest('no f2py')
+
+        def madgraph(name, lines):
+            script = pjoin(self.path, name)
+            with open(script, 'w') as fsock:
+                fsock.write('set automatic_html_opening False\n' + '\n'.join(lines) + '\n')
+            subprocess.call([pjoin(MG5DIR, 'bin', 'madgraph'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+
+        madgraph('output.mg', ['import model sm_onia-c_mass',
+                               'generate g g > Jpsi(1|3S11) g',
+                               'output madevent %s -f -nojpeg' % self.run_dir])
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        text = re.sub(r'(?m)^(\s*443\s+)[0-9.Ee+-]+(\s+# mass for)', r'\g<1>3.1\2', open(card).read())
+        open(card, 'w').write(text)
+        with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
+            fsock.write('\nDECAY  443  9.26e-05\n   5.961e-02  2  13  -13\n')
+        madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 2000', 'set ptj 5',
+                               'set pdlabel nn23lo1', 'set iseed 41'])
+        events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        production = lhe_parser.EventFile(events).cross
+        shutil.copy(events, pjoin(self.path, 'psig.lhe.gz'))
+        script = pjoin(self.path, 'ms_psig')
+        with open(script, 'w') as fsock:
+            fsock.write('import psig.lhe.gz\nset spinmode madspin\nset seed 11\n'
+                        'decay Jpsi > mu+ mu-\nlaunch\n')
+        subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL)
+        out = pjoin(self.path, 'psig_decayed.lhe.gz')
+        self.assertTrue(os.path.exists(out))
+        events = lhe_parser.EventFile(out)
+        self.assertLess(abs(events.cross / production / 5.961e-02 - 1), 1e-6)
+        n = 0
+        for event in events:
+            n += 1
+            psi = [p for p in event if p.pdg == 443]
+            self.assertEqual(len(psi), 1)
+            self.assertEqual(psi[0].status, 2)
+            self.assertEqual(len([p for p in event if abs(p.pdg) == 13]), 2)
+        self.assertEqual(n, 2000)
+
+        # with onia_breit_wigner the J/psi mass follows its Breit-Wigner within BW_cut, and the
+        # cross section keeps the share of the Breit-Wigner inside the window
+        os.rename(out, pjoin(self.path, 'psig_decayed_onshell.lhe.gz'))
+        for d in glob.glob(pjoin(self.path, 'madspin_*')) + glob.glob(pjoin(self.path, 'decay_*')):
+            shutil.rmtree(d)
+        with open(script, 'w') as fsock:
+            fsock.write('import psig.lhe.gz\nset spinmode madspin\nset seed 11\n'
+                        'set onia_breit_wigner True\nset BW_cut 15\n'
+                        'decay Jpsi > mu+ mu-\nlaunch\n')
+        subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL)
+        self.assertTrue(os.path.exists(out))
+        import MadSpin.decay as madspin_decay
+        keep = madspin_decay.bw_retained_fraction(3.1, 9.26e-05, 15)
+        events = lhe_parser.EventFile(out)
+        self.assertLess(abs(events.cross / production / 5.961e-02 / keep - 1), 1e-6)
+        offsets = []
+        for event in events:
+            psi = [p for p in event if p.pdg == 443][0]
+            mu = [p for p in event if abs(p.pdg) == 13]
+            pair = lhe_parser.FourMomentum(mu[0]) + lhe_parser.FourMomentum(mu[1])
+            if psi.E < 50:      # away from the rounding of very boosted J/psi
+                offsets.append(pair.mass - 3.1)
+        self.assertTrue(offsets)
+        self.assertLess(max(abs(o) for o in offsets), 15 * 9.26e-05 * 1.001)
+        # half of a Breit-Wigner lies within one half-width of the pole
+        inside = sum(1 for o in offsets if abs(o) < 9.26e-05 / 2) / len(offsets)
+        self.assertLess(abs(inside - 0.5 / keep), 0.08)
+
     def _get_single_decayed_lhe_path(self):
         decayed_events = glob.glob(pjoin(self.run_dir, 'Events', '*decayed*', '*.lhe.gz'))
         self.assertTrue(decayed_events)

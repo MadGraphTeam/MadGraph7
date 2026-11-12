@@ -188,11 +188,22 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         # is structurally what it was before.
         polarization = base_objects.canonical_polarization(
             leg.get('polarization'))
+        # A constituent of a bound state carries its Fock state: two onia
+        # with the same diagrams but a different Fock state (J, L, S, colour,
+        # hadron) have different projectors, LDMEs and masses, so they must not
+        # share a matrix element ('g g > Jpsi(1|3PJ8)' is three of them). The
+        # comparison only reads the first entry, so the Fock state goes there.
+        onium = leg.get('onium')
+        if onium:
+            onium = (onium.get('id'), onium.get('N'), onium.get('L'),
+                     onium.get('S'), onium.get('J'), onium.get('C'))
+        else:
+            onium = ()
         # Include also onshell, since this specifies forbidden s-channel
         return [((number, id, part.get('spin'), leg.get('onshell'),
                   part.get('is_part'), part.get('self_antipart'),
                   part.get('mass'), part.get('width'), part.get('color'),
-                  polarization),
+                  polarization, onium),
                  leg.get('number'),leg.get('onium'))]
         
     @staticmethod
@@ -5500,7 +5511,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         model = self.get('processes')[0].\
                 get('model')
         
-        next, nini = self.get_nexternal_ninitial()
+        # the configs are counted on the diagrams, i.e. on the constituents
+        next, nini = self.get_nexternal_ninitial(constituents=True)
         return sum([d.get_num_configs(model, nini) for d in \
                     self.get('base_amplitude').get('diagrams')])
 
@@ -5643,18 +5655,90 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return pairs
 
-    def get_nexternal_ninitial(self):
+    def get_onia_leg_map(self):
+        """The physical leg of every constituent leg, {number_external:
+        physical number}: the two constituents of an onium share the number
+        of their bound state (as MAPPING in onia.inc)."""
+
+        leg_map = {}
+        counter = 0
+        first = None
+        for wf in self.get_external_wavefunctions():
+            leg_map[wf.get('number_external')] = \
+                                       wf.get('number_external') - counter
+            if wf.get('onium'):
+                if first is None:
+                    first = wf.get('onium').get('index')
+                    counter += 1
+                else:
+                    first = None
+        return leg_map
+
+    def get_physical_pdgs(self, proc=None):
+        """The PDG codes of the physical legs of a process of this matrix
+        element (the first one by default): the two constituents of an
+        onium are one leg, with the PDG code of the bound state, as in the
+        event record."""
+
+        proc = proc or self.get('processes')[0]
+        pdgs = []
+        open_onium = False
+        for leg in proc.get('legs'):
+            if leg.get('onium'):
+                open_onium = not open_onium
+                if open_onium:
+                    pdgs.append(leg.get('onium').get('id'))
+            else:
+                pdgs.append(leg.get('id'))
+        return pdgs
+
+    def get_onium_helicities(self, onium):
+        """The helicities of a bound-state leg: its J_z = -J..J, or, for a
+        3P state of an output written with uncoupled P waves (onia_uncoupled,
+        the L_z x S_z basis MadSpin needs for the spin of a colour octet), the
+        nine (L_z, S_z) pairs coded as 3*(L_z+1) + (S_z+1) - 4 = -4..4."""
+        if getattr(self, 'onia_uncoupled', False) and onium.get('L') == 1 \
+                and onium.get('S') == 1:
+            return list(range(-4, 5))
+        j = onium.get('J')
+        return list(range(-j, j + 1))
+
+    def get_physical_helicities(self):
+        """The helicities of every physical leg, the J_z = -J..J of an
+        onium (the index of NHEL for that leg in the onia templates)."""
+
+        hel_per_part = self.get_helicity_per_particle()
+        onia_first = dict(self.get_onia_pairs())
+        onia_second = set(onia_first.values())
+        external_wfs = self.get_external_wavefunctions()
+        out = []
+        for i, wf in enumerate(external_wfs):
+            number = wf.get('number')
+            if number in onia_second:
+                continue
+            if number in onia_first:
+                out.append(self.get_onium_helicities(wf.get('onium')))
+            else:
+                out.append(hel_per_part[i])
+        return out
+
+    def get_nexternal_ninitial(self, constituents=False):
         """Gives (number or external particles, number of
-        incoming particles)"""
+        incoming particles). A bound state is one particle, its two
+        constituent legs are counted only with constituents=True (the legs
+        of the diagrams: an onium decay has two incoming legs there)."""
 
         external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
 
-        nonia = self.get_nonia()
-        
-        return (len(set([wf.get('number_external') for wf in \
-                         external_wfs]))-nonia,
-                len(set([wf.get('number_external') for wf in \
-                         [wf for wf in external_wfs if wf.get('leg_state') == False]])))
+        nexternal = len(set([wf.get('number_external') for wf in external_wfs]))
+        initial_wfs = [wf for wf in external_wfs if wf.get('leg_state') == False]
+        ninitial = len(set([wf.get('number_external') for wf in initial_wfs]))
+        if constituents:
+            return (nexternal, ninitial)
+
+        initial_onia = set([wf.get('onium').get('index') for wf in initial_wfs
+                            if wf.get('onium')])
+        return (nexternal - self.get_nonia(), ninitial - len(initial_onia))
 
     def get_external_masses(self):
         """Gives the list of the strings corresponding to the masses of the
@@ -5711,7 +5795,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                               key=lambda w: w['number_external'])
         external_number = 1
         id_to_wf = collections.defaultdict(list)
-        next, ninit = self.get_nexternal_ninitial()
+        # the external wavefunctions are the legs of the diagrams
+        next, ninit = self.get_nexternal_ninitial(constituents=True)
         for wf in external_wfs:
             if wf.get('number_external') == external_number:
                 id_to_wf[external_number].append(wf)
@@ -6545,7 +6630,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             constituent = []
             external_wavefunctions = self.get_external_wavefunctions()
             for pair in onia_pairs:
-                hel_per_part[pair[0]-1] = int(2*external_wavefunctions[pair[0]-1].get('onium').get('J')+1)
+                hel_per_part[pair[0]-1] = len(self.get_onium_helicities(
+                                    external_wavefunctions[pair[0]-1].get('onium')))
                 constituent.append(pair[1])
             for i in sorted(constituent, reverse=True):
                 del hel_per_part[i-1]
@@ -6571,8 +6657,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             constituent = []
             external_wavefunctions = self.get_external_wavefunctions()
             for pair in onia_pairs:
-                j = external_wavefunctions[pair[0]-1].get('onium').get('J')
-                hel = [i for i in range(-j,j+1,1)]
+                hel = self.get_onium_helicities(
+                                    external_wavefunctions[pair[0]-1].get('onium'))
                 hel_per_part[pair[0]-1] = hel
                 constituent.append(pair[1])
             for i in sorted(constituent, reverse=True):
@@ -6597,28 +6683,44 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
 
 
+    def get_initial_state_factors(self):
+        """(number of helicity states, number of colour states averaged
+        over) for each incoming particle. A decaying bound state is one
+        particle: the 2J+1 states of its Fock state, and no colour average
+        (its LDME already holds the sum over the colour of an octet), in place
+        of the spins and colours of its two constituent legs."""
+
+        model = self.get('processes')[0].get('model')
+        initial_legs = [leg for leg in self.get('processes')[0].get('legs')
+                        if leg.get('state') == False]
+        factors = []
+        onia = set()
+        for leg in initial_legs:
+            onium = leg.get('onium')
+            if onium:
+                if onium.get('index') in onia:
+                    continue
+                onia.add(onium.get('index'))
+                factors.append((int(2 * onium.get('J') + 1), 1))
+                continue
+            part = model.get('particle_dict')[leg.get('id')]
+            nhel = len(leg.get('polarization')) if leg.get('polarization') \
+                   else len(part.get_helicity_states())
+            factors.append((nhel, part.get('color')))
+        return factors
+
     def get_hel_avg_factor(self):
         """ Calculate the denominator factor due to the average over initial
         state spin only """
         
-        model = self.get('processes')[0].get('model')
-        initial_legs = [leg for leg in self.get('processes')[0].get('legs') if leg.get('state') == False]
-        hel_per_part = [ len(leg.get('polarization')) if leg.get('polarization') 
-                        else len(model.get('particle_dict')[\
-                                  leg.get('id')].get_helicity_states())
-            for leg in initial_legs]
+        hel_per_part = [h for h, c in self.get_initial_state_factors()]
         
         return reduce(lambda x, y: x * y, hel_per_part, 1)
 
     def get_spin_state_initial(self):
         """Gives (number of state for each initial particle)"""
 
-        model = self.get('processes')[0].get('model')
-        initial_legs = [leg for leg in self.get('processes')[0].get('legs') if leg.get('state') == False]
-        hel_per_part = [ len(leg.get('polarization')) if leg.get('polarization') 
-                        else len(model.get('particle_dict')[\
-                                  leg.get('id')].get_helicity_states())
-            for leg in initial_legs]
+        hel_per_part = [h for h, c in self.get_initial_state_factors()]
         
         if len(hel_per_part) == 1:
             hel_per_part.append(0)
@@ -6658,7 +6760,21 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         model = self.get('processes')[0].get('model')
         initial_legs = [leg for leg in self.get('processes')[0].get('legs') if leg.get('state') == False]
         
-        beam_avg_factors = [ len(model.get('particle_dict')[leg.get('id')].\
+        if any(leg.get('onium') for leg in initial_legs):
+            # a polarisation of the leg does not change this factor
+            beam_avg_factors = []
+            onia = set()
+            for leg in initial_legs:
+                onium = leg.get('onium')
+                if onium:
+                    if onium.get('index') not in onia:
+                        onia.add(onium.get('index'))
+                        beam_avg_factors.append(int(2 * onium.get('J') + 1))
+                else:
+                    beam_avg_factors.append(len(model.get('particle_dict')[
+                        leg.get('id')].get_helicity_states()))
+        else:
+            beam_avg_factors = [ len(model.get('particle_dict')[leg.get('id')].\
                                 get_helicity_states()) for leg in initial_legs ]
         if len(beam_avg_factors)==1:
             # For a 1->N process, we simply return 1 for the second entry.
@@ -6671,21 +6787,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         Averaging initial state color and spin, and
         identical final state particles"""
 
-        model = self.get('processes')[0].get('model')
-
-        initial_legs = [leg for leg in self.get('processes')[0].get('legs') if leg.get('state') == False]
-
-        color_factor = reduce(lambda x, y: x * y,
-                              [ model.get('particle_dict')[leg.get('id')].\
-                                    get('color')\
-                                for leg in initial_legs ])
-            
-        spin_factor = reduce(lambda x, y: x * y,
-                             [ len(model.get('particle_dict')[leg.get('id')].\
-                                   get_helicity_states()) 
-                              if not leg.get('polarization') else 
-                              len(leg.get('polarization'))
-                               for leg in initial_legs ])
+        factors = self.get_initial_state_factors()
+        color_factor = reduce(lambda x, y: x * y, [c for h, c in factors])
+        spin_factor = reduce(lambda x, y: x * y, [h for h, c in factors])
 
         return spin_factor * color_factor * self['identical_particle_factor']
 

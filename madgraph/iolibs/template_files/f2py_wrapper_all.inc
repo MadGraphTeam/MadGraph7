@@ -130,10 +130,13 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
+%(onia_init_decl)s
       CALL SETPARA(PATH)  !first call to set up the parameters
+%(onia_init)s
       RETURN
       END
 
+%(onia_subroutines)s
 
       SUBROUTINE %(f2py_prefix)sPY_SET_BEAMPOL(POL1, POL2)
 C     ROUTINE FOR F2PY to set the beam polarisation of the density

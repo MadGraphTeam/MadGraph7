@@ -858,7 +858,7 @@ class FKSHelasProcess(object):
             coupl_list.extend(sud_me['matrix_element'].get_used_couplings())
         return coupl_list    
 
-    def get_nexternal_ninitial(self):
+    def get_nexternal_ninitial(self, constituents=False):
         """the nexternal_ninitial function references to the real emissions if they have been
         generated, otherwise to the born"""
         if self.real_processes:
@@ -1024,7 +1024,7 @@ class FKSHelasRealProcess(object): #test written
             #self.fks_j_from_i = fksrealproc.find_fks_j_from_i()
             self.fks_j_from_i = fksrealproc.fks_j_from_i
 
-    def get_nexternal_ninitial(self):
+    def get_nexternal_ninitial(self, constituents=False):
         """Refers to the matrix_element function"""
         return self.matrix_element.get_nexternal_ninitial()
     

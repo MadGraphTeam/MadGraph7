@@ -1037,6 +1037,10 @@ class Amplitude(base_objects.PhysicsObject):
         """Returns the number of initial state particles in the process."""
         return self.get('process').get_ninitial()
 
+    def get_ninitial_physical(self):
+        """The number of incoming particles, an incoming onium counting once."""
+        return self.get('process').get_ninitial_physical()
+
     def has_loop_process(self):
         """ Returns whether this amplitude has a loop process."""
         
@@ -2424,6 +2428,10 @@ class DecayChainAmplitude(Amplitude):
     def get_ninitial(self):
         """Returns the number of initial state particles in the process."""
         return self.get('amplitudes')[0].get('process').get_ninitial()
+
+    def get_ninitial_physical(self):
+        """The number of incoming particles, an incoming onium counting once."""
+        return self.get('amplitudes')[0].get('process').get_ninitial_physical()
 
     def get_decay_ids(self):
         """Returns a set of all particle ids for which a decay is defined"""

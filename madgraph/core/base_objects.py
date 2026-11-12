@@ -4392,7 +4392,9 @@ class Process(PhysicsObject):
                                     for id_list in self['required_s_channels']])
                     mystr = mystr + '_'
             if leg.get('onium'):
-                if prevleg.get('onium'):
+                # the onium is named once, at its second constituent (an
+                # incoming onium starts the list: no previous leg there)
+                if prevleg and prevleg.get('onium'):
                     if prevleg.get('onium').get('index') == leg.get('onium').get('index'):
                         mystr = mystr + leg.get('onium').get('name')
                         mystr = mystr.replace('|','').replace('(','').replace(')','')
@@ -4512,6 +4514,16 @@ class Process(PhysicsObject):
         """Gives number of initial state particles"""
 
         return len([leg for leg in self.get('legs') if leg.get('state') == False])
+
+    def get_ninitial_physical(self):
+        """Gives the number of incoming particles, an incoming bound state
+        (generated as its two constituent legs) counting once: 1 for the
+        decay of an onium, where get_ninitial gives 2."""
+
+        initial = [leg for leg in self.get('legs') if leg.get('state') == False]
+        onia = set(leg.get('onium').get('index') for leg in initial
+                   if leg.get('onium'))
+        return len(initial) - len(onia)
 
     def get_initial_ids(self, beamid=0):
         """Gives the pdg codes for initial state particles"""

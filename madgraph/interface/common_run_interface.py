@@ -1247,6 +1247,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'ebeam1',
                     r'block\s+mw_run',
                     r'block\s+ldme',
+                    r'block\s+onium_mass', # onia card without LDMEs (leptonia)
                     'BLOCK',
                     'DECAY',
                     'launch',
@@ -1308,7 +1309,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             return 'madweight_card.dat'
         elif 'transfer_card.dat' in text:
             return 'transfer_card.dat'
-        elif any(t.endswith('ldme') for t in text):
+        elif any(t.endswith('ldme') or t.endswith('onium_mass') for t in text):
             return 'onia_card.dat'
         elif 'block' in text and 'decay' in text: 
             return 'param_card.dat'
@@ -4175,6 +4176,13 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
               
             AskforEditCard.update_dependent(interface, interface.me_dir, card, path, timer=20)
         
+        # a bound state (onium) is no particle of the param_card: its DECAY
+        # block (its width, for MadSpin) goes with the mass of the onia card
+        onia_card = pjoin(os.path.dirname(path), 'onia_card.dat')
+        onia_pdgs = set()
+        if os.path.exists(onia_card):
+            onia_pdgs = set(abs(int(m.group(1))) for m in re.finditer(
+                r'(?m)^\s*(-?\d+)\s+\S+\s+#\s*mass for', open(onia_card).read()))
         for param in card['decay']:
             width = param.value
             if width == 0:
@@ -4182,6 +4190,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             try:
                 mass = card['mass'].get(param.lhacode).value
             except Exception:
+                if abs(param.lhacode[0]) in onia_pdgs:
+                    continue
                 logger.warning('Missing mass in the lhef file (%s) . Please fix this (use the "update missing" command if needed)', param.lhacode[0])
                 continue
             if mass and abs(width/mass) < 1e-12:

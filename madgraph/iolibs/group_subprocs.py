@@ -336,7 +336,9 @@ class SubProcessGroup(base_objects.PhysicsObject):
         model = self.get('matrix_elements')[0].get('processes')[0].\
                 get('model')
         
-        next, nini = self.get_nexternal_ninitial()
+        # the configs are counted on the diagrams, i.e. on the constituents
+        next, nini = self.get('matrix_elements')[0].\
+                     get_nexternal_ninitial(constituents=True)
         
         return sum([md.get_num_configs(model, nini) for md in 
                     self.get('mapping_diagrams')])

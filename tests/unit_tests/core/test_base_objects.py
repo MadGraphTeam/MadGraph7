@@ -2212,6 +2212,32 @@ class ProcessTest(unittest.TestCase):
         output = myprocess.get_final_ids_after_decay()
         self.assertEqual(output, [3, 11, 11, -3,-11,-11,3])
         
+    def test_get_ninitial_physical_onium(self):
+        """An incoming bound state is generated as its two constituent legs:
+        get_ninitial counts the legs, get_ninitial_physical the particles."""
+
+        onium = {'id': 441, 'name': 'etac(1|1S01)', 'N': 1, 'S': 0, 'L': 0,
+                 'J': 0, 'C': 1, 'charge': 0, 'index': 0, 'mass': 2.98,
+                 'ldme': 0.3867}
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': 4, 'number': 1, 'state': False, 'onium': dict(onium)}),
+            base_objects.Leg({'id': -4, 'number': 2, 'state': False, 'onium': dict(onium)}),
+            base_objects.Leg({'id': 21, 'number': 3, 'state': True}),
+            base_objects.Leg({'id': 21, 'number': 4, 'state': True})])
+        decay = base_objects.Process({'legs': legs})
+        self.assertEqual(decay.get_ninitial(), 2)
+        self.assertEqual(decay.get_ninitial_physical(), 1)
+
+        # a final-state onium does not change the count, nor do other legs
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': 21, 'number': 1, 'state': False}),
+            base_objects.Leg({'id': 21, 'number': 2, 'state': False}),
+            base_objects.Leg({'id': 4, 'number': 3, 'state': True, 'onium': dict(onium)}),
+            base_objects.Leg({'id': -4, 'number': 4, 'state': True, 'onium': dict(onium)})])
+        production = base_objects.Process({'legs': legs})
+        self.assertEqual(production.get_ninitial(), 2)
+        self.assertEqual(production.get_ninitial_physical(), 2)
+
 #===============================================================================
 # ProcessDefinitionTest
 #===============================================================================

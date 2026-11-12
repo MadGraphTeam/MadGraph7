@@ -1042,6 +1042,59 @@ c     spin triplet
       return
       end
 
+      subroutine onia_proj_dual_in(fq, fqb, masses, p, m, sz, spin
+     &, proj)
+      use ALOHA_OBJECT
+c
+c This subroutine computes the spin projector for an incoming onium
+c (a decaying bound state), with dual-number momenta for the P waves.
+c
+c input:
+c       dual    fq(1:8)        : ubar of the first constituent (particle),
+c                                OXXXXX(...,+1)
+c       dual    fqb(1:8)       : v of the second constituent (anti-particle),
+c                                IXXXXX(...,-1)
+c       real    p(0:3)         : four-momentum of bound state
+c       real    m              : mass of bound state
+c       integer sz             : z component of the spin
+c       integer spin           : spin of the bound state
+c
+c output:
+c       dual    proj           : ubar(p1) Gamma' v(p2)/(2 sqrt(2 m1 m2)),
+c                                Gamma' = gamma0 Gamma^dagger gamma0
+c
+      implicit none
+      type(aloha) fq,fqb,vc
+      type(Dual)::p(0:3),tmp
+      double precision masses(1:2),m
+      integer sz,spin
+      type(Dual)::proj
+      
+      double complex ci
+      parameter( ci = dcmplx(0.0d0,1.0d0) )
+      
+      if (spin.eq.0) then
+c     spin singlet: gamma0 gamma5^dagger gamma0 = -gamma5
+
+         tmp = fqb%W(1)*fq%W(1)+fqb%W(2)*fq%W(2)-fqb%W(3)*fq%W(3)-fqb%W(4)*fq%W(4)
+
+      elseif (spin.eq.1) then
+c     spin triplet: an incoming polarisation, not conjugated
+         call vxxxxx(p,m,sz,-1,vc)
+         tmp = (fqb%W(1)*fq%W(4)-fqb%W(3)*fq%W(2))*(vc%W(2)+ci*vc%W(3))+
+     &         (fqb%W(2)*fq%W(3)-fqb%W(4)*fq%W(1))*(vc%W(2)-ci*vc%W(3))+
+     &         (fqb%W(1)*fq%W(3)+fqb%W(4)*fq%W(2))*(vc%W(1)+vc%W(4))+
+     &         (fqb%W(2)*fq%W(4)+fqb%W(3)*fq%W(1))*(vc%W(1)-vc%W(4))
+      else
+         print *,"spin projector not yet implemented"
+         stop
+      endif
+
+      proj = 0.5d0/SQRT(2d0*masses(1)*masses(2))*tmp
+
+      return
+      end
+
 
 
 

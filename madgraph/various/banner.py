@@ -68,7 +68,7 @@ class Banner(dict):
 
     ordered_items = ['mgversion', 'mg5proccard', 'mgproccard', 'mgruncard',
                      'mg7runcard',
-                     'slha','initrwgt','mggenerationinfo', 'mgpythiacard', 'mgpgscard',
+                     'slha','mgoniacard','initrwgt','mggenerationinfo', 'mgpythiacard', 'mgpgscard',
                      'mgdelphescard', 'mgdelphestrigger','mgshowercard', 'foanalyse',
                      'ma5card_parton','ma5card_hadron','run_settings']
 
@@ -78,6 +78,7 @@ class Banner(dict):
             'mgproccard': 'MGProcCard',
             'mgruncard': 'MGRunCard',
             'mg7runcard': 'MG7RunCard',
+            'mgoniacard': 'MGOniaCard',
             'ma5card_parton' : 'MA5Card_parton',
             'ma5card_hadron' : 'MA5Card_hadron',            
             'mggenerationinfo': 'MGGenerationInfo',
@@ -119,6 +120,7 @@ class Banner(dict):
     pat_end=re.compile(r'</(?P<name>\w*)>')
 
     tag_to_file={'slha':'param_card.dat',
+      'mgoniacard':'onia_card.dat',
       'mgruncard':'run_card.dat',
       'mg7runcard':'run_card.toml',
       'mgpythiacard':'pythia_card.dat',
@@ -257,6 +259,9 @@ class Banner(dict):
         
         self.add(pjoin(medir,'Cards', 'param_card.dat'))
         self.add(pjoin(medir,'Cards', 'run_card.dat'))
+        onia_card = pjoin(medir, 'Cards', 'onia_card.dat')
+        if os.path.exists(onia_card) and 'block' in open(onia_card).read().lower():
+            self.add(onia_card)
         if os.path.exists(pjoin(medir, 'SubProcesses', 'procdef_mg5.dat')):
             self.add(pjoin(medir,'SubProcesses', 'procdef_mg5.dat'))
             self.add(pjoin(medir,'Cards', 'proc_card_mg5.dat'))
@@ -471,6 +476,9 @@ class Banner(dict):
             card_name = os.path.basename(path)
             if 'param_card' in card_name:
                 tag = 'slha'
+            elif 'onia_card' in card_name:
+                # the LDMEs and masses of the bound states (MadSpin needs them)
+                tag = 'MGOniaCard'
             elif 'run_card' in card_name:
                 tag = 'MGRunCard'
             elif 'pythia_card' in card_name:
@@ -519,6 +527,8 @@ class Banner(dict):
             tag = 'mgshowercard'
         elif tag == 'FO_analyse_card':
             tag = 'foanalyse'
+        elif tag == 'onia_card':
+            tag = 'mgoniacard'
         
         self[tag.lower()] = text
     

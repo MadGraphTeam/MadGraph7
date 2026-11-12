@@ -5,6 +5,153 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   HS: onium decays and onium production in particle decays (LO NRQCD/NRQED, S and P
+       waves, colour singlet and octet, with 'output madevent' and 'output
+       standalone_fortran'):
+       - a bound state can now be the decaying particle, e.g. "generate etac > g g",
+         "generate chic2(1|3P21) > a a", "generate Ps(1|3S1) > a a a". A decaying
+         quarkonium Fock state has its own decay LDME <O_n>_H in the new Block
+         ldme_decay of the onia card ("set onia_card ldme_decay <pdg> <value>"),
+         independent of the production LDMEs of Block ldme (colour-octet production
+         and decay LDMEs differ); its default is the vacuum-saturation value
+         <O^H>/(2J_H+1), exact at LO for colour singlets. The LDME of a leptonium is
+         computed from its Coulomb wave function, for production and decay, and no
+         longer appears in the onia card (where it was ignored).
+         Its mass is the onium_mass of the onia card, as in production: the
+         decay products are rescaled onto the constituent kinematics (m1+m2)
+         for the matrix element; set the onium_mass to m1+m2 for strict LO.
+       - onia produced in 1 -> N decays, e.g. "generate z > Jpsi(1|3S11) a",
+         "generate t > w+ Bc-(1|1S01) c": the momentum reshuffling works at the fixed
+         mass of the decaying particle (it also checks the particle at position 2,
+         which it skipped), and madevent has the integration channels of a decay:
+         each one maps the invariant masses the propagators of its diagram depend
+         on (the two constituents of an onium count as the bound state), so the
+         fragmentation peaks of a strongly boosted onium (z > Bc+ b c~ far above
+         the Z mass) are sampled.
+       - madevent channels of onium production (2 -> N) follow the s- and t-channels of
+         each diagram over the physical particles, e.g. the t-channel gluon of
+         "g g > Jpsi(1|3S11) g" (they were one identical s-channel chain, with props.inc
+         taken from the constituent diagrams and not matching it); diagrams that enter
+         no colour flow (a single gluon making a colour-singlet onium) get no
+         multi-channel weight. With the default dynamical_scale_choice -1 the clustering
+         scale of 2 -> 3 and higher onium processes follows these channels too.
+       - an incoming onium with a second incoming particle ("Jpsi(1|3S11) g > g g") is
+         accepted by 'output standalone_fortran' only (a matrix element, used for the
+         time-reversal checks).
+       - Bug fix: "set onia_card ..." when launching madevent was refused (the merged
+         launch question did not offer the onia card).
+       - Bug fix: onium production at a hadron collider with the default scale
+         (dynamical_scale_choice -1) stopped with "No color given for pdg 0": the
+         onium channels gave the s-channel particle of the first subprocess of a group
+         only, and the clustering read 0 for the others (e.g. q g > Jpsi q next to
+         g q > Jpsi q).
+       - Bug fix: with a decaying onium at a mass other than m1+m2, a soft
+         decay product was put off shell by the momentum rescale (a cut-off on |p|^2):
+         "Jpsi(1|3S11) > g g g" gave widths of order 1e27 GeV.
+       - Bug fix: a P-wave onium (almost) at rest, e.g. a decaying one with the 1d-14
+         momentum genps.f gives it, lost the precision of its orbital derivative: the
+         summed |M|^2 varied by a few per cent with the orientation. It is now put
+         exactly at rest when |p| < 1d-8 E.
+       - Bug fix: "import model sm_onia-full" (or any onia model without a restriction
+         card) loaded no Fock state, so a leptonium and a charmonium could not be in one
+         process (e.g. "generate tata(1|1S0) > Jpsi(1|3S11) a").
+       - Bug fix: madevent stopped with "No Phase Space" for an onium decaying into
+         massive particles (e.g. "etab(1|1S01) > c c~ g"): the symmetry program of
+         the survey did not read the onia card and saw the decaying onium at zero mass.
+       - spin-density matrices of onia ("output standalone_fortran --density=<legs>", the
+         input of MadSpin's spin correlations): a bound state is one leg with its J_z
+         open, outgoing or incoming, S and P waves; the python (f2py) library of an onia
+         output takes the PDG code of the bound state and reads the onia card.
+       - MadSpin decays bound states with spin correlations (spinmode madspin, full,
+         onshell, PA; and none): "decay Jpsi > mu+ mu-" (the hadron) or "decay
+         Jpsi(1|3S11) > mu+ mu-" decays the colour-singlet Fock state, at the onium_mass
+         of the events (no Breit-Wigner), contracting the production and decay density
+         matrices over its J_z. The onia card travels in the event banner (<MGOniaCard>);
+         the total width is a DECAY block for the PDG code of the bound state in the
+         param_card, whose BR lines, if any, give the branching ratio (else the LO partial
+         width does). Density matrices from the Fortran output, decays from madevent.
+         Colour-octet Fock states decay to their hadron and one soft gluon, as in
+         Pythia8: "decay Jpsi > mu+ mu-" also decays the Jpsi(1|3S18), (1|1S08) and
+         (1|3PJ8) of the events, which stay in the record (status 2) at their own
+         onium_mass, 200 MeV above the hadron by default (the sm_onia masses, as
+         Onia:massSplit of Pythia8), and decay with branching ratio 1 to the J/psi
+         (status 2) and a gluon that carries their colour; the weight has the BR of the
+         J/psi only. The gluon is emitted with the E1 or M1 amplitude of the radiative
+         transitions (MadSpin/onia_radiative.py), or independently of the spins when L
+         and S are unchanged, so that summed over the gluon the spin of the octet goes
+         to the hadron by heavy-quark spin symmetry at LO in v: kept for 3S1[8] >
+         J/psi, isotropic when the transition flips the heavy-quark spin (1S0[8] >
+         J/psi), the orbital L_z isotropic for 3S1[8] > chi_cJ, and for 3PJ[8] > J/psi
+         the trace over L_z of the (L_z, S_z) density. That octet decays in the (L_z,
+         S_z) basis, against an uncoupled 3P[8] production matrix element (new "output
+         standalone_fortran --onia_uncoupled=True", used by MadSpin), which has the
+         interference between J = 0, 1, 2 (spinmode madspin/full/onshell/PA; none is
+         refused for octets). MadSpin stops when an octet is not heavier than its
+         hadron, and warns
+         when the 3PJ[8] LDMEs of the events break <O(3PJ[8])> = (2J+1) <O(3P0[8])>, or
+         when only some J were generated.
+       - Bug fix: MadSpin stopped ("No Lorentz transformation exists: p1^2 != p2^2") on a
+         strongly boosted event of a 2 -> 2 production, e.g. g g > Jpsi(1|3S11) g with a soft
+         jet: the event record keeps 11 digits, so the final-state invariant mass of a light
+         system of several TeV along the beam differs from sqrt(s) of the incoming partons by
+         more than the 1e-6 its reshuffling allowed. Within the precision of the record the
+         reshuffling now works at the final state's own invariant mass (Event.rest_sqrts);
+         every other event is unchanged.
+       - Bug fix: after a 2 -> 2 production MadSpin scaled the cross section of the decayed
+         onia by the Breit-Wigner truncation of their width (0.979 for BW_cut = 15), although an
+         onium decays on its mass shell and no virtuality is drawn: the decayed cross section is
+         now the production one times the branching ratio (test_madspin_onium_decay_2to2).
+       - Bug fix: the final-state momentum reshuffling (mom_resh_type 1, 2, 3, the default
+         1) of a process without a recoil system, e.g. "p p > Jpsi(1|3S18)" or "g g >
+         chic2(1|3P21)", kept the partonic energy near the physical one, so that a bound
+         state at an onium_mass above the sum of its constituent masses was left off its
+         mass shell and the reshuffled event did not conserve momentum: u u~ > 3S1[8] at
+         3.3 GeV (2 m_c = 3.1) came out 12% low and g g > 3S1[8], zero at LO, at 2.7% of the
+         q q~ rate. The partonic energy is now the reshuffled mass of the onia
+         (test_onia_reshuffle_two_to_one). Processes with a recoil system, decays, and
+         onia at onium_mass = m1 + m2 are unchanged.
+       - Bug fix: the f2py libraries of an onia output (MadSpin's density matrices) never
+         set the reshuffling type, i.e. reshuffled in the initial state, while madevent
+         reshuffles in the final state (mom_resh_type 1): they now default to 1, and
+         PY_SET_MOM_RESH_TYPE sets the type of the events, which MadSpin passes from the
+         run_card of the production. With the final-state reshuffling, a single recoiling
+         particle is now put on its own mass shell: its invariant mass in an event record
+         (0.016 GeV for a massless quark of 1.8 TeV, from the rounding) was kept, and came
+         out differently for an event and its mirror in z (7.6e-6 in |M|^2).
+       - Bug fix: the momentum reshuffling of a bound state put the first incoming leg
+         along +z. A standalone call with that leg along -z (MadSpin's normalisation of a
+         mirrored subprocess, e.g. u g > chi_c1 u with the quark from the second beam) of an
+         onium at the 11-digit precision of an event record reversed the beams, and |M|^2
+         came out up to 12 orders of magnitude too small: MadSpin's maximum weight then
+         exploded after such a production and it refilled its decays without end. madevent
+         (first leg always along +z) was not affected (test_onia_reshuffle_mirrored_beams).
+       - MadSpin: radiative transitions between bound states, E1 (L changed by one, spin
+         kept) and M1 (spin changed by one, L kept), with their spin correlations, e.g.
+         "decay chic1 > Jpsi a, Jpsi > mu+ mu-" or "decay Upsilon(2S) > chib2 a, chib2 >
+         Upsilon a, Upsilon > mu+ mu-" (MadSpin/onia_radiative.py). The amplitudes are the
+         leading multipoles written with the HELAS polarisation vectors of the bound-state
+         matrix elements (no M2 or E3); the rate is the BR line of the parent's DECAY block
+         (a radiative transition is non-perturbative), times those of the decays that follow;
+         a daughter absent from the production takes the mass of the model unless a MASS line
+         of the param_card sets it. The PDG 2026 total widths and branching fractions of the
+         onia (madgraph/models/onia_decays.py: the radiative transitions between onia and the
+         lepton pairs of the vector states) are used where the param_card of the events has
+         no DECAY width or BR line of its own; a model may give its own values
+         (all_boundstate_decays in its boundstates.py), which take precedence. The decays ending a chain come from a density library of
+         their own (madspin_radiative). spinmode madspin/full/onshell/PA only.
+       - new MadSpin option onia_breit_wigner (default False): draw the mass of a decaying
+         onium from the Breit-Wigner of its DECAY width within BW_cut and reshuffle the
+         production to it, as for an elementary resonance, instead of decaying it on shell
+         (the narrow-width limit of LO NRQCD). The mass of a 2 -> 1 onium stays sqrt(shat).
+       - Bug fix: in an ungrouped output (standalone_fortran, or madevent with
+         group_subprocesses False), Fock states with the same diagrams but a different
+         J, L, S, colour or hadron shared one matrix element, that of the first: e.g.
+         "g g > Jpsi(1|3PJ8)" gave three times the 3P0[8] matrix element, with its LDME
+         and J_z. Grouped madevent outputs were not affected.
+       - Bug fix: a leptonium process without a photon vertex (e.g. "tata(1|3S1) > vt vt~")
+         did not compile: the Coulomb LDME took alpha from the photon coupling GC_3, which
+         is declared only when an amplitude uses it. It now uses GAL(1), the QED coupling
+         that every output declares.
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point

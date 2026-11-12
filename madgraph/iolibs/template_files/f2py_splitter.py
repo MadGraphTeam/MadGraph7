@@ -117,10 +117,13 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
+%(onia_init_decl)s
       CALL SETPARA(PATH)  !first call to setup the paramaters
+%(onia_init)s
       RETURN
       END
 
+%(onia_f77_subroutines)s
 
       BLOCK DATA %(f2py_prefix)sBEAMPOL_DEFAULT
 C     Unpolarised beams unless PY_SET_BEAMPOL says otherwise. This has

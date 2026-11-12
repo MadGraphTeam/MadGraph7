@@ -655,6 +655,27 @@ class TestValidCmd(unittest.TestCase):
         finally:
             cmd.exec_cmd('generate p p > t t~')
 
+    @test_aloha.set_global()
+    def test_output_onium_checks_accept_decay_chains(self):
+        """The onium checks of 'output' read the legs of every generated
+        process. A DecayChainAmplitude has no 'process' of its own, so they go
+        through generated_processes(), which unrolls the chains; reading
+        amp.get('process') directly made every decay-chain output crash."""
+        cmd = self.cmd
+        self.do('import model sm')
+        out = tempfile.mkdtemp(prefix='mg7_dc_output_')
+        try:
+            self.do('generate e+ e- > t t~, t > w+ b')
+            procs = list(cmd.generated_processes())
+            self.assertEqual(sorted(p.get_ninitial_physical() for p in procs), [1, 2])
+            self.assertFalse(cmd.has_onium_amplitude())
+            self.do('output madevent %s -f -nojpeg' % out)
+            self.assertTrue(os.path.exists(os.path.join(out, 'SubProcesses', 'subproc.mg')))
+        finally:
+            import shutil
+            shutil.rmtree(out, ignore_errors=True)
+            cmd.exec_cmd('generate p p > t t~')
+
 
 class TestExtendedCmd(unittest.TestCase):
     """test the extension of cmd interface"""
