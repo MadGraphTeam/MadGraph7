@@ -362,6 +362,37 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
 
 
 @pytest.mark.loop_physics
+def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
+    """Every warm-up and timed call of the loop runtime profile takes a new
+    batch of distinct flat points at the validation point's energy (no
+    point repeated within or across calls), deterministic in the seed."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_points, profile_virtual
+    from pyamplicol.config import BenchmarkConfig
+
+    bench = BenchmarkConfig(batch_size=4, warmup_runs=1, minimum_samples=2)
+    batches: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, points, *args, **kwargs):
+        batches.append([tuple(map(tuple, point)) for point in points])
+        return evaluate(self, points, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "evaluate", recorded)
+    result = profile_virtual(uux_ddx, bench)
+    assert result.batch == 4 and result.samples == 2 and result.warmup == 1
+    assert [len(batch) for batch in batches] == [4, 4, 4]
+    flat = [point for batch in batches for point in batch]
+    assert len(set(flat)) == len(flat) == 12
+    validation = _points(uux_ddx)[0]
+    total = [sum(float(leg[i]) for leg in validation[:2]) for i in range(4)]
+    energy = math.sqrt(total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2)
+    assert all(math.isclose(p[0][0] + p[1][0], energy) for p in flat)
+    assert profile_points(uux_ddx, "p", bench) == profile_points(uux_ddx, "p", bench)
+
+
+@pytest.mark.loop_physics
 def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
     """profile --stability on 1 (in-process) and 3 worker processes: the
     same per-point records and statistics (ux-cli C5); only the times and

@@ -66,8 +66,9 @@ def _profile(report: Any) -> list[Block]:
                 (
                     "runtime setup",
                     "what the timed calls compute: binary64, finite part only, "
-                    "the backends' own acceptance checks; points per call and "
-                    "the number of timed calls",
+                    "the backends' own acceptance checks; the distinct points "
+                    "per call (a new batch every call) and the number of "
+                    "timed calls",
                 ),
                 ("backends", "the reduction backends compared. " + _DEFAULT_MARK),
             ],

@@ -730,11 +730,15 @@ Both parts use the flat phase-space points of
 product's flat generator: beams along +-z in the centre-of-mass frame, the
 external masses of the artifact's validation point; point i from seed + i;
 `--seed` and `--sqrt-s` set `evaluation.phase_space.seed` and `sqrt_s`)
-unless `--momenta` gives the timed points.
+unless `--momenta` gives the timed points; the runtime and the stability
+points are drawn separately from the same seed.
 
-**Runtime.** `--minimum-samples` calls of one batch of `--batch-size` points
-(the flat points repeated when `--momenta` is absent) are timed per backend
-after `--warmup-runs` warm-up calls in the default setup, which the table
+**Runtime.** `--minimum-samples` calls of `--batch-size` points each are
+timed per backend after `--warmup-runs` warm-up calls, every call on a new
+batch of distinct points: without `--momenta`, `--batch-size` x
+(`--warmup-runs` + `--minimum-samples`) distinct flat points (seed and
+energy as above), the same on every backend; with `--momenta`, its points
+in order, cycled when there are fewer. The default setup, which the table
 header names: binary64, finite part only, the checked reduction (the
 backends' own acceptance checks; `--reduction-unchecked` profiles the
 unchecked timing mode, no accuracy certificate), no stability checks and no

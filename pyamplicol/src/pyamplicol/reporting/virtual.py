@@ -556,7 +556,8 @@ def virtual_profile_summary(result: Any, *, prettytable: Any, color: bool) -> st
             ),
             (
                 "batch",
-                f"{result.batch} points per call, finite part only; "
+                f"{result.batch} points per call (a new batch every call), "
+                "finite part only; "
                 f"{result.warmup} warm-up + {result.samples} timed calls",
             ),
             (

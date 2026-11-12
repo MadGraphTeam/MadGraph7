@@ -1428,8 +1428,12 @@ The runnable reference is
 [`examples/python/benchmark.py`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/benchmark.py).
 
 A one-loop artifact or runtime returns a `benchmarking.VirtualProfileResult`
-instead: the per-point time of `minimum_samples` calls of one batch
-(`seconds_per_point`, the median call; `low`, `high`) and `stages`, the time
+instead: the per-point time of `minimum_samples` calls of `batch_size`
+points each, a new batch every call (a path without `points`: the distinct flat
+points `benchmarking.profile_points` draws with `evaluation.phase_space`'s
+seed and energy; given `points` are taken in order, cycled when there are
+fewer than the calls need) (`seconds_per_point`, the median call; `low`,
+`high`) and `stages`, the time
 per point in each stage group (trees, dressing, scatter, reduction, rest)
 read from the native executor's stage report of the same calls, with the
 backend record (`reduction`) and the setting (`unchecked`). A `RunConfig`'s

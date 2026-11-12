@@ -719,17 +719,18 @@ class DefaultCliServices:
             if not isinstance(raw_points, list):
                 raise ConfigurationError("momenta JSON must be a point list")
             points = raw_points
-        else:
-            # Flat phase-space points ([evaluation.phase_space]).
-            points = _flat_points(config).as_inputs(exact=False)
         if _virtual_artifact_hint(config.evaluation.artifact):
             # A loop artifact: both reduction backends side by side, the
-            # runtime and/or the stability statistics (``loop_profile``).
+            # runtime and/or the stability statistics (``loop_profile``;
+            # without --momenta it draws its own distinct flat points).
             from pyamplicol.loop_profile import profile_loop
 
             return profile_loop(
                 config.evaluation.artifact, config, points=points, progress=progress
             )
+        if points is None:
+            # Flat phase-space points ([evaluation.phase_space]).
+            points = _flat_points(config).as_inputs(exact=False)
         return BenchmarkRunner(config=config, progress=progress).run(
             config.evaluation.artifact,
             points=points,

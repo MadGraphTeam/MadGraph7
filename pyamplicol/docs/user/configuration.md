@@ -1892,7 +1892,8 @@ warning per loaded process.
 A one-loop artifact is profiled on both reduction backends side by side
 (`[evaluation] reduction` selects one): per stage (trees, dressing, scatter,
 reduction, rest, from the native executor's stage report of the timed
-calls; `batch_size`, `warmup_runs` and `minimum_samples` apply) and/or as
+calls, each on a new batch of `batch_size` distinct flat points;
+`batch_size`, `warmup_runs` and `minimum_samples` apply) and/or as
 stable-digit statistics over flat points. `[evaluation] reduction_unchecked`
 and `mu_r2` select the unchecked timing mode and the scale (default: per
 point the squared invariant mass of its initial state). The loop settings of

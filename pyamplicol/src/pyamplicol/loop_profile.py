@@ -5,7 +5,9 @@ side (``LoopProfileReport``).
 RUNTIME (``--runtime``, the default): per backend the time per point and per
 stage of ``benchmarking.profile_virtual`` in the default setup (binary64,
 finite part, the checked reduction, no stability checks and no rescue), and
-the ratio to the fastest backend.
+the ratio to the fastest backend. Every call times a new batch of distinct
+flat points (``benchmarking.profile_points``, ``evaluation.phase_space``'s
+seed and energy), the same points on every backend.
 
 STABILITY (``--stability``): per backend, over N flat (RAMBO) phase-space
 points (``cli.flat_points``, ``evaluation.phase_space``'s seed and energy),
@@ -347,15 +349,6 @@ def _backends(requested: object, contribution: str) -> tuple[str, ...]:
     return tuple(sorted(BACKENDS, key=lambda name: name != default))
 
 
-def _validation_points(artifact: Path, process_id: str) -> list[Any]:
-    import json
-
-    record = json.loads(
-        (artifact / "processes" / process_id / "validation-momenta.json").read_text()
-    )
-    return [[entry["momentum"] for entry in point] for point in record["points"]]
-
-
 def _total_finite(row: Any) -> Any:
     total = row[0][0]
     for sector in row[1:]:
@@ -382,12 +375,18 @@ def _served_points(profile: Any) -> int:
     return profile.batch * profile.samples - profile.failed_points
 
 
-def _runtime_setup(unchecked: bool, bench: Any) -> str:
+def _runtime_setup(unchecked: bool, bench: Any, seed: int | None) -> str:
+    """The runtime setup line; ``seed``: of the flat points (None: the
+    caller's points)."""
+
     reduction = "unchecked reduction" if unchecked else "checked reduction"
+    points = (
+        "points of --momenta" if seed is None else f"distinct flat points (seed {seed})"
+    )
     return (
-        f"binary64, finite part, {reduction}; {bench.batch_size} points per "
-        f"call, median of {max(bench.minimum_samples, 1)} calls after "
-        f"{bench.warmup_runs} warm-up"
+        f"binary64, finite part, {reduction}; {bench.batch_size} {points} per "
+        f"call, a new batch every call; median of "
+        f"{max(bench.minimum_samples, 1)} calls after {bench.warmup_runs} warm-up"
     )
 
 
@@ -401,11 +400,12 @@ def profile_loop(
     """Profile a loop artifact (module docstring): the runtime and/or the
     stability statistics of each reduction backend, as ``config.benchmark``
     selects (neither ``runtime`` nor ``stability``: the runtime only), on
-    ``config.evaluation.reduction`` alone when it is set."""
+    ``config.evaluation.reduction`` alone when it is set. The runtime times
+    ``points`` (default: ``benchmarking.profile_points``)."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.api.errors import ReductionUnavailable
-    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.benchmarking import profile_points, profile_virtual
     from pyamplicol.loops.v2.reduction import DEFAULTS
 
     bench = config.benchmark
@@ -429,7 +429,9 @@ def profile_loop(
     runtime_rows = None
     interrupted = False
     if want_runtime:
-        timed = list(points) if points else _validation_points(path, physics.process_id)
+        timed = (
+            list(points) if points else profile_points(path, physics.process_id, config)
+        )
         rows = []
         default = DEFAULTS.get(contribution)
         for backend in backends:
@@ -528,7 +530,11 @@ def profile_loop(
         contribution,
         DEFAULTS.get(contribution),
         backends,
-        _runtime_setup(bool(evaluation.reduction_unchecked), bench)
+        _runtime_setup(
+            bool(evaluation.reduction_unchecked),
+            bench,
+            None if points else evaluation.phase_space.seed,
+        )
         if want_runtime
         else None,
         runtime_rows,

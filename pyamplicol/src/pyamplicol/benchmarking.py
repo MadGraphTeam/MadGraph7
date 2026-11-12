@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import platform
@@ -2753,8 +2752,9 @@ def _sample_statistics(samples: list[float]) -> tuple[float, float, float, float
 class VirtualProfileResult:
     """The profile of a v2 virtual (loop) runtime (``pyamplicol profile`` of a
     loop artifact, :class:`pyamplicol.BenchmarkRunner`): ``samples`` timed
-    calls of one batch of ``batch`` points (the validation points repeated,
-    or the caller's), finite part only, at the runtime's reduction setting.
+    calls of ``batch`` points each (distinct flat points, a new batch every
+    call: ``profile_points``; or the caller's), finite part only, at the
+    runtime's reduction setting.
     ``seconds_per_point`` is the median call's wall time per point (``low``
     and ``high`` the fastest and slowest call's); ``stages`` splits the
     timed calls' total wall time per point into the groups of
@@ -2835,6 +2835,50 @@ def _initial_invariant(point: Sequence[Sequence[object]], initial: int) -> str:
     return repr(initial_invariant(point, initial, exact=False))
 
 
+def profile_points(
+    artifact: Path,
+    process_id: str,
+    config: RunConfig | BenchmarkConfig | None,
+) -> Momenta:
+    """The timed points of a loop runtime profile (``profile_virtual``): one
+    distinct flat (RAMBO) point per point of every warm-up and timed call,
+    ``batch_size x (warmup_runs + max(minimum_samples, 1))`` of them, drawn
+    by ``cli.flat_points`` with ``evaluation.phase_space``'s seed and energy
+    (point i from seed + i; without a RunConfig: its defaults, seed 1 at the
+    validation point's energy)."""
+
+    from pyamplicol.cli.flat_points import draw_flat_points
+    from pyamplicol.config import EvaluationPhaseSpaceConfig
+
+    if isinstance(config, RunConfig):
+        bench, space = config.benchmark, config.evaluation.phase_space
+    else:
+        bench, space = config or BenchmarkConfig(), EvaluationPhaseSpaceConfig()
+    calls = bench.warmup_runs + max(bench.minimum_samples, 1)
+    return cast(
+        Momenta,
+        draw_flat_points(
+            artifact,
+            process=process_id,
+            points=bench.batch_size * calls,
+            seed=space.seed,
+            sqrt_s=space.sqrt_s,
+        ).as_inputs(exact=False),
+    )
+
+
+def _call_batches(points: Momenta, batch_size: int, calls: int) -> list[Momenta]:
+    """The batch of every profiled call: call k takes the ``batch_size``
+    points from k x ``batch_size`` on, through ``points`` cycled (all
+    distinct when ``points`` has ``batch_size x calls`` distinct points)."""
+
+    source = tuple(points)
+    return [
+        tuple(source[(k * batch_size + i) % len(source)] for i in range(batch_size))
+        for k in range(calls)
+    ]
+
+
 def profile_virtual(
     target: Any,
     config: RunConfig | BenchmarkConfig | None,
@@ -2845,7 +2889,9 @@ def profile_virtual(
     progress: Callable[[int, int], None] | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
-    (``VirtualProfileResult``). Settings: ``benchmark.batch_size``,
+    (``VirtualProfileResult``) on ``points`` (default for a path:
+    ``profile_points``), a new batch of them every call (``_call_batches``).
+    Settings: ``benchmark.batch_size``,
     ``warmup_runs`` and ``minimum_samples``; ``evaluation.process``,
     ``reduction``, ``reduction_target`` and ``reduction_unchecked`` when a path
     is loaded; ``evaluation.mu_r2`` (default: per point the squared
@@ -2859,7 +2905,11 @@ def profile_virtual(
     from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
 
     run = config if isinstance(config, RunConfig) else None
-    bench = run.benchmark if run is not None else config or BenchmarkConfig()
+    bench = (
+        config.benchmark
+        if isinstance(config, RunConfig)
+        else config or BenchmarkConfig()
+    )
     evaluation = run.evaluation if run is not None else None
     if isinstance(target, Runtime):
         runtime = target
@@ -2885,27 +2935,24 @@ def profile_virtual(
             raise EvaluationError(
                 "profiling a loaded virtual runtime needs its points (points=)"
             )
-        record = json.loads(
-            (
-                artifact / "processes" / physics.process_id / "validation-momenta.json"
-            ).read_text()
-        )
-        points = [[entry["momentum"] for entry in point] for point in record["points"]]
+        points = profile_points(artifact, physics.process_id, config)
     if not points:
         raise EvaluationError("profiling needs at least one phase-space point")
-    batch = _benchmark_batch(points, bench.batch_size)
+    calls = bench.warmup_runs + max(bench.minimum_samples, 1)
+    batches = _call_batches(points, bench.batch_size, calls)
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
-    scales: Any = (
-        evaluation.mu_r2
-        if evaluation is not None and evaluation.mu_r2 is not None
-        else [_initial_invariant(point, initial) for point in batch]
-    )
-    options = {"mu_r2": scales, "poles": "none", "on_failure": on_failure}
+    options = {"poles": "none", "on_failure": on_failure}
     if reduction is not None:
         options["reduction"] = reduction
-    calls = bench.warmup_runs + max(bench.minimum_samples, 1)
+
+    def scales(batch: Momenta) -> Any:
+        if evaluation is not None and evaluation.mu_r2 is not None:
+            return evaluation.mu_r2
+        return [_initial_invariant(point, initial) for point in batch]
+
     for done in range(bench.warmup_runs):
-        runtime.evaluate(batch, **options)
+        batch = batches[done]
+        runtime.evaluate(batch, mu_r2=scales(batch), **options)
         if progress is not None:
             progress(done + 1, calls)
     walls: list[float] = []
@@ -2916,10 +2963,11 @@ def profile_virtual(
     served_reasons: dict[str, int] = {}
     contribution = runtime.contribution_kind
     reductions: list[Any] = []
-    for _ in range(max(bench.minimum_samples, 1)):
+    for batch in batches[bench.warmup_runs :]:
+        mu_r2 = scales(batch)
         with collected_stage_seconds(runtime) as seconds:
             begin = time.perf_counter()
-            result = runtime.evaluate(batch, **options)
+            result = runtime.evaluate(batch, mu_r2=mu_r2, **options)
             wall = time.perf_counter() - begin
         walls.append(wall)
         if progress is not None:
@@ -2941,17 +2989,18 @@ def profile_virtual(
             for lane in result.diagnostics
             if getattr(lane, "reduction", None) is not None
         )
-    count = len(batch) * len(walls)
+    size = bench.batch_size
+    count = size * len(walls)
     return VirtualProfileResult(
         physics.process_id,
         physics.process,
         contribution,
-        len(batch),
+        size,
         len(walls),
         bench.warmup_runs,
-        statistics.median(walls) / len(batch),
-        min(walls) / len(batch),
-        max(walls) / len(batch),
+        statistics.median(walls) / size,
+        min(walls) / size,
+        max(walls) / size,
         {group: value / count for group, value in totals.items()},
         _reduction_record(reductions),
         any(bool(getattr(r, "unchecked", False)) for r in reductions),
@@ -3044,5 +3093,6 @@ __all__ = [
     "VirtualProfileResult",
     "create_benchmark_backend",
     "is_virtual_target",
+    "profile_points",
     "profile_virtual",
 ]
