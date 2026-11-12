@@ -2868,7 +2868,7 @@ def test_report_builder_prints_record_reasons_in_reader_words():
     )
     assert (
         words("decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries")
-        == "a decay: OpenLoops' loop-squared libraries cover 2 -> n scattering only"
+        == "a decay: OpenLoops' loop-squared libraries cover 2 \u2192 n scattering only"
     )
     assert words("lane status TIRust Unstable") == "TIRust status Unstable"
     assert words("lane status Unstable") == "status Unstable"
