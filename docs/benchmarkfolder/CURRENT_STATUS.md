@@ -19,8 +19,10 @@ results below retain their recorded source bindings.
 
 The [OEM signing successor](OEM_SIGNING.md) updates the current installation
 pin to signed TIRust `10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1`. Its scoped activation and fresh
-bridge qualification are recorded separately. Numerical acceptance evidence
-below remains bound to production revision `0fcd2cd873d6`; signing does not
+bridge qualification are recorded separately. The [completed upstream-main publication](qualification/tirust-oem-main-publication-1/README.md)
+records separate functional validation of the merged source; MadGraph retains
+its validated signed predecessor pin. Numerical acceptance evidence below
+remains bound to production revision `0fcd2cd873d6`; signing does not
 transfer that evidence to the new source or close the outstanding physics and
 local timing gates. The original 44-page PDF, ledger and owner are archived
 byte-identically; the canonical 45-page PDF appends the separately bound

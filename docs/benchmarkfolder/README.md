@@ -3,8 +3,10 @@
 The [current acceptance selection](CURRENT_STATUS.md) distinguishes production
 evidence, unapplied experiments and preserved historical indices.
 The [OEM signing and rebuild note](OEM_SIGNING.md) records the signed TIRust
-pin, installation upgrade and its separate qualification. Existing measured
-campaigns and the preserved 44-page prefix retain their original source
+pin, installation upgrade and its separate qualification. The [upstream-main publication](qualification/tirust-oem-main-publication-1/README.md)
+now records completed functional validation and the published main commit;
+MadGraph intentionally retains its validated signed predecessor pin. Existing
+measured campaigns and the preserved 44-page prefix retain their original source
 identities. The current 45-page PDF adds the separately bound original
 signed-source Zggg timing pilot. The
 [fresh signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)

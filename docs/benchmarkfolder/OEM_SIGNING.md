@@ -2,7 +2,9 @@
 
 Upstream signed revision: `10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1`.
 MadGraph build inputs and observations: [qualification summary](qualification/tirust-oem-signing-1/summary.json).
-Signed MadGraph qualification: **passed**. The separate merged upstream-main suites are in progress.
+Signed MadGraph qualification: **passed**. Scoped activation is also published
+on [TIRust main](https://github.com/huashengshao/TIRust/commit/de60dc480fec6475d2373a533c64d1c40ce23b2e),
+following its [separate completed functional validation](qualification/tirust-oem-main-publication-1/README.md).
 
 TIRust's core crate, `iregi_rust`, embeds the Symbolica library activation
 issued for it. The signed offline expiry is 1 March 2028. Private RAII guards
@@ -29,7 +31,7 @@ it contains the signed revision. `--source` and `--oneloop-source` remain
 available; their source-tree and revision provenance must identify the intended
 copies. NinjaRS and the pinned Symbolica/oneloopmaster revisions are unchanged.
 
-| Check | Result to fill from actual execution |
+| Check | Recorded result |
 |---|---|
 | Fresh-process activation without `SYMBOLICA_LICENSE`, real master fallback, scoped host restriction, calling threads, error and panic cleanup | Passed; real master fallback, Float256, calling threads, error and panic cleanup, restricted host before/after. |
 | Existing concurrent workspace numerical test | Passed without a personal key. |
@@ -40,14 +42,21 @@ copies. NinjaRS and the pinned Symbolica/oneloopmaster revisions are unchanged.
 | Bridge ABI/export tests; installation rollback and tamper checks | 11 release bridge tests, export audit, 63 Python tests and 66 subtests passed. |
 | Coexistence with unchanged NinjaRS | Z and ZZgg (2→4), one saved physical point each: all five reducers plus rescue chain pass both 3e-6 and 1e-8 criteria. |
 
-The pinned signed commit is published on upstream `hs/symbolica-oem`, based on `854b79`. Newer upstream triangle-rotation changes are preserved in a separate local merge awaiting its required full suites before the main push. MadGraph pins the validated signed predecessor to preserve its numerical baseline.
+The pinned signed commit, based on `854b79`, is now an ancestor of published
+upstream main `de60dc480fec6475d2373a533c64d1c40ce23b2e`. The merged upstream
+source passed 37 preflight, 662 core/masters and 708 default-member tests;
+core and default each retain 31 ignored cases. Its metadata-only publication
+child preserves those numerical sources. MadGraph keeps the validated signed
+predecessor pin to preserve its numerical baseline; newer upstream
+triangle-rotation changes are retained on main without changing this pin.
 
 In the 2→4 check, standalone TIRust was accepted in **QP**; the TIRust-first mixed chain was accepted by **NinjaRS DP**. Z production used native TIRust DP. Actual rescue behavior is retained in the summary; these are coefficient/loading checks, not timing acceptance.
 
 The signing change adds activation boundaries; numerical bodies in the pinned revision are unchanged.
 That source comparison and interface tests do not qualify new full-amplitude
-accuracy or performance. The 44-page benchmark and its measured campaign remain
-bound to their recorded predecessor source. They are retained unchanged.
+accuracy or performance. The report's measured campaigns remain bound to their
+recorded sources. This publication leaves the current PDF, ledger and historical
+evidence unchanged.
 Physical-stress accuracy failures, broader experimental qualifications and the
 formal eight-process runtime gates remain open. Hua-Sheng can use the new
 [signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)

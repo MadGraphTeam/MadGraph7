@@ -1,0 +1,101 @@
+{
+  "functional_validation": {
+    "examples_compiled_in_both_core_and_default_graphs": 45,
+    "execution_scope": "Functional validation only. Separate private adaptive-bridge functional checks were authorized during the default suite; no performance timing capture overlapped.",
+    "ignored_case_count": 31,
+    "performance_qualification": false,
+    "qualified_revision": "54263c08a1400612eebbd3a0018bf38e26fca9c5",
+    "same_ignored_cases_in_core_and_default": true,
+    "source_snapshot_sha256": "7aa099cd30ee511c7010860ffff6dd0e7925f32b0775c8153e74580401325229",
+    "stages": [
+      {
+        "cleanup_events": 0,
+        "cleanup_survivors": 0,
+        "failed": 0,
+        "ignored": 0,
+        "log_sha256": "3554553274056fc7a2e4fd073c3cc1c1e593520387bf0f19dd8a1efe6e102895",
+        "passed": 37,
+        "personal_symbolica_license_removed": true,
+        "stage": "preflight",
+        "status": "passed",
+        "terminal_sha256": "33647147b57c07269735a51c95c59d26b8160a7b7f333f44c54773a6c70a5838"
+      },
+      {
+        "cleanup_events": 0,
+        "cleanup_survivors": 0,
+        "failed": 0,
+        "ignored": 31,
+        "log_sha256": "4fab288e04eca85025b2ba9b8bbc43277bf49666df7bd36e5637b0b7c180c9f1",
+        "passed": 662,
+        "personal_symbolica_license_removed": true,
+        "stage": "core",
+        "status": "passed",
+        "terminal_sha256": "8ec149e1e06e9a15b60b870fc88f69003d42ee0e5099422c311bdd34b23f588b"
+      },
+      {
+        "cleanup_events": 0,
+        "cleanup_survivors": 0,
+        "failed": 0,
+        "ignored": 31,
+        "log_sha256": "3acf8d473c0b0abf5e5283ea07c04ed609534b1d4f352ceed2135c27821289d8",
+        "passed": 708,
+        "personal_symbolica_license_removed": true,
+        "stage": "default",
+        "status": "passed",
+        "terminal_sha256": "4cff96f47ecfa1a2fbffede1ea09c6ab72ca9b28e6d6faac24ec1161b2b36165"
+      }
+    ],
+    "tracked_files_stable_during_suites": 466
+  },
+  "madgraph_scope": {
+    "formal_runtime_acceptance": false,
+    "integration_goal_complete": false,
+    "new_full_amplitude_campaign": false,
+    "new_performance_campaign": false,
+    "pinned_tirust_revision": "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1",
+    "reason": "The validated signed predecessor preserves MadGraph's numerical baseline; the merged main also retains newer upstream triangle-rotation changes.",
+    "repinned_to_merged_main": false,
+    "signed_predecessor_qualification": "../tirust-oem-signing-1/summary.json"
+  },
+  "metadata_preservation": {
+    "historical_measurement_prefix_bytes_preserved": 80310,
+    "historical_non_milestone_fields_unchanged": true,
+    "new_upstream_summary_sha256": "df8f90cea95e227b9249596fb4d8767fe2e91f058a7de31347a9cacdefc2751c",
+    "oem_module_sha256": "6717a4497428f4964abdf973417ce4cbfa512f25f11dd1d1be0ec496cd181c40",
+    "other_tracked_files_unchanged": 465,
+    "source_math_and_private_oem_module_unchanged_from_qualified_parent": true
+  },
+  "publication_date_utc": "2026-11-12T21:02:19.941444+00:00",
+  "receipt_sha256": {
+    "completed_functional_validation": "c325cc8c49e94f4d5f992c24f07d5b77e7431318ad694b16481ceec45ad6210d",
+    "metadata_preservation": "7fd4af3aad1f95de48cdb6461836970093bff6ce1177ba8f222ee9324ce0c209",
+    "publication": "fb3d40937f04a5969d09a88fbe9a15e937fa56c8bbf6e0f6ccfa11e56829f1c9",
+    "upstream_report_check": "b910778530a3b7942eaf52fc80a20c2c4df9ccf5f5cae6457e8c26648152c3cb"
+  },
+  "reproduction_commands": [
+    "From a TIRust clone at the qualified parent: cargo +1.97.1 test --locked -p iregi-rust --test direct_engine --test rotation_test_option --test amplitude_fingerprints --test oem_library --test concurrent_workspaces -- --test-threads=1",
+    "From a TIRust clone at the qualified parent: cargo +1.97.1 test --locked -p iregi-rust -p iregi-masters -- --test-threads=1",
+    "From a TIRust clone at the qualified parent: cargo +1.97.1 test --locked -- --test-threads=1",
+    "From the published TIRust main checkout: bash scripts/build-benchmark-report.sh --check"
+  ],
+  "schema": "madloop-tirust-oem-main-publication-v1",
+  "upstream_benchmark_report": {
+    "bytes": 230869,
+    "new_measurements": false,
+    "pdf_sha256": "7fd799fbd08802101524ee20029d672ccfc35f71541f2b2f58576f8681962841",
+    "status": "byte-identical-rebuild-passed"
+  },
+  "upstream_main": {
+    "metadata_child_changed_files": [
+      "docs/benchmark-summary.json"
+    ],
+    "non_force": true,
+    "push_returncode": 0,
+    "qualified_parent": "54263c08a1400612eebbd3a0018bf38e26fca9c5",
+    "revision": "de60dc480fec6475d2373a533c64d1c40ce23b2e",
+    "signed_predecessor_is_ancestor": true,
+    "signed_predecessor_revision": "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1",
+    "status": "pushed-and-remote-main-verified",
+    "url": "https://github.com/huashengshao/TIRust/commit/de60dc480fec6475d2373a533c64d1c40ce23b2e"
+  }
+}
