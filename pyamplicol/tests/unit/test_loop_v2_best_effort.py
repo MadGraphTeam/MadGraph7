@@ -773,8 +773,10 @@ def test_every_sdk_returns_refused_points_with_their_best_effort_value(
 @pytest.fixture(scope="module", params=["loop_gg_zgg", "loop_uux_ttxgg"])
 def heavy(request, loop_native, tmp_path_factory):
     """The two examples where explicit TIRust refuses most flat points
-    (m-lit ux-profile F1: g g > z g g 43 %, u u~ > t t~ g g 77 %), generated
-    from their shipped cards, and eight flat points (seed 1)."""
+    (m-lit ux-profile F1: g g > z g g 43 %, u u~ > t t~ g g 77 %; about 8 %
+    and 26 % since m-lit tir-uuzggg's verified last resort), generated from
+    their shipped cards, and sixteen flat points (seed 1: each row refuses
+    at least one)."""
 
     import shutil
 
@@ -797,7 +799,7 @@ def heavy(request, loop_native, tmp_path_factory):
         0,
         None,
     )
-    flat = draw_flat_points(artifact, process=None, points=8, seed=1, sqrt_s=None)
+    flat = draw_flat_points(artifact, process=None, points=16, seed=1, sqrt_s=None)
     return artifact, flat.as_inputs(exact=True), flat.mu_r2()
 
 
