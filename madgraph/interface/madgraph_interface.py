@@ -13157,10 +13157,32 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # the flavor machinery to enumerate all combinations: permutation-
         # duplicate diagrams then keep a valid flavor and are not trimmed, while
         # genuinely unphysical diagrams (no flavor at all) are still removed.
-        helas_objects.HelasMatrixElement.enumerate_all_flavors = \
-            not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        enumerate_all = not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        # The matrix elements of an earlier output of the same processes are
+        # kept, and they were made (trimmed, their flavors listed) for the
+        # --mask of that output: `output standalone_fortran A` then `output
+        # standalone B --mask=False` wrote B from the representative flavors
+        # and diagrams only. Make them again when the mode differs, from the
+        # amplitudes they were made from: after an output self._curr_amps are
+        # their base amplitudes (see the end of export), which only have the
+        # diagrams kept for that mode, and the orderings --mask=False adds
+        # need the others (q q > w+ w- q q QCD=0, q = u d: 183 diagrams of
+        # 294, 3 of 6 flavours wrong). Matrix elements made elsewhere (no
+        # source_amps) are kept as they are.
+        cached = self._curr_matrix_elements
+        if cached.get_matrix_elements() and \
+                getattr(cached, 'enumerate_all_flavors', False) != enumerate_all \
+                and getattr(cached, 'source_amps', None) is not None:
+            self._curr_amps = cached.source_amps
+            self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = enumerate_all
 
+        source_amps = self._curr_amps
+        made = not self._curr_matrix_elements.get_matrix_elements()
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
+        if made:
+            self._curr_matrix_elements.enumerate_all_flavors = enumerate_all
+            self._curr_matrix_elements.source_amps = source_amps
 
         calls = 0
 

@@ -572,17 +572,21 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             out.write('      return;\n')
             out.write('    }\n')
             if nb_coupling == 1:
-                # A flavored coupling is indexed by the *merged* fermion leg; for
-                # a single merged leg the unmerged partner carries flavor index 0
-                # and the merged leg can be either F1 or F2 (the cudacpp argument
-                # order is not guaranteed to put the merged leg first, unlike the
-                # Fortran side). Pick whichever leg is the merged (partner-
-                # populated) one. For the two-leg case partner1[flv1]==flv2 holds
-                # and flv_sel==flv_index1, reproducing the old behaviour.
-                out.write('    int flv_sel = -1;\n')
-                out.write('    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;\n')
-                out.write('    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;\n')
-                out.write('    if(flv_sel == -1) {\n')
+                # One orientation only, as the Fortran routine: the table is
+                # filled F1 -> F2 (partner1[k1] = k2, value at k1, see
+                # FLV_Coupling.get_partner_indices, also for a single merged
+                # leg, whose unmerged partner is flavor index 0), and F1 / F2
+                # are the arguments of the call. The other orientation,
+                # partner1[flv2] == flv1, is another vertex: for the two
+                # merged quarks of a W coupling it is the W of the opposite
+                # charge. Accepting it (as this routine once did, for the
+                # single-merged-leg tables of the running couplings, then
+                # filled with the merged leg first wherever it sat) made the
+                # amplitudes of a merged subprocess non-zero at flavours they
+                # do not have: a W current of the wrong charge closed by a
+                # VVV vertex (d d~ > w+ w- u u~ of p p > w+ w- j j QCD=0,
+                # |M|^2 x55 with --mask=False, which has no flavor guard).
+                out.write('    if(MCOUP.partner1[flv_index1] != flv_index2) {\n')
                 out.write('      %s\n' % fail)
                 out.write('      return;\n')
                 out.write('    }\n')
@@ -599,7 +603,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # the per-flavor stride is C_ACCESS::flv_stride (nx2 for independent
                 # couplings = scalar broadcast; nx2*neppC for dependent ones = AOSOA
                 # SIMD record), so the same routine body works for both instantiations
-                out.write('    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );\n')
+                out.write('    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );\n')
             else:
                 for i in range(1,nb_coupling+1):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
@@ -608,22 +612,18 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     out.write('    if(zero_coup%i ==0) { COUP%i = C_ACCESS::kernelAccessConst( MCOUP%i.value + C_ACCESS::flv_stride*flv_index1 ); }\n' % (i,i,i))
         else:
             incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
-            # The P1N currents of --hel_recycling (the vertex with one external
-            # fermion left off, see hel_recycle.CppDialect._p1n_group) resolve
-            # the flavour of a single flavoured coupling in BOTH orientations,
-            # as the _0 / _3 routines above do: the table is filled with the
-            # merged leg as its first fermion (ProcessTables.h for a running
-            # coupling) while the call can put that leg second, e.g. the
-            # gluino-squark-quark vertex of MSSM_SLHA2, whose P1N_1 with the
-            # merged antiquark as F2 found partner2[flv] = -1 and dropped the
-            # amplitude for every flavour but the first. Orientation A (the
-            # table's first fermion is F1) uses slot flv_index1 and is tried
-            # first, as in _0; orientation B (it is F2) uses slot flv_index2.
-            # A table where both give a different partner cannot be one current:
-            # the recycler does not split those (p1n_flavour_safe). The full
-            # _1 / _2 routines keep the one orientation they always had.
-            both = nb_coupling == 1 and 'P1N' in self.tag and incoming in (1, 2)
-            slot = 'flv_sel' if both else 'flv_index1'
+            # One orientation, as _0 / _3 above and the Fortran routines: the
+            # table is filled F1 -> F2 (FLV_Coupling.get_partner_indices), so
+            # the partner of an F1 input is partner1[flv1], that of an F2
+            # input partner2[flv2], and the value sits at slot flv_index1.
+            # This holds for the P1N currents of --hel_recycling too (the
+            # vertex with one external fermion left off): they once fell back
+            # on the other orientation, because the tables of the running
+            # couplings (ProcessTables.h) were filled with the merged leg
+            # first wherever it sat (the gluino-squark-quark vertex of
+            # MSSM_SLHA2, with the merged antiquark as F2); those tables are
+            # oriented now, and the fallback gave the opposite-charge W
+            # current of a two-leg table.
             if incoming %2 == 1:
                 outgoing = self.outgoing
                 out.write('    int flv_index%i = F%i.flv_index;\n' % (incoming, incoming))
@@ -632,11 +632,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if both:
-                    out.write('    int flv_index2 = MCOUP.partner1[flv_index1];\n')
-                    out.write('    int flv_sel = flv_index1;\n')
-                    out.write('    if(flv_index2 == -1) { flv_index2 = MCOUP.partner2[flv_index1]; flv_sel = flv_index2; }\n')
-                elif nb_coupling == 1:
+                if nb_coupling == 1:
                     out.write('    int flv_index2 = MCOUP.partner1[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index2 = MCOUP1.partner1[flv_index%i];\n' %(incoming))
@@ -656,11 +652,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if both:
-                    out.write('    int flv_index1 = MCOUP.partner2[flv_index2];\n')
-                    out.write('    int flv_sel = flv_index1;\n')
-                    out.write('    if(flv_index1 == -1) { flv_index1 = MCOUP.partner1[flv_index2]; flv_sel = flv_index2; }\n')
-                elif nb_coupling == 1:
+                if nb_coupling == 1:
                     out.write('    int flv_index1 = MCOUP.partner2[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
@@ -678,7 +670,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                     # so, when we need to shift within the array, we need to double the shift width to account for
                     # both real and imaginary parts
-                    out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*%s );\n' % (name, name, slot))
+                    out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*flv_index1 );\n' % (name, name))
         return out.getvalue()
 
     # OM - add the formats which aloha_writers.ALOHAWriterForCPP is missing.
@@ -2525,20 +2517,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return recipe
 
     @staticmethod
-    def flv_partner_pairs(coupl, dependent):
+    def flv_partner_pairs(coupl, dependent=False):
         """The (k1, k2) pairs (0-based) of a flavoured coupling, k1 the flavour
-        whose slot holds the value, as its table is filled: by
-        FLV_Coupling.get_partner_indices for a fixed coupling (the model's
-        FLV_COUPLING), and with the merged leg always first for a running one
-        (cDPF_partner1/2 of ProcessTables.h, see edit_processtables)."""
+        of the vertex's first fermion (F1), whose slot holds the value, as its
+        table is filled: by FLV_Coupling.get_partner_indices, for a fixed
+        coupling (the model's FLV_COUPLING) as for a running one
+        (cDPF_partner1/2 of ProcessTables.h, see edit_processtables).
+        `dependent` is kept for the callers: both are filled the same way."""
         from madgraph.core import base_objects
         pairs = []
         for key in coupl.flavors:
-            if dependent:
-                nonzero = [i for i in key if i != 0]
-                k1, k2 = nonzero if len(nonzero) == 2 else (nonzero[0], 1)
-            else:
-                k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
+            k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
             pairs.append((k1 - 1, k2 - 1))
         return pairs
 
@@ -2825,12 +2814,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 p2 = [-1] * nMF
                 idc = ['-1'] * nMF
                 for key, gc in coupl.flavors.items():
-                    nonzero = [i for i in key if i != 0]
-                    if len(nonzero) == 2:
-                        k1, k2 = nonzero
-                    else:
-                        # single merged leg: unmerged partner has flavor index 1
-                        k1 = nonzero[0]; k2 = 1
+                    # F1 -> F2, as the fixed couplings (write_flv_couplings)
+                    # and the Fortran tables: for a single merged leg the
+                    # unmerged partner is flavor index 1, on the side of the
+                    # vertex it sits on. The routines read the table in that
+                    # one orientation (MadMatrixALOHAWriter.get_coupling_def);
+                    # it used to put the merged leg first wherever it sat,
+                    # and the routines then accepted both orientations.
+                    k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
                     p1[k1-1] = k2-1
                     p2[k2-1] = k1-1
                     # symbolic idcoup: resolves to the position of this dependent coupling
@@ -3764,29 +3755,32 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # grouped flavors (get_external_flavors_with_iden), so the per-flavor
         # masks set by compute_flavor_masks() are compressed onto those groups.
         # NB: this relies on iflavor being constant across a SIMD vector.
-        # The amplitude guards are NOT only an optimisation: an amplitude
-        # masked for a flavour is not always zero there. A diagram closed by
-        # a bosonic vertex (VVV1_0 of a W and two currents) has no fermion
-        # coupling of its own to vanish, and the fermion currents feeding it
-        # follow the partner tables of the flavoured couplings, so for a
-        # merged flavour it can recount, with the wrong flavour assignment, a
-        # flow another diagram of the merged process carries (d d~ > w+ w-
-        # u u~ of p p > w+ w- j j QCD=0: |M|^2 x55 without the guard).
+        # The guards are an optimisation: an amplitude masked for a flavour
+        # is zero there, as the flavoured routines check each fermion pair in
+        # the one orientation its coupling table is filled in (F1 -> F2, see
+        # MadMatrixALOHAWriter.get_coupling_def), as the Fortran ones do, so
+        # --mask=False (no guard) gives the same |M|^2. They once accepted the
+        # other orientation too, which for the two merged quarks of a W
+        # coupling is the W of the opposite charge: a diagram closed by a
+        # bosonic vertex (VVV1_0 of a W and two such currents) was then
+        # non-zero at flavours it is masked for (d d~ > w+ w- u u~ of p p >
+        # w+ w- j j QCD=0: |M|^2 x55), and the guard was what kept it out.
         # The hr_orig calls cannot carry the if/{} themselves (the recycler
         # reads one call per line and keeps nothing else), so there the mask
         # of each amplitude goes on its //HRAMP tag, the recycler guards every
         # copy of the amplitude with it (hel_recycle.CppDialect), and in the
         # rows mode the color flows of hr_row read the amplitude under the
-        # same guard. The wavefunction guards are only an optimisation (a
-        # wavefunction reaches the color flows only through the amplitudes,
-        # which are guarded): left out of the hr_orig calls.
+        # same guard (its table is not cleared between pages: once an
+        # amplitude is skipped, its stale entry must not be read). The
+        # wavefunction guards are left out of the hr_orig calls (a
+        # wavefunction reaches the color flows only through the amplitudes).
         diag_group_mask, wf_group_mask = self._compute_group_masks(matrix_element)
         if self.hr_orig:
             wf_group_mask = {}
 
         def _guard_open(group_mask):
             # Emit the opening of an `if` guard for a non-full grouped mask.
-            return self.FLAVOUR_GUARD % group_mask
+            return self.flavour_guard(group_mask)
 
         # OM - the four gluon optimisation (set merge_quartic_vertices). A quartic
         # current and the cubic current carrying the same colour factor are
@@ -3970,8 +3964,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             mode = 'rows'
         return mode
 
-    @staticmethod
-    def _hr_amp_tag(call, namp, amplitude, flavour_mask=None):
+    def _hr_amp_tag(self, call, namp, amplitude, flavour_mask=None):
         """The call of amplitude namp, tagged for the recycler: its number (all
         amplitudes write the one scratch amp_sv[0]) and the spin (2s+1) of the
         wavefunction each argument is, in argument order -- which the amplitude
@@ -3984,7 +3977,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                                     ','.join(str(mother.get('spin'))
                                              for mother in amplitude.get('mothers')))
         if flavour_mask is not None:
-            tag += ' flv=0x%x' % flavour_mask
+            import madgraph.madevent.hel_recycle as hel_recycle
+            tag += ' flv=%s' % hel_recycle.CppDialect.flavour_mask_text(
+                flavour_mask, self.flavour_mask_nwords)
         return tag
 
     def _hr_orig_store(self, call, namp, nslot, amplitude, flavour_mask=None):
@@ -4034,16 +4029,24 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 out.append('jamp_sv[%s] += %s%s;' % (njamp, scoeff, operand))
         return self._hr_flavour_guarded(out, flavour_mask)
 
-    # the runtime test of a grouped flavour mask (iflavor is the grouped
-    # flavour index of the page, constant across a SIMD vector)
-    FLAVOUR_GUARD = 'if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {'
+    # the number of 64-bit words of the grouped flavour masks of the matrix
+    # element being written (set by _compute_group_masks)
+    flavour_mask_nwords = 1
 
-    @classmethod
-    def _hr_flavour_guarded(cls, lines, flavour_mask):
+    def flavour_guard(self, flavour_mask):
+        """The opening of the runtime test of a grouped flavour mask (iflavor
+        is the grouped flavour index of the page, constant across a SIMD
+        vector); the same text as the recycler writes, see
+        hel_recycle.CppDialect.flavour_guard."""
+        import madgraph.madevent.hel_recycle as hel_recycle
+        return hel_recycle.CppDialect.flavour_guard(flavour_mask,
+                                                    self.flavour_mask_nwords)
+
+    def _hr_flavour_guarded(self, lines, flavour_mask):
         """lines under the guard of flavour_mask (as they are without one)."""
         if flavour_mask is None or not lines:
             return list(lines)
-        return [cls.FLAVOUR_GUARD % flavour_mask] + \
+        return [self.flavour_guard(flavour_mask)] + \
             ['  ' + line for line in lines] + ['}']
 
     def cached_jamp_plan(self, matrix_element, color_amplitudes):
@@ -4132,9 +4135,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # onto the grouped flavors used at runtime (iflavor). Returns two dicts
     # keyed by id(object) -> grouped bitmask, containing only objects whose mask
     # is NOT all-ones (i.e. that actually benefit from a guard). Both dicts are
-    # empty when masking is disabled (use_flavor_mask False), trivial, or the
-    # process has more than 64 flavor groups.
+    # empty when masking is disabled (use_flavor_mask False) or trivial. A
+    # process of more than 64 flavor groups has masks of several 64-bit words
+    # (flavour_mask_nwords, see hel_recycle.CppDialect.flavour_guard): p p >
+    # j j j j QCD=0 has 116 groups in its q q~ > q q q~ q~, which used to get
+    # no guard at all.
     def _compute_group_masks(self, matrix_element):
+        self.flavour_mask_nwords = 1
         if not getattr(self, 'use_flavor_mask', True):
             return {}, {}
         try:
@@ -4145,8 +4152,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             return {}, {}
         groups = [list(g) for g in matrix_element.get_external_flavors_with_iden()]
         n_groups = len(groups)
-        if n_groups == 0 or n_groups > 64:
+        if n_groups == 0:
             return {}, {}
+        self.flavour_mask_nwords = (n_groups + 63) // 64
         flavor_to_idx = {tuple(f): i for i, f in enumerate(allowed)}
         group_bits = []
         for g in groups:

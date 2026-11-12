@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -266,8 +267,8 @@ class TestCppDialect(unittest.TestCase):
     def test_a_masked_amplitude_is_guarded_every_copy(self):
         """An amplitude only some merged flavours have carries their mask on
         its tag (flv=0x...), and every copy of it, call and fold, is under
-        the guard the plain calls use: it is not always zero at the other
-        flavours (p p > w+ w- j j QCD=0, d d~ > w+ w- u u~: |M|^2 x55)."""
+        the guard the plain calls use (the recycled build skips it at the
+        other flavours, as the plain one does)."""
 
         self.dialect.folds = {7: ['      jampAll_sv[${row} * ncolor] += amp_sv[0];']}
 
@@ -294,6 +295,53 @@ class TestCppDialect(unittest.TestCase):
         plain = self.dialect.render_amplitudes(
             self.AMPLITUDE, [FakeAmp(1, args)], gauge='U', amp_splt=False)
         self.assertNotIn('iflavor', plain)
+
+    def test_a_mask_of_more_than_64_flavour_groups_is_several_words(self):
+        """A subprocess of more than 64 flavour groups (p p > j j j j QCD=0:
+        116 in q q~ > q q q~ q~) has masks of several 64-bit words: the tag
+        pads them to 16 hex digits a word, which is how the recycler reads
+        the number of words back, and the guard picks the word of iflavor
+        before it shifts (a shift by 64 or more is undefined)."""
+
+        dialect = hel_recycle.CppDialect
+        # one word: the guard of old, the tag unpadded
+        self.assertEqual(dialect.flavour_guard(0x10800),
+                         'if( ( 0x10800ULL >> iflavor ) & 0x1ULL ) {')
+        self.assertEqual(dialect.flavour_mask_text(0x5), '0x5')
+        # bits 0, 64 and 129 of a three-word mask
+        mask = (1 << 0) | (1 << 64) | (1 << 129)
+        text = dialect.flavour_mask_text(mask, 3)
+        self.assertEqual(len(text), 2 + 48)
+        self.assertEqual(int(text, 16), mask)
+        guard = dialect.flavour_guard(mask, 3)
+        self.assertEqual(guard,
+            'if( ( iflavor < 64 ? ( 0x1ULL >> iflavor ) : iflavor < 128 ?'
+            ' ( 0x1ULL >> ( iflavor - 64 ) ) : ( 0x2ULL >> ( iflavor - 128 ) )'
+            ' ) & 0x1ULL ) {')
+
+        def bit(iflavor):
+            # the guard's expression, as C++ evaluates it
+            expr = guard[len('if( '):-len(' ) {')].replace('ULL', '')
+            expr = re.sub(r'(\S+) < (\d+) \? (.*?) :', r'(\3) if \1 < \2 else', expr)
+            return bool(eval(expr, {'iflavor': iflavor}))
+        self.assertEqual([i for i in range(192) if bit(i)], [0, 64, 129])
+
+        line = self.AMPLITUDE + ' 2,2,3 flv=%s' % text
+        self.assertEqual(self.dialect.amplitude_flavour_mask(line), mask)
+        self.assertEqual(self.dialect.amplitude_flavour_words(line), 3)
+        self.assertEqual(self.dialect.amplitude_flavour_words(
+            self.AMPLITUDE + ' 2,2,3 flv=0x10800'), 1)
+        self.assertEqual(self.dialect.amplitude_flavour_words(self.AMPLITUDE), 1)
+
+        class FakeAmp(object):
+            def __init__(self, row, args):
+                self.numbers, self.diag_num, self.args = (row,), 7, args
+
+        self.dialect.folds = {7: ['      jampAll_sv[${row} * ncolor] += amp_sv[0];']}
+        rendered = self.dialect.render_amplitudes(
+            line, [FakeAmp(1, self.dialect.arguments(line))], gauge='U',
+            amp_splt=False)
+        self.assertEqual(rendered.split('\n')[0].strip(), guard)
 
     def test_a_line_that_is_not_a_call_is_not_one(self):
         for line in ('      // Amplitude(s) for diagram number 2',
@@ -391,9 +439,9 @@ class TestCppAmplitudeSplit(unittest.TestCase):
 
     def test_a_flavour_table_with_two_partners_is_not_split(self):
         """A P1N current with a fermion output gives its output ONE flavour,
-        resolved from its input through the coupling's table in either
-        orientation (the call can put the table's first fermion second). A
-        table in which a flavour has two partners over both orientations, or,
+        resolved from its input through the coupling's table (partner1 for
+        an F1 input, partner2 for an F2 one, each keeping one partner per
+        flavour). A table in which a flavour has two partners, or,
         for a vertex with several couplings, is not symmetric, cannot be
         followed: the group is evaluated whole instead."""
 
@@ -405,7 +453,7 @@ class TestCppAmplitudeSplit(unittest.TestCase):
                                            for i in (10, 11, 12, 13))]
         safe = hel_recycle.CppDialect.p1n_flavour_safe
         # the gluino-squark-quark vertex of MSSM_SLHA2: merged quark flavour 2
-        # first, gluino (flavour 0) second -- one partner each way
+        # and gluino (flavour 0) -- one partner each way
         self.assertTrue(safe([(2, 0)]))
         self.assertTrue(safe([(0, 0)], several=True))
         self.assertTrue(safe([(0, 1), (1, 0)], several=True))

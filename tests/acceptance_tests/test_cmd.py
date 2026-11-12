@@ -2485,11 +2485,13 @@ print(json.dumps(out))
         subprocess: |M|^2 of every flavour, against the Fortran standalone.
 
         In a merged subprocess an amplitude that only some flavours have is
-        guarded with their mask (if( ( 0x...ULL >> iflavor ) & 0x1ULL )), and
-        the guard is not only an optimisation: a diagram closed by a bosonic
-        vertex (VVV1_0 of a W and two fermion currents that follow the
-        partner tables) is not zero at the other flavours. The recycled build
-        left the guards out of the calls it unfolds, and with them 4 of the 6
+        guarded with their mask (if( ( 0x...ULL >> iflavor ) & 0x1ULL )). The
+        recycled build left the guards out of the calls it unfolds, and as
+        the flavoured routines then also accepted the opposite orientation of
+        a coupling table (the W of the opposite charge, fixed since, see
+        test_madmatrix_mask_false_vs_fortran), a diagram closed by a bosonic
+        vertex (VVV1_0 of a W and two fermion currents) was not zero at the
+        other flavours: 4 of the 6
         flavours of q qx > w+ w- q qx QCD=0 (q = u d) were wrong: d d~ > w+
         w- u u~ x55, u u~ > w+ w- d d~ x14, d u~ > w+ w- d u~ and u d~ > w+
         w- u d~ x4.8 (8 of 18 for the p p > w+ w- j j QCD=0 of a MadSpace run,
@@ -2581,6 +2583,139 @@ print(json.dumps(out))
             if name == 'chunked':
                 self.assertTrue(glob.glob(pjoin(proc_dir, 'HelRecyclingChunks_*.cc')),
                                 'the recycled block was not cut into chunks')
+
+    def test_madmatrix_mask_false_vs_fortran(self):
+        """--mask=False (no flavour guard) must give the |M|^2 of every
+        flavour of a flavour-merged subprocess, against the Fortran
+        standalone, for the plain and the recycled build.
+
+        Without the guards an amplitude is evaluated at every flavour, and
+        must vanish at those it does not have: the flavoured routines check
+        each fermion pair against the coupling's table. The C++ ones also
+        accepted the opposite orientation of the table (partner1[flv2] ==
+        flv1, there for the single-merged-leg tables of the running
+        couplings, which were filled with the merged leg first), which for
+        the two merged quarks of a W coupling is the W of the opposite
+        charge: a diagram closed by a VVV vertex fed by two such currents
+        was non-zero at flavours it does not have. q qx > w+ w- q qx and q q
+        > w+ w- q q QCD=0 (q = u d) had 8 of their 12 --mask=False flavours
+        wrong: d d~ > w+ w- u u~ x55, u d > w+ w- u d x25, d u > w+ w- u d
+        x21, u u~ > w+ w- d d~ x14, u d > w+ w- d u x9.5, d u~ > w+ w- d u~
+        and u d~ > w+ w- u d~ x4.8, d u > w+ w- d u x2.8 (p p > w+ w- j j
+        QCD=0: 24 of 54). The routines now read the table in one orientation,
+        as the Fortran ones, and the running couplings' tables are filled F1
+        -> F2, as the others.
+
+        --mask=False also lists every ordering of the merged flavours (12
+        against 9: d u > w+ w- u d, u d > w+ w- d u and u d > w+ w- u d next
+        to d u > w+ w- d u), and keeps the diagrams that only those orderings
+        have: the outputs here follow a masked one in the same session, which
+        used to hand them the matrix elements made for the masked output (its
+        9 flavours only), and must agree with those of a fresh generation
+        (made again from the amplitudes as generated: after an output the
+        session's amplitudes only have the diagrams that output kept, 183 of
+        the 294 of q q > w+ w- q q).
+        """
+        import glob
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_nomask'
+        dirs = {'fortran': root + '_fortran',
+                'fortran_nomask': root + '_fortran_nomask',
+                'fortran_fresh': root + '_fortran_fresh',
+                'plain': root + '_plain',
+                'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define q = u d')
+        self.do('define qx = u~ d~')
+
+        def generate():
+            self.do('generate q qx > w+ w- q qx QCD=0')
+            self.do('add process q q > w+ w- q q QCD=0')
+        # the masked output first: the others must not reuse its matrix
+        # elements, nor its diagrams
+        generate()
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_nomask'])
+        self.do('output standalone %s -f --hel_recycling=False --mask=False' % dirs['plain'])
+        self.do('output standalone %s -f --mask=False' % dirs['recycled'])
+        generate()
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_fresh'])
+
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            # {pdg: |M|^2} of every subprocess (the two do not share a pdg)
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(pjoin(proc_root, d) for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 2, 'two subprocesses expected in %s' % path)
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix']
+            out = {}
+            for proc_dir in found:
+                self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir),
+                                 'the build of %s failed' % proc_dir)
+                log = pjoin(proc_dir, 'check_flavours.log')
+                subprocess.call(run, stdout=open(log, 'w'),
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+                one = dict((tuple(int(p) for p in pdg.split()),
+                            float(me.replace('D', 'E').replace('d', 'e')))
+                           for pdg, me in entry_re.findall(open(log).read()))
+                self.assertTrue(one, 'no matrix element in %s' % log)
+                out.update(one)
+            return found, out
+
+        def text(path):
+            with open(path) as fsock:
+                return fsock.read()
+
+        def assert_close(test, ref, name):
+            wrong = ['%s: %r, fortran %r' % (pdg, test[pdg], me)
+                     for pdg, me in sorted(ref.items())
+                     if abs(test[pdg] - me) > 1e-10 * me]
+            self.assertFalse(wrong, '%s: %d of %d flavours wrong\n%s'
+                             % (name, len(wrong), len(ref), '\n'.join(wrong)))
+
+        _, fortran = values(dirs['fortran'], True)
+        _, fresh = values(dirs['fortran_fresh'], True)
+        _, nomask = values(dirs['fortran_nomask'], True)
+        self.assertEqual(sorted(nomask), sorted(fresh))
+        assert_close(nomask, fresh, 'fortran --mask=False after a masked output')
+        # the flavours of the masked output, and with --mask=False every
+        # ordering of the two merged final-state quarks of q q > w+ w- q q,
+        # all non-zero
+        self.assertEqual(len(fortran), 9, sorted(fortran))
+        self.assertEqual(len(nomask), 12, sorted(nomask))
+        self.assertTrue(set(fortran) < set(nomask))
+        self.assertTrue(all(me > 0 for me in nomask.values()), nomask)
+        assert_close(nomask, fortran, 'fortran --mask=False')
+
+        guard = '>> iflavor ) & 0x1ULL ) {'
+        for name in ('plain', 'recycled'):
+            proc_dirs, madmatrix = values(dirs[name], False)
+            self.assertEqual(sorted(madmatrix), sorted(fresh), name)
+            assert_close(madmatrix, fresh, name)
+            # what was compared: code without a flavour guard, recycled or not
+            for proc_dir in proc_dirs:
+                recycled = glob.glob(pjoin(proc_dir, 'HelRecycling*.inc'))
+                self.assertNotIn(guard, text(pjoin(proc_dir, 'EvaluateDiagrams.inc')))
+                self.assertNotIn(guard, ''.join(text(f) for f in recycled))
+                if name == 'plain':
+                    self.assertFalse(recycled, '--hel_recycling=False still recycled')
+                else:
+                    self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                    'the --hel_recycling warm-up did not produce '
+                                    'the recycled build of %s' % proc_dir)
 
     def _hel_recycling_vs_plain(self, process,
                                 recycled_flag=' --hel_recycling=True'):
