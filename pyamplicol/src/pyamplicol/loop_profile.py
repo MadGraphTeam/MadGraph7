@@ -246,6 +246,64 @@ class BackendStability:
 
 
 @dataclass(frozen=True, slots=True)
+class FailureCause:
+    """One class of failed or refused points of a profile table (the
+    distribution printed under the runtime and stability tables): the
+    ``backend``, the ``table`` ("runtime" or "stability"), the ``kind``
+    ("best-effort": refused by the backend's own checks and served with its
+    best-effort value; "no value": no binary64 value at all; "no reference":
+    no double-double reference, stability only), the ``count`` of points of
+    that class among the backend's ``total`` points of the table, and the
+    ``reason``: the first message of the class (reasons are grouped with
+    their numbers masked, as ``plan_export.bounded_reasons`` groups them)."""
+
+    backend: str
+    table: str
+    kind: str
+    count: int
+    total: int
+    reason: str
+
+
+def failure_causes(
+    items: Sequence[tuple[str, str, str, str]], totals: Mapping[tuple[str, str], int]
+) -> tuple[FailureCause, ...]:
+    """The ``FailureCause`` classes of ``items`` = (backend, table, kind,
+    reason) per failed point, grouped by backend, table, kind and the
+    number-masked reason, most frequent first per table (ties: first seen);
+    ``totals[(backend, table)]`` the backend's point count in that table."""
+
+    from pyamplicol.loops.v2.plan_export import _NUMBER
+
+    first: dict[tuple[str, str, str, str], str] = {}
+    counts: dict[tuple[str, str, str, str], int] = {}
+    for backend, table, kind, reason in items:
+        key = (backend, table, kind, _NUMBER.sub("#", reason))
+        first.setdefault(key, reason)
+        counts[key] = counts.get(key, 0) + 1
+    order = {key: index for index, key in enumerate(first)}
+    ranked = sorted(
+        first, key=lambda key: (key[1] != "runtime", -counts[key], order[key])
+    )
+    return tuple(
+        FailureCause(
+            key[0], key[1], key[2], counts[key], totals[(key[0], key[1])], first[key]
+        )
+        for key in ranked
+    )
+
+
+def _strip_status(reason: str, status: str) -> str:
+    """A ``benchmarking.failure_reason`` text without its status and the
+    executor's stage name (the kind column says it)."""
+
+    for prefix in (f"{status}: v2-evaluation: ", f"{status}: "):
+        if reason.startswith(prefix):
+            return reason[len(prefix) :]
+    return reason
+
+
+@dataclass(frozen=True, slots=True)
 class LoopProfileReport:
     """``pyamplicol profile`` of a loop artifact (module docstring):
     ``runtime`` and ``stability`` per backend (None when not requested),
@@ -261,6 +319,9 @@ class LoopProfileReport:
     runtime: tuple[BackendRuntime, ...] | None
     stability_setup: Mapping[str, object] | None
     stability: tuple[BackendStability, ...] | None
+    # The failed and refused points of both tables per backend and reason
+    # class (``FailureCause``; empty when nothing failed).
+    failure_causes: tuple[FailureCause, ...] = ()
 
 
 def _backends(requested: object, contribution: str) -> tuple[str, ...]:
@@ -308,15 +369,10 @@ def _served_points(profile: Any) -> int:
 
 
 def _runtime_setup(unchecked: bool, bench: Any) -> str:
-    reduction = (
-        "unchecked reduction (timing mode, no accuracy certificate)"
-        if unchecked
-        else "checked reduction (the backends' own acceptance checks, the default)"
-    )
+    reduction = "unchecked reduction" if unchecked else "checked reduction"
     return (
-        "default setup: binary64, finite part only (poles none), "
-        f"{reduction}, no stability checks, no rescue; {bench.batch_size} points "
-        f"per call, median of {max(bench.minimum_samples, 1)} calls after "
+        f"binary64, finite part, {reduction}; {bench.batch_size} points per "
+        f"call, median of {max(bench.minimum_samples, 1)} calls after "
         f"{bench.warmup_runs} warm-up"
     )
 
@@ -369,8 +425,14 @@ def profile_loop(
                 else backend
             )
             try:
+                # The default policy: a refused point is served with its
+                # best-effort value, and timed as such (m-lit ux-besteffort).
                 profile = profile_virtual(
-                    runtime, config, points=timed, reduction=request
+                    runtime,
+                    config,
+                    points=timed,
+                    reduction=request,
+                    on_failure="best-effort",
                 )
             except ReductionUnavailable as error:
                 rows.append(
@@ -405,6 +467,27 @@ def profile_loop(
         stability_rows, stability_setup = _stability(
             runtime, path, physics, config, backends
         )
+    causes: list[tuple[str, str, str, str]] = []
+    totals: dict[tuple[str, str], int] = {}
+    for row in runtime_rows or ():
+        profile = row.profile
+        if profile is None:
+            continue
+        totals[(row.backend, "runtime")] = profile.batch * profile.samples
+        for kind, status, reasons in (
+            ("best-effort", "best-effort", profile.best_effort_reasons),
+            ("no value", "failed", profile.failure_reasons),
+        ):
+            for reason, count in reasons:
+                text = _strip_status(reason, status)
+                causes += [(row.backend, "runtime", kind, text)] * count
+    for stability_row in stability_rows or ():
+        totals[(stability_row.backend, "stability")] = len(stability_row.per_point)
+        for point in stability_row.per_point:
+            kind = _CAUSE_KINDS.get(point.status)
+            if kind is not None:
+                text = _strip_status(point.reason or kind, "failed")
+                causes.append((stability_row.backend, "stability", kind, text))
     return LoopProfileReport(
         physics.process_id,
         physics.process,
@@ -417,7 +500,16 @@ def profile_loop(
         runtime_rows,
         stability_setup,
         stability_rows,
+        failure_causes(causes, totals),
     )
+
+
+# The stability point statuses of the failure distribution and their kinds.
+_CAUSE_KINDS = {
+    "best-effort": "best-effort",
+    "binary64-failed": "no value",
+    "reference-failed": "no reference",
+}
 
 
 def _stability(
@@ -692,9 +784,11 @@ __all__ = [
     "PERCENTILES",
     "BackendRuntime",
     "BackendStability",
+    "FailureCause",
     "LoopProfileReport",
     "StabilityPercentile",
     "StabilityPoint",
+    "failure_causes",
     "needed_points",
     "percentile_table",
     "profile_loop",
