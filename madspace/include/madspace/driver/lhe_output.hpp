@@ -379,9 +379,10 @@ public:
     /// Append `str` to the file verbatim, unescaped.
     void write_string(const std::string& str);
     /// Append the closing `</LesHouchesEvents>` tag, flush and close the file.
-    /// Throws if writing failed; later calls do nothing.
+    /// Throws if writing failed; later calls do nothing. A failed batch
+    /// compression closes the file at once, leaving it without the closing tag.
     void close();
-    /// Calls @ref close.
+    /// Calls @ref close and logs its error instead of throwing.
     ~LHEFileWriter();
 
 private:

@@ -314,10 +314,9 @@ public:
     virtual std::unique_ptr<GzipCompressor> gzip_compressor(int) const {
         return nullptr;
     }
-    /// Whether @ref gzip_compressor returns a compressor.
-    bool supports_gzip() const {
-        return gzip_compressor(default_gzip_algorithm) != nullptr;
-    }
+    /// Whether @ref gzip_compressor returns a compressor. False, with a logged
+    /// warning, if creating one fails.
+    bool supports_gzip() const;
 };
 
 /// Non-owning handle to a @ref Device.

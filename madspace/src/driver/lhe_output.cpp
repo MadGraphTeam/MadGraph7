@@ -1,4 +1,5 @@
 #include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/logger.hpp"
 
 #include "madspace/util.hpp"
 
@@ -996,7 +997,13 @@ void LHEFileWriter::close() {
     }
 }
 
-LHEFileWriter::~LHEFileWriter() { close(); }
+LHEFileWriter::~LHEFileWriter() {
+    try {
+        close();
+    } catch (const std::exception& e) {
+        Logger::error(std::format("Closing the LHE file failed: {}", e.what()));
+    }
+}
 
 void LHEFileWriter::emit(std::string_view text) {
     if (!_compressor) {
@@ -1013,16 +1020,27 @@ void LHEFileWriter::start_compression() {
     write_compressed();
     std::swap(_pending, _in_flight);
     _pending.clear();
-    _compression = std::async(std::launch::async, [this] {
-        _compressed.clear();
-        _compressor->compress(_in_flight, _compressed);
-    });
+    try {
+        _compression = std::async(std::launch::async, [this] {
+            _compressed.clear();
+            _compressor->compress(_in_flight, _compressed);
+        });
+    } catch (...) {
+        _file_stream.close();
+        throw;
+    }
 }
 
 void LHEFileWriter::write_compressed() {
     if (!_compression.valid()) {
         return;
     }
-    _compression.get();
+    // Close so a lost batch is never followed by later ones.
+    try {
+        _compression.get();
+    } catch (...) {
+        _file_stream.close();
+        throw;
+    }
     _file_stream.write(_compressed.data(), _compressed.size());
 }
