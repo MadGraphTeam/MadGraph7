@@ -263,6 +263,38 @@ class TestCppDialect(unittest.TestCase):
         self.assertIn('jampAll_sv[0 * ncolor]', rendered)
         self.assertIn('jampAll_sv[3 * ncolor]', rendered)
 
+    def test_a_masked_amplitude_is_guarded_every_copy(self):
+        """An amplitude only some merged flavours have carries their mask on
+        its tag (flv=0x...), and every copy of it, call and fold, is under
+        the guard the plain calls use: it is not always zero at the other
+        flavours (p p > w+ w- j j QCD=0, d d~ > w+ w- u u~: |M|^2 x55)."""
+
+        self.dialect.folds = {7: ['      jampAll_sv[${row} * ncolor] += amp_sv[0];']}
+
+        class FakeAmp(object):
+            def __init__(self, row, args):
+                self.numbers, self.diag_num, self.args = (row,), 7, args
+
+        line = self.AMPLITUDE + ' 2,2,3 flv=0x10800'
+        self.assertEqual(self.dialect.amplitude_flavour_mask(line), 0x10800)
+        self.assertEqual(self.dialect.amplitude_spins(line), (2, 2, 3))
+        self.assertEqual(self.dialect.amplitude_diagram(line, []), 7)
+        self.assertIsNone(self.dialect.amplitude_flavour_mask(self.AMPLITUDE))
+        args = self.dialect.arguments(line)
+        rendered = self.dialect.render_amplitudes(
+            line, [FakeAmp(1, args), FakeAmp(4, args)], gauge='U', amp_splt=False)
+        lines = rendered.rstrip('\n').split('\n')
+        self.assertEqual(lines[0].strip(),
+                         'if( ( 0x10800ULL >> iflavor ) & 0x1ULL ) {')
+        self.assertEqual(lines[-1].strip(), '}')
+        self.assertEqual(rendered.count('{'), rendered.count('}'))
+        self.assertEqual(''.join(lines[1:-1]).count('FFV1_0'), 2)
+        self.assertIn('jampAll_sv[3 * ncolor]', ''.join(lines[1:-1]))
+        # and without a mask, no guard
+        plain = self.dialect.render_amplitudes(
+            self.AMPLITUDE, [FakeAmp(1, args)], gauge='U', amp_splt=False)
+        self.assertNotIn('iflavor', plain)
+
     def test_a_line_that_is_not_a_call_is_not_one(self):
         for line in ('      // Amplitude(s) for diagram number 2',
                      '//HRFOLD 7',
@@ -519,6 +551,29 @@ class TestCppTabulatedSplit(unittest.TestCase):
         out = self.render(amps)
         self.assertIn('hr_p1n_fold<W_ACCESS, 4, false>', out)
         self.assertEqual(self.table(out, 'hrM').split(',')[0].strip(), '{ 10')
+
+    def test_a_masked_group_is_guarded_whole(self):
+        """The members of a P1N group are rows of one amplitude, so they have
+        its flavour mask: the group, partial contraction and tables, goes
+        under one guard, and no chunk cut falls inside it."""
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as exporter
+        line = self.LINE + ' flv=0x5'
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = 2
+        try:
+            out = self.dialect.render_amplitudes(line, self.amplitudes(), gauge='U',
+                                                 amp_splt=True)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+        lines = out.rstrip('\n').split('\n')
+        self.assertEqual(lines[0].strip(), 'if( ( 0x5ULL >> iflavor ) & 0x1ULL ) {')
+        self.assertEqual(lines[-1].strip(), '}')
+        body = '\n'.join(lines[1:-1])
+        self.assertIn('FFV1P1N_1<', body)
+        self.assertIn('hr_p1n_fold<W_ACCESS, 4, true>', body)
+        for size in range(1, len(lines) + 1):
+            chunks = exporter.hr_split_statements(lines, size)
+            self.assertEqual(len(chunks), 1, size)
 
     def test_an_unknown_fold_keeps_the_straight_form(self):
         self.dialect.folds = {1: self.FOLD + ['jamp[${row}] += amp_sv[0];']}
@@ -1017,6 +1072,80 @@ class TestRecycledColourSubExpressions(unittest.TestCase):
         self.assertEqual(fold[1:], ['//HRFOLD 7',
             'ampAll_sv[( ${row} * nParity + iParity ) * 40 + 6] = amp_sv[0];',
             '//HRENDFOLD'])
+        # an amplitude only some merged flavours have: their mask on the tag,
+        # for the recycler to guard the call and its store with
+        masked = self.writer._hr_orig_store('FFV1_0( a ); ', 7, 40, Amplitude(), 0x5)
+        self.assertTrue(masked[0].endswith(' //HRAMP 7 2,2,3 flv=0x5'), masked[0])
+        self.assertEqual(masked[1:], fold[1:])
+        # the fold and expanded modes tag it the same way
+        for captures in (None, []):
+            amp = self.writer._hr_orig_amplitude('FFV1_0( a ); ', 1, Amplitude(),
+                                                 Amplitude(), False, self.color,
+                                                 captures, 0x5)
+            self.assertTrue(amp[0].endswith(' //HRAMP 1 2,2,3 flv=0x5'), amp[0])
+            self.assertNotIn('iflavor', '\n'.join(amp))
+
+    @staticmethod
+    def run_cpp(lines, scope):
+        """Run statements of the row loop as Python: the flavour guards
+        (if( ( 0x..ULL >> iflavor ) & 0x1ULL ) { ... }) become if-blocks."""
+        program, depth = [], 0
+        for line in lines:
+            line = line.strip().rstrip(';')
+            if line == '}':
+                depth -= 1
+                continue
+            if line.startswith('if( storeChannelWeights ) '):
+                line = 'if storeChannelWeights: ' + line[len('if( storeChannelWeights ) '):]
+            elif line.startswith('if( (') and line.endswith('{'):
+                line = 'if %s:' % line[2:-1].replace('ULL', '').strip()
+                program.append('    ' * depth + line)
+                depth += 1
+                continue
+            program.append('    ' * depth + line)
+        exec('\n'.join(program), scope)
+
+    def test_rows_mode_flavour_masks(self):
+        """In the rows mode a masked amplitude is neither made nor stored at
+        the flavours it is masked for (the recycler guards it, see
+        CppDialect.render_amplitudes), so what its slot of the amplitude table
+        holds there is another page's: the row loop has to read it under the
+        same guard. Amplitudes 1 and 6 open shared sub-expressions of the
+        color flows (the plain build assigns them), so a skipped one must not
+        leave those uninitialised either."""
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        class Diagram(object):
+            def get(self, key):
+                return 1
+        masks = {1: 0x1, 3: 0x3, 6: 0x1, 8: 0x2}   # 2 grouped flavours
+        amps = {n: complex(n, 0.5 * n - 1) for n in range(1, 9)}
+        stale = 1e6 + 7j
+        ncolor = len(self.color_amplitudes)
+        for p in (plan, None):
+            lines = []
+            for namp in range(1, 9):
+                lines += self.writer._hr_row_lines(
+                    namp, Diagram(), True, self.color,
+                    p[1].get(namp, []) if p else None,
+                    p[2].get(namp, []) if p else [], masks.get(namp))
+            if p:
+                lines += p[3]
+            for iflavor in (0, 1):
+                live = dict((n, a) for n, a in amps.items()
+                            if (masks.get(n, 0x3) >> iflavor) & 1)
+                scope = {'ampRow': [live.get(n, stale) for n in range(1, 9)],
+                         'jamp_sv': [0j] * ncolor,
+                         # garbage: the rows mode does not clear them either
+                         'jampTmp_sv': [stale] * max(p[0] if p else 0, 1),
+                         'numerators_sv': [0.] * 2, 'storeChannelWeights': True,
+                         'cxabs2': lambda z: abs(z) ** 2, 'cxzero_sv': lambda: 0j,
+                         'iflavor': iflavor,
+                         'cxtype': complex, 'cxtype_amp': complex, 'fptype': float}
+                self.run_cpp(lines, scope)
+                for got, want in zip(scope['jamp_sv'], self.expected(live)):
+                    self.assertAlmostEqual(got, want, places=12)
+                self.assertAlmostEqual(scope['numerators_sv'][0],
+                                       sum(abs(a) ** 2 for a in live.values()))
 
     def test_post_lines_only_ever_add(self):
         plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
