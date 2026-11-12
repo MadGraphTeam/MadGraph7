@@ -74,7 +74,9 @@ def _estimate_row(estimate: Any, target: float, color: bool) -> tuple[str, ...]:
     )
 
 
-def _axes(resolved: bool, color: bool, helicity: Any, component: Any) -> tuple:
+def _axes(
+    resolved: bool, color: bool, helicity: Any, component: Any
+) -> tuple[Any, ...]:
     if not resolved:
         return ()
     return (
@@ -415,10 +417,10 @@ def virtual_evaluation_summary(
             )
         )
     fallbacks = {
-        str(lane.reduction.fallback)
+        str(reduction.fallback)
         for lane in result.diagnostics
-        if getattr(lane, "reduction", None) is not None
-        and lane.reduction.fallback is not None
+        if (reduction := getattr(lane, "reduction", None)) is not None
+        and reduction.fallback is not None
     }
     for point, item in enumerate(result.diagnostics):
         status.add_row(
