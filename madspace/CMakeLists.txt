@@ -237,6 +237,7 @@ add_library(
     src/phasespace/two_particle.cpp
     src/phasespace/three_particle.cpp
     src/phasespace/luminosity.cpp
+    src/phasespace/beamstrahlung.cpp
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
     src/phasespace/color_ordered_mapping.cpp

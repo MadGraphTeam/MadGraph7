@@ -1,0 +1,416 @@
+module scale_module
+  use process_module
+  use fks_phase_space_helpers, only: sumdot
+  use mcatnlo_delta_scales, only: pythia8_starting_scales, delta_ok
+  use herwig7_scales, only: herwig7_starting_scales, hw7_ok
+  implicit none
+  double precision,public,allocatable,dimension(:,:) :: shower_scale_nbody, &
+       shower_scale_nbody_max,shower_scale_nbody_min&
+       &,shower_scale_n1body,showerscaleS,showerscaleH
+  double precision,public,allocatable,dimension(:,:,:,:) :: emsca_S&
+       &,emsca_H
+  double precision,public,allocatable :: emsca_S_hard(:,:)
+  double precision,public :: shower_scale_hard,showerscaleS_hard
+  ! The H colour assignment and its dipole scales must have the same owner.
+  integer,public,allocatable :: event_colour_H(:,:,:,:)
+!  double precision,public :: SCALUP
+  double precision,private :: global_ref_scale,shower_scale_factor
+  double precision,private,parameter :: frac_low=0.1d0,frac_upp=1.0d0
+  double precision,private,parameter :: scaleMClow=0d0,scaleMCdelta=3d0
+  double precision,public,parameter :: scaleMCcut=3d0
+  integer,public :: born_flow_picked
+  logical,public,parameter :: force_II_connection=.true.
+  public :: compute_shower_scale_nbody,compute_shower_scale_n1body, &
+       init_scale_module,Bornonly_shower_scale,get_random_shower_dipole_scale, &
+       determine_partner,save_shower_scale_nbody,pythia8_S_scales, &
+       herwig7_S_scales,scalar_S_scales,set_FxFx_shower_scale_nbody
+  private
+contains
+  
+  subroutine init_scale_module(nexternal,shower_scale_factor_in,nfks,nfold)
+    implicit none
+    integer :: nexternal,nfks,nfold
+    double precision :: shower_scale_factor_in
+    if (.not.allocated(shower_scale_nbody)) &
+         allocate(shower_scale_nbody(nexternal-1,nexternal-1))
+    if (.not.allocated(shower_scale_nbody_max)) &
+         allocate(shower_scale_nbody_max(nexternal-1,nexternal-1))
+    if (.not.allocated(shower_scale_nbody_min)) &
+         allocate(shower_scale_nbody_min(nexternal-1,nexternal-1))
+    if (.not.allocated(shower_scale_n1body)) &
+         allocate(shower_scale_n1body(nexternal,nexternal))
+    if (.not.allocated(emsca_S)) &
+         allocate(emsca_S(nfks,nfold,ndelS,ndelS))
+    if (.not.allocated(emsca_S_hard)) allocate(emsca_S_hard(nfks,nfold))
+    if (.not.allocated(emsca_H)) &
+         allocate(emsca_H(nfks,nfold,ndelH,ndelH))
+    if (.not.allocated(event_colour_H)) &
+         allocate(event_colour_H(2,nexternal,nfks,nfold))
+    if (.not.allocated(showerscaleS)) &
+         allocate(showerscaleS(ndelS,ndelS))
+    if (.not.allocated(showerscaleH)) &
+         allocate(showerscaleH(ndelH,ndelH))
+    shower_scale_factor=shower_scale_factor_in
+  end subroutine init_scale_module
+
+  logical function pythia8_S_scales()
+    ! FxFx has its own clustering-scale prescription.
+    pythia8_S_scales=shower_mc_mod.eq.'PYTHIA8' .and. &
+         nincoming_mod.eq.2 .and. ickkw_mod.ne.3
+  end function pythia8_S_scales
+
+  logical function herwig7_S_scales()
+    ! HERWIG7 selects the angular shower.
+    ! Delta is supported only by Pythia8; FxFx has its own prescription.
+    herwig7_S_scales=shower_mc_mod.eq.'HERWIG7' .and. &
+         nincoming_mod.eq.2 .and. ickkw_mod.ne.3 .and. .not.mcatnlo_delta_mod
+  end function herwig7_S_scales
+
+  logical function scalar_S_scales()
+    scalar_S_scales=pythia8_S_scales().or.herwig7_S_scales()
+  end function scalar_S_scales
+
+  subroutine native_S_scales(p,connected)
+    double precision, intent(in) :: p(0:3,next_n)
+    logical, intent(in) :: connected(next_n,next_n)
+    integer :: status
+    if (pythia8_S_scales()) then
+       call pythia8_starting_scales(next_n,p,mass_n,connected, &
+            shower_scale_hard,shower_scale_nbody,status)
+       if (status.eq.delta_ok) return
+    elseif (herwig7_S_scales()) then
+       call herwig7_starting_scales(next_n,p,mass_n,connected, &
+            shower_scale_hard,shower_scale_nbody,status)
+       if (status.eq.hw7_ok) return
+    else
+       status=-1
+    endif
+    write (*,*) trim(shower_mc_mod),' S-event starting scales failed',status
+    stop 1
+  end subroutine native_S_scales
+    
+  subroutine compute_shower_scale_nbody(p,flow_picked,emitter_mass)
+    implicit none
+    integer :: i,j,flow_picked,iflow_min,iflow_max,iflow
+    double precision,dimension(0:3,next_n) :: p
+    double precision, intent(in) :: emitter_mass
+    double precision :: ref_scale,scalemin,scalemax,rrnd
+    logical :: connected(next_n,next_n)
+    double precision, external :: ran2
+    shower_scale_nbody=-1d0
+    shower_scale_nbody_min=-1d0
+    shower_scale_nbody_max=-1d0
+    call refresh_qed_dipoles(p,.true.)
+    call get_global_ref_scale(next_n,p)
+    if (ickkw_mod.eq.3) then
+       call set_FxFx_shower_scale_nbody(global_ref_scale)
+       return
+    endif
+    shower_scale_hard=shower_scale_factor*global_ref_scale
+    if (flow_picked.gt.0) then
+       ! check valid_dipole only for the flow picked
+       iflow_min=flow_picked
+       iflow_max=flow_picked
+    else
+       ! check valid_dipole for any possible flow
+       iflow_min=1
+       iflow_max=max_flows_n
+    endif
+    connected=any(valid_dipole_n(:,:,iflow_min:iflow_max),dim=3)
+    if (qed_matching) connected=qed_dipole_n
+    if (scalar_S_scales()) then
+       ! One damping draw sets SCALUP. The shower limits each directed
+       ! dipole by its kinematics. Damping a capped dipole independently
+       ! would not reproduce the shower driven by the scalar SCALUP.
+       call get_scaleminmax(global_ref_scale,scalemin,scalemax,emitter_mass)
+       scalemin=max(scalemin,scaleMCcut)
+       scalemax=max(scalemax,scalemin+scaleMCdelta)
+       rrnd=damping_inv(ran2(),1d0)
+       shower_scale_hard=scalemin+rrnd*(scalemax-scalemin)
+       call native_S_scales(p,connected)
+       ! These are the bounds of the HARD-scale damping distribution.
+       ! The physical dipole ceiling is a separate veto in get_dead_zone;
+       ! clipping these bounds would change the subtraction below it.
+       where (shower_scale_nbody.ge.0d0)
+          shower_scale_nbody_min=scalemin
+          shower_scale_nbody_max=scalemax
+       endwhere
+       return
+    endif
+    do i=1,next_n-1
+       do j=i+1,next_n
+          if (.not. any(valid_dipole_n(i,j,iflow_min:iflow_max))) cycle
+          ref_scale=get_ref_scale_dipole(next_n,p,i,j)
+          call get_scaleminmax(ref_scale,scalemin,scalemax,emitter_mass)
+          rrnd=ran2()
+          rrnd=damping_inv(rrnd,1d0)
+          scalemin=max(scalemin,scaleMCcut)
+          scalemax=max(scalemax,scalemin+scaleMCdelta)
+          shower_scale_nbody(i,j)=scalemin+rrnd*(scalemax-scalemin)
+          shower_scale_nbody_min(i,j)=scalemin
+          shower_scale_nbody_max(i,j)=scalemax
+          ! symmetrize the matrix:
+          shower_scale_nbody(j,i)=shower_scale_nbody(i,j)
+          shower_scale_nbody_min(j,i)=shower_scale_nbody_min(i,j)
+          shower_scale_nbody_max(j,i)=shower_scale_nbody_max(i,j)
+       enddo
+    enddo
+    if (force_II_connection .and. mcatnlo_delta_mod) then
+       do i=1,2
+          do j=3,next_n
+             do iflow=iflow_min,iflow_max
+                if ((.not.valid_dipole_n(i,j,iflow)) .or. &
+                    (.not.valid_dipole_n(i,3-i,iflow))) cycle
+                shower_scale_nbody(i,j)=shower_scale_nbody(i,3-i)
+                exit
+            enddo
+         enddo
+      enddo
+    endif
+  end subroutine compute_shower_scale_nbody
+
+  subroutine set_FxFx_shower_scale_nbody(born_ref_scale)
+    ! FxFx uses the smallest Born clustering scale, with scalar damping
+    ! bounds. Native kl histories can reuse the clustering done for cuts.
+    ! This operation performs no clustering, Sudakov evaluation or RNG draw.
+    double precision, intent(in) :: born_ref_scale
+    shower_scale_hard=shower_scale_factor*born_ref_scale
+    shower_scale_nbody=shower_scale_hard
+    shower_scale_nbody_min=shower_scale_hard
+    shower_scale_nbody_max=shower_scale_hard+scaleMCdelta
+  end subroutine set_FxFx_shower_scale_nbody
+
+  subroutine save_shower_scale_nbody(ifks,ifold,father,partner)
+    integer, intent(in) :: ifks,ifold,father
+    integer, intent(in), optional :: partner
+    emsca_S_hard(ifks,ifold)=shower_scale_hard
+    if (mcatnlo_delta_mod) then
+       emsca_S(ifks,ifold,:,:)=shower_scale_nbody
+    elseif (scalar_S_scales()) then
+       emsca_S(ifks,ifold,:,:)=shower_scale_hard
+    elseif (present(partner)) then
+       emsca_S(ifks,ifold,:,:)=shower_scale_nbody(father,partner)
+    else
+       emsca_S(ifks,ifold,:,:)=get_random_shower_dipole_scale()
+    endif
+  end subroutine save_shower_scale_nbody
+
+  subroutine compute_shower_scale_n1body(p,i_fks,j_fks,emitter_mass)
+    implicit none
+    double precision,dimension(0:3,next_n1) :: p
+    double precision, intent(in) :: emitter_mass
+    integer i,j,ii,i_fks,j_fks
+    double precision ref_scale,scalemin,scalemax
+    logical :: connected(next_n1,next_n1)
+    call refresh_qed_dipoles(p,.false.)
+    connected=valid_dipole_n1
+    if (qed_matching) connected=qed_dipole_n1
+    call get_global_ref_scale(next_n1,p)
+    do i=1,next_n1
+       do j=1,next_n1
+          if (connected(i,j)) then
+             ref_scale=get_ref_scale_dipole(next_n1,p,i,j)
+             call get_scaleminmax(ref_scale,scalemin,scalemax,emitter_mass)
+             scalemax=max(scalemax,scaleMCcut)
+             shower_scale_n1body(i,j)=scalemax
+          elseif ((i.eq.i_fks .and. j.eq.j_fks) .or. (j.eq.i_fks .and. i.eq.j_fks)) then
+             ! find the partner of i_fks and j_fks
+             ref_scale=99d99
+             do ii=1,next_n1
+                if (connected(i_fks,ii)) then
+                   ref_scale=min(get_ref_scale_dipole(next_n1,p,ii,i_fks),ref_scale)
+                endif
+                ! Directed QED daughters can select the same recoiler.
+                ! Include both invariants in their common H-event bound.
+                if (connected(j_fks,ii).and. &
+                     (qed_matching.or..not.connected(i_fks,ii))) then
+                   ref_scale=min(get_ref_scale_dipole(next_n1,p,ii,j_fks),ref_scale)
+                endif
+             enddo
+             call get_scaleminmax(ref_scale,scalemin,scalemax,emitter_mass)
+             scalemax=max(scalemax,scaleMCcut)
+             shower_scale_n1body(i,j)=scalemax
+          else
+             shower_scale_n1body(i,j)=-1d0
+          endif
+       enddo
+    enddo
+  end subroutine compute_shower_scale_n1body
+  
+  subroutine Bornonly_shower_scale(p,flow_picked)
+    implicit none
+    integer :: i,j,flow_picked
+    double precision,dimension(0:3,next_n) :: p
+    logical :: connected(next_n,next_n)
+    call refresh_qed_dipoles(p,.true.)
+    call get_global_ref_scale(next_n,p)
+    shower_scale_hard=shower_scale_factor*global_ref_scale
+    if (scalar_S_scales()) then
+       connected=valid_dipole_n(:,:,flow_picked)
+       if (qed_matching) connected=qed_dipole_n
+       shower_scale_hard=max(shower_scale_hard,scaleMCcut)
+       call native_S_scales(p,connected)
+       shower_scale_nbody_min=-1d0
+       shower_scale_nbody_max=-1d0
+       return
+    endif
+    if (ickkw_mod.eq.3) then
+       ! For FxFx, the scale should be the smallest clustering scale as
+       ! returned by the clustering routine. This is the global_ref_scale
+       shower_scale_nbody=shower_scale_factor*global_ref_scale
+       shower_scale_nbody_min=-1d0
+       shower_scale_nbody_max=-1d0
+       return
+    endif
+    do i=1,next_n
+       do j=1,next_n
+          if (valid_dipole_n(i,j,flow_picked)) then
+             shower_scale_nbody(i,j)=max(get_ref_scale_dipole(next_n,p,i,j),scaleMCcut)
+          else
+             shower_scale_nbody(i,j)=-1d0
+          endif
+       enddo
+    enddo
+    shower_scale_nbody_min=-1d0
+    shower_scale_nbody_max=-1d0
+  end subroutine Bornonly_shower_scale
+
+  subroutine get_scaleminmax(ref_scale,scalemin,scalemax,emitter_mass)
+    implicit none
+    double precision :: ref_scale,scalemin,scalemax
+    double precision, intent(in) :: emitter_mass
+    scalemin=max(shower_scale_factor*frac_low*ref_scale,scaleMClow)
+    scalemax=max(shower_scale_factor*frac_upp*ref_scale, &
+         scalemin+scaleMCdelta)
+    scalemax=min(scalemax,collider_energy)
+    scalemin=min(scalemin,scalemax)
+    if(abrv_mod.ne.'born' .and. shower_mc_mod(1:7).eq.'PYTHIA6' .and. &
+         emitter_mass.gt.0d0)then
+       ! The caller supplies the massive-FSR floor from its active shower
+       ! history; scale generation does not own that kinematics state.
+       scalemin=max(scalemin,emitter_mass)
+       scalemax=max(scalemin,scalemax)
+    endif
+  end subroutine get_scaleminmax
+           
+  double precision function damping_inv(r,alpha)
+! Inverse of the damping function, implemented only for alpha=1 for the moment
+    implicit none
+    double precision :: r,alpha
+    if(r.lt.0d0.or.r.gt.1d0.or.alpha.ne.1d0)then
+       write(*,*)'Fatal error in damping_inv'
+       stop
+    endif
+    damping_inv=sqrt(r)/(sqrt(r)+sqrt(1d0-r))
+  end function damping_inv
+
+  
+  double precision function get_ref_scale_dipole(n,p,i,j)
+    implicit none
+    integer :: i,j,n
+    double precision,dimension(0:3,n) :: p
+    get_ref_scale_dipole=min(sqrt(max(0d0,sumdot(p(0,i),p(0,j),1d0))) &
+         ,global_ref_scale)
+  end function get_ref_scale_dipole
+  
+  subroutine get_global_ref_scale(n,p)
+    ! this is the global reference shower scale (i.e., without damping),
+    ! i.e. the smallest scale returned by the clustering routine.
+    implicit none
+    integer :: n
+    double precision,dimension(0:3,n) :: p
+    integer :: iproc
+    integer :: nFxFx_ren_scales
+    double precision,allocatable,save :: FxFx_ren_scales(:)
+    double precision,dimension(2) :: FxFx_fac_scale
+    integer,allocatable,save :: need_matching(:)
+    double precision :: dummy1,dummy2
+    logical,parameter :: for_mcatnlo_scale=.true.
+    INTEGER              NFKSPROCESS
+    COMMON/C_NFKSPROCESS/NFKSPROCESS
+    if (qed_matching) then
+       ! QED recoil systems need a hard reference even with no QCD jets.
+       ! Both S and H use the invariant mass of the incoming hard system.
+       global_ref_scale=sqrt(max(0d0,sumdot(p(:,1),p(:,2),1d0)))
+       return
+    endif
+    ! Clustering overwrites these outputs. Retain their storage between
+    ! S/H evaluations, resizing when a different process is initialized.
+    if(allocated(FxFx_ren_scales))then
+       if(size(FxFx_ren_scales).ne.next_n1+1) &
+            deallocate(FxFx_ren_scales,need_matching)
+    endif
+    if(.not.allocated(FxFx_ren_scales))then
+       allocate(FxFx_ren_scales(0:next_n1),need_matching(next_n1))
+    endif
+    if (n.eq.next_n1) then
+       iproc=nFKSprocess
+    else
+       iproc=-nFKSprocess
+    endif
+    call cluster_and_reweight(iproc,dummy1 &
+            ,dummy2,nFxFx_ren_scales,FxFx_ren_scales(0) &
+            ,fxfx_fac_scale(1),need_matching,for_mcatnlo_scale)
+    global_ref_scale=minval(FxFx_ren_scales(0:nFxFx_ren_scales))
+  end subroutine get_global_ref_scale
+
+  double precision function get_random_shower_dipole_scale()
+    implicit none
+    integer :: n_scales,i,j,iscale
+    integer,dimension(next_n**2,2) :: dip
+    double precision,external :: ran2
+    n_scales=0
+    do i=1,next_n
+       do j=1,next_n
+          if (shower_scale_nbody(i,j).gt.0d0) then
+             n_scales=n_scales+1
+             dip(n_scales,1)=i
+             dip(n_scales,2)=j
+          endif
+       enddo
+    enddo
+    iscale=int(ran2()*n_scales)+1
+    get_random_shower_dipole_scale=shower_scale_nbody(dip(iscale,1),dip(iscale,2))
+  end function get_random_shower_dipole_scale
+      
+  subroutine determine_partner(flow_picked,father,partner_picked)
+    implicit none
+    integer :: ndip(0:next_n),i,flow_picked,partner_picked
+    integer, intent(in) :: father
+    double precision,external :: ran2
+    ndip(0)=0
+    if (qed_matching) then
+       do i=1,next_n
+          if (.not.qed_dipole_n(father,i)) cycle
+          ndip(0)=ndip(0)+1
+          ndip(ndip(0))=i
+       enddo
+       if (ndip(0).ne.1) then
+          write (*,*) 'Inconsistent QED recoil connection',father,ndip
+          stop 1
+       endif
+       partner_picked=ndip(1)
+       return
+    endif
+    do i=1,next_n
+       if (valid_dipole_n(i,father,flow_picked)) then
+          ndip(0)=ndip(0)+1
+          ndip(ndip(0))=i
+       endif
+    enddo
+    if (ndip(0).eq.1) then
+       partner_picked=ndip(1)
+    elseif (ndip(0).eq.2) then
+       if (ran2().lt.0.5d0) then
+          partner_picked=ndip(1)
+       else
+          partner_picked=ndip(2)
+       endif
+    else
+       write (*,*) 'Inconsistent dipoles',ndip
+       write (*,*) father,flow_picked
+       stop 1
+    endif
+  end subroutine determine_partner
+
+end module scale_module

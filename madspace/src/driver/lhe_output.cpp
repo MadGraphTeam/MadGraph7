@@ -215,7 +215,64 @@ void LHEEvent::format_to(std::string& buffer) const {
         }
         buffer += "</rwgt>\n";
     }
+    if (beamstrahlung) {
+        // Same element MadEvent writes (rw_events.f). The readers are
+        // format-tolerant -- lhe_parser splits on whitespace, mg5amc_bstrahl
+        // streams two doubles -- so this does not reproduce Fortran's E
+        // format exactly, only the element and its two values.
+        std::format_to(
+            insert_iter,
+            "<beamstrahlung>{:15.7e}{:15.7e} </beamstrahlung>\n",
+            beamstrahlung->first,
+            beamstrahlung->second
+        );
+    }
     buffer += "</event>\n";
+}
+
+void madspace::apply_mlm_hardest_shower_scale(
+    LHEEvent& event, double collider_energy, int max_jet_flavor
+) {
+    if (!event.has_cluster_scales) {
+        return;
+    }
+    auto is_light_parton = [&](int pdg_id) {
+        int id = std::abs(pdg_id);
+        return id == 21 || (id >= 1 && id <= max_jet_flavor);
+    };
+    // the clustering writes exactly the collider energy; leave room for rounding
+    double flag = 0.999 * collider_energy;
+    // the particles that are not light partons carry the core-process scale
+    // (or the collider energy, without a core scale), so it enters the maximum
+    // through them
+    double hardest = event.scale;
+    for (auto& particle : event.particles) {
+        if (particle.status_code == LHEParticle::status_outgoing &&
+            particle.cluster_scale < flag) {
+            hardest = std::max(hardest, particle.cluster_scale);
+        }
+    }
+    for (auto& particle : event.particles) {
+        if (particle.status_code == LHEParticle::status_outgoing &&
+            !is_light_parton(particle.pdg_id)) {
+            particle.cluster_scale = hardest;
+        }
+    }
+}
+
+void madspace::apply_mlm_collider_shower_scale(
+    LHEEvent& event, double collider_energy, int max_jet_flavor
+) {
+    if (!event.has_cluster_scales) {
+        return;
+    }
+    for (auto& particle : event.particles) {
+        int id = std::abs(particle.pdg_id);
+        bool light = id == 21 || (id >= 1 && id <= max_jet_flavor);
+        if (particle.status_code == LHEParticle::status_outgoing && !light) {
+            particle.cluster_scale = collider_energy;
+        }
+    }
 }
 
 std::size_t LHECompleter::append_helicities(const SubprocArgs& args) {

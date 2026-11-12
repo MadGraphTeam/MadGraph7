@@ -91,7 +91,7 @@ C     row-level information to apply the identical-particle correction.
       COMMON /SUBPROC/ IPSEL
       REAL*8 HWGT, XTOT, XTRY, XREJ, XR, YFRAC(0:NCOMB)
       INTEGER NGOOD
-      INTEGER J, JJ
+      INTEGER J, JJ, JB
       INTEGER NB_FAIL
       SAVE NB_FAIL
       DATA NB_FAIL /0/
@@ -200,13 +200,15 @@ C      where in initialization mode as well for the helicity.
             T=MATRIX1(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC)
 
             DO JJ=1,NINCOMING
+              JB = JJ
+              IF (IM.EQ.2) JB = 3-JJ
 C             NB_SPIN_STATE_IN/2 avoids a double counting
 C             of an explicit polarisation in the process
-              IF(POL(JJ).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JJ))
+              IF(POL(JB).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JB))
      $         )) THEN
-                T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2D0
-              ELSE IF(POL(JJ).NE.1D0)THEN
-                T=T*(2D0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2D0
+                T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2D0
+              ELSE IF(POL(JB).NE.1D0)THEN
+                T=T*(2D0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2D0
               ENDIF
             ENDDO
 
@@ -278,13 +280,15 @@ C        in a common block defined in genps.inc.
 
 
         DO JJ=1,NINCOMING
+          JB = JJ
+          IF (IM.EQ.2) JB = 3-JJ
 C         NB_SPIN_STATE_IN/2 avoids a double counting
 C         of an explicit polarisation in the process
-          IF(POL(JJ).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JJ))))
+          IF(POL(JB).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JB))))
      $      THEN
-            T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2D0
-          ELSE IF(POL(JJ).NE.1D0)THEN
-            T=T*(2D0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2D0
+            T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2D0
+          ELSE IF(POL(JB).NE.1D0)THEN
+            T=T*(2D0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2D0
           ENDIF
         ENDDO
 
@@ -744,7 +748,7 @@ C
       INTEGER I,J
       INTEGER SQSPLITORDERS(NSQSO,NSO)
       DATA (SQSPLITORDERS(  1,I),I=  1,  1) /    2/
-      COMMON/SQPLITORDERS1/SQPLITORDERS
+      COMMON/SQPLITORDERS1/SQSPLITORDERS
 C     
 C     BEGIN CODE
 C     
@@ -800,14 +804,14 @@ C
 C     LOCAL VARIABLES
 C     
       INTEGER I
-      INTEGER SQPLITORDERS(NSQSO,NSO)
-      COMMON/SQPLITORDERS1/SQPLITORDERS
+      INTEGER SQSPLITORDERS(NSQSO,NSO)
+      COMMON/SQPLITORDERS1/SQSPLITORDERS
 C     
 C     BEGIN CODE
 C     
       IF (SOINDEX.GT.0.AND.SOINDEX.LE.NSQSO) THEN
         DO I=1,NSO
-          ORDERS(I) =  SQPLITORDERS(SOINDEX,I)
+          ORDERS(I) =  SQSPLITORDERS(SOINDEX,I)
         ENDDO
         RETURN
       ENDIF

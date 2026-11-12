@@ -61,7 +61,7 @@ C       row-level information to apply the identical-particle correction.
         COMMON /SUBPROC/ IPSEL
         INTEGER BROKEN_SYM%(proc_id)s
         REAL*8 XTOT
-        INTEGER  J, JJ
+        INTEGER  J, JJ, JB
       double precision get_channel_cut
       external get_channel_cut
 
@@ -81,6 +81,9 @@ C
     REAL*8 POL(2)
     
     COMMON/TO_POLARIZATION/ POL
+C   a mirror process (IMIRROR=2) has the parton of beam 2 on leg 1
+    INTEGER IMIRROR, IPROC
+    COMMON/TO_MIRROR/ IMIRROR,IPROC
        double precision tmin_for_channel
        integer sde_strat ! 1 means standard single diagram enhancement strategy,
 c      	      	      	   2 means approximation by the	denominator of the propagator
@@ -117,10 +120,13 @@ C ----------
     DO I=1,NCOMB     
        T=TS(I)  
        DO JJ=1,nincoming
-          IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-             T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0 ! NB_SPIN_STATE(JJ)/2d0 is added for polarised beam
-          ELSE IF(POL(JJ).NE.1d0)THEN
-             T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+C         JB: the beam leg JJ comes from
+          JB = JJ
+          IF (IMIRROR.EQ.2) JB = 3-JJ
+          IF(POL(JB).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JB)))) THEN
+             T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2d0 ! NB_SPIN_STATE(JJ)/2d0 is added for polarised beam
+          ELSE IF(POL(JB).NE.1d0)THEN
+             T=T*(2d0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2d0
           ENDIF
        ENDDO
        ANS=ANS+DABS(T)

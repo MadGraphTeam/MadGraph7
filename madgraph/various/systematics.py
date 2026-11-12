@@ -180,9 +180,10 @@ class Systematics(object):
                 raise SystematicsError('EVA only works with e/mu beams, not lpp* = %s' % self.b2)
             #self.b1 = beam1//2212
             isEVAxDIS=True
-        # none, chff, edff
-        if(self.banner.run_card['pdlabel'] in ['none','chff','edff']):
-            raise SystematicsError('Systematics not supported for pdlabel=%s' % self.banner.run_card['pdlabel'])
+        # none, and gamma-UPC (edff, chff, ... with neutron tagging)
+        pdlabel = self.banner.run_card['pdlabel']
+        if pdlabel == 'none' or banner_mod.is_upc_label(pdlabel):
+            raise SystematicsError('Systematics not supported for pdlabel=%s (none and gamma-UPC labels)' % pdlabel)
 
         self.orig_ion_pdf = False
         self.ion_scaling = ion_scaling
@@ -594,7 +595,7 @@ class Systematics(object):
             except RuntimeError:
                 resume.write( '# PDF variation: missing combination\n')
             else:
-                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (percent(pdferr.errplus), percent(pdferr.errminus)))       
+                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (percent(pdferr.errplus), percent(pdferr.errminus)))
         # report error/central not directly linked to the central
         resume.write( "#\n")        
         for lhapdfid,values in pdfs.items():

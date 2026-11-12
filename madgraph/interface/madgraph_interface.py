@@ -805,7 +805,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("syntax: output [" + "|".join(self._export_formats) + \
                     "] [path|.|auto] [options]",'$MG:color:BLUE')
         logger.info("-- Output any generated process(es) to file.",'$MG:BOLD')
-        logger.info("   Default mode is madevent. Default path is \'.\' or auto.")
+        logger.info("   Default mode is mg7. Default path is \'.\' or auto.")
         logger.info("   mode:",'$MG:BOLD')
         logger.info("   - For MadLoop and aMC@NLO runs, there is only one mode and")
         logger.info("     it is set by default.")
@@ -841,17 +841,19 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
-        logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
-        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (off by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes.")
+        logger.info("      --hel_recycling=False: [madevent|standalone|mg7] forbids helicity recycling optimization (the plain matrix element)")
+        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
         logger.info("      --hel_recycling_chunk=<n>: [standalone|mg7] statements per function when the recycled block is cut up (default 200, 0 keeps it in one piece).")
         logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
         logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
         logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
-        logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
+        logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external leg, and quantise the spin of the massive final-state fermions along the reference shared by at least two of the massless vectors they couple to, instead of along their own momentum, so that whole diagrams and helicity configurations vanish (default:False). The two spin states of such a fermion are not helicity states: its helicity is written as 9 (unknown) in the event file.")
+        logger.info("      --fermion_reference=False: with --axial_gauge=True, keep the massive fermions in the helicity basis (default:True; always False for a polarised process and with --density).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
         logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran(default:False)|standalone_rw/msP/msF(default:True)] set the t-channel widths to zero as madevent (see option zerowidth_tchannel)")
         logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
+        logger.info("      --density=<i>[,<j>...]: [standalone_fortran, also for loop processes] keep the helicities of the external legs i, j, ... open and write their spin-density matrix (the other legs are summed over helicity). In the madevent, mg7 and NLO outputs it only selects the default me_frame of the run_card, as a polarized particle does.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
@@ -872,12 +874,20 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   that the resulting matrix elements give the same value.")
         logger.info("o gauge:",'$MG:color:GREEN')
         logger.info("   Check that processes are gauge invariant by ")
-        logger.info("   comparing Feynman and unitary gauges.")
+        logger.info("   comparing Feynman and unitary gauges. For tree-level")
+        logger.info("   processes the axial gauge (and, if the model has a Feynman")
+        logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well,")
+        logger.info("   and so are the external wavefunctions of output")
+        logger.info("   --axial_gauge=True (column Reference): the massless vectors")
+        logger.info("   in the axial gauge of a reference momentum, the massive")
+        logger.info("   fermions quantised along it.")
         logger.info("   This check is, for now, not available for loop processes.")
         logger.info("o brs:",'$MG:color:GREEN')
         logger.info("   Check that the Ward identities are satisfied if the ")
         logger.info("   process has at least one massless gauge boson as an")
-        logger.info("   external particle.")
+        logger.info("   external particle. For tree-level processes, the matrix")
+        logger.info("   element with the reference momenta of output")
+        logger.info("   --axial_gauge=True is compared as well (column Reference).")
         logger.info("o lorentz_invariance:",'$MG:color:GREEN')
         logger.info("   Check that the amplitude is lorentz invariant by")
         logger.info("   comparing the amplitiude in different frames")
@@ -1023,9 +1033,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     all=   : Generate all the real-emission and loop diagrams, ready for aMC@NLO runs.")
         logger.info("     virt=  : Generate only the loop diagrams, read for MadLoop standalone checks/runs.")
         logger.info("     real=  : Generate only the real-emission diagrams, for use with alternative OLP. ")
-        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
-        logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
-        logger.info("   can still handle these.")
+        logger.info("     noborn=: Loop-induced processes (no born amplitude, e.g. g g > h), see below.")
+        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > h), please use ")
+        logger.info("   the 'noborn=' mode: 'output madevent' then integrates them at LO, with MadLoop")
+        logger.info("   for the matrix element. aMC@NLO cannot integrate these processes. 'virt=' and")
+        logger.info("   'sqrvirt=' give the standalone MadLoop output of the loop amplitude, for checks.")
         self._log_interference_syntax()
         self._log_diagram_filter_syntax()
 
@@ -1104,9 +1116,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     all=   : Generate all the real-emission and loop diagrams, ready for aMC@NLO runs.")
         logger.info("     virt=  : Generate only the loop diagrams, read for MadLoop standalone checks/runs.")
         logger.info("     real=  : Generate only the real-emission diagrams, for use with alternative OLP. ")
-        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
-        logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
-        logger.info("   can still handle these.")
+        logger.info("     noborn=: Loop-induced processes (no born amplitude, e.g. g g > h), see below.")
+        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > h), please use ")
+        logger.info("   the 'noborn=' mode: 'output madevent' then integrates them at LO, with MadLoop")
+        logger.info("   for the matrix element. aMC@NLO cannot integrate these processes. 'virt=' and")
+        logger.info("   'sqrvirt=' give the standalone MadLoop output of the loop amplitude, for checks.")
         self._log_interference_syntax()
         self._log_diagram_filter_syntax()
 
@@ -1142,7 +1156,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -1184,7 +1198,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -1212,7 +1226,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
         logger.info(" > '{G}','{H}','{Q}','{W}','{S}' select a piece of the *propagator* of a massive vector")
         logger.info("   and are only valid on a particle that is decayed further (an internal line).")
-        logger.info(" > At LO, users need to set 'group_subprocesses False'. 'me_frame' (run_card)")
+        logger.info(" > At LO, polarized processes work with any 'group_subprocesses' setting. 'me_frame' (run_card)")
         logger.info("   defaults to the rest frame of the massive final-state particles (or their")
         logger.info("   decay products) in p p collisions, [1,2] (the partonic c.m.) in e+ e-.")
         logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
@@ -1521,7 +1535,13 @@ class CheckValidForCmd(cmd.CheckCmd):
         # process died with an AttributeError instead of saying so.
         if args[0] in ['processes', 'diagrams', 'diagrams_text'] and \
                 not self._curr_amps and not getattr(self, '_fks_multi_proc', None):
-            raise self.InvalidCmd("No process generated, please generate a process!")
+            # [amplicol] processes are kept without diagrams
+            if self._curr_amplicol_defs and args[0] != 'processes':
+                raise self.InvalidCmd("Only [amplicol] processes are defined: "
+                    "their matrix elements come from AmpliCol, without diagrams. "
+                    "Use 'display processes' to list them.")
+            elif not self._curr_amplicol_defs:
+                raise self.InvalidCmd("No process generated, please generate a process!")
         if args[0] == 'checks' and not self._comparisons and not self._cms_checks:
             raise self.InvalidCmd("No check results to display.")
 
@@ -3440,7 +3460,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False', '--hel_recycling=True', '--hel_recycling_chunk=', '--hel_recycling_max=', '--hel_recycling_jamp=', '--hel_recycling_tables=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=', '--axial_gauge=True']):
+                                                 '--mask=False', '--prefix=', '--axial_gauge=True', '--fermion_reference=False']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -3944,7 +3964,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './HEPTools/pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
                        'hepmc3_path': './HEPTools/hepmc3',
@@ -4757,6 +4777,9 @@ This implies that with decay chains:
         elif args[0] == 'processes':
             for amp in self._curr_amps:
                 print(amp.nice_string_processes())
+            for procdef in self._curr_amplicol_defs:
+                print('Process: %s [amplicol] (no diagrams)'
+                      % procdef.nice_string(prefix=False).strip())
 
         elif args[0] == 'diagrams_text':
             dirpath, no_open, merge = self._parse_display_output_args(args[1:])
@@ -5988,6 +6011,12 @@ This implies that with decay chains:
             nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
             if nb_part_feyn == nb_part_unit:
                 logger_check.error('No Goldstone present for this check!!')
+            # tree level: the external wavefunctions of output
+            # --axial_gauge=True (reference momenta), in the unitary gauge
+            if myprocdef.get('perturbation_couplings') == []:
+                myprocdef_ref = myprocdef_unit
+            else:
+                myprocdef_ref = None
             gauge_result_no_brs = process_checks.check_unitary_feynman(
                                                 myprocdef_unit, myprocdef_feyn,
                                                 myprocdef_axial,
@@ -5998,7 +6027,8 @@ This implies that with decay chains:
                                                 tir=TIR_dir,
                                                 reuse = options['reuse'],
                                                 output_path = output_path,
-                                                cmd = self)
+                                                cmd = self,
+                                                processes_reference = myprocdef_ref)
             
             # restore previous settings
             self.do_set('gauge %s' % gauge, log=False)
@@ -6190,6 +6220,11 @@ This implies that with decay chains:
             if any('value_fd' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('FD')
             text += 'Gauge results (switching between %s gauge):\n' % '/'.join(gauge_labels)
+            if any('value_ref' in res for res in gauge_result_no_brs[1:]):
+                # not a gauge of the propagators: the external wavefunctions
+                text += 'Reference: unitary gauge with the reference momenta of ' \
+                        'output --axial_gauge=True (external vectors and spin ' \
+                        'axis of the massive fermions)\n'
             text += process_checks.output_unitary_feynman(gauge_result_no_brs) + '\n'
         if cms_results:
             text += 'Complex mass scheme results (varying width in the off-shell regions):\n'
@@ -6262,7 +6297,6 @@ This implies that with decay chains:
         # Reset polarization-citation marker (a new process definition starts)
         self._uses_polarization = False
         self._uses_density_matrix = False
-        self._uses_quarkonia = False
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir
@@ -8531,6 +8565,14 @@ This implies that with decay chains:
         if tool in ['pythia8', 'pythia8_hepmc3']:
             self.options['pythia8_path'] = pjoin(prefix,'pythia8')
             self.exec_cmd('save options %s pythia8_path' % config_file, printcmd=False, log=False)
+            # Build the beamstrahlung main against this Pythia8 while we know
+            # it is fresh. It has to be rebuilt whenever Pythia8 changes, and
+            # a process directory cannot build it itself. Failing here is not
+            # fatal: only dressed-lepton runs with beamstrahlung need it, and
+            # those refuse to shower without it rather than silently using
+            # another main.
+            import madgraph.various.py8_bstrahl as py8_bstrahl
+            py8_bstrahl.build(MG5DIR, self.options['pythia8_path'], force=True)
             self.install_pythia8_main164(prefix, config_file, add_options)
         elif tool == 'lhapdf6':
                 self.options['lhapdf_py3'] = pjoin(prefix,'lhapdf6_py3','bin', 'lhapdf-config')
@@ -9556,10 +9598,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             return self.options # the return is useful for unittest
 
         # Treat each expected input
-        # 1: Pythia8_path and hewrig++ paths
+        # 1: Pythia8_path and herwig7 paths
         # try absolute and relative path
         for key in self.options:
-            if key in ['pythia8_path', 'hwpp_path', 'thepeg_path', 'hepmc_path',
+            if key in ['pythia8_path', 'herwig7_path', 'thepeg_path', 'hepmc_path',
                        'hepmc3_path', 'madanalysis5_path']:
                 if self.options[key] in ['None', None]:
                     self.options[key] = None 
@@ -9583,10 +9625,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                             logger.warning(message)
                             continue
  
-                #this is for hw++
-                if key == 'hwpp_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                    if not os.path.isfile(pjoin(path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                        self.options['hwpp_path'] = None
+                #this is for hw7
+                if key == 'herwig7_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                    if not os.path.isfile(pjoin(path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                        self.options['herwig7_path'] = None
                     else:
                         continue
                 # this is for thepeg
@@ -11600,20 +11642,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """
         args = ['eMELA'] + args
         self.check_set(args)
-        
+
         try:
             p = subprocess.Popen([args[1], '--version'], stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
             output, error = p.communicate()
-            output = output.decode()
-            res = 0
+            output = output.decode(errors='ignore').strip()
+            res = p.returncode
         except Exception:
-            res = 1
+            output, res = '', 1
 
-        if res != 0 or error:
+        # Judge eMELA-config by its exit code and the version it prints, not by
+        # stderr: it is a bash script built on egrep, which grep >= 3.8 (e.g.
+        # AlmaLinux 10, Fedora) flags on stderr as obsolescent. Rejecting any
+        # stderr output dropped a valid eMELA there.
+        if res != 0 or not output:
             if args[1] != 'None':
                 logger.info('%s does not seem to correspond to a valid eMELA-config ' % args[1] + \
-                'executable.\n Please set the \'fastjet\'' + \
+                'executable.\n Please set the \'eMELA\'' + \
                 'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).' +
                     '\n MadGraph7> set eMELA /PATH/TO/eMELA-config\n')
             self.options[args[0]] = None
@@ -12314,8 +12360,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
         logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
         logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
-        logger.info(" > auto:  ddm for the output formats which do not need a color")
-        logger.info("          flow decomposition (standalone), trace otherwise")
+        logger.info(" > auto:  ddm for the output formats which support it (madevent, mg7,")
+        logger.info("          standalone and standalone_fortran; the trace basis is still")
+        logger.info("          used next to it for the color flow of each event), trace")
+        logger.info("          otherwise (NLO, pythia8, matchbox, ...)")
 
     def set2_color_basis(self, args, log=True):
         """Set the color basis used for fully adjoint (multi-gluon) processes.
@@ -12341,7 +12389,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 # not documented options:
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
-#hepmc_path               	hepmc3_path              	hwpp_path
+#hepmc_path               	hepmc3_path              	herwig7_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
 #thepeg_path              	yoda_path
@@ -12640,6 +12688,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         line_options = dict( (arg[2:].split('=')  if "=" in arg else (arg[2:], True))
                              for arg in args if arg.startswith('--'))
 #        line_options = dict(arg[2:].split('=') for arg in args if arg.startswith('--') and '=' not in arg)
+        # helicity recycling is on by default for the madmatrix outputs: 'auto'
+        # recycles like True but stays quiet where a directory cannot be
+        # recycled. A cuda/hip build of the output is the plain matrix element
+        # anyway (backend/gpu/SigmaKin.cc), so nothing is lost on a GPU.
+        # --hel_recycling=False (or the spin>3 / --me_exporter rules above)
+        # keeps the plain one.
+        if self._export_format in ('standalone', 'mg7', 'mg7_v5') and \
+                                            'hel_recycling' not in line_options:
+            line_options['hel_recycling'] = 'auto'
         main_file_name = ""
         try:
             main_file_name = args[args.index('-name') + 1]
@@ -13303,14 +13360,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
             # the P1N (amplitude split) routines: madevent's helicity recycling,
-            # and the C++ one of a madmatrix output asked for --hel_recycling
+            # and the C++ one of a madmatrix output (--hel_recycling, on by
+            # default: 'auto')
             exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
                                                        'output_options') or {}
             cpp_recycling = hasattr(getattr(self._curr_exporter,
                                             'oneprocessclass', None),
                                     'write_recycled') and \
                 str(exporter_opts.get('hel_recycling', False)).lower() in \
-                                                       ('true', '1', 'yes')
+                                               ('true', '1', 'yes', 'auto')
             if (self._export_format == 'madevent' or cpp_recycling) and \
                 not 'no_helrecycling' in flaglist and \
                 not (self._curr_amps and isinstance(
@@ -13359,8 +13417,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             ## write fj_lhapdf_opts file
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
-            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
-                                                     'hepmc_path', 'hepmc3_path', 'eMELA']
+            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'herwig7_path',
+                            'thepeg_path', 'hepmc_path', 'hepmc3_path', 'eMELA']
             to_keep = {}
             for opt in opts_to_keep:
                 if self.options[opt]:
@@ -13463,13 +13521,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         except Exception:
             pass
 
-        # quarkonium / leptonium (NRQCD/NRQED) models: detect from model name
+        # quarkonium / leptonium (NRQCD/NRQED): a bound state in the generated
+        # processes (e.g. with 'add model sm_onia'), or such a model by name
         _quarkonia_kws = ('nrqcd', 'nrqed', 'quarkon', 'leptonium')
         try:
             _mn = (self._curr_model.get('name') or '').lower() if self._curr_model else ''
         except Exception:
             _mn = ''
-        if getattr(self, '_uses_quarkonia', False) or any(k in _mn for k in _quarkonia_kws):
+        if self.has_onium_amplitude() or any(k in _mn for k in _quarkonia_kws):
             pairs.append(('ColpaniSerri:2025vdz',
                            'S-wave quarkonium/leptonium production (NRQCD/NRQED)'))
 
@@ -14437,6 +14496,8 @@ _launch_usage = "launch [DIRPATH] [options]\n" + \
          "   Example: launch PROC_sm_1 --name=run2 \n" + \
          "   Example: launch ../pythia8 \n"
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory in order to launch the different program")
 _launch_parser.add_option("-n", "--name", default='', type='str',
