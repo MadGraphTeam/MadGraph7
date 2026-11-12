@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -61,7 +62,13 @@ def test_unlicensed_loop_generation_and_evaluation_run_while_the_permit_is_held(
     restricted-mode banner. The controls: a plain Symbolica process aborted
     meanwhile (``permit.record["verified"]``), and so does the same
     generation with the native key disabled (``PYAMPLICOL_NATIVE_LIBRARY_KEY
-    =off``), so generation does reach the native copy of Symbolica."""
+    =off``), so generation does reach the native copy of Symbolica. The
+    control is identified by its SIGABRT (the workspace builds with
+    ``panic = "unwind"``, so only Symbolica's licence check aborts), not by
+    the banner: during generation file descriptor 1 is the pipe of
+    ``symbolica_log.capture``, whose reader thread dies with the aborting
+    process, so the banner Symbolica wrote just before ``abort()`` reaches
+    the captured output only when the reader forwarded it in time."""
 
     portability = _portability()
     card = tmp_path / "loop_generate.toml"
@@ -84,8 +91,9 @@ def test_unlicensed_loop_generation_and_evaluation_run_while_the_permit_is_held(
             permit.environment(no_key),
             tmp_path,
         )
-        assert control.returncode != 0
-        assert BANNER in control.stdout + control.stderr
+        assert control.returncode == -signal.SIGABRT, (
+            control.stdout + control.stderr
+        )[-3000:]
         for arguments in steps:
             done = _run(card, arguments, permit.environment(environment), tmp_path)
             output = done.stdout + done.stderr
