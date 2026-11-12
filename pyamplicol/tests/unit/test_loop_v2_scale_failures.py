@@ -5,7 +5,8 @@ The native parameter program refuses a whole batch when a counterterm coupling
 is not finite at one point's scale in the lane's carrier (``mu_r2 = "1e-400"``
 underflows in binary64). The v2 runtimes re-run such a batch per exact scale
 (``runtime.virtual.isolate_scale_failures``), so with ``on_failure="return"``
-only the points of that scale fail, with a typed per-point diagnostic, and the
+(and with the default "best-effort", which has no value to offer there) only
+the points of that scale fail, with a typed per-point diagnostic, and the
 other points keep the values they have without it (HANDOFF §9.16). A
 non-positive ``mu_r2`` stays an invalid input of the whole call.
 """
@@ -93,7 +94,9 @@ def _assert_failed_alone(result, bad: set[int]) -> None:
 def test_a_non_finite_counterterm_coupling_fails_only_its_points(runtime):
     """Inclusive (``loops.v2.artifact``) and resolved (``runtime.virtual``)
     evaluations, with and without poles: the bad scale's point fails alone,
-    the others equal a batch without it bitwise; ``raise`` names the point."""
+    the others equal a batch without it bitwise; the default best-effort
+    policy returns it failed (no value exists) with a "failed" warning as
+    data; ``raise`` names the point."""
 
     points = [POINTS[0], POINTS[0], POINTS[1]]
     scales = [GOOD[0], BAD, GOOD[1]]
@@ -111,8 +114,21 @@ def test_a_non_finite_counterterm_coupling_fails_only_its_points(runtime):
     # A batch of the bad scale only: every point returned, failed.
     alone = runtime.evaluate(POINTS, mu_r2=BAD, on_failure="return")
     _assert_failed_alone(alone, {0, 1})
+    # The default policy ("best-effort", m-lit ux-besteffort) never raises
+    # for a point: the bad scale's point has no value at all (no unchecked
+    # reduction can give one without a finite coupling), so it stays failed
+    # with its reason, returned as data in one "failed" warning; the other
+    # points are the clean batch's values bitwise.
+    default = runtime.evaluate(points, mu_r2=scales, poles="none")
+    _assert_failed_alone(default, {1})
+    assert default.diagnostics[1].best_effort is None
+    assert [default.values[0], default.values[2]] == list(clean.values)  # "none"
+    (warning,) = (w for w in default.warnings if w.source == "numerical")
+    assert (warning.kind, warning.count, warning.points) == ("failed", 1, (1,))
+    assert NOT_FINITE in warning.message
+    # The opt-in strict mode raises and names the point.
     with pytest.raises(EvaluationError, match=r"failed at point 1: mu_r2 = 1E-400: "):
-        runtime.evaluate(points, mu_r2=scales)
+        runtime.evaluate(points, mu_r2=scales, on_failure="raise")
     # A non-positive scale is an invalid input of the whole call.
     with pytest.raises(ValueError, match="mu_r2 must be positive"):
         runtime.evaluate(points, mu_r2=[GOOD[0], "0", GOOD[1]], on_failure="return")
