@@ -1699,12 +1699,38 @@ class TestCheckGaugeDecayChain(unittest.TestCase):
                          ['t > e+ ve b]', 't > mu+ vm b]'])
         for diff, values in rows.values():
             self.assertLess(diff, 1e-12)
+        # a leg tagged with several flavours ('define q = u c') checks each of
+        # them, not only the first: u d~ and c s~ (u s~ and c d~ vanish)
+        cmd.exec_cmd('define qq = u c')
+        cmd.exec_cmd('define qb = d~ s~')
+        labels, rows = self.check_gauge(
+                'qq qb > w+{0} z, w+ > e+ ve, z > mu+ mu-', cmd)
+        flavours = sorted(name.split('[')[1].split(' >')[0] for name in rows)
+        self.assertEqual(flavours, ['c s~', 'u d~'])
+        for diff, values in rows.values():
+            self.assertLess(diff, 1e-9)
+
+    def test_check_gauge_restores_the_gauge(self):
+        """'check gauge' switches the session through the unitary, axial and
+        FD gauges: the gauge of the session comes back when the check refuses
+        the process after the switch, as on success."""
+        import madgraph
+        import aloha
+        self.cmd.exec_cmd('set gauge Feynman')
+        try:
+            self.assertRaises(madgraph.InvalidCmd, lambda: self.cmd.exec_cmd(
+                'check gauge e+ e- > a z, a > mu+ mu-', errorhandling=False))
+            self.assertEqual(self.cmd.options['gauge'], 'Feynman')
+            self.assertIs(aloha.unitary_gauge, False)
+        finally:
+            self.cmd.exec_cmd('set gauge unitary')
 
     def test_check_decay_chain_refused(self):
         """Decay chains: only 'check gauge', without loops, outside the
         complex-mass scheme, and with massive decayed particles."""
         import madgraph
         for line in ('check brs t > w+ b, w+ > ta+ vt',
+                     'check gauge t > w+ b, w+ > ta+ vt --events=events.lhe',
                      'check full t > w+ b, w+ > ta+ vt',
                      'check gauge u u~ > z g, z > mu+ mu- [QCD]',
                      'check gauge e+ e- > a z, a > mu+ mu-'):

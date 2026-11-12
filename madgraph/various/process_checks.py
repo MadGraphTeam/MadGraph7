@@ -3206,6 +3206,15 @@ def fixed_string_length(mystr, length):
 #===============================================================================
 # check_gauge
 #===============================================================================
+def set_widths_to_zero(evaluator):
+    """The widths of the model of an evaluator set to zero, as for the gauge
+    checks outside the complex-mass scheme (a width breaks gauge
+    invariance)."""
+    param = evaluator.full_model.get('parameter_dict')
+    for particle in evaluator.full_model.get('particles'):
+        if particle.get('width') != 'ZERO':
+            param[particle.get('width')] = 0.
+
 def check_gauge(processes, param_card = None,cuttools="", tir={}, reuse = False, 
                          options=None, output_path=None, cmd = FakeInterface()):
     """Check gauge invariance of the processes by using the BRS check.
@@ -3232,9 +3241,7 @@ def check_gauge(processes, param_card = None,cuttools="", tir={}, reuse = False,
         if not cmass_scheme and multiprocess.get('perturbation_couplings')==[]:
             # Set all widths to zero for gauge check
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            set_widths_to_zero(evaluator)
         results = run_multiprocs_no_crossings(check_gauge_process,
                                            multiprocess,
                                            evaluator,
@@ -5315,9 +5322,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                            reuse = False)
         if not cmass_scheme and multiprocess_unit.get('perturbation_couplings')==[]:
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            set_widths_to_zero(evaluator)
 
         output_u = run_multiprocs_no_crossings(get_value,
                                            multiprocess_unit,
@@ -5354,9 +5359,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
 
         if not cmass_scheme and multiprocess_feynm.get('perturbation_couplings')==[]:
             # Set all widths to zero for gauge check
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            set_widths_to_zero(evaluator)
 
         output_f = run_multiprocs_no_crossings(get_value, multiprocess_feynm,
                                                             evaluator, momentum,
@@ -5379,9 +5382,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                                 reuse = False)
 
                 if not cmass_scheme and multiprocess_axial.get('perturbation_couplings')==[]:
-                    for particle in evaluator.full_model.get('particles'):
-                        if particle.get('width') != 'ZERO':
-                            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+                    set_widths_to_zero(evaluator)
 
                 output_axial = run_multiprocs_no_crossings(get_value, multiprocess_axial,
                                                                    evaluator, momentum,
@@ -5404,9 +5405,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                                 reuse = False)
 
                 if not cmass_scheme and multiprocess_fd.get('perturbation_couplings')==[]:
-                    for particle in evaluator.full_model.get('particles'):
-                        if particle.get('width') != 'ZERO':
-                            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+                    set_widths_to_zero(evaluator)
 
                 output_fd = run_multiprocs_no_crossings(get_value, multiprocess_fd,
                                                                     evaluator, momentum,
@@ -6686,35 +6685,34 @@ def decay_chain_flavors(model, legs):
     """The physical flavour combinations of the external legs of a
     decay-chain process (get_legs_with_decays), as [(flavour tag of each leg,
     label)]. With flavour grouping a merged leg stands for several flavours,
-    picked at run time from its 'flavor' tag (the first one without a tag):
-    an untagged merged leg, e.g. from 'p' or 'l+', is expanded into its whole
-    group, as get_flavor_choices does for a process without decays. The label
-    is ' [u d~ > e+ ve mu+ mu-]', or '' when no leg is merged."""
+    picked at run time from its 'flavor' tag: each leg is expanded by
+    get_flavor_choices, as the legs of a process without decays are, into the
+    flavours tagged on it ('define q = u c' gives u and c) or, untagged
+    ('p', 'l+'), into its whole group. The label is ' [u d~ > e+ ve mu+ mu-]',
+    or '' when no leg is merged."""
 
-    merged = model.get('merged_particles') or {}
     choices = []
     for leg in legs:
-        pid = leg.get('id')
-        sign = 1 if pid > 0 else -1
-        if abs(pid) not in merged:
-            choices.append([(leg.get('flavor'), pid)])
-        elif leg.get('flavor'):
-            choices.append([(leg.get('flavor'),
-                             sign * abs(leg.get('flavor')[0]))])
-        else:
-            # initial-state flavour stored with the sign of the crossed
-            # particle, as MultiProcess.generate_multi_amplitudes does
-            choices.append([([sign * pdg if leg.get('state') else -sign * pdg],
-                             sign * pdg) for pdg in merged[abs(pid)]])
-    any_merged = any(abs(leg.get('id')) in merged for leg in legs)
+        # a process leg stores an initial-state flavour with the sign of the
+        # crossed particle (MultiProcess.generate_multi_amplitudes); the
+        # multi-leg get_flavor_choices reads has the sign of the particle
+        sign = 1 if leg.get('state') else -1
+        multileg = base_objects.MultiLeg({'ids': [leg.get('id')],
+                        'state': leg.get('state'),
+                        'flavor': [sign * f for f in leg.get('flavor') or []]})
+        choices.append(get_flavor_choices(multileg, model))
+    any_merged = any(pdg is not None for leg in choices for _, pdg in leg)
     ninitial = len([leg for leg in legs if not leg.get('state')])
     out = []
     for combination in itertools.product(*choices):
-        flavors = [flavor for flavor, _ in combination]
+        flavors = [leg.get('flavor') if pdg is None else
+                   [pdg if leg.get('state') else -pdg]
+                   for leg, (_, pdg) in zip(legs, combination)]
         if not any_merged:
             out.append((flavors, ''))
             continue
-        names = [model.get_particle(pdg).get_name() for _, pdg in combination]
+        names = [model.get_particle(pid if pdg is None else pdg).get_name()
+                 for pid, pdg in combination]
         out.append((flavors, ' [%s > %s]' % (' '.join(names[:ninitial]),
                                              ' '.join(names[ninitial:]))))
     return out
@@ -6765,13 +6763,14 @@ def check_unitary_feynman_decay_chains(gauge_procdefs, param_card=None,
             continue
         with misc.TMP_variable(aloha, 'unitary_gauge', gauge):
             model = procdef.get('model')
+            # reuse: a matrix element is exported once and evaluated for each
+            # flavour combination; clean_added_globals below forgets it before
+            # the next gauge
             evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
-                                               auth_skipping=False, reuse=False)
+                                               auth_skipping=False, reuse=True)
             param = evaluator.full_model.get('parameter_dict')
             if not cmass_scheme:
-                for particle in evaluator.full_model.get('particles'):
-                    if particle.get('width') != 'ZERO':
-                        param[particle.get('width')] = 0.
+                set_widths_to_zero(evaluator)
             for particle in decayed_particles(evaluator.full_model, procdef):
                 if particle.get('width') == 'ZERO':
                     raise InvalidCmd("'check gauge' with a decay chain needs "
@@ -6813,7 +6812,11 @@ def check_unitary_feynman_decay_chains(gauge_procdefs, param_card=None,
     output = [first]
     for key in order:
         values = results[key]
-        if 'unitary' not in values or None in values.values():
+        missing = [name for name, _, procdef in gauge_procdefs
+                   if procdef is not None and values.get(name) is None]
+        if missing:
+            logger.warning("%s: not compared, no value in the %s gauge"
+                           % (key, ' and '.join(missing)))
             continue
         if not any(value['m2'] for value in values.values()):
             # a flavour combination of a grouped process that does not

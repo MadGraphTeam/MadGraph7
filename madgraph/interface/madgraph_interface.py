@@ -1820,6 +1820,12 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd("'check gauge' with a decay chain is "
                     "not available in the complex-mass scheme: use 'set "
                     "complex_mass_scheme False'.")
+            if any(elem.startswith('--events') for elem in args):
+                # the events hold the decay products, not the decayed
+                # particles the phase-space point of a chain is built from
+                raise self.InvalidCmd("'check gauge' with a decay chain does "
+                    "not take --events: its point puts the decayed particles "
+                    "on shell.")
         
         user_options = {'--energy':'1000','--split_orders':'-1',
                    '--reduction':'1|3|5|6','--CTModeRun':'-1',
@@ -6706,56 +6712,60 @@ This implies that with decay chains:
             # a point where its decayed particles are on shell (process_checks.
             # check_unitary_feynman_decay_chains); each gauge validates its
             # own polarised propagators
-            self.do_set('gauge unitary', log=False)
-            myprocdef_unit = self.extract_check_process(line)
-            if decay_chain:
-                logger_check.info("Decay chain: the Feynman gauge is not "
-                    "compared (the chain fixes the intermediate vector, "
-                    "without its Goldstone boson); the decayed particles are "
-                    "put on shell, with a width of 1e-9 M.")
-                myprocdef_feyn = None
-            else:
-                self.do_set('gauge Feynman', log=False)
-                myprocdef_feyn = self.extract_check_process(line)
-            if myprocdef.get('perturbation_couplings') == [] and \
-               (args[0] == 'full' or (args[0] == 'gauge')) and \
-               0 in self._curr_model.get('gauge'):
-                self.do_set('gauge axial', log=False)
-                myprocdef_axial = self.extract_check_process(line)
-            else:
-                myprocdef_axial = None
-            if myprocdef.get('perturbation_couplings') == [] and \
-               (args[0] == 'full' or (args[0] == 'gauge')) and \
-               1 in self._curr_model.get('gauge'):
-                self.do_set('gauge FD', log=False)
-                try:
-                    myprocdef_fd = self.extract_check_process(line)
-                except self.InvalidCmd as error:
-                    # e.g. a unitary-only propagator piece ({G}, {H}, ...)
-                    logger_check.info("Not compared in the FD gauge: %s" % error)
+            # the gauge of the session is restored whatever happens: an
+            # extraction or the check may refuse the process after the
+            # gauge was switched
+            try:
+                self.do_set('gauge unitary', log=False)
+                myprocdef_unit = self.extract_check_process(line)
+                if decay_chain:
+                    logger_check.info("Decay chain: the Feynman gauge is not "
+                        "compared (the chain fixes the intermediate vector, "
+                        "without its Goldstone boson); the decayed particles are "
+                        "put on shell, with a width of 1e-9 M.")
+                    myprocdef_feyn = None
+                else:
+                    self.do_set('gauge Feynman', log=False)
+                    myprocdef_feyn = self.extract_check_process(line)
+                if myprocdef.get('perturbation_couplings') == [] and \
+                   (args[0] == 'full' or (args[0] == 'gauge')) and \
+                   0 in self._curr_model.get('gauge'):
+                    self.do_set('gauge axial', log=False)
+                    myprocdef_axial = self.extract_check_process(line)
+                else:
+                    myprocdef_axial = None
+                if myprocdef.get('perturbation_couplings') == [] and \
+                   (args[0] == 'full' or (args[0] == 'gauge')) and \
+                   1 in self._curr_model.get('gauge'):
+                    self.do_set('gauge FD', log=False)
+                    try:
+                        myprocdef_fd = self.extract_check_process(line)
+                    except self.InvalidCmd as error:
+                        # e.g. a unitary-only propagator piece ({G}, {H}, ...)
+                        logger_check.info("Not compared in the FD gauge: %s" % error)
+                        myprocdef_fd = None
+                else:
                     myprocdef_fd = None
-            else:
-                myprocdef_fd = None
 
-            if myprocdef_feyn is not None:
-                nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
-                nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
-                if nb_part_feyn == nb_part_unit:
-                    logger_check.error('No Goldstone present for this check!!')
-            gauge_result_no_brs = process_checks.check_unitary_feynman(
-                                                myprocdef_unit, myprocdef_feyn,
-                                                myprocdef_axial,
-                                                myprocdef_fd,
-                                                param_card = param_card,
-                                                options=options,
-                                                cuttools=CT_dir,
-                                                tir=TIR_dir,
-                                                reuse = options['reuse'],
-                                                output_path = output_path,
-                                                cmd = self)
-            
-            # restore previous settings
-            self.do_set('gauge %s' % gauge, log=False)
+                if myprocdef_feyn is not None:
+                    nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
+                    nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
+                    if nb_part_feyn == nb_part_unit:
+                        logger_check.error('No Goldstone present for this check!!')
+                gauge_result_no_brs = process_checks.check_unitary_feynman(
+                                                    myprocdef_unit, myprocdef_feyn,
+                                                    myprocdef_axial,
+                                                    myprocdef_fd,
+                                                    param_card = param_card,
+                                                    options=options,
+                                                    cuttools=CT_dir,
+                                                    tir=TIR_dir,
+                                                    reuse = options['reuse'],
+                                                    output_path = output_path,
+                                                    cmd = self)
+            finally:
+                # restore previous settings
+                self.do_set('gauge %s' % gauge, log=False)
             # the first entry is the process definition, not a check
             nb_processes += len(gauge_result_no_brs) - 1
             if len(gauge_result_no_brs) <= 1:
