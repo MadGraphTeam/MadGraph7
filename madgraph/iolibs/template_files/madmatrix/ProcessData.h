@@ -30,7 +30,7 @@ namespace ProcessData
   constexpr int nwf = %(nwf)d; // #wavefunctions = #external (npar) + #internal (see #644)
   constexpr int nproc = %(nproc)d; // 2 if this process has a mirror process, else 1
   constexpr int proc_id = %(proc_id)d;
-  // One matrix element per directory (enforced by OneProcessExporterMadMatrix).
+  // One matrix element per directory (enforced by OneProcessExporterMG7).
   // Its mirror, if present, shares the spin/color/identical-particle denominator.
   constexpr int helcolDenominators[1] = { %(den_factor)d };
 

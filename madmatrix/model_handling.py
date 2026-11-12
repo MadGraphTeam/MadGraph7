@@ -1972,18 +1972,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     p_makefile = 'madmatrix.mk'
 
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
-    def __init__(self, matrix_element, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
         ###for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
-        # The diagrams, color flows and helicity tables all describe one ME.
-        # A mirror process reuses it, but a second ME needs its own directory.
-        # Check before the parent constructor renumbers wavefunctions (#168).
-        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
-            raise MadGraph5Error(
-                'MadMatrix requires exactly one HelasMatrixElement per '
-                'subprocess directory; export multiple matrix elements in '
-                'separate directories.')
-        super().__init__(matrix_element, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.process_class = 'CPPProcess'
         ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+cudacpp (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
         if 'prefix' in kwargs: proc_id = kwargs['prefix']+1 # madevent+cudacpp (ime+1 from ProcessExporterFortranMEGroup.generate_subprocess_directory)
@@ -2393,8 +2385,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     def hel_recycling_refusal(self):
         """Why this process cannot be recycled, or None."""
-        if len(self.matrix_elements) != 1:
-            return 'more than one matrix element in the directory'
         so = export_v4.split_order_tables(self.matrix_elements[0])
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
@@ -2543,7 +2533,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
         """Write EvaluateDiagrams.inc, the diagram calls backend/<variant>/SigmaKin.cc #includes"""
         recycle = False
-        if self.single_helicities and self.hel_recycling:
+        if self.hel_recycling:
             refusal = self.hel_recycling_refusal()
             if refusal:
                 logger.warning('--hel_recycling is not supported with %s: %s is '
@@ -2558,27 +2548,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 self._hr_gauge = 'FD' if aloha.unitary_gauge == 3 else 'U'
                 if self not in OneProcessExporterMadMatrix._hr_warmups:
                     OneProcessExporterMadMatrix._hr_warmups.append(self)
-        if self.single_helicities:
-            self.helas_call_writer.hr_probe = recycle
-            try:
-                helas_calls = self.helas_call_writer.get_matrix_element_calls(\
-                                                    self.matrix_elements[0],
-                                                    color_amplitudes[0],
-                                                    multi_channel_map = self.multi_channel_map
-                                                    )
-            finally:
-                self.helas_call_writer.hr_probe = False
-            self.couplings2order = self.helas_call_writer.couplings2order
-            self.couporderflv = self.helas_call_writer.couporderflv
-            self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
-            self.params2order = self.helas_call_writer.params2order
-            content = []
-            content += helas_calls
-        else:
-            content = [self.get_sigmaKin_single_process(i, me) \
-                                  for i, me in enumerate(self.matrix_elements)]
+        self.helas_call_writer.hr_probe = recycle
+        try:
+            helas_calls = self.helas_call_writer.get_matrix_element_calls(\
+                                                self.matrix_elements[0],
+                                                color_amplitudes[0],
+                                                multi_channel_map = self.multi_channel_map
+                                                )
+        finally:
+            self.helas_call_writer.hr_probe = False
+        self.couplings2order = self.helas_call_writer.couplings2order
+        self.couporderflv = self.helas_call_writer.couporderflv
+        self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
+        self.params2order = self.helas_call_writer.params2order
         ff = open(pjoin(self.path, 'EvaluateDiagrams.inc'), 'w')
-        ff.write('\n'.join(content))
+        ff.write('\n'.join(helas_calls))
         ff.close()
         return ''
 
