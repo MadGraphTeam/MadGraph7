@@ -1606,7 +1606,11 @@ impl V2Executor {
     /// backends; None: off, `reduction_policy::DEFAULT_UNCHECKED`; m-lit
     /// lit-unchecked): set on the built backend like the target (TIRust's
     /// plans stay); `evaluate`'s `unchecked` sets it per call as well.
-    #[pyo3(signature = (reduction="tirust", *, target=None, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None, unchecked=None))]
+    /// `verified_last_resort` (validation; None: on,
+    /// `v2_tir::TirOptions::verified_last_resort`): False makes the rows
+    /// the method choice refuses fail closed again instead of the verified
+    /// gate-0 last resort (a TIRust setting, NinjaRS refuses it).
+    #[pyo3(signature = (reduction="tirust", *, target=None, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None, unchecked=None, verified_last_resort=None))]
     #[allow(clippy::too_many_arguments)] // Python keyword arguments
     fn prepare_reduction(
         &mut self,
@@ -1620,6 +1624,7 @@ impl V2Executor {
         store: Option<bool>,
         masters_census: Option<bool>,
         unchecked: Option<bool>,
+        verified_last_resort: Option<bool>,
     ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
         let unchecked =
@@ -1633,11 +1638,12 @@ impl V2Executor {
                 &acceptance_frame,
             ) || profile.is_some()
                 || store.is_some()
-                || masters_census.is_some())
+                || masters_census.is_some()
+                || verified_last_resort.is_some())
         {
             return Err(error(
-                "method_choice, alternative_first, acceptance, acceptance_frame, profile, store \
-                 and masters_census are TIRust's settings",
+                "method_choice, alternative_first, acceptance, acceptance_frame, profile, store, \
+                 masters_census and verified_last_resort are TIRust's settings",
             ));
         }
         #[cfg(feature = "tir")]
@@ -1649,6 +1655,9 @@ impl V2Executor {
                 store: store.unwrap_or(false),
                 masters_census: masters_census.unwrap_or(false),
                 unchecked,
+                verified_last_resort: verified_last_resort.unwrap_or(
+                    rusticol_loop_reduction::v2_tir::TirOptions::default().verified_last_resort,
+                ),
                 ..super::v2::tir_options_at(
                     target,
                     method_choice,
@@ -1696,6 +1705,7 @@ impl V2Executor {
             profile,
             store,
             masters_census,
+            verified_last_resort,
         );
         let backend = backend_of(
             &mut self.backends,
