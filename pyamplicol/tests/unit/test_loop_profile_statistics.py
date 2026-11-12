@@ -421,8 +421,35 @@ def test_stability_estimate_grows_while_a_stream_has_no_point(monkeypatch):
     assert tracker.eta() == pytest.approx((8 * 0.2 + 11 * 0.2) / 2)
     clock[0] = 160.0
     assert tracker.eta() == pytest.approx((8 * 0.2 + 11 * (61.0 - 0.8)) / 2)
-    tracker.add("ninjars", "double-double", 1, 70.0, 0)
-    assert tracker.eta() == pytest.approx((8 * 0.2 + 10 * 70.0) / 2)
+    tracker.add("ninjars", "double-double", 1, 61.0, 0)
+    tracker.add("ninjars", "double-double", 2, 131.0, 1)
+    # Its probes: 70 s per point.
+    assert tracker.eta() == pytest.approx((8 * 0.2 + 8 * 70.0) / 2)
     tracker.add("ninjars", "binary64", 4, 1.0, 3)
     # Later tasks: 0.25 s per point.
-    assert tracker.eta() == pytest.approx((4 * 0.25 + 10 * 70.0) / 2)
+    assert tracker.eta() == pytest.approx((4 * 0.25 + 8 * 70.0) / 2)
+
+
+def test_stability_estimate_bounds_a_stream_with_one_probe(monkeypatch):
+    """With only its one-point probe back, a stream costs per point between
+    the time its two-point probe has run beyond it and the one-point probe;
+    within those, the other streams' warm mean."""
+
+    import pyamplicol.loop_profile as lp
+
+    clock = [100.0]
+    monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
+    tracker = lp._StabilityProgress(None, ("ninjars",), 11, 1)
+    tracker.add("ninjars", "binary64", 1, 1.0, 0)
+    tracker.add("ninjars", "binary64", 2, 1.2, 1)
+    # The probes started at 99 s; the double-double one-point probe took
+    # 5 s (first-call cost included): 0.2 s per point, the warm mean.
+    clock[0] = 104.0
+    tracker.add("ninjars", "double-double", 1, 5.0, 0)
+    assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 0.2)
+    # Its two-point probe still running at 30 s: at least 30 - 5 s per point,
+    # at most the 5 s of the one-point probe.
+    clock[0] = 129.0
+    assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 5.0)
+    clock[0] = 107.0
+    assert tracker.eta() == pytest.approx(8 * 0.2 + 10 * 3.0)

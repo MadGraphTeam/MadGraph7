@@ -810,6 +810,26 @@ class _StabilityProgress:
         }
         if not known:
             return None
+        warm = [
+            rate
+            for key, rate in known.items()
+            if self.later[key][0] or len(self.probes[key]) == 2
+        ]
+        if warm and self.first_return is not None:
+            # A stream with only its one-point probe back: its cost per
+            # point lies between the time its two-point probe has been
+            # running beyond the one-point probe (a lower bound) and the
+            # one-point probe (an upper bound, with the first-call cost);
+            # the other streams' warm mean, within those bounds.
+            shortest = min(
+                (spent for probes in self.probes.values() for spent in probes.values()),
+                default=0.0,
+            )
+            running = time.perf_counter() - (self.first_return - shortest)
+            for key, probes in self.probes.items():
+                if list(probes) == [1] and not self.later[key][0]:
+                    one = probes[1]
+                    known[key] = min(one, max(running - one, statistics.mean(warm)))
         fallback = statistics.mean(known.values())
         if not all(self.done.values()) and self.first_return is not None:
             # A stream whose probes are still running costs at least their
