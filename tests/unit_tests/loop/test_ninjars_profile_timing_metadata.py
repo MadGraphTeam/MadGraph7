@@ -41,7 +41,8 @@ def actual_functions(path):
     return methods
 
 def exercise(label, source, optimized=True, initialized=None, tool=8, failure=None, real_card=False,
-             mutate_runtime=None, base_root=None, physical_layout=None):
+             mutate_runtime=None, base_root=None, physical_layout=None,
+             pole_mode=-1, helicity_filter_file=True):
     base = base_root/label
     base.mkdir(parents=True,exist_ok=False)
     calls = []
@@ -53,7 +54,8 @@ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=No
         return open(path,mode,*args,**kwargs)
     card = dict(MLReductionLib=str(tool),CTModeRun=-1,CTModeInit=1,
                 COLLIERComputeUVpoles=True,COLLIERComputeIRpoles=True,
-                MLStabThres=1e-9,COLLIERRequiredAccuracy=1e-12)
+                MLStabThres=1e-9,COLLIERRequiredAccuracy=1e-12,
+                LoopPoleMode=pole_mode)
     if physical_layout is not None:
         card['CTModeRun'] = 1
     class Initializer:
@@ -113,7 +115,8 @@ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=No
                 (export/'SubProcesses/Cards').mkdir()
                 (export/'SubProcesses/Cards/param_card.dat').write_text('higher-priority native card')
             (directory/'proc_prefix.txt').write_text('ML5_0_')
-            (resources/'ML5_0_HelFilter.dat').write_text('-10000 1 -10000\n' if optimized else 'F T F\n')
+            if helicity_filter_file:
+                (resources/'ML5_0_HelFilter.dat').write_text('-10000 1 -10000\n' if optimized else 'F T F\n')
             (resources/'ML5_0_HelConfigs.dat').write_text('1 -1 -1\n1 -1 0\n1 -1 1\n')
             (directory/'loop_matrix.f').write_text('      PARAMETER(SKIPLOOPEVAL=.FALSE.)\n      PARAMETER(BOOTANDSTOP=.FALSE.)\n')
             (directory/'check').write_text('mock setup nonexecutable')
@@ -131,7 +134,7 @@ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=No
         helas_objects=SimpleNamespace(HelasMatrixElement=Matrix),base_objects=SimpleNamespace(Process=Process),
         MadLoopInitializer=Initializer,subprocess=SimpleNamespace(check_output=lambda *a,**k:'1K total\n'),
         logger=logging.getLogger('mock-timing'),bannermod=SimpleNamespace(MadLoopParam=SimpleNamespace(
-            _ID_reduction_tool_map={6:'Ninja',8:'NinjaRS'})))
+            _ID_reduction_tool_map={6:'Ninja',8:'NinjaRS',9:'TIRust'})))
     exec(compile(ast.Module(body=actual_functions(source),type_ignores=[]),str(source),'exec'),ns)
     for name in ('time_matrix_element','boot_time_setup','skip_loop_evaluation_setup'):
         setattr(Timer,name,ns[name])

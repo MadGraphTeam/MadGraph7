@@ -1266,8 +1266,18 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         MadLoopInitializer.fix_PSPoint_in_check(
                  pjoin(export_dir,'SubProcesses'), read_ps = False, npoints = 4)
 
-        self.fix_MadLoopParamCard(pjoin(export_dir,'Cards'),
-                            mp = False, loop_filter = True,MLOptions=MLOptions)
+        # Explicit pole modes include all helicities and loop groups.  The
+        # Fortran deliberately does not learn or write filters in these modes.
+        card_options = {key.lower(): value for key, value in
+            self.get_MadLoop_Params(pjoin(export_dir, 'Cards', 'MadLoopParams.dat')).items()}
+        requested_options = {key.lower(): value for key, value in MLOptions.items()}
+        explicit_poles = int(requested_options.get('looppolemode',
+                                 card_options.get('looppolemode', -1))) >= 0
+        filter_options = dict(MLOptions)
+        if explicit_poles:
+            filter_options['HelicityFilterLevel'] = 0
+        self.fix_MadLoopParamCard(pjoin(export_dir,'Cards'), mp=False,
+            loop_filter=not explicit_poles, MLOptions=filter_options)
         
         shell_name = None
         directories = misc.glob('P0_*', pjoin(export_dir, 'SubProcesses'))
@@ -1278,11 +1288,13 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
 
         # Do not refresh the filter automatically as this is very often a waste
         # of time
+        check_path = pjoin(dir_name, 'check')
+        check_ready = os.path.isfile(check_path) and os.access(check_path, os.X_OK)
         if not MadLoopInitializer.need_MadLoopInit(
-                                                export_dir, subproc_prefix='P'):
+                export_dir, subproc_prefix='P') and (not explicit_poles or check_ready):
             return infos
 
-        attempts = [3,15]
+        attempts = [1] if explicit_poles else [3,15]
         # remove check and check_sa.o for running initialization again
         try:
             os.remove(pjoin(dir_name,'check'))
@@ -1292,7 +1304,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
 
         nPS_necessary = MadLoopInitializer.run_initialization(dir_name,
                                 pjoin(export_dir,'SubProcesses'),infos,\
-                                req_files = ['HelFilter.dat','LoopFilter.dat'],
+                                req_files = ([] if explicit_poles else
+                                    ['HelFilter.dat','LoopFilter.dat']),
                                 attempts = attempts)
         if attempts is None:
             logger.error("Could not compile the process %s,"%shell_name+\
@@ -1544,8 +1557,24 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         proc_prefix_file = open(pjoin(dir_name,'proc_prefix.txt'),'r')
         proc_prefix = proc_prefix_file.read()
         proc_prefix_file.close()
-        helicities = open(pjoin(dir_name,'MadLoop5_resources',
-                                  '%sHelFilter.dat'%proc_prefix)).read().split()
+        helicity_path = pjoin(dir_name, 'MadLoop5_resources',
+                              '%sHelConfigs.dat'%proc_prefix)
+        configurations = None
+        if os.path.isfile(helicity_path):
+            with open(helicity_path) as stream:
+                configurations = [line.split() for line in stream if line.strip()]
+        effective_card = {key.lower(): value for key, value in
+            self.get_MadLoop_Params(pjoin(export_dir, 'Cards', 'MadLoopParams.dat')).items()}
+        explicit_poles = int(effective_card.get('looppolemode', -1)) >= 0
+        if explicit_poles:
+            if not configurations:
+                raise MadGraph5Error('Explicit pole profiling requires helicity configurations: %s'
+                                    % helicity_path)
+            helicities = [('1' if self.loop_optimized_output else 'T')
+                          for configuration in configurations]
+        else:
+            helicities = open(pjoin(dir_name,'MadLoop5_resources',
+                                      '%sHelFilter.dat'%proc_prefix)).read().split()
         for i, hel in enumerate(helicities):
             if (self.loop_optimized_output and int(hel)>-10000) or hel=='T':
                 if contributing_hel==0:
@@ -1559,14 +1588,13 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         
         res_timings['n_contrib_hel']=n_contrib_hel
         res_timings['n_tot_hel']=len(helicities)
-        helicity_path = pjoin(dir_name, 'MadLoop5_resources', '%sHelConfigs.dat'%proc_prefix)
         physical_tuple = None
-        if os.path.isfile(helicity_path):
-            with open(helicity_path) as stream:
-                configurations = [line.split() for line in stream if line.strip()]
-            if 0 < contributing_hel <= len(configurations):
-                physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
+        if configurations and 0 < contributing_hel <= len(configurations):
+            physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
         timing_metadata['selected_timing_helicity'] = {
+            'filter_policy': ('all-helicities-explicit-poles' if explicit_poles else
+                              'learned-helicity-filter'),
+            'learned_filter_used': not explicit_poles,
             'one_based_index': contributing_hel,
             'physical_tuple': physical_tuple,
             'helicity_configurations': timing_file(helicity_path, True),
