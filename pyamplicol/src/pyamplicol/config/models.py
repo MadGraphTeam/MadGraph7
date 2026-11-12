@@ -1793,8 +1793,10 @@ class OutputConfig:
         default=ProgressMode.AUTO,
         metadata=_setting("str", choices=tuple(ProgressMode)),
     )
+    # The CLI's logger records (warnings and errors by default; its notices
+    # show as short lines, ``reporting.logging.notice``).
     log_level: LogLevel = field(
-        default=LogLevel.INFO,
+        default=LogLevel.WARNING,
         metadata=_setting("str", choices=tuple(LogLevel)),
     )
 

@@ -177,11 +177,53 @@ def _log_process_syntax(resolution: ConfigResolution | None) -> None:
         return
     from pyamplicol.processes.mg5_syntax import translate_process_expression
     from pyamplicol.reporting import get_logger
+    from pyamplicol.reporting.logging import notice
 
     for entry in resolution.requested.process.entries:
         translation = translate_process_expression(entry.expression)
         if translation.translated:
-            get_logger("cli").info("process %s", translation.describe())
+            settings = "; ".join(
+                f"{path.removeprefix('process.')} {_setting_text(value)}"
+                for path, value in translation.settings.items()
+            )
+            notice(
+                get_logger("cli"),
+                "process",
+                "%s  ->  %s%s",
+                translation.source,
+                translation.expression,
+                f"  ({settings})" if settings else "",
+            )
+
+
+def _log_generation_header(config: RunConfig) -> None:
+    """The model and the output directory of a generation, as the CLI's
+    notice lines before its progress display."""
+
+    from pyamplicol.reporting import get_logger
+    from pyamplicol.reporting.logging import notice
+
+    model = config.model
+    source = Path(str(model.source)).name if model.source is not None else "-"
+    restriction = getattr(model, "restriction", None)
+    loop_model = getattr(config.loop, "model", None)
+    scheme = getattr(getattr(loop_model, "scheme", None), "mass_scheme", None)
+    parts = [source]
+    if restriction:
+        parts.append(f"restriction {restriction}")
+    if scheme is not None:
+        parts.append(f"{scheme} scheme")
+    logger = get_logger("cli")
+    notice(logger, "model", "%s", ", ".join(parts))
+    notice(logger, "output", "%s", config.generation.output)
+
+
+def _setting_text(value: object) -> str:
+    if isinstance(value, Mapping):
+        return ", ".join(f"{key} {entry}" for key, entry in value.items())
+    if isinstance(value, (tuple, list)):
+        return ", ".join(str(item) for item in value)
+    return str(value)
 
 
 def _flat_points(config: RunConfig):
@@ -414,6 +456,7 @@ class DefaultCliServices:
             raise ConfigurationError("generate requires generation.output")
         processes = _process_set(config)
         _log_process_syntax(self._resolution)
+        _log_generation_header(config)
         return Generator(
             config=self._generation_config(config), progress=progress
         ).generate(

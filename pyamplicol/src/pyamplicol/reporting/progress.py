@@ -366,11 +366,24 @@ class _TaskState:
 
 @dataclass(slots=True)
 class _LineProgressSink:
+    """One plain line per progress event (``--progress log`` and a
+    non-terminal ``tty``): starts and ends always, updates at most every
+    ``minimum_interval`` seconds per task (and at completion)."""
+
     stream: TextIO
     color: bool = False
     descriptions: dict[str, str] = field(default_factory=dict)
+    minimum_interval: float = 0.0
+    _last: dict[str, float] = field(default_factory=dict)
 
     def emit(self, event: ProgressEvent) -> None:
+        if isinstance(event, ProgressUpdate) and self.minimum_interval > 0.0:
+            now = time.monotonic()
+            complete = event.total is not None and event.completed == event.total
+            last = self._last.get(event.task_id, float("-inf"))
+            if not complete and now - last < self.minimum_interval:
+                return
+            self._last[event.task_id] = now
         if isinstance(event, ProgressStart):
             self.descriptions[event.task_id] = event.description
         description = self.descriptions.get(event.task_id)
@@ -385,6 +398,7 @@ class _LineProgressSink:
         self.stream.flush()
         if isinstance(event, ProgressEnd):
             self.descriptions.pop(event.task_id, None)
+            self._last.pop(event.task_id, None)
 
 
 class _TtyMessageStream(io.TextIOBase, TextIO):
@@ -1030,10 +1044,10 @@ def progress_sink(
     if selected == "off":
         return NullProgressSink()
     if selected == "log":
-        return LoggingProgressSink(
-            logger or get_logger("progress"),
-            color=bool(color),
-        )
+        # Plain lines on the stream, never in the logger format (the CLI
+        # shows no logger records at its default level).
+        del logger
+        return _LineProgressSink(stream, color=bool(color), minimum_interval=2.0)
     if selected == "tty":
         return TtyProgressSink(stream, color=color)
     raise ValueError(f"unknown progress mode {mode!r}")

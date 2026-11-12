@@ -465,7 +465,7 @@ class PreparationStore:
         try:
             program = _program_from_entry(data, key, derived)
         except Exception as error:  # an entry is never trusted: rebuilt
-            logger.info("loop preparation cache: ignored entry %s (%s)", path, error)
+            logger.debug("loop preparation cache: ignored entry %s (%s)", path, error)
             self.events["rejected"] += 1
             return None
         self.events["hits"] += 1

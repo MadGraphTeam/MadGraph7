@@ -59,6 +59,12 @@ from .validation import build_process_validation_point
 
 _LOGGER = logging.getLogger("pyamplicol.generation")
 
+
+def notice(logger: logging.Logger, label: str, message: str, *args: object) -> None:
+    from pyamplicol.reporting.logging import notice as emit
+
+    emit(logger, label, message, *args)
+
 # The binary64 carrier at a staged-validation miss, under the user's O1 rule
 # of 2026-10-23 (HANDOFF §0): its virtual is held to max(tolerance, E), E its
 # own stability estimate, which must not exceed 1e-9 (or the tolerance, where
@@ -370,8 +376,10 @@ def _with_stable_externals(backend, processes, resolved, compiled, preparation):
     widths = stable_external_widths(compiled, pdgs, preparation.fixed_parameters)
     if not widths:
         return preparation
-    _LOGGER.info(
-        "loop.external_widths = 'zero': fixed %s (external particles)",
+    notice(
+        _LOGGER,
+        "widths",
+        "%s for the external particles (loop.external_widths = 'zero')",
         ", ".join(f"{name} = 0" for name in widths),
     )
     return replace(
@@ -1881,9 +1889,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     )
                     phase.update(index + 1, message=name)
             # The preparation memo and store state (log only: the artifact
-            # is the same whatever the cache state): one sentence at INFO,
-            # the full statistics at DEBUG.
-            _LOGGER.info("%s", memo.summary())
+            # is the same whatever the cache state): one sentence and the
+            # full statistics at DEBUG.
+            _LOGGER.debug("%s", memo.summary())
             _LOGGER.debug("loop preparation: %s", json.dumps(memo.report()))
             process_groups = None
             if grouping:

@@ -11,6 +11,42 @@ DEFAULT_LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 _HANDLER_MARKER = "_pyamplicol_cli_handler"
 _NULL_MARKER = "_pyamplicol_null_handler"
 _PREVIOUS_STATE_MARKER = "_pyamplicol_cli_previous_state"
+# A record's user-facing label (``notice``): the CLI shows such INFO records
+# as its own short lines at the default level.
+NOTICE_ATTRIBUTE = "pyamplicol_notice"
+_NOTICE_MARKER = "_pyamplicol_cli_notice_handler"
+
+
+def notice(
+    logger: logging.Logger, label: str, message: str, *args: object
+) -> None:
+    """Log ``message`` at INFO as a user-facing notice labelled ``label``
+    (e.g. "process", "widths"): an ordinary INFO record for library users;
+    the CLI shows it at its default level as one short ``label  message``
+    line (``configure_cli_logging``)."""
+
+    logger.info(message, *args, extra={NOTICE_ATTRIBUTE: label})
+
+
+class _NoticeFormatter(logging.Formatter):
+    """``  label     message``: the CLI's own short notice lines."""
+
+    def __init__(self, *, color: bool) -> None:
+        super().__init__("%(message)s")
+        self._color = color
+
+    def format(self, record: logging.LogRecord) -> str:
+        label = str(getattr(record, NOTICE_ATTRIBUTE, ""))
+        text = super().format(record)
+        if self._color:
+            try:
+                colorama: Any = importlib.import_module("colorama")
+            except ImportError:
+                pass
+            else:
+                label = f"{colorama.Fore.CYAN}{label:<9}{colorama.Style.RESET_ALL}"
+                return f"{label} {text}"
+        return f"{label:<9} {text}"
 
 
 class _CliFormatter(logging.Formatter):
@@ -85,6 +121,7 @@ def configure_cli_logging(
             candidate
             for candidate in logger.handlers
             if getattr(candidate, _HANDLER_MARKER, False)
+            and not getattr(candidate, _NOTICE_MARKER, False)
         ),
         None,
     )
@@ -101,7 +138,26 @@ def configure_cli_logging(
         handler.setStream(stream)
     handler.setLevel(selected_level)
     handler.setFormatter(_CliFormatter(fmt, color=color))
-    logger.setLevel(selected_level)
+    for candidate in tuple(logger.handlers):
+        if getattr(candidate, _NOTICE_MARKER, False):
+            logger.removeHandler(candidate)
+            candidate.close()
+    effective = selected_level
+    if selected_level > logging.INFO:
+        # Above INFO the user-facing notices still show, as the CLI's own
+        # short lines (never in the logger format).
+        notices = logging.StreamHandler(handler.stream)
+        setattr(notices, _NOTICE_MARKER, True)
+        setattr(notices, _HANDLER_MARKER, True)
+        notices.setLevel(logging.INFO)
+        notices.addFilter(
+            lambda record: record.levelno == logging.INFO
+            and hasattr(record, NOTICE_ATTRIBUTE)
+        )
+        notices.setFormatter(_NoticeFormatter(color=color))
+        logger.addHandler(notices)
+        effective = logging.INFO
+    logger.setLevel(effective)
     logger.propagate = False
     return logger
 
@@ -137,7 +193,9 @@ _ensure_null_handler()
 __all__ = [
     "DEFAULT_LOG_FORMAT",
     "LOGGER_NAME",
+    "NOTICE_ATTRIBUTE",
     "configure_cli_logging",
     "get_logger",
+    "notice",
     "reset_cli_logging",
 ]
