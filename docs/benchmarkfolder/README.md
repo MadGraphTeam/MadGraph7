@@ -48,6 +48,15 @@ represent those same 100 points. Cards, histories, accuracy and observed state
 remain matched; the experimental mass patch is unapplied. The packet retains
 the earlier missing-identifier startup failure and the exact resource correction.
 
+The [analytic Fortran repair qualification](experiments/fortran-analytic-repair-qualification-1/README.md)
+retains a same-flag prototype for `u u~ > z [virt=QCD]` (2→1). Its 544 DP/QP
+repair calls pass the frozen safeguards and physical-residual gates, and its
+100-point full-amplitude comparison is word-identical. Seven alternating
+shared-host timing pairs give a median candidate/original ratio of `0.95279`
+(about 4.7% faster), with all batches longer than one second. This measures the
+unapplied prototype against its production-source control; the eight-process
+baseline-chain acceptance and broader qualification remain open.
+
 The [original CMS observer replay](experiments/generic-owned-CMS-observer-refusal-1/README.md)
 remains failed: three legacy workers pass their plain-reference comparisons,
 while the first candidate control reaches a strict parser refusal. The recorded

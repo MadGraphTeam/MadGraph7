@@ -1,0 +1,17 @@
+{
+  "admitted_utc": "2026-11-11T22:58:37.734468+00:00",
+  "stage": "amplitude",
+  "source_index_sha256": "bac02ef904383e8215e40c6e8306f00b0b3ca46f9ea5233e94b4ac0e76e125cf",
+  "reviewed_build_terminal_sha256": "79443cd96935e9b0f0768a07870e0d5d5d0805a08a675c67a45aaa7cb2ef3a44",
+  "reviewed_repair_terminal_sha256": "e153961127a0d4ee8a5ca4f2345a0ef273b9f18b0e2720dcb4641ff60532a6f9",
+  "independent_repair_review_sha256": "c6e47819bca4ebf4f013cee10d050641c1f5449b4ad3579a893630932306a23c",
+  "scope": "One fresh original and one candidate N1 worker, full100 normal learning/final100, frozen3e-6 and hard1e-8 comparison, accepted histories and observed IEEE equality. No timing or promotion.",
+  "cap_seconds": 300,
+  "cleanup_reserve_seconds": 60,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 536870912,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "retry_allowed": false
+}

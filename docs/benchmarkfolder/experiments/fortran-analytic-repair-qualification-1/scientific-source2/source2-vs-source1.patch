@@ -1,0 +1,24 @@
+--- source1/candidate-improve_ps.f
++++ source2/candidate-improve_ps.f
+@@ -617,7 +617,7 @@
+      $ RADIX(0.0E0_16).EQ.2.AND.
+      $ STORAGE_SIZE(INT(0,KIND=AXIAL_IK)).EQ.128.AND.
+      $ BIT_SIZE(INT(0,KIND=AXIAL_IK)).EQ.128)
+-      INTEGER(AXIAL_IK) AXIAL_ZERO_BITS(8),AXIAL_CLASS_BITS(3)
++      INTEGER(AXIAL_IK) AXIAL_ZERO_BITS(8),AXIAL_CLASS_BITS(7)
+       REAL*16 AXIAL_EP,AXIAL_EM
+ C     
+ C     GLOBAL VARIABLES
+@@ -720,6 +720,12 @@
+         AXIAL_CLASS_BITS(1)=TRANSFER(PT(0),INT(0,KIND=AXIAL_IK))
+         AXIAL_CLASS_BITS(2)=TRANSFER(PT(3),INT(0,KIND=AXIAL_IK))
+         AXIAL_CLASS_BITS(3)=TRANSFER(DISCR,INT(0,KIND=AXIAL_IK))
++C       The expanded legacy shifts also consume all incoming E and pz.
++C       Never replace their nonfinite values with a finite projection.
++        AXIAL_CLASS_BITS(4)=TRANSFER(P(0,1),INT(0,KIND=AXIAL_IK))
++        AXIAL_CLASS_BITS(5)=TRANSFER(P(0,2),INT(0,KIND=AXIAL_IK))
++        AXIAL_CLASS_BITS(6)=TRANSFER(P(3,1),INT(0,KIND=AXIAL_IK))
++        AXIAL_CLASS_BITS(7)=TRANSFER(P(3,2),INT(0,KIND=AXIAL_IK))
+         IF(ALL(IAND(AXIAL_CLASS_BITS,AXIAL_EXP_MASK).NE.
+      $   AXIAL_EXP_MASK)) THEN
+ C         Sequential guards: reject the spacelike absolute-value branch

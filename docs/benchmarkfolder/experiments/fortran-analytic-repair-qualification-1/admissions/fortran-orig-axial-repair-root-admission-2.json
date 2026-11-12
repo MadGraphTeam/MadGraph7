@@ -1,0 +1,17 @@
+{
+  "admitted_utc": "2026-11-11T22:48:32.077319+00:00",
+  "stage": "repair",
+  "source_index_sha256": "bac02ef904383e8215e40c6e8306f00b0b3ca46f9ea5233e94b4ac0e76e125cf",
+  "reviewed_build_terminal_sha256": "79443cd96935e9b0f0768a07870e0d5d5d0805a08a675c67a45aaa7cb2ef3a44",
+  "independent_build_review_sha256": "80e5514a8b6e1a5df96a37bd27d49e3ae939ffce0d0c7c2487261e57d83aad8a",
+  "scope": "Two standalone model/repair mains over136 frozen fixtures each inDP/QP; strict original/candidate raw, diagnostics, IEEE and physical residual gates. No amplitude/reducer entry or timing/promotion.",
+  "queue_condition": "Wait for root confirmation of candidateFalse3 closure and mutex release before starting once.",
+  "cap_seconds": 300,
+  "cleanup_reserve_seconds": 60,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 536870912,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "retry_allowed": false
+}

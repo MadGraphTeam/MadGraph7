@@ -1,4 +1,4 @@
-# Current acceptance status — 2026-11-11
+# Current acceptance status — 2026-11-12
 
 This status selects evidence for production revision
 `0fcd2cd873d61d134837e1d9e87afb13a47824fd`, registered as
@@ -22,6 +22,7 @@ The integration goal is incomplete.
 | [Stability comparisons](stability_appendix_c/current-source-qcd3-raw-delivery-2/README.md) | Current-source QCD Zgg comparisons supplement the preserved Appendix-C-style plots. Internal consistency estimates, unavailable diagnostics and independent numerical error retain distinct scopes. |
 | [Generic CMS prototype](experiments/generic-owned-CMS-normal-qualification-1/README.md) | Three ordinary controls agree bit for bit. Two forward fixtures retain legacy `420` refusals and candidate-reported `323` QP acceptance. Both caches are disabled; these self-check observations establish neither independent finite accuracy nor generic production coverage. |
 | [Copied-integrand physical pair](experiments/fortran-qp-mass-false-integrand-qualification-1/README.md) | With `UseQPIntegrandForTIRust=False`, original and fresh-CLI mass candidate agree exactly on 100 physical QCD Zgg points per arm, including 13 accepted QP rescues. Histories, accuracy and observed state match. Both caches are disabled; internal copied-coefficient/native-input observations and broader coverage remain open. |
+| [Analytic Fortran repair prototype](experiments/fortran-analytic-repair-qualification-1/README.md) | For QCD `u u~ > z` (2→1), 544 standalone DP/QP wrapper calls pass and 100 full-amplitude points agree exactly. Seven same-flag timing pairs give median candidate/control `0.95279`, with every batch >1 s. This is a shared-host prototype comparison; the patch remains unapplied and formal eight-process performance acceptance is open. |
 | [Original CMS observer refusal](experiments/generic-owned-CMS-observer-refusal-1/README.md) | The original replay remains failed at its first candidate journal. Three legacy workers pass own-plain comparisons; the partial candidate exposes a DP-eligibility/actual-QP flag-semantics mismatch. Exact refusal and incomplete scope are replayable; candidate provenance and a corrected native rerun remain unqualified. |
 
 The [QP-mass correction](experiments/fortran-qp-mass-current-qualification-1/README.md),

@@ -1,0 +1,15 @@
+{
+  "admitted_utc": "2026-11-11T22:35:13.023579+00:00",
+  "stage": "build",
+  "source_index_sha256": "bac02ef904383e8215e40c6e8306f00b0b3ca46f9ea5233e94b4ac0e76e125cf",
+  "review_sha256": "a1dc8012a8b4fec3aa9101865d1ffeba36d07248f92ed0a1d1e35e97391f4870",
+  "scope": "Exactly two compiles and four links plus pinned metadata; no model, repair, amplitude or timing entry. One fresh attempt, no retries.",
+  "cap_seconds": 600,
+  "cleanup_reserve_seconds": 60,
+  "address_space_bytes": 17179869184,
+  "file_bytes": 536870912,
+  "core_bytes": 0,
+  "cpu": 12,
+  "cpu_reservation": false,
+  "later_stages_admitted": false
+}

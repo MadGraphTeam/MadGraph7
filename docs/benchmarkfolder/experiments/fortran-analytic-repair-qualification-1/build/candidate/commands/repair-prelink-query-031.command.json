@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-print-file-name=libmadloop_tirust.so"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-orig-axial-qualification-work-2/build/candidate/SubProcesses/P0_uux_z",
+  "owned_controller_pid": 658131,
+  "process_group": 658131,
+  "session": 658131,
+  "subprocess_new_session": false
+}

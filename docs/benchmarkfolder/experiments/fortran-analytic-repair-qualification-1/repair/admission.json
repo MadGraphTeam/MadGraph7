@@ -1,0 +1,33 @@
+{
+  "cap_seconds": 300.0,
+  "cleanup_reserve_seconds": 60.0,
+  "command": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    ".tirust-build/fortran-orig-axial-qualification-proposal-2/controller.py",
+    "--child",
+    "repair",
+    "--source",
+    "bac02ef904383e8215e40c6e8306f00b0b3ca46f9ea5233e94b4ac0e76e125cf",
+    "--reviewed-build",
+    "79443cd96935e9b0f0768a07870e0d5d5d0805a08a675c67a45aaa7cb2ef3a44"
+  ],
+  "cpu": 12,
+  "cpu_reservation": false,
+  "deadline_monotonic": 2471495.265374077,
+  "parent_pid": 1310969,
+  "resource_limits": {
+    "address_space_bytes": 17179869184,
+    "core_bytes": 0,
+    "file_bytes": 536870912
+  },
+  "reviewed": {
+    "build": "79443cd96935e9b0f0768a07870e0d5d5d0805a08a675c67a45aaa7cb2ef3a44"
+  },
+  "source_index_sha256": "bac02ef904383e8215e40c6e8306f00b0b3ca46f9ea5233e94b4ac0e76e125cf",
+  "stage": "repair",
+  "status": "running"
+}

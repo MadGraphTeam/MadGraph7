@@ -1,0 +1,7 @@
+# Independent closed analytic REPAIR2 audit
+
+PASS within standalone repair scope. Exact sealed analyze.py reparses both actual raw journals and both diagnostic streams; reconstructed parsed products and comparison match the closed result. Independent integer-to-rational decoding reproduces every finite eligible shell/conservation/close bound and the owner summary.
+
+There are136 fixtures per arm at DP and QP:544 public repair-wrapper invocations inside two recorded standalone mains. Source expectations are106 eligible,26 local-predicate refusals and4 caller refusals; these labels are not instrumented branch coverage. Earlier caller checks may reject nonfinite inputs. The positive initialized MZ matches the pinned binary64 lift, and ZERO_POINT case116 preserves its input words in both precisions and arms. All60 paired legacy-required DP/QP rows retain output words and diagnostics.
+
+DP has zero changed output words. QP changes233 component words across94 cases; every eligible output meets the predeclared physical residual and close limits. Before/after IEEE records and complete diagnostic streams match between arms. Recorded nonzero exception flags are retained; equality of observed state is not trap freedom or proof no exception was raised internally. No fresh native program, compiler, loader, reducer, amplitude, timing or test ran. No production/public/Git/PDF changes or promotion. The retained terminal reports successful cleanup without survivors; this audit does not re-observe historical process absence.

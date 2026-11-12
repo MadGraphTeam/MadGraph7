@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-w",
+    "-fPIC",
+    "-ffixed-line-length-132",
+    "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z",
+    "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/qcd_n1_uux_z/Source/MODEL",
+    "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/entry-latch-cache-guard-1/outputs/candidate/qcd_n1_uux_z/Source/DHELAS",
+    "-c",
+    "repair_driver.f",
+    "-o",
+    "repair_driver.o"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-orig-axial-qualification-work-2/build/common",
+  "owned_controller_pid": 658131,
+  "process_group": 658131,
+  "session": 658131,
+  "subprocess_new_session": false
+}
