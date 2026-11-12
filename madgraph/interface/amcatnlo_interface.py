@@ -156,6 +156,11 @@ class CheckFKS(mg_interface.CheckValidForCmd):
     def check_output(self, args):
         """ check the validity of the line"""
 
+        # 'pythia8' is not an output any more; without this it would be taken
+        # as the name of the NLO output directory.
+        if args and args[0] == 'pythia8':
+            raise self.InvalidCmd(mg_interface.PYTHIA8_OUTPUT_DROPPED)
+
         # '--fks' requests the FKS counter-term standalone output: a lightweight
         # directory exposing the Born building blocks (Born, color-/charge-linked
         # Born, spin-correlated Born) for a single phase-space point.

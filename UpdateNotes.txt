@@ -12,6 +12,12 @@ ANNOUNCEMENT:
        processes fall back silently on the (n-1)! trace basis (120 instead of 24 colour
        structures for g g > h + 4g). With 'set color_basis ddm' the processes that keep
        the trace basis, and why, are now listed at info level.
+   OM: 'output pythia8' (dropped in MadGraph7) is now refused by the NLO interface too,
+       where 'pythia8' was taken as the name of the output directory, and the message
+       says how to use Pythia 8 instead: shower the events of a madevent, mg7 or NLO
+       output (shower=Pythia8 at the launch question). The help no longer advertises
+       it, and 'output <format> auto' no longer writes into the Pythia 8 directory for
+       the formats without an automatic directory name (it used pythia8_path).
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point

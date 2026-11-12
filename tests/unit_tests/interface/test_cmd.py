@@ -518,7 +518,25 @@ class TestValidCmd(unittest.TestCase):
         cmd.check_output([])
         
         self.assertNotEqual('tmp', cmd._export_dir)
-        
+
+    def test_output_pythia8_refused(self):
+        """'output pythia8' was dropped in MadGraph7 (Pythia 8 showers the
+        LHE events of a madevent/mg7/NLO output instead). It must be refused,
+        with that advice, by the LO, MadLoop and aMC@NLO interfaces; the
+        aMC@NLO one used to take 'pythia8' as the output directory name."""
+
+        target = pjoin(self.path, 'PY8_OUTPUT')
+        for interface in ('MadGraph', 'MadLoop', 'aMC@NLO'):
+            master = cmd.MasterCmd()
+            master.no_notification()
+            with misc.MuteLogger(['madgraph', 'cmdprint'], [40, 40]):
+                master.change_principal_cmd(interface)
+            self.assertNotIn('pythia8', master._export_formats)
+            self.assertRaisesRegex(master.InvalidCmd,
+                                   'output pythia8 is no longer supported.*shower=Pythia8',
+                                   master.check_output, ['pythia8', target])
+            self.assertFalse(os.path.exists(target))
+
     @test_aloha.set_global()
     def test_simple_generate(self):
         """check that simple syntax goes through and return expected process"""
