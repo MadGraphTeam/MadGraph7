@@ -59,6 +59,14 @@ endif
 
 
 
+# Bound states: the soft current of a P-wave quarkonium (born_onia.f is
+# written for such a Born only)
+ifneq ("$(wildcard born_onia.f)","")
+    ONIA_SOFT_OBJECTS = born_onia.o fks_onia_soft.o
+else
+    ONIA_SOFT_OBJECTS = fks_onia_soft_dummy.o
+endif
+
 # Active point data, entry points, sampling, radiation maps and kernels.
 GENPS_OBJECTS = fks_phase_space_data.o genps_fks_helpers.o genps_fks_sampling.o \
                 genps_fks_radiation.o genps_fks.o
@@ -78,6 +86,7 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 momentum_reshuffling.o						\
 	 rescale_alpha_tagged.o						\
 	 fks_Sij.o $(fastjetfortran_madfks) fks_singular.o		\
+	 $(ONIA_SOFT_OBJECTS)						\
 	 montecarlocounter.o mcatnlo_delta_scales.o herwig7_scales.o		\
 	 boostwdir2.o boost_to_frame.o cluster.o splitorders_stuff.o reweight_xsec.o	\
 	 iproc_map.o sudakov.o  				\
@@ -226,7 +235,8 @@ add_write_info.o analysis_lhe.o BinothLHA.o BinothLHA_user.o \
     mc_native_runtime.o montecarlocounter.o \
     recoil_selection.o resonance_histories.o resonance_recoil.o \
     reweight_xsec_events.o sa_ewsudakov_dummyfcts.o setcuts.o \
-    symmetry_fks_v3.o test_soft_col_limits.o write_event.o: fks_phase_space_data.o
+    symmetry_fks_v3.o test_soft_col_limits.o write_event.o \
+    fks_onia_soft.o: fks_phase_space_data.o
 
 process_module.o : qed_shower_support.o
 scale_module.o : process_module.o genps_fks_helpers.o mcatnlo_delta_scales.o herwig7_scales.o
@@ -252,6 +262,7 @@ BinothLHA_OLP.o: FKSParams.o
 BinothLHA.o: FKSParams.o
 reweight_xsec_events.o: weight_lines.o
 fks_singular.o: weight_lines.o mint_module.o fks_symmetry.inc
+fks_onia_soft.o: genps_fks_helpers.o fks_phase_space_data.o
 driver_mintMC.o: weight_lines.o mint_module.o genps_fks_helpers.o fks_symmetry.inc mc_histories.inc
 driver_mintFO.o: weight_lines.o mint_module.o FKSParams.o
 chooser_functions.o: weight_lines.o

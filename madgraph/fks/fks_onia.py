@@ -254,9 +254,11 @@ def born_color_links(born_me, perturbation='QCD'):
     model = process.get('model')
     plegs = physical_fks_legs(legs, model)
     col_basis = born_me.get('color_basis')
-    if not len(col_basis):
-        return []
     links_info = fks_common.find_color_links(plegs, symm=True, pert=perturbation)
+    if not len(col_basis):
+        # colourless, or colour forbidden (q q~ > chi_cJ, zero Born): zero links
+        return [{'link': [physical_number(legs, l['number']) for l in link['legs']],
+                 'matrix': {}, 'ncolor': 1} for link in links_info]
     result = fks_common.born_basis_link_matrices(col_basis, links_info)
     for link in result:
         link['link'] = [physical_number(legs, n) for n in link['link']]
@@ -401,3 +403,221 @@ class OniaRecord(object):
             if l['onium']:
                 out.setdefault(abs(l['onium']['id']), []).append(l['id'])
         return out
+
+
+# ------------------------------------------- P-wave soft colour transitions --
+# The soft current of a P-wave quarkonium (arXiv:2402.19221, sect. 3.1) links
+# the P-wave Born to the S-wave Borns of the same diagrams with the onium in
+# the colour C' of aux_states, through the effective generators
+#   Q_eff(18)^a = (2+r+1/r)/sqrt(2 N_c) Delta^a     (P[1] -> S[8], Delta^a_ob = delta_ab)
+#   Q_eff(81)^a = (2+r+1/r)/sqrt(2 N_c) Delta^aT    (P[8] -> S[1])
+#   Q_eff(88)^a = (2+r+1/r) D^a/2 + (1/r-r) T^a/2   (P[8] -> S[8], D^a_bc = d_abc,
+#                                                     T^a_bc = -i f_abc)
+# r = m_Q/m_Qbar. The colour part of <P| T_k^a Q_eff^a |S'> is exact
+# (transition_matrices, without the mass factors and 1/sqrt(2N_c), applied at
+# run time). Colour charges (eq. 3.2): t^a for a final quark or an initial
+# antiquark, -t^aT for a final antiquark or an initial quark, T^a for an octet.
+
+def aux_color_basis(amplitude, onium_index, colour):
+    """The colour basis of the diagrams of amplitude with the onium of index
+    onium_index projected onto colour (1 or 8) instead of its own."""
+    import copy
+    import madgraph.core.color_amp as color_amp
+    import madgraph.core.diagram_generation as diagram_generation
+    amp = diagram_generation.Amplitude()
+    process = copy.copy(amplitude.get('process'))
+    legs = copy.deepcopy(process.get('legs'))
+    for leg in legs:
+        onium = onium_of(leg)
+        if onium and onium['index'] == onium_index:
+            onium = dict(onium)
+            onium['C'] = colour
+            leg.set('onium', onium)
+    process.set('legs', legs)
+    amp.set('process', process)
+    amp.set('diagrams', amplitude.get('diagrams'))
+    basis = color_amp.ColorBasis()
+    basis.create_color_dict_list(amp)
+    basis.build()
+    return basis
+
+
+def leg_colour_rep(leg, model):
+    """The representation of the colour charge of a leg: 3 (t^a), -3 (-t^aT),
+    8 (T^a = -i f), 0 colourless. An initial quark counts as an antiquark."""
+    colour = physical_colour(leg, model) if onium_of(leg) else \
+        model.get('particle_dict')[leg.get('id')].get_color()
+    if colour in (1, 0):
+        return 0
+    if colour == 8:
+        return 8
+    return colour if leg.get('state') else -colour
+
+
+def colour_charge_string(rep, num, a, fresh):
+    """The colour charge Q^a of a leg of representation rep and colour index
+    num, acting on a colour string whose index num is renamed fresh."""
+    import fractions
+    import madgraph.core.color_algebra as color_algebra
+    if rep == 3:
+        return color_algebra.ColorString([color_algebra.T(a, num, fresh)])
+    if rep == -3:
+        string = color_algebra.ColorString([color_algebra.T(a, fresh, num)])
+        string.coeff = fractions.Fraction(-1)
+        return string
+    if rep == 8:
+        string = color_algebra.ColorString([color_algebra.f(a, num, fresh)])
+        string.coeff = fractions.Fraction(-1)
+        string.is_imaginary = True
+        return string
+    raise OniaNLOError('no colour charge for representation %s' % rep)
+
+
+def contract(struct_p, struct_s, repl_p, repl_s, insertion, Nc=3):
+    """sum over colours of conj(c_p) [insertion] c_s, with the indices of the
+    two immutable colour strings renamed by repl_p, repl_s first. Returns
+    (re, im) as Fractions."""
+    import fractions
+    import madgraph.core.color_algebra as color_algebra
+    import madgraph.core.color_amp as color_amp
+
+    def rename(struct, repl):
+        return tuple((elem[0], tuple(repl.get(i, i) for i in elem[1])) for elem in struct)
+
+    linked = color_algebra.ColorString()
+    linked.from_immutable(rename(struct_s, repl_s))
+    if insertion is not None:
+        linked.product(insertion.create_copy())
+    other = color_algebra.ColorString()
+    other.from_immutable(color_amp.ColorMatrix.fix_summed_indices(
+        linked.to_immutable(), rename(struct_p, repl_p)))
+    product = linked.create_copy()
+    product.product(other.complex_conjugate())
+    re, im = color_algebra.ColorFactor([product]).full_simplify().set_Nc(Nc)
+    return fractions.Fraction(re), fractions.Fraction(im)
+
+
+def transition_matrices(born_amplitude, model, basis_p=None):
+    """The colour transition matrices of a Born with one P-wave quarkonium, for
+    its soft current: {'onium': physical number of the onium, 'basis_p',
+    'keys_p', 'aux': [ {'colour': C', 'label': '18'|'81'|'88', 'basis',
+    'keys', 'matrices': {(k, kind): {(alpha, beta): (re, im)}}} ]} with
+        X^(k)_{alpha beta} = sum_colours conj(c_P_alpha) Q_k^a Q_eff^a c_S_beta
+    for every coloured physical leg k (the onium too when it is an octet:
+    then Q_k = T^a acts on the P-wave index, after Q_eff), kind 'Delta' for
+    [18] and [81], 'D' (d_abc) and 'T' (-i f_abc) for [88]; the mass factors
+    (2+r+1/r)/sqrt(2N_c), (2+r+1/r)/2 and (1/r-r)/2 are left out. alpha (beta)
+    runs over the sorted colour basis of the P (S) wave."""
+    import madgraph.core.color_amp as color_amp
+    import madgraph.core.color_algebra as color_algebra
+    process = born_amplitude.get('process')
+    legs = process.get('legs')
+    pwaves = [l for l in physical_legs(legs) if onium_of(l) and is_pwave(onium_of(l))
+              and is_quarkonium(l, model)]
+    if len(pwaves) != 1:
+        raise OniaNLOError('transition_matrices needs exactly one P-wave quarkonium')
+    pleg = pwaves[0]
+    onium = onium_of(pleg)
+    n_q = pleg.get('number')                 # the octet label of the onium
+    if basis_p is None:
+        basis_p = color_amp.ColorBasis()
+        basis_p.create_color_dict_list(born_amplitude)
+        basis_p.build()
+    keys_p = sorted(basis_p.keys())
+    a, fresh, c_new, m_new = -4001, -4002, -4003, -4004
+
+    def qeff(kind, b, c):
+        """(Q_eff^a)_{bc} of [88] without its mass factor."""
+        if kind == 'D':
+            return color_algebra.ColorString([color_algebra.d(a, b, c)])
+        return colour_charge_string(8, b, a, c)      # -i f(a, b, c)
+
+    result = {'onium': physical_number(legs, n_q), 'basis_p': basis_p, 'keys_p': keys_p,
+              'aux': []}
+    for colour, label in aux_states(onium):
+        basis_s = aux_color_basis(born_amplitude, onium['index'], colour)
+        keys_s = sorted(basis_s.keys())
+        matrices = {}
+        for leg in physical_legs(legs):
+            rep = leg_colour_rep(leg, model)
+            if rep == 0:
+                continue
+            num = leg.get('number')
+            k = physical_number(legs, num)
+            kinds = ['Delta'] if label in ('18', '81') else ['D', 'T']
+            for kind in kinds:
+                repl_p, repl_s = {}, {}
+                if num != n_q:
+                    # Q_k^a on the index of leg k (of the S wave)
+                    repl_s[num] = fresh
+                    insertion = colour_charge_string(rep, num, a, fresh)
+                    if label == '18':
+                        repl_s[n_q] = a          # Delta^a: S octet index = a
+                    elif label == '81':
+                        repl_p[n_q] = a          # Delta^aT: P octet index = a
+                    else:
+                        repl_s[n_q] = c_new
+                        insertion.product(qeff(kind, n_q, c_new))
+                else:
+                    # the onium (a P-wave octet): T^a_{b' m} Q_eff^a_{m c}
+                    if label == '81':
+                        continue                 # T^a_{b' a} = -i f(a b' a) = 0
+                    repl_s[n_q] = c_new
+                    insertion = colour_charge_string(8, n_q, a, m_new)
+                    insertion.product(qeff(kind, m_new, c_new))
+                mat = {}
+                for ib, ks in enumerate(keys_s):
+                    for ia, kp in enumerate(keys_p):
+                        value = contract(kp, ks, repl_p, repl_s, insertion)
+                        if value != (0, 0):
+                            mat[(ia, ib)] = value
+                matrices[(k, kind)] = mat
+        result['aux'].append({'colour': colour, 'label': label, 'basis': basis_s,
+                              'keys': keys_s, 'matrices': matrices})
+    return result
+
+
+def colour_matrix(basis):
+    """The colour matrix sum_colours conj(c_i) c_j of a colour basis, on its
+    sorted keys, as {(i, j): (re, im)} Fractions (zeros left out)."""
+    import fractions
+    import madgraph.core.color_amp as color_amp
+    out = {}
+    if not len(basis):
+        return out
+    matrix = color_amp.ColorMatrix(basis)
+    n = len(basis.keys())
+    for i in range(n):
+        for j in range(n):
+            re, im = matrix.col_matrix_fixed_Nc[(i, j)]
+            value = (fractions.Fraction(re), fractions.Fraction(im))
+            if value != (0, 0):
+                out[(i, j)] = value
+    return out
+
+
+def soft_current_data(born_me):
+    """What the generated born_onia.f needs for the soft current of the
+    P-wave quarkonium of a Born matrix element (None without one): the
+    physical position of the onium, its S, J and index, the constituent
+    numbers of the quark and the antiquark, and per S-wave state S' of
+    aux_states its colour, label, colour basis, colour matrix and transition
+    matrices (transition_matrices, P basis = the colour basis of born_me)."""
+    amplitude = born_me.get('base_amplitude')
+    process = amplitude.get('process')
+    model = process.get('model')
+    legs = process.get('legs')
+    pwaves = [l for l in physical_legs(legs) if onium_of(l) and is_pwave(onium_of(l))
+              and is_quarkonium(l, model)]
+    if not pwaves:
+        return None
+    tm = transition_matrices(amplitude, model, basis_p=born_me.get('color_basis'))
+    onium = onium_of(pwaves[0])
+    constituents = [l for l in legs if onium_of(l) and onium_of(l)['index'] == onium['index']]
+    quark = [l for l in constituents if l.get('id') > 0][0]
+    antiquark = [l for l in constituents if l.get('id') < 0][0]
+    for aux in tm['aux']:
+        aux['cf'] = colour_matrix(aux['basis'])
+    return dict(onium=tm['onium'], index=onium['index'], S=onium['S'], J=onium['J'],
+                C=onium['C'], quark=quark.get('number'), antiquark=antiquark.get('number'),
+                ncolor_p=len(tm['keys_p']), aux=tm['aux'])

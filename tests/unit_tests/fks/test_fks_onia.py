@@ -146,6 +146,57 @@ class TestFKSOniaGeneration(unittest.TestCase):
         self.assertEqual(sorted(jfromi[5]), [1, 2, 3, 4])
         self.assertEqual(fks_onia.physical_pdgs(real.process['legs']), [21, 21, 9940003, 21, 21])
 
+    def test_colour_transitions_conserve_colour(self):
+        """sum_K <P| T_K Q_eff |S'> = 0 over the coloured Born legs, the
+        onium included (exact rationals), for P[1] -> S[8], P[8] -> S[1],
+        S[8]; the onium's own charge gives T.D = 0."""
+        for line, labels in [('u u~ > chic0(1|3P01) g', ['18']),
+                             ('g g > chic0(1|3P01) g', ['18']),
+                             ('g g > Jpsi(1|3P08) g', ['81', '88']),
+                             ('u u~ > Jpsi(1|3P08) g', ['81', '88'])]:
+            born, = self.generate(line + ' [real=QCD]')
+            amp = born.born_amp
+            tm = fks_onia.transition_matrices(amp, amp['process']['model'])
+            self.assertEqual([a['label'] for a in tm['aux']], labels)
+            for aux in tm['aux']:
+                kinds = set(kind for (_, kind) in aux['matrices'])
+                self.assertEqual(kinds, {'Delta'} if aux['label'] != '88' else {'D', 'T'})
+                for kind in kinds:
+                    total = {}
+                    for (k, kd), mat in aux['matrices'].items():
+                        if kd != kind:
+                            continue
+                        for key, (re, im) in mat.items():
+                            t = total.get(key, (0, 0))
+                            total[key] = (t[0] + re, t[1] + im)
+                    self.assertTrue(any(aux['matrices'][(k, kd)] for (k, kd) in aux['matrices']
+                                        if kd == kind), line)
+                    self.assertFalse([v for v in total.values() if v != (0, 0)], (line, kind))
+                if aux['label'] == '88':
+                    self.assertFalse(aux['matrices'][(tm['onium'], 'D')])
+                    self.assertTrue(aux['matrices'][(tm['onium'], 'T')])
+
+    def test_colour_forbidden_born(self):
+        """q q~ > chi_c0[1] has an empty projected colour basis: zero colour
+        flows (not a colourless process) and zero colour links, while g g >
+        h_c (zero by Landau-Yang) keeps its colour basis."""
+        import madgraph.core.helas_objects as helas_objects
+        born, = self.generate('u u~ > chic0(1|3P01) [real=QCD]')
+        me = helas_objects.HelasMatrixElement(born.born_amp)
+        self.assertEqual(len(me['color_basis']), 0)
+        self.assertTrue(me.is_onia_colour_forbidden())
+        self.assertEqual(me.get_color_amplitudes(), [[]])
+
+        class _Born(object):
+            def get(self, key):
+                return {'base_amplitude': born.born_amp, 'color_basis': me['color_basis']}[key]
+        self.assertEqual(fks_onia.born_color_links(_Born()),
+                         [{'link': [1, 2], 'matrix': {}, 'ncolor': 1}])
+        born, = self.generate('g g > hc(1|1P11) [real=QCD]')
+        me = helas_objects.HelasMatrixElement(born.born_amp)
+        self.assertEqual(len(me['color_basis']), 1)
+        self.assertFalse(me.is_onia_colour_forbidden())
+
 
 class TestFKSOniaHelpers(unittest.TestCase):
     """The pure helpers of fks_onia."""
@@ -179,3 +230,55 @@ class TestFKSOniaHelpers(unittest.TestCase):
         self.assertEqual(fks_onia.fock_state_perturbation_tag('all', ['QCD']), ' [QCD]')
         self.assertEqual(fks_onia.fock_state_perturbation_tag('real', ['QCD']), ' [real=QCD]')
         self.assertEqual(fks_onia.fock_state_perturbation_tag('tree', []), '')
+
+    def test_nonet_identities(self):
+        """The effective generators of the P-wave soft current against
+        explicit SU(3) matrices (arXiv:2402.19221, sect. 3.1): the Casimirs
+        C_eff written in born_onia.f, Q_eff(81).Q_eff(88) = 0,
+        T.Q_eff(81) = 0 and T.Q_eff(88) = (1/r - r) C_A/2."""
+        try:
+            import numpy as np
+        except ImportError:
+            raise unittest.SkipTest('numpy needed')
+        lam = np.zeros((8, 3, 3), complex)
+        lam[0][0, 1] = lam[0][1, 0] = 1
+        lam[1][0, 1], lam[1][1, 0] = -1j, 1j
+        lam[2][0, 0], lam[2][1, 1] = 1, -1
+        lam[3][0, 2] = lam[3][2, 0] = 1
+        lam[4][0, 2], lam[4][2, 0] = -1j, 1j
+        lam[5][1, 2] = lam[5][2, 1] = 1
+        lam[6][1, 2], lam[6][2, 1] = -1j, 1j
+        lam[7] = np.diag([1, 1, -2]) / np.sqrt(3)
+        t = lam / 2
+        f = np.zeros((8, 8, 8))
+        d = np.zeros((8, 8, 8))
+        for a in range(8):
+            for b in range(8):
+                for c in range(8):
+                    comm = t[a] @ t[b] - t[b] @ t[a]
+                    anti = t[a] @ t[b] + t[b] @ t[a]
+                    f[a, b, c] = (-2j * np.trace(comm @ t[c])).real
+                    d[a, b, c] = (2 * np.trace(anti @ t[c])).real
+        nc, cf, ca = 3., 4. / 3., 3.
+        for r in (1., 1.55 / 4.7):
+            m = 2 + r + 1 / r
+            q18, q81, q88, tt = (np.zeros((8, 9, 9), complex) for _ in range(4))
+            for a in range(8):
+                q18[a, 0, 1 + a] = m / np.sqrt(2 * nc)
+                q81[a, 1 + a, 0] = m / np.sqrt(2 * nc)
+                q88[a, 1:, 1:] = m * d[a] / 2 + (1 / r - r) / 2 * (-1j * f[a])
+                tt[a, 1:, 1:] = -1j * f[a]
+            def dot(x, y):
+                return sum(x[a].conj().T @ y[a] for a in range(8))
+            ceff18 = m ** 2 / (2 * nc)
+            ceff81 = m ** 2 * cf
+            ceff88 = m * (-2 / nc + (nc ** 2 - 2) / (2 * nc) * (r + 1 / r))
+            octet = np.diag([0.] + [1.] * 8)
+            singlet = np.diag([1.] + [0.] * 8)
+            self.assertTrue(np.allclose(dot(q18, q18), ceff18 * octet))
+            self.assertTrue(np.allclose(dot(q81, q81), ceff81 * singlet))
+            self.assertTrue(np.allclose(dot(q88, q88), ceff88 * octet))
+            self.assertTrue(np.allclose(dot(q81, q88), 0))
+            self.assertTrue(np.allclose(sum(tt[a] @ q81[a] for a in range(8)), 0))
+            self.assertTrue(np.allclose(sum(tt[a] @ q88[a] for a in range(8)),
+                                        (1 / r - r) / 2 * ca * octet))

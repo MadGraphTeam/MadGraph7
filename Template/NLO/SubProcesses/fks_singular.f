@@ -5571,7 +5571,7 @@ c      include "fks.inc"
 
       double precision softcontr,pp(0:3,nexternal),wgt,eik,xi_i_fks
      &     ,y_ij_fks
-      double precision wgt1
+      double precision wgt1,wgt_onia
       integer i,j
 
 
@@ -5605,6 +5605,11 @@ C Reset the amp_split array
          do j=1,i
             m=fks_j_from_i(i_fks,i)
             n=fks_j_from_i(i_fks,j)
+c Bound states: a colour-singlet P-wave onium is a soft partner of the
+c gluons through its own soft current only (sbornsoft_onia), not by
+c colour links
+            if (need_color_links .and. (abs(particle_type(m)).eq.1 .or.
+     &           abs(particle_type(n)).eq.1)) cycle
             if ((m.ne.n .or. (m.eq.n .and. pmass(m).ne.ZERO)) .and.
      &           n.ne.i_fks.and.m.ne.i_fks) then
 C     wgt includes the gs/w^2
@@ -5628,6 +5633,10 @@ c Add minus sign to compensate the minus in the color factor
 c of the color-linked Borns (b_sf_0??.f)
 c Factor two to fix the limits.
       wgt=-2d0*wgt
+c Bound states: the soft current of a P-wave quarkonium, which the
+c colour-linked Borns do not hold (fks_onia_soft.f; 0 otherwise)
+      call sbornsoft_onia(pp,xi_i_fks,y_ij_fks,wgt_onia)
+      wgt=wgt+wgt_onia
       return
       end
 
@@ -6866,6 +6875,10 @@ C the following call to born is to setup the goodhel(nfksprocess)
             do j=1,i
                m=fks_j_from_i(i_fks,i)
                n=fks_j_from_i(i_fks,j)
+c Bound states: no colour link to a colour-singlet P-wave onium (its
+c integrated soft current is bsv_onia's)
+               if (need_color_links .and. (abs(particle_type(m)).eq.1
+     &              .or. abs(particle_type(n)).eq.1)) cycle
                if ((m.ne.n .or. (m.eq.n .and. pmass(m).ne.ZERO)).and.
      &              n.ne.i_fks.and.m.ne.i_fks) then
 c To be sure that color-correlated Borns work well, we need to have

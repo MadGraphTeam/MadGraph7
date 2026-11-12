@@ -6793,6 +6793,23 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return spin_factor * color_factor * self['identical_particle_factor']
 
+    def is_onia_colour_forbidden(self):
+        """True for a process with bound states that carries colour (a
+        coloured elementary particle or a colour-octet onium) but whose
+        projected colour basis is empty: its colour factor vanishes."""
+        if not self.get('processes') or self.get_nonia() == 0 or len(self.get('color_basis')):
+            return False
+        process = self.get('processes')[0]
+        model = process.get('model')
+        for leg in process.get('legs'):
+            onium = leg.get('onium')
+            if onium:
+                if onium.get('C') == 8:
+                    return True
+            elif abs(model.get_particle(leg.get('id')).get_color()) > 1:
+                return True
+        return False
+
     def generate_color_amplitudes(self, color_basis, diagrams):
         """ Return a list of (coefficient, amplitude number) lists,
         corresponding to the JAMPs for the HelasDiagrams and color basis passed
@@ -6800,6 +6817,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         colorcoeff (frac), imaginary, Nc power). """
 
         if not color_basis:
+            if self.is_onia_colour_forbidden():
+                # bound states: the colour projection of these diagrams
+                # vanishes (q q~ > chi_cJ), not a colourless process
+                return [[]]
             # No color, simply add all amplitudes with correct factor
             # for first color amplitude
             col_amp = []

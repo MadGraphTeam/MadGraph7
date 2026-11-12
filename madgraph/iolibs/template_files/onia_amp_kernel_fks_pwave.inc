@@ -12,7 +12,7 @@ C eps*(L_z).d/dq at q = 0 of the spin-projected amplitude, combined with
 C the spin S_z = J_z - L_z by Clebsch-Gordan coefficients (as the dual
 C numbers of the LO templates). Here the derivative is taken numerically
 C along three real directions e_a orthogonal to K (eps* = sum_a c_a e_a),
-C with the five-point stencil (error O(h**4), h = 1d-3 M): the plain HELAS
+C with the seven-point stencil (error O(h**6), h = 1d-2 M): the plain HELAS
 C library serves S and P waves, and the native Born providers of the NLO
 C runtime need no dual-number library. The LDME and averages are the
 C factor %(kname)sFAC().
@@ -33,8 +33,13 @@ C
       PARAMETER (ZERO=0D0)
       COMPLEX*16 IMAG1
       PARAMETER (IMAG1=(0D0,1D0))
+C     the step h = HREL*M of the derivative: its error is O((h/M)**6)
+C     (q.p/K.p <= |q|/M for any momentum p, so h/M is the expansion
+C     parameter), while its round-off grows as M/h near the soft limit of
+C     a real emission (on-shell constituents below). The five-point
+C     stencil, O((h/M)**4) ~ 1d-6, was seen by the FKS limit tests.
       REAL*8     HREL
-      PARAMETER (HREL=1D-3)
+      PARAMETER (HREL=1D-2)
 %(onia_data)s
 C
 C ARGUMENTS
@@ -45,18 +50,18 @@ C
 C
 C LOCAL VARIABLES
 C
-      INTEGER I, J, K, QQ, Q1, Q2, MU, A, IPT, NPT, ISZ, NSZ
+      INTEGER I, J, K, KP, QQ, Q1, Q2, MU, A, IPT, NPT, ISZ, NSZ
       INTEGER SZ(NONIA), NSZ_ONIA(NONIA), SZ_LIST(3,NONIA)
       INTEGER DIR(NONIA), STEP(NONIA)
-      REAL*8 FRAC, NORM, CG, KDOTN, WEIGHT
+      REAL*8 FRAC, NORM, CG, KDOTN, WEIGHT, QSQ
       REAL*8 Q(0:3,NONIA), E3(0:3,3,NONIA), H(NONIA)
-      REAL*8 STENCIL(4), SWEIGHT(4)
-      DATA STENCIL /-2D0, -1D0, 1D0, 2D0/
-      DATA SWEIGHT /1D0, -8D0, 8D0, -1D0/
+      REAL*8 STENCIL(6), SWEIGHT(6)
+      DATA STENCIL /-3D0, -2D0, -1D0, 1D0, 2D0, 3D0/
+      DATA SWEIGHT /-1D0, 9D0, -45D0, 45D0, -9D0, 1D0/
       COMPLEX*16 AMP(NGRAPHS), PROJ, CA(3,NONIA), COEF
       COMPLEX*16 D(NGRAPHS)
       type(aloha) W(NWAVEFUNCS), EPS_L
-      REAL*8 P_ONIA(0:3,NEXTERNAL+NONIA)
+      REAL*8 P_ONIA(0:3,NEXTERNAL+NONIA), ONIA_MS(NEXTERNAL+NONIA)
       REAL*8 PMASS_ONIA(NEXTERNAL+NONIA), PMASS_RESH(NEXTERNAL)
       INTEGER NHEL_ONIA(NEXTERNAL+NONIA), IC_ONIA(NEXTERNAL+NONIA)
       INTEGER FLAVOR_ONIA(NEXTERNAL+NONIA)
@@ -136,27 +141,42 @@ C       eps*(L_z) = sum_a CA(a) e_a for each P wave, L_z = J_z - S_z
           ENDDO
         ENDDO
 C       the derivatives: the directions and stencil points of every P wave
-        NPT = 12**NPWAVE
+        NPT = 18**NPWAVE
         DO IPT = 1, NPT
           K = IPT-1
           COEF = DCMPLX(CG, 0D0)
           DO I = 1, NONIA
             Q(:,I) = 0D0
             IF (L_ONIA(I).NE.1) CYCLE
-            STEP(I) = MOD(K,4)+1
-            K = K/4
+            STEP(I) = MOD(K,6)+1
+            K = K/6
             DIR(I) = MOD(K,3)+1
             K = K/3
             Q(:,I) = STENCIL(STEP(I))*H(I)*E3(:,DIR(I),I)
-            COEF = COEF*CA(DIR(I),I)*SWEIGHT(STEP(I))/(12D0*H(I))
+            COEF = COEF*CA(DIR(I),I)*SWEIGHT(STEP(I))/(60D0*H(I))
           ENDDO
-C         the constituent momenta and spin projectors at these q
+C         the constituent momenta and spin projectors at these q:
+C         k_i = m_i/M K +- q, which conserves momentum exactly, with
+C         k_i**2 = m_i**2 + q**2. The constituents are given this mass,
+C         ONIA_MS(i) = sqrt(m_i**2 + q**2), in their wave functions, in the
+C         spin projector and in the propagators of a constituent line next
+C         to the emission of one gluon (get_onia_kernel), so that such a
+C         propagator is 2 k_i.k_g exactly near the soft limit of a real
+C         emission. The shift is even in q and leaves the derivative
+C         unchanged. (On-shell constituents with k_1 + k_2 /= K would break
+C         momentum conservation at O(h**2) instead, and with it the
+C         propagators near the soft limit built from the other side of a
+C         diagram.)
           DO I = 1, NEXTERNAL+NONIA
+            ONIA_MS(I) = PMASS_ONIA(I)
             IF (PAIRS(I).NE.0) THEN
               J = FINDLOC(PAIRS,-PAIRS(I),DIM=1)
+              KP = ABS(PAIRS(I))
+              QSQ = Q(0,KP)**2-Q(1,KP)**2-Q(2,KP)**2-Q(3,KP)**2
               FRAC = PMASS_ONIA(I)/(PMASS_ONIA(I)+PMASS_ONIA(J))
+              ONIA_MS(I) = SQRT(PMASS_ONIA(I)**2+QSQ)
               P_ONIA(:,I) = FRAC*P(:,MAPPING(I))
-     &          +SIGN(1,PAIRS(I))*Q(:,ABS(PAIRS(I)))
+     &          +SIGN(1,PAIRS(I))*Q(:,KP)
             ELSE
               P_ONIA(:,I) = P(:,MAPPING(I))
             ENDIF
@@ -167,8 +187,8 @@ C         the constituent momenta and spin projectors at these q
             Q2 = FINDLOC(PAIRS,-I, DIM=1)
             DO J = 1, 2
               DO A = 1, 2
-                CALL ONIA_PROJ(P_ONIA(:,Q1),PMASS_ONIA(Q1),HELQ(J),
-     &            P_ONIA(:,Q2),PMASS_ONIA(Q2),HELQ(A),P(:,QQ),
+                CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
+     &            P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
      &            PMASS_RESH(QQ),SZ(I),S_ONIA(I),PROJ)
                 PROJ_SAVED(I,HELQ(J),HELQ(A)) = PROJ
               ENDDO
