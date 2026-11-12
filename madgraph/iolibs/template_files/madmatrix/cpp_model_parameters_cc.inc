@@ -21,8 +21,6 @@
 
 using namespace madmatrix;
 
-#ifndef MGONGPU_HARDCODE_PARAM
-
 thread_local const Parameters* Parameters::current = nullptr;
 
 void
@@ -144,8 +142,6 @@ Parameters::setDependentCouplings() // now computed event-by-event (running alph
   %(set_dependent_couplings)s
 }
 */
-
-#endif
 
 // Routines for printing out parameters
 void

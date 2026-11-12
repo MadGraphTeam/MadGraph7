@@ -812,7 +812,7 @@ def _compile_subprocesses(directory: str, devices: list[str], fptype: str) -> No
                 entry["path"], device, fptype,
             )
             # madmatrix.mk's own USEBUILDDIR=1 build-directory tag
-            # (BACKEND+FPTYPE+HELINL+HRDCOD) refuses to build a *different*
+            # (BACKEND+FPTYPE+HELINL) refuses to build a *different*
             # tag while another tag's now-stale intermediate .o files are
             # still sitting in build.<device>/ from an earlier compile (eg
             # the original generation's own FPTYPE, or a previous reweight

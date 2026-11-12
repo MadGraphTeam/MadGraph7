@@ -7,7 +7,7 @@
 # To be used after the project makefile
 SHELL := /bin/bash
 
-# Determine CUDACPP_BUILDDIR based on the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD and USEBUILDDIR (#829)
+# Determine CUDACPP_BUILDDIR based on the user-defined choices of BACKEND, FPTYPE, HELINL and USEBUILDDIR (#829)
 # Stop with an error if BACKEND=cuda and nvcc is missing or if BACKEND=hip and hipcc is missing
 include ../../src/cudacpp_config.mk
 ifeq ($(CUDACPP_BUILDDIR),)
