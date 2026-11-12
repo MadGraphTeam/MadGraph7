@@ -25,11 +25,62 @@ from pyamplicol.reporting.progress import (
     ProgressUpdate,
 )
 
-#: The wall time one runtime call aims at: the refresh granularity of the
-#: progress display and the longest wait between a Ctrl-C and the stop. The
-#: first call evaluates one point; later calls take as many points as the
-#: measured cost per point fits into this time.
-CHUNK_SECONDS = 0.5
+#: The shortest wall time a later runtime call aims at: the refresh
+#: granularity of the progress display and the usual wait between a Ctrl-C
+#: and the stop.
+CHUNK_SECONDS = 2.0
+
+#: The largest share of the evaluation time spent on the fixed cost of the
+#: extra calls. A runtime call has a fixed cost (about 0.13 s on
+#: u u~ > t t~ g g) on top of its cost per point, so a call aims at no less
+#: than ``fixed / CHUNK_OVERHEAD`` seconds and the rest of the points goes
+#: in one call when it would take no more than one and a half such calls.
+CHUNK_OVERHEAD = 0.03
+
+#: The most points of the second call, which measures the cost per point
+#: next to the first call's single point.
+_SECOND_CALL_POINTS = 8
+
+
+def _cost_model(calls: Sequence[tuple[int, float]]) -> tuple[float, float]:
+    """``(fixed, per_point)`` seconds of one call fitted by least squares to
+    the measured ``(points, seconds)`` calls, both non-negative; the fixed
+    cost is at most the cheapest call."""
+
+    cheapest = min(seconds for _, seconds in calls)
+    sizes = {points for points, _ in calls}
+    if len(sizes) < 2:
+        points, seconds = calls[-1]
+        return 0.0, seconds / points
+    n = len(calls)
+    mean_x = sum(points for points, _ in calls) / n
+    mean_y = sum(seconds for _, seconds in calls) / n
+    sxx = sum((points - mean_x) ** 2 for points, _ in calls)
+    sxy = sum((points - mean_x) * (seconds - mean_y) for points, seconds in calls)
+    per_point = max(sxy / sxx, 0.0)
+    fixed = min(max(mean_y - per_point * mean_x, 0.0), cheapest)
+    if per_point == 0.0:
+        per_point = max(cheapest - fixed, 1e-9)
+    return fixed, per_point
+
+
+def _next_size(calls: Sequence[tuple[int, float]], remaining: int) -> int:
+    """The points of the next call: one point first, a few more to measure
+    the cost per point, then calls of at least ``CHUNK_SECONDS`` and at
+    least ``fixed / CHUNK_OVERHEAD`` each."""
+
+    if not calls:
+        return 1
+    if len(calls) == 1:
+        seconds = calls[0][1]
+        wanted = int(CHUNK_SECONDS / seconds) if seconds > 0 else remaining
+        return min(remaining, max(2, min(_SECOND_CALL_POINTS, wanted)))
+    fixed, per_point = _cost_model(calls)
+    target = max(CHUNK_SECONDS, fixed / CHUNK_OVERHEAD)
+    if fixed + per_point * remaining <= 1.5 * target:
+        return remaining
+    return min(remaining, max(1, int((target - fixed) / per_point)))
+
 
 # The per-point fields of a VirtualEvaluation (concatenated) and the fields
 # common to every point (equal across the chunks). Every field is listed in
@@ -146,7 +197,8 @@ def evaluate_in_chunks(
     """``operation(momenta, **per_point, **options)`` over all points, in
     successive calls reported to ``progress``; on Ctrl-C the
     :class:`PartialEvaluation` of the calls completed (a Ctrl-C before the
-    first one completes propagates)."""
+    first one completes propagates). A call that raises is repeated as one
+    call over all points, so the error is the one-call error."""
 
     total = len(momenta)
     task = "evaluate-points"
@@ -162,22 +214,32 @@ def evaluate_in_chunks(
     )
     parts: list[Any] = []
     offsets: list[int] = []
+    calls: list[tuple[int, float]] = []
     done = 0
     success = False
     try:
         try:
-            size = 1
             while done < total or not parts:
-                stop = min(done + size, total)
-                part = operation(
-                    momenta[done:stop],
-                    **{name: values[done:stop] for name, values in per_point.items()},
-                    **options,
-                )
+                stop = min(done + _next_size(calls, total - done), total)
+                began = time.perf_counter()
+                try:
+                    part = operation(
+                        momenta[done:stop],
+                        **{name: v[done:stop] for name, v in per_point.items()},
+                        **options,
+                    )
+                except Exception:
+                    if done == 0 and stop == total:
+                        raise
+                    # The one-call failure, raised by one call: the runtime
+                    # names a failing point by its index within the call.
+                    result = operation(momenta, **per_point, **options)
+                    success = True
+                    return result
+                calls.append((stop - done, time.perf_counter() - began))
                 parts.append(part)
                 offsets.append(done)
                 done = stop
-                elapsed = time.perf_counter() - started
                 progress.emit(
                     ProgressUpdate(
                         task,
@@ -186,7 +248,6 @@ def evaluate_in_chunks(
                         details={"step": f"{done} of {total} point(s)"},
                     )
                 )
-                size = max(1, int(CHUNK_SECONDS * done / max(elapsed, 1e-9)))
         except KeyboardInterrupt:
             if not parts:
                 raise

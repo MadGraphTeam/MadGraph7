@@ -9,6 +9,7 @@ from decimal import Decimal
 
 import pytest
 
+from pyamplicol.api.errors import EvaluationError
 from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualFailureDiagnostic,
@@ -73,54 +74,117 @@ def test_concatenation_refuses_differing_common_fields():
         pe.concatenate([_virtual([1]), other], [0, 1])
 
 
-def _operation(calls: list[int], interrupt_at: int | None = None):
+class _Clock:
+    """A clock the fake operation advances by a call's cost: a fixed cost
+    plus a cost per point (seconds)."""
+
+    def __init__(self, fixed: float = 0.13, per_point: float = 0.02) -> None:
+        self.now, self.fixed, self.per_point = 0.0, fixed, per_point
+
+    def perf_counter(self) -> float:
+        return self.now
+
+
+def _operation(
+    calls: list[int],
+    clock: _Clock,
+    interrupt_at: int | None = None,
+    failing: int | None = None,
+):
     def operation(momenta, *, mu_r2, scale):
         calls.append(len(momenta))
+        clock.now += clock.fixed + clock.per_point * len(momenta)
         if interrupt_at is not None and len(calls) == interrupt_at:
             raise KeyboardInterrupt
         assert len(mu_r2) == len(momenta) and scale == 7
+        for index, momentum in enumerate(momenta):
+            if momentum == failing:
+                # The runtime numbers a failing point within its call.
+                raise EvaluationError(f"failed at point {index}")
         return tuple(m * 10 for m in momenta)
 
     return operation
 
 
-def test_chunks_cover_every_point_once_with_progress(monkeypatch):
-    monkeypatch.setattr(pe, "CHUNK_SECONDS", 0.0)
+def _run(monkeypatch, total: int, clock: _Clock, **kwargs):
+    monkeypatch.setattr(pe, "time", clock)
     calls: list[int] = []
-    events = []
+    events: list[object] = []
     result = pe.evaluate_in_chunks(
         CallbackProgressSink(events.append),
-        _operation(calls),
-        list(range(5)),
-        {"mu_r2": list(range(5))},
+        _operation(calls, clock, **kwargs),
+        list(range(total)),
+        {"mu_r2": list(range(total))},
         {"scale": 7},
     )
-    assert result == (0, 10, 20, 30, 40)
-    assert calls == [1] * 5
+    return result, calls, events
+
+
+def test_chunks_cover_every_point_once_with_progress(monkeypatch):
+    result, calls, events = _run(monkeypatch, 1000, _Clock())
+    assert result == tuple(m * 10 for m in range(1000))
+    # One point, eight to measure the cost per point, then calls of
+    # (fixed / CHUNK_OVERHEAD - fixed) / per_point = 210 points, and the
+    # rest in one call once it fits in one and a half such calls.
+    assert calls == [1, 8, 210, 210, 210, 210, 151]
     updates = [e.completed for e in events if isinstance(e, ProgressUpdate)]
-    assert updates == [1, 2, 3, 4, 5]
+    assert updates == [1, 9, 219, 429, 639, 849, 1000]
+
+
+def test_a_short_evaluation_takes_three_calls(monkeypatch):
+    # The fixed cost of the two extra calls stays a small share.
+    _, calls, _ = _run(monkeypatch, 300, _Clock())
+    assert calls == [1, 8, 291]
+    _, calls, _ = _run(monkeypatch, 1, _Clock())
+    assert calls == [1]
+
+
+def test_slow_points_go_one_per_call_after_the_second_call(monkeypatch):
+    _, calls, _ = _run(monkeypatch, 6, _Clock(fixed=0.0, per_point=30.0))
+    assert calls == [1, 2, 1, 1, 1]
+
+
+def test_a_failure_is_the_one_call_failure(monkeypatch):
+    # Point 12 fails in the third call; the error names it by its index in
+    # all the points, as one call does.
+    with pytest.raises(EvaluationError, match="failed at point 12$"):
+        _run(monkeypatch, 20, _Clock(), failing=12)
+    calls: list[int] = []
+    clock = _Clock()
+    monkeypatch.setattr(pe, "time", clock)
+    with pytest.raises(EvaluationError, match="failed at point 12$"):
+        pe.evaluate_in_chunks(
+            NullProgressSink(),
+            _operation(calls, clock, failing=12),
+            list(range(20)),
+            {"mu_r2": list(range(20))},
+            {"scale": 7},
+        )
+    assert calls == [1, 8, 11, 20]
 
 
 def test_interrupt_keeps_the_points_done(monkeypatch):
-    monkeypatch.setattr(pe, "CHUNK_SECONDS", 0.0)
+    clock = _Clock()
+    monkeypatch.setattr(pe, "time", clock)
     calls: list[int] = []
     partial = pe.evaluate_in_chunks(
         NullProgressSink(),
-        _operation(calls, interrupt_at=3),
-        list(range(5)),
-        {"mu_r2": list(range(5))},
+        _operation(calls, clock, interrupt_at=3),
+        list(range(500)),
+        {"mu_r2": list(range(500))},
         {"scale": 7},
     )
     assert isinstance(partial, pe.PartialEvaluation)
-    assert (partial.result, partial.requested, partial.measured) == ((0, 10), 5, 2)
+    assert (partial.result, partial.requested, partial.measured) == (
+        tuple(m * 10 for m in range(9)),
+        500,
+        9,
+    )
     machine, human = io.StringIO(), io.StringIO()
-    write_result(partial, format="json", stream=machine)
-    assert json.loads(machine.getvalue()) == {
-        "values": [0, 10],
-        "interrupted": True,
-        "requested_points": 5,
-        "measured_points": 2,
-    }
+    tree = pe.PartialEvaluation((0, 10), 5, 2)
+    write_result(tree, format="json", stream=machine)
+    # A tree evaluation's list keeps its type; the notice goes to stderr.
+    assert json.loads(machine.getvalue()) == [0, 10]
     virtual = pe.PartialEvaluation(_virtual([1, 2]), 9, 2)
     write_result(virtual, format="human", stream=human)
     machine = io.StringIO()
@@ -137,7 +201,7 @@ def test_interrupt_before_any_point_propagates(monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         pe.evaluate_in_chunks(
             NullProgressSink(),
-            _operation([], interrupt_at=1),
+            _operation([], _Clock(), interrupt_at=1),
             list(range(3)),
             {"mu_r2": list(range(3))},
             {"scale": 7},

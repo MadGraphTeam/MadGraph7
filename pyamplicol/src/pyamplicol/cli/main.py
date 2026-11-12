@@ -49,7 +49,9 @@ def _json_value(value: object) -> object:
         }
         if isinstance(inner, dict):
             return {**inner, **partial}
-        return {"values": inner, **partial}
+        # A tree evaluation's list keeps its type (the JSON schema only
+        # gains fields); ``write_result`` puts the notice on stderr.
+        return inner
     if isinstance(value, VirtualOrderEvaluation):
         # The one evaluation, its order axes and the explicit sums (named:
         # orders are never summed silently).
@@ -118,6 +120,10 @@ def write_result(
     if format == "json":
         json.dump(plain, stream, indent=2, sort_keys=True, allow_nan=False)
         stream.write("\n")
+        from .partial_evaluation import PartialEvaluation
+
+        if isinstance(value, PartialEvaluation) and not isinstance(plain, dict):
+            sys.stderr.write(f"{value.notice()}\n")
     elif format == "human":
         from pyamplicol.reporting import palette
 
