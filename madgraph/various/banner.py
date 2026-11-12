@@ -7179,7 +7179,7 @@ class RunCardMG7(RunCard):
             comment="threads for the cpu devices; -1 chooses automatically")
         self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
             allowed=['auto', True, False],
-            comment="compress large event files with pigz when available; auto detects it, false uses gzip")
+            comment="cpu gzip of the lhe output with pigz when available; auto detects it, false uses gzip")
         self.add_toml_param('run', 'lhe_compression', 'auto', gridpack=True,
             allowed=['auto', 'cpu'],
             comment="where the lhe output is gzipped: auto uses a gpu device when madspace was built with nvCOMP, cpu always uses pigz/gzip")

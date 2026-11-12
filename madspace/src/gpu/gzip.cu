@@ -277,9 +277,11 @@ std::unique_ptr<GzipCompressor> GpuDevice::gzip_compressor(int algorithm) const 
 #else
 
 std::unique_ptr<GzipCompressor> GpuDevice::gzip_compressor(int) const {
-    static std::once_flag warned;
-    std::call_once(warned, [] {
-        Logger::warning(GPUCOMP_FALLBACK_REASON ", falling back to CPU gzip");
+    static std::once_flag logged;
+    std::call_once(logged, [] {
+        Logger::log(
+            GPUCOMP_FALLBACK_LEVEL, GPUCOMP_FALLBACK_REASON ", falling back to CPU gzip"
+        );
     });
     return nullptr;
 }

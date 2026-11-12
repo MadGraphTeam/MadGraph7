@@ -14,7 +14,7 @@ madspace_cpu_mode = %(run.madspace_cpu_mode)s
 precision = %(run.precision)s
 # -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
-# auto uses pigz for large files when installed; false uses gzip
+# cpu gzip of the lhe output: auto uses pigz when installed; false uses gzip
 use_pigz = %(run.use_pigz)s
 # where the lhe output is gzipped: auto uses a gpu device when madspace was built with nvCOMP; options: auto, cpu
 lhe_compression = %(run.lhe_compression)s

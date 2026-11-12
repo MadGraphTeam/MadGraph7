@@ -58,8 +58,8 @@ nvcomp_ROOT=/path/to/nvcomp python madspace/install.py --source --system --cuda
 `run.lhe_gzip_algorithm` picks the nvCOMP algorithm, from 0 (fastest) to 5 (smallest
 output, the default).
 
-Without nvCOMP, and on HIP (hipCOMP has no gzip compressor), madspace logs a warning
-and MadGraph7 gzips the LHE output on the CPU.
+Without nvCOMP (logged as info), and on HIP (a warning: hipCOMP has no gzip compressor),
+MadGraph7 gzips the LHE output on the CPU.
 
 The build directory `madspace/build` is kept between builds, so you can run `make` there
 directly for faster incremental builds during development. Note that this does not update

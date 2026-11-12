@@ -5,7 +5,9 @@
 
 #if defined(__CUDACC__)
 
+// nvCOMP is optional, so building without it is the normal setup.
 #define GPUCOMP_FALLBACK_REASON "madspace built without nvCOMP"
+#define GPUCOMP_FALLBACK_LEVEL Logger::level_info
 
 #ifdef MADSPACE_GPUCOMP
 #include <nvcomp/gzip.h>
@@ -29,5 +31,6 @@
 // hipCOMP only decompresses gzip. Once it compresses, map its names here like nvCOMP
 // and define MADSPACE_GPUCOMP for madspace_hip in CMakeLists.txt.
 #define GPUCOMP_FALLBACK_REASON "hipCOMP gzip compression not supported"
+#define GPUCOMP_FALLBACK_LEVEL Logger::level_warning
 
 #endif
