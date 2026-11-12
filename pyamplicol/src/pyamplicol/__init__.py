@@ -51,9 +51,9 @@ try:
         # key can still license this process, otherwise use restricted mode.
         with _suppress(ValueError, PermissionError):
             _set_library_key(
-                "SU-419-pyamplicol-2028.01.01-"
-                "KJBO3RLZJ3H5FKU5CL756QLKZCURABBCKRGHZRK5OVIUQXZBCLJTOUQPHXYVTANIX"
-                "SCKI6YTZDWGH2NWHQIBCPDUO5GVW2STVMP3MCQ"
+                "SU-419-pyamplicol-2028.03.01-"
+                "TYDKOSXVRWSMFPFBTI7UZTZD2BA2ZLWJEJYGU7ZC3MED6ZHYT4PYZWALKUUCGIRIN"
+                "HCWHEZIDIRXAHPJWEA65PTHXPEPLJUBUCRCKCQ"
             )
 finally:
     if _previous_banner is None:

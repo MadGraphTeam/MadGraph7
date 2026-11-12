@@ -38,9 +38,9 @@ pub const DISABLE_VARIABLE: &str = "PYAMPLICOL_NATIVE_LIBRARY_KEY";
 
 // The key of `pyamplicol/__init__.py`, issued for the package `pyamplicol`.
 const KEY: [&str; 3] = [
-    "SU-419-pyamplicol-2028.01.01-",
-    "KJBO3RLZJ3H5FKU5CL756QLKZCURABBCKRGHZRK5OVIUQXZBCLJTOUQPHXYVTANIX",
-    "SCKI6YTZDWGH2NWHQIBCPDUO5GVW2STVMP3MCQ",
+    "SU-419-pyamplicol-2028.03.01-",
+    "TYDKOSXVRWSMFPFBTI7UZTZD2BA2ZLWJEJYGU7ZC3MED6ZHYT4PYZWALKUUCGIRIN",
+    "HCWHEZIDIRXAHPJWEA65PTHXPEPLJUBUCRCKCQ",
 ];
 
 // Private to this crate (Symbolica: "do not use `pub` scope to prevent key
