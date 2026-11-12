@@ -1278,7 +1278,8 @@ class DDMColorSingletTest(unittest.TestCase):
                                                                      cs.coeff
             return dict((k, v) for k, v in res.items() if v)
 
-        for ids in ([21, 21, 25, 21, 21], [21, 21, 25, 21, 21, 21],
+        for ids in ([21, 21, 25, 21], [21, 21, 36, 21],
+                    [21, 21, 25, 21, 21], [21, 21, 25, 21, 21, 21],
                     [21, 21, 25, 36, 21, 21], [21, 21, 36, 21, 21, 21]):
             col_basis = color_amp.ColorBasis()
             color_dicts = col_basis.create_color_dict_list(
@@ -1323,6 +1324,49 @@ class DDMColorSingletTest(unittest.TestCase):
         projection = col_basis.get_flow_projection()
         self.assertEqual(len(projection), 24)
         self.assertTrue(all(projection))
+
+    def test_ddm_flow_projection_reproduces_trace_jamps(self):
+        """The color flows (madevent JAMP2, event colors) are rebuilt from the
+        DDM JAMPs through get_flow_projection. For every diagram and color
+        chain, the trace coefficients obtained that way from its DDM
+        coefficients must be its direct trace coefficients, exactly (Nc=3),
+        including g g > h g, whose single DDM structure feeds two flows."""
+
+        def value(coeff, is_imaginary, Nc_power):
+            number = coeff * fractions.Fraction(3) ** Nc_power
+            return (0, number) if is_imaginary else (number, 0)
+
+        def vectors(basis):
+            res = collections.defaultdict(dict)
+            for index, struct in enumerate(sorted(basis.keys())):
+                for diag, chain, coeff, imag, power, loop in basis[struct]:
+                    re, im = res[(diag, chain)].get(index, (0, 0))
+                    v_re, v_im = value(coeff, imag, power)
+                    res[(diag, chain)][index] = (re + v_re, im + v_im)
+            return res
+
+        for ids in ([21, 21, 25, 21], [21, 21, 36, 21], [21, 21, 25, 21, 21],
+                    [21, 21, 25, 21, 21, 21], [21, 21, 25, 36, 21, 21],
+                    [21, 21, 21, 21, 21]):
+            color_amp.set_ddm_basis(True, with_flow=True)
+            col_basis = color_amp.ColorBasis(self.get_amplitude(ids))
+            flow_basis = col_basis.get_flow_basis()
+            self.assertTrue(col_basis._ddm_ends)
+            self.assertTrue(len(flow_basis) > len(col_basis))
+            projection = col_basis.get_flow_projection()
+            ddm_vectors, trace_vectors = vectors(col_basis), vectors(flow_basis)
+            self.assertEqual(set(ddm_vectors), set(trace_vectors))
+            for key, ddm_vector in ddm_vectors.items():
+                for row, terms in enumerate(projection):
+                    re, im = 0, 0
+                    for (one, coeff, imag, power), column in terms:
+                        a, b = value(coeff, imag, power)
+                        c, d = ddm_vector.get(column - 1, (0, 0))
+                        re, im = re + a * c - b * d, im + a * d + b * c
+                    self.assertEqual((re, im),
+                                     trace_vectors[key].get(row, (0, 0)),
+                                     '%s, diagram/chain %s, flow %d' % \
+                                     (ids, key, row))
 
     def test_ddm_fall_back_disconnected_scalars(self):
         """g g > h* > h h* > h g g gives delta^12 delta^45, which is not in the
