@@ -362,6 +362,48 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
 
 
 @pytest.mark.loop_physics
+def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
+    """profile --stability on 1 (in-process) and 3 worker processes: the
+    same per-point records and statistics (ux-cli C5); only the times and
+    the worker count differ."""
+
+    from pyamplicol.cli.main import run_cli
+
+    reports = {}
+    for cores in ("1", "3"):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "7",
+                "--n_core" if cores == "1" else "--n-core",
+                cores,
+                "--progress",
+                "off",
+                "--json",
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        reports[cores] = json.loads(stdout.getvalue())
+    one, three = reports["1"], reports["3"]
+    assert one["stability_setup"]["n_core"] == 1
+    assert three["stability_setup"]["n_core"] == 3
+    for report in (one, three):
+        assert report["stability_setup"]["interrupted"] is False
+        assert report["stability_setup"]["requested"] == 7
+        report["stability_setup"].pop("n_core")
+        for row in report["stability"]:
+            row.pop("seconds")
+    assert one["stability"] == three["stability"]
+    assert one["stability_setup"] == three["stability_setup"]
+    assert one["failure_causes"] == three["failure_causes"]
+
+
 def test_a_loop_induced_view_has_no_born(tmp_path):
     from pyamplicol import Runtime
 

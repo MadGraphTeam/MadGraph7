@@ -77,7 +77,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # evaluation.phase_space section (points, seed, sqrt_s); 150: ux-profile's
     # benchmark.runtime, stability and stability_points (`pyamplicol profile
     # --runtime / --stability` of loop artifacts).
-    assert len(FIELD_REGISTRY) == 150
+    assert len(FIELD_REGISTRY) == 151
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
     assert FIELD_REGISTRY["loop.external_widths"].default == "model"
     assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2

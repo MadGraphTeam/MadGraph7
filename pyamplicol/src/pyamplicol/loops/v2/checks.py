@@ -1276,7 +1276,7 @@ def induced_rows(
     from .plan_export import NativeExecutor
 
     if target.amplitude.colour_zero:
-        return [
+        zero = [
             CheckRow(
                 check,
                 "every loop order",
@@ -1287,6 +1287,10 @@ def induced_rows(
             )
             for check in ("poles", "ward", "goldstone")
         ]
+        if out is None:
+            return zero
+        out.extend(zero)
+        return out
     legs = induced.probe_legs(target)
     excluded = ward_applicability(target) if legs else None
     probed = legs if excluded is None else []
