@@ -25,3 +25,9 @@ after acquisition it runs entirely offline and requires byte-identical PDF
 output using Typst 0.15.1. The CLI materialization supports auditing; it is not a
 Typst input. Font licensing remains in `final-report-v1/fonts/OFL.txt`. No
 download is required to read the PDF or run the NinjaRS regression suite.
+
+For new timing captures, explicitly enable source snapshots and runtime hashes
+with `check profile ... --timing_provenance=True` (also supported by `check timing`).
+The resulting `SavedRunInfos/profile_timing_metadata.json` retains the report's
+provenance format and requires the recorded runtime files to remain unchanged
+during the measurement. Ordinary checks leave this archival work disabled.

@@ -583,7 +583,16 @@ C     Learned zero and equivalent-helicity filters belong to the pole
 C      convention
 C     that produced them.  Diagnostic modes must include cancelling
 C      UV/IR loops.
-      BYPASS_FILTERS=BYPASS_CHECK.OR.LOOPPOLEMODE.GE.0
+      BYPASS_FILTERS=BYPASS_CHECK.OR.LOOPPOLEMODE.GT.0
+C     Legacy COLLIER filters may have been trained without one pole
+C      origin.
+C     Isolate them when explicit combined poles override those
+C      switches.
+      IF (LOOPPOLEMODE.EQ.0.AND.ANY(MLREDUCTIONLIB.EQ.7)
+     $ .AND.(.NOT.COLLIERCOMPUTEUVPOLES.OR..NOT.COLLIERCOMPUTEIRPOLES))
+     $  THEN
+        BYPASS_FILTERS=.TRUE.
+      ENDIF
 
       IF (LOCAL_ML_INIT) THEN
         LOCAL_ML_INIT = .FALSE.
@@ -866,7 +875,7 @@ C        trust the evaluation for checks.
       CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER)
      $ .AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-      IF (WRITEOUTFILTERS.AND.LOOPPOLEMODE.LT.0) THEN
+      IF (WRITEOUTFILTERS.AND..NOT.BYPASS_FILTERS) THEN
         IF ((HELICITYFILTERLEVEL.NE.0).AND.(.NOT. CHECKPHASE)
      $   .AND.(.NOT.FOUNDHELFILTER)) THEN
           OPEN(1, FILE=HELFILTERFN, ERR=110, STATUS='NEW'

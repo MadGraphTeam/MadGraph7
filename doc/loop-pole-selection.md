@@ -80,12 +80,21 @@ uses this generic DP engine; the fast-engine compensated numerator callback
 does not apply. Higher-precision rescue remains available. Combined and
 no-pole double-precision evaluations retain the fast reduction engine.
 
-All explicit modes (`0`–`3`) bypass MadLoop's helicity and loop-filter decisions,
+Diagnostic modes (`1`–`3`) bypass MadLoop's helicity and loop-filter decisions,
 including previously learned filters. This prevents filters trained on
 combined poles from discarding contributions whose separate UV and IR poles
-are nonzero. The default `-1` retains the usual filtering policy. These
-diagnostic choices can therefore increase numerator and reduction costs,
-including for explicit mode `0` compared with the default combined-pole run.
+are nonzero. These diagnostic evaluations neither train nor write filters;
+returning to mode `0` restores normal filtering, training and filter-file
+writing. The default `-1` retains the usual filtering policy.
+
+One compatibility exception applies when the reduction chain includes COLLIER
+and either legacy `COLLIERComputeUVpoles` or `COLLIERComputeIRpoles` is false.
+Filters learned in that legacy convention may discard contributions that
+explicit mode `0` must retain. Because saved filters do not record their pole
+convention, mode `0` conservatively bypasses them in this configuration too.
+With the usual legacy switches both true, mode `0` has the same filter policy
+as an ordinary combined-pole run. Bypassed evaluations can increase numerator
+and reduction costs.
 
 For the bare loop amplitude's pole residues, UV plus IR reconstructs the
 combined single pole; the double pole is IR. This statement concerns the pole

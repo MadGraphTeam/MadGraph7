@@ -1348,9 +1348,10 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             return None
         dir_name=res_timings['dir_path']
 
-        # Preserve exact timing inputs/results before profile's stability pass
-        # rewrites the driver, filters and result.dat. All capture is outside
-        # make_and_run's existing timers and does not change its calls/settings.
+        # Optional benchmark provenance preserves inputs before the stability
+        # pass rewrites them. Ordinary timing/profile calls must not hash linked
+        # HEPTools libraries, copy sources or require a frozen installation.
+        record_timing = bool(options and options.get('timing_provenance', False))
         import hashlib
         import json
 
@@ -1426,6 +1427,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                     raise MadGraph5Error('Timing runtime changed during measurement: %s'%path)
 
         def save_timing_metadata():
+            if not record_timing:
+                return
             if not os.path.isdir(metadata_dir):
                 os.makedirs(metadata_dir)
             with open(metadata_path, 'w') as stream:
@@ -1433,6 +1436,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                 stream.write('\n')
 
         def capture_timing_stage(name, compile_seconds, wall_seconds, ram_usage):
+            if not record_timing:
+                return
             verify_timing_runtime()
             driver_path = pjoin(dir_name, 'check_sa.f')
             loop_path = pjoin(dir_name, 'loop_matrix.f')
@@ -1503,6 +1508,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             save_timing_metadata()
 
         def finish_timing_metadata():
+            if not record_timing:
+                return
             verify_timing_runtime()
             # Copy before adding the metadata reference to the return dictionary.
             timing_metadata['timing_result'] = copy.deepcopy(res_timings)
@@ -1510,7 +1517,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             res_timings['timing_metadata'] = {'schema': timing_metadata['schema'],
                                              'path': os.path.abspath(metadata_path)}
 
-        timing_metadata['runtime_files'] = timing_runtime()
+        if record_timing:
+            timing_metadata['runtime_files'] = timing_runtime()
 
         def check_disk_usage(path):
             return subprocess.check_output(
@@ -1565,28 +1573,29 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         
         res_timings['n_contrib_hel']=n_contrib_hel
         res_timings['n_tot_hel']=len(helicities)
-        helicity_path = pjoin(dir_name, 'MadLoop5_resources', '%sHelConfigs.dat'%proc_prefix)
-        physical_tuple = None
-        if os.path.isfile(helicity_path):
-            with open(helicity_path) as stream:
-                configurations = [line.split() for line in stream if line.strip()]
-            if 0 < contributing_hel <= len(configurations):
-                physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
-        timing_metadata['selected_timing_helicity'] = {
-            'one_based_index': contributing_hel,
-            'physical_tuple': physical_tuple,
-            'helicity_configurations': timing_file(helicity_path, True),
-            'filter': timing_file(pjoin(dir_name, 'MadLoop5_resources', '%sHelFilter.dat'%proc_prefix), True),
-            'filter_tokens': list(helicities),
-            'contributing_count': n_contrib_hel,
-            'total_count': len(helicities)}
-        raw_backends = self.get_MadLoop_Params(
-            pjoin(export_dir, 'Cards', 'MadLoopParams.dat'))['MLReductionLib']
-        timing_metadata['reduction_backends'] = ([int(tool.strip()) for tool in raw_backends.split('|')
-            if tool.strip()] if isinstance(raw_backends, str) else [int(tool) for tool in raw_backends])
-        timing_metadata['backend_labels'] = [bannermod.MadLoopParam._ID_reduction_tool_map.get(
-            tool, str(tool)) for tool in timing_metadata['reduction_backends']]
-        save_timing_metadata()
+        if record_timing:
+            helicity_path = pjoin(dir_name, 'MadLoop5_resources', '%sHelConfigs.dat'%proc_prefix)
+            physical_tuple = None
+            if os.path.isfile(helicity_path):
+                with open(helicity_path) as stream:
+                    configurations = [line.split() for line in stream if line.strip()]
+                if 0 < contributing_hel <= len(configurations):
+                    physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
+            timing_metadata['selected_timing_helicity'] = {
+                'one_based_index': contributing_hel,
+                'physical_tuple': physical_tuple,
+                'helicity_configurations': timing_file(helicity_path, True),
+                'filter': timing_file(pjoin(dir_name, 'MadLoop5_resources', '%sHelFilter.dat'%proc_prefix), True),
+                'filter_tokens': list(helicities),
+                'contributing_count': n_contrib_hel,
+                'total_count': len(helicities)}
+            raw_backends = self.get_MadLoop_Params(
+                pjoin(export_dir, 'Cards', 'MadLoopParams.dat'))['MLReductionLib']
+            timing_metadata['reduction_backends'] = ([int(tool.strip()) for tool in raw_backends.split('|')
+                if tool.strip()] if isinstance(raw_backends, str) else [int(tool) for tool in raw_backends])
+            timing_metadata['backend_labels'] = [bannermod.MadLoopParam._ID_reduction_tool_map.get(
+                tool, str(tool)) for tool in timing_metadata['reduction_backends']]
+            save_timing_metadata()
         
         # We aim at a 30 sec run
         if not make_it_quick:

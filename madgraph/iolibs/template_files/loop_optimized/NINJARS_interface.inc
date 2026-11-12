@@ -52,7 +52,6 @@ C     NinjaRS tensor reduction using oneloopmaster scalar integrals.
       STABLE=.FALSE.
       RES=(0.D0,0.D0)
       PDEN_DUMMY=0
-      MASSES=CMPLX(M2L,KIND=KI_NRS)
 C     Preserve MadLoop's loop-direction stability test and mass ordering.
       CALL %(proc_prefix)sSWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,M2L)
       MASSES=M2L
@@ -106,6 +105,7 @@ C       q_loop -> -q_loop in NinjaRS's denominator convention.
         IF (MOD(COEFTORANK_MAP(I),2).EQ.1) TENSORCOEFS(I)=-TENSORCOEFS(I)
       ENDDO
       NRS_SCALE=REAL(MU_R**2,KIND=KI_NRS)
+C     R1 is a required diagnostic output, already included in NRS_RES(0).
       IF(NRS_RETRY_MODE) THEN
       CALL NINJARS_TENSOR_EVALUATE_COMPENSATED(TENSORCOEFS(0:CURR_MAXCOEF-1),NLOOPLINE,RANK,REAL_S_MAT,P_NRS,MASSES,NRS_SCALE,NRS_RES,R1,NRS_STATUS,MAX(0,LoopPoleMode))
       ELSE
@@ -251,6 +251,7 @@ C       q_loop -> -q_loop in NinjaRS's denominator convention.
         IF (MOD(COEFTORANK_MAP(I),2).EQ.1) TENSORCOEFS(I)=-TENSORCOEFS(I)
       ENDDO
       NRS_SCALE=REAL(MU_R**2,KIND=KI_QNRS)
+C     R1 is a required diagnostic output, already included in NRS_RES(0).
       CALL NINJARS_TENSOR_EVALUATE(TENSORCOEFS(0:CURR_MAXCOEF-1),NLOOPLINE,RANK,REAL_S_MAT,P_NRS,MASSES,NRS_SCALE,NRS_RES,R1,NRS_STATUS,MAX(0,LoopPoleMode))
       STABLE=NRS_STATUS.EQ.NINJARS_SUCCESS
       DO I=0,2

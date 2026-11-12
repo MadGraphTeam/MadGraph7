@@ -111,8 +111,9 @@ The generator checks the COLLIER status flags and tensor component counts.
 
 `collier_poles.f90` adapts the tensor reference driver from
 [NinjaRS at revision aa6a6307](https://github.com/alphal00p/ninjars/blob/aa6a6307dd081dc3714f9accebc0df9e5561ae73/validation/rank-n2/harness/collier_tensor_driver.f90),
-separating the UV and IR regulator variations. This directory uses the same
-GPL-3.0-or-later license as the bridge and NinjaRS.
+separating the UV and IR regulator variations. This directory and the bridge
+retain GPL-3.0-or-later, including code adapted from that earlier GPL-licensed
+NinjaRS revision. Current upstream NinjaRS uses 0BSD.
 
 ## Generated MadLoop comparisons
 

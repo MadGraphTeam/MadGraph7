@@ -42,6 +42,7 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.various.misc as misc
+from madgraph.various import ninjars_install
 import madgraph.fks.fks_base as fks_base
 import aloha
 
@@ -555,9 +556,20 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         opt = self.options
                 
         # Check if first time:
-        ninjars_ready = isinstance(opt.get('ninjars'), str) and os.path.isfile(
-            pjoin(MG5DIR, opt['ninjars'], 'libninjars.a'))
+        # NinjaRS is the default for Born processes, but loop-induced outputs
+        # retain 7|6|1. Do not suppress their Ninja/COLLIER installation offer
+        # just because a usable NinjaRS library happens to be installed.
+        processes = [amp.get('process') for amp in self._curr_amps]
+        if not processes and getattr(self, '_fks_multi_proc', None):
+            processes = self._fks_multi_proc.get('process_definitions')
+        ninjars_ready = bool(processes) and all(
+            proc.get('has_born') for proc in processes) and \
+            ninjars_install.is_available(opt.get('ninjars'))
+        collier_ready = isinstance(opt.get('collier'), str) and any(
+            os.path.isfile(pjoin(MG5DIR, opt['collier'], suffix))
+            for suffix in ('libcollier.a', pjoin('lib', 'libcollier.a')))
         if not force and ((opt['ninja'] is None) or ninjars_ready or
+                collier_ready or
                 os.path.isfile(pjoin(MG5DIR, opt['ninja'], 'libninja.a'))):
             return
 
@@ -1009,6 +1021,10 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
                      'golem': 'off',
                      'cuttools': 'required',
                      'iregi': 'required'}
+        self.order = list(type(self).order)
+        if not sys.platform.startswith('linux'):
+            self.order.remove('ninjars')
+            del self.code['ninjars']
         if not self.online:
             self.code['ninja'] = 'local'
             self.code['collier'] = 'local'
@@ -1035,7 +1051,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
                 self.code['golem'] =  pjoin(install_dir2, 'golem95')
             if os.path.exists(pjoin(install_dir1, 'ninja')):
                 self.code['ninja'] =  pjoin(install_dir2, 'ninja','lib')
-            if os.path.isfile(pjoin(install_dir1, 'ninjars', 'lib', 'libninjars.a')):
+            if 'ninjars' in self.code and os.path.isfile(pjoin(install_dir1, 'ninjars', 'lib', 'libninjars.a')):
                 self.code['ninjars'] = pjoin(install_dir1, 'ninjars', 'lib')
         
         # 1. create the question

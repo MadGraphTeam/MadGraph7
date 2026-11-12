@@ -993,6 +993,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   optional argument.")
         logger.info(" > Notice multiparticle labels cannot be used with these checks.")
         logger.info(" > \"--reduction=\" allows to change what reduction methods should be used.")
+        logger.info(" > Timing/profile: --timing_provenance=True archives timing sources and")
+        logger.info("   hashes linked libraries for reproducible benchmarks (default: False).")
+        logger.info("   This opt-in mode requires those runtime files to remain unchanged.")
         logger.info(" > \"--split_orders=\" allows to change what specific combination of coupling orders to consider.")
         logger.info(" > For process syntax, please see help generate.")
         logger.info(" > In order to save the directory generated or the reuse an existing one")
@@ -1643,6 +1646,9 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--collier_mode':'1',
                    '--events': None,
                    '--skip_evt':0}
+
+        if args[0] in ['timing', 'profile']:
+            user_options['--timing_provenance'] = 'False'
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
@@ -3165,6 +3171,8 @@ class CompleteForCmd(cmd.CompleteCmd):
           '--loop_filter=','--resonances=']
 
         options = ['--energy=']
+        if len(args) >= 2 and args[1] in ['timing', 'profile']:
+            options.append('--timing_provenance=')
         if len(args) >= 2 and args[1] == 'precision':
             options.extend(['--nb_event=', '--backend='])
         if cms_options:
@@ -5548,6 +5556,10 @@ This implies that with decay chains:
                                        " must be an integer, not %s."%option[1])
             elif option[0]=='--reduction':
                 MLoptions['MLReductionLib']=[int(ir) for ir in option[1].split('|')]
+            elif option[0]=='--timing_provenance':
+                if len(option) != 2 or option[1].lower() not in ('true', 'false'):
+                    raise self.InvalidCmd("The value of 'timing_provenance' must be True or False.")
+                options['timing_provenance'] = option[1].lower() == 'true'
             elif option[0]=='--collier_mode':
                 MLoptions['COLLIERMode']=int(option[1])
             elif option[0]=='--collier_cache':

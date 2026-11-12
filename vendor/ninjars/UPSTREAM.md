@@ -71,10 +71,13 @@ scaleless-bubble coefficients whose UV and IR residues cancel in the combined
 result. Their compensated-DP entry uses the same generic DP path, without the
 fast-engine compensated numerator callback; higher-precision rescue remains
 available. Combined-pole and no-pole DP calculations retain the fast engine.
-All explicit modes (`0`–`3`) bypass existing helicity/loop-filter decisions so
-that cancelled combined-pole contributions remain available for separation;
-default mode `-1` keeps the usual filtering policy. Explicit modes can
-therefore incur additional numerator and reduction costs. The committed
+Diagnostic modes (`1`–`3`) bypass existing helicity/loop-filter decisions so
+that cancelled combined-pole contributions remain available for separation.
+Mode `0` uses the usual filtering/training policy, except when COLLIER is in
+the reduction chain and a legacy pole switch is disabled: saved filters from
+that convention cannot safely be reused for explicit combined poles.
+Bypassed calls do not train or write filters, and retain the caller's filters
+for subsequent ordinary evaluations. The committed
 dependency revisions and lockfile include the upstream pole-selection APIs.
 See [Selecting UV and IR poles in MadLoop](../../doc/loop-pole-selection.md)
 for card examples, the Fortran setter, and the scope of the returned poles.
