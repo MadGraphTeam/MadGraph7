@@ -1,3 +1,12 @@
+Current native-tier work follows the [final local validation TODO](LOCAL_FINAL_VALIDATION_TODO.md).
+Status `219` identifies accepted DP transport and can include internal tensor
+precision rescues. Classifying a current point as native DP requires qualified
+per-point route evidence and Fortran coefficient-cache provenance. The frozen
+`0fcd2cd873d6` addendum below remains historical; its results do not qualify the
+current source.
+
+---
+
 # Hua-Sheng's local precision-cohort timing TODO
 
 This is an addendum to the preserved
