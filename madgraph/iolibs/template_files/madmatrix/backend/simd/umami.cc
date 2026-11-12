@@ -12,7 +12,9 @@
 #include "UmamiInstance.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
-#include "rambo.h" // RAMBO points to choose the good helicities on (umami_initialize)
+#ifdef MG_HR_PROBE
+#include "rambo.h" // RAMBO points of the --hel_recycling warm-up probe (choose_good_helicities)
+#endif
 
 #include <algorithm>
 #include <cfloat>
@@ -58,9 +60,29 @@ namespace
   }
 
 
-  // Choose the good helicities of an instance on the events of a call
-  void initialize(
-    ProcessParameters& params,
+  // The good helicities are chosen at run time, on the events the instance is
+  // called with, as in the Fortran standalone output (matrix_standalone_v4.inc, on
+  // its first 20 calls): every helicity is evaluated on the first nlearn events,
+  // and the helicities that contribute to one of them -- above limhel/ncomb of the
+  // sum over helicities there, madevent's rule (sigmaKin_getGoodHel) -- are kept
+  // for the rest of the run, or until umami_set_parameter changes a parameter. So
+  // they are chosen at the energies, and in the frame, that the matrix element is
+  // used at. Chosen at initialization instead, on RAMBO points at sqrt(s) =
+  // 1.5 TeV, a helicity that is a power of m/sqrt(s) below the others there was
+  // dropped for the whole run: the all-plus helicities of g g > h g in the heft
+  // model, 1e-9 of |M|^2 at 1.5 TeV and 42% of it at 130 GeV. Nor does a first call
+  // of special points fix the choice: one event in the exact forward direction of
+  // u u~ > e+ e-, where the (1 - cos theta) helicities vanish, is one of the nlearn
+  // events, and the next ones add them. nlearn is the number of events
+  // sigmaKin_getGoodHel samples in a call (max( 16, neppV ) = 16 at run time), so
+  // that a first call of 16 events or more chooses at once; the events of a call
+  // that it does not sample are evaluated with the helicities chosen so far.
+  constexpr std::size_t nlearn = 16;
+
+  // Add the helicities that contribute to the first events of a call to those of
+  // the instance. Returns the number of lanes of the call it looked at.
+  int learn_good_helicities(
+    UmamiInstance* instance,
     const fptype_momenta* momenta,
     const fptype* couplings,
     const unsigned int* flavor_indices,
@@ -69,12 +91,24 @@ namespace
     fptype_amp* denominators,
     std::size_t count )
   {
+    ProcessParameters& params = instance->process.parameters();
     bool is_good_hel[ProcessData::ncomb];
-    sigmaKin_getGoodHel(
+    const int scanned = sigmaKin_getGoodHel(
       params, momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       is_good_hel,
       count );
-    sigmaKin_setGoodHel( params, is_good_hel );
+    for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
+      if( is_good_hel[ihel] ) instance->good_hel[ihel] = true;
+    sigmaKin_setGoodHel( params, instance->good_hel );
+    return scanned;
+  }
+
+  // Forget the good helicities of an instance: the next events choose them again
+  void reset_good_helicities( UmamiInstance* instance )
+  {
+    instance->learned = 0;
+    for( bool& good : instance->good_hel ) good = false;
+    instance->process.parameters().hrStale = false; // see hr_check_stale (SigmaKin.cc)
   }
 
     void
@@ -100,16 +134,16 @@ namespace
   // umami_get_meta(UMAMI_META_MASSES), which takes no handle
   std::vector<double> g_externalMasses;
 
-  // The helicity filter (sigmaKin_getGoodHel) runs once per instance, and again when
-  // its parameters change, and keeps a
-  // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
-  // umami_matrix_element call, it depended on what that call held: a first batch of
-  // special points, where some helicities happen to vanish (the forward direction of
-  // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
-  // was wrong. It runs instead here, at initialization, on RAMBO points: the matrix
-  // element is evaluated there once (the filter itself scans every flavor). Where
-  // RAMBO has no phase space (2 > 1, a decay below threshold), this does nothing and
-  // the first call still chooses.
+#ifdef MG_HR_PROBE
+  // The --hel_recycling warm-up probe (make HRPROBE=1: built and run at generation
+  // time, see madmatrix/hel_recycling_filter.py) bakes the helicity rows it finds
+  // into the recycled code, and a row it misses is computed without recycling at
+  // run time (hr_unbaked_row). So it chooses at initialization, on RAMBO points
+  // that cover the energies and the frames of a run, and not on the events of
+  // check_sa (one energy, the centre-of-mass frame): the matrix element is
+  // evaluated there once (the filter itself scans every flavor). Where RAMBO has no
+  // phase space (2 > 1, a decay below threshold), this does nothing and the first
+  // call chooses.
   // An incoming quark, gluon or photon comes out of a PDF (or of the photon flux of a
   // lepton), which sets the partonic centre-of-mass frame in motion along the beams.
   constexpr bool has_pdf_beams()
@@ -143,14 +177,12 @@ namespace
     // The points are spread over the partonic energy: two of them (one in the
     // centre-of-mass frame, one boosted, see below) at each of nevt/2 energies, from
     // just above the threshold of the process up to max( 1500 GeV, twice the sum of
-    // the masses ), in geometric steps. A helicity whose |M|^2 is a power of
-    // m/sqrt(s) below the others falls under the filter's limhel/ncomb at high energy
-    // and yet is large near threshold: the all-plus helicities of g g > h g in the
-    // heft model are (m_H^2/s)^4 of the rest, 1e-9 at 1.5 TeV and 20% at 150 GeV.
-    // Chosen at 1.5 TeV only, they were dropped for the rest of the run and |M|^2 came
-    // out 42% low at sqrt(s) = 130 GeV. With massless external legs there is no
-    // threshold, the helicities scale alike up to the internal masses, and the lowest
-    // energy is 1/100 of the highest. A decay is at rest instead (one energy).
+    // the masses ), in geometric steps: a helicity whose |M|^2 is a power of
+    // m/sqrt(s) below the others matters near threshold only (the all-plus
+    // helicities of g g > h g in the heft model are (m_H^2/s)^4 of the rest). With
+    // massless external legs there is no threshold, the helicities scale alike up to
+    // the internal masses, and the lowest energy is 1/100 of the highest. A decay is
+    // at rest instead (one energy).
     const double ehigh = std::max( 1500., 2 * mtotal );
     const double threshold = std::max( mtotal - mfinal, mfinal ); // incoming or outgoing masses
     const double elow = ( npari == 1 ? ehigh : threshold > 0 ? 1.1 * threshold : ehigh / 100 );
@@ -200,7 +232,12 @@ namespace
     const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
     void* outputs[] = { matrix_elements.data() };
     umami_matrix_element( instance, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
+    // On these points only: sigmaKin_setGoodHel prints the rows and the vanishing
+    // amplitudes at every choice, the latter as seen so far, and the exporter takes
+    // the union of what it prints.
+    instance->learned = nlearn;
   }
+#endif
 
 }
 
@@ -276,7 +313,9 @@ extern "C"
     const std::vector<fptype>& masses = instance->process.getMasses();
     g_externalMasses.assign( masses.begin(), masses.end() );
 
+#ifdef MG_HR_PROBE
     choose_good_helicities( instance.get() );
+#endif
     *handle = instance.release();
     return UMAMI_SUCCESS;
   }
@@ -318,8 +357,10 @@ extern "C"
     const std::vector<fptype>& masses = instance->process.getMasses();
     g_externalMasses.assign( masses.begin(), masses.end() );
     // A helicity may vanish with some parameters and not with others: choose again
-    instance->initialized = false;
+    reset_good_helicities( instance );
+#ifdef MG_HR_PROBE
     choose_good_helicities( instance );
+#endif
     return UMAMI_SUCCESS;
 #endif
   }
@@ -527,10 +568,10 @@ extern "C"
     ProcessParameters& params = instance->process.parameters();
     computeDependentCouplings( params, g_s.data(), couplings.data(), rounded_count );
 
-    if( !instance->initialized )
+    if( instance->learned < nlearn && count > 0 )
     {
-      initialize(
-        params,
+      const std::size_t scanned = learn_good_helicities(
+        instance,
         momenta.data(),
         couplings.data(),
         flavor_indices.data(),
@@ -538,7 +579,9 @@ extern "C"
         numerators.data(),
         denominators.data(),
         rounded_count );
-      instance->initialized = true;
+      // the events among them, not the padding lanes (copies of the event that opens their page)
+      for( std::size_t lane = 0; lane < scanned; ++lane )
+        if( lane % page_size2 == 0 || source[lane] != source[lane - lane % page_size2] ) ++instance->learned;
     }
 
     sigmaKin(
@@ -642,9 +685,9 @@ extern "C"
   }
 
   // A madmatrix extension, not part of UMAMI: the number of helicity combinations
-  // kept by the good-helicity filter of an instance, which runs at umami_initialize
-  // (at the first umami_matrix_element call where RAMBO has no phase space; 0 before
-  // it), and again when umami_set_parameter changes a model parameter.
+  // the good-helicity filter of an instance keeps (see nlearn): 0 before its first
+  // umami_matrix_element call, and while it is still choosing, the helicities that
+  // contribute to the events it has looked at so far.
   int madmatrix_good_helicity_count( UmamiHandle handle )
   {
     return static_cast<UmamiInstance*>( handle )->process.parameters().nGoodHel;

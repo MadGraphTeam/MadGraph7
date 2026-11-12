@@ -382,7 +382,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-  void /* clang-format off */
+  int /* clang-format off */ // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParametersArg params,  // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
@@ -440,6 +440,7 @@ namespace madmatrix
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
     gpuFree( devFlavorVec );
+    return maxtry;
   }
 
   //--------------------------------------------------------------------------

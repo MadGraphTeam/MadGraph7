@@ -57,18 +57,23 @@ for those. The log says what it built::
 
     INFO: hel_recycling: P1_gg_ttxg builds 32 helicity rows of 32, dropping 64 (helicity, amplitude) pairs that vanish
 
-The good helicities are chosen as madevent does (a helicity is kept if its
+The good helicities are chosen as madevent does: a helicity is kept if its
 |M|^2 exceeds ``limhel``/ncomb of the sum over helicities at one of the points,
-with ``limhel`` = 1e-14 for the warm-up, 1e-8 at run time), on RAMBO points
-spread in energy from just above the threshold of the process to 1.5 TeV: a
-helicity that is a power of m/sqrt(s) below the others falls under the threshold
-at high energy and still matters near threshold (the all-plus helicities of
-g g > h g in the ``heft`` model are (m_H^2/s)^4 of the rest: 1e-9 at 1.5 TeV,
-20% at 150 GeV). Half of the points are boosted along the beams when an incoming
-parton comes from a PDF: the matrix element is called in the lab frame, where
-the helicity of a massive leg is not boost invariant, so a configuration that
-vanishes in the partonic centre-of-mass frame can contribute there (gg > t t~
-builds 16 rows where madevent keeps 12).
+with ``limhel`` = 1e-14 for the warm-up and 1e-8 at run time. At run time they
+are chosen as in the Fortran standalone output, on the events the library is
+called with: every helicity is evaluated on the first 16 events, and the ones that
+contribute to one of them are kept for the rest of the run (or until a parameter
+is changed through UMAMI). They are thus chosen at the energies and in the frame
+the matrix element is used at. A helicity that is a power of m/sqrt(s) below the
+others matters near threshold only: the all-plus helicities of g g > h g in the
+``heft`` model are (m_H^2/s)^4 of the rest, 1e-9 at 1.5 TeV and 20% at 150 GeV.
+The warm-up chooses its rows instead on RAMBO points spread in energy from just
+above the threshold of the process to 1.5 TeV, half of them boosted along the
+beams when an incoming parton comes from a PDF: the matrix element is then called
+in the lab frame, where the helicity of a massive leg is not boost invariant, so a
+configuration that vanishes in the partonic centre-of-mass frame can contribute
+there (gg > t t~ builds 16 rows where madevent keeps 12). A row that the run time
+finds and the warm-up did not is computed without recycling.
 
 Two limits keep the recycled code where it is faster than the plain one:
 

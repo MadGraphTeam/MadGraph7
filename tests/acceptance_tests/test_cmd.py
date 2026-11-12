@@ -1591,30 +1591,32 @@ class TestCmdShell2(unittest.TestCase,
     def test_standalone_umami_first_call(self):
         """the helicities kept, and the |M|^2, do not depend on the first umami call.
 
-        The good helicities are chosen once per library: a helicity is kept if
-        its |M|^2 is not 0 for one of the first events. They were chosen at
-        the first umami_matrix_element call, so that
+        The good helicities of an instance are chosen at run time, as in the
+        Fortran standalone output: every helicity is evaluated on the first 16
+        events, and a helicity is kept if it contributes to one of them. They
+        were once chosen on the first umami_matrix_element call alone, so that
         * a first call of special points dropped, for the rest of the run, the
           helicities that vanish there: after one event in the exact forward
           direction, u u~ > e+ e- came out wrong by factors 5 to 100;
         * a first call shorter than a SIMD page was padded with zero events,
           which evaluate to nan, and every helicity was kept (twice the work
           for a q q~ initial state).
-        They are now chosen at initialization, on RAMBO points, and the
-        padding events of a batch are copies of real ones.
+        A first call is now one of the 16 events, and the padding lanes of a
+        batch are copies of real events, which do not count among them.
 
         p p > e+ e- has two flavor indices (d and u type) and only 4 of its 16
         helicities do not vanish. For the scalar backend and simd_128 in double
         and in mixed precision (one and two SIMD pages at a time), with a first
-        call of one generic event, of 16 events, or of one forward event:
+        call of one generic event, of 16 events, or of one forward event, then
+        16 generic events (the choice is made):
         * the same helicities are kept, fewer than 16
           (madmatrix_good_helicity_count);
         * the same |M|^2 come out afterwards, and a batch whose flavors
           alternate, leaving partial pages, gives the |M|^2 of single-event
           calls, event by event.
 
-        The helicities are chosen once per instance (umami_initialize), so each
-        first call runs in its own process, with an instance of its own.
+        The helicities are chosen per instance, so each first call runs in its
+        own process, with an instance of its own.
         """
         self._check_umami_first_call([('scalar', 'd', 1e-12),
                                       ('simd_128', 'd', 1e-12),
@@ -1623,8 +1625,8 @@ class TestCmdShell2(unittest.TestCase,
     def test_standalone_umami_first_call_gpu(self):
         """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
 
-        There, umami_matrix_element takes device buffers, and umami_initialize
-        copies its RAMBO points over to choose the good helicities. Skipped
+        There, umami_matrix_element takes device buffers, on which the good
+        helicities are chosen (sigmaKin_getGoodHel on the device). Skipped
         without nvcc and hipcc on the PATH, or without a device.
         """
         builds = [(backend, fptype, rtol)
@@ -1722,11 +1724,14 @@ class TestCmdShell2(unittest.TestCase,
 
                 first = {'single': [0], 'batch': list(range(16)), 'forward': ['forward']}[sys.argv[3]]
                 evaluate(first, [k % 2 if k != 'forward' else 1 for k in first])
+                # 16 more events: the good helicities are chosen on the first 16 (nlearn)
+                evaluate(range(16, 32), [k % 2 for k in range(16, 32)])
                 flavors = [0, 1, 1, 0, 1, 0, 0]
+                batch = evaluate(range(7), flavors)
+                single = [evaluate([k], [f])[0] for k, f in enumerate(flavors)]
                 print(json.dumps({
                     'good': lib.madmatrix_good_helicity_count(handle),
-                    'batch': evaluate(range(7), flavors),
-                    'single': [evaluate([k], [f])[0] for k, f in enumerate(flavors)]}))
+                    'batch': batch, 'single': single}))
                 '''))
 
         devnull = open(os.devnull, 'w')
@@ -2896,11 +2901,12 @@ print(json.dumps(out))
         averaged over the initial helicities and colours. The all-plus
         helicities (all outgoing) give the m_H^8 term: (m_H^2/s)^4 of the others,
         1e-9 at sqrt(s) = 1.5 TeV and 42% at 130 GeV. The good helicities were
-        chosen on RAMBO points at 1.5 TeV only, where they fell under the
-        filter's relative threshold (limhel/ncomb): they were dropped for the
-        whole run, and |M|^2 came out 42% low at 130 GeV, 2% at 200 GeV and
-        4e-8 at 1 TeV. The points of the filter now run from just above the
-        threshold of the process to 1.5 TeV.
+        chosen at initialization, on RAMBO points at 1.5 TeV, where they fell
+        under the filter's relative threshold (limhel/ncomb): they were dropped
+        for the whole run, and |M|^2 came out 42% low at 130 GeV, 2% at 200 GeV
+        and 4e-8 at 1 TeV. They are now chosen at run time, on the first events
+        the matrix element is called with (here these points), as in the
+        Fortran standalone output.
 
         16 points in the partonic centre-of-mass frame, sqrt(s) from 130 GeV to
         3 TeV, scalar and simd_128 in double precision.

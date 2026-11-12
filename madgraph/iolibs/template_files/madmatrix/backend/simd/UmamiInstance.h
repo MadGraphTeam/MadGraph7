@@ -12,6 +12,7 @@
 
 #include "CPPProcess.h"
 
+#include <cstddef>
 #include <memory>
 
 namespace madmatrix
@@ -20,8 +21,11 @@ namespace madmatrix
   {
     // The model parameters, and the parameters the matrix element is evaluated with
     CPPProcess process;
-    // whether the good helicities of process.parameters() have been chosen
-    bool initialized = false;
+    // The good helicities of process.parameters(), chosen on the first events the
+    // instance evaluates (umami.cc, nlearn): how many of them it has looked at, and
+    // the helicities that contribute to one of them
+    std::size_t learned = 0;
+    bool good_hel[ProcessData::ncomb] = {};
     // parameter interference_helicity_summed (run card [generation]
     // interference_helicity = "summed"): an interference |M|^2 stays the helicity
     // sum even when the caller draws the helicity (see umami_matrix_element)

@@ -67,7 +67,7 @@ namespace madmatrix
                              const fptype* allgs,                                 // input: Gs[nevt]
                              fptype* allcouplings );                              // output: couplings[nevt*ndcoup*2]
 
-  void
+  int // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParametersArg params,  // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]

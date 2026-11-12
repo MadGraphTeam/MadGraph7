@@ -24,7 +24,7 @@ namespace madmatrix
                              fptype* allcouplings, // output: couplings[nevt*ndcoup*2]
                              const int nevt );     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
 
-  void
+  int // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParameters& params,   // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]

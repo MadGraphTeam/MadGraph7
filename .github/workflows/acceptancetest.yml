@@ -256,7 +256,7 @@ jobs:
             ./tests/test_manager.py test_madmatrix_density_matches_fortran -pA -t0 -l INFO
             ./tests/test_manager.py test_standalone_cpp_perf_alpha_s_from_param_card -pA -t0 -l INFO
 
-      - name: "acceptancetest_32: test test_madmatrix_heft_ggh_vs_analytic (g g > h g, good helicities chosen near threshold too)"
+      - name: "acceptancetest_32: test test_madmatrix_heft_ggh_vs_analytic (g g > h g, good helicities chosen at run time)"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE

@@ -12,7 +12,6 @@
 #include "GpuRuntime.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
-#include "rambo.h" // RAMBO points to choose the good helicities on (umami_initialize)
 
 #include <algorithm>
 #include <cfloat>
@@ -57,29 +56,6 @@ namespace
     return numerator / ( denominator + DBL_MIN );
   }
 
-
-  // Choose the good helicities of an instance on the events of a call
-  void initialize(
-    ProcessParameters& params,
-    DeviceProcessParameters& deviceParams,
-    const fptype_momenta* momenta,
-    const fptype* couplings,
-    const unsigned int* flavor_indices,
-    fptype* matrix_elements,
-    fptype_amp* color_jamps,
-    fptype_amp* numerators,
-    fptype_amp* denominators,
-    std::size_t count )
-  {
-    bool is_good_hel[ProcessData::ncomb];
-    sigmaKin_getGoodHel(
-      deviceParams.arg( params ), momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
-      color_jamps,
-      is_good_hel,
-      count );
-    sigmaKin_setGoodHel( params, is_good_hel );
-    deviceParams.update( params );
-  }
 
   __device__
     void
@@ -200,8 +176,11 @@ namespace
     DeviceProcessParameters deviceParams;
     // The device the instance was created on (the current one in umami_initialize)
     int device = 0;
-    // whether the good helicities of process.parameters() have been chosen
-    bool initialized = false;
+    // The good helicities of process.parameters(), chosen on the first events the
+    // instance evaluates (nlearn): how many of them it has looked at, and the
+    // helicities that contribute to one of them
+    std::size_t learned = 0;
+    bool good_hel[ProcessData::ncomb] = {};
     // parameter interference_helicity_summed (run card [generation]
     // interference_helicity = "summed"): an interference |M|^2 stays the helicity
     // sum even when the caller draws the helicity (see umami_matrix_element)
@@ -234,117 +213,50 @@ namespace
   // umami_get_meta(UMAMI_META_MASSES), which takes no handle
   std::vector<double> g_externalMasses;
 
-  // The helicity filter (sigmaKin_getGoodHel) runs once per instance, and again when
-  // its parameters change, and keeps a
-  // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
-  // umami_matrix_element call, it depended on what that call held: a first batch of
-  // special points, where some helicities happen to vanish (the forward direction of
-  // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
-  // was wrong. It runs instead here, at initialization, on RAMBO points: the matrix
-  // element is evaluated there once (the filter itself scans every flavor). Where
-  // RAMBO has no phase space (2 > 1, a decay below threshold), this does nothing and
-  // the first call still chooses. As in the cpu and simd backends, but the inputs and
-  // outputs of umami_matrix_element are device buffers here: the points are made on
-  // the host and copied over, and everything runs on the default stream.
-  // An incoming quark, gluon or photon comes out of a PDF (or of the photon flux of a
-  // lepton), which sets the partonic centre-of-mass frame in motion along the beams.
-  constexpr bool has_pdf_beams()
+  // The good helicities are chosen at run time, on the events the instance is
+  // called with, as in the Fortran standalone output and in the cpu and simd
+  // backends (see nlearn there): every helicity is evaluated on the first nlearn
+  // events, and the helicities that contribute to one of them are kept for the rest
+  // of the run, or until umami_set_parameter changes a parameter. So they are chosen
+  // at the energies, and in the frame, that the matrix element is used at (chosen at
+  // initialization on RAMBO points at 1.5 TeV, the all-plus helicities of g g > h g
+  // in the heft model were dropped, 42% of |M|^2 at 130 GeV), and a first call of
+  // special points (one forward u u~ > e+ e- event) is one of nlearn events only.
+  // sigmaKin_getGoodHel samples the first 16 events of a call.
+  constexpr std::size_t nlearn = 16;
+
+  // Add the helicities that contribute to the first events of a call to those of
+  // the instance. Returns the number of events of the call it looked at.
+  int learn_good_helicities(
+    InterfaceInstance* instance,
+    const fptype_momenta* momenta,
+    const fptype* couplings,
+    const unsigned int* flavor_indices,
+    fptype* matrix_elements,
+    fptype_amp* color_jamps,
+    fptype_amp* numerators,
+    fptype_amp* denominators,
+    std::size_t count )
   {
-    if( ProcessData::npari != 2 ) return false;
-    for( int iflav = 0; iflav < ProcessData::nmaxflavor; ++iflav )
-      for( int ipar = 0; ipar < ProcessData::npari; ++ipar )
-      {
-        const int pdg = ProcessData::flavorPDGs[iflav][ipar];
-        const int apdg = pdg < 0 ? -pdg : pdg;
-        if( ( apdg >= 1 && apdg <= 6 ) || apdg == 21 || apdg == 22 ) return true;
-      }
-    return false;
+    ProcessParameters& params = instance->process.parameters();
+    bool is_good_hel[ProcessData::ncomb];
+    const int scanned = sigmaKin_getGoodHel(
+      instance->deviceParams.arg( params ), momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
+      color_jamps,
+      is_good_hel,
+      count );
+    for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
+      if( is_good_hel[ihel] ) instance->good_hel[ihel] = true;
+    sigmaKin_setGoodHel( params, instance->good_hel );
+    instance->deviceParams.update( params );
+    return scanned;
   }
 
-  void choose_good_helicities( InterfaceInstance* instance )
+  // Forget the good helicities of an instance: the next events choose them again
+  void reset_good_helicities( InterfaceInstance* instance )
   {
-    constexpr int npar = ProcessData::npar;
-    constexpr int npari = ProcessData::npari;
-    constexpr std::size_t nevt = 16; // the events sigmaKin_getGoodHel looks at
-    const std::vector<fptype>& instanceMasses = instance->process.getMasses();
-    std::vector<double> masses( instanceMasses.begin(), instanceMasses.end() );
-    double mfinal = 0, mtotal = 0;
-    for( int ipar = 0; ipar < npar; ++ipar )
-    {
-      mtotal += masses[ipar];
-      if( ipar >= npari ) mfinal += masses[ipar];
-    }
-    // rambo exits on a closed phase space: check it first
-    if( npar - npari < 2 || ( npari == 1 && !( masses[0] > mfinal ) ) ) return;
-    // The points are spread over the partonic energy: two of them (one in the
-    // centre-of-mass frame, one boosted, see below) at each of nevt/2 energies, from
-    // just above the threshold of the process up to max( 1500 GeV, twice the sum of
-    // the masses ), in geometric steps. A helicity whose |M|^2 is a power of
-    // m/sqrt(s) below the others falls under the filter's limhel/ncomb at high energy
-    // and yet is large near threshold: the all-plus helicities of g g > h g in the
-    // heft model are (m_H^2/s)^4 of the rest, 1e-9 at 1.5 TeV and 20% at 150 GeV.
-    // Chosen at 1.5 TeV only, they were dropped for the rest of the run and |M|^2 came
-    // out 42% low at sqrt(s) = 130 GeV. With massless external legs there is no
-    // threshold, the helicities scale alike up to the internal masses, and the lowest
-    // energy is 1/100 of the highest. A decay is at rest instead (one energy).
-    const double ehigh = std::max( 1500., 2 * mtotal );
-    const double threshold = std::max( mtotal - mfinal, mfinal ); // incoming or outgoing masses
-    const double elow = ( npari == 1 ? ehigh : threshold > 0 ? 1.1 * threshold : ehigh / 100 );
-    constexpr std::size_t nenergy = nevt / 2;
-    // A private generator: the shared one (rambo::rn) makes the points of the check
-    // drivers, which must not move.
-    rambo::Random random;
-    random.rmarin( 1802, 9373 );
-    auto draw = [&random]( int )
-    {
-      double r = random.ranmar();
-      while( r <= 1e-16 ) r = random.ranmar();
-      return r;
-    };
-    std::vector<double> momenta( nevt * npar * 4 ); // momenta[nevt * ( npar * mu + ipar ) + ievt]
-    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
-    {
-      const double energy = elow * std::pow( ehigh / elow, double( ievt / 2 ) / ( nenergy - 1 ) );
-      double weight = 0;
-      std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
-      // RAMBO points are in the partonic centre-of-mass frame, but with PDFs the matrix
-      // element is called in frames boosted along the beams (madspace's lab frame), and
-      // the helicity of a massive leg is not boost invariant: a helicity can vanish in
-      // the centre-of-mass frame only. Every other point is therefore boosted along z,
-      // with a random rapidity in [-2, 2], so that the choice covers both frames.
-      if( has_pdf_beams() && ievt % 2 == 1 )
-      {
-        const double y = 4 * draw( 0 ) - 2, ch = std::cosh( y ), sh = std::sinh( y );
-        for( std::vector<double>& q : p )
-        {
-          const double e = q[0], pz = q[3];
-          q[0] = e * ch + pz * sh;
-          q[3] = pz * ch + e * sh;
-        }
-      }
-      for( int ipar = 0; ipar < npar; ++ipar )
-      {
-        // on shell, or rambo did not converge: leave the choice to the first call
-        const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
-        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * energy * energy ) return;
-        for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
-      }
-    }
-    double* device_momenta = nullptr;
-    double* device_matrix_elements = nullptr;
-    gpuMalloc( (void**)&device_momenta, momenta.size() * sizeof( double ) );
-    gpuMalloc( (void**)&device_matrix_elements, nevt * sizeof( double ) );
-    gpuMemcpy( device_momenta, momenta.data(), momenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
-    // no UMAMI_OUT_GPU_STREAM: the default stream, as the filter's own copies
-    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA };
-    const void* inputs[] = { device_momenta };
-    const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
-    void* outputs[] = { device_matrix_elements };
-    umami_matrix_element( instance, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
-    // umami_matrix_element returns before its kernels end: wait before freeing
-    gpuStreamSynchronize( nullptr );
-    gpuFree( device_matrix_elements );
-    gpuFree( device_momenta );
+    instance->learned = 0;
+    for( bool& good : instance->good_hel ) good = false;
   }
 
 }
@@ -428,7 +340,6 @@ extern "C"
     const std::vector<fptype>& masses = instance->process.getMasses();
     g_externalMasses.assign( masses.begin(), masses.end() );
 
-    choose_good_helicities( instance.get() );
     *handle = instance.release();
     return UMAMI_SUCCESS;
   }
@@ -473,8 +384,7 @@ extern "C"
     const std::vector<fptype>& masses = instance->process.getMasses();
     g_externalMasses.assign( masses.begin(), masses.end() );
     // A helicity may vanish with some parameters and not with others: choose again
-    instance->initialized = false;
-    choose_good_helicities( instance );
+    reset_good_helicities( instance );
     return UMAMI_SUCCESS;
 #endif
   }
@@ -671,7 +581,7 @@ extern "C"
     computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( instance->deviceParams.arg( params ), g_s, couplings );
     checkGpu( gpuPeekAtLastError() );
 
-    if( !instance->initialized )
+    if( instance->learned < nlearn && count > 0 )
     {
       // the helicity filtering runs on the default stream: wait for the inputs copied on
       // gpu_stream, which need not synchronise with it (a non-blocking stream); its
@@ -679,9 +589,10 @@ extern "C"
       gpuStreamSynchronize( gpu_stream );
       // the jamp scratch of the helicity filtering (one helicity, njampso jamps, a few
       // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
-      initialize(
-        params, instance->deviceParams, momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
-      instance->initialized = true;
+      const std::size_t scanned = learn_good_helicities(
+        instance, momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
+      // the events among them, not the padding (copies of the first event, at the end)
+      instance->learned += std::min( scanned, count );
     }
 
     sigmaKin(
@@ -748,9 +659,9 @@ extern "C"
   }
 
   // A madmatrix extension, not part of UMAMI: the number of helicity combinations
-  // kept by the good-helicity filter of an instance, which runs at umami_initialize
-  // (at the first umami_matrix_element call where RAMBO has no phase space; 0 before
-  // it), and again when umami_set_parameter changes a model parameter.
+  // the good-helicity filter of an instance keeps (see nlearn): 0 before its first
+  // umami_matrix_element call, and while it is still choosing, the helicities that
+  // contribute to the events it has looked at so far.
   int madmatrix_good_helicity_count( UmamiHandle handle )
   {
     return static_cast<InterfaceInstance*>( handle )->process.parameters().nGoodHel;
