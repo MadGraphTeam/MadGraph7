@@ -650,8 +650,8 @@ def test_the_reference_reducer_takes_the_key_on_its_own_thread(tmp_path):
     (``V2Reducer.take_exact_lanes``) and completes with the package key,
     bitwise equal to the generic binary64 reducer here (licensed); it aborts
     with the key disabled (the control), while the heavy bubble, not routed,
-    completes with the key disabled. Without the guard the first run aborts
-    as the second does."""
+    completes with the key disabled. Without that guard the binding's entry
+    guard (every native entry point holds the key) would cover the run."""
 
     import os
     import subprocess

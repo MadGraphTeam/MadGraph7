@@ -93,3 +93,99 @@ def test_unlicensed_loop_generation_and_evaluation_run_while_the_permit_is_held(
             assert BANNER not in output, (arguments, output[-3000:])
             assert not any(m in output for m in portability.RESTRICTED_MARKERS)
     assert permit.record["verified"], permit.record
+
+
+_GUARD = "let _unlock = pyamplicol::unlock();"
+_BINDINGS = (
+    ROOT / "rust" / "crates" / "rusticol-python" / "src",
+    ROOT / "rust" / "loop-reduction" / "python" / "src",
+)
+_ABI_GUARDS = (
+    ROOT / "rust" / "crates" / "rusticol-capi" / "src" / "lib.rs",
+    ROOT / "rust" / "loop-reduction" / "sdk" / "src" / "ffi.rs",
+)
+
+
+def _block_end(text: str, start: int) -> int:
+    """The index after the brace block opening at ``start`` (no braces occur
+    in the string or character literals of these sources' signatures)."""
+
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    raise AssertionError("unbalanced braces")
+
+
+def _body_start(text: str, at: int) -> int:
+    """The index of the body's ``{`` of the function signature at ``at``
+    (outside its parentheses and brackets: ``[u32; 4]``, ``(a, b)``)."""
+
+    depth = 0
+    for index in range(at, len(text)):
+        char = text[index]
+        if char in "([":
+            depth += 1
+        elif char in ")]":
+            depth -= 1
+        elif char == "{" and depth == 0:
+            return index
+    raise AssertionError("no function body")
+
+
+def _unguarded(text: str) -> list[str]:
+    """Bindings whose body does not start with the key guard: every
+    ``#[pyfunction]`` and every ``#[pymethods]`` method except plain field
+    accessors (``#[getter]``, ``#[setter]``)."""
+
+    import re
+
+    item = re.compile(
+        r"((?:\s*#\[(?:[^\[\]]|\[[^\]]*\])*\])*)\s*"
+        r"(?:pub(?:\([^)]*\))?\s+)?fn\s+(\w+)"
+    )
+    missing = []
+
+    def check(match) -> int:
+        body = _body_start(text, match.end())
+        if not text[body + 1 :].lstrip().startswith(_GUARD):
+            missing.append(match.group(2))
+        return body
+
+    for attribute in re.finditer(r"#\[pyfunction[^\]]*\]", text):
+        match = item.match(text, attribute.start())
+        assert match is not None, text[attribute.start() : attribute.start() + 200]
+        check(match)
+    for block in re.finditer(r"#\[pymethods\]\s*impl[^{]*\{", text):
+        end = _block_end(text, block.end() - 1)
+        at = block.end()
+        while (match := item.search(text, at, end)) is not None:
+            if re.search(r"#\[(getter|setter)\b", match.group(1)):
+                body = _body_start(text, match.end())
+            else:
+                body = check(match)
+            at = _block_end(text, body)
+    return missing
+
+
+def test_every_native_entry_point_holds_the_library_key():
+    """The Python bindings of ``_rusticol`` and of its ``_loop`` module hold
+    pyAmpliCol's Symbolica library key from their first statement, and both C
+    ABIs (tree runtime, loop SDK) take it in the helper every call runs
+    through: no native entry point can reach Symbolica state without it."""
+
+    missing = {
+        path.name: names
+        for directory in _BINDINGS
+        for path in sorted(directory.glob("*.rs"))
+        if (names := _unguarded(path.read_text()))
+    }
+    assert not missing, missing
+    for path in _ABI_GUARDS:
+        text = path.read_text()
+        start = text.index("fn guard(")
+        assert _GUARD in text[start : _block_end(text, text.index("{", start))], path
