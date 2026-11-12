@@ -233,6 +233,13 @@ def loop_sm_colour_model(loop_sm_ufo, tmp_path_factory):
 
     import importlib.util
 
+    # MadGraph7: the example uses tools/loop_reference/model_compatibility.py
+    # (see _UPSTREAM_ONLY_MODULES), which stays in the upstream repository.
+    if not (TESTS.parent / "tools/loop_reference/model_compatibility.py").is_file():
+        pytest.skip(
+            "needs tools.loop_reference.model_compatibility, kept in the upstream "
+            "pyAmpliCol repository"
+        )
     script = TESTS.parent / "examples/loop/source_colour/prepare_model.py"
     spec = importlib.util.spec_from_file_location("_loop_colour_example", script)
     module = importlib.util.module_from_spec(spec)
@@ -356,6 +363,17 @@ def pytest_runtest_makereport(item, call):
     ):
         report.outcome = "failed"
         report.longrepr = call.excinfo.value.msg
+    if call.excinfo is not None and call.excinfo.errisinstance(ImportError):
+        # MadGraph7: a test needing upstream-only tooling skips (see below).
+        name = _upstream_only_module(call.excinfo.value)
+        if name is not None:
+            path, lineno, _ = item.reportinfo()
+            report.outcome = "skipped"
+            report.longrepr = (
+                str(path),
+                (lineno or 0) + 1,
+                f"Skipped: needs {name}, kept in the upstream pyAmpliCol repository",
+            )
     return report
 
 
@@ -374,6 +392,55 @@ def _license_required() -> bool:
 _UNLICENSED = pytest.StashKey[str]()
 
 
+@cache
+def _library_key_accepted() -> bool:
+    """MadGraph7: whether Symbolica accepts pyAmpliCol's own library key, so
+    that the loop tests need no ``SYMBOLICA_LICENSE``. Checked once, in a
+    child interpreter without ``SYMBOLICA_LICENSE`` (an unlicensed Symbolica
+    may abort the interpreter that asks)."""
+
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; sys.path[:0] = sys.argv[1:]; import pyamplicol; "
+        "from pyamplicol.licensing import detect_symbolica_license; "
+        "print(detect_symbolica_license(suggest=False).licensed)"
+    )
+    environment = dict(os.environ)
+    environment.pop("SYMBOLICA_LICENSE", None)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", code, *sys.path],
+            capture_output=True,
+            text=True,
+            env=environment,
+            timeout=300,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    lines = result.stdout.strip().splitlines()
+    return result.returncode == 0 and bool(lines) and lines[-1] == "True"
+
+
+# MadGraph7: the one-loop reference and benchmark tooling (the code under
+# tools/loop_reference and tools/loop_benchmark; their JSON data is kept) and
+# the test modules built on it stay in the upstream pyAmpliCol repository
+# (.github/scripts/import_pyamplicol.sh); a test that imports one of them at
+# run time skips with that reason.
+_UPSTREAM_ONLY_MODULES = ("tools.loop_reference", "tools.loop_benchmark")
+
+
+def _upstream_only_module(error: BaseException) -> str | None:
+    name = getattr(error, "name", None) or ""
+    if name.startswith(_UPSTREAM_ONLY_MODULES):
+        return name
+    stem = name.rpartition(".")[2]
+    if stem.startswith("test_") and not any(TESTS.rglob(f"{stem}.py")):
+        return name
+    return None
+
+
 def pytest_collection_modifyitems(config, items):
     expression = config.getoption("markexpr", "") or ""
     if DEFERRED_MARKER not in expression:
@@ -383,6 +450,11 @@ def pytest_collection_modifyitems(config, items):
             items[:] = [item for item in items if DEFERRED_MARKER not in item.keywords]
     required = _license_required()
     if os.environ.get("SYMBOLICA_LICENSE"):
+        return
+    if (
+        not any(marker in item.keywords for item in items for marker in LOOP_MARKERS)
+        or _library_key_accepted()
+    ):
         return
     # An unlicensed Symbolica aborts the interpreter on this class of host, so
     # loop tests are skipped (or, with REQUIRE_LICENSE, failed in
