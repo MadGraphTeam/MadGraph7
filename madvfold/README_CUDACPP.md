@@ -1,22 +1,22 @@
-# MadVFold and the cudacpp plugin
+# MadVfold and the cudacpp plugin
 
-Mode C of MadVFold evaluates the Born and real-emission matrix elements with
+Mode C of MadVfold evaluates the Born and real-emission matrix elements with
 the cudacpp plugin of madgraph4gpu (on CPU with SIMD, or on GPU). This needs
-the MadVFold version of the cudacpp plugin (branch `vfold7` of madgraph4gpu,
+the MadVfold version of the cudacpp plugin (branch `vfold7` of madgraph4gpu,
 cudacpp version 1.02.00), which adds the `--vfold` output option (also
 in `standalone_cudacpp` mode, with multichannel support), keeps googletest
 in `<proc>/test/GTEST` and also supports MadGraph7.
 
 ## Install the cudacpp plugin
 
-1. Download the cudacpp tarball of the MadVFold release
+1. Download the cudacpp tarball of the MadVfold release
    `valassi_cudacpp_for3.8.1_v1.02.00_vfold7on20261112`
    (https://github.com/valassi/madgraph4gpu/releases/tag/valassi_cudacpp_for3.8.1_v1.02.00_vfold7on20261112)
    into the `PLUGIN` directory of this MadGraph7 clone:
    ```
    wget -O PLUGIN/cudacpp.tar.gz https://github.com/valassi/madgraph4gpu/releases/download/valassi_cudacpp_for3.8.1_v1.02.00_vfold7on20261112/cudacpp.tar.gz
    ```
-   This is the version used for the results of the MadVFold paper. The tarball
+   This is the version used for the results of the MadVfold paper. The tarball
    contains a single directory `CUDACPP_OUTPUT` (with a `VERSION.txt`).
    Alternatively (e.g. for later developments), create the tarball yourself
    in a madgraph4gpu clone (branch `vfold7`), with

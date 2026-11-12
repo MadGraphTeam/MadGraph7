@@ -91,7 +91,7 @@ def make_jpeg_async(args):
 
 
 #=================================================================================
-# MadVFold (arXiv:2609.23500): 'output DIR --vfold' overlays the files of
+# MadVfold (arXiv:2609.23500): 'output DIR --vfold' overlays the files of
 # madvfold/overlay on the stock ones, and 'output DIR --vfold-with-tests'
 # also those of madvfold/overlay_test (development and test hooks).
 # Both overlay trees mirror the paths of the mg5amcnlo tree.
@@ -126,7 +126,7 @@ def vfold_copy_template(opt, dir_path):
     """Overlay the Template/NLO files of the overlay trees on dir_path"""
     for root in vfold_overlays(opt):
         if os.path.isdir(pjoin(root, 'Template', 'NLO')):
-            logger.info('MadVFold: overlay %s' % pjoin(root, 'Template', 'NLO'))
+            logger.info('MadVfold: overlay %s' % pjoin(root, 'Template', 'NLO'))
             misc.copytree(pjoin(root, 'Template', 'NLO'), dir_path)
 
 
@@ -166,7 +166,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             misc.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),dir_path)
-            # MadVFold: overlay the vfold Template/NLO files, if requested
+            # MadVfold: overlay the vfold Template/NLO files, if requested
             vfold_copy_template(self.opt, dir_path)
             
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
@@ -321,7 +321,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # I put it here not in optimized one, because I want to use the same make_opts.inc
     def write_make_opts(self, writer, link_tir_libs,tir_libs):
         """ Create the file make_opts which links to the TIR libraries."""
-        # MadVFold: use the vfold version of the file, if requested
+        # MadVfold: use the vfold version of the file, if requested
         file = open(vfold_file(self.opt,
                                pjoin('Template','NLO','Source','make_opts.inc'),
                                os.path.join(self.mgme_dir,'Template','NLO',
@@ -382,7 +382,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                  self.dir_path+'/bin/internal/me5_logging.conf')
         
         for cp_file in files_to_copy:
-            # MadVFold: use the vfold version of the file, if requested
+            # MadVfold: use the vfold version of the file, if requested
             cp(vfold_file(self.opt, pjoin('madgraph', cp_file),
                           pjoin(_file_path,cp_file)),
                 pjoin(self.dir_path,'bin','internal',os.path.basename(cp_file)))
@@ -718,7 +718,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                  writers.FortranWriter(filename_lum),
                                    matrix_element, sqsorders_list,
                                    fortran_model)
-        # MadVFold: the cudacpp Real library of each nFKSprocess, if requested
+        # MadVfold: the cudacpp Real library of each nFKSprocess, if requested
         if self.opt.get('vfold'):
             self.write_vfold_real_me_chooser(
                 writers.FortranWriter('vfold_real_me_chooser.f'), matrix_element)
@@ -869,7 +869,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         else:
             linkfiles.append('ewsudakov_functions_dummy.f')
 
-        # MadVFold: also link the vfold files, if requested
+        # MadVfold: also link the vfold files, if requested
         linkfiles += vfold_linkfiles(self.opt)
 
         for file in linkfiles:
@@ -2003,7 +2003,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     def write_vfold_real_me_chooser(self, writer, matrix_element):
-        """MadVFold: write vfold_real_me_chooser.f, where NFKS_REAL_LIBRARY(n)
+        """MadVfold: write vfold_real_me_chooser.f, where NFKS_REAL_LIBRARY(n)
         is the index N of the cudacpp library real<N> (built from matrix_<N>.f,
         see vfold/genCudacppSpec.sh) which computes in mode C the real-emission
         ME of nFKSprocess n: same loop as SMATRIX_REAL in write_real_wrappers"""
@@ -2416,13 +2416,13 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
         elif proc_type=='born_links':
-            # MadVFold: use the vfold version of the file, if requested
+            # MadVfold: use the vfold version of the file, if requested
             file = open(vfold_file(self.opt,
             pjoin('madgraph','iolibs','template_files','bornmatrix_colorlinks_fks.inc'),
             pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_colorlinks_fks.inc'))).read()
         elif proc_type=='bhel':
-            # MadVFold: use the vfold version of the file, if requested
+            # MadVfold: use the vfold version of the file, if requested
             file = open(vfold_file(self.opt,
             pjoin('madgraph','iolibs','template_files','born_hel_splitorders_fks.inc'),
             pjoin(_file_path, \
@@ -3190,7 +3190,7 @@ Parameters              %(params)s\n\
             ilink = i+1
             iff = {True : 'if', False : 'elseif'}[i==0]
             m, n = c_link['link']
-            # MadVFold: link ilink from the served points if available (step 11y)
+            # MadVfold: link ilink from the served points if available (step 11y)
             if self.opt.get('vfold'):
                 call_sb_sf = ("if (bsf_served) then\n\
                     call vfold_bsf_served_link(%(ilink)d,wgt_col)\n\
@@ -3216,7 +3216,7 @@ Parameters              %(params)s\n\
             # this is when no color links are there
             replace_dict['iflines_col'] += 'write(*,*) \'Error in sborn_sf, no color links\'\nstop\n'
 
-        # MadVFold: use the vfold version of the file, if requested
+        # MadVfold: use the vfold version of the file, if requested
         file = open(vfold_file(self.opt,
                           pjoin('madgraph','iolibs','template_files','sborn_sf_fks.inc'),
                           os.path.join(_file_path, \
@@ -3224,7 +3224,7 @@ Parameters              %(params)s\n\
         file = file % replace_dict
         writer.writelines(file)
 
-        # MadVFold: the number of colour-linked Borns, i.e. of the links in the
+        # MadVfold: the number of colour-linked Borns, i.e. of the links in the
         # served points (vfold_born_batch.f90), if requested: it must be the
         # number of links computed by the cudacpp Born library (both from
         # fks_common.find_color_links on the Born legs, in the same order)
@@ -5311,7 +5311,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),
                                dir_path)
-            # MadVFold: overlay the vfold Template/NLO files, if requested
+            # MadVfold: overlay the vfold Template/NLO files, if requested
             vfold_copy_template(self.opt, dir_path)
 
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):

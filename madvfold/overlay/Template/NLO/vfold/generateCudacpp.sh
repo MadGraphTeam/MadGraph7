@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright (C) 2026 CERN.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created by A. Valassi (Nov 2026) for project MadVFold (arXiv:2609.23500).
+# Created by A. Valassi (Nov 2026) for project MadVfold (arXiv:2609.23500).
 
 # Generate and build the cudacpp libraries for mode C of this process directory,
 # and copy them to lib/cudacpp. This is run by 'output <procdir> --vfold' (and

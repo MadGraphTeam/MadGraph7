@@ -1,7 +1,7 @@
 #! /bin/env python3
 # Copyright (C) 2026 CERN.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created by A. Valassi (Sep 2026) for project MadVFold (arXiv:2609.23500).
+# Created by A. Valassi (Sep 2026) for project MadVfold (arXiv:2609.23500).
 
 import sys
 argc = len(sys.argv)

@@ -1,6 +1,6 @@
 // Copyright (C) 2026 CERN.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created by A. Valassi (Aug 2026) for project MadVFold (arXiv:2609.23500).
+// Created by A. Valassi (Aug 2026) for project MadVfold (arXiv:2609.23500).
 //
 // Phase 3b/3c/4: dlopen-based dispatcher for CUDACPP Born and Real libraries.
 //

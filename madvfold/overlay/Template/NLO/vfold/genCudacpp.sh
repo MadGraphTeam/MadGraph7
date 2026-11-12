@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright (C) 2026 CERN.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created by A. Valassi (Oct 2026) for project MadVFold (arXiv:2609.23500).
+# Created by A. Valassi (Oct 2026) for project MadVfold (arXiv:2609.23500).
 
 # Create the CUDACPP subdirectory of this process directory, with the cudacpp
 # process directories needed by mode C (as in madvfold/DEV/CUDACPP for the

@@ -934,13 +934,13 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         noclean = '-noclean' in args
         force = '-f' in args 
         nojpeg = '-nojpeg' in args
-        # MadVFold (arXiv:2609.23500): vfold code (and development/test hooks)
+        # MadVfold (arXiv:2609.23500): vfold code (and development/test hooks)
         vfold_tests = '--vfold-with-tests' in args
         vfold = '--vfold' in args or vfold_tests
-        # MadVFold: the overlays are patched copies of the MadGraph7 0.2.1 templates
+        # MadVfold: the overlays are patched copies of the MadGraph7 0.2.1 templates
         # (madvfold/overlay*), so they cannot be used with any other version
         if vfold and misc.get_pkg_info()['version'] != '0.2.1':
-            raise MadGraph5Error('MadVFold: output --vfold requires '
+            raise MadGraph5Error('MadVfold: output --vfold requires '
                                  'MadGraph7 0.2.1, this is version %s'
                                  % misc.get_pkg_info()['version'])
         main_file_name = ""
@@ -1000,27 +1000,27 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             self._curr_exporter.generate_virtuals_from_OLP(
               self.born_processes_for_olp,self._export_dir,self.options['OLP'])
                 
-        # MadVFold: the widths of the coloured particles in the initial and final states
+        # MadVfold: the widths of the coloured particles in the initial and final states
         # are set to zero in the param_card: MG5 does the same when it launches an NLO run
         # (see 'gauge cancellation' in common_run_interface.py), but only in the Fortran
         # param_card.inc, while the cudacpp libraries of mode C read the param_card
         if vfold:
             self.vfold_zero_widths_in_param_card()
 
-        # MadVFold: generate and build the cudacpp libraries for mode C
+        # MadVfold: generate and build the cudacpp libraries for mode C
         # (if the cudacpp plugin is installed, else only a warning)
         if vfold:
             gencc = pjoin(self._export_dir, 'vfold', 'generateCudacpp.sh')
-            logger.info('MadVFold: run %s' % gencc)
+            logger.info('MadVfold: run %s' % gencc)
             if subprocess.call([gencc] + (['-tests'] if vfold_tests else []) + [MG5DIR]) != 0:
-                raise MadGraph5Error('MadVFold: %s failed' % gencc)
+                raise MadGraph5Error('MadVfold: %s failed' % gencc)
 
-        # MadVFold: prepare the directory for the vfold tests, if requested
+        # MadVfold: prepare the directory for the vfold tests, if requested
         if vfold_tests:
             setup = pjoin(MG5DIR, 'madvfold', 'test', 'setupVfoldTests.sh')
-            logger.info('MadVFold: run %s %s' % (setup, self._export_dir))
+            logger.info('MadVfold: run %s %s' % (setup, self._export_dir))
             if subprocess.call([setup, self._export_dir]) != 0:
-                raise MadGraph5Error('MadVFold: %s failed' % setup)
+                raise MadGraph5Error('MadVfold: %s failed' % setup)
 
         # Remember that we have done export
         self._done_export = (self._export_dir, self._export_format)
@@ -1029,7 +1029,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         self._export_dir = None
 
     def vfold_zero_widths_in_param_card(self):
-        """MadVFold: set to zero in the param_card the widths of the coloured particles
+        """MadVfold: set to zero in the param_card the widths of the coloured particles
         in the initial and final states, as MG5 does for the Fortran code of NLO runs"""
         pdgs = set()
         for born in self._fks_multi_proc.get('born_processes'):
@@ -1038,14 +1038,14 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                 if particle.get('color') != 1 and particle.get('width').lower() != 'zero':
                     pdgs.add(abs(particle.get('pdg_code')))
         for pdg in sorted(pdgs):
-            logger.info('MadVFold: the width of the particle with PDG id %d is set to zero' % pdg)
+            logger.info('MadVfold: the width of the particle with PDG id %d is set to zero' % pdg)
         for card in ['param_card.dat', 'param_card_default.dat']:
             path = pjoin(self._export_dir, 'Cards', card)
             text = open(path).read()
             for pdg in sorted(pdgs):
                 text, nsub = re.subn(r'(?mi)^(DECAY\s+%d\s+)\S+' % pdg, r'\g<1>0.000000e+00', text)
                 if nsub != 1:
-                    raise MadGraph5Error('MadVFold: no width for PDG id %d in %s' % (pdg, path))
+                    raise MadGraph5Error('MadVfold: no width for PDG id %d in %s' % (pdg, path))
             open(path, 'w').write(text)
 
     # Export a matrix element  

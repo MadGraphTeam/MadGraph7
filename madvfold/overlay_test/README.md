@@ -1,4 +1,4 @@
-# MadVFold overlay: development and test hooks
+# MadVfold overlay: development and test hooks
 
 Files installed only by `output DIR --vfold-with-tests`, on top of those in
 `../overlay` (a file present in both trees is taken from this one). Paths

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 CERN.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created by A. Valassi (Nov 2026) for project MadVFold (arXiv:2609.23500).
+# Created by A. Valassi (Nov 2026) for project MadVfold (arXiv:2609.23500).
 """Minimal changes to the cudacpp plugin, for its use in MadGraph7 (see installPlugin.sh)"""
 import os, sys
 
@@ -14,7 +14,7 @@ def patch(path, *pairs):
     open(path, 'w').write(s)
 
 P = sys.argv[1]
-# MadtRex is not needed by MadVFold, and it does not load in MadGraph7
+# MadtRex is not needed by MadVfold, and it does not load in MadGraph7
 patch(os.path.join(P, '__init__.py'),
       ("    __import__('%s.trex'%PLUGIN_NAME)\n    trex = sys.modules['%s.trex'%PLUGIN_NAME]\n",
        "    # MadGraph7: no MadtRex\n"),

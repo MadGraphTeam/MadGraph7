@@ -153,7 +153,7 @@ c
       call fill_configurations_common
       call check_amp_split 
 
-      ! AV MadVFold: the FVZ dumps (and the ENV_FVZ_* variables) are only
+      ! AV MadVfold: the FVZ dumps (and the ENV_FVZ_* variables) are only
       ! enabled by 'output --vfold-with-tests' (see vfold_tests.inc)
       env_fvz_itmax = 0 ! keep defaults
       env_fvz_ndump = 0 ! default: skip dump

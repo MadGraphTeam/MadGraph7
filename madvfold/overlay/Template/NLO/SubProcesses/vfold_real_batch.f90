@@ -1,6 +1,6 @@
 ! Copyright (C) 2026 CERN.
 ! Licensed under the GNU Lesser General Public License (version 3 or later).
-! Created by A. Valassi (Aug 2026) for project MadVFold (arXiv:2609.23500).
+! Created by A. Valassi (Aug 2026) for project MadVfold (arXiv:2609.23500).
 !-------------------------------------------------------------------------
 ! Road B prototype (eebb_vfalt) step 4. Real batching.
 ! Batch/cache mechanism for deferring the expensive SMATRIX_REAL evaluation

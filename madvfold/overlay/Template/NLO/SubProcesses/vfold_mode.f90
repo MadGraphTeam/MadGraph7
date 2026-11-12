@@ -1,6 +1,6 @@
 ! Copyright (C) 2026 CERN.
 ! Licensed under the GNU Lesser General Public License (version 3 or later).
-! Created by A. Valassi (Aug 2026) for project MadVFold (arXiv:2609.23500).
+! Created by A. Valassi (Aug 2026) for project MadVfold (arXiv:2609.23500).
 
 ! Road B prototype (eebb_vfalt) step 1: F0/F1/F/C mode scaffolding.
 ! Holds the ENV_VFOLD_ME_MODE flag shared across the process. Five modes:
@@ -17,7 +17,7 @@
 !        Born/Real evaluation via a plain Fortran loop, no cudacpp bridge)
 !   C  = same as F, but Born/Real evaluation is offloaded to the cudacpp
 !        bridge instead of a plain Fortran loop
-! MadVFold codegen status: F1 is implemented since step 12j (RNG slots),
+! MadVfold codegen status: F1 is implemented since step 12j (RNG slots),
 ! F since step 12k (batched Born/Real MEs over the folds of a kpoint), F2
 ! since step 12l (Born memo), the kpoint batching of F/C (and of the MINT2
 ! candidates of F1/F2/F/C) since step 12m and the per-kpoint memos and lean

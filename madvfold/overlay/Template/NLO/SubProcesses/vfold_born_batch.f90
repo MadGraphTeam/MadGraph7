@@ -1,6 +1,6 @@
 ! Copyright (C) 2026 CERN.
 ! Licensed under the GNU Lesser General Public License (version 3 or later).
-! Created by A. Valassi (Aug 2026) for project MadVFold (arXiv:2609.23500).
+! Created by A. Valassi (Aug 2026) for project MadVfold (arXiv:2609.23500).
 !-------------------------------------------------------------------------
 ! Road B prototype (eebb_vfalt) step 3. Born batching.
 ! Batch/cache mechanism for deferring SBORN evaluation, now wired into
@@ -113,7 +113,7 @@ module vfold_born_batch
   ! from cudacpp. For every Born point (p_born, g) evaluated by the bridge
   ! (Born batch, and SDE batch including the real-emission coupling) keep
   ! the ME and the FBRIDGE_BORN_GET_EXTRAS block (10 colour-linked Borns,
-  ! NGRAPHS |amp|^2, NCOLOR |jamp|^2; MadVFold codegen: VFOLD_NBSF colour-linked
+  ! NGRAPHS |amp|^2, NCOLOR |jamp|^2; MadVfold codegen: VFOLD_NBSF colour-linked
   ! Borns instead of 10), looked up by VFOLD_SBORN_SERVE (called
   ! from born.f). A ring buffer, searched from the last hit, then backwards.
   ! Road B step 9l: the ring holds a whole batch (its unique Born points

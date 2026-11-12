@@ -1,6 +1,6 @@
 # Copyright (C) 2026 CERN.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created by A. Valassi (Nov 2026) for project MadVFold (arXiv:2609.23500).
+# Created by A. Valassi (Nov 2026) for project MadVfold (arXiv:2609.23500).
 # (The classes below are from export_cpp.py of mg5amcnlo v3.8.1.)
 
 # The three items of export_cpp.py of mg5amcnlo v3.8.1 which the cudacpp plugin derives
