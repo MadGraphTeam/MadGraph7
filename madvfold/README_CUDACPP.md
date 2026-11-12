@@ -2,25 +2,29 @@
 
 Mode C of MadVFold evaluates the Born and real-emission matrix elements with
 the cudacpp plugin of madgraph4gpu (on CPU with SIMD, or on GPU). This needs
-the MadVFold version of the cudacpp plugin (branch `vfold5381` of madgraph4gpu,
-cudacpp step 13c and later), which adds the `--vfold` output option (also
-in `standalone_cudacpp` mode, with multichannel support) and keeps googletest
-in `<proc>/test/GTEST`.
+the MadVFold version of the cudacpp plugin (branch `vfold7` of madgraph4gpu,
+cudacpp version 1.02.00), which adds the `--vfold` output option (also
+in `standalone_cudacpp` mode, with multichannel support), keeps googletest
+in `<proc>/test/GTEST` and also supports MadGraph7.
 
 ## Install the cudacpp plugin
 
-1. Create the cudacpp tarball in a madgraph4gpu clone (branch `vfold5381`):
+1. Download the cudacpp tarball of the MadVFold release
+   `valassi_cudacpp_for3.8.1_v1.02.00_vfold7on20261112`
+   (https://github.com/valassi/madgraph4gpu/releases/tag/valassi_cudacpp_for3.8.1_v1.02.00_vfold7on20261112)
+   into the `PLUGIN` directory of this MadGraph7 clone:
    ```
-   ./.github/workflows/archiver.sh
+   wget -O PLUGIN/cudacpp.tar.gz https://github.com/valassi/madgraph4gpu/releases/download/valassi_cudacpp_for3.8.1_v1.02.00_vfold7on20261112/cudacpp.tar.gz
    ```
-   This writes `cudacpp.tar.gz` (and `VERSION.txt`, also included in the
-   tarball) in the top directory of the madgraph4gpu clone. The tarball
-   contains a single directory `CUDACPP_OUTPUT`.
-   The location where the MadVFold tarball will be kept is still to be decided.
+   This is the version used for the results of the MadVFold paper. The tarball
+   contains a single directory `CUDACPP_OUTPUT` (with a `VERSION.txt`).
+   Alternatively (e.g. for later developments), create the tarball yourself
+   in a madgraph4gpu clone (branch `vfold7`), with
+   `./.github/workflows/archiver.sh`, which writes `cudacpp.tar.gz` in the top
+   directory of the clone, and copy it to `PLUGIN/cudacpp.tar.gz`.
 
 2. Install it in the `PLUGIN` directory of this MadGraph7 clone:
    ```
-   cp cudacpp.tar.gz PLUGIN/
    madvfold/cudacpp_mg7/installPlugin.sh
    ```
    Do NOT just extract the tarball: the plugin does not load in MadGraph7 as it
@@ -80,6 +84,10 @@ scripts such as `vfold/myLaunch.sh` set them themselves).
 
 The cudacpp unit tests can then be run in each cudacpp process directory, e.g.
 ```
-cd CUDACPP/epem_bbbxbx.vfold.sa/SubProcesses/P1_Sigma_sm_epem_bbbxbx
+cd CUDACPP/epem_bbbxbx.vfold.sa/SubProcesses/P1_epem_bbbxbx
 ./build.avx2_d_inl0_hrd0/runTest_cpp.exe
 ```
+(With MadGraph7, the P directories have no `Sigma_<model>_` prefix, unlike in
+mg5amcnlo; the test reference files keep the mg5amcnlo names
+`test/ref/dump_CPUTest.Sigma_<model>_<proc>.txt` as of the cudacpp tarball
+above.)
