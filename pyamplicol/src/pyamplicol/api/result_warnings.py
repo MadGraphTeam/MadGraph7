@@ -16,6 +16,11 @@ a Monte-Carlo run must never have its logs swamped, the caller decides):
   ``kind`` is the event's log target (e.g.
   ``"symbolica::coefficient"``, ``"UFOModelLoader"``), ``message`` its first message.
 
+- ``source="ufo-model"``: a Python warning attributed to a file of the UFO
+  model pyAmpliCol imported or compiled during the operation (e.g. Python
+  >= 3.12's ``SyntaxWarning`` for an invalid escape in a TeX name):
+  ``kind`` is the warning category, ``message`` ``file:line: text``.
+
 ``where`` names the operation (and, for captured events, the stage) the
 warning arose in. A result holds them in its ``warnings`` tuple, in
 first-seen order; ``--json`` writes them as ``warnings``.
@@ -41,7 +46,7 @@ class NumericalAccuracyWarning(UserWarning):
     pyAmpliCol on its own: only a caller's ``emit_warnings()`` emits it."""
 
 
-WARNING_SOURCES = ("numerical", "symbolica", "ufo-model-loader")
+WARNING_SOURCES = ("numerical", "symbolica", "ufo-model-loader", "ufo-model")
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +58,7 @@ class ResultWarning:
     and, for numerical warnings, the affected ``points`` (caller point
     indices)."""
 
-    source: Literal["numerical", "symbolica", "ufo-model-loader"]
+    source: Literal["numerical", "symbolica", "ufo-model-loader", "ufo-model"]
     kind: str
     message: str
     count: int

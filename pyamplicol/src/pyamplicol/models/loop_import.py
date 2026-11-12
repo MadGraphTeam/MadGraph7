@@ -125,15 +125,17 @@ def load_raw_loop_model(
     restriction: str = "default",
     value_overrides: Mapping[tuple[str, int], object] | None = None,
 ) -> RawLoopModel:
+    from .._internal.symbolica_log import ufo_source_warnings
     from .loading import _loader_restriction_name, _sanitized_model_environment
 
     path = Path(source).expanduser().resolve()
     selected = _loader_restriction_name(path, restriction)
     with _sanitized_model_environment():
         try:
-            raw = load_raw_ufo_model(
-                path, restriction=selected, value_overrides=value_overrides
-            )
+            with ufo_source_warnings(path):
+                raw = load_raw_ufo_model(
+                    path, restriction=selected, value_overrides=value_overrides
+                )
         except Exception as error:
             from .source_refusals import refuse_python2_ufo
 

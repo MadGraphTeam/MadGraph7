@@ -120,13 +120,16 @@ def python2_source_evidence(source: Path) -> str | None:
 
     if not source.is_dir():
         return None
+    from .._internal.symbolica_log import ufo_source_warnings
+
     # The modules an import can load: AppleDouble (``._x.py``) and other
     # files whose stem is no identifier are not modules.
     for path in sorted(source.glob("*.py")):
         if not path.stem.isidentifier():
             continue
         try:
-            compile(path.read_bytes(), path.name, "exec", dont_inherit=True)
+            with ufo_source_warnings(path):
+                compile(path.read_bytes(), str(path), "exec", dont_inherit=True)
         except SyntaxError as syntax:
             return f"{path.name} is not Python 3 source ({syntax.msg})"
     return None
