@@ -1,12 +1,16 @@
 """The run of one process directory: cards, integration, events and output."""
 
+import contextlib
 import glob
 import json
 import math
 import os
+import select
 import shutil
+import signal
 import subprocess
 import tempfile
+import threading
 import time
 
 from madgraph.mg7.common import backend_of, fptype_of, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, mlm_pdf_ladder, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
@@ -40,6 +44,238 @@ from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, bu
 # spends most of its time parsing them. Below, building the precompiled header
 # costs about what it saves.
 PCH_MIN_SUBPROCESSES = 4
+
+
+class GenerationControl:
+    """While the events are generated, Ctrl-C opens a menu on the terminal of
+    the run to stop early, or to change the number of requested events or of
+    CPU threads. The generation pauses while the menu is open (the batches in
+    flight finish), and goes on after MENU_TIMEOUT seconds without an answer.
+    Ctrl-C again, in the menu or once a stop is requested, aborts the run as
+    Ctrl-C always did (KeyboardInterrupt, no events written).
+
+    Stopping early keeps the events generated so far: every channel keeps its
+    share of the integral, so the channel with the fewest events for its share
+    limits the total (see ms.EventGenerator.request_stop). The menu shows an
+    estimate of that total.
+
+    Without a terminal in the foreground (nohup, a background job, a cluster),
+    write the commands into <run dir>/control, one per line: `stop`,
+    `nevents <n>`, `nb_core <n>`, then `kill -INT <pid>`. Without that file
+    either, the signal stops the generation.
+
+    Outside the generation (while the events are written, ...), Ctrl-C keeps
+    its usual meaning; only while `armed` does it open the menu. A run started
+    with SIGINT ignored (a background job of a script) keeps ignoring it."""
+
+    MENU_TIMEOUT = 60
+
+    def __init__(self, event_generator, run_path):
+        self.event_generator = event_generator
+        self.control_path = os.path.join(run_path, "control")
+        self.armed = False
+        self.installed = False
+        self.previous = None
+        # a second Ctrl-C while the menu is open, or after a stop, aborts
+        self.in_menu = False
+        self.stopping = False
+        # changes not applied yet, shown by the menu
+        self.pending_events = None
+        self.pending_threads = None
+
+    def __enter__(self):
+        # signal handlers can only be installed from the main thread
+        if threading.current_thread() is not threading.main_thread():
+            return self
+        previous = signal.getsignal(signal.SIGINT)
+        # ignored on purpose (a background job of a script) or not set from
+        # Python: leave it alone
+        if previous is None or previous == signal.SIG_IGN:
+            return self
+        ms.EventGenerator.request_stop(False)
+        self.previous = signal.signal(signal.SIGINT, self.handle)
+        self.installed = True
+        logger.info("Ctrl-C: menu to stop early or change the number of events or threads "
+                    "(without a terminal: commands in %s, then kill -INT %d)",
+                    self.control_path, os.getpid())
+        return self
+
+    def __exit__(self, *exc):
+        if self.installed:
+            signal.signal(signal.SIGINT, self.previous)
+            ms.EventGenerator.request_stop(False)
+            self.installed = False
+        return False
+
+    def abort(self, signum, frame):
+        """What Ctrl-C did before this handler: by default KeyboardInterrupt."""
+        if callable(self.previous):
+            return self.previous(signum, frame)
+        if self.previous == signal.SIG_IGN:
+            return None
+        raise KeyboardInterrupt
+
+    def handle(self, signum, frame):
+        if not self.armed or self.in_menu or self.stopping:
+            return self.abort(signum, frame)
+        # an error here would abort the generation it is meant to steer
+        try:
+            if os.path.exists(self.control_path):
+                self.run_control_file()
+                return
+            tty = self.open_tty()
+            if tty is None:
+                self.stop()
+                return
+            self.in_menu = True
+            try:
+                self.menu(*tty)
+            finally:
+                self.in_menu = False
+                for stream in tty:
+                    stream.close()
+            self.event_generator.redraw_progress()
+        except Exception as error:
+            logger.warning("Ctrl-C ignored, it failed with %s: %s",
+                           type(error).__name__, error)
+
+    def stop(self):
+        logger.info("stopping the generation, the events generated so far will be written "
+                    "(Ctrl-C again to abort)")
+        self.stopping = True
+        ms.EventGenerator.request_stop()
+
+    def set_events(self, count):
+        self.event_generator.set_target_count(count)
+        self.pending_events = count
+        logger.info("requested events set to %d (from the end of the running batches)", count)
+
+    def set_threads(self, count):
+        self.event_generator.set_thread_count(count)
+        self.pending_threads = count
+        logger.info("CPU threads set to %d (from the end of the running batches)", count)
+
+    def run_control_file(self):
+        with open(self.control_path) as f:
+            lines = f.read().splitlines()
+        # consumed, so that the next signal does not replay it
+        os.remove(self.control_path)
+        stop = False
+        for line in lines:
+            words = line.split("#", 1)[0].split()
+            if not words:
+                continue
+            command, value = words[0].lower(), words[1:]
+            try:
+                if command == "stop" and not value:
+                    stop = True
+                elif command == "nevents" and len(value) == 1 and int(value[0]) > 0:
+                    self.set_events(int(value[0]))
+                elif command in ("nb_core", "cpu_thread_pool_size") and len(value) == 1 \
+                        and int(value[0]) > 0:
+                    self.set_threads(int(value[0]))
+                else:
+                    raise ValueError
+            except ValueError:
+                logger.warning("%s: ignored invalid command %r "
+                               "(stop, nevents <n> or nb_core <n>)", self.control_path, line)
+        if stop:
+            self.stop()
+
+    @staticmethod
+    def open_tty():
+        """A reader and a writer on the terminal of the run, if it is in the
+        foreground: reading from it in a background job would stop the process
+        (SIGTTIN)."""
+        try:
+            fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+        except OSError:
+            return None
+        try:
+            if os.tcgetpgrp(fd) != os.getpgrp():
+                os.close(fd)
+                return None
+        except OSError:
+            os.close(fd)
+            return None
+        # a terminal is not seekable, which a text stream opened "r+" needs
+        reader = open(fd, encoding="utf-8", errors="replace")
+        writer = open(os.dup(fd), "w", encoding="utf-8")
+        return reader, writer
+
+    def ask(self, reader, writer, question):
+        """A line read from the terminal, None after MENU_TIMEOUT seconds."""
+        writer.write(question)
+        writer.flush()
+        ready, _, _ = select.select([reader], [], [], self.MENU_TIMEOUT)
+        if not ready:
+            writer.write("\n")
+            return None
+        return reader.readline().strip()
+
+    def ask_count(self, reader, writer, question):
+        answer = self.ask(reader, writer, question)
+        try:
+            count = int(float(answer)) if answer else 0
+        except ValueError:
+            count = 0
+        if count <= 0:
+            writer.write("  not a positive number, nothing changed\n")
+            return None
+        return count
+
+    def menu(self, reader, writer):
+        while True:
+            status = self.event_generator.status()
+            target = status.count_target
+            threads = self.event_generator.cpu_thread_count()
+            # applied once the running batches are committed
+            if self.pending_events not in (None, target):
+                target = f"{target} -> {self.pending_events}"
+            else:
+                self.pending_events = None
+            if self.pending_threads not in (None, threads):
+                threads = f"{threads} -> {self.pending_threads}"
+            else:
+                self.pending_threads = None
+            estimate, channel, fraction = self.event_generator.stop_estimate()
+            if channel:
+                limit = (f"limited by channel {channel} "
+                         f"with {100 * fraction:.3g} % of the integral")
+            else:
+                limit = "all channels have their share"
+            if estimate > 0:
+                stop = f"stop now and write about {estimate} events ({limit})"
+            else:
+                stop = f"stop now: no events can be written yet ({limit})"
+            writer.write(
+                "\n"
+                "MG7 generation paused (the running batches finish)\n"
+                f"  events: {status.count_unweighted:.0f} / {target}, "
+                f"CPU threads: {threads}\n"
+                f"  1) {stop}\n"
+                "  2) change the number of requested events\n"
+                "  3) change the number of CPU threads\n"
+                f"  0) continue (default, also after {self.MENU_TIMEOUT} s)\n"
+                "  Ctrl-C) abort the run, no events written\n"
+            )
+            answer = self.ask(reader, writer, "choice: ")
+            if answer == "1":
+                self.stop()
+                return
+            if answer == "2":
+                count = self.ask_count(
+                    reader, writer, f"number of events ({status.count_unweighted:.0f} generated so far): ")
+                if count is not None:
+                    self.set_events(count)
+            elif answer == "3":
+                count = self.ask_count(reader, writer, "number of CPU threads: ")
+                if count is not None:
+                    self.set_threads(count)
+            elif answer in (None, "", "0"):
+                return
+            else:
+                writer.write(f"  unknown choice {answer!r}\n")
 
 
 class MadgraphProcess:
@@ -1943,7 +2179,15 @@ class MadgraphProcess:
         if self.gridpack_run_mode != "regular":
             self.finish_without_events()
             return
-        self.event_generator.generate()
+        with GenerationControl(self.event_generator, self.run_path) as control:
+            control.armed = True
+            self.event_generator.generate()
+            control.armed = False
+            self.write_events(output_format)
+
+    def write_events(self, output_format) -> None:
+        """Combine the generated events into the output_format file, then write
+        the histograms and plots and store the gridpack."""
         density = self.lepton_density
         has_beamstrahlung = density is not None and density.has_beamstrahlung
         if output_format is None:
