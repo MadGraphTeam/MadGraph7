@@ -56,7 +56,6 @@ ALL = ("double", "double-double", "arbitrary")
 CHECK_ROWS = "TIR method-choice check rows"
 UNVERIFIED = "TIR method-choice lanes refused by their check"
 LAST_RESORT = "TIR last-resort rows"
-STRUCTURAL = "refused by the gates, then by the method choice"
 
 
 def _tirust(native) -> bool:
@@ -213,9 +212,10 @@ def test_unchecked_tirust_serves_every_point_and_keeps_the_checked_values(
     aag, loop_native
 ):
     """Done 2 / 4 of lit-unchecked on g g > a a g: the checked TIRust call
-    fails points structurally ("refused by the gates, then by the method
-    choice"); with ``reduction_unchecked=True`` (load-time, the runtime's
-    default for every call) every point is served, the method choice's
+    fails points (the lanes its acceptance check refuses, the method choice's
+    refusals going through the verified last resort, m-lit tir-uuzggg);
+    with ``reduction_unchecked=True`` (load-time, the runtime's default for
+    every call) every point is served, the method choice's
     refusals by the gate-0 last resort (counted), no acceptance pass is
     computed (no check row, no lane refused by its check), and the points the
     checked call serves keep their values bitwise. ``"auto"`` under the
@@ -233,10 +233,10 @@ def test_unchecked_tirust_serves_every_point_and_keeps_the_checked_values(
     checked_runtime = Runtime.load(artifact, process="p")
     checked = checked_runtime.evaluate(points, reduction="tirust", **options)
     checked_counts = _counts(checked_runtime)
-    assert LAST_RESORT not in checked_counts
-    refused = [
-        p for p, lane in enumerate(checked.diagnostics) if STRUCTURAL in lane.detail
-    ]
+    # The checked call verifies what it serves (the method choice's and the
+    # verified last resort's rows): its acceptance pass ran.
+    assert checked_counts.get(CHECK_ROWS, 0) > 0, checked_counts
+    refused = [p for p, value in enumerate(checked.values) if value is None]
     assert refused, [lane.detail[:200] for lane in checked.diagnostics]
     ninjars = checked_runtime.evaluate(points, reduction="ninjars", **options)
 
