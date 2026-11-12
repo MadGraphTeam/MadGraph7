@@ -243,6 +243,39 @@ def _flat_points(config: RunConfig):
     )
 
 
+def _with_evaluation_progress(
+    progress: ProgressSink, points: int, operation: Callable[..., _T]
+) -> Callable[..., _T]:
+    """``operation`` (one evaluation call over every point) reported to
+    ``progress`` as one task with its elapsed time."""
+
+    def run(*args: object, **kwargs: object) -> _T:
+        task = "evaluate-points"
+        started = time.perf_counter()
+        progress.emit(
+            ProgressStart(
+                task,
+                f"Evaluating {points} point(s)",
+                details={"step": f"evaluating {points} point(s)"},
+            )
+        )
+        success = False
+        try:
+            result = operation(*args, **kwargs)
+            success = True
+            return result
+        finally:
+            progress.emit(
+                ProgressEnd(
+                    task,
+                    success=success,
+                    elapsed_seconds=time.perf_counter() - started,
+                )
+            )
+
+    return run
+
+
 def _virtual_artifact_hint(path: Path) -> bool:
     """Choose CLI ingress only; the native loader checks the artifact itself
     (``benchmarking.is_virtual_artifact``)."""
@@ -645,8 +678,10 @@ class DefaultCliServices:
                 helicities=evaluation.helicity_ids or None,
                 color_flows=evaluation.color_flow_ids or None,
             )
-        operation = (
-            runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate
+        operation = _with_evaluation_progress(
+            progress,
+            len(momenta),
+            runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate,
         )
         if virtual:
             return operation(

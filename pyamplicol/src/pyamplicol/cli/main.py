@@ -140,6 +140,7 @@ def run_cli(
     input_stream = sys.stdin if stdin is None else stdin
     logging_configured = False
     sink = None
+    config = None
     try:
         invocation = parse_cli(argv)
         if isinstance(invocation, LicenseRequestInvocation):
@@ -167,7 +168,20 @@ def run_cli(
                     invocation, (LicenseRequestInvocation, UtilityInvocation)
                 )
             else:
-                result = execute_utility(invocation)
+                if (
+                    invocation.kind == "self-test"
+                    and invocation.output_format != "json"
+                ):
+                    sink = progress_sink(
+                        "auto",
+                        stream=diagnostic_stream,
+                        color=_color_enabled(
+                            invocation.output_color, diagnostic_stream
+                        ),
+                    )
+                result = execute_utility(invocation, progress=sink)
+                close_progress_sink(sink)
+                sink = None
                 write_result(
                     result,
                     format=invocation.output_format,
@@ -175,6 +189,8 @@ def run_cli(
                     color=_color_enabled(invocation.output_color, output_stream),
                     fields_help=invocation.fields_help,
                 )
+                if bool(getattr(result, "interrupted", False)):
+                    return 130
                 if invocation.kind in {"doctor", "self-test"}:
                     return 0 if bool(getattr(result, "ok", False)) else 1
                 return 0
@@ -261,12 +277,16 @@ def run_cli(
     except KeyboardInterrupt:
         close_progress_sink(sink)
         sink = None
-        message = "interrupted before a complete result was available"
-        if logging_configured:
-            get_logger("cli").warning("%s", message)
-        else:
-            diagnostic_stream.write(f"{message}\n")
-            diagnostic_stream.flush()
+        message = "interrupted (Ctrl-C) before a complete result was available"
+        if config is not None and str(config.action) == "generate":
+            # The writer stages the artifact privately and publishes it only
+            # when complete (``artifacts.writer``).
+            message += (
+                f"; nothing was written to {config.generation.output} (an "
+                "artifact appears only when complete)"
+            )
+        diagnostic_stream.write(f"{message}\n")
+        diagnostic_stream.flush()
         return 130
     finally:
         close_progress_sink(sink)

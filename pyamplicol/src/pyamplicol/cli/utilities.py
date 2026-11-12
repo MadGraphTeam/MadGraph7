@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pyamplicol.api.errors import ConfigurationError
 from pyamplicol.config import resolution_to_dict, resolve_config
@@ -710,7 +710,7 @@ def example_card(name: str) -> Path:
     return workspace / card.name
 
 
-def execute_utility(invocation: UtilityInvocation) -> object:
+def execute_utility(invocation: UtilityInvocation, progress: Any = None) -> object:
     if invocation.kind == "config-template":
         destination = (
             Path("pyamplicol.toml") if invocation.path is None else invocation.path
@@ -748,7 +748,7 @@ def execute_utility(invocation: UtilityInvocation) -> object:
     if invocation.kind == "doctor":
         return run_doctor()
     if invocation.kind == "self-test":
-        return run_self_test()
+        return run_self_test(progress=progress)
     raise ConfigurationError(f"utility {invocation.kind!r} must be dispatched by CLI")
 
 
