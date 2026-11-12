@@ -35,8 +35,6 @@ ANNOUNCEMENT:
        multiparticle such as `p p > w+ w-` each physical flavour, as without grouping.
        A check that could check no process now says so instead of printing an empty
        table.
-
-0.3.0 (XX/XX/XX):
    OM: the FD gauge (Feynman-diagram gauge, arXiv:2203.10440, 2405.01256) is now chosen
        automatically for each process line whose diagrams have a W/Z propagator ending on a
        vertex that is not a conserved current (HVV, VVV, VVVV, or a massive fermion such as t-b):
@@ -60,6 +58,14 @@ ANNOUNCEMENT:
        conjugate mass. Outputs in one gauge are otherwise unchanged. The multiparticles of the
        user survive the reload of the model behind 'set gauge'. While an 'output
        --postpone_model' waits for its model, the gauge of the processes written in it is kept.
+   OM: complex-mass scheme: check gauge no longer stops at its axial step (a custom
+       denominator is written unless it uses the width); madmatrix (standalone, mg7)
+       compiles and agrees with Fortran; MadSpin uses madmatrix density matrices; the $
+       exclusion window works (it was silently wrong in Fortran, did not compile in C++);
+       $ on a massless particle is refused. check language evaluates every backend at the
+       same phase-space point, and the C++ FD vxxxxx has the FD longitudinal polarisation.
+
+0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point

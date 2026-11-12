@@ -1598,12 +1598,12 @@ class TestCheckGaugeDecayChain(unittest.TestCase):
         cls.cmd.exec_cmd('set apply_flavor_grouping False')
         cls.cmd.exec_cmd('import model sm')
 
-    def check_gauge(self, process):
-        """{process string: (relative difference, gauge labels)} from the
-        table that 'check gauge' logs"""
-        import logging
+    def check_gauge(self, process, cmd=None):
+        """(gauge labels, {process string: (relative difference, values)})
+        from the table that 'check gauge' logs"""
+        cmd = cmd or self.cmd
         with self.assertLogs('madgraph.check_cmd', 'INFO') as logs:
-            self.cmd.exec_cmd('check gauge %s' % process)
+            cmd.exec_cmd('check gauge %s' % process)
         text = '\n'.join(record.getMessage() for record in logs.records)
         lines = text.split('\n')
         header = [line for line in lines if line.startswith('Process ')][0]
@@ -1677,6 +1677,28 @@ class TestCheckGaugeDecayChain(unittest.TestCase):
                 'g g > t t~, (t > w+{T} b, w+ > e+ ve), (t~ > w-{0} b~, w- > mu- vm~)')
         (diff, values), = rows.values()
         self.assertLess(diff, 1e-10)
+
+    def test_check_gauge_decay_chain_flavour_grouping(self):
+        """With flavour grouping (the default) every physical flavour of a
+        grouped leg is checked, at any depth of the chain, and a combination
+        that does not conserve charge is skipped: 'p p' gives u d~ and c s~
+        and their mirrors, 'l+ vl' the electron and the muon."""
+        import madgraph.interface.master_interface as interface
+        cmd = interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('import model sm')
+        labels, rows = self.check_gauge(
+                'p p > w+{0} z, w+ > e+ ve, z > mu+ mu-', cmd)
+        flavours = sorted(name.split('[')[1].split(' >')[0] for name in rows)
+        self.assertEqual(flavours, ['c s~', 'd~ u', 's~ c', 'u d~'])
+        for diff, values in rows.values():
+            self.assertLess(diff, 1e-9)
+            self.assertGreater(min(values), 0)
+        labels, rows = self.check_gauge('t > w+{0} b, w+ > l+ vl', cmd)
+        self.assertEqual(sorted(name.split('[')[1] for name in rows),
+                         ['t > e+ ve b]', 't > mu+ vm b]'])
+        for diff, values in rows.values():
+            self.assertLess(diff, 1e-12)
 
     def test_check_decay_chain_refused(self):
         """Decay chains: only 'check gauge', without loops, outside the

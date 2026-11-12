@@ -6682,6 +6682,44 @@ def decayed_particles(model, process):
     return particles
 
 
+def decay_chain_flavors(model, legs):
+    """The physical flavour combinations of the external legs of a
+    decay-chain process (get_legs_with_decays), as [(flavour tag of each leg,
+    label)]. With flavour grouping a merged leg stands for several flavours,
+    picked at run time from its 'flavor' tag (the first one without a tag):
+    an untagged merged leg, e.g. from 'p' or 'l+', is expanded into its whole
+    group, as get_flavor_choices does for a process without decays. The label
+    is ' [u d~ > e+ ve mu+ mu-]', or '' when no leg is merged."""
+
+    merged = model.get('merged_particles') or {}
+    choices = []
+    for leg in legs:
+        pid = leg.get('id')
+        sign = 1 if pid > 0 else -1
+        if abs(pid) not in merged:
+            choices.append([(leg.get('flavor'), pid)])
+        elif leg.get('flavor'):
+            choices.append([(leg.get('flavor'),
+                             sign * abs(leg.get('flavor')[0]))])
+        else:
+            # initial-state flavour stored with the sign of the crossed
+            # particle, as MultiProcess.generate_multi_amplitudes does
+            choices.append([([sign * pdg if leg.get('state') else -sign * pdg],
+                             sign * pdg) for pdg in merged[abs(pid)]])
+    any_merged = any(abs(leg.get('id')) in merged for leg in legs)
+    ninitial = len([leg for leg in legs if not leg.get('state')])
+    out = []
+    for combination in itertools.product(*choices):
+        flavors = [flavor for flavor, _ in combination]
+        if not any_merged:
+            out.append((flavors, ''))
+            continue
+        names = [model.get_particle(pdg).get_name() for _, pdg in combination]
+        out.append((flavors, ' [%s > %s]' % (' '.join(names[:ninitial]),
+                                             ' '.join(names[ninitial:]))))
+    return out
+
+
 def decay_chain_string(process):
     """One line in the syntax of 'generate', e.g. 'u u~ > t t~, (t > w+{0} b,
     w+ > e+ ve)', for the table of 'check gauge'."""
@@ -6746,16 +6784,29 @@ def check_unitary_feynman_decay_chains(gauge_procdefs, param_card=None,
             matrix_elements = helas_objects.HelasMultiProcess(
                                     amplitudes).get_matrix_elements()
             for me in matrix_elements:
-                for process in me.get('processes'):
-                    key = decay_chain_string(process)
-                    logger.info("Checking process %s in %s gauge" % (key, name))
-                    if key not in momenta:
-                        momenta[key] = get_decay_chain_momenta(evaluator,
-                                                               process, options)
-                        order.append(key)
-                    value = evaluator.evaluate_matrix_element(me,
-                                p=momenta[key], output='jamp', options=options)
-                    results.setdefault(key, {})[name] = value
+                # evaluate_matrix_element evaluates the first process of the
+                # matrix element, with the flavours tagged on its legs
+                process = me.get('processes')[0]
+                chain = decay_chain_string(process)
+                if chain not in momenta:
+                    momenta[chain] = get_decay_chain_momenta(evaluator,
+                                                             process, options)
+                legs = process.get_legs_with_decays()
+                saved = [leg.get('flavor') for leg in legs]
+                try:
+                    for flavors, physical in decay_chain_flavors(model, legs):
+                        key = chain + physical
+                        logger.info("Checking process %s in %s gauge" % (key, name))
+                        for leg, flavor in zip(legs, flavors):
+                            leg.set('flavor', flavor)
+                        value = evaluator.evaluate_matrix_element(me,
+                                p=momenta[chain], output='jamp', options=options)
+                        if key not in results:
+                            order.append(key)
+                        results.setdefault(key, {})[name] = value
+                finally:
+                    for leg, flavor in zip(legs, saved):
+                        leg.set('flavor', flavor)
             clean_added_globals(ADDED_GLOBAL)
 
     labels = {'unitary': 'value_unit', 'axial': 'value_axial', 'FD': 'value_fd'}
@@ -6764,7 +6815,14 @@ def check_unitary_feynman_decay_chains(gauge_procdefs, param_card=None,
         values = results[key]
         if 'unitary' not in values or None in values.values():
             continue
-        entry = {'process': key}
+        if not any(value['m2'] for value in values.values()):
+            # a flavour combination of a grouped process that does not
+            # conserve charge, e.g. d d~ > w+ z: nothing to compare
+            logger.info("Vanishing matrix element for %s: not checked" % key)
+            continue
+        # the decayed particles are on shell with a width of 1e-9 M: the
+        # gauges agree to about 1e-10, the colour flows included
+        entry = {'process': key, 'jamp_threshold': 1e-8}
         for name, value in values.items():
             entry[labels[name]] = value
         output.append(entry)
@@ -7097,7 +7155,7 @@ def output_unitary_feynman(comparison_results, output='text'):
                     tmp_str += fixed_string_length("%1.10e" % value, col_size)
                 tmp_str += fixed_string_length("%1.10e" % diff, col_size)
                        
-                if diff > 1e-10:
+                if diff > one_comp.get('jamp_threshold', 1e-10):
                     if not len(failed_proc_list) or failed_proc_list[-1] != proc:
                         fail_proc += 1
                         pass_proc -= 1
