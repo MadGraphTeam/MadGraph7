@@ -737,10 +737,13 @@ class _StabilityProgress:
         self.workers = workers
         self.done = {(b, p): 0 for b in backends for p in _PRECISIONS}
         self.seconds = {key: 0.0 for key in self.done}
+        # Per backend and precision the seconds of its first returned task
+        # (one point, with the worker's first-call costs) and the points and
+        # seconds of its later tasks (the cost per point once warm).
+        self.first: dict[tuple[str, str], float] = {}
+        self.later = {key: [0, 0.0] for key in self.done}
         self.begin = time.perf_counter()
-        # When the first task came back: every worker had loaded and picked
-        # its first task by then, so a stream still without a point has
-        # spent at least the time since on its first one.
+        # When the first task came back: the workers were computing by then.
         self.first_return: float | None = None
         if sink is not None:
             sink.emit(
@@ -757,8 +760,14 @@ class _StabilityProgress:
     def add(self, backend: str, precision: str, count: int, seconds: float) -> None:
         if self.first_return is None:
             self.first_return = time.perf_counter()
-        self.done[(backend, precision)] += count
-        self.seconds[(backend, precision)] += seconds
+        key = (backend, precision)
+        if key in self.first:
+            self.later[key][0] += count
+            self.later[key][1] += seconds
+        else:
+            self.first[key] = seconds / max(count, 1)
+        self.done[key] += count
+        self.seconds[key] += seconds
         self.emit()
 
     def drop(self, backend: str) -> None:
@@ -768,26 +777,30 @@ class _StabilityProgress:
             self.done[(backend, precision)] = self.points
         self.emit()
 
+    def _rate(self, key: tuple[str, str]) -> float:
+        """The cost per point of a stream that returned: its later tasks'
+        once there are some, else its first point."""
+
+        points, seconds = self.later[key]
+        return seconds / points if points else self.first[key]
+
     def eta(self) -> float | None:
-        known = [
-            self.seconds[key] / self.done[key]
-            for key in self.done
-            if self.done[key] and self.seconds[key] > 0.0
-        ]
+        known = {key: self._rate(key) for key in self.first if self.done[key]}
         if not known:
             return None
-        fallback = statistics.mean(known)
-        if self.first_return is not None and any(
-            not done for done in self.done.values()
-        ):
-            # A stream without a point is at least as slow as the time its
-            # first point has been running (its first task holds one
-            # point): the estimate grows while a slow stream's first point
-            # is pending instead of reading low until it returns.
-            fallback = max(fallback, time.perf_counter() - self.first_return)
+        fallback = statistics.mean(known.values())
+        if not all(self.done.values()) and self.first_return is not None:
+            # A stream whose first point is still running costs at least
+            # that point's running time per point, less the first-call
+            # cost seen on the streams that returned (their first point
+            # over their warm cost per point).
+            started = self.first_return - min(self.first.values())
+            warm_up = max(self.first[key] - rate for key, rate in known.items())
+            pending = time.perf_counter() - started - max(warm_up, 0.0)
+            fallback = max(fallback, pending)
         remaining = 0.0
         for key, done in self.done.items():
-            cost = self.seconds[key] / done if done and self.seconds[key] else fallback
+            cost = known.get(key, fallback)
             remaining += (self.points - done) * cost
         return remaining / max(self.workers, 1)
 
@@ -920,6 +933,8 @@ def _stability(
             tracker.drop(backend)
 
     interrupted = False
+    # Set by the pool at the first Ctrl-C: a second one aborts.
+    first_interrupt: list[bool] = []
     try:
         if workers == 1:
             _WORKER.update(runtime=runtime, points=points, scales=scales, checks=checks)
@@ -948,9 +963,13 @@ def _stability(
                 harvest,
                 refuse,
                 tracker.emit,
+                first_interrupt,
             )
     except KeyboardInterrupt:
         interrupted = True
+        if first_interrupt:
+            # The second Ctrl-C: abort, no tables.
+            raise
     finally:
         tracker.close(interrupted)
     rows = []
@@ -1020,12 +1039,15 @@ def _run_pool(
     harvest: Any,
     refuse: Any,
     tick: Any = None,
+    first_interrupt: list[bool] | None = None,
 ) -> bool:
     """Run the stability ``tasks`` on ``workers`` spawned processes
     (``_stability_worker``), handing every finished task to ``harvest``;
     True when Ctrl-C stopped the run. On Ctrl-C (or any error) nothing more
     is submitted, the finished tasks are collected and every worker is
-    stopped and joined: no process outlives the call."""
+    stopped and joined: no process outlives the call. The first Ctrl-C is
+    recorded in ``first_interrupt``; a second one, while the run winds
+    down, kills the workers and propagates."""
 
     import concurrent.futures as futures
     import multiprocessing
@@ -1060,6 +1082,8 @@ def _run_pool(
                     refuse(backend, error)
     except KeyboardInterrupt:
         interrupted = True
+        if first_interrupt is not None:
+            first_interrupt.append(True)
         for future in list(pending):
             if future.done() and not future.cancelled():
                 backend, _precision = pending.pop(future)
@@ -1081,15 +1105,24 @@ def _stop_pool(executor: Any) -> None:
     the workers still computing, and join them."""
 
     processes = list(getattr(executor, "_processes", {}).values())
-    executor.shutdown(wait=False, cancel_futures=True)
-    for process in processes:
-        if process.is_alive():
-            process.terminate()
-    for process in processes:
-        process.join(timeout=10)
-        if process.is_alive():
-            process.kill()
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+        for process in processes:
+            process.join(timeout=10)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=5)
+    except KeyboardInterrupt:
+        # A Ctrl-C while stopping: kill at once, still no orphan.
+        for process in processes:
+            if process.is_alive():
+                process.kill()
+        for process in processes:
             process.join(timeout=5)
+        raise
 
 
 def _uncertainties(result: Any) -> list[float | None]:
