@@ -396,3 +396,23 @@ def test_failure_causes_group_by_masked_first_message():
         ("stability", "no reference", 1, 10),
     ]
     assert causes[1].reason == first
+
+
+def test_stability_estimate_grows_while_a_stream_has_no_point(monkeypatch):
+    """A backend and precision without a returned point costs at least the
+    time since the first task returned (its first task holds one point), so
+    the estimate rises while a slow stream's first point is pending."""
+
+    import pyamplicol.loop_profile as lp
+
+    clock = [100.0]
+    monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
+    tracker = lp._StabilityProgress(None, ("ninjars",), 11, 2)
+    tracker.add("ninjars", "binary64", 1, 1.0)
+    # Only the mean of the known costs: 1 s per point, 21 points left.
+    assert tracker.eta() == pytest.approx((10 * 1.0 + 11 * 1.0) / 2)
+    clock[0] = 160.0
+    # The double-double point has run for 60 s at least.
+    assert tracker.eta() == pytest.approx((10 * 1.0 + 11 * 60.0) / 2)
+    tracker.add("ninjars", "double-double", 1, 70.0)
+    assert tracker.eta() == pytest.approx((10 * 1.0 + 10 * 70.0) / 2)

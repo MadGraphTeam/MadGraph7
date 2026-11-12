@@ -738,6 +738,10 @@ class _StabilityProgress:
         self.done = {(b, p): 0 for b in backends for p in _PRECISIONS}
         self.seconds = {key: 0.0 for key in self.done}
         self.begin = time.perf_counter()
+        # When the first task came back: every worker had loaded and picked
+        # its first task by then, so a stream still without a point has
+        # spent at least the time since on its first one.
+        self.first_return: float | None = None
         if sink is not None:
             sink.emit(
                 ProgressStart(
@@ -751,6 +755,8 @@ class _StabilityProgress:
             )
 
     def add(self, backend: str, precision: str, count: int, seconds: float) -> None:
+        if self.first_return is None:
+            self.first_return = time.perf_counter()
         self.done[(backend, precision)] += count
         self.seconds[(backend, precision)] += seconds
         self.emit()
@@ -771,6 +777,14 @@ class _StabilityProgress:
         if not known:
             return None
         fallback = statistics.mean(known)
+        if self.first_return is not None and any(
+            not done for done in self.done.values()
+        ):
+            # A stream without a point is at least as slow as the time its
+            # first point has been running (its first task holds one
+            # point): the estimate grows while a slow stream's first point
+            # is pending instead of reading low until it returns.
+            fallback = max(fallback, time.perf_counter() - self.first_return)
         remaining = 0.0
         for key, done in self.done.items():
             cost = self.seconds[key] / done if done and self.seconds[key] else fallback
@@ -933,6 +947,7 @@ def _stability(
                 tasks,
                 harvest,
                 refuse,
+                tracker.emit,
             )
     except KeyboardInterrupt:
         interrupted = True
@@ -1004,6 +1019,7 @@ def _run_pool(
     tasks: Sequence[tuple[str, str, list[int]]],
     harvest: Any,
     refuse: Any,
+    tick: Any = None,
 ) -> bool:
     """Run the stability ``tasks`` on ``workers`` spawned processes
     (``_stability_worker``), handing every finished task to ``harvest``;
@@ -1033,6 +1049,9 @@ def _run_pool(
             done, _ = futures.wait(
                 tuple(pending), timeout=0.5, return_when=futures.FIRST_COMPLETED
             )
+            if not done and tick is not None:
+                # The time estimate moves while nothing returns.
+                tick()
             for future in done:
                 backend, _precision = pending.pop(future)
                 try:
