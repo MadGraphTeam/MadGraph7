@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "note": "Non-registry source dependencies of the Rust workspace and the Python Community build; Cargo.toml / Cargo.lock are authoritative for the Rust graph.",
+  "dependencies": [
+    {
+      "name": "symbolica",
+      "crates": [
+        "symbolica",
+        "numerica",
+        "graphica"
+      ],
+      "url": "https://github.com/ValentinHirschi/symbolica.git",
+      "branch": "loop_me_pyamplicol",
+      "revision": "dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+      "base": {
+        "url": "https://github.com/symbolica-dev/symbolica.git",
+        "branch": "community",
+        "revision": "36cbac3a555d4b93b9601706f1d2f32629770ae6"
+      },
+      "pull_request": "https://github.com/symbolica-dev/symbolica/pull/163",
+      "note": "community 36cbac3a + the consolidated PR (9 commits); moves to upstream once merged"
+    },
+    {
+      "name": "ninjars",
+      "crates": [
+        "ninjars",
+        "ninjars-graph",
+        "ninjars-symbolica"
+      ],
+      "url": "https://github.com/alphal00p/ninjars.git",
+      "ref": "main",
+      "revision": "cf28d8e0018e0555256d3fba51e457d4941dcb0e",
+      "note": "main cf28d8e0 = 5fe7f392 + the scoped Symbolica library licence (NinjaRS registers its own key for the crate ninjars and holds a thread-bound guard only around its own operations; no API change); 5fe7f392 = the merge of the topic pyamplicol/box-mu-conditioning (71eddb15, same tree: the box mu-expansion's conditioning bound in both engines, a flagged lane decided a posteriori in the binary64 engines, docs/box-mu-conditioning.md) on main 98e223da, whose tree is 5b6a8f57's: main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pins on oneloopmaster a7cf4587 and Symbolica b9eaa735, Symbolica dfe6bd97 and oneloopmaster bd703d09; it reaches main through a merge commit, which the coordinator pushes before this pin lands"
+    },
+    {
+      "name": "oneloopmaster",
+      "crates": [
+        "oneloop"
+      ],
+      "url": "https://github.com/alphal00p/oneloopmaster.git",
+      "ref": "main",
+      "revision": "bd703d09a78f7849a6b86a07096e6f222fc01193",
+      "note": "main: TIRust's oneloop patches (PRs #17/#18, merge 5efc7f6), the 0BSD relicence 37d9a9b3, PR #19 (order-independent massless triangle) and PR #20 (merge bd703d0: C0 at a vanishing Kallen function reduced to bubbles on the arbitrary-precision routes; binary64/double-double kernels unchanged); features generated-evaluators + rust-codegen"
+    },
+    {
+      "name": "tirust",
+      "crates": [
+        "iregi-rust",
+        "iregi-masters"
+      ],
+      "url": "https://github.com/huashengshao/TIRust.git",
+      "ref": "main",
+      "revision": "bc94b496e94d7b7686fc28adbfe9b42a68200d02",
+      "note": "main bc94b496 (PR #31: triangles get the loop-rotation test on the binary64 TensorWorkspace facade only; DirectWorkspace, TensorStore, embedder mode and double-double unchanged; earlier PRs #25-#30: double-double subset sharing inside an AmplitudeWorkspace, opt-in RotationTest::Disabled on the TensorWorkspace facade; defaults unchanged) after the one history rewrite (2026-11-07; 760e3144 = rewritten ff13bd7), re-pinned on oneloopmaster bd703d09 (3f28d9c3) and to fefb5f2b (lit-tirust-io's supplied invariants, mu^2 input, embedder mode, lifted caps and capability query; lit-tirust-mc's small-Gram fix; lit-tirust-store's persistent tensor store, masters provider, rotation copy and direct-engine concurrency); behind the default cargo feature tir of the crates that link it; oneloop bd703d09 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
+    },
+    {
+      "name": "feynkit",
+      "crates": [
+        "feynkit-kinematics"
+      ],
+      "url": "https://github.com/alphal00p/gammaloop.git",
+      "branch": "feynkit",
+      "revision": "d1904bf2bd5bf4f26969a73b415095e941a55610"
+    },
+    {
+      "name": "symbolica-community",
+      "role": "Python Symbolica (development Community build)",
+      "url": "https://github.com/symbolica-dev/symbolica-community.git",
+      "revision": "39b556c7d7dcc919f61d125f60ff83f8d49f7ac3",
+      "patch": "[patch.crates-io] symbolica/numerica/graphica -> ValentinHirschi/symbolica dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+      "release_lock": "PyPI symbolica 3.0.3 (dependencies/release-lock.toml)"
+    }
+  ]
+}

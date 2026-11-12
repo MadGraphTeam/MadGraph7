@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import pytest
 
+from pyamplicol.color.plan_types import LCColorSector, LCOpenColorLine
 from pyamplicol.generation.fermion_ordering import (
     _external_fermion_requires_exterior_sign,
     _external_fermion_support_sign,
     _fermion_input_orientation_sign,
     _fermion_rep_requires_exterior_sign,
+    open_line_closure_sign,
 )
 
 
@@ -30,6 +32,19 @@ def test_external_source_sign_ownership_uses_canonical_color_role(
     assert _external_fermion_requires_exterior_sign(statistics, color_role) is expected
 
 
+@pytest.mark.parametrize(
+    "color_role", ("singlet", "fundamental", "antifundamental", "adjoint")
+)
+def test_wick_convention_signs_every_external_fermion(color_role: str) -> None:
+    assert _external_fermion_requires_exterior_sign("fermion", "singlet", True)
+    if color_role == "adjoint":
+        with pytest.raises(ValueError, match="fermion color role"):
+            _external_fermion_requires_exterior_sign("fermion", color_role, True)
+        return
+    assert _external_fermion_requires_exterior_sign("fermion", color_role, True)
+    assert not _external_fermion_requires_exterior_sign("boson", color_role, True)
+
+
 @pytest.mark.parametrize("color_role", ("adjoint", "inclusive"))
 def test_unsupported_external_fermion_color_role_fails_closed(
     color_role: str,
@@ -47,6 +62,11 @@ def test_model_representation_sign_ownership_is_generic(
     expected: bool,
 ) -> None:
     assert _fermion_rep_requires_exterior_sign(color_representation) is expected
+
+
+@pytest.mark.parametrize("color_representation", (1, 3, -3))
+def test_wick_convention_signs_every_model_fermion(color_representation: int) -> None:
+    assert _fermion_rep_requires_exterior_sign(color_representation, True)
 
 
 def test_unsupported_fermion_representation_fails_closed() -> None:
@@ -179,3 +199,48 @@ def test_identical_dirac_pairings_have_opposite_tree_products() -> None:
 
     assert direct == 1
     assert exchange == -1
+
+
+def _open_lines(*lines: tuple[int, int]) -> LCColorSector:
+    open_lines = tuple(
+        LCOpenColorLine(
+            fundamental_label=fundamental, antifundamental_label=anti, adjoint_labels=()
+        )
+        for fundamental, anti in lines
+    )
+    return LCColorSector(
+        id=0,
+        kind="open-lines",
+        open_color_lines=open_lines,
+        word_labels=tuple(label for line in lines for label in line),
+    )
+
+
+@pytest.mark.parametrize(
+    ("lines", "expected"),
+    (
+        # One line: no other line to transpose, no gluon link.
+        (((2, 1),), 1),
+        # Two lines: the pairing parity times (-1)^(2-1). The uncrossed flow
+        # of u u~ > d d~ (photon/Z) and its crossed flow (gluon, W) differ
+        # by one transposition of colour ends, hence by one sign.
+        (((2, 1), (3, 4)), -1),
+        (((2, 4), (3, 1)), 1),
+        # Line order does not matter, only the pairing.
+        (((3, 4), (2, 1)), -1),
+        # Three lines: (-1)^(3-1) = 1 times the pairing parity.
+        (((1, 2), (3, 4), (5, 6)), 1),
+        (((1, 4), (3, 2), (5, 6)), -1),
+        (((1, 4), (3, 6), (5, 2)), 1),
+    ),
+)
+def test_open_line_closure_sign_divides_out_the_colour_metric_parity(
+    lines: tuple[tuple[int, int], ...], expected: int
+) -> None:
+    assert open_line_closure_sign(_open_lines(*lines)) == expected
+
+
+def test_closure_sign_is_one_without_open_lines() -> None:
+    assert open_line_closure_sign(None) == 1
+    trace = LCColorSector(id=0, kind="single-trace", trace_labels=(1, 2, 3))
+    assert open_line_closure_sign(trace) == 1

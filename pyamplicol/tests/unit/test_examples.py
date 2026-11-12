@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -32,6 +33,8 @@ def _schema_leaf_paths(
         path = f"{prefix}.{key}" if prefix else key
         if path in FIELD_REGISTRY:
             paths.add(path)
+            if FIELD_REGISTRY[path].kind == "section" and isinstance(value, Mapping):
+                paths.update(_schema_leaf_paths(value, prefix=path))
         elif isinstance(value, Mapping):
             paths.update(_schema_leaf_paths(value, prefix=path))
         else:
@@ -53,11 +56,55 @@ def test_run_cards_parse_and_resolve_without_domain_backends(card: Path) -> None
     if config.action == "generate":
         assert config.process.entries
         assert config.generation.output is not None
-    elif config.action == "evaluate":
+    elif config.action in {"evaluate", "benchmark", "inspect", "group-processes"}:
         assert config.evaluation.artifact is not None
-        assert config.evaluation.momenta is not None
-    elif config.action in {"benchmark", "inspect", "group-processes"}:
-        assert config.evaluation.artifact is not None
+
+
+_COMMENTED_SETTING = re.compile(r"^# (\[[A-Za-z0-9_.]+\]|[A-Za-z0-9_\"-]+ = .*)$")
+
+
+def _documented_payload(text: str) -> dict[str, object]:
+    """Parse active settings together with commented example assignments."""
+
+    lines = (
+        match.group(1) if (match := _COMMENTED_SETTING.match(line)) else line
+        for line in text.splitlines()
+    )
+    return tomllib.loads("\n".join(lines))
+
+
+# Virtual-only settings that the tree card cannot combine with its compiled
+# evaluator: they are documented as commented example assignments. Every other
+# registry leaf must be an active setting.
+_VIRTUAL_ONLY_LEAVES = frozenset(
+    {
+        "process.loop_coupling_orders",
+        "process.loop_induced",
+        "process.squared_coupling_orders",
+        "evaluation.arithmetic",
+        "evaluation.reduction",
+        "evaluation.reduction_target",
+        "evaluation.correlated_requests",
+        "evaluation.on_failure",
+        "evaluation.mu_r2",
+        "evaluation.mu_r2_file",
+        "evaluation.stability.absolute_tolerance",
+        "evaluation.stability.relative_tolerance",
+        "generation.particle_veto",
+        "generation.allow_anomalous_veto",
+        "generation.loop_induced_probes",
+        "generation.allow_failed_probes",
+        "generation.helicity_filter_failure_probability",
+        "generation.loop_induced_folding",
+        "loop.alpha_s_parameter",
+        "loop.alpha0_inverse_parameter",
+    }
+)
+_VIRTUAL_ONLY_SECTIONS = ("loop.model.", "loop.preparation")
+
+
+def _is_virtual_only(path: str) -> bool:
+    return path in _VIRTUAL_ONLY_LEAVES or path.startswith(_VIRTUAL_ONLY_SECTIONS)
 
 
 def test_all_options_is_an_exhaustive_commented_registry_snapshot() -> None:
@@ -65,7 +112,12 @@ def test_all_options_is_an_exhaustive_commented_registry_snapshot() -> None:
     payload = _read_toml(card)
     text = card.read_text(encoding="utf-8")
 
-    assert _schema_leaf_paths(payload) == set(FIELD_REGISTRY)
+    active = _schema_leaf_paths(payload)
+    documented = _schema_leaf_paths(_documented_payload(text))
+    assert active <= set(FIELD_REGISTRY)
+    assert documented == set(FIELD_REGISTRY)
+    commented_only = documented - active
+    assert not {path for path in commented_only if not _is_virtual_only(path)}
     for path in FIELD_REGISTRY:
         assert f"# {path}:" in text, f"missing all-options comment for {path}"
 
@@ -472,3 +524,78 @@ def test_user_docs_and_examples_exclude_retired_workflows() -> None:
         "parent project",
     ):
         assert retired not in combined
+
+
+LOOP_EXAMPLES = {
+    "loop_uux_ttxgg": ("u u~ > t t~ g g", "loop_sm", ("QCD",)),
+    "loop_uux_ddxepem": ("u u~ > d d~ e+ e-", "loop_qcd_qed_sm_Gmu", ("QCD", "QED")),
+    "loop_gg_zgg": ("g g > z g g", "loop_sm", ("QCD",)),
+    "loop_gg_epemmpmm": ("g g > e+ e- m+ m-", "loop_qcd_qed_sm_Gmu", ("QCD",)),
+}
+
+
+def test_loop_examples_ship_their_cards_data_and_documentation() -> None:
+    """The four one-loop examples (m-lit lit-examples): generate, check,
+    evaluate and profile cards on the shipped models by bare name, their
+    momenta and correlator declarations, the walkthrough script, the native
+    loop client with its Makefile target, README rows and sections, and no
+    generated file in the examples tree (artifacts are written to the
+    workspace)."""
+
+    readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
+    gallery = (ROOT / "docs/user/examples-gallery.md").read_text(encoding="utf-8")
+    assert "## One-Loop Examples" in readme and "## One-loop walkthroughs" in gallery
+    for stem, (expression, model, corrections) in LOOP_EXAMPLES.items():
+        generate = resolve_config(EXAMPLES / f"{stem}_generate.toml").effective
+        assert generate.action == "generate"
+        assert Path(str(generate.model.source)).name == model
+        assert generate.process.entries[0].expression == expression
+        assert generate.process.loop_coupling_orders == corrections
+        assert generate.generation.output == EXAMPLES / "artifacts" / stem
+        assert not generate.generation.loop_induced_probes
+        for step, action in (
+            ("check", "check"),
+            ("evaluate", "evaluate"),
+            ("profile", "benchmark"),
+        ):
+            card = EXAMPLES / f"{stem}_{step}.toml"
+            config = resolve_config(card).effective
+            assert config.action == action, card
+            assert config.evaluation.artifact == EXAMPLES / "artifacts" / stem
+            assert f"`{card.name}`" in readme, card
+        points = json.loads(
+            (EXAMPLES / "data" / f"{stem}_momenta.json").read_text(encoding="utf-8")
+        )
+        assert points and all(
+            math.isclose(
+                sum(leg[mu] for leg in point[:2]),
+                sum(leg[mu] for leg in point[2:]),
+                rel_tol=1e-12,
+                abs_tol=1e-9,
+            )
+            for point in points
+            for mu in range(4)
+        )
+        declaration = json.loads(
+            (EXAMPLES / "data" / f"{stem}_correlators.json").read_text(encoding="utf-8")
+        )
+        assert declaration["color_correlations"]
+    assert (EXAMPLES / "loop_uux_ttxgg_lc_generate.toml").is_file()
+    assert resolve_config(
+        EXAMPLES / "loop_uux_ddxepem_orders.toml"
+    ).effective.evaluation.orders
+    client = (EXAMPLES / "native/loop_client.c").read_text(encoding="utf-8")
+    assert client.startswith("/* SPDX-License-Identifier: 0BSD */")
+    for call in (
+        "rusticol_virtual_set_reduction(",
+        "rusticol_virtual_set_reduction_unchecked(",
+        "rusticol_virtual_evaluate_correlated(",
+        "rusticol_virtual_evaluate_selected(",
+        "rusticol_virtual_metadata_json",
+    ):
+        assert call in client
+    makefile = (EXAMPLES / "native/Makefile").read_text(encoding="utf-8")
+    assert "loop_client: loop_client.c" in makefile
+    assert "LOOP_SDK_LIBS ?= $(RUSTICOL_LIBS)" in makefile
+    assert (EXAMPLES / "python/loop_walkthrough.py").is_file()
+    assert not (EXAMPLES / "artifacts").exists()

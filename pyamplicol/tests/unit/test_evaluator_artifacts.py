@@ -83,8 +83,14 @@ class _FakeRusticol:
 
 @pytest.fixture(autouse=True)
 def _fake_plane_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The saved evaluators of real Symbolica evaluators are still stored in
+    # the native's canonical form.
+    from pyamplicol.loops.native import load_loop_native
+
+    monkeypatch.setattr(_FakeRusticol, "_loop", load_loop_native(), raising=False)
     fake = _FakeRusticol()
     monkeypatch.setitem(sys.modules, "pyamplicol._rusticol", fake)
+    monkeypatch.setattr("pyamplicol.loops.native._VERIFIED", [fake])
     monkeypatch.setattr(
         symbolica_adapters,
         "verify_native_module",
@@ -151,6 +157,7 @@ def test_symjit_plane_export_preserves_shared_outputs_and_matching_digest(
             instructions=program[0],
             temporary_count=program[1],
             constants=program[2],
+            constant_functions=[],
             sub_evaluators=[],
         )
         if structured

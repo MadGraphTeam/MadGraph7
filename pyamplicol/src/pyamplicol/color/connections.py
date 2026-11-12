@@ -489,14 +489,30 @@ def apply_color_connection(
     return ConnectedColorTensor(connection.output_legs, terms, connection.order)
 
 
-def _literal_tensor_overlap_nc_terms(
-    left: ColorTensor, right: ColorTensor
-) -> Mapping[int, Fraction]:
+def overlap_traces(left: ColorTensor, right: ColorTensor) -> list[tuple[int, ...]]:
+    """Adjoint traces whose product is the overlap ``<left|right>``.
+
+    The traces of ``right``, the reversed traces of ``left`` and one trace per
+    closed index loop of the open strings glued end to end. Every open string
+    of either side must glue to one of the other (the same quark and antiquark
+    labels on both sides): an unpaired string is refused, never dropped with
+    its index loop.
+    """
+
     traces = list(right.traces) + [tuple(reversed(trace)) for trace in left.traces]
     right_by_q = {string.fundamental_label: string for string in right.open_strings}
     left_by_qbar = {
         string.antifundamental_label: string for string in left.open_strings
     }
+    if {string.fundamental_label for string in left.open_strings} != set(
+        right_by_q
+    ) or set(left_by_qbar) != {
+        string.antifundamental_label for string in right.open_strings
+    }:
+        raise ValueError(
+            "the open colour strings of an overlap do not pair up: a quark "
+            "line of one side has no end points on the other"
+        )
     visited: set[int] = set()
     for start in sorted(right_by_q):
         if start in visited:
@@ -511,7 +527,14 @@ def _literal_tensor_overlap_nc_terms(
             trace.extend(reversed(left_string.adjoint_labels))
             current = left_string.fundamental_label
         traces.append(tuple(trace))
-    return _simplify_trace_terms_nc_power(((Fraction(1), 0, tuple(traces)),))
+    return traces
+
+
+def _literal_tensor_overlap_nc_terms(
+    left: ColorTensor, right: ColorTensor
+) -> Mapping[int, Fraction]:
+    traces = tuple(overlap_traces(left, right))
+    return _simplify_trace_terms_nc_power(((Fraction(1), 0, traces),))
 
 
 def contract_connected_tensor_nc_terms(
@@ -609,4 +632,5 @@ __all__ = [
     "contract_connected_tensor_nc_terms",
     "contract_connected_tensors",
     "evaluate_color_nc_terms",
+    "overlap_traces",
 ]

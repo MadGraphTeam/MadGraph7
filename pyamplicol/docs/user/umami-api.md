@@ -12,24 +12,13 @@ It lets a C/C++ executable or MadSpace evaluate a pyAmpliCol artifact through th
 same Rusticol runtime used by the other [native APIs](native-apis.md).
 The library needs no Python interpreter at evaluation time.
 
-This interface is being developed on the `umami` branch. Use that branch's
-matching generation code and installed native SDK; it is not present in an
-older released wheel.
-
-`git pull` updates the checkout, not a non-editable installed package. Check the
-Python interpreter and exporter actually being imported with:
+The UMAMI exporter ships with the package. `pip install` (or `just
+dev-install` in a checkout) updates the installed package, not `git pull`;
+check which interpreter and exporter are imported with:
 
 ```console
 python -c "import sys; import pyamplicol.artifacts.umami as umami; print(sys.executable); print(umami.__file__)"
 ```
-
-To rebuild and reinstall the current branch into `.venv`, run the repository's
-existing `just dev-install` workflow from a clean checkout. Python-only changes
-can instead use `env PYTHONPATH="$PWD/src" .venv/bin/python ...` from the repository
-root when a matching native runtime is already staged; they do not require a
-new Rusticol build. See the
-[example README](https://github.com/MadGraphTeam/pyamplicol/tree/umami/umami_example#updating-a-checkout-or-stale-environment)
-for complete commands.
 
 ## Generate and build
 
@@ -66,7 +55,18 @@ The default build directory is the sibling
 A single provider produces **`libumami.so`** and **`umami_driver`** on both Linux
 and macOS; the `.so` suffix is retained on macOS. Rusticol is statically included
 in the provider and its symbols are hidden. The standalone driver links only
-the UMAMI library, not another copy of Rusticol. It reads a saved validation
+the UMAMI library, not another copy of Rusticol. With a distribution wheel the
+provider also links GMP, MPFR and MPC dynamically, from the wheel's
+`pyamplicol/_sdk/lib/` (`libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6`,
+`libmpc-pyamplicol.so.3` on Linux; `libgmp.10.dylib`, `libmpfr.6.dylib`,
+`libmpc.3.dylib` on macOS), which `rusticol-config --libs` names by path
+with a run path to that directory; a source build links them statically
+([GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
+The Rusticol archive itself ships xz-compressed in the wheels: the Makefile's
+first `rusticol-config --library` unpacks it once into the per-user cache
+(`$PYAMPLICOL_CACHE_DIR/sdk/`, otherwise `~/.cache/pyamplicol/sdk/` on Linux
+and `~/Library/Caches/pyamplicol/sdk/` on macOS), and the provider links that
+copy ([The SDK archive cache](native-apis.md#the-sdk-archive-cache)). It reads a saved validation
 point and prints the matrix element as JSON. Optional arguments select a
 zero-based channel and flavour:
 
@@ -93,7 +93,9 @@ cc -I/absolute/artifact/API/umami my_driver.c \
 ```
 
 Keep the executable and provider together when relocating them, and retain the
-whole generated artifact and any native evaluator dependencies. `rusticol-config`
+whole generated artifact and any native evaluator dependencies; a provider
+built from a distribution wheel also needs its three runtime libraries next
+to it or on its library path once moved away from that environment. `rusticol-config`
 is needed to **build the provider**, not to add a second Rusticol library to its
 consumer. Distribute the generated `UMAMI_LICENSE` notice with the provider;
 the upstream public header retains its license, independently of the adapter's
@@ -319,11 +321,44 @@ representative's runtime. Processes grouped numerically were generated and keep
 their ordinary export. [Process Grouping](process-grouping.md) defines the
 flavour classes, the recorded relations and their warnings.
 
-## MadSpace example
+## MadSpace
 
-The upstream pyAmpliCol repository's
-[`umami_example`](https://github.com/MadGraphTeam/pyamplicol/tree/umami/umami_example)
-contains close adaptations of AmpliCol's loading and integration examples. They
-use the real MadSpace matrix-element loader, phase-space mappings and
-differential cross section, with VEGAS from MadNIS. Setup, options and all
-commands are explained in its README.
+MadSpace loads the generated `API/umami` library through its UMAMI
+matrix-element loader with the `metadata.json` written beside it (see
+[Generate and build](#generate-and-build) and
+[Providers and generated metadata](#providers-and-generated-metadata)). The
+library needs no Python interpreter; the generated `umami_driver.c` is a
+minimal C caller of the same entry points. MadSpace, MadNIS and PDF sets are
+not pyAmpliCol dependencies; install them separately. MadSpace's massless
+two-beam scattering flux rejects massive incoming legs; the UMAMI provider
+itself has no such restriction. The other native interfaces are described in
+[Native APIs](native-apis.md).
+
+## Versioned virtual extension (source delivery)
+
+The loop development source also provides an explicitly versioned
+[pyAmpliCol UMAMI virtual extension](../../rust/loop-reduction/sdk/umami/README.md).
+It reuses UMAMI's column-major batch layout and offset/count/stride conventions
+while returning all Born/virtual squared orders, all three Laurent coefficients
+and mandatory point statuses. It makes one bulk call to the shared virtual SDK
+and serves a plan v4 (v2 engine) process's helicity-resolved and colour- and
+spin-correlated outputs from its stored observable columns, in the handle's
+pole selection and arithmetic (`rusticol_virtual_set_arithmetic`: binary64,
+double-double or arbitrary precision; the exact decimals of the extended
+carriers come with the optional diagnostic result), bitwise equal to the Python
+API in binary64; it has no verification policy (the stability rescue is the
+Python API's alone). For a loop-induced process it also takes the tree
+provider's `UMAMI_IN_HELICITY_INDEX` (per event the zero-based helicity row:
+that row's |A(h)|²/avg, only that row evaluated) and, for resolved output, the
+key `PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION` (`"amplitude-basis"`: per
+helicity row the amplitude-basis anchors, an explicitly basis-dependent split
+summing to the row's value); a loop-induced process has no colour flows (full
+colour only), and random helicity or colour selection is not offered.
+
+This is a pyAmpliCol extension, not standard UMAMI virtual interoperability.
+It adds separate versioned symbols and keys; the tree ABI described above is
+unchanged. Signed virtual values are never sampled as probabilities, and the
+extension does not replace `UMAMI_OUT_MATRIX_ELEMENT` with a finite-only value.
+The current delivery is source-level; ordinary generated `API/umami` bundles do
+not yet include it. Mapped-process channels remain unsupported in this
+extension.

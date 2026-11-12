@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import subprocess
@@ -165,8 +166,7 @@ def test_abi3_smoke_skips_duplicate_generation_and_sdk_checks(
 
     assert sandbox is not None
     assert any(
-        command[-2:] == ["-c", deployment._INSTALLED_SMOKE]
-        for command in commands
+        command[-2:] == ["-c", deployment._INSTALLED_SMOKE] for command in commands
     )
     assert any(
         command[-2:] == ["-c", deployment._SYMBOLICA_FREE_F64_SMOKE]
@@ -234,8 +234,7 @@ def test_deployment_runs_a_copied_external_ufo_example(tmp_path: Path) -> None:
     card = tmp_path / "examples/external_ufo_sm.toml"
 
     command = [
-        os.fspath(item)
-        for item in deployment._copied_example_command(python, card)
+        os.fspath(item) for item in deployment._copied_example_command(python, card)
     ]
 
     assert command == [
@@ -368,6 +367,28 @@ def test_candidate_native_sdk_smoke_can_require_all_compilers(
         )
 
 
+def test_umami_provider_check_requires_make_in_release_mode_only(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("PYAMPLICOL_REQUIRE_NATIVE_TESTS", raising=False)
+    monkeypatch.setattr(
+        deployment,
+        "_native_command",
+        lambda variable, _defaults: (
+            None if variable == "MAKE" else (f"/tool/{variable}",)
+        ),
+    )
+
+    with pytest.raises(ReleaseError, match=r"UMAMI provider check .* requires make"):
+        deployment._native_toolchain("release")
+    toolchain = deployment._native_toolchain("candidate")
+
+    assert toolchain is not None and toolchain.make is None
+    assert toolchain.cc == ("/tool/CC",)
+    assert "did not run the UMAMI provider check" in capsys.readouterr().out
+
+
 def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -405,6 +426,9 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
     cpp_driver.write_text("int main() { return 0; }\n", encoding="utf-8")
     fortran_driver.write_text("program main\nend program main\n", encoding="utf-8")
     rust_driver.write_text("fn main() {}\n", encoding="utf-8")
+    umami_makefile = artifact / "API/umami/Makefile"
+    umami_makefile.parent.mkdir(parents=True)
+    umami_makefile.write_text("run:\n", encoding="utf-8")
     fixture = deployment.NativePhysicsFixture(
         artifact=artifact,
         process_id="smoke",
@@ -422,6 +446,7 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
             cxx=("/tool/c++",),
             fortran=("/tool/gfortran",),
             rustc=("/tool/rustc",),
+            make=("/tool/make",),
         ),
     )
     monkeypatch.setattr(
@@ -430,12 +455,21 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
         lambda *_args, **_kwargs: fixture,
     )
 
+    command_directories: list[object] = []
+    umami_value = 2.5
+
     def fake_run(command, **_kwargs):
         rendered = [os.fspath(item) for item in command]
         commands.append(rendered)
         command_environments.append(dict(_kwargs.get("env", {})))
+        command_directories.append(_kwargs.get("cwd"))
         if "rusticol_config" in rendered:
             return subprocess.CompletedProcess(rendered, 0, json.dumps(sdk), "")
+        if rendered[0] == "/tool/make":
+            driver = {"provider": "p0", "matrix_element": umami_value}
+            return subprocess.CompletedProcess(
+                rendered, 0, "build output\n" + json.dumps(driver) + "\n", ""
+            )
         language = None
         if any(item.endswith("check_standalone.py") for item in rendered):
             language = "python"
@@ -485,6 +519,36 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
     assert command_environments[rust_compile_index]["RUSTICOL_RUST_SOURCE"] == str(
         rust_module
     )
+    # The UMAMI provider is built by its own Makefile on the cold and the warm
+    # cache, against the installed rusticol-config.
+    make_indices = [
+        index for index, command in enumerate(commands) if command[0] == "/tool/make"
+    ]
+    assert [commands[index][-2:] for index in make_indices] == [
+        [f"BUILD_DIR={tmp_path / 'umami-cold'}", "run"],
+        [f"BUILD_DIR={tmp_path / 'umami-warm'}", "run"],
+    ]
+    assert all(
+        command_directories[index] == umami_makefile.parent for index in make_indices
+    )
+    assert (
+        f"RUSTICOL_CONFIG={Path(sys.executable).parent / 'rusticol-config'}"
+        in commands[make_indices[0]]
+    )
+    assert all(
+        command_environments[index][deployment._SDK_CACHE_ENVIRONMENT]
+        == str(tmp_path / "sdk-cache")
+        for index in make_indices
+    )
+
+    umami_value = 2.5 * (1.0 + 1.0e-9)
+    with pytest.raises(ReleaseError, match="UMAMI driver's matrix element"):
+        deployment._native_sdk_smoke(
+            Path(sys.executable),
+            sandbox=tmp_path / "second",
+            mode="release",
+            environment={"PATH": "/deployment/venv/bin:/usr/bin:/bin"},
+        )
 
 
 def test_five_language_result_comparison_rejects_metadata_drift() -> None:
@@ -505,3 +569,37 @@ def test_five_language_result_comparison_rejects_metadata_drift() -> None:
 
     with pytest.raises(ReleaseError, match="rust API driver metadata"):
         deployment._compare_driver_results(results)
+
+
+def test_sdk_cache_check_requires_one_reused_checked_archive(tmp_path: Path) -> None:
+    cache = tmp_path / "sdk-cache"
+    archive = b"!<arch>\nunpacked"
+    library = cache / "sdk" / "0.1.0-digest" / "librusticol_capi.a"
+    library.parent.mkdir(parents=True)
+    library.write_bytes(archive)
+    sdk = {
+        "library": str(library),
+        "archive_compression": {
+            "format": "xz",
+            "sha256": hashlib.sha256(archive).hexdigest(),
+            "size": len(archive),
+        },
+    }
+    check = deployment._check_sdk_cache
+    assert (
+        check({"library": "/site/lib.a"}, cache=cache, state="cold", previous=None)
+        is None
+    )
+    assert check(sdk, cache=cache, state="cold", previous=None) == library
+    assert check(sdk, cache=cache, state="warm", previous=library) == library
+    with pytest.raises(ReleaseError, match="did not reuse"):
+        check(sdk, cache=cache, state="warm", previous=tmp_path / "other.a")
+    with pytest.raises(ReleaseError, match="did not unpack"):
+        check(sdk, cache=tmp_path / "elsewhere", state="cold", previous=None)
+    (library.parent / ".librusticol_capi.a.x.partial").write_bytes(b"")
+    with pytest.raises(ReleaseError, match="partial files"):
+        check(sdk, cache=cache, state="cold", previous=None)
+    (library.parent / ".librusticol_capi.a.x.partial").unlink()
+    library.write_bytes(archive + b"!")
+    with pytest.raises(ReleaseError, match="does not match its metadata"):
+        check(sdk, cache=cache, state="cold", previous=None)

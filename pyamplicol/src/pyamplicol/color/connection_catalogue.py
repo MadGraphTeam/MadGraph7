@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 """Structural catalogues of ordered soft colour connections at arbitrary order.
 
-Every active coloured leg can emit a gluon; only an auxiliary gluon can split
-into a quark pair. Born labels are positive. At order r, the r final auxiliary
-partons receive every assignment of labels -1,...,-r. Retired intermediates
+Every active coloured leg can emit a gluon. By default only auxiliary gluons
+split into quark pairs; the explicit physical-splitting option includes original
+gluons too. Born labels are positive. Final auxiliary partons receive every
+assignment of consecutive negative labels. Retired intermediates
 have separate dummy labels. Only independent chronological interleavings are
 identified: shared-line ordering and creation dependencies are retained.
 
@@ -109,33 +110,78 @@ def _rename(operation: ColorEmission, labels: dict[int, int]) -> ColorEmission:
     )
 
 
+def _final_auxiliaries(connection: ColorConnection) -> tuple[int, ...]:
+    initial = {leg.label for leg in connection.initial_legs}
+    return tuple(
+        leg.label for leg in connection.output_legs if leg.label not in initial
+    )
+
+
+def _canonical_labelled_history(connection, final, final_assignment):
+    created = {child for step in connection.emissions for child in _children(step)}
+    retired = tuple(sorted(created.difference(final)))
+    retired_labels = tuple(-len(final) - index for index in range(1, len(retired) + 1))
+    representatives = []
+    for retired_assignment in permutations(retired_labels):
+        labels = dict(zip(final, final_assignment, strict=True))
+        labels.update(zip(retired, retired_assignment, strict=True))
+        representatives.append(
+            _canonical_order(
+                tuple(_rename(step, labels) for step in connection.emissions)
+            )
+        )
+    # Retired created names are dummy indices. Original physical labels stay
+    # fixed, including a physical gluon retired by splitting.
+    return min(representatives, key=lambda candidate: candidate[0])
+
+
 def _labelled_histories(
     connection: ColorConnection,
 ) -> Iterator[tuple[_HistoryKey, tuple[ColorEmission, ...]]]:
-    final = tuple(leg.label for leg in connection.output_legs if leg.label < 0)
-    created = {child for step in connection.emissions for child in _children(step)}
-    retired = tuple(sorted(created.difference(final)))
-    final_labels = tuple(-index for index in range(1, connection.order + 1))
-    retired_labels = tuple(
-        -connection.order - index for index in range(1, len(retired) + 1)
-    )
-    assert len(final) == connection.order
+    final = _final_auxiliaries(connection)
+    final_labels = tuple(-index for index in range(1, len(final) + 1))
     for final_assignment in permutations(final_labels):
-        representatives = []
-        for retired_assignment in permutations(retired_labels):
-            labels = dict(zip(final, final_assignment, strict=True))
-            labels.update(zip(retired, retired_assignment, strict=True))
-            representatives.append(
-                _canonical_order(
-                    tuple(_rename(step, labels) for step in connection.emissions)
-                )
-            )
-        # Retired names are dummy indices, unlike the externally matched final
-        # labels. They must not create additional catalogue connections.
-        yield min(representatives, key=lambda candidate: candidate[0])
+        yield _canonical_labelled_history(connection, final, final_assignment)
 
 
-def _extensions(connection: ColorConnection) -> Iterator[ColorConnection]:
+def canonical_color_connections(
+    connections: Sequence[ColorConnection],
+) -> tuple[ColorConnection, ...]:
+    """Use one final-role bijection for compatible connections.
+
+    Public physical labels remain positive and fixed. All created final labels,
+    positive or negative, receive the same consecutive negative names across
+    the supplied histories. Retired dummy names and commuting chronology use
+    exactly the catalogue's existing canonicalization.
+    """
+    connections = tuple(connections)
+    if not connections or any(not isinstance(x, ColorConnection) for x in connections):
+        raise TypeError("expected nonempty typed colour connections")
+    first = connections[0]
+    if any(leg.label <= 0 for leg in first.initial_legs):
+        raise ValueError("catalogue Born legs must have positive labels")
+    if any(
+        item.initial_legs != first.initial_legs
+        or item.output_legs != first.output_legs
+        or item.order != first.order
+        for item in connections
+    ):
+        raise ValueError(
+            "canonical connections must have matching order and typed legs"
+        )
+    final = _final_auxiliaries(first)
+    assignment = tuple(-index for index in range(1, len(final) + 1))
+    return tuple(
+        ColorConnection(
+            item.initial_legs, _canonical_labelled_history(item, final, assignment)[1]
+        )
+        for item in connections
+    )
+
+
+def _extensions(
+    connection: ColorConnection, *, include_physical_splittings: bool = False
+) -> Iterator[ColorConnection]:
     created = tuple(child for step in connection.emissions for child in _children(step))
     fresh = min(created, default=0) - 1
     for leg in connection.output_legs:
@@ -145,7 +191,7 @@ def _extensions(connection: ColorConnection) -> Iterator[ColorConnection]:
             connection.initial_legs,
             (*connection.emissions, EmitGluon(leg.label, fresh)),
         )
-        if leg.label < 0 and leg.representation == 8:
+        if leg.representation == 8 and (include_physical_splittings or leg.label < 0):
             yield ColorConnection(
                 connection.initial_legs,
                 (*connection.emissions, SplitGluon(leg.label, fresh, fresh - 1)),
@@ -153,13 +199,18 @@ def _extensions(connection: ColorConnection) -> Iterator[ColorConnection]:
 
 
 def build_color_correlator_catalogue(
-    legs: Sequence[ColorLeg], *, through_order: int
+    legs: Sequence[ColorLeg],
+    *,
+    through_order: int,
+    include_physical_splittings: bool = False,
 ) -> tuple[ColorCorrelator, ...]:
     """Prepare all ordered soft connections at orders 1 through ``through_order``.
 
     ``legs`` are all-outgoing Born colour roles with positive public labels.
     Singlets are allowed but do not emit. ``through_order`` is a positive integer.
     The ordinary ``born`` identity is not included; ``CorrelatorConfig`` adds it.
+    ``include_physical_splittings`` includes splitting original adjoint legs;
+    its default preserves the ordinary tree soft catalogue and its identifiers.
 
     IDs ``N{r}LO/c{i}/c{j}`` use zero-based indices in the deterministically
     sorted connection list at each order. They are catalogue-local identifiers,
@@ -169,6 +220,8 @@ def build_color_correlator_catalogue(
     """
     if type(through_order) is not int or through_order < 1:
         raise ValueError("catalogue through_order must be a positive integer")
+    if type(include_physical_splittings) is not bool:
+        raise TypeError("include_physical_splittings must be a boolean")
     initial = ColorConnection(tuple(legs))
     if any(leg.label <= 0 for leg in initial.initial_legs):
         raise ValueError("catalogue Born legs must have positive labels")
@@ -176,7 +229,11 @@ def build_color_correlator_catalogue(
     result = []
     for order in range(1, through_order + 1):
         histories = tuple(
-            child for parent in histories for child in _extensions(parent)
+            child
+            for parent in histories
+            for child in _extensions(
+                parent, include_physical_splittings=include_physical_splittings
+            )
         )
         unique = dict(
             labelled
@@ -199,4 +256,4 @@ def build_color_correlator_catalogue(
     return tuple(result)
 
 
-__all__ = ["build_color_correlator_catalogue"]
+__all__ = ["build_color_correlator_catalogue", "canonical_color_connections"]

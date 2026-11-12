@@ -1,0 +1,16 @@
+{
+  "process": "u u~ > t t~",
+  "born_orders": {"QCD": 2, "QED": 0},
+  "loop_orders": {"QCD": 4, "QED": 0},
+  "squared_orders": {"QCD": 6, "QED": 0},
+  "parameters": {"alpha_s": 0.118, "mu": 1000.0, "mt": 173.0, "mb": 0.0},
+  "renormalization_flavours": 5,
+  "loop_quark_flavours": 6,
+  "external_momenta": "positive-energy incoming legs 1,2; outgoing legs 3,4; E,px,py,pz in GeV; decimal values satisfy p3^2=p4^2=173^2 exactly",
+  "normalization": "initial spin/colour average, physical couplings, stable top, Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+  "points": [
+    [[514.9645,0,0,514.9645], [514.9645,0,0,-514.9645], [514.9645,291.0213,0,388.0284], [514.9645,-291.0213,0,-388.0284]],
+    [[237.41125,0,0,237.41125], [237.41125,0,0,-237.41125], [237.41125,0,130.071,-97.55325], [237.41125,0,-130.071,97.55325]],
+    [[174.8225,0,0,174.8225], [174.8225,0,0,-174.8225], [174.8225,15.1065,0,20.142], [174.8225,-15.1065,0,-20.142]]
+  ]
+}

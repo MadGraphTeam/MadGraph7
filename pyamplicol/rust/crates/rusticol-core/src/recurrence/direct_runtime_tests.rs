@@ -12,9 +12,9 @@ use crate::recurrence::direct_backend::{
     execute_direct_plan_unprofiled_with_fanout, take_direct_current_observation,
 };
 use crate::recurrence::direct_plan::{
-    DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectClosureRow, DirectContributionRow,
-    DirectFinalizationRow, DirectMomentumTerm, DirectRecurrencePlan, DirectReplayTargetDescriptor,
-    DirectSourceRow, DirectSourceStateAssignment,
+    DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectAmplitudeOrders, DirectClosureRow,
+    DirectContributionRow, DirectFinalizationRow, DirectMomentumTerm, DirectRecurrencePlan,
+    DirectReplayTargetDescriptor, DirectSourceRow, DirectSourceStateAssignment,
 };
 use crate::recurrence::direct_runtime::{
     DIRECT_RUNTIME_ARENA_ALIGNMENT, DirectRecurrenceExecutionRuntime, DirectRecurrenceTileOutput,
@@ -2418,6 +2418,7 @@ fn two_helicity_reused_storage_runtime() -> DirectRecurrenceExecutionRuntime {
         flags: 1,
         ..parts.closures[0]
     });
+    parts.amplitude_orders = DirectAmplitudeOrders::without_coupling_orders(parts.closures.len());
     parts.row_groups.push(DirectRowGroupDescriptor {
         stage: 3,
         row_start: 1,

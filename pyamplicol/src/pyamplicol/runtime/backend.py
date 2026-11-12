@@ -1,22 +1,25 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import importlib
 import inspect
 import json
 import math
 import os
-from collections.abc import Mapping, Sequence
+import warnings
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+    LOOP_V2_RUNTIME_CAPABILITIES,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
@@ -31,7 +34,7 @@ from pyamplicol.api.errors import (
     DependencyError,
     EvaluationError,
 )
-from pyamplicol.api.protocols import ModelParameters, Momenta
+from pyamplicol.api.protocols import ModelParameters, Momenta, RuntimeBackend
 from pyamplicol.api.results import (
     ColorFlow,
     ContractedColorComponent,
@@ -42,10 +45,15 @@ from pyamplicol.api.results import (
     ProcessPhysics,
     ReductionGroup,
     ResolvedEvaluation,
+    TreeOrderEvaluation,
     WarmUpResult,
 )
+from pyamplicol.api.virtual_results import VirtualRescuePolicy
 from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
 from pyamplicol.artifacts.manifest import ArtifactPayloads
+from pyamplicol.config import R2Strategy
+from pyamplicol.loops.orders import canonical_order
+from pyamplicol.loops.physical_orders import BornSquaredSector
 from pyamplicol.reporting import (
     ProgressEnd,
     ProgressSink,
@@ -58,15 +66,17 @@ from pyamplicol.runtime._native_selection import (
 )
 
 if TYPE_CHECKING:
+    from pyamplicol.models.base import CouplingOrders
+
     from .eager_exact import EagerExactExecutor
     from .recurrence_exact import RecurrenceExactExecutor
     from .symbolica_exact import SymbolicaExactExecutor
 
-    _ExactExecutor = (
+    _ExactExecutor: TypeAlias = (
         EagerExactExecutor | RecurrenceExactExecutor | SymbolicaExactExecutor
     )
 
-_Accuracy = Literal["lc", "nlc", "full"]
+_Accuracy = Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"]
 _ParticleState = Literal["incoming", "outgoing"]
 _ExecutionMode = Literal["compiled", "eager", "recurrence", "on-the-fly"]
 
@@ -493,6 +503,11 @@ def _physics_from_native(value: Any) -> ProcessPhysics:
                 id=str(component.id),
                 index=int(component.index),
                 description=str(component.description),
+                nc_degree=(
+                    None
+                    if getattr(component, "nc_degree", None) is None
+                    else int(component.nc_degree)
+                ),
             )
             for component in value.contracted_color_components
         ),
@@ -536,6 +551,44 @@ def _scalar_from_native(value: Any) -> complex | Decimal:
     return value if isinstance(value, Decimal) else complex(value)
 
 
+def _tree_order_axes(
+    raw: object,
+) -> tuple[tuple[CouplingOrders, ...], tuple[BornSquaredSector, ...], tuple[int, ...]]:
+    """Canonical amplitude orders, squared sectors and each sector's native column."""
+
+    try:
+        payload = json.loads(str(raw))
+        if payload.get("kind") != "rusticol-amplitude-orders-v1":
+            raise ValueError("unexpected kind")
+        names = tuple(str(name) for name in payload["names"])
+        amplitude = tuple(
+            canonical_order(tuple(zip(names, powers, strict=True)))
+            for powers in payload["components"]
+        )
+        squared = sorted(
+            (
+                canonical_order(tuple(zip(names, entry["powers"], strict=True))),
+                column,
+                tuple(
+                    sorted(
+                        (amplitude[left], amplitude[right])
+                        for left, right in entry["pairs"]
+                    )
+                ),
+            )
+            for column, entry in enumerate(payload["squared"])
+        )
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+        raise ArtifactError(
+            f"native amplitude coupling orders are invalid: {exc}"
+        ) from exc
+    return (
+        tuple(sorted(amplitude)),
+        tuple(BornSquaredSector(order, pairs) for order, _, pairs in squared),
+        tuple(column for _, column, _ in squared),
+    )
+
+
 def _native_runtime_metadata(runtime: Any) -> Mapping[str, object]:
     metadata_json = getattr(runtime, "metadata_json", None)
     if not callable(metadata_json):
@@ -568,7 +621,29 @@ class RusticolRuntimeBackend:
         native_module: Any,
         artifact_path: Path,
         manifest: ArtifactManifest | None = None,
+        *,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> None:
+        from pyamplicol import kinematics
+
+        # The kinematics improvement's load-time defaults (m-lit
+        # lit-psimprove; None: the native policy's, MadLoop's variant above
+        # binary64 and off in binary64).
+        self._kinematics_setting = (
+            None
+            if kinematics_improvement is None
+            else kinematics.setting_value(kinematics_improvement)
+        )
+        self._kinematics_binary64 = (
+            None
+            if kinematics_improvement_binary64 is None
+            else kinematics.binary64_value(kinematics_improvement_binary64)
+        )
+        # The improvement's record of the most recent improved call, read by
+        # ``take_warnings`` (the tree runtime's warnings channel, (G4)).
+        self._kinematics_notes: list[str] = []
+        self._kinematics_muted = False
         self._runtime = runtime
         self._native_module = native_module
         self._artifact_path = artifact_path
@@ -576,6 +651,14 @@ class RusticolRuntimeBackend:
         self._execution_mode = _native_execution_mode(self._native_metadata)
         self._physics: ProcessPhysics | None = None
         self._exact_executor: _ExactExecutor | None = None
+        self._order_axes: (
+            tuple[
+                tuple[CouplingOrders, ...],
+                tuple[BornSquaredSector, ...],
+                tuple[int, ...],
+            ]
+            | None
+        ) = None
         self._required_runtime_capabilities: tuple[str, ...] = ()
         self._supports_per_point_selectors = _accepts_keyword_arguments(
             runtime.evaluate,
@@ -613,6 +696,131 @@ class RusticolRuntimeBackend:
                 "compiled symmetric-group FFT diagnostic execution supports only "
                 "precision=16 native f64; exact/high-precision execution is unavailable"
             )
+
+    def _improved(
+        self,
+        momenta: Momenta,
+        precision: int,
+        setting: str | None,
+        binary64: bool | None,
+        arithmetic: str | None = None,
+    ) -> Momenta:
+        """The points a tree evaluation at ``precision`` evaluates (m-lit
+        lit-psimprove; ``pyamplicol.kinematics``, the one Rust
+        implementation): above binary64 (an exact executor at ``precision``
+        digits) the caller's points improved in that arbitrary-precision
+        carrier (its working digits) toward the tree runtime's external
+        masses (the exact executors' authenticated mass bindings at the
+        runtime's parameters); at precision 16 only under the binary64
+        switch, in binary64. ``arithmetic`` names the carrier of the
+        correlated paths (``"arbitrary"``, their default, at any precision,
+        16 included; ``"double-double"``). The records go through the
+        warnings channel (``take_warnings``): one line per call and every
+        typed warning."""
+
+        carrier = arithmetic or ("double" if precision == 16 else "arbitrary")
+        if not momenta:
+            return momenta
+        if (
+            carrier == "double"
+            and binary64 is None
+            and self._kinematics_binary64 is None
+        ):
+            # The binary64 default is off (the native policy's
+            # ``DEFAULT_BINARY64``, USER ~01:56): the native f64 path runs as
+            # before, one branch per call, without loading the loop
+            # extension (a tree runtime need not have one: the binary64 tree
+            # path must not depend on it). This one restatement of the
+            # policy's default is deliberate and guarded by
+            # tests/unit/test_kinematics_improvement.py (the policy's
+            # ``binary64_default`` is asserted False beside this branch's
+            # behaviour).
+            return momenta
+        from pyamplicol import kinematics
+
+        settings = kinematics.resolve(
+            setting,
+            binary64,
+            default_setting_=self._kinematics_setting,
+            default_binary64_=self._kinematics_binary64,
+        )
+        variant = settings.variant(carrier)
+        if variant is None:
+            return momenta
+        if carrier == "double":
+            # Binary64 (the switch): the native tree runtime's binary64
+            # implementation toward the binary64 masses of its external
+            # wavefunctions, no Symbolica operation (the tree C ABI's, so
+            # both give one improved point for one binary64 input).
+            # ``Runtime.improve_f64``: ``[point][leg][E, px, py, pz]`` floats
+            # and one JSON record per point.
+            improved_f64: list[list[list[float]]]
+            texts: list[str]
+            improved_f64, texts = _invoke(
+                self._native_module, self._runtime.improve_f64, momenta, variant
+            )
+            self._note_kinematics(
+                [json.loads(text) for text in texts], carrier, precision
+            )
+            return improved_f64
+        from .symbolica_exact import _decimal, _working_precision
+
+        points = [
+            [[str(_decimal(x, "momentum component")) for x in leg] for leg in point]
+            for point in momenta
+        ]
+        masses, initial = self._tree_kinematics_masses(points[0], precision)
+        digits = _working_precision(precision) if carrier == "arbitrary" else None
+        improved, records = kinematics.improve(
+            points, initial, masses, carrier, digits, variant
+        )
+        self._note_kinematics(records, carrier, precision)
+        return improved
+
+    def _tree_kinematics_masses(
+        self, point: Sequence[Sequence[str]], precision: int
+    ) -> tuple[list[Fraction | None], int]:
+        """The external legs' squared masses in caller order (the exact
+        executor's mass bindings, those its diagnostic on-shell projection
+        reads: the runtime's current parameters) and the number of initial
+        states, which come first."""
+
+        states = [particle.state for particle in self.physics.external_particles]
+        initial = states.count("incoming")
+        if states[:initial] != ["incoming"] * initial:
+            raise EvaluationError(
+                "the kinematics improvement needs the initial states first"
+            )
+        try:
+            _projected, metadata = self._exact()._diagnostic_project_onshell(
+                [point], precision=max(precision, 16)
+            )
+        except ArtifactError:
+            # An artifact without authenticated external mass bindings: no
+            # leg has a bound mass, so each keeps its own p^2 as its target
+            # (m-lit lit-psimprove (G6)); conservation is still restored.
+            return [None] * len(states), initial
+        # The projection's per-point records, each with its ``legs`` records
+        # (``symbolica_exact._diagnostic_project_onshell_points``).
+        point_records = cast(Sequence[Mapping[str, Any]], metadata["points"])
+        legs = point_records[0]["legs"]
+        return [Fraction(Decimal(leg["mass"])) ** 2 for leg in legs], initial
+
+    def _note_kinematics(
+        self, records: Sequence[Mapping[str, Any]], carrier: str, precision: int
+    ) -> None:
+        if self._kinematics_muted:
+            return
+        from pyamplicol import kinematics
+
+        # The record of the most recent improved call (the tree C ABI's
+        # lines from the one native formatter, ``kinematics_improvement::
+        # notes_json``), replaced by the next one so it stays bounded; its
+        # typed warnings are also Python warnings, as the native tree
+        # warnings are, so they are never silent.
+        self._kinematics_notes = kinematics.notes(records, carrier, precision)
+        for text in self._kinematics_notes[1:]:
+            warnings.warn(text, stacklevel=4)
 
     def _on_the_fly_runtime_state_census(self) -> Mapping[str, object] | None:
         owns_companion = (
@@ -995,8 +1203,13 @@ class RusticolRuntimeBackend:
         helicity_by_point: Sequence[str] | None = None,
         color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...]:
         self._require_supported_precision(precision)
+        momenta = self._improved(
+            momenta, precision, kinematics_improvement, kinematics_improvement_binary64
+        )
         helicities = _normalized_selectors(helicities)
         color_flows = _normalized_selectors(color_flows)
         helicity_by_point = _normalized_selectors(helicity_by_point)
@@ -1070,6 +1283,72 @@ class RusticolRuntimeBackend:
             **selector_arguments,
         )
         return tuple(_scalar_from_native(value) for value in values)
+
+    def evaluate_orders(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int = 16,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
+    ) -> TreeOrderEvaluation:
+        """Split tree values by squared coupling order in one recurrence pass.
+
+        Totals are exactly those of :meth:`evaluate` with the same selectors.
+        """
+
+        if self._execution_mode != "recurrence":
+            raise CompatibilityError(
+                "squared coupling-order partials require a recurrence artifact; "
+                "regenerate with evaluator.execution_mode='recurrence'"
+            )
+        self._require_supported_precision(precision)
+        momenta = self._improved(
+            momenta, precision, kinematics_improvement, kinematics_improvement_binary64
+        )
+        helicities = _normalized_selectors(helicities)
+        color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
+        if self._order_axes is None:
+            self._order_axes = _tree_order_axes(
+                _invoke(self._native_module, self._runtime._amplitude_orders_json)
+            )
+        amplitude_orders, sectors, columns = self._order_axes
+        partials: Sequence[Sequence[complex | Decimal]]
+        if precision != 16:
+            exact = cast(
+                "RecurrenceExactExecutor | _ProcessGroupExactExecutor", self._exact()
+            )
+            resolved, partials = exact.evaluate_orders(
+                momenta,
+                helicities=helicities,
+                color_flows=color_flows,
+                precision=precision,
+            )
+            total = resolved.total()
+        else:
+            native_total, native_partials = _invoke(
+                self._native_module,
+                self._runtime.evaluate_orders,
+                momenta,
+                helicities=helicities,
+                color_flows=color_flows,
+                precision=precision,
+            )
+            total = tuple(_scalar_from_native(value) for value in native_total)
+            partials = tuple(
+                tuple(_scalar_from_native(value) for value in point)
+                for point in native_partials
+            )
+        return TreeOrderEvaluation(
+            values=tuple(
+                tuple(point[column] for column in columns) for point in partials
+            ),
+            total=total,
+            sectors=sectors,
+            amplitude_orders=amplitude_orders,
+        )
 
     def _point_selector_indices(
         self,
@@ -1293,8 +1572,13 @@ class RusticolRuntimeBackend:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> ResolvedEvaluation:
         self._require_supported_precision(precision)
+        momenta = self._improved(
+            momenta, precision, kinematics_improvement, kinematics_improvement_binary64
+        )
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         if precision != 16:
@@ -1597,13 +1881,16 @@ class RusticolRuntimeBackend:
 
     def mute_warnings(self) -> None:
         _invoke(self._native_module, self._runtime.mute_warnings)
+        self._kinematics_muted = True
 
     def unmute_warnings(self) -> None:
         _invoke(self._native_module, self._runtime.unmute_warnings)
+        self._kinematics_muted = False
 
     def take_warnings(self) -> tuple[str, ...]:
         values = _invoke(self._native_module, self._runtime.take_warnings)
-        return tuple(str(value) for value in values)
+        notes, self._kinematics_notes = self._kinematics_notes, []
+        return tuple(str(value) for value in values) + tuple(notes)
 
     def validation_momenta(self) -> Momenta | None:
         """Return the selected process's verified deterministic artifact point."""
@@ -1731,6 +2018,30 @@ class _ProcessGroupExactExecutor:
             color_flows=self._color_ids(color_flows),
             precision=precision,
         )
+        return self._member_resolved(resolved, precision)
+
+    def evaluate_orders(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        precision: int,
+    ) -> tuple[ResolvedEvaluation, tuple[tuple[complex | Decimal, ...], ...]]:
+        resolved, partials = self._inner.evaluate_orders(
+            momenta,
+            helicities=helicities,
+            color_flows=self._color_ids(color_flows),
+            precision=precision,
+        )
+        return self._member_resolved(resolved, precision), tuple(
+            tuple(self._scaled(value, precision) for value in point)
+            for point in partials
+        )
+
+    def _member_resolved(
+        self, resolved: ResolvedEvaluation, precision: int
+    ) -> ResolvedEvaluation:
         return ResolvedEvaluation(
             values=tuple(
                 tuple(
@@ -1748,27 +2059,142 @@ class _ProcessGroupExactExecutor:
         return self._inner._diagnostic_project_onshell(momenta, precision=precision)
 
 
+def builtin_model_source_digest() -> str:
+    """The built-in SM source digest an artifact records, as
+    ``models.loading._source_digest('built-in-sm', ...)``, without importing
+    the model."""
+
+    implementation = hashlib.sha256()
+    root = Path(__file__).resolve().parents[1] / "models" / "builtin"
+    for path in sorted(root.glob("*.py")):
+        implementation.update(path.name.encode("utf-8") + b"\0")
+        implementation.update(path.read_bytes())
+        implementation.update(b"\0")
+    digest = hashlib.sha256(b"built-in-sm\0")
+    digest.update(implementation.hexdigest().encode("ascii"))
+    return digest.hexdigest()
+
+
+def _warn_on_older_builtin_model(manifest_root: Path) -> None:
+    """Warn when a built-in-SM artifact comes from another built-in SM source.
+
+    Its values are those of that implementation: built-in-SM tree values were
+    corrected in November 2026 (fully colourless processes, the electroweak
+    gauge and Higgs self-interactions, electroweak currents between quark
+    lines), and an older artifact keeps reproducing the old ones.
+    """
+
+    try:
+        compiled = json.loads(
+            (manifest_root / "model" / "compiled-model.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError):
+        return
+    source = compiled.get("source") if isinstance(compiled, Mapping) else None
+    if not isinstance(source, Mapping) or source.get("kind") != "built-in-sm":
+        return
+    if source.get("digest") != builtin_model_source_digest():
+        warnings.warn(
+            f"artifact {manifest_root} was generated with another built-in SM "
+            "source; its values follow that implementation (built-in SM tree "
+            "values were corrected in November 2026): regenerate it with this "
+            "pyAmpliCol to use the current built-in SM",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def load_runtime_backend(
     artifact: os.PathLike[str] | str,
     *,
     process: str | None = None,
     model_parameters: ModelParameters | None = None,
     mute_warnings: bool = False,
-) -> RusticolRuntimeBackend:
-    """Load a schema-v3 artifact without importing the extension during discovery."""
+    arithmetic: str | None = None,
+    precision: int | None = None,
+    r2_strategy: R2Strategy | str | None = None,
+    stability: VirtualRescuePolicy | None = None,
+    reduction: str | None = None,
+    reduction_target: float | None = None,
+    reduction_unchecked: bool | None = None,
+    kinematics_improvement: str | None = None,
+    kinematics_improvement_binary64: bool | None = None,
+) -> RuntimeBackend:
+    """Load a schema-v3 artifact without importing the extension during discovery.
+
+    Virtual arithmetic and precision defaults are applied before exact model
+    parameters are evaluated. Tree runtimes select precision during evaluation.
+    The reduction options (``reduction``, ``reduction_target``,
+    ``reduction_unchecked``) are the v2 virtual runtime's load-time defaults.
+    """
 
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
     parameters = dict(model_parameters) if model_parameters is not None else None
-    module = _load_native_module()
+    options: dict[str, object] = {}
+    if arithmetic is not None:
+        options["arithmetic"] = arithmetic
+    if precision is not None:
+        options["precision"] = precision
+    if r2_strategy is not None:
+        options["r2_strategy"] = r2_strategy
+    if stability is not None:
+        if not isinstance(stability, VirtualRescuePolicy):
+            raise TypeError("stability requires a VirtualRescuePolicy")
+        options["stability"] = stability
+    if reduction is not None:
+        options["reduction"] = reduction
+    if reduction_target is not None:
+        options["reduction_target"] = reduction_target
+    if reduction_unchecked is not None:
+        options["reduction_unchecked"] = reduction_unchecked
+    # The kinematics improvement's load-time defaults (m-lit lit-psimprove):
+    # tree and virtual runtimes.
+    kinematics: dict[str, object] = {}
+    if kinematics_improvement is not None:
+        kinematics["kinematics_improvement"] = kinematics_improvement
+    if kinematics_improvement_binary64 is not None:
+        kinematics["kinematics_improvement_binary64"] = kinematics_improvement_binary64
+    manifest_root = (
+        path.parent if path.name == MANIFEST_NAME and path.is_file() else path
+    )
     # Rusticol is the authoritative runtime loader and verifies every declared
     # payload before returning.  Parse the manifest here only for the Python
     # adapter's selector-contract checks; hashing it again would add a complete
     # extra pass over large compact eager containers.
     manifest = (
-        load_manifest(path, verify_payloads=False)
-        if (path / MANIFEST_NAME).is_file()
+        load_manifest(manifest_root, verify_payloads=False)
+        if (manifest_root / MANIFEST_NAME).is_file()
         else None
     )
+    if not mute_warnings:
+        _warn_on_older_builtin_model(manifest_root)
+    capabilities = (
+        ()
+        if manifest is None
+        else cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
+    )
+    if LOOP_V2_RUNTIME_CAPABILITIES.intersection(capabilities):
+        from pyamplicol.loops.v2.artifact import V2VirtualRuntime
+
+        # The v2 loader verifies every payload and the regenerated plan v4.
+        return cast(Callable[..., RuntimeBackend], V2VirtualRuntime)(
+            path,
+            process=process,
+            model_parameters=parameters,
+            mute_warnings=mute_warnings,
+            **options,
+            **kinematics,
+        )
+    if options:
+        raise CompatibilityError(
+            "load-time "
+            + ", ".join(options)
+            + " options are supported only for virtual artifacts; "
+            "select precision when evaluating a tree artifact"
+        )
+    module = _load_native_module()
     runtime = _invoke(
         module,
         module.Runtime.load,
@@ -1777,7 +2203,16 @@ def load_runtime_backend(
         model_parameters=parameters,
         mute_warnings=mute_warnings,
     )
-    return RusticolRuntimeBackend(runtime, module, path, manifest)
+    backend = RusticolRuntimeBackend(
+        runtime,
+        module,
+        path,
+        manifest,
+        kinematics_improvement=kinematics_improvement,
+        kinematics_improvement_binary64=kinematics_improvement_binary64,
+    )
+    backend._kinematics_muted = mute_warnings
+    return backend
 
 
 __all__ = ["RusticolRuntimeBackend", "load_runtime_backend"]

@@ -16,51 +16,53 @@ use std::collections::BTreeMap;
 
 use crate::{RusticolError, RusticolResult};
 
-/// Largest supported permutation degree.
-///
-/// `10!` still fits in `u32`, which keeps the persistent reorder map compact.
-pub const MAX_SYMMETRIC_GROUP_FFT_DEGREE: usize = 10;
-
 /// Backend-independent complex-f64 storage used by the FFT.
 pub type SymmetricGroupComplex64 = (f64, f64);
 
 type YoungTableau = Box<[(u8, u8)]>;
 
+// The tower's structure is readable in the crate (`pub(crate)`) so that
+// transforms in other carriers walk the same Young bases: the loop engine's
+// seed FFT in double-double and MPFR (`loop_v2::fourier`, DESIGN.md §7.3)
+// recomputes the generator factors from the integer axial distance there.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct YoungGeneratorAction {
-    partner: u32,
-    diagonal: f64,
-    mixing: f64,
+pub(crate) struct YoungGeneratorAction {
+    pub(crate) partner: u32,
+    pub(crate) diagonal: f64,
+    pub(crate) mixing: f64,
+    /// The axial distance r of the generator on this basis vector:
+    /// `diagonal = 1/r`, `mixing = sqrt(1 - 1/r^2)`.
+    pub(crate) axial: i16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct YoungBranch {
-    child_irrep: u32,
-    basis_offset: u32,
+pub(crate) struct YoungBranch {
+    pub(crate) child_irrep: u32,
+    pub(crate) basis_offset: u32,
 }
 
 #[derive(Debug)]
-struct YoungIrrep {
+pub(crate) struct YoungIrrep {
     shape: Box<[u8]>,
-    dimension: usize,
-    coefficient_offset: usize,
-    branches: Box<[YoungBranch]>,
+    pub(crate) dimension: usize,
+    pub(crate) coefficient_offset: usize,
+    pub(crate) branches: Box<[YoungBranch]>,
     tableaux: Box<[YoungTableau]>,
-    generators: Box<[YoungGeneratorAction]>,
+    pub(crate) generators: Box<[YoungGeneratorAction]>,
 }
 
 impl YoungIrrep {
-    fn generator(&self, generator: usize, basis: usize) -> YoungGeneratorAction {
+    pub(crate) fn generator(&self, generator: usize, basis: usize) -> YoungGeneratorAction {
         self.generators[generator * self.dimension + basis]
     }
 }
 
 #[derive(Debug)]
-struct SymmetricGroupLevel {
-    degree: usize,
-    order: usize,
-    maximum_dimension: usize,
-    irreps: Box<[YoungIrrep]>,
+pub(crate) struct SymmetricGroupLevel {
+    pub(crate) degree: usize,
+    pub(crate) order: usize,
+    pub(crate) maximum_dimension: usize,
+    pub(crate) irreps: Box<[YoungIrrep]>,
 }
 
 /// Public description of one packed Fourier block.
@@ -101,9 +103,63 @@ pub struct SymmetricGroupFftPlan {
     maximum_dimension: usize,
     factorials: Box<[usize]>,
     levels: Box<[SymmetricGroupLevel]>,
-    recursive_to_lexicographic: Box<[u32]>,
+    recursive_to_lexicographic: ReorderMap,
     scalar_degree_three: Option<ScalarDegreeThreeTransform>,
 }
+
+/// The recursive-to-lexicographic gather of one plan.
+///
+/// Indices are below the group order, so four bytes per index suffice
+/// whenever the order fits `u32` (degree <= 12, the common case); larger
+/// orders keep one `usize` per index. The width is chosen from the order, so
+/// it never limits the degree.
+#[derive(Debug)]
+enum ReorderMap {
+    Compact(Box<[u32]>),
+    Wide(Box<[usize]>),
+}
+
+impl ReorderMap {
+    /// Call `visit(recursive, lexicographic)` for every index, in recursive
+    /// order (one dispatch per walk, not per index).
+    #[inline]
+    fn for_each(&self, mut visit: impl FnMut(usize, usize)) {
+        match self {
+            Self::Compact(values) => {
+                for (recursive, &lexicographic) in values.iter().enumerate() {
+                    // Lossless: the value is below the order, which fits usize.
+                    visit(recursive, lexicographic as usize);
+                }
+            }
+            Self::Wide(values) => {
+                for (recursive, &lexicographic) in values.iter().enumerate() {
+                    visit(recursive, lexicographic);
+                }
+            }
+        }
+    }
+}
+
+/// The largest degree whose group order `m!` fits `usize` (20 on 64-bit
+/// targets): the plan's own admission (its elements are addressed by usize).
+const fn largest_admitted_degree() -> usize {
+    let mut degree = 0_usize;
+    let mut order = 1_usize;
+    loop {
+        match order.checked_mul(degree + 1) {
+            Some(next) => {
+                order = next;
+                degree += 1;
+            }
+            None => return degree,
+        }
+    }
+}
+
+// The permutation codes hold one byte per value and rank with a u64 used-set:
+// both cover every degree the order admits, so neither is a separate bound.
+const _: () = assert!(largest_admitted_degree() <= u64::BITS as usize);
+const _: () = assert!(largest_admitted_degree() <= u8::MAX as usize + 1);
 
 /// Load-time compiled scalar Fourier rows for the smallest non-abelian group.
 ///
@@ -121,14 +177,9 @@ struct ScalarDegreeThreeTransform {
 
 impl SymmetricGroupFftPlan {
     /// Build a transform plan for `S_degree`.
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn new(degree: usize) -> RusticolResult<Self> {
-        if degree > MAX_SYMMETRIC_GROUP_FFT_DEGREE {
-            return Err(invalid(format!(
-                "symmetric-group FFT degree {degree} exceeds supported maximum {MAX_SYMMETRIC_GROUP_FFT_DEGREE}"
-            )));
-        }
         let factorials = checked_factorials(degree)?;
         let order = factorials[degree];
         let levels = build_levels(degree, &factorials)?;
@@ -144,7 +195,7 @@ impl SymmetricGroupFftPlan {
             maximum_dimension,
             factorials: factorials.into_boxed_slice(),
             levels: levels.into_boxed_slice(),
-            recursive_to_lexicographic: recursive_to_lexicographic.into_boxed_slice(),
+            recursive_to_lexicographic,
             scalar_degree_three: None,
         };
         if degree == 3 {
@@ -191,18 +242,24 @@ impl SymmetricGroupFftPlan {
             .map(block_description)
     }
 
-    /// Map recursive coset-order indices to lexicographic image-permutation indices.
-    pub fn recursive_to_lexicographic(&self) -> &[u32] {
-        &self.recursive_to_lexicographic
+    /// The subgroup tower `S_0 < ... < S_m` the transforms walk (level `k`
+    /// is `S_k`).
+    pub(crate) fn levels(&self) -> &[SymmetricGroupLevel] {
+        &self.levels
+    }
+
+    /// Call `visit(recursive, lexicographic)` for every group element: the
+    /// map from recursive coset-order indices to lexicographic
+    /// image-permutation indices, in recursive order.
+    pub fn for_each_recursive_to_lexicographic(&self, visit: impl FnMut(usize, usize)) {
+        self.recursive_to_lexicographic.for_each(visit);
     }
 
     /// Return the lexicographic index of the inverse of one indexed permutation.
     ///
     /// This is the convention boundary needed when a raw colour kernel is
     /// stored as `k(g)` but the block contraction requires the transform of
-    /// `g -> k(g^-1)`.  The calculation uses fixed-size stack storage and does
-    /// not allocate, so callers may build and then discard a compact reorder
-    /// vector during setup.
+    /// `g -> k(g^-1)`. Temporary storage follows the actual permutation degree.
     pub fn inverse_lexicographic_index(&self, index: usize) -> RusticolResult<usize> {
         if index >= self.order {
             return Err(invalid(format!(
@@ -211,11 +268,12 @@ impl SymmetricGroupFftPlan {
             )));
         }
         let permutation = lexicographic_unrank(self.degree, index, &self.factorials)?;
-        let mut inverse_code = 0_u64;
+        let mut inverse = vec![0_u8; self.degree];
         for (position, value) in permutation[..self.degree].iter().copied().enumerate() {
-            inverse_code |= (position as u64) << (4 * usize::from(value));
+            // Lossless: the degree is admitted, so positions fit a byte.
+            inverse[usize::from(value)] = position as u8;
         }
-        lexicographic_rank(inverse_code, self.degree, &self.factorials)
+        lexicographic_rank(&inverse, &self.factorials)
     }
 
     /// Allocate mutable scratch for at most `lane_capacity` innermost lanes.
@@ -264,16 +322,14 @@ impl SymmetricGroupFftPlan {
             return Ok(());
         }
 
-        for (recursive_index, lexicographic_index) in
-            self.recursive_to_lexicographic.iter().copied().enumerate()
-        {
-            let source = usize::try_from(lexicographic_index)
-                .map_err(|_| internal("symmetric-group reorder index exceeds usize"))?
-                * active_lanes;
-            let target = recursive_index * active_lanes;
-            workspace.buffer[target..target + active_lanes]
-                .copy_from_slice(&values[source..source + active_lanes]);
-        }
+        let buffer = &mut workspace.buffer;
+        self.recursive_to_lexicographic
+            .for_each(|recursive_index, lexicographic_index| {
+                let source = lexicographic_index * active_lanes;
+                let target = recursive_index * active_lanes;
+                buffer[target..target + active_lanes]
+                    .copy_from_slice(&values[source..source + active_lanes]);
+            });
 
         let mut current_is_workspace = true;
         for current_degree in 2..=self.degree {
@@ -325,6 +381,135 @@ impl SymmetricGroupFftPlan {
         if current_is_workspace {
             coefficients.copy_from_slice(&workspace.buffer[..value_count]);
         }
+        Ok(())
+    }
+    /// Apply the Hermitian adjoint of the unnormalised forward transform.
+    ///
+    /// Young matrices are real, so this is the transpose of the same numerical
+    /// transform; complex input values are not conjugated. This operation has
+    /// no irrep-dimension or group-order normalization.
+    pub fn adjoint(
+        &self,
+        coefficients: &[SymmetricGroupComplex64],
+        values: &mut [SymmetricGroupComplex64],
+        workspace: &mut SymmetricGroupFftWorkspace,
+    ) -> RusticolResult<()> {
+        self.adjoint_lanes(1, coefficients, values, workspace)
+    }
+
+    /// Apply the unnormalised adjoint to lane-innermost independent inputs.
+    pub fn adjoint_lanes(
+        &self,
+        active_lanes: usize,
+        coefficients: &[SymmetricGroupComplex64],
+        values: &mut [SymmetricGroupComplex64],
+        workspace: &mut SymmetricGroupFftWorkspace,
+    ) -> RusticolResult<()> {
+        self.transpose_lanes(active_lanes, coefficients, values, workspace, false)
+    }
+
+    /// Recover a group function from its packed, unnormalised Fourier blocks.
+    ///
+    /// For the forward matrix T this is T^dagger W, where each irrep block
+    /// has weight W_lambda = dimension(lambda) / order(G).
+    pub fn inverse(
+        &self,
+        coefficients: &[SymmetricGroupComplex64],
+        values: &mut [SymmetricGroupComplex64],
+        workspace: &mut SymmetricGroupFftWorkspace,
+    ) -> RusticolResult<()> {
+        self.inverse_lanes(1, coefficients, values, workspace)
+    }
+
+    /// Apply the normalized inverse to lane-innermost independent inputs.
+    ///
+    /// As with `forward_lanes`, active lanes must be positive. A containing
+    /// batch scheduler handles an empty logical batch without invoking a transform.
+    pub fn inverse_lanes(
+        &self,
+        active_lanes: usize,
+        coefficients: &[SymmetricGroupComplex64],
+        values: &mut [SymmetricGroupComplex64],
+        workspace: &mut SymmetricGroupFftWorkspace,
+    ) -> RusticolResult<()> {
+        self.transpose_lanes(active_lanes, coefficients, values, workspace, true)
+    }
+
+    fn transpose_lanes(
+        &self,
+        active_lanes: usize,
+        coefficients: &[SymmetricGroupComplex64],
+        values: &mut [SymmetricGroupComplex64],
+        workspace: &mut SymmetricGroupFftWorkspace,
+        normalized: bool,
+    ) -> RusticolResult<()> {
+        if active_lanes == 0 {
+            return Err(invalid("symmetric-group FFT lane count must be positive"));
+        }
+        let value_count = self
+            .order
+            .checked_mul(active_lanes)
+            .ok_or_else(|| invalid("symmetric-group FFT value count overflows usize"))?;
+        if coefficients.len() != value_count || values.len() != value_count {
+            return Err(invalid(format!(
+                "symmetric-group inverse/adjoint expected {value_count} input and output values, got {} and {}",
+                coefficients.len(),
+                values.len()
+            )));
+        }
+        workspace.validate(self, active_lanes)?;
+        workspace.buffer[..value_count].copy_from_slice(coefficients);
+        if normalized {
+            for block in self.blocks() {
+                let weight = block.dimension() as f64 / self.order as f64;
+                let start = block.coefficient_offset() * active_lanes;
+                let end = start + block.coefficient_count() * active_lanes;
+                for value in &mut workspace.buffer[start..end] {
+                    value.0 *= weight;
+                    value.1 *= weight;
+                }
+            }
+        }
+        let mut current_is_workspace = true;
+        for current_degree in (2..=self.degree).rev() {
+            let level = &self.levels[current_degree];
+            let child_level = &self.levels[current_degree - 1];
+            if current_is_workspace {
+                transpose_level_batched(
+                    level,
+                    child_level,
+                    &workspace.buffer[..value_count],
+                    values,
+                    &mut workspace.block,
+                    active_lanes,
+                    self.order,
+                );
+            } else {
+                transpose_level_batched(
+                    level,
+                    child_level,
+                    values,
+                    &mut workspace.buffer[..value_count],
+                    &mut workspace.block,
+                    active_lanes,
+                    self.order,
+                );
+            }
+            current_is_workspace = !current_is_workspace;
+        }
+        if !current_is_workspace {
+            workspace.buffer[..value_count].copy_from_slice(values);
+        }
+        // Transpose the original lexicographic-to-recursive gather. The map
+        // is a bijection, so every output lane is overwritten exactly once.
+        let buffer = &workspace.buffer;
+        self.recursive_to_lexicographic
+            .for_each(|recursive_index, lexicographic_index| {
+                let source = recursive_index * active_lanes;
+                let target = lexicographic_index * active_lanes;
+                values[target..target + active_lanes]
+                    .copy_from_slice(&buffer[source..source + active_lanes]);
+            });
         Ok(())
     }
 }
@@ -522,6 +707,57 @@ fn transform_level_batched(
                 {
                     target.0 += value.0;
                     target.1 += value.1;
+                }
+            }
+        }
+    }
+}
+
+/// Transpose one existing subgroup-tower stage. Branch embeddings become
+/// additive gathers; the real symmetric Young generators are applied in the
+/// reverse order. No separate representation matrices are constructed.
+fn transpose_level_batched(
+    level: &SymmetricGroupLevel,
+    child_level: &SymmetricGroupLevel,
+    input: &[SymmetricGroupComplex64],
+    output: &mut [SymmetricGroupComplex64],
+    block: &mut [SymmetricGroupComplex64],
+    lane_count: usize,
+    total_order: usize,
+) {
+    debug_assert_eq!(input.len(), total_order * lane_count);
+    debug_assert_eq!(output.len(), total_order * lane_count);
+    for group_start in (0..total_order).step_by(level.order) {
+        output[group_start * lane_count..(group_start + level.order) * lane_count].fill((0.0, 0.0));
+        for coset in 0..level.degree {
+            let child_start = group_start + coset * child_level.order;
+            for irrep in &level.irreps {
+                let dimension = irrep.dimension;
+                let block_count = dimension * dimension * lane_count;
+                let block = &mut block[..block_count];
+                let start = (group_start + irrep.coefficient_offset) * lane_count;
+                block.copy_from_slice(&input[start..start + block_count]);
+                for generator in coset..level.degree - 1 {
+                    apply_generator_on_left(irrep, generator, block, lane_count);
+                }
+                for branch in &irrep.branches {
+                    let child = &child_level.irreps[branch.child_irrep as usize];
+                    let basis_offset = branch.basis_offset as usize;
+                    for column in 0..child.dimension {
+                        for row in 0..child.dimension {
+                            let source = ((basis_offset + column) * dimension + basis_offset + row)
+                                * lane_count;
+                            let target = (child_start
+                                + child.coefficient_offset
+                                + column * child.dimension
+                                + row)
+                                * lane_count;
+                            for lane in 0..lane_count {
+                                output[target + lane].0 += block[source + lane].0;
+                                output[target + lane].1 += block[source + lane].1;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -890,6 +1126,7 @@ fn build_young_generators(
                     .map_err(|_| internal("Young generator partner exceeds u32"))?,
                 diagonal,
                 mixing: (1.0 - diagonal * diagonal).max(0.0).sqrt(),
+                axial: axial_distance,
             });
         }
     }
@@ -897,6 +1134,14 @@ fn build_young_generators(
 }
 
 fn checked_factorials(degree: usize) -> RusticolResult<Vec<usize>> {
+    // The plan's only degree admission: the group order m! must fit usize
+    // (every element is addressed by a usize index).
+    if degree > largest_admitted_degree() {
+        return Err(invalid(format!(
+            "symmetric-group order {degree}! overflows usize (largest admitted degree {})",
+            largest_admitted_degree()
+        )));
+    }
     let mut factorials = Vec::new();
     factorials
         .try_reserve_exact(degree + 1)
@@ -906,11 +1151,6 @@ fn checked_factorials(degree: usize) -> RusticolResult<Vec<usize>> {
         let value = factorials[factor - 1]
             .checked_mul(factor)
             .ok_or_else(|| invalid("symmetric-group order overflows usize"))?;
-        if value > u32::MAX as usize {
-            return Err(invalid(
-                "symmetric-group order exceeds compact reorder-index capacity",
-            ));
-        }
         factorials.push(value);
     }
     Ok(factorials)
@@ -919,36 +1159,69 @@ fn checked_factorials(degree: usize) -> RusticolResult<Vec<usize>> {
 fn build_recursive_to_lexicographic(
     degree: usize,
     factorials: &[usize],
-) -> RusticolResult<Vec<u32>> {
-    if degree == 0 {
-        return Ok(vec![0]);
+) -> RusticolResult<ReorderMap> {
+    let order = factorials[degree];
+    if u32::try_from(order).is_ok() {
+        let mut map = Vec::new();
+        map.try_reserve_exact(order)
+            .map_err(|error| invalid(format!("permutation reorder allocation failed: {error}")))?;
+        // Lossless: every rank is below the order, which fits u32.
+        visit_recursive_lexicographic_ranks(degree, factorials, |rank| map.push(rank as u32))?;
+        validate_reorder_map(map.iter().map(|&value| value as usize), map.len(), order)?;
+        Ok(ReorderMap::Compact(map.into_boxed_slice()))
+    } else {
+        build_wide_recursive_to_lexicographic(degree, factorials)
     }
-    let mut child_codes = vec![0_u64];
-    let mut final_map = Vec::new();
+}
+
+fn build_wide_recursive_to_lexicographic(
+    degree: usize,
+    factorials: &[usize],
+) -> RusticolResult<ReorderMap> {
+    let order = factorials[degree];
+    let mut map = Vec::new();
+    map.try_reserve_exact(order)
+        .map_err(|error| invalid(format!("permutation reorder allocation failed: {error}")))?;
+    visit_recursive_lexicographic_ranks(degree, factorials, |rank| map.push(rank))?;
+    validate_reorder_map(map.iter().copied(), map.len(), order)?;
+    Ok(ReorderMap::Wide(map.into_boxed_slice()))
+}
+
+/// Visit the lexicographic rank of every element of `S_degree` in recursive
+/// coset order. Codes are kept one byte per value, `degree` bytes per code.
+fn visit_recursive_lexicographic_ranks(
+    degree: usize,
+    factorials: &[usize],
+    mut visit: impl FnMut(usize),
+) -> RusticolResult<()> {
+    if degree == 0 {
+        visit(0);
+        return Ok(());
+    }
+    let mut child_codes: Vec<u8> = Vec::new();
+    let mut code = vec![0_u8; degree];
     for current_degree in 1..=degree {
-        let order = factorials[current_degree];
+        let child_degree = current_degree - 1;
+        let child_count = factorials[child_degree];
         let is_final = current_degree == degree;
         let mut next_codes = Vec::new();
-        if is_final {
-            final_map.try_reserve_exact(order).map_err(|error| {
-                invalid(format!("permutation reorder allocation failed: {error}"))
-            })?;
-        } else {
+        if !is_final {
+            let bytes = factorials[current_degree]
+                .checked_mul(current_degree)
+                .ok_or_else(|| invalid("permutation-code storage overflows usize"))?;
             next_codes
-                .try_reserve_exact(order)
+                .try_reserve_exact(bytes)
                 .map_err(|error| invalid(format!("permutation-code allocation failed: {error}")))?;
         }
         for coset in 0..current_degree {
-            for child_code in child_codes.iter().copied() {
-                let code = extend_recursive_permutation(child_code, current_degree, coset);
+            for child in 0..child_count {
+                let child_code = &child_codes[child * child_degree..(child + 1) * child_degree];
+                let code = &mut code[..current_degree];
+                extend_recursive_permutation(child_code, coset, code);
                 if is_final {
-                    let rank = lexicographic_rank(code, current_degree, factorials)?;
-                    final_map.push(
-                        u32::try_from(rank)
-                            .map_err(|_| internal("lexicographic rank exceeds u32"))?,
-                    );
+                    visit(lexicographic_rank(code, factorials)?);
                 } else {
-                    next_codes.push(code);
+                    next_codes.extend_from_slice(code);
                 }
             }
         }
@@ -956,41 +1229,43 @@ fn build_recursive_to_lexicographic(
             child_codes = next_codes;
         }
     }
-    validate_reorder_map(&final_map, factorials[degree])?;
-    Ok(final_map)
+    Ok(())
 }
 
-fn extend_recursive_permutation(child: u64, degree: usize, coset: usize) -> u64 {
-    debug_assert!((1..=MAX_SYMMETRIC_GROUP_FFT_DEGREE).contains(&degree));
-    debug_assert!(coset < degree);
-    let mut result = 0_u64;
-    for position in 0..degree - 1 {
-        let child_value = ((child >> (4 * position)) & 0xf) as usize;
-        let value = if child_value < coset {
+/// Extend a permutation of `S_{d-1}` (`child`, one byte per value) by the
+/// coset representative `coset` of `S_d / S_{d-1}` into `code` (length `d`).
+fn extend_recursive_permutation(child: &[u8], coset: usize, code: &mut [u8]) {
+    debug_assert_eq!(code.len(), child.len() + 1);
+    debug_assert!(coset < code.len());
+    for (slot, &child_value) in code.iter_mut().zip(child) {
+        *slot = if usize::from(child_value) < coset {
             child_value
         } else {
             child_value + 1
         };
-        result |= (value as u64) << (4 * position);
     }
-    result | (coset as u64) << (4 * (degree - 1))
+    // Lossless: the coset is below the admitted degree, which fits a byte.
+    code[child.len()] = coset as u8;
 }
 
-fn lexicographic_rank(code: u64, degree: usize, factorials: &[usize]) -> RusticolResult<usize> {
-    let mut used = 0_u16;
+/// The lexicographic rank of a permutation of `0..code.len()`, one byte per
+/// value (the degree is admitted, so its u64 used-set covers every value).
+fn lexicographic_rank(code: &[u8], factorials: &[usize]) -> RusticolResult<usize> {
+    let degree = code.len();
+    let mut used = 0_u64;
     let mut rank = 0_usize;
-    for position in 0..degree {
-        let value = ((code >> (4 * position)) & 0xf) as usize;
-        if value >= degree || used & (1_u16 << value) != 0 {
+    for (position, &value) in code.iter().enumerate() {
+        let value = usize::from(value);
+        if value >= degree || used & (1_u64 << value) != 0 {
             return Err(internal("recursive permutation code is invalid"));
         }
-        let smaller_mask = (1_u16 << value) - 1;
+        let smaller_mask = (1_u64 << value) - 1;
         let used_smaller = (used & smaller_mask).count_ones() as usize;
         let unused_smaller = value - used_smaller;
         rank = rank
             .checked_add(unused_smaller * factorials[degree - position - 1])
             .ok_or_else(|| internal("lexicographic permutation rank overflows usize"))?;
-        used |= 1_u16 << value;
+        used |= 1_u64 << value;
     }
     Ok(rank)
 }
@@ -999,7 +1274,7 @@ fn lexicographic_unrank(
     degree: usize,
     mut rank: usize,
     factorials: &[usize],
-) -> RusticolResult<[u8; MAX_SYMMETRIC_GROUP_FFT_DEGREE]> {
+) -> RusticolResult<Vec<u8>> {
     if factorials
         .get(degree)
         .copied()
@@ -1007,13 +1282,13 @@ fn lexicographic_unrank(
     {
         return Err(invalid("lexicographic permutation rank is out of bounds"));
     }
-    let mut available = [0_u8; MAX_SYMMETRIC_GROUP_FFT_DEGREE];
+    let mut available = vec![0_u8; degree];
     for (index, value) in available[..degree].iter_mut().enumerate() {
         *value = u8::try_from(index)
             .map_err(|_| internal("permutation value exceeds compact storage"))?;
     }
     let mut available_count = degree;
-    let mut permutation = [0_u8; MAX_SYMMETRIC_GROUP_FFT_DEGREE];
+    let mut permutation = vec![0_u8; degree];
     for (position, value) in permutation[..degree].iter_mut().enumerate() {
         let block = factorials[degree - position - 1];
         let choice = rank / block;
@@ -1028,17 +1303,19 @@ fn lexicographic_unrank(
     Ok(permutation)
 }
 
-fn validate_reorder_map(values: &[u32], order: usize) -> RusticolResult<()> {
-    if values.len() != order {
+fn validate_reorder_map(
+    values: impl Iterator<Item = usize>,
+    length: usize,
+    order: usize,
+) -> RusticolResult<()> {
+    if length != order {
         return Err(internal("permutation reorder map has the wrong length"));
     }
     let mut seen = Vec::new();
     seen.try_reserve_exact(order)
         .map_err(|error| invalid(format!("reorder validation allocation failed: {error}")))?;
     seen.resize(order, false);
-    for value in values.iter().copied() {
-        let index = usize::try_from(value)
-            .map_err(|_| internal("permutation reorder index exceeds usize"))?;
+    for index in values {
         if index >= order || std::mem::replace(&mut seen[index], true) {
             return Err(internal("permutation reorder map is not bijective"));
         }
@@ -1387,11 +1664,15 @@ mod tests {
     fn reorder_map_is_a_lexicographic_bijection() {
         for degree in 0..=8 {
             let plan = SymmetricGroupFftPlan::new(degree).unwrap();
-            let mut values = plan.recursive_to_lexicographic().to_vec();
+            let mut values = Vec::new();
+            plan.for_each_recursive_to_lexicographic(|recursive, lexicographic| {
+                assert_eq!(recursive, values.len());
+                values.push(lexicographic);
+            });
             values.sort_unstable();
             assert_eq!(
                 values,
-                (0..plan.order() as u32).collect::<Vec<_>>(),
+                (0..plan.order()).collect::<Vec<_>>(),
                 "degree {degree}"
             );
             for index in 0..plan.order() {
@@ -1407,17 +1688,314 @@ mod tests {
     }
 
     #[test]
-    fn degree_ten_is_supported_and_larger_degrees_are_rejected() {
-        let plan = SymmetricGroupFftPlan::new(10).unwrap();
-        assert_eq!(plan.order(), 3_628_800);
-        assert_eq!(plan.recursive_to_lexicographic().len(), plan.order());
-        assert_eq!(
-            plan.blocks()
-                .map(|block| block.coefficient_count())
-                .sum::<usize>(),
-            plan.order()
+    fn inverse_and_adjoint_match_independent_dense_representations() {
+        for degree in 0..=5 {
+            let plan = SymmetricGroupFftPlan::new(degree).unwrap();
+            let coefficients = deterministic_values(plan.order(), degree + 17);
+            let mut workspace = plan.workspace(1).unwrap();
+            for normalized in [false, true] {
+                let mut expected = vec![(0.0, 0.0); plan.order()];
+                for (index, value) in expected.iter_mut().enumerate() {
+                    let permutation = lexicographic_unrank(degree, index);
+                    for (block_index, block) in plan.blocks().enumerate() {
+                        let matrix = representation_matrix(&plan, block_index, &permutation);
+                        let weight = if normalized {
+                            block.dimension() as f64 / plan.order() as f64
+                        } else {
+                            1.0
+                        };
+                        for (column, matrix_value) in matrix.into_iter().enumerate() {
+                            let coefficient = coefficients[block.coefficient_offset() + column];
+                            value.0 += weight * matrix_value * coefficient.0;
+                            value.1 += weight * matrix_value * coefficient.1;
+                        }
+                    }
+                }
+                let mut actual = vec![(f64::NAN, f64::NAN); plan.order()];
+                if normalized {
+                    plan.inverse(&coefficients, &mut actual, &mut workspace)
+                        .unwrap();
+                } else {
+                    plan.adjoint(&coefficients, &mut actual, &mut workspace)
+                        .unwrap();
+                }
+                assert_complex_slices_close(&actual, &expected, TOLERANCE);
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_roundtrips_native_batches_and_reuses_tails() {
+        for degree in 0..=7 {
+            let plan = SymmetricGroupFftPlan::new(degree).unwrap();
+            let capacity = 8;
+            let mut workspace = plan.workspace(capacity).unwrap();
+            let buffer = workspace.buffer.as_ptr();
+            let block = workspace.block.as_ptr();
+            for lanes in [8, 1, 3, 2, 8] {
+                let mut values = vec![(0.0, 0.0); plan.order() * lanes];
+                for lane in 0..lanes {
+                    // Reversed salt order also checks independent lane transport.
+                    let source = deterministic_values(plan.order(), (lanes - lane) * 13);
+                    for (index, value) in source.into_iter().enumerate() {
+                        values[index * lanes + lane] = value;
+                    }
+                }
+                let mut transformed = values.clone();
+                let mut actual = vec![(f64::NAN, f64::NAN); values.len()];
+                plan.forward_lanes(lanes, &values, &mut transformed, &mut workspace)
+                    .unwrap();
+                plan.inverse_lanes(lanes, &transformed, &mut actual, &mut workspace)
+                    .unwrap();
+                assert_complex_slices_close(&actual, &values, TOLERANCE);
+                // An arbitrary Fourier input tests the other direction too.
+                plan.inverse_lanes(lanes, &values, &mut actual, &mut workspace)
+                    .unwrap();
+                plan.forward_lanes(lanes, &actual, &mut transformed, &mut workspace)
+                    .unwrap();
+                assert_complex_slices_close(&transformed, &values, TOLERANCE);
+                assert_eq!(workspace.buffer.as_ptr(), buffer);
+                assert_eq!(workspace.block.as_ptr(), block);
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_and_adjoint_validate_shapes_before_writing() {
+        let plan = SymmetricGroupFftPlan::new(3).unwrap();
+        let mut workspace = plan.workspace(2).unwrap();
+        let mut output = vec![(7.0, -3.0); plan.order()];
+        let original = output.clone();
+        assert!(plan.inverse_lanes(0, &[], &mut [], &mut workspace).is_err());
+        assert!(plan.adjoint_lanes(0, &[], &mut [], &mut workspace).is_err());
+        assert!(plan.inverse(&[], &mut output, &mut workspace).is_err());
+        assert_eq!(output, original);
+        let coefficients = vec![(0.0, 0.0); plan.order()];
+        let mut wrong_workspace = SymmetricGroupFftPlan::new(4).unwrap().workspace(2).unwrap();
+        assert!(
+            plan.adjoint(&coefficients, &mut output, &mut wrong_workspace)
+                .is_err()
         );
-        assert!(SymmetricGroupFftPlan::new(11).is_err());
+        assert_eq!(output, original);
+        let coefficients = vec![(0.0, 0.0); plan.order() * 3];
+        let mut output = coefficients.clone();
+        assert!(
+            plan.inverse_lanes(3, &coefficients, &mut output, &mut workspace)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn rectangular_complex_dual_weights_include_both_residual_cross_terms() {
+        let plan = SymmetricGroupFftPlan::new(3).unwrap();
+        let n = plan.order();
+        let born_channels = 2;
+        let loop_channels = 3;
+        let born_count = born_channels * n + 1;
+        let loop_count = loop_channels * n + 2;
+        let lanes = 3;
+        let mut workspace = plan.workspace(lanes).unwrap();
+        let born = deterministic_values(born_count * lanes, 9);
+        let kernels = (0..born_channels * loop_channels)
+            .map(|pair| deterministic_values(n, 31 * pair + 7))
+            .collect::<Vec<_>>();
+        // Direct entries include all three kinds of residual pair. Their
+        // complex values deliberately obey no Hermiticity relation.
+        let mut matrix = deterministic_values(born_count * loop_count, 97);
+        for a in 0..born_channels {
+            for b in 0..loop_channels {
+                for g in 0..n {
+                    let permutation = lexicographic_unrank(plan.degree(), g);
+                    let mut inverse = vec![0; plan.degree()];
+                    for (i, &value) in permutation.iter().enumerate() {
+                        inverse[value] = i;
+                    }
+                    for h in 0..n {
+                        let relative = lexicographic_unrank(plan.degree(), h)
+                            .into_iter()
+                            .map(|i| inverse[i])
+                            .collect::<Vec<_>>();
+                        matrix[(a * n + g) * loop_count + b * n + h] =
+                            kernels[a * loop_channels + b][permutation_rank(&relative)];
+                    }
+                }
+            }
+        }
+        let mut expected = vec![(0.0, 0.0); loop_count * lanes];
+        for i in 0..born_count {
+            for j in 0..loop_count {
+                for lane in 0..lanes {
+                    let left = born[i * lanes + lane];
+                    let value = complex_multiply((left.0, -left.1), matrix[i * loop_count + j]);
+                    expected[j * lanes + lane].0 += value.0;
+                    expected[j * lanes + lane].1 += value.1;
+                }
+            }
+        }
+        let mut born_fourier = Vec::new();
+        for channel in 0..born_channels {
+            let mut output = vec![(0.0, 0.0); n * lanes];
+            plan.forward_lanes(
+                lanes,
+                &born[channel * n * lanes..(channel + 1) * n * lanes],
+                &mut output,
+                &mut workspace,
+            )
+            .unwrap();
+            born_fourier.push(output);
+        }
+        let mut actual = vec![(0.0, 0.0); loop_count * lanes];
+        for b in 0..loop_channels {
+            let mut weighted = vec![(0.0, 0.0); n * lanes];
+            for a in 0..born_channels {
+                let inverse_kernel = (0..n)
+                    .map(|i| {
+                        kernels[a * loop_channels + b][plan.inverse_lexicographic_index(i).unwrap()]
+                    })
+                    .collect::<Vec<_>>();
+                let mut kernel = vec![(0.0, 0.0); n];
+                plan.forward(&inverse_kernel, &mut kernel, &mut workspace)
+                    .unwrap();
+                // R_b = sum_a Bhat_a K_ab^dagger in column-major storage.
+                for block in plan.blocks() {
+                    let d = block.dimension();
+                    let o = block.coefficient_offset();
+                    for column in 0..d {
+                        for row in 0..d {
+                            for inner in 0..d {
+                                let k = kernel[o + inner * d + column];
+                                for lane in 0..lanes {
+                                    let value = complex_multiply(
+                                        born_fourier[a][(o + inner * d + row) * lanes + lane],
+                                        (k.0, -k.1),
+                                    );
+                                    let target =
+                                        &mut weighted[(o + column * d + row) * lanes + lane];
+                                    target.0 += value.0;
+                                    target.1 += value.1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let output = &mut actual[b * n * lanes..(b + 1) * n * lanes];
+            plan.inverse_lanes(lanes, &weighted, output, &mut workspace)
+                .unwrap();
+            for value in output {
+                value.1 = -value.1;
+            }
+        }
+        for i in 0..born_count {
+            for j in 0..loop_count {
+                if i < born_channels * n && j < loop_channels * n {
+                    continue;
+                }
+                for lane in 0..lanes {
+                    let left = born[i * lanes + lane];
+                    let value = complex_multiply((left.0, -left.1), matrix[i * loop_count + j]);
+                    actual[j * lanes + lane].0 += value.0;
+                    actual[j * lanes + lane].1 += value.1;
+                }
+            }
+        }
+        assert_complex_slices_close(&actual, &expected, TOLERANCE);
+        assert!(actual.iter().any(|value| value.1.abs() > 0.1));
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn degree_admission_is_the_group_order_in_usize() {
+        // Admission must not allocate a factorial-size plan merely to test
+        // the integer boundary. Orders past the former u32 reorder storage
+        // (degree 13 and up) are admitted; only an order beyond usize is not.
+        assert_eq!(checked_factorials(12).unwrap()[12], 479_001_600);
+        assert_eq!(checked_factorials(13).unwrap()[13], 6_227_020_800);
+        let largest = largest_admitted_degree();
+        assert!(largest >= 12);
+        let factorials = checked_factorials(largest).unwrap();
+        assert!(factorials[largest].checked_mul(largest + 1).is_none());
+        let refusal = checked_factorials(largest + 1).unwrap_err().to_string();
+        assert!(refusal.contains("overflows usize"), "{refusal}");
+        assert!(SymmetricGroupFftPlan::new(largest + 1).is_err());
+        assert!(checked_factorials(usize::MAX).is_err());
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn permutation_codes_hold_degrees_past_sixteen() {
+        // The former four-bit codes held degree <= 16 (debug-asserted only).
+        let degree = largest_admitted_degree();
+        assert!(degree > 16);
+        let factorials = checked_factorials(degree).unwrap();
+        let order = factorials[degree];
+        for rank in [0, 1, 12_345_678_901, order / 3, order - 2, order - 1] {
+            let permutation = super::lexicographic_unrank(degree, rank, &factorials).unwrap();
+            assert_eq!(lexicographic_rank(&permutation, &factorials).unwrap(), rank);
+        }
+        // Extending a child code by a coset representative ranks consistently.
+        let child: Vec<u8> = (0..degree as u8 - 1).rev().collect();
+        let mut code = vec![0_u8; degree];
+        extend_recursive_permutation(&child, degree - 1, &mut code);
+        assert_eq!(code[degree - 1] as usize, degree - 1);
+        assert!(lexicographic_rank(&code, &factorials).is_ok());
+        let mut repeated = code.clone();
+        repeated[0] = repeated[1];
+        assert!(lexicographic_rank(&repeated, &factorials).is_err());
+    }
+
+    #[test]
+    fn wide_reorder_storage_transforms_bitwise_like_compact_storage() {
+        // Orders past u32 keep one usize per reorder index; force that
+        // storage at small degree and compare every transform bitwise.
+        for degree in [4_usize, 6, 7] {
+            let compact = SymmetricGroupFftPlan::new(degree).unwrap();
+            assert!(matches!(
+                compact.recursive_to_lexicographic,
+                ReorderMap::Compact(_)
+            ));
+            let mut wide = SymmetricGroupFftPlan::new(degree).unwrap();
+            wide.recursive_to_lexicographic =
+                build_wide_recursive_to_lexicographic(degree, &wide.factorials).unwrap();
+            assert!(matches!(
+                wide.recursive_to_lexicographic,
+                ReorderMap::Wide(_)
+            ));
+            for lanes in [1_usize, 3] {
+                let values = deterministic_values(compact.order() * lanes, degree + lanes);
+                let mut forward_compact = vec![(0.0, 0.0); values.len()];
+                let mut forward_wide = vec![(0.0, 0.0); values.len()];
+                let mut workspace = compact.workspace(lanes).unwrap();
+                compact
+                    .forward_lanes(lanes, &values, &mut forward_compact, &mut workspace)
+                    .unwrap();
+                let mut workspace = wide.workspace(lanes).unwrap();
+                wide.forward_lanes(lanes, &values, &mut forward_wide, &mut workspace)
+                    .unwrap();
+                let bits = |values: &[SymmetricGroupComplex64]| {
+                    values
+                        .iter()
+                        .map(|value| (value.0.to_bits(), value.1.to_bits()))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(bits(&forward_compact), bits(&forward_wide));
+                let mut inverse_compact = vec![(0.0, 0.0); values.len()];
+                let mut inverse_wide = vec![(0.0, 0.0); values.len()];
+                let mut workspace = compact.workspace(lanes).unwrap();
+                compact
+                    .inverse_lanes(
+                        lanes,
+                        &forward_compact,
+                        &mut inverse_compact,
+                        &mut workspace,
+                    )
+                    .unwrap();
+                let mut workspace = wide.workspace(lanes).unwrap();
+                wide.inverse_lanes(lanes, &forward_wide, &mut inverse_wide, &mut workspace)
+                    .unwrap();
+                assert_eq!(bits(&inverse_compact), bits(&inverse_wide));
+            }
+        }
     }
 
     fn deterministic_values(count: usize, salt: usize) -> Vec<SymmetricGroupComplex64> {

@@ -160,6 +160,14 @@ fn uniform_lc_replay_total_scale(
     Some(scale)
 }
 
+/// Runtime capability of plan-v4 (engine v2) loop processes. Defined here, outside the
+/// `symbolica-runtime`-gated `loop_artifact` module that re-exports it, so that the
+/// capability catalogue compiles in every feature configuration.
+pub const LOOP_V2_RUNTIME_CAPABILITY: &str = "rusticol.loop-runtime.v4";
+/// Runtime capability of loop-induced (amplitude-mode, plan schema 5)
+/// processes (M-LIT RULED Q42 = (a)): seeded processes keep
+/// [`LOOP_V2_RUNTIME_CAPABILITY`] and their bytes.
+pub const LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY: &str = "rusticol.loop-runtime.v5";
 pub const SYMJIT_APPLICATION_RUNTIME_CAPABILITY: &str = "symjit.application.complex-f64.v1";
 pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
     "symbolica.legacy-jit-container.complex-f64.v1";
@@ -261,6 +269,9 @@ pub enum RuntimeCapability {
     OnTheFlyRuntimeComplexF64V1,
     OnTheFlyContractedColorV1,
     OnTheFlyLcColorV1,
+    LoopRuntimeV3,
+    LoopRuntimeV4,
+    LoopRuntimeV5,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -298,6 +309,9 @@ impl RuntimeCapability {
             Self::OnTheFlyRuntimeComplexF64V1 => ON_THE_FLY_RUNTIME_CAPABILITY,
             Self::OnTheFlyContractedColorV1 => ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::OnTheFlyLcColorV1 => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            Self::LoopRuntimeV3 => "rusticol.loop-runtime.v3",
+            Self::LoopRuntimeV4 => LOOP_V2_RUNTIME_CAPABILITY,
+            Self::LoopRuntimeV5 => LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -1721,6 +1735,23 @@ struct GenericColorContractionManifest {
     entries: Vec<GenericColorContractionEntryManifest>,
     #[serde(default)]
     repeated_block: Option<GenericRepeatedColorContractionBlockManifest>,
+    /// A plan graded by power of N_c (strict colour, graded full colour):
+    /// every entry carries its `nc_degree`, one of `degrees`.
+    #[serde(default)]
+    nc_expansion: Option<GenericNcExpansionManifest>,
+}
+
+/// The formal-N_c expansion of a graded colour contraction (pyAmpliCol
+/// `color.nc_expansion`): the kept degrees, decreasing from the reference
+/// degree P.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericNcExpansionManifest {
+    accuracy: String,
+    #[serde(default)]
+    depth: Option<i32>,
+    reference_degree: i32,
+    degrees: Vec<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1729,11 +1760,15 @@ struct GenericColorContractionEntryManifest {
     left_group_id: i64,
     right_group_id: i64,
     weight: Vec<f64>,
-    // Retained for Python arbitrary precision; native contraction keeps its f64 weight.
-    #[serde(default, rename = "exact_weight")]
-    _exact_weight: Option<[String; 4]>,
+    /// Exact rational weight [re_num, re_den, im_num, im_den], used by the native double-double and
+    /// arbitrary-precision contractions (binary64 uses `weight`).
+    #[serde(default)]
+    exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
+    /// The N_c degree of this term in a graded plan.
+    #[serde(default)]
+    nc_degree: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1764,8 +1799,8 @@ struct GenericRepeatedColorContractionEntryManifest {
     left_group_index: usize,
     right_group_index: usize,
     weight: Vec<f64>,
-    #[serde(default, rename = "exact_weight")]
-    _exact_weight: Option<[String; 4]>,
+    #[serde(default)]
+    exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
 }
@@ -1866,7 +1901,6 @@ impl NativeCompiledDirectApplicationManifest {
     ) -> RusticolResult<()> {
         const APPLICATION_ABI: &str = "pyamplicol-native-compiled-direct-application-v1";
         const OUTPUT_SEMANTICS: &str = "factor-free-overwrite";
-        const MAXIMUM_LOGICAL_STACK_BYTES: u32 = 64 * 1024;
 
         if self.application_abi != APPLICATION_ABI {
             return Err(RusticolError::compatibility(format!(
@@ -1917,8 +1951,10 @@ impl NativeCompiledDirectApplicationManifest {
         if self.instruction_count == 0
             || self.input_plane_count == 0
             || !matches!(self.simd_lane_width, 2 | 4)
+            // The scratch size is the program's own (the leaf keeps it on
+            // the stack or allocates it, by size): only its consistency
+            // with the shape is checked below, no size cap.
             || self.logical_stack_bytes == 0
-            || self.logical_stack_bytes > MAXIMUM_LOGICAL_STACK_BYTES
             || self.output_semantics != OUTPUT_SEMANTICS
         {
             return Err(RusticolError::integrity(
@@ -2397,6 +2433,16 @@ where
         out: &mut [Complex<Self>],
         binary_precision: Option<u32>,
     ) -> RusticolResult<()>;
+
+    /// A binary64 constant of the artifact (normalization, colour weight, model parameter,
+    /// mass) at the working precision. The binary64 value itself is exact, but `From<f64>`
+    /// gives a 53-bit `Float`, and a `Float` product is rounded to the smaller precision of its
+    /// factors, so every result would carry only binary64 accuracy.
+    fn from_f64_constant(value: f64, binary_precision: Option<u32>) -> Self;
+
+    /// A value computed in a wider `Float` (an exact constant or a derived model parameter),
+    /// rounded to the working precision (106 bits for `DoubleFloat`).
+    fn from_float(value: &Float, binary_precision: Option<u32>) -> Self;
 }
 
 #[cfg(feature = "symbolica-runtime")]
@@ -2420,6 +2466,14 @@ impl RusticolHighPrecisionNumber for DoubleFloat {
             .expect("double evaluator initialized")
             .evaluate(params, out);
         Ok(())
+    }
+
+    fn from_f64_constant(value: f64, _binary_precision: Option<u32>) -> Self {
+        DoubleFloat::from(value)
+    }
+
+    fn from_float(value: &Float, _binary_precision: Option<u32>) -> Self {
+        value.to_double_float()
     }
 }
 
@@ -2464,6 +2518,21 @@ impl RusticolHighPrecisionNumber for Float {
             .evaluate(params, out);
         Ok(())
     }
+
+    fn from_f64_constant(value: f64, binary_precision: Option<u32>) -> Self {
+        match binary_precision {
+            Some(precision) => Float::with_val(precision, value),
+            None => Float::from(value),
+        }
+    }
+
+    fn from_float(value: &Float, binary_precision: Option<u32>) -> Self {
+        let mut value = value.clone();
+        if let Some(precision) = binary_precision {
+            value.set_prec(precision);
+        }
+        value
+    }
 }
 
 struct RawSumGroup {
@@ -2480,6 +2549,10 @@ struct ColorContractionRuntime {
     repeated_block: Option<RepeatedColorContractionBlock>,
     symmetric_group: Option<CompiledSymmetricGroupColorContraction>,
     group_scratch_f64: Vec<Complex<f64>>,
+    /// The N_c degree of every entry of a graded plan, in `entries` order:
+    /// resolved evaluation reports each degree as its own contracted colour
+    /// component; totals sum every entry as before.
+    entry_nc_degrees: Option<Vec<i32>>,
 }
 
 struct CompiledSymmetricGroupColorContraction {
@@ -2495,6 +2568,17 @@ struct ColorContractionEntry {
     weight_re: f64,
     weight_im: f64,
     symmetry_factor: f64,
+    /// The artifact's exact rational weight, used by the double-double and arbitrary-precision
+    /// contractions; `weight_re`/`weight_im` are its binary64 values.
+    exact: Option<ExactColorWeight>,
+}
+
+/// An exact rational colour weight (re_num/re_den, im_num/im_den) of i128 numbers; below 2^85
+/// they convert exactly at 106 bits or more, any i128 at 128 bits or more.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct ExactColorWeight {
+    re: (i128, i128),
+    im: (i128, i128),
 }
 
 /// One color matrix shared by several disconnected contraction components.
@@ -2544,7 +2628,62 @@ impl ColorContractionRuntime {
             repeated_block,
             symmetric_group: None,
             group_scratch_f64: Vec::new(),
+            entry_nc_degrees: None,
         }
+    }
+
+    /// A plan graded by power of N_c. Its entries stay expanded (no repeated
+    /// block), so `logical_entries` follows `entry_nc_degrees`.
+    fn graded(
+        groups: &[RawSumGroup],
+        entries: Vec<ColorContractionEntry>,
+        entry_nc_degrees: Vec<i32>,
+    ) -> Self {
+        debug_assert_eq!(entries.len(), entry_nc_degrees.len());
+        Self {
+            group_count: groups.len(),
+            entries,
+            repeated_block: None,
+            symmetric_group: None,
+            group_scratch_f64: Vec::new(),
+            entry_nc_degrees: Some(entry_nc_degrees),
+        }
+    }
+
+    /// The colour component of every logical entry, in `logical_entries`
+    /// order: the component of its N_c degree in a graded plan, else the one
+    /// contracted component.
+    fn entry_color_indices(&self, physics: &PhysicsRuntime) -> RusticolResult<Vec<usize>> {
+        let count = self.logical_entry_count()?;
+        let Some(degrees) = self.entry_nc_degrees.as_ref() else {
+            if physics.manifest.color_components.len() != 1 || !physics.has_contracted_color_axis()
+            {
+                return Err(RusticolError::invalid_argument(
+                    "resolved NLC/full evaluation requires one contracted color component",
+                ));
+            }
+            return Ok(vec![0; count]);
+        };
+        let axis = physics.manifest.nc_degrees().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "a colour contraction graded by N_c degree needs graded resolved physics",
+            )
+        })?;
+        let index_by_degree = axis
+            .iter()
+            .enumerate()
+            .map(|(index, degree)| (*degree, index))
+            .collect::<BTreeMap<_, _>>();
+        degrees
+            .iter()
+            .map(|degree| {
+                index_by_degree.get(degree).copied().ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "colour contraction entry of N_c degree {degree} has no colour component"
+                    ))
+                })
+            })
+            .collect()
     }
 
     fn from_repeated_block(
@@ -2579,6 +2718,7 @@ impl ColorContractionRuntime {
             repeated_block: Some(repeated_block),
             symmetric_group: None,
             group_scratch_f64: Vec::new(),
+            entry_nc_degrees: None,
         }
     }
 
@@ -2597,6 +2737,7 @@ impl ColorContractionRuntime {
                 workspace: None,
             }),
             group_scratch_f64: Vec::new(),
+            entry_nc_degrees: None,
         }
     }
 
@@ -2692,6 +2833,7 @@ struct CanonicalColorContractionEntry {
     weight_re_bits: u64,
     weight_im_bits: u64,
     symmetry_factor_bits: u64,
+    exact: Option<ExactColorWeight>,
 }
 
 fn color_component_root(parent: &mut [usize], mut index: usize) -> usize {
@@ -2800,6 +2942,7 @@ fn repeated_color_contraction_block(
             weight_re_bits: entry.weight_re.to_bits(),
             weight_im_bits: entry.weight_im.to_bits(),
             symmetry_factor_bits: entry.symmetry_factor.to_bits(),
+            exact: entry.exact,
         });
     }
     for component_entries in &mut entries_by_component {
@@ -2821,6 +2964,7 @@ fn repeated_color_contraction_block(
             weight_re: f64::from_bits(entry.weight_re_bits),
             weight_im: f64::from_bits(entry.weight_im_bits),
             symmetry_factor: f64::from_bits(entry.symmetry_factor_bits),
+            exact: entry.exact,
         })
         .collect::<Vec<_>>();
     let singleton_output_indices = component_group_indices
@@ -3493,6 +3637,8 @@ pub struct NativeRecurrenceExactSections {
     pub contributions: Vec<crate::recurrence::DirectContributionRow>,
     pub finalizations: Vec<crate::recurrence::DirectFinalizationRow>,
     pub closures: Vec<crate::recurrence::DirectClosureRow>,
+    /// Amplitude coupling-order component of every closure row.
+    pub closure_amplitude_orders: Vec<u32>,
     pub row_groups: Vec<crate::recurrence::DirectRowGroupDescriptor>,
     pub momentum_forms: Vec<crate::recurrence::DirectMomentumFormDescriptor>,
     pub momentum_terms: Vec<crate::recurrence::DirectMomentumTerm>,
@@ -4132,6 +4278,53 @@ pub struct NativeDecimalEvaluation {
     pub decimal_digits: u32,
 }
 
+/// The formal-N_c expansion of a graded artifact (strict colour or graded
+/// full colour): the kept degrees, decreasing, and their colour components.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct NativeNcExpansion {
+    /// `strict-lc`, `strict-nlc` or `full` (every degree).
+    pub accuracy: String,
+    /// The reference degree P (n_g + n_qqbar of the process).
+    pub reference_degree: i32,
+    /// Reported degrees, decreasing; `color_ids[d]` is the contracted colour
+    /// component of `degrees[d]` in resolved evaluation.
+    pub degrees: Vec<i32>,
+    pub color_ids: Vec<String>,
+}
+
+/// A squared tree split by power of N_c, summed over the selected helicities.
+#[derive(Clone, Debug, Serialize)]
+pub struct NativeGradedEvaluation {
+    /// Row-major storage with layout `[point][degree]`: the contribution of
+    /// N_c degree `degrees[d]` at N_c = 3. The degrees of a point sum to its
+    /// total.
+    pub values: Vec<f64>,
+    pub point_count: usize,
+    pub degrees: Vec<i32>,
+    pub helicity_ids: Vec<String>,
+}
+
+impl NativeGradedEvaluation {
+    pub fn totals(&self) -> Vec<f64> {
+        self.values
+            .chunks(self.degrees.len().max(1))
+            .map(|point| point.iter().sum())
+            .collect()
+    }
+}
+
+/// [`NativeGradedEvaluation`] at a chosen decimal precision.
+#[derive(Clone, Debug, Serialize)]
+pub struct NativeDecimalGradedEvaluation {
+    /// Row-major storage with layout `[point][degree]`.
+    pub values: Vec<String>,
+    pub totals: Vec<String>,
+    pub point_count: usize,
+    pub degrees: Vec<i32>,
+    pub helicity_ids: Vec<String>,
+    pub decimal_digits: u32,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct NativeDecimalResolvedEvaluation {
     /// Row-major storage with layout `[point][helicity][color]`.
@@ -4245,14 +4438,14 @@ pub struct NativeOnTheFlyFamilyProbeV1 {
     pub queries: Vec<NativeOnTheFlyFamilyQueryProbeV1>,
     pub census: crate::recurrence::OnTheFlyQueryFamilyCensusV1,
     pub execution_cache_hit: bool,
-    pub execution_source_calls: u32,
-    pub execution_source_rows: u32,
-    pub execution_contribution_calls: u32,
-    pub execution_contribution_rows: u32,
-    pub execution_finalization_calls: u32,
-    pub execution_finalization_rows: u32,
-    pub execution_closure_calls: u32,
-    pub execution_closure_rows: u32,
+    pub execution_source_calls: u64,
+    pub execution_source_rows: u64,
+    pub execution_contribution_calls: u64,
+    pub execution_contribution_rows: u64,
+    pub execution_finalization_calls: u64,
+    pub execution_finalization_rows: u64,
+    pub execution_closure_calls: u64,
+    pub execution_closure_rows: u64,
     pub cold_prepare_seconds: f64,
     pub benchmark_warmup_repetitions: u32,
     pub benchmark_repetitions: u32,
@@ -4423,6 +4616,11 @@ struct ModelParameterEvaluatorRuntime {
     input_parameter_indices: Vec<usize>,
     outputs: Vec<GenericDerivedParameterOutputManifest>,
     evaluator: EvaluatorGroup,
+    /// The outputs' exact definitions for the double-double and
+    /// arbitrary-precision paths, attached on first use
+    /// (`NativeRuntime::ensure_exact_model_parameters`).
+    #[cfg(feature = "symbolica-runtime")]
+    exact: Option<Arc<ExactModelParameterDerivation>>,
 }
 
 struct StageRuntime {
@@ -4721,6 +4919,10 @@ use helicity_lane::*;
 mod momentum;
 use momentum::*;
 mod sources;
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) use sources::SchemaSources;
+#[cfg(feature = "symbolica-runtime")]
+use sources::{CarrierMasses, masses_at_precision};
 
 mod validation;
 use validation::*;
@@ -4728,7 +4930,9 @@ use validation::*;
 mod correlated;
 mod native_runtime;
 pub use correlated::{
-    NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeSpinCorrelationVectors,
+    NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeDecimalCorrelatedEvaluation,
+    NativeDecimalCorrelatedRequest, NativeDecimalSpinCorrelationVectors,
+    NativeGradedCorrelatedEvaluation, NativeSpinCorrelationVectors,
 };
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -4753,6 +4957,9 @@ mod recurrence_backend;
 mod recurrence_lane;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use recurrence_lane::*;
+
+mod recurrence_orders;
+pub use recurrence_orders::{AmplitudeOrderCatalog, SquaredAmplitudeOrder};
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod recurrence_load;
@@ -4838,12 +5045,30 @@ pub(crate) use evaluator::recurrence_intrinsic_direct::execute_interaction_termi
 pub(crate) use evaluator::symjit_direct::tests::count_allocations;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_eager_direct;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(crate) use evaluator::symjit_plane::{
+    PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout, symjit_cpu_features,
+    symjit_host_cpu_supported,
+};
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+pub(crate) use evaluator::symjit_plane::{
+    compile_symbolica_evaluator_to_plane_application_bytes, real_axis_sensitive_outputs,
+};
 #[cfg(any(test, feature = "python-generation-bridge"))]
-pub(crate) use evaluator::symjit_plane::compile_symbolica_program_to_plane_application_bytes;
+pub(crate) use evaluator::symjit_plane::{
+    compile_symbolica_program_to_plane_application_bytes, evaluate_plane_application_bytes,
+};
 use evaluator::*;
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) use evaluator::{canonical_saved_evaluator, decode_exact_evaluator_state};
 
 #[path = "wavefunctions.rs"]
 mod wavefunctions;
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) use wavefunctions::massless_dirac_batch;
 use wavefunctions::*;
 
 #[cfg(test)]
@@ -4873,3 +5098,6 @@ mod recurrence_integration_tests;
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/eager_v3_manifest_tests.rs"]
 mod eager_v3_manifest_tests;
+
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) use artifact_load::verified_execution_payloads;

@@ -8,9 +8,9 @@
 //! the same semantic validation as the canonical JSON path.
 
 use crate::{
-    ColorAccuracy, ColorComponent, Coverage, ExternalParticle, Helicity, ModelParameter,
-    ProcessPhysics as ProcessPhysicsV1, Reduction, RusticolError, RusticolResult,
-    SelectorCapabilities,
+    ColorAccuracy, ColorComponent, ContractedColor, Coverage, ExternalParticle, Helicity,
+    LcColorFlow, ModelParameter, ProcessPhysics as ProcessPhysicsV1, Reduction, RusticolError,
+    RusticolResult, SelectorCapabilities,
 };
 use bincode::Decode;
 #[cfg(any(feature = "python-generation-bridge", test))]
@@ -47,11 +47,65 @@ struct RecurrenceBootstrapPhysicsV1 {
     coverage: Coverage,
     external_particles: Vec<ExternalParticle>,
     helicities: Vec<Helicity>,
-    color_components: Vec<ColorComponent>,
+    color_components: Vec<BootstrapColorComponentV1>,
     reduction: Reduction,
     model_parameters: Vec<ModelParameter>,
     selectors: SelectorCapabilities,
     extensions: CompactJsonObject,
+}
+
+/// A colour component of the bootstrap image, in the wire layout of
+/// [`ColorComponent`] before graded colour: a contracted component has no N_c
+/// degree, so images of ungraded physics keep their bytes (and stored ones
+/// stay loadable). Graded physics (strict or graded tree colour) is compiled
+/// lane only and has no recurrence bootstrap image.
+#[derive(Clone, Debug, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
+enum BootstrapColorComponentV1 {
+    LcFlow(LcColorFlow),
+    ContractedColor(BootstrapContractedColorV1),
+}
+
+#[derive(Clone, Debug, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
+struct BootstrapContractedColorV1 {
+    id: String,
+    index: usize,
+    description: String,
+}
+
+impl BootstrapColorComponentV1 {
+    #[cfg(any(feature = "python-generation-bridge", test))]
+    fn from_component(component: &ColorComponent) -> RusticolResult<Self> {
+        Ok(match component {
+            ColorComponent::LcFlow(flow) => Self::LcFlow(flow.clone()),
+            ColorComponent::ContractedColor(color) => {
+                if color.nc_degree.is_some() {
+                    return Err(RusticolError::artifact(format!(
+                        "{RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_ABI} has no N_c-graded colour \
+                         components (graded colour is implemented in the compiled lane)"
+                    )));
+                }
+                Self::ContractedColor(BootstrapContractedColorV1 {
+                    id: color.id.clone(),
+                    index: color.index,
+                    description: color.description.clone(),
+                })
+            }
+        })
+    }
+
+    fn into_component(self) -> ColorComponent {
+        match self {
+            Self::LcFlow(flow) => ColorComponent::LcFlow(flow),
+            Self::ContractedColor(color) => ColorComponent::ContractedColor(ContractedColor {
+                id: color.id,
+                index: color.index,
+                description: color.description,
+                nc_degree: None,
+            }),
+        }
+    }
 }
 
 impl RecurrenceBootstrapPhysicsV1 {
@@ -66,7 +120,11 @@ impl RecurrenceBootstrapPhysicsV1 {
             coverage: physics.coverage.clone(),
             external_particles: physics.external_particles.clone(),
             helicities: physics.helicities.clone(),
-            color_components: physics.color_components.clone(),
+            color_components: physics
+                .color_components
+                .iter()
+                .map(BootstrapColorComponentV1::from_component)
+                .collect::<RusticolResult<_>>()?,
             reduction: physics.reduction.clone(),
             model_parameters: physics.model_parameters.clone(),
             selectors: physics.selectors.clone(),
@@ -84,7 +142,11 @@ impl RecurrenceBootstrapPhysicsV1 {
             coverage: self.coverage,
             external_particles: self.external_particles,
             helicities: self.helicities,
-            color_components: self.color_components,
+            color_components: self
+                .color_components
+                .into_iter()
+                .map(BootstrapColorComponentV1::into_component)
+                .collect(),
             reduction: self.reduction,
             model_parameters: self.model_parameters,
             selectors: self.selectors,
@@ -459,7 +521,7 @@ fn encode_recurrence_bootstrap_physics_wire_v1(
 
 /// Decode and semantically validate one native recurrence physics
 /// payload. Exact consumption is part of the ABI.
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(super) fn decode_recurrence_bootstrap_physics_v1(
     bytes: &[u8],
@@ -607,6 +669,7 @@ mod tests {
                 id: "contracted".to_owned(),
                 index: 0,
                 description: "coherent contracted color".to_owned(),
+                nc_degree: None,
             })],
             reduction: Reduction {
                 kind: ReductionKind::ContractedColor,
@@ -660,6 +723,20 @@ mod tests {
                 .expect("deterministic compact recurrence physics re-encode"),
             encoded
         );
+    }
+
+    #[test]
+    fn compact_recurrence_physics_refuses_nc_graded_colour_components() {
+        let mut physics = physics_fixture();
+        let ColorComponent::ContractedColor(color) = &mut physics.color_components[0] else {
+            unreachable!("contracted fixture component")
+        };
+        color.nc_degree = Some(-2);
+        let message = encode_recurrence_bootstrap_physics_v1(&physics)
+            .unwrap_err()
+            .message()
+            .to_owned();
+        assert!(message.contains("N_c-graded"), "{message}");
     }
 
     #[test]

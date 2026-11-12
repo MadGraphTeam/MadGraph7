@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pyamplicol.api.errors import ConfigurationError
 from pyamplicol.config import resolution_to_dict, resolve_config
@@ -37,6 +37,7 @@ class UtilityInvocation:
     name: str | None = None
     force: bool = False
     overrides: tuple[str, ...] = ()
+    fields_help: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,15 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
         choices=("auto", "always", "never"),
         default="auto",
         help="detect a terminal, force ANSI color, or disable color",
+    )
+    parser.add_argument(
+        "--fields-description-help",
+        dest="fields_help",
+        action="store_true",
+        help=(
+            "after the tables, describe each table and its columns in plain "
+            "words (the command runs as usual)"
+        ),
     )
 
 
@@ -123,6 +133,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
                 "config-template",
                 output_format=namespace.output_format,
                 output_color=namespace.output_color,
+                fields_help=namespace.fields_help,
                 path=namespace.output,
                 force=bool(namespace.force),
             )
@@ -130,6 +141,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             "config-resolve",
             output_format=namespace.output_format,
             output_color=namespace.output_color,
+            fields_help=namespace.fields_help,
             path=namespace.card,
             overrides=tuple(namespace.overrides),
         )
@@ -139,12 +151,14 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
                 "examples-list",
                 output_format=namespace.output_format,
                 output_color=namespace.output_color,
+                fields_help=namespace.fields_help,
             )
         if namespace.examples_command == "copy":
             return UtilityInvocation(
                 "examples-copy",
                 output_format=namespace.output_format,
                 output_color=namespace.output_color,
+                fields_help=namespace.fields_help,
                 path=namespace.destination,
                 force=bool(namespace.force),
             )
@@ -152,6 +166,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             "examples-run",
             output_format=namespace.output_format,
             output_color=namespace.output_color,
+            fields_help=namespace.fields_help,
             name=namespace.name,
             overrides=tuple(namespace.overrides),
         )
@@ -159,6 +174,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
         namespace.utility,
         output_format=namespace.output_format,
         output_color=namespace.output_color,
+        fields_help=namespace.fields_help,
     )
 
 
@@ -272,7 +288,7 @@ def example_card(name: str) -> Path:
     return workspace / card.name
 
 
-def execute_utility(invocation: UtilityInvocation) -> object:
+def execute_utility(invocation: UtilityInvocation, progress: Any = None) -> object:
     if invocation.kind == "config-template":
         destination = (
             Path("pyamplicol.toml") if invocation.path is None else invocation.path
@@ -301,7 +317,7 @@ def execute_utility(invocation: UtilityInvocation) -> object:
     if invocation.kind == "doctor":
         return run_doctor()
     if invocation.kind == "self-test":
-        return run_self_test()
+        return run_self_test(progress=progress)
     raise ConfigurationError(f"utility {invocation.kind!r} must be dispatched by CLI")
 
 

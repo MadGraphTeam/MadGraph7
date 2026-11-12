@@ -1,0 +1,1155 @@
+{
+ "schema": "pyamplicol-loop-colour-data/1",
+ "source": "MG5_aMC 3.7.0 models/loop_sm (all restrictions)",
+ "scheme": {
+  "dimensional_regularization": "HV",
+  "external_states": "physical-four-dimensional",
+  "gamma5": "source-UFO-four-dimensional-prescription",
+  "renormalization": "source-UFO mass-dependent decoupling",
+  "mass_scheme": "real-on-shell",
+  "finite_restoration": "source-UFO-local-rules",
+  "model_convention": "loop_sm lhv=1 supplied QCD rules"
+ },
+ "formal_symbol": "Nc",
+ "parameter_identities": {
+  "CA": "Nc",
+  "CF": "(Nc**2-1)/(2*Nc)",
+  "TF": "1/2",
+  "Ncol": "Nc"
+ },
+ "scheme_parameter_values": {
+  "lhv": "1"
+ },
+ "vertices": [
+  {
+   "digest": "df1032054a6b5b61f57035d4ccdbba4ca0d7c06475a14228cb43a058aefa7a55",
+   "label": "V_R23G [G G G]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "Nc"
+   }
+  },
+  {
+   "digest": "092d29d41774d0faaf600402a0c39f6ac1b70a297aede957ece1ac41ec12ec3a",
+   "label": "V_R2RGA [G G G G]",
+   "kind": "R2",
+   "reference": "general-N_c four-gluon R2 tensors (arXiv:0903.0356), built and checked against the source at N_c = 3 by loops.qcd_r2_color (whole rule)",
+   "continuation": "whole-rule",
+   "recipes": [
+    {
+     "loop_group_index": 0,
+     "order": [
+      [
+       "QCD",
+       4
+      ]
+     ],
+     "gauge_coupling": "G",
+     "contribution": "fundamental-dirac"
+    },
+    {
+     "loop_group_index": 1,
+     "order": [
+      [
+       "QCD",
+       4
+      ]
+     ],
+     "gauge_coupling": "G",
+     "contribution": "gauge"
+    }
+   ]
+  },
+  {
+   "digest": "5f804c321ddf8cac63a8120db2346618382cf7a2021cdef5db0abf99628262e8",
+   "label": "V_R2GDD [d~ d G]; V_R2GSS [s~ s G]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "32b393445db3e59fdb418bf84d021e3a0410833da63c74aac2fb0c611cb3f3f4",
+   "label": "V_R2GUU [u~ u G]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "ef2deff5f6a316c07e7180ab4b55b6c6e4c46016b76bce6b713c6fc6d7fa01cf",
+   "label": "V_R2GCC [c~ c G]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "50c4d2f586e56764bf4393c9df47890a0387ff580b7f29075b0fbcecb9f92b56",
+   "label": "V_R2GBB [b~ b G]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "c785f38da08fb4e8e9896bde3447b56bbccefd00f795254118ea961d41c4910b",
+   "label": "V_R2GTT [t~ t G]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "b78e82f2dc856c55b618a11ee13d394b33cfe4ae8e7e55a3cf62122e09b2a03e",
+   "label": "V_R2GG [G G]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "Nc",
+    "0,1,4": "Nc",
+    "0,2,1": "TF",
+    "0,2,2": "TF",
+    "0,2,3": "TF"
+   }
+  },
+  {
+   "digest": "5a8fabf4e51f2e85ebc6e6dab834c4abdd09512a2c1dbec83f7cec90d6fcf77a",
+   "label": "V_R2DD [d~ d]; V_R2SS [s~ s]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "07cf944481f7d4db6f4a7333fb99dff4c11b35d4d602080e2a5cb35b26645956",
+   "label": "V_R2UU [u~ u]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "fcd290a4ccf6660ca0c3ed1af92eb744c66bc9512f7f7ee0987139416f089724",
+   "label": "V_R2CC [c~ c]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "1544ba06710f66bd933a06a4ddcee9c8876f57bfc677f2dbbd323fd8b0e36bd2",
+   "label": "V_R2BB [b~ b]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "d636f27bcaab118260b7a84ea9bcf0b7b46a8cea109460d14dbdaf0582e0e463",
+   "label": "V_R2TT [t~ t]",
+   "kind": "R2",
+   "reference": "general-N_c QCD R2, Draggiotis, Garzelli, Papadopoulos, Pittau arXiv:0903.0356: gluon loops ~ N_col, closed quark loops ~ T_F (N_f/N_col x N_col), quark lines ~ (N_col^2-1)/(2 N_col)",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "6b823a94f446f2cbd658c18f0a957675f892616661122b6b3159cd761e6982e0",
+   "label": "V_R2ddA [d~ d A]; V_R2ssA [s~ s A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "03f039d123b9e07faa175dc80e437a105eb7a5987d8ca79425e0e22e341ee35f",
+   "label": "V_R2bbA [b~ b A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "1eb24a1c575d524fcee585032fbbf22805eb9b5aadf1bef62814fe9d543da3df",
+   "label": "V_R2uuA [u~ u A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "4de3ce8c56c889b1865dd1cdd595dc2ee4193c5ae023e255bcfbeb89d3d397bc",
+   "label": "V_R2ccA [c~ c A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "da6a11eab815fdf9b22b935b2ce13735e7257973349977557bb06bb29277ad2b",
+   "label": "V_R2ttA [t~ t A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "5b6e5abf5a107691e690b31607f0d45752e7c6b5d089c4f180c587cb55c7922d",
+   "label": "V_R2ddZ [d~ d Z]; V_R2ssZ [s~ s Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "9822f9990e22db96d50c3e6d5a997c76fdab8826bc44592332050c64eee74413",
+   "label": "V_R2bbZ [b~ b Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "421a8c3ba0220061da4aa53c9c02bf7cd619d2470d094c4c718c68f35f697200",
+   "label": "V_R2uuZ [u~ u Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "93b5af117478cfa8688e5dbbc9e370e78d18c32a74466390e2329c2f84e6d3a0",
+   "label": "V_R2ccZ [c~ c Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "24ad131322c8554f417dbfa0487433fea5c949a93bea1340b708dac74eb78fd8",
+   "label": "V_R2ttZ [t~ t Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "4d15ccef9919190e18c82c3e3cd6e930e35fa6b5c94c3d4a13cbb4749632a610",
+   "label": "V_R2dxuW [d~ u W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "4d2ba1a0ee8de4044f6e3b822182bb21eadaf208c5454ee6b485da56a3fb799b",
+   "label": "V_R2dxcW [d~ c W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "7438464c3b0dd72d691757dcc45e22ecfc8c74623ebb9290174597496a96afea",
+   "label": "V_R2dxtW [d~ t W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "2a7d5c399010b22b82c5ee0975be1f131ec55838307c2d83712515e82432857e",
+   "label": "V_R2sxuW [s~ u W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "555f799a8cd4aabadc9e104d2d431650ad630ba7b9b6c4631cfa7a387775644f",
+   "label": "V_R2sxcW [s~ c W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "0c8f66cc48c457f47d58d2e24051aa76701548ccd6943a2f0bf33455c54253ec",
+   "label": "V_R2sxtW [s~ t W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "82d4cb70198ab96a207b846355ec5f6b2f211fa75a127b5c7e52e0c4087354c8",
+   "label": "V_R2bxuW [b~ u W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "77ba05491d4885bbad4dbdd08ea648dfbb6e00c7cfb53c6afbb4ad4f1b785948",
+   "label": "V_R2bxcW [b~ c W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "226e11582f3af1630acc50a0255f16de282be91a63eab5cce1a9a75ea2069a90",
+   "label": "V_R2bxtW [b~ t W-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "98f56639233746a72ee5f9b68aad7cd7098088f51a092004d36ad94d4d50b91e",
+   "label": "V_R2uxdW [u~ d W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "5edbefd49856ad52c96ebc5800bbe76c8204c09308f63bedf359aae0ce71e9d7",
+   "label": "V_R2cxdW [c~ d W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "1d9170cf933a5434cb763274df5303e50e7b652419cdccda384309a49e681279",
+   "label": "V_R2txdW [t~ d W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "2350a4203fb38644b57a139e51ba13030fc7200c845c406d22cf6e6a5259aa00",
+   "label": "V_R2uxsW [u~ s W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "f1ad4c1feceedfb55736705597826dff002cc905009107749c9ccd3c0ee71978",
+   "label": "V_R2cxsW [c~ s W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "34dcf28853a6d96ed2d3cbfd09b2b2c511e6ec7c473e816abf334973a2e02570",
+   "label": "V_R2txsW [t~ s W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "11ba68fad33cd65ba350b0308ca1a5cd16968383902de714eda8e3cb9d0dab59",
+   "label": "V_R2uxbW [u~ b W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "be23842ea6ec91ae85e8d3ed18ab90a037fd1cc95210abf5a6f9bcbe27d5b61e",
+   "label": "V_R2cxbW [c~ b W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "0c636ed94593059b30c5de1ef73dd59a806395b579950d1880085135a260c5d7",
+   "label": "V_R2txbW [t~ b W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "735d2a067c839cdd8392f92cff7efc257b6bc5cdfb6b39e2629b038a386b21ad",
+   "label": "V_bbH [b~ b H]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "32010f1480fd0d5bdd75a17f57c3dccb388c4536228fa91bbfb024affa9833ed",
+   "label": "V_ttH [t~ t H]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "9bb216b91aad081c88db172ebfb4aa369f0866957a4eff224ad2c53efb1b339f",
+   "label": "V_ccH [c~ c H]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "0b1c4ec91d905e2f732aea844c34a1bb0863466c20f7d1e43869b0833bf70171",
+   "label": "V_GGH [G G H]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF"
+   }
+  },
+  {
+   "digest": "047b0a3974f3789cd5968cf661f038df2668eba1ebb8c7068a26a636346fccee",
+   "label": "V_GGHH [G G H H]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF"
+   }
+  },
+  {
+   "digest": "f4604a6863fe7f7761c31d740a14669814c5f62ec0866544f2cb4f8e7ed0b5d3",
+   "label": "V_GGZ [G G Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF"
+   }
+  },
+  {
+   "digest": "78e7524c4e01cb2d69fbf8c882526d102bfe70497e94de32e579cae820f95d06",
+   "label": "V_GGZZ [G G Z Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF"
+   }
+  },
+  {
+   "digest": "5dcde355f6214b487435e92262c8149cd2ed4fb37b6560f7fe07b491a6218f4e",
+   "label": "V_GGAA [G G A A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF"
+   }
+  },
+  {
+   "digest": "e576f1d04bcfd2c61fc7e6e43f3f1687926deb677419c98e1ee4883a13782dcc",
+   "label": "V_GGZA [G G Z A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF"
+   }
+  },
+  {
+   "digest": "2df5f5b0fdd06e14d155f8098b32c2318fe5b0cbe4f498cacaeae73fcfc007f6",
+   "label": "V_GGWW [G G W- W+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "TF",
+    "0,0,5": "TF",
+    "0,0,6": "TF",
+    "0,0,7": "TF",
+    "0,0,8": "TF"
+   }
+  },
+  {
+   "digest": "bc4436aa313808bef6ad5f30beace1867ffd74c7c7106978b65058ef1b745b4e",
+   "label": "V_GGGZ [G G G Z]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "1,1,0": "TF",
+    "1,1,1": "TF"
+   }
+  },
+  {
+   "digest": "d263b19730320c7023377aa179794a421bdd8314cfcf5dec8c8b493e8801c6cf",
+   "label": "V_GGGA [G G G A]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF"
+   }
+  },
+  {
+   "digest": "8eeb6fde1d5c943bc90ba50103fd2daa2b0979555bffd8aaaeb7b79c8590ca74",
+   "label": "V_UV1eps3G [G G G]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "CA"
+   }
+  },
+  {
+   "digest": "181429a5c5ef61044bf46e2fb3a978188b81844b50b966409f20d750f7c92fc6",
+   "label": "V_UV1eps4G [G G G G]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "CA",
+    "1,1,0": "TF",
+    "1,1,1": "TF",
+    "1,1,2": "TF",
+    "1,1,3": "TF",
+    "1,1,4": "CA",
+    "2,2,0": "TF",
+    "2,2,1": "TF",
+    "2,2,2": "TF",
+    "2,2,3": "TF",
+    "2,2,4": "CA"
+   }
+  },
+  {
+   "digest": "948f2ac9edbbc7a11ab0822c16b58514c41b086b407de1f57b07d7df3f673f14",
+   "label": "V_UVGDD [d~ d G]; V_UVGSS [s~ s G]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "CA"
+   }
+  },
+  {
+   "digest": "bbf7304362e2ecc14893b9029c4bf87b19ae32cc8bd2760701fbdf10c6998661",
+   "label": "V_UVGUU [u~ u G]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "CA"
+   }
+  },
+  {
+   "digest": "cab153aa47fbb9986acba57abe2b66282da29bcc21ccee05a7993023cdfce0ef",
+   "label": "V_UVGCC [c~ c G]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "CA"
+   }
+  },
+  {
+   "digest": "84cfe0b3b7109ec565d36ea864c21e712342d4248a640b8969a67c4328f856ab",
+   "label": "V_UVGBB [b~ b G]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "CA"
+   }
+  },
+  {
+   "digest": "c6ddc127fa81b269ca7095b80f2e53793b87099b290e15f98c28889383fcd032",
+   "label": "V_UVGTT [t~ t G]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "CA"
+   }
+  },
+  {
+   "digest": "dde2c6884655259952621b110231c6138eb26a3679111c0d49d7c87570057cdf",
+   "label": "V_UVcMass [c~ c]",
+   "kind": "UVmass",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "7ac6fe2773c1c9c0d8e3f443444da1ff1e8ff6923e934afcf52616d833038a2e",
+   "label": "V_UVbMass [b~ b]",
+   "kind": "UVmass",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "715550b2e8da4987a9c7cdc3ccf4276219233c308d918aa71394239e2e2f9b0a",
+   "label": "V_UVtMass [t~ t]",
+   "kind": "UVmass",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "3d445e22e6c76854dd181a2eb7021a0ad6a9ac5fd0004e89c44e47c26dbf98f8",
+   "label": "V_UVHcc [c~ c H]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "733b9f1e6ff23380d92d4072bcc25f5763d9140b14eb29e4f9dca70916895a21",
+   "label": "V_UVHtt [t~ t H]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "e70a5deba3141efbf2b57bb1cc99b9f318220fc73c0c83a74dd2459adae8f00d",
+   "label": "V_UVHbb [b~ b H]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "a94190bd56ad689d8301f87b3f20bf84790f8870ba6f84f920b100f4accc8b79",
+   "label": "V_R2_GGGpGm [G G G+ G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF",
+    "0,0,3": "TF",
+    "0,0,4": "TF",
+    "0,0,5": "TF",
+    "0,0,6": "TF"
+   }
+  },
+  {
+   "digest": "9630bed775b95c4d60eaccb2c750893577a08868e624880803def597255d8278",
+   "label": "V_R2_GGG0G0 [G G G0 G0]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "TF",
+    "0,0,1": "TF",
+    "0,0,2": "TF"
+   }
+  },
+  {
+   "digest": "08e68f97c22e34c6f5b029c141766e0601958015201e7c1536210c025a30bcfe",
+   "label": "V_R2_txbGp [t~ b G+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "05ac33f17dfdd28c76d8758022e55a55d404fc4b65993f1d42381edf20635d02",
+   "label": "V_R2_bxtGp [b~ t G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "0c737257c906b5162c9e2d5472331d9ba08458a8b15936cd40f95782665e903d",
+   "label": "V_R2_1077 [b~ b G0]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "9db086cbb9f0bcf44611bbd3f362145f30fa15eaabc52314a8675a9b65d8d102",
+   "label": "V_R2_1138 [c~ c G0]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "3f2a32e9638cf12ab640eb69ee80f91c623ea795cf0f1671ba51e262edc03f94",
+   "label": "V_R2_1139 [t~ t G0]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "0a8c22f60812b5fe76a1d1fcd4b9e6fbeeafa09a8f5c77966bc9f0a54f149bc8",
+   "label": "V_R2_1084 [c~ s G+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "1bf30766752cb03f59ac3fa7570d60f08c62e7502941cd256bd73a1aaeb572b3",
+   "label": "V_R2_1085 [t~ s G+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "d83c0e02e1fe6379db28e0b2eb7c8ea41054c596f2f1faf322e753c50f9ea74f",
+   "label": "V_R2_1086 [u~ b G+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "3919b342ec1b950f94a058676f2bd98534f646aaa6e828a2b005937884432b35",
+   "label": "V_R2_1087 [c~ b G+]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "1f6dab034992bdd568148f67b24c4ff2a5013552670f16c18a8159f8537f5867",
+   "label": "V_R2_1116 [b~ u G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "c37ba7877893653f59857ecc1e731b3f7420c1112117661858b8c0ff79fbf85e",
+   "label": "V_R2_1117 [d~ c G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "e15ca07863a39fb84e06ec863512035749a9232a5fb1a473ad946986e4eb9140",
+   "label": "V_R2_1118 [s~ c G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "10b3adcffcab94d5aa1df203fe68942a63f3dd98aa75da11a75c46f04351d831",
+   "label": "V_R2_1119 [b~ c G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "d3e558ac5066c21d0dbbd383cfcbfb844fa54e02b7e38c55c5a4c117a69b786c",
+   "label": "V_R2_1120 [d~ t G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "83b6eaad765192affd7fe1d4d3bf77e26e3354f4826043bd54ae30b9a042bb73",
+   "label": "V_R2_1121 [s~ t G-]",
+   "kind": "R2",
+   "reference": "R2 with electroweak legs and QCD loops, Garzelli, Malamos, Pittau arXiv:0910.3130: a gluon on a quark line ~ C_F, a closed quark loop with gluons ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "6b2f125ae27746e0d1ee32ecd63319ffacf0dcd5192073cad35967e1eba4d6fc",
+   "label": "V_UV_txbGp [t~ b G+]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "f9abc90c8a73ca6cb5bf6d89b3207a62633b99f4fb944786f19bad68220f5daa",
+   "label": "V_UV_bxtGp [b~ t G-]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "6ed9fa15e4734cd9232c105e97a1c4898d6d55547317ec170067e0e699f4a3c8",
+   "label": "V_UV_1077 [b~ b G0]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "bbb22b5803e61ba7107d8a9cea0cb2244fa5c1d0ce23adafb253bfe9377ba0f9",
+   "label": "V_UV_1138 [c~ c G0]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "2bfe30f673d0776c5edc8bc3cfcfad83c44cce417b4ce2c6e7cd81c7a7188c60",
+   "label": "V_UV_1139 [t~ t G0]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "8b0d2313e5c3de54dc5fdd768e37ed51cefe766d5651321adf8f3ca4bfdd447d",
+   "label": "V_UV_1084 [c~ s G+]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "6a1f7de8d6fbd03cc9c99d191cb2027c93ab7497f52490c16333e039da2d6a0b",
+   "label": "V_UV_1085 [t~ s G+]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "32036b77be0230071be269f8aa4b3c312e3b4ebebf0485ddfbb0063fd00b9196",
+   "label": "V_UV_1086 [u~ b G+]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "7192bd9d84e66831a298848ca22779b8a9aa91d6e1698935ae2b82c16ff7ad44",
+   "label": "V_UV_1087 [c~ b G+]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "52b4fcba2493050fe1c2e8cb3b1242b3337859cf51db5c932784fb6b30f999a3",
+   "label": "V_UV_1116 [b~ u G-]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "1fa1a085ddfb7f55fb06f4e527ef68c6c79b1d639ffff60084c5493e461c82e6",
+   "label": "V_UV_1117 [d~ c G-]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "1f0e3c1225a5a326422e75c5016a6ec6714622399bdd211468d4023d7ba0421b",
+   "label": "V_UV_1118 [s~ c G-]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "1814e2e58b161b21bc8f5f2e324a53f354c7be652439fffa599ed78fbb89a913",
+   "label": "V_UV_1119 [b~ c G-]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF",
+    "0,1,0": "CF"
+   }
+  },
+  {
+   "digest": "c7359d53979df8a052b37e49bf6e0ac73fd15954034ccaa3dfa8fcc4faeb9827",
+   "label": "V_UV_1120 [d~ t G-]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  },
+  {
+   "digest": "a95245af4e77b517c3d2a7d9d90216570654425eb5c4622cddd5c445ae1f4c27",
+   "label": "V_UV_1121 [s~ t G-]",
+   "kind": "UV",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F",
+   "continuation": "identities",
+   "factors": {
+    "0,0,0": "CF"
+   }
+  }
+ ],
+ "fields": [
+  {
+   "digest": "c991217b7a2bc8fd980cf77869628d076f8d4c65be02506638f3a25a35d39e12",
+   "label": "c QCD group 0",
+   "factor": "CF",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F"
+  },
+  {
+   "digest": "e24ba60b41ea0fefd0d88f24fe4184472c0b1fdd29ffc189a7d1b5e109bec355",
+   "label": "b QCD group 0",
+   "factor": "CF",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F"
+  },
+  {
+   "digest": "bca43c91d46f75fa9edf4ae74625b79502fa46896d0b06bbdce47c34ecda2d1a",
+   "label": "t QCD group 0",
+   "factor": "CF",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F"
+  },
+  {
+   "digest": "cb6443236b80e56742d97c0aa159e9da0ca1f0928c4504e16bfe120cd79f3f01",
+   "label": "G QCD group 0",
+   "factor": "TF",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F"
+  },
+  {
+   "digest": "ce199da25218faef12af87352bdb9a99b86a819af29d75951d603bc66062e05b",
+   "label": "G QCD group 1",
+   "factor": "TF",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F"
+  },
+  {
+   "digest": "be4d987a57675dff3c4d3423c90d0cc5034bf99356655ef2deedca65b93c7bf5",
+   "label": "G QCD group 2",
+   "factor": "TF",
+   "reference": "textbook QCD renormalisation in MadLoop's mass-dependent decoupling scheme (arXiv:1103.0621 \u00a72.4): delta g_s of the gluon loops ~ C_A, of each quark flavour ~ T_F; on-shell delta m, Yukawa and heavy-quark delta Z ~ C_F; heavy-quark gluon delta Z ~ T_F"
+  }
+ ]
+}

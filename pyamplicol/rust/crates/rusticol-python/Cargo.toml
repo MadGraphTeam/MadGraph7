@@ -15,19 +15,32 @@ name = "_rusticol"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = []
+# TIRust, the tensor-integral reduction backend, is a default feature (m-lit
+# PLAN §2.c.2 item 3; USER 2026-11-06 ~13:35); `--no-default-features` builds
+# the extension without it.
+default = ["tir"]
+tir = ["rusticol-loop-python/tir"]
 extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy"]
 on-the-fly-test-support = ["rusticol-core/on-the-fly-test-support"]
+# Link GMP, MPFR and MPC as shared libraries instead of building them into
+# the binary (gmp-mpfr-sys use-system-libs). The build backend enables it
+# for distributable wheels and supplies the libraries
+# (build_backend/arithmetic.py); developer builds keep the static default.
+shared-arithmetic = ["dep:gmp-mpfr-sys", "gmp-mpfr-sys/use-system-libs"]
 
 [dependencies]
 flate2.workspace = true
+gmp-mpfr-sys = { workspace = true, optional = true }
 numpy = { workspace = true, optional = true }
 num-bigint.workspace = true
 num-rational.workspace = true
 num-traits.workspace = true
+# pyAmpliCol's Symbolica library key: every Python entry point holds it.
+pyamplicol = { path = "../pyamplicol" }
 pyo3.workspace = true
 rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-compiled", "f64-symjit", "python-generation-bridge"] }
+rusticol-loop-python = { path = "../../loop-reduction/python", default-features = false }
 serde_json.workspace = true
 sha2.workspace = true
 

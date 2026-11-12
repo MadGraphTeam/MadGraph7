@@ -34,4 +34,3 @@ workspace_mib = 256
 
 [output]
 progress = "auto"
-log_level = "info"

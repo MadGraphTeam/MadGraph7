@@ -42,6 +42,26 @@ FFT and retains unsupported-plan errors. Forced adjoint FFT rejects correlations
 > [Quick Start](quick-start.md). Native consumers need the corresponding language compiler;
 > they do **not** need a Rust compiler unless the consumer itself is Rust.
 
+## Graded (formal 1/N_c) tree output
+
+Artifacts generated with `--color-accuracy strict-lc` or `strict-nlc`, or with
+full colour and `--color-graded`, report their colour sum split by N_c degree.
+In every language the ordinary resolved evaluation exposes the split: the
+contracted colour axis has one component per reported degree, with IDs
+`color:nc-degree:<d>` in decreasing degree, and its components sum to the
+ordinary total. The Rust core (`rusticol-core`, as used by Rust consumers that
+link it directly) adds:
+
+| Method | Result |
+| --- | --- |
+| `NativeRuntime::nc_expansion()` | `Option<NativeNcExpansion>`: accuracy (`strict-lc`, `strict-nlc` or `full`), reference degree P, degrees and their colour IDs |
+| `evaluate_graded_f64(momenta, points, helicity_ids)` | `NativeGradedEvaluation`: `values[point * degrees + d]`, summed over the selected helicities, and `totals()` |
+| `evaluate_graded_with_precision(momenta, points, digits, helicity_ids)` | `NativeDecimalGradedEvaluation` in double-double (`digits = 32`) or arbitrary precision (feature `symbolica-runtime`, compiled artifacts) |
+| `evaluate_correlated_graded_f64(momenta, points, request, helicity_ids)` | `NativeGradedCorrelatedEvaluation`: one correlation, `values[point * degrees + d]` as `[re, im]` |
+
+Each degree is the N_c^degree term of the expansion evaluated at N_c = 3. The
+C ABI and the generated drivers use the ordinary resolved calls.
+
 ## Correlated Born evaluations
 
 The C, C++, Fortran and standalone Rust SDKs expose the same generation-time
@@ -51,13 +71,31 @@ SDK and library, not an older installed release. Declare the operators with
 `Generator.generate(..., correlators=CorrelatorConfig(...))` or
 `generate ... --correlators FILE.json` as in [Born Correlations](../correlators.md).
 
-Native correlated evaluation is **binary64 only**, like the ordinary native
-SDK. It runs in RustiCol without Python or Symbolica. The separate Python
+Native SDK correlated evaluation is **binary64 only**, like the ordinary
+native SDK. It runs in RustiCol without Python or Symbolica. The separate Python
 correlated executor retains Symbolica-backed double-double and arbitrary
 precision; its `precision=16` path also uses that executor.
 
-LC, NLC and full colour are selected at generation for each inserted colour
-matrix, independently of connection order. The underlying amplitudes remain
+A Rust program that links `rusticol-core` with its `symbolica-runtime` feature
+(as for `NativeRuntime::evaluate_with_precision`) can evaluate the same
+requests natively in double-double and arbitrary precision:
+`NativeRuntime::evaluate_correlated_many_with_precision(momenta, point_count,
+decimal_digits, requests, helicity_ids)` takes decimal-string momenta
+(`[point][external particle][E,px,py,pz]`), the decimal precision of
+`evaluate_with_precision` (32 selects double-double, 16 binary64, otherwise
+`ceil(digits * log2(10))` bits) and `NativeDecimalCorrelatedRequest`s whose spin
+vectors are `[real, imaginary]` decimal strings per component. It returns
+request-major `[real, imaginary]` decimal strings, `values[request *
+point_count + point]`. Sources, stages, the exact colour weights, the
+contraction and derived model parameters are evaluated at the working
+precision; the normalization constant and the process-group factor are the
+artifact's, exactly as in `evaluate_with_precision`. On a graded or strict
+artifact (see above) each value sums the kept N_c degrees, as
+`evaluate_correlated_many_f64` does.
+
+LC, NLC, full colour and the strict `strict-lc`/`strict-nlc` are selected at
+generation for each inserted colour matrix, independently of connection
+order. The underlying amplitudes remain
 complete and full-colour: ordinary `evaluate`/`evaluate_resolved` still return
 that underlying process, while the correlated `"born"` request returns the
 Born result at the requested correlated accuracy. Spin defaults affect only
@@ -148,6 +186,18 @@ prepares their input. Build all four with `make -C examples/native correlated`;
 each executable accepts `ARTIFACT PROCESS`. The generated ordinary standalone
 drivers still demonstrate total/resolved evaluation, not correlations.
 
+The one-loop example client
+[`examples/native/loop_client.c`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/native/loop_client.c)
+(`make -C examples/native loop`; `loop_client ARTIFACT PROCESS MOMENTA.txt
+[HELICITY]`) opens a loop artifact through `rusticol_virtual.h`, prints its
+squared-order axes and evaluates it with `reduction = "auto"` and the other
+backend, in the unchecked setting, the declared colour and spin correlations
+and one helicity against the summed call (loop-induced and Born-interfered
+processes alike; the first selected call forms a Born-interfered process's
+selection template and its executor once, so the ratio is taken after it); it
+needs no Symbolica licence. `examples/python/loop_walkthrough.py` writes its
+momenta file and runs it.
+
 ## What the wheel provides
 
 The installed SDK is owned by the wheel:
@@ -156,13 +206,69 @@ The installed SDK is owned by the wheel:
 pyamplicol/_sdk/
   include/rusticol.h
   include/rusticol.hpp
+  include/rusticol_virtual.h
+  include/rusticol_virtual.hpp
+  include/umami.h
+  include/pyamplicol_umami_virtual_v1.h
   rust/rusticol.rs
   fortran/rusticol.f90
-  lib/librusticol_capi.a
+  fortran/rusticol_virtual.f90
+  umami/pyamplicol_umami_virtual_v1.c
+  umami/UMAMI_LICENSE
+  lib/librusticol_capi.a.xz         (distribution wheels; a source build ships lib/librusticol_capi.a)
+  lib/libmpc-pyamplicol.so.3        (Linux distribution wheels)
+  lib/libmpfr-pyamplicol.so.6
+  lib/libgmp-pyamplicol.so.10
   config.py
   metadata.json
   link.json
 ```
+
+The archive holds the tree and one-loop C ABIs (`rusticol_virtual.h`
+included). Distribution wheels link GMP, MPFR and MPC dynamically: the three
+shared libraries ship next to the archive (on macOS `libmpc.3.dylib`,
+`libmpfr.6.dylib` and `libgmp.10.dylib` with `@rpath` install names), and
+`link.json` lists them in link order, so `rusticol-config --libs` names them
+by path with a run path to `lib/` (see
+[GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
+The Python extension's own copies, which the wheel repair bundles next to
+`_rusticol` (`pyamplicol.libs/` on Linux, `pyamplicol.dylibs/` on macOS),
+carry the repair tool's file names (on Linux and macOS possibly with a content
+hash in the name) and are not part of the SDK's link line: link only what
+`rusticol-config --libs` names.
+A source build links them statically and ships only the archive.
+
+### The SDK archive cache
+
+Distribution wheels ship the archive xz-compressed
+(`lib/librusticol_capi.a.xz`, about 29 MB instead of 220 MB unpacked).
+`metadata.json` records the SHA-256 and size of the unpacked archive. The
+first `rusticol-config` query that names the archive (`--library`, `--libs`,
+`--rustflags`, `--cargo-rustflags`, `--json`) unpacks it, in a second or two,
+into a per-user cache:
+
+```text
+$PYAMPLICOL_CACHE_DIR/sdk/<version>-<sha256>/librusticol_capi.a   (if PYAMPLICOL_CACHE_DIR is set)
+~/.cache/pyamplicol/sdk/<version>-<sha256>/librusticol_capi.a      (Linux; $XDG_CACHE_HOME/pyamplicol if set)
+~/Library/Caches/pyamplicol/sdk/<version>-<sha256>/librusticol_capi.a   (macOS)
+```
+
+`PYAMPLICOL_CACHE_DIR` is the same override as for the compiled-model cache.
+Later queries reuse the cached copy after checking its size and SHA-256; a copy
+that fails the check is unpacked again. Each process unpacks into its own
+temporary file in that directory and renames it into place only after the
+check, so concurrent first uses (parallel builds) are safe and never see a
+partial archive. The installation itself is only read, so a read-only
+`site-packages` works; the cache directory must be writable (set
+`PYAMPLICOL_CACHE_DIR` otherwise). Metadata-only queries (`--cflags`,
+`--include-dir`, `--version`, ...) never unpack. Each pyAmpliCol version
+unpacks its own copy (about 50 MB), and nothing deletes the copies of
+earlier versions automatically: `rusticol-config --prune-other-versions`
+removes every `<cache>/sdk/<version>-<sha256>/` directory other than this
+installation's own and prints what it removed (other files under the cache
+root are never touched; another installed version unpacks its copy again on
+its next use). A source build ships the plain archive, which is used in
+place.
 
 `rusticol-config` validates this SDK and emits correctly quoted paths and
 target-specific link arguments:
@@ -596,6 +702,23 @@ one-point OTF warm-up, cache save/restore, and total/resolved f64 methods.
 Resolved Fortran storage is `(color, helicity, point)`, the column-major view
 of the C ABI sequence `(point, helicity, color)`.
 
+### Squared coupling-order partials
+
+Recurrence artifacts split totals by squared coupling order in one pass.
+`rusticol_runtime_coupling_orders_json` describes the axes
+(`rusticol-amplitude-orders-v1`: coupling-order `names`, amplitude
+`components` and `squared` orders with their ordered component `pairs`),
+`rusticol_runtime_squared_order_count` sizes the output and
+`rusticol_runtime_evaluate_orders_f64` fills `totals[point]` (bitwise the
+selected total) and `partials[point][squared order]`. Squared orders, here and
+in every binding, follow the canonical order of Python's `TreeOrderEvaluation`
+(nonzero `(name, power)` pairs over the sorted names, compared
+lexicographically: `QCD2 QED2`, `QCD4`, `QED4`); map columns through `squared`
+rather than assuming a layout shared with other result types. C++ exposes
+`Runtime::coupling_orders_json()` and `Runtime::evaluate_orders()`, Fortran
+`coupling_orders_json` and `evaluate_orders` (`partials(order, point)`), and
+Rust `coupling_orders_json()` and `evaluate_orders_f64()`.
+
 ## Rust 2021
 
 `rusticol.rs` is a dependency-free safe wrapper over C ABI v1. It owns the
@@ -649,6 +772,46 @@ All native APIs use the Symbolica-independent f64 runtime:
 - C++/ASM evaluator artifacts load only on a compatible target and CPU;
 - no native call imports Symbolica or performs a Symbolica license check.
 
+Every binary64 tree call of the C, C++, Fortran and Rust APIs and of the UMAMI
+provider (ordinary values, helicity- and colour-resolved values, global and
+per-point helicity / colour-flow selections, squared-order partials, colour-
+and spin-correlated values, the OTF warm-up, model-parameter updates) needs no
+Symbolica licensing at all: neither a personal licence nor pyAmpliCol's
+package key. Concurrent unlicensed processes with the key disabled
+(`PYAMPLICOL_NATIVE_LIBRARY_KEY=off`), while another process holds the
+restricted Symbolica permit, return the licensed run's values bit for bit
+(`tests/integration/test_native_sdk_tree_licence_free.py`), also with the
+binary64 kinematics improvement switched on (below). On an x86-64 CPU
+without AVX and FMA3, SymJIT tree artifacts are refused with the reason; they
+are never evaluated through Symbolica.
+
+The binary64 kinematics improvement of the tree calls:
+`rusticol_runtime_set_kinematics_improvement(handle, setting)`
+(`"z-shift"`, MadLoop's default and the default here, `"rescaling"`,
+`"projection"` or `"off"`, as the Python API's `kinematics_improvement=`) and
+`rusticol_runtime_set_kinematics_improvement_binary64(handle, on)` (0 by
+default, 1 on; C++ / packaged Rust `set_kinematics_improvement` and
+`set_kinematics_improvement_binary64(bool)`, Fortran the same with a
+`logical`). Every tree call of this ABI is binary64, so nothing changes
+unless the switch is on (the default: bitwise the values without it); with
+it on, every f64 entry (values, selected, resolved, squared-order partials,
+correlated; not the warm-up's own point) first moves each point onto exact
+energy-momentum conservation and the external shells of the binary64 masses
+its wavefunctions use, in binary64, with the selected variant and MadLoop's
+chain, from the caller's point in the caller's leg order. A point that is
+already exactly physical is evaluated unchanged. The record of the most
+recent improved call (a summary line, e.g. `"kinematics-improvement: double
+at precision 16 (z-shift): z-shift 4"`, and every typed warning,
+`kinematics-not-improved` or `kinematics-inexact` with the point index)
+is returned with the warnings by `rusticol_runtime_take_warnings_json` and
+replaced by the next improved call; nothing is recorded while the warnings
+are muted. The Python tree runtime's `kinematics_improvement_binary64=True`
+runs the same native code, so both give the same values bit for bit. No
+Symbolica operation and no licence of any kind is involved. Additive
+symbols; `RUSTICOL_ABI_VERSION` 1 kept. Another value is an invalid argument
+with the policy's refusal text
+([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+
 Python is the only standalone driver that can request Symbolica-backed exact
 precision when the artifact retains an exact evaluator. OTF does not retain
 that path and rejects non-f64 precision. See
@@ -656,6 +819,163 @@ that path and rejects non-f64 precision. See
 The separate Python correlated API is also Symbolica-backed at precision 16;
 the native correlated entry points instead use the independent RustiCol
 binary64 executor described above.
+
+The one-loop SDK (`rusticol_virtual.h`) monitors binary64 stability like the
+Python API's `stability_checks=`: `rusticol_virtual_set_stability_checks`
+(C++ and Fortran `set_stability_checks`, the packaged Rust wrapper's
+`set_stability_checks`) takes a count of default rotations or rotation
+specifications, the reduction-direction check, its rescaled variant and the
+cross-backend check. Without checks (the default, or a rotation count of 0
+with the other checks off) nothing else runs and no estimate is formed. With
+checks, every successful point of a binary64 ordinary evaluation carries its
+estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
+to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the
+Python API's. The SDK reads every binary64 input as its exact value, so its
+counterpart is the Python API given those exact values (for example
+`str(decimal.Decimal(x))`). The Python API reads a float by its shortest
+decimal (`33.6`, not the double's exact value): where the two differ, its
+point lies half an ulp from the SDK's, and values and estimates may differ in
+their last digits. Binary64 evaluation, with or without the monitoring, runs
+the artifact's stored SymJIT applications and needs no Symbolica licence: the
+shipped loop-induced self-test artifact evaluates through the C ABI without
+`SYMBOLICA_LICENSE` while another process holds the restricted Symbolica
+permit. Two binary64 cases evaluate saved Symbolica states natively, under
+pyAmpliCol's own package library key (no user licence either; see
+[Symbolica and licensing](symbolica-and-licensing.md)): a loop whose squared
+masses or invariants lie strictly between 0 and 1e-9 in the model's units
+(or an invariant within 1e-9 of a real squared mass), reduced by the generic
+engine, and an x86-64 CPU without AVX and FMA3, where SymJIT cannot compile.
+Double-double and arbitrary precision run under the package key too.
+
+The SDK serves the helicity selections of the Python API through
+`rusticol_virtual_evaluate_selected` and its wrappers (see the SDK README,
+"Selections"): for a loop-induced process `helicities=` and
+`color_resolution="amplitude-basis"` (an explicitly basis-dependent split; a
+helicity selection is |A(h)|²/avg with the total's average; colour flows are
+refused, full colour); for a Born-interfered process `helicities=` at every
+colour accuracy (ordinary, per point and resolved; at NLC and
+full colour one contracted colour component per row, at leading colour one
+per Born basis element), its leading-colour colour flows refused with a text
+naming the Python API's `color_flows=`. Only the selected rows are evaluated
+(their trees, loop links, reduction lanes and resolved columns), binary64
+bitwise the Python API's values (the one Rust formation of the selection
+both run).
+
+The reduction backend (`rusticol_virtual_set_reduction`; C++ and Fortran
+`set_reduction`, the packaged Rust wrapper's `set_reduction`) is the Python
+API's `reduction=`: `"auto"` takes TIRust for a loop-induced process and
+NinjaRS for a Born-interfered one. The SDKs have no rescue stack; instead,
+under `"auto"` on TIRust, a point TIRust refuses, or fails in the enabled
+binary64 monitoring's own evaluations (for example a rotated evaluation), is
+evaluated again on NinjaRS from its original exact inputs, in the call's own
+arithmetic, after the TIRust call (the per-point fallback). The result's
+`diagnostics_json` records it: `"reduction"` holds the call's `requested`,
+`effective` and `reason` with its `"fallback"` backend and
+`"fallback_points"` count, and `"fallbacks"` maps the id of every point the
+fallback evaluated again to `{"effective", "reason", "guard_estimate"}`
+(`effective` null: the point failed on NinjaRS too, with both backends'
+reasons in `"failures"`, or its guard rejected it; such a point's
+cross-backend check is in `not_run`). In double-double and arbitrary
+precision every point the fallback serves is guarded, as in the Python API:
+its NinjaRS value runs the reduction-direction check (the reversed re-test
+frame, cached masters) in the call's own arithmetic, within the fallback's
+own evaluation of the point, and the relative estimate of the outputs the
+call returns (each sector against its largest Laurent coefficient: the
+summed |A|²; on the resolved, correlated and selected calls each output of
+the call's rows only, against its own magnitude, an output that vanishes
+against the largest output of the point, as in the Python API) is the
+entry's `"guard_estimate"`. A point whose estimate exceeds the guard's
+limit, the call's target (below) never below 1e-5, has status `Failed`, not
+`AccuracyNotEstablished`, with one reason naming the fallback, TIRust's
+failure, the arithmetic, the estimate and the limit; a point within it keeps
+the fallback's value unchanged. On the same exact inputs the guard's
+estimates are the Python API's, bitwise or a few units in the last place
+apart (the SDK forms the colour-metric norms of the inclusive |A|² in
+binary64). In binary64 the fallback's value is
+served unguarded (`"guard_estimate"` null). An explicit `"ninjars"`
+or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
+(NinjaRS refused typed); a library built without TIRust takes NinjaRS under
+`"auto"`, with the reason, and refuses `"tirust"`.
+
+At near-planar 2 -> 3 points of pentagon families whose rank equals their
+propagator count (all-vector quark loops: measured on loop-induced
+g g > z z z, z z g, z g g, a a g, a g g and W+ W- g) NinjaRS's reduction can
+produce finite, badly wrong values in binary64 and in double-double; the
+measured windows and the estimates of each check are in the
+[Python API](python-api.md), "Near-planar NinjaRS hazard". NinjaRS's
+conditioning bound refuses such lanes typed (status Failed). The SDKs'
+binary64 monitoring, bitwise the Python API's binary64 estimate, flags what
+the bound does not refuse; in double-double and arbitrary precision the SDKs
+run no monitoring (`AccuracyNotEstablished`, no estimate). The target accuracy
+`rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
+`set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
+default 1e-5, the relative accuracy of each point's result) sets the
+calibrated acceptance of TIRust's checked method choice and verified last
+resort, as the Python API's
+`reduction_target=`, and in double-double and arbitrary precision the
+fallback guard's threshold, never below 1e-5; a value that is not a finite
+positive number is an
+invalid argument. The kinematics improvement
+`rusticol_virtual_set_kinematics_improvement(handle, setting)` (C++ / Fortran /
+packaged Rust `set_kinematics_improvement`; `"z-shift"`, MadLoop's default and
+the default here, `"rescaling"`, `"projection"` or `"off"`, as the Python
+API's `kinematics_improvement=`) and
+`rusticol_virtual_set_kinematics_improvement_binary64(handle, on)` (0 by
+default, 1 on; `set_kinematics_improvement_binary64`) improve each point of a
+double-double or arbitrary-precision call (a binary64 one only with the
+switch) to exact conservation and on-shell externals in that carrier, from
+the caller's inputs in the caller's leg order, before anything is evaluated
+(the per-point fallback and the stability rotations act on that point);
+`diagnostics_json` records it per point (`"kinematics"`: the Python API's
+`VirtualKinematics` fields); another value is an invalid argument
+([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Additive symbols, ABI version 2 kept. The unchecked setting
+`rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
+`set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,
+the packaged Rust wrapper's `set_reduction_unchecked(bool)`; 1 or 0, default
+0, as the Python API's `reduction_unchecked=`) reduces without the backends'
+own acceptance and refusal checks (TIRust: its gates and method choice as
+method selection, no acceptance pass, plain PV at gate 0 as the last resort;
+NinjaRS: zero stability thresholds, its box mu-expansion's conditioning
+bound active; only points without a finite value or refused by that bound
+fail); `"auto"` keeps its backend and its per-point fallback, which then
+acts only on those points, each served one guarded as above in double-double
+and arbitrary precision; the stability
+monitoring stays its own setting;
+`"reduction"` in `diagnostics_json` records `"unchecked"`, and any other
+value is an invalid argument. It is off by default, a timing and benchmark
+mode with no accuracy certificate (the measured accuracy per process:
+[Python API](python-api.md), "Unchecked reductions"). The fallback, its
+guard, the target and the unchecked setting need no Symbolica licence: a
+binary64 call on NinjaRS or TIRust touches no Symbolica state, and a
+double-double or arbitrary-precision fallback and its guard run under the
+package key as any SDK call in that arithmetic.
+
+The failure policy `rusticol_virtual_set_on_failure(handle, policy)` (C++,
+Fortran and packaged Rust `set_on_failure`; the Python API's `on_failure=`)
+is `"best-effort"` by default (since 1.0.3): every evaluation returns OK
+with every point, and a point that no configured alternative accepts (the
+backend's own acceptance checks, the `"auto"` per-point fallback) is
+evaluated again from its exact inputs without those checks (as
+`rusticol_virtual_set_reduction_unchecked(handle, 1)` gives it) and, where
+that yields a value, returned as a numerical row with status
+`RUSTICOL_VIRTUAL_BEST_EFFORT` (5; Fortran `VIRTUAL_BEST_EFFORT`, Rust
+`PointStatus::BestEffort`), never a success. Rows exist for every point with
+a value (`successful_point_ids`): check the statuses. Its relative
+uncertainty is `rusticol_virtual_result_copy_uncertainties` (C++ / Rust
+`uncertainties`, Fortran `%uncertainties`; NaN for every other point): the
+call's own binary64 stability estimate, else one default rotation and the
+rescaled reduction-direction check of that point, else none (NaN; the record says so). `diagnostics_json` carries
+`"best_effort"` per point id (`refusal`, `uncertainty`, `source`, `detail`,
+`reduction`), `"warnings"` (the Python API's `ResultWarning` records),
+`"on_failure"`, and `"failures"` with one message per reason class plus the
+count of the others. Nothing is printed. `"return"` keeps such points
+`RUSTICOL_VIRTUAL_FAILED` without the extra evaluation; `"raise"` (opt-in
+strict mode) returns `RUSTICOL_VIRTUAL_RUNTIME_ERROR` for a call with such
+a point (C++ throws `VirtualError`, Fortran sets `ierr`, Rust returns an
+error). Points the configured alternatives accept are evaluated exactly as
+before; a call whose points are all accepted only appends the policy's
+empty records to its diagnostics. Additive symbols, ABI version 2 kept.
 
 ## Common setup failures
 
@@ -665,6 +985,7 @@ binary64 executor described above.
 | `rusticol-config: command not found` | Activate the same environment, set `RUSTICOL_CONFIG`, or use the supported checkout-local `.venv` workflow. |
 | `rusticol.h` / `rusticol.hpp` not found | Do not invoke the compiler without the flags emitted by `rusticol-config`. |
 | Empty `RUSTICOL_RUST_SOURCE` or `RUSTICOL_FORTRAN` | Verify `rusticol-config --rust-source` / `--fortran-source` in the active environment. |
+| ``librusticol_loop_sdk.so: undefined reference to `__isoc23_strtol@GLIBC_2.38'`` at link time, or ``version `GLIBC_2.38' not found (required by .../librusticol_loop_sdk.so)`` at run time | The loop SDK's shared release library needs glibc 2.38 or newer: the link fails with a toolchain on an older glibc, and the dynamic loader stops a client built on a newer glibc and run on an older one. Build and run the client on glibc 2.38 or newer, or build the SDK from source on this host (see [Native libraries and glibc](installation.md#native-libraries-and-glibc)). |
 | Target incompatibility | Use a portable JIT artifact (compiled O1/O2, or eager/recurrence/OTF from a prepared JIT O2 pack), or regenerate C++/ASM/O0/O3 on the destination target. |
 
 See [Troubleshooting](troubleshooting.md) for a fuller decision tree.

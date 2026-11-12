@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from fractions import Fraction
 from functools import lru_cache
 
+from .colour_powers import full_minimum_power
 from .contraction_trace import (
     _check_nlc,
     _check_nlc_one_open_line,
@@ -25,7 +26,7 @@ def _pure_adjoint_color_factors(
     left: LCColorSector,
     right: LCColorSector,
     n_ord: int,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> tuple[float, float, float]:
     return (
         _pure_adjoint_color_factor(
@@ -56,7 +57,7 @@ def _pure_adjoint_color_factors_exact(
     left: LCColorSector,
     right: LCColorSector,
     n_ord: int,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> tuple[Fraction, Fraction, Fraction]:
     return (
         _pure_adjoint_color_factor_exact(
@@ -89,7 +90,7 @@ def _pure_adjoint_color_factor(
     n_ord: int,
     *,
     accuracy: str,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> float:
     iper = _coloured_word(left)
     jper = _coloured_word(right)
@@ -129,7 +130,7 @@ def _pure_adjoint_color_factor_exact(
     n_ord: int,
     *,
     accuracy: str,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> Fraction:
     iper = _coloured_word(left)
     jper = _coloured_word(right)
@@ -183,7 +184,7 @@ def _relative_adjoint_permutation(
 def _pure_adjoint_full_factor_by_relative_permutation(
     relative: tuple[int, ...],
     n_ord: int,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> float:
     canonical = tuple(range(len(relative)))
     return _pure_adjoint_full_factor_uncached(
@@ -198,7 +199,7 @@ def _pure_adjoint_full_factor_by_relative_permutation(
 def _pure_adjoint_full_factor_exact_by_relative_permutation(
     relative: tuple[int, ...],
     n_ord: int,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> Fraction:
     canonical = tuple(range(len(relative)))
     return _pure_adjoint_full_factor_exact_uncached(
@@ -213,14 +214,14 @@ def _pure_adjoint_full_factor_uncached(
     iper: tuple[int, ...],
     jper: tuple[int, ...],
     n_ord: int,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> float:
     full_terms = _simplify_trace_terms(
         ((Fraction(1), (tuple(iper), tuple(reversed(jper)))),)
     )
     return _eval_nc_terms(
         full_terms,
-        min_power=max(n_ord - 2 * full_col_acc, 0),
+        min_power=full_minimum_power(n_ord, full_col_acc),
     )
 
 
@@ -228,14 +229,14 @@ def _pure_adjoint_full_factor_exact_uncached(
     iper: tuple[int, ...],
     jper: tuple[int, ...],
     n_ord: int,
-    full_col_acc: int,
+    full_col_acc: int | None,
 ) -> Fraction:
     full_terms = _simplify_trace_terms(
         ((Fraction(1), (tuple(iper), tuple(reversed(jper)))),)
     )
     return _eval_nc_terms_exact(
         full_terms,
-        min_power=max(n_ord - 2 * full_col_acc, 0),
+        min_power=full_minimum_power(n_ord, full_col_acc),
     )
 
 
@@ -536,7 +537,7 @@ def exact_color_contraction_factors(
     left: LCColorSector,
     right: LCColorSector,
     *,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> tuple[Fraction, Fraction, Fraction]:
     """Return exact reference-normalized ``(LC, NLC, full)`` color factors."""
 
@@ -573,7 +574,7 @@ def exact_color_contraction_factor(
     right: LCColorSector,
     *,
     accuracy: str,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> Fraction:
     """Return one exact reference-normalized color factor."""
 

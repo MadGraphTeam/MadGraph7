@@ -14,6 +14,21 @@ build = "build.rs"
 name = "rusticol_capi"
 crate-type = ["staticlib", "rlib"]
 
+[features]
+# TIRust, a default feature forwarded to the loop SDK (m-lit PLAN §2.c.2
+# item 3; USER 2026-11-06 ~13:35); `--no-default-features` builds without it.
+default = ["tir"]
+tir = ["rusticol-loop-sdk/tir"]
+# Link GMP, MPFR and MPC as shared libraries instead of building them into
+# the binary (gmp-mpfr-sys use-system-libs). The build backend enables it
+# for distributable wheels and supplies the libraries
+# (build_backend/arithmetic.py); developer builds keep the static default.
+shared-arithmetic = ["dep:gmp-mpfr-sys", "gmp-mpfr-sys/use-system-libs"]
+
 [dependencies]
+gmp-mpfr-sys = { workspace = true, optional = true }
+# pyAmpliCol's Symbolica library key: every ABI call holds it (`guard`).
+pyamplicol = { path = "../pyamplicol" }
 rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-compiled", "f64-symjit"] }
+rusticol-loop-sdk = { path = "../../loop-reduction/sdk", default-features = false }
 serde_json.workspace = true

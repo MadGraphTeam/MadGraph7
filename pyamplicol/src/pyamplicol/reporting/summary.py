@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         BenchmarkResult,
         BenchmarkStatistics,
         ResolvedEvaluation,
+        TreeOrderEvaluation,
     )
 
 
@@ -78,6 +79,17 @@ def _evaluation_scalar_text(value: Decimal | float | int) -> str:
 
 
 def _evaluation_value_text(value: complex | Decimal | float | int) -> str:
+    """A table value with an explicit sign ("+" on a positive real part, a
+    space on zero), so that the mantissas of a column align."""
+
+    text = _unsigned_value_text(value)
+    if text.startswith("-"):
+        return text
+    real = value.real if isinstance(value, complex) else value
+    return (" " if real == 0 and not text.endswith("j") else "+") + text
+
+
+def _unsigned_value_text(value: complex | Decimal | float | int) -> str:
     if isinstance(value, complex):
         real = _evaluation_scalar_text(value.real)
         if value.imag == 0.0:
@@ -123,6 +135,50 @@ def _total_evaluation_summary(
             )
         )
     return cast(str, table.get_string())
+
+
+def _tree_order_summary(
+    evaluation: TreeOrderEvaluation,
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    from .virtual import _order
+
+    table = prettytable.PrettyTable(("point", "squared coupling order", "partial"))
+    table.title = _paint("Squared coupling-order partials", "CYAN", enabled=color)
+    table.align = "l"
+    table.align["partial"] = "r"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    for point, values in enumerate(evaluation.values):
+        for order, value in zip(evaluation.orders, values, strict=True):
+            table.add_row(
+                (
+                    point,
+                    _paint(_order(order), "MAGENTA", enabled=color),
+                    _paint(_evaluation_value_text(value), "GREEN", enabled=color),
+                )
+            )
+    pairs = prettytable.PrettyTable(("squared coupling order", "amplitude orders"))
+    pairs.title = _paint("Contributing amplitude-order pairs", "CYAN", enabled=color)
+    pairs.align = "l"
+    pairs.hrules = prettytable.HRuleStyle.FRAME
+    for sector in evaluation.sectors:
+        pairs.add_row(
+            (
+                _order(sector.order),
+                "; ".join(
+                    f"({_order(left)}) x ({_order(right)})"
+                    for left, right in sector.pairs
+                ),
+            )
+        )
+    total = _total_evaluation_summary(
+        cast(tuple[object, ...], evaluation.total),
+        prettytable=prettytable,
+        color=color,
+    )
+    return "\n\n".join((str(table.get_string()), str(pairs.get_string()), total))
 
 
 def _resolved_evaluation_summary(
@@ -2416,6 +2472,127 @@ def _process_group_selection_summary(
     return cast(str, table.get_string())
 
 
+def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
+    """Execution rows of one virtual process (design §12.3)."""
+
+    sectors = cast(Sequence[Sequence[object]], loop["sectors"])
+    rows = [
+        (
+            "virtual engine",
+            f"{loop['engine']} ({loop['runtime_capability']}); "
+            f"R2 {loop['r2_strategy']}; scheme {loop['scheme_status']}",
+        ),
+        (
+            "Born orders",
+            ", ".join(
+                str(order) for order in cast(Sequence[object], loop["born_orders"])
+            ),
+        ),
+        (
+            "virtual sectors",
+            "; ".join(
+                f"{sector[0]} <- "
+                + ", ".join(
+                    f"Born {pair[0]} x loop {pair[1]}"
+                    for pair in cast(Sequence[Sequence[object]], sector[1])
+                )
+                for sector in sectors
+            ),
+        ),
+        (
+            "arithmetic",
+            ", ".join(
+                str(value) for value in cast(Sequence[object], loop["arithmetic"])
+            ),
+        ),
+    ]
+    families = loop.get("families")
+    if families is not None:
+        buckets = cast(Sequence[Sequence[object]], loop["buckets"])
+        rows.append(
+            (
+                "families / buckets",
+                f"{families} families in {len(buckets)} (N, R) buckets: "
+                + ", ".join(f"({n}, {r}) x {count}" for n, r, count in buckets),
+            )
+        )
+        degrees = loop.get("color_degrees")
+        if degrees is not None:
+            rows.append(
+                (
+                    "colour degrees",
+                    "; ".join(
+                        f"{sector}: N_c^{degree}"
+                        for sector, degree in cast(Sequence[Sequence[object]], degrees)
+                    ),
+                )
+            )
+        rows.extend(
+            (
+                (
+                    "schedule / contraction",
+                    f"{loop['schedule']}; seeds {loop['color_contraction']}",
+                ),
+                (
+                    "runtime options",
+                    "pole selections "
+                    + ", ".join(
+                        str(item) for item in cast(Sequence[object], loop["poles"])
+                    )
+                    + "; stability checks "
+                    + ", ".join(
+                        str(check)
+                        for check in cast(Sequence[object], loop["stability_checks"])
+                    )
+                    + f"; escalation by the {loop['rescue_policy']}",
+                ),
+                (
+                    "observables",
+                    "colour histories "
+                    + (
+                        ", ".join(
+                            map(str, cast(Sequence[object], loop["color_correlations"]))
+                        )
+                        or "none"
+                    )
+                    + "; spin classes "
+                    + (
+                        ", ".join(
+                            "(" + ",".join(map(str, legs)) + ")"
+                            for legs in cast(
+                                Sequence[Sequence[object]], loop["spin_correlations"]
+                            )
+                        )
+                        or "none"
+                    )
+                    + f"; resolved {'yes' if loop['resolved'] else 'no'}",
+                ),
+                (
+                    "plan v4",
+                    f"sha256 {loop['plan_sha256']}; point inputs "
+                    f"{loop['point_inputs']}",
+                ),
+            )
+        )
+
+    else:
+        rows.append(
+            (
+                "observables",
+                f"correlations {'yes' if loop['correlations'] else 'no'}; "
+                f"resolved {'yes' if loop['resolved'] else 'no'}",
+            )
+        )
+    # The conventions of an electroweak virtual (WP3.2 EWI-7), when recorded.
+    conventions = cast(Sequence[Sequence[object]], loop.get("conventions") or ())
+    if conventions:
+        rows.append(
+            ("conventions", "; ".join(f"{key} {value}" for key, value in conventions))
+        )
+    rows.append(("runtime payload", _byte_size(loop["runtime_bytes"])))
+    return rows
+
+
 def _artifact_inspection_summary(
     plain: Mapping[str, object],
     *,
@@ -2607,6 +2784,11 @@ def _artifact_inspection_summary(
         backend = process.get("prepared_backend")
         mode_text = mode if backend is None else f"{mode} ({backend})"
         add_execution_row((process_id, "mode / backend", mode_text))
+        loop = process.get("loop")
+        if isinstance(loop, Mapping):
+            for row in _loop_inspection_rows(loop):
+                add_execution_row((process_id, *row))
+            continue
         lc_flow_layout = process.get("lc_flow_layout")
         if lc_flow_layout is not None:
             add_execution_row((process_id, "LC flow layout", str(lc_flow_layout)))
@@ -3157,16 +3339,88 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         BenchmarkResult,
         GenerationResult,
         ResolvedEvaluation,
+        TreeOrderEvaluation,
+    )
+    from pyamplicol.api.virtual_results import (
+        ResolvedVirtualEvaluation,
+        VirtualEvaluation,
     )
 
+    if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
+        from .virtual import virtual_evaluation_summary
+
+        return virtual_evaluation_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.api.virtual_results import VirtualOrderEvaluation
+
+    if isinstance(value, VirtualOrderEvaluation):
+        from .virtual import virtual_order_summary
+
+        return virtual_order_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.loop_profile import LoopProfileReport
+
+    if isinstance(value, LoopProfileReport):
+        from .loop_profile import loop_profile_summary
+
+        return loop_profile_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.benchmarking import VirtualProfileResult
+
+    if isinstance(value, VirtualProfileResult):
+        from .virtual import virtual_profile_summary
+
+        return virtual_profile_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.loops.v2.checks import CheckReport
+
+    if isinstance(value, CheckReport):
+        from .checks import check_report_summary
+
+        return check_report_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
+
+    if isinstance(value, Mapping) and value:
+        from pyamplicol.correlators import CorrelatedValue
+
+        has_correlated_value = any(
+            isinstance(result, VirtualEvaluation)
+            or (
+                isinstance(result, tuple)
+                and any(isinstance(item, CorrelatedValue) for item in result)
+            )
+            for result in value.values()
+        )
+        if has_correlated_value and all(
+            isinstance(label, str)
+            and (
+                (isinstance(result, VirtualEvaluation) and result.correlated)
+                or (
+                    isinstance(result, tuple)
+                    and all(isinstance(item, CorrelatedValue) for item in result)
+                )
+            )
+            for label, result in value.items()
+        ):
+            return "\n\n".join(
+                f"{_paint(f'Correlated request: {label}', 'CYAN', enabled=color)}\n"
+                f"{render_summary(result, color=color)}"
+                for label, result in value.items()
+            )
+
     if isinstance(value, GenerationResult):
-        return _generation_summary(value, prettytable=prettytable, color=color)
+        return _generation_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
     if isinstance(value, ResolvedEvaluation):
         return _resolved_evaluation_summary(
             value,
             prettytable=prettytable,
             color=color,
         )
+    if isinstance(value, TreeOrderEvaluation):
+        return _tree_order_summary(value, prettytable=prettytable, color=color)
     if isinstance(value, tuple) and all(_is_evaluation_value(item) for item in value):
         return _total_evaluation_summary(
             cast(tuple[object, ...], value),
@@ -3185,6 +3439,26 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             prettytable=prettytable,
             color=color,
         )
+    if isinstance(plain, Mapping) and isinstance(plain.get("virtual"), Mapping):
+        details = cast(Mapping[str, object], plain["virtual"])
+        sections = [
+            _mapping_summary(value, plain, prettytable=prettytable, color=color)
+        ]
+        histories = details.get("color_correlations")
+        if (
+            isinstance(histories, Sequence)
+            and not isinstance(histories, (str, bytes))
+            and histories
+        ):
+            sections.append(
+                _record_sequence_summary(
+                    histories,
+                    prettytable=prettytable,
+                    color=color,
+                    title="Virtual Colour Histories (directed interference)",
+                )
+            )
+        return "\n\n".join(sections)
     if isinstance(plain, Mapping) and isinstance(plain.get("process_group"), Mapping):
         # `inspect --process MEMBER --full-physics` of a grouped process
         physics = {key: entry for key, entry in plain.items() if key != "process_group"}
@@ -3228,3 +3502,13 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
 
 
 __all__ = ["render_summary"]
+
+
+def _captured_line(value: Any, color: bool) -> str:
+    """One dim line naming a result's captured warnings (``warnings``,
+    m-lit ux-besteffort), or nothing."""
+
+    from pyamplicol.api.result_warnings import summary_line
+
+    line = summary_line(tuple(getattr(value, "warnings", ())))
+    return "" if line is None else "\n" + _paint(line, "LIGHTBLACK_EX", enabled=color)

@@ -6,12 +6,39 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from decimal import DecimalException
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
+if TYPE_CHECKING:
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.models.loop_declaration import (
+        LoopModelDeclaration,
+        LoopSchemeDeclaration,
+    )
+    from pyamplicol.models.loop_preparation import LoopPreparation
+
+from .._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
 from .errors import ConfigurationError
+
+# The removed engine switch, refused by name wherever it is set (TOML,
+# mapping, overrides, the CLI: ``config.resolver.REMOVED_FIELDS``, and
+# ``LoopConfig(engine=...)``).
+LOOP_ENGINE_REMOVED = (
+    "configuration field 'loop.engine' was removed: "
+    f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
+)
+# The precision-rescue policy left with the legacy engine (refused by name in
+# EvaluationStabilityConfig, which keeps only its defaults).
+EVALUATION_STABILITY_REMOVED = (
+    "evaluation.stability (the precision-rescue policy: higher carriers, "
+    "tolerances, verify_successful) was removed with the legacy one-loop "
+    "engine; v2 loop runtimes return stability estimates "
+    "(evaluation.stability_checks) and leave precision escalation to the "
+    "caller; delete the setting"
+)
 
 
 class Action(StrEnum):
@@ -23,6 +50,18 @@ class Action(StrEnum):
     MODEL_COMPILE = "model-compile"
     MODEL_PROCESSES = "model-processes"
     GROUP_PROCESSES = "group-processes"
+    CHECK = "check"
+
+
+class CheckPrecision(StrEnum):
+    """The carriers of ``pyamplicol check``: binary64 first, double-double
+    where binary64 fails, is refused or is out of scope, and arbitrary
+    precision for a row double-double leaves undecided (``auto``;
+    ``CheckConfig.arbitrary_digits``), or one carrier alone."""
+
+    AUTO = "auto"
+    DOUBLE = "double"
+    DOUBLE_DOUBLE = "double-double"
 
 
 class CouplingOrderPolicy(StrEnum):
@@ -35,10 +74,44 @@ class ProcessGroupAnalysis(StrEnum):
     NUMERICAL = "numerical"
 
 
+class LoopInducedPolicy(StrEnum):
+    """How a one-loop request serves processes without a Born amplitude
+    within their coupling-order limits (loop-induced, |A_loop|^2; m-lit
+    PLAN Q2 (b)): ``auto`` (the default) serves a request none of whose
+    concrete processes has a Born loop-induced and skips the Born-less
+    members of a mixed multiparticle request with a typed record; ``skip``
+    serves nothing loop-induced (a purely loop-induced request is refused);
+    ``only`` serves only the members without a Born (the others are skipped
+    with a typed record); ``include`` serves both kinds as separate
+    contributions in one artifact, never summed (each concrete process
+    its own: Born members Born-interfered, the others loop-induced)."""
+
+    AUTO = "auto"
+    SKIP = "skip"
+    ONLY = "only"
+    INCLUDE = "include"
+
+
 class ColorAccuracy(StrEnum):
+    # Trees: the inherited (non-strict) colour approximation, the colour matrix
+    # truncated in N_c while amplitude coefficients, including the 1/3 of
+    # U(1)-subtraction pieces, stay at N_c = 3 (``docs/correlator-conventions.md``,
+    # "Colour accuracy"). One loop: the loop engine's formal-N_c projection
+    # (U(1)-subtraction pieces graded, each squared coupling-order sector
+    # truncated at its own leading degree; ``loops.v2.colour``, "Projection").
     LC = "lc"
     NLC = "nlc"
     FULL = "full"
+    # Trees only: the formal 1/N_c expansion of the squared amplitude, every
+    # U(1)-subtraction piece graded (degree -1); LC keeps the reference degree
+    # P = n_g + n_qqbar of the process, NLC the degrees P, P-1 and P-2
+    # (``color.nc_expansion``). One-loop requests refuse them.
+    STRICT_LC = "strict-lc"
+    STRICT_NLC = "strict-nlc"
+
+    @property
+    def strict(self) -> bool:
+        return self in (ColorAccuracy.STRICT_LC, ColorAccuracy.STRICT_NLC)
 
 
 class ColorContraction(StrEnum):
@@ -76,10 +149,144 @@ class EvaluatorBackend(StrEnum):
 
 
 class EvaluatorExecutionMode(StrEnum):
+    AUTO = "auto"
     COMPILED = "compiled"
     EAGER = "eager"
     RECURRENCE = "recurrence"
     ON_THE_FLY = "on-the-fly"
+    LOOP_RECURRENCE = "loop_recurrence"
+
+
+class R2Strategy(StrEnum):
+    AUTO = "auto"
+    MODEL = "model"
+    DIRECT = "direct"
+
+
+class ReductionBackend(StrEnum):
+    """The reduction backend of a v2 one-loop evaluation (m-lit PLAN §2.b.4,
+    RULED Q17 / Q18, F3): ``auto`` (the default) takes the per-type default,
+    TIRust (tensor-integral reduction) for a loop-induced process and
+    NinjaRS (integrand reduction) for a Born-interfered one, and falls back
+    to NinjaRS with a recorded reason where TIRust cannot serve the call; on
+    TIRust a point it refuses or fails is evaluated again on NinjaRS (the
+    per-point fallback, recorded per point); ``ninjars`` and ``tirust``
+    request one backend, refused when it cannot serve the call, without a
+    fallback. ``loop.reduction`` is the generation default recorded in
+    the artifact (artifacts are backend-independent), ``evaluation.
+    reduction`` the runtime override; the requested and effective backends
+    and the reason are in every result's lane diagnostics."""
+
+    AUTO = "auto"
+    NINJARS = "ninjars"
+    TIRUST = "tirust"
+
+
+def reduction_request(value: object) -> Literal["auto", "ninjars", "tirust"]:
+    """The value of a reduction-backend request (``ReductionBackend`` or its
+    value): the one validator of every surface that takes one (``Runtime.
+    load`` / ``evaluate(reduction=)``, the slice request, the artifact
+    runtime and its result records); the configuration keys validate the
+    same enum (``loop.reduction``, ``evaluation.reduction``)."""
+
+    try:
+        if not isinstance(value, str):
+            raise TypeError
+        found = ReductionBackend(value)
+    except (TypeError, ValueError):
+        choices = ", ".join(repr(item.value) for item in ReductionBackend)
+        raise ValueError(
+            f"unknown reduction backend {value!r}; one of {choices}"
+        ) from None
+    return found.value
+
+
+def reduction_target(value: object) -> float:
+    """The value of a target accuracy (``evaluation.reduction_target``, the
+    CLI's ``--reduction-target``, ``Runtime.load`` / ``evaluate(...,
+    reduction_target=)``; m-lit F3 (a)): the relative accuracy of each
+    point's result. The validator of every Python surface: a Python number
+    (a bool or another type is refused), checked by the native policy's one
+    rule (``reduction_policy::target``: finite and positive, the SDKs'
+    validator, reached through ``tir_acceptance``, which validates before it
+    maps), with its one refusal text (``reduction_policy::TARGET_REFUSAL``).
+    Validating a set target loads the native extension (the one that
+    evaluates it); an unset one does not."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    native = load_loop_native()
+    if not isinstance(value, bool) and isinstance(value, (int, float)):
+        try:
+            target = float(value)
+        except OverflowError:
+            target = math.inf
+        native.tir_acceptance(target)
+        return target
+    from pyamplicol.loops.v2.reduction import policy
+
+    raise ValueError(policy()["target"]["refusal"])
+
+
+# The failure policies of a virtual evaluation (``evaluate(..., on_failure=)``,
+# ``evaluation.on_failure``, the CLI's ``--on-failure``, the native SDKs'
+# ``set_on_failure``; m-lit ux-besteffort, USER-NOTES 2026-11-11 items 8-9):
+# "best-effort" (the default since 1.0.3) never raises for a point: a point
+# no configured alternative accepts is returned with its best available value
+# where one exists (lane status "best-effort": the unchecked reduction's
+# value, the refusal and its uncertainty), else as a failed lane, and the
+# result's ``warnings`` metadata says so (nothing is printed or logged);
+# "return" returns such points as failed lanes without computing a
+# best-effort value (the cheapest mode); "raise" raises at the first point
+# without an accepted value (the default before 1.0.3). ``None`` in a
+# config or a call means the default.
+ON_FAILURE = ("best-effort", "return", "raise")
+DEFAULT_ON_FAILURE = "best-effort"
+
+
+def reduction_unchecked(value: object) -> bool:
+    """The value of the unchecked reduction setting (``evaluation.
+    reduction_unchecked``, the CLI's ``--reduction-unchecked``,
+    ``Runtime.load`` / ``evaluate(..., reduction_unchecked=)``; m-lit
+    lit-unchecked): True reduces without the reduction backends' own
+    acceptance and refusal checks, False (the default) with them. The
+    validator of every Python surface: a Python bool (any other type, 0 and
+    1 included, is refused) with the native policy's one refusal text
+    (``reduction_policy::UNCHECKED_REFUSAL``; the SDKs' C ABI takes 1 or 0,
+    ``reduction_policy::unchecked``). Validating a bool loads nothing."""
+
+    if isinstance(value, bool):
+        return value
+    from pyamplicol.loops.v2.reduction import policy
+
+    raise ValueError(policy()["unchecked"]["refusal"])
+
+
+class PoleSelection(StrEnum):
+    """Which Laurent poles a one-loop evaluation computes (design §12.4).
+
+    * ``all`` (the default): the poles of the renormalised virtual, with one
+      regulator (eps_UV = eps_IR);
+    * ``none``: the finite part only; the poles are absent and never
+      computed;
+    * ``uv``: the UV poles of the bare (unrenormalised) one-loop amplitude
+      interfered with the Born (the reduction's UV poles; the double pole is
+      zero); the counterterms' UV poles are accessible separately
+      (``VirtualEvaluation.pole_parts``), so that bare + counterterm UV poles
+      can be checked to cancel;
+    * ``ir``: the IR poles of the renormalised virtual (Catani's operator).
+
+    Every pole is split by origin, P/eps = P_UV/eps_UV + P_IR/eps_IR; the
+    double pole is infrared (for a model with pole regulators, epsUV and
+    epsIR, the counterterms' UV parts are their values at epsIR = 0). The
+    finite part is the renormalised virtual's, the same under every
+    selection.
+    """
+
+    ALL = "all"
+    NONE = "none"
+    UV = "uv"
+    IR = "ir"
 
 
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
@@ -275,6 +482,11 @@ class ModelConfig:
     cache_dir: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
+    # The persistent cache of one-loop request-model preparations
+    # (``loops.preparation_cache``), in the model cache's
+    # ``loop-preparations`` subdirectory; off with ``cache`` off too, or
+    # with $PYAMPLICOL_LOOP_PREPARATION_CACHE false.
+    loop_preparation_cache: bool = field(default=True, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, str) or not self.source:
@@ -285,6 +497,8 @@ class ModelConfig:
             raise ConfigurationError("model.simplify must be a boolean")
         if not isinstance(self.cache, bool):
             raise ConfigurationError("model.cache must be a boolean")
+        if not isinstance(self.loop_preparation_cache, bool):
+            raise ConfigurationError("model.loop_preparation_cache must be a boolean")
         object.__setattr__(self, "cache_dir", _path(self.cache_dir, "model.cache_dir"))
 
 
@@ -330,6 +544,20 @@ class ProcessConfig:
     max_coupling_orders: Mapping[str, int] = field(
         default_factory=dict,
         metadata=_setting("map_int", dynamic_kind="int"),
+    )
+    loop_coupling_orders: tuple[str, ...] | None = field(
+        default=None, metadata=_setting("list_str", nullable=True)
+    )
+    loop_induced: LoopInducedPolicy = field(
+        default=LoopInducedPolicy.AUTO,
+        metadata=_setting("str", choices=tuple(LoopInducedPolicy)),
+    )
+    # The squared-coupling-order sectors a one-loop request serves (MG5_aMC's
+    # squared-order constraints, ``QCD^2<=4``; ``processes.mg5_syntax``):
+    # empty serves every sector; otherwise a sector is reported and summed
+    # only when its powers pass every constraint. Stored canonical and sorted.
+    squared_coupling_orders: tuple[str, ...] = field(
+        default=(), metadata=_setting("list_str")
     )
     max_color_sectors: int | None = field(
         default=None, metadata=_setting("int", nullable=True)
@@ -402,6 +630,36 @@ class ProcessConfig:
             "max_coupling_orders",
             _integer_mapping(self.max_coupling_orders, "process.max_coupling_orders"),
         )
+        if self.loop_coupling_orders is not None:
+            corrections = _tuple_of_strings(
+                self.loop_coupling_orders, "process.loop_coupling_orders"
+            )
+            if not corrections or any(not name.strip() for name in corrections):
+                raise ConfigurationError(
+                    "process.loop_coupling_orders must be a nonempty list of "
+                    "correction names; omit it for tree generation"
+                )
+            object.__setattr__(
+                self, "loop_coupling_orders", tuple(sorted(set(corrections)))
+            )
+        object.__setattr__(
+            self,
+            "loop_induced",
+            _enum(self.loop_induced, LoopInducedPolicy, "process.loop_induced"),
+        )
+        from pyamplicol.processes.mg5_syntax import canonical_squared_orders
+
+        try:
+            squared = canonical_squared_orders(
+                _tuple_of_strings(
+                    self.squared_coupling_orders, "process.squared_coupling_orders"
+                )
+            )
+        except ValueError as exc:
+            if isinstance(exc, ConfigurationError):
+                raise
+            raise ConfigurationError(f"process.squared_coupling_orders: {exc}") from exc
+        object.__setattr__(self, "squared_coupling_orders", squared)
         object.__setattr__(
             self,
             "max_color_sectors",
@@ -451,9 +709,13 @@ class ProcessConfig:
 
 @dataclass(frozen=True, slots=True)
 class ColorConfig:
-    accuracy: ColorAccuracy = field(
-        default=ColorAccuracy.LC,
-        metadata=_setting("str", choices=tuple(ColorAccuracy)),
+    # None: the request kind's default, resolved by ``RunConfig`` (leading
+    # colour for tree requests, full colour for one-loop requests: MadLoop's
+    # accuracy, user ruling 2026-10-28 Q1). A ``RunConfig`` always holds a
+    # resolved accuracy.
+    accuracy: ColorAccuracy | None = field(
+        default=None,
+        metadata=_setting("str", nullable=True, choices=tuple(ColorAccuracy)),
     )
     contraction: ColorContraction = field(
         default=ColorContraction.AUTO,
@@ -467,11 +729,38 @@ class ColorConfig:
         default=ColorFFTBasis.ADJOINT,
         metadata=_setting("str", choices=tuple(ColorFFTBasis)),
     )
+    # Report the squared tree split by power of N_c (one contracted colour
+    # component per N_c degree of the formal expansion). Always on for
+    # ``strict-lc``/``strict-nlc``; ``true`` with ``full`` gives every degree
+    # (the graded full colour). The inherited tree ``lc``/``nlc`` have no
+    # degrees. Tree requests only.
+    graded: bool = field(default=False, metadata=_setting("bool"))
+    # Tuning (both choices exact): the automatic tree basis prefers the
+    # adjoint (DDM) basis up to this many adjoint labels and the trace basis
+    # above, where the dense DDM metric grows as (n-2)!.
+    adjoint_dense_max_gluons: int = field(default=12, metadata=_setting("int"))
+    # Tuning (results unchanged): the auxiliary all-colour lane for
+    # runtime helicity selection is built up to this many colour sectors
+    # (above, topology replay runs once per sector); null always builds it.
+    fused_selector_max_sectors: int | None = field(
+        default=128, metadata=_setting("int", nullable=True)
+    )
+
+    @property
+    def nc_graded(self) -> bool:
+        """Whether the artifact reports its value per N_c degree."""
+
+        return bool(self.graded) or (
+            self.accuracy is not None and ColorAccuracy(self.accuracy).strict
+        )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "accuracy", _enum(self.accuracy, ColorAccuracy, "color.accuracy")
-        )
+        if self.accuracy is not None:
+            object.__setattr__(
+                self,
+                "accuracy",
+                _enum(self.accuracy, ColorAccuracy, "color.accuracy"),
+            )
         object.__setattr__(
             self,
             "contraction",
@@ -491,6 +780,41 @@ class ColorConfig:
             "lc_flow_layout",
             _enum(self.lc_flow_layout, LCFlowLayout, "color.lc_flow_layout"),
         )
+        if not isinstance(self.graded, bool):
+            raise ConfigurationError("color.graded must be a boolean")
+        object.__setattr__(
+            self,
+            "adjoint_dense_max_gluons",
+            _integer(
+                self.adjoint_dense_max_gluons,
+                "color.adjoint_dense_max_gluons",
+                minimum=0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "fused_selector_max_sectors",
+            _optional_integer(
+                self.fused_selector_max_sectors,
+                "color.fused_selector_max_sectors",
+                minimum=0,
+            ),
+        )
+        if self.accuracy is None:
+            # Validated once ``RunConfig`` resolves the request kind's default.
+            return
+        if self.graded and self.accuracy in (ColorAccuracy.LC, ColorAccuracy.NLC):
+            raise ConfigurationError(
+                "color.graded requires color.accuracy='strict-lc', 'strict-nlc' "
+                f"or 'full': the tree {str(self.accuracy)!r} is the inherited "
+                "colour approximation, not an expansion in N_c (graded output "
+                "is implemented for tree requests)"
+            )
+        if self.nc_graded and self.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
+            raise ConfigurationError(
+                "strict and graded colour use the direct colour contraction; "
+                "color.contraction='symmetric-group-fft' is not supported"
+            )
         if (
             self.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
             and self.accuracy is not ColorAccuracy.LC
@@ -516,8 +840,23 @@ class GenerationValidationConfig:
     relative_tolerance: float = field(default=1e-12, metadata=_setting("float"))
     absolute_tolerance: float = field(default=1e-300, metadata=_setting("float"))
     post_build_validation: bool = field(default=False, metadata=_setting("bool"))
+    # Post-build validation of compiled artifacts checks every resolved
+    # (sample, helicity, colour) component up to this count and one
+    # helicity and/or flow slice above it; null checks every component.
+    max_resolved_components: int | None = field(
+        default=1_000_000, metadata=_setting("int", nullable=True)
+    )
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "max_resolved_components",
+            _optional_integer(
+                self.max_resolved_components,
+                "generation.validation.max_resolved_components",
+                minimum=1,
+            ),
+        )
         for name in (
             "enabled",
             "post_build_validation",
@@ -659,6 +998,36 @@ class GenerationConfig:
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
     # store per-process payloads and schedules in one payloads.pacbin
     pack_payloads: bool = field(default=False, metadata=_setting("bool"))
+    # Particles (model names; a particle vetoes its antiparticle too) removed
+    # from every tree vertex of one-loop generation
+    # (Born, blocks, loop vertices and propagators, counterterm program);
+    # counterterm terms whose loop content holds one are dropped.
+    particle_veto: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    # [U2]: lower the Levi-Civita counterterm cells that particle_veto keeps
+    # from cancelling but that cancel without it (an anomalous veto, e.g. one
+    # breaking a quark doublet); refused by default. Recorded in the artifact.
+    allow_anomalous_veto: bool = field(default=False, metadata=_setting("bool"))
+    # m-lit Q12 (DECISIONS 2026-11-08 22:34 (3)): run the generation-time
+    # finiteness, Ward and Goldstone probes of loop-induced processes
+    # (binary64, double-double where a binary64 probe fails or is refused);
+    # off by default: the artifact and its values do not depend on them.
+    loop_induced_probes: bool = field(default=False, metadata=_setting("bool"))
+    # m-lit Q12: store a loop-induced process whose generation-time
+    # finiteness or Ward probe failed (refused by default); the failure is
+    # recorded in the artifact. Acts only when loop_induced_probes is on.
+    allow_failed_probes: bool = field(default=False, metadata=_setting("bool"))
+    # m-lit Q10 (LIT-R2): the stated failure probability of the exact
+    # helicity-zero filter of loop-induced processes (that it drops a row
+    # that is not an integrand zero); 0 drops nothing and skips the filter.
+    helicity_filter_failure_probability: float = field(
+        default=1e-12, metadata=_setting("float")
+    )
+    # M-LIT lit-fold (USER 2026-11-08 ~22:39, F1): fold the loop chains of a
+    # loop-induced process whose numerators the exact test certifies
+    # proportional (one dressing per group; a group that cancels exactly is
+    # an exact zero), at helicity_filter_failure_probability (0 folds
+    # nothing); on by default; off writes the unfolded plans.
+    loop_induced_folding: bool = field(default=True, metadata=_setting("bool"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -679,6 +1048,40 @@ class GenerationConfig:
             raise ConfigurationError("generation.emit_api_bundle must be a boolean")
         if not isinstance(self.pack_payloads, bool):
             raise ConfigurationError("generation.pack_payloads must be a boolean")
+        object.__setattr__(
+            self,
+            "particle_veto",
+            _tuple_of_strings(self.particle_veto, "generation.particle_veto"),
+        )
+        if not isinstance(self.allow_anomalous_veto, bool):
+            raise ConfigurationError(
+                "generation.allow_anomalous_veto must be a boolean"
+            )
+        if not isinstance(self.loop_induced_probes, bool):
+            # The card's message too (``resolver``): one message per route.
+            raise ConfigurationError(
+                "generation.loop_induced_probes must be true or false"
+            )
+        if not isinstance(self.allow_failed_probes, bool):
+            raise ConfigurationError("generation.allow_failed_probes must be a boolean")
+        if not isinstance(self.loop_induced_folding, bool):
+            raise ConfigurationError(
+                "generation.loop_induced_folding must be true or false"
+            )
+        failure = _finite_float(
+            self.helicity_filter_failure_probability,
+            "generation.helicity_filter_failure_probability",
+            minimum=0.0,
+        )
+        if failure >= 1:
+            raise ConfigurationError(
+                "generation.helicity_filter_failure_probability must be below 1"
+            )
+        object.__setattr__(self, "helicity_filter_failure_probability", failure)
+        if self.allow_anomalous_veto and not self.particle_veto:
+            raise ConfigurationError(
+                "generation.allow_anomalous_veto requires generation.particle_veto"
+            )
         if not isinstance(self.validation, GenerationValidationConfig):
             raise ConfigurationError(
                 "generation.validation must be a GenerationValidationConfig"
@@ -870,7 +1273,7 @@ class EvaluatorConfig:
         metadata=_setting("str", choices=tuple(EvaluatorBackend)),
     )
     execution_mode: EvaluatorExecutionMode = field(
-        default=EvaluatorExecutionMode.RECURRENCE,
+        default=EvaluatorExecutionMode.AUTO,
         metadata=_setting("str", choices=tuple(EvaluatorExecutionMode)),
     )
     batch_size: int = field(default=128, metadata=_setting("int"))
@@ -943,19 +1346,198 @@ class EvaluatorConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationStabilityConfig:
+    """The removed precision-rescue policy: only its defaults are accepted.
+
+    The rescue (``higher`` carriers, tolerances, ``verify_successful``) was
+    served only by the removed legacy one-loop engine; v2 loop runtimes return
+    stability estimates (``evaluation.stability_checks``) and leave precision
+    escalation to the caller. The section stays so that stored configurations
+    with its defaults still resolve; any other value is refused with the reason.
+    """
+
+    higher: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    relative_tolerance: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    absolute_tolerance: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    verify_successful: bool = field(default=False, metadata=_setting("bool"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "higher",
+            _tuple_of_strings(self.higher, "evaluation.stability.higher"),
+        )
+        if (
+            self.higher
+            or self.relative_tolerance is not None
+            or self.absolute_tolerance is not None
+            or self.verify_successful is not False
+        ):
+            raise ConfigurationError(EVALUATION_STABILITY_REMOVED)
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationStabilityChecksConfig:
+    """Stability checks of v2 virtual evaluations (requirements addendum C)."""
+
+    rotations: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    rotation_count: int = field(default=0, metadata=_setting("int"))
+    reduction_direction: bool = field(default=False, metadata=_setting("bool"))
+    # The reduction-direction check at rescaled inputs (master integrals
+    # evaluated again); requires reduction_direction.
+    rescaled: bool = field(default=False, metadata=_setting("bool"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "rotations",
+            _tuple_of_strings(self.rotations, "evaluation.stability_checks.rotations"),
+        )
+        _integer(
+            self.rotation_count, "evaluation.stability_checks.rotation_count", minimum=0
+        )
+        for name in ("reduction_direction", "rescaled"):
+            if type(getattr(self, name)) is not bool:
+                raise ConfigurationError(
+                    f"evaluation.stability_checks.{name} must be a boolean"
+                )
+        self.to_checks()
+
+    def to_checks(self) -> VirtualStabilityChecks | None:
+        """The requested checks, or None when none is requested."""
+        from pyamplicol.api.virtual_results import VirtualStabilityChecks
+
+        if self.rotations and self.rotation_count:
+            raise ConfigurationError(
+                "evaluation.stability_checks takes rotations or rotation_count"
+            )
+        try:
+            checks = VirtualStabilityChecks(
+                self.rotations or self.rotation_count,
+                self.reduction_direction,
+                self.rescaled,
+            )
+        except (TypeError, ValueError, ZeroDivisionError) as error:
+            raise ConfigurationError(f"evaluation.stability_checks: {error}") from error
+        return checks if checks.enabled else None
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationPhaseSpaceConfig:
+    """The flat phase-space points ``evaluate`` and ``profile`` draw when no
+    ``evaluation.momenta`` file is given (``cli.flat_points``): ``points``
+    of them from ``seed`` (point i from seed + i), RAMBO-flat in the
+    centre-of-mass frame of a 2 -> n scattering at ``sqrt_s`` (None: the
+    artifact's own validation point's energy) or in the rest frame of a
+    decaying particle (1 -> n, at its mass), with the external masses of
+    the artifact's validation point."""
+
+    points: int = field(default=2, metadata=_setting("int"))
+    seed: int = field(default=1, metadata=_setting("int"))
+    sqrt_s: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "points", _integer(self.points, "evaluation.phase_space.points")
+        )
+        object.__setattr__(
+            self,
+            "seed",
+            _integer(self.seed, "evaluation.phase_space.seed", minimum=0),
+        )
+        if self.sqrt_s is not None:
+            object.__setattr__(
+                self,
+                "sqrt_s",
+                _finite_float(
+                    self.sqrt_s,
+                    "evaluation.phase_space.sqrt_s",
+                    minimum=0.0,
+                    exclusive=True,
+                ),
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationConfig:
     artifact: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
     process: str | None = field(default=None, metadata=_setting("str", nullable=True))
     precision: int = field(default=16, metadata=_setting("int"))
+    arithmetic: Literal["double", "double-double", "arbitrary"] | None = field(
+        default=None,
+        metadata=_setting(
+            "str", nullable=True, choices=("double", "double-double", "arbitrary")
+        ),
+    )
+    mu_r2: str | None = field(default=None, metadata=_setting("str", nullable=True))
+    mu_r2_file: Path | None = field(
+        default=None, metadata=_setting("path", nullable=True)
+    )
     resolved: bool = field(default=False, metadata=_setting("bool"))
+    orders: bool = field(default=False, metadata=_setting("bool"))
+    correlated_requests: Path | None = field(
+        default=None, metadata=_setting("path", nullable=True)
+    )
+    on_failure: Literal["best-effort", "return", "raise"] | None = field(
+        default=None, metadata=_setting("str", nullable=True, choices=ON_FAILURE)
+    )
+    stability: EvaluationStabilityConfig = field(
+        default_factory=EvaluationStabilityConfig, metadata=_section()
+    )
+    poles: PoleSelection = field(
+        default=PoleSelection.ALL,
+        metadata=_setting("str", choices=tuple(PoleSelection)),
+    )
+    # The runtime override of the artifact's reduction backend (None: the
+    # artifact's generation default; ``ReductionBackend``).
+    reduction: ReductionBackend | None = field(
+        default=None,
+        metadata=_setting("str", nullable=True, choices=tuple(ReductionBackend)),
+    )
+    # The target accuracy of TIRust's reductions (``reduction_target``; None:
+    # the default, 1e-5 relative per point).
+    reduction_target: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
+    # The unchecked reduction setting (``reduction_unchecked``; m-lit
+    # lit-unchecked): true drops the reduction backends' own acceptance and
+    # refusal checks; false, the default, keeps them.
+    reduction_unchecked: bool = field(default=False, metadata=_setting("bool"))
+    # The kinematics improvement of the input points (m-lit lit-psimprove;
+    # ``pyamplicol.kinematics``): "z-shift" (MadLoop's ImprovePSPoint 2 with
+    # its fallback to 1, finished by the projection where MadLoop leaves the
+    # point inexact), "rescaling" (ImprovePSPoint 1), "projection" (the
+    # frame-independent minimal-norm projection) or "off"; None: the native
+    # default (MadLoop's, "z-shift"). It applies above binary64; binary64
+    # evaluations only with ``kinematics_improvement_binary64`` (None: the
+    # native default, off).
+    kinematics_improvement: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    kinematics_improvement_binary64: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
+    stability_checks: EvaluationStabilityChecksConfig = field(
+        default_factory=EvaluationStabilityChecksConfig, metadata=_section()
+    )
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     model_parameters: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
     momenta: Path | None = field(default=None, metadata=_setting("path", nullable=True))
+    # The flat points drawn without ``momenta`` (``EvaluationPhaseSpaceConfig``).
+    phase_space: EvaluationPhaseSpaceConfig = field(
+        default_factory=EvaluationPhaseSpaceConfig, metadata=_section()
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -966,8 +1548,84 @@ class EvaluationConfig:
         object.__setattr__(
             self, "precision", _integer(self.precision, "evaluation.precision")
         )
+        if self.arithmetic is not None and (
+            not isinstance(self.arithmetic, str)
+            or self.arithmetic not in {"double", "double-double", "arbitrary"}
+        ):
+            raise ConfigurationError("evaluation.arithmetic has an unknown carrier")
+        if self.mu_r2 is not None and (
+            not isinstance(self.mu_r2, str) or not self.mu_r2.strip()
+        ):
+            raise ConfigurationError("evaluation.mu_r2 must be nonempty exact text")
+        object.__setattr__(
+            self, "mu_r2_file", _path(self.mu_r2_file, "evaluation.mu_r2_file")
+        )
+        if self.mu_r2 is not None and self.mu_r2_file is not None:
+            raise ConfigurationError(
+                "evaluation.mu_r2 and evaluation.mu_r2_file are mutually exclusive"
+            )
         if not isinstance(self.resolved, bool):
             raise ConfigurationError("evaluation.resolved must be a boolean")
+        if not isinstance(self.orders, bool):
+            raise ConfigurationError("evaluation.orders must be a boolean")
+        if self.orders and self.resolved:
+            raise ConfigurationError(
+                "evaluation.orders and evaluation.resolved are mutually exclusive"
+            )
+        object.__setattr__(
+            self,
+            "correlated_requests",
+            _path(self.correlated_requests, "evaluation.correlated_requests"),
+        )
+        if self.on_failure is not None and self.on_failure not in ON_FAILURE:
+            raise ConfigurationError(
+                "evaluation.on_failure must be 'best-effort', 'return' or 'raise'"
+            )
+        if not isinstance(self.stability, EvaluationStabilityConfig):
+            raise ConfigurationError(
+                "evaluation.stability must be an EvaluationStabilityConfig"
+            )
+        object.__setattr__(
+            self, "poles", _enum(self.poles, PoleSelection, "evaluation.poles")
+        )
+        if self.reduction is not None:
+            object.__setattr__(
+                self,
+                "reduction",
+                _enum(self.reduction, ReductionBackend, "evaluation.reduction"),
+            )
+        if self.reduction_target is not None:
+            try:
+                target = reduction_target(self.reduction_target)
+            except ValueError as exc:
+                raise ConfigurationError(f"evaluation.reduction_target: {exc}") from exc
+            object.__setattr__(self, "reduction_target", target)
+        try:
+            reduction_unchecked(self.reduction_unchecked)
+        except ValueError as exc:
+            raise ConfigurationError(f"evaluation.reduction_unchecked: {exc}") from exc
+        if self.kinematics_improvement is not None:
+            from pyamplicol import kinematics
+
+            try:
+                kinematics.setting_value(self.kinematics_improvement)
+            except ValueError as exc:
+                raise ConfigurationError(
+                    f"evaluation.kinematics_improvement: {exc}"
+                ) from exc
+        if self.kinematics_improvement_binary64 is not None and not isinstance(
+            self.kinematics_improvement_binary64, bool
+        ):
+            from pyamplicol import kinematics
+
+            raise ConfigurationError(
+                "evaluation.kinematics_improvement_binary64: "
+                + kinematics.policy()["binary64_refusal"]
+            )
+        if not isinstance(self.stability_checks, EvaluationStabilityChecksConfig):
+            raise ConfigurationError(
+                "evaluation.stability_checks must be an EvaluationStabilityChecksConfig"
+            )
         object.__setattr__(
             self,
             "helicity_ids",
@@ -978,6 +1636,13 @@ class EvaluationConfig:
             "color_flow_ids",
             _tuple_of_strings(self.color_flow_ids, "evaluation.color_flow_ids"),
         )
+        if self.correlated_requests is not None and (
+            self.resolved or self.color_flow_ids
+        ):
+            raise ConfigurationError(
+                "evaluation.correlated_requests cannot combine with resolved "
+                "or color_flow_ids"
+            )
         object.__setattr__(
             self,
             "model_parameters",
@@ -995,8 +1660,28 @@ class BenchmarkConfig:
     minimum_samples: int = field(default=5, metadata=_setting("int"))
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    # Loop artifacts (``pyamplicol profile --runtime / --stability``): what
+    # the profile measures (neither set: the runtime only) and the number of
+    # flat points of the stability statistics (drawn as
+    # ``evaluation.phase_space`` sets: its seed and energy).
+    runtime: bool = field(default=False, metadata=_setting("bool"))
+    stability: bool = field(default=False, metadata=_setting("bool"))
+    stability_points: int = field(default=1000, metadata=_setting("int"))
+    # The worker processes of the stability run (``--n_core``): capped by
+    # the usable cores; 1 runs it in-process. The result does not depend on
+    # it. The runtime timing stays in one process.
+    n_core: int = field(default=10, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
+        for name in ("runtime", "stability"):
+            if type(getattr(self, name)) is not bool:
+                raise ConfigurationError(f"benchmark.{name} must be a boolean")
+        object.__setattr__(
+            self,
+            "stability_points",
+            _integer(self.stability_points, "benchmark.stability_points"),
+        )
+        object.__setattr__(self, "n_core", _integer(self.n_core, "benchmark.n_core"))
         object.__setattr__(
             self,
             "target_runtime",
@@ -1036,6 +1721,71 @@ class BenchmarkConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CheckConfig:
+    """``pyamplicol check`` (the ``check`` action): the seeded phase-space
+    points per process (``points``, ``seed``: None takes
+    ``generation.validation.seed``), the carriers (``precision``) and the
+    model source the request is regenerated from (``model``: None takes
+    ``model.source``, or for an artifact the source its
+    ``config/effective.toml`` records; resolved as ``model.source``) and the
+    centre-of-mass energy of a scattering's points (``sqrt_s``, in the
+    model's mass unit: None keeps the generation's validation convention,
+    ``generation.validation._build_particles``) and the digit count of the
+    auto ladder's arbitrary-precision rung (``arbitrary_digits``: None
+    derives it per row from the double-double shortfall, ``loops.v2.checks.
+    rung_digits``; it needs ``precision`` auto)."""
+
+    points: int = field(default=3, metadata=_setting("int"))
+    seed: int | None = field(default=None, metadata=_setting("int", nullable=True))
+    precision: CheckPrecision = field(
+        default=CheckPrecision.AUTO,
+        metadata=_setting("str", choices=tuple(CheckPrecision)),
+    )
+    model: str | None = field(default=None, metadata=_setting("str", nullable=True))
+    sqrt_s: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
+    arbitrary_digits: int | None = field(
+        default=None, metadata=_setting("int", nullable=True)
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "points", _integer(self.points, "check.points"))
+        object.__setattr__(
+            self,
+            "arbitrary_digits",
+            _optional_integer(
+                self.arbitrary_digits, "check.arbitrary_digits", minimum=1
+            ),
+        )
+        if self.sqrt_s is not None:
+            object.__setattr__(
+                self,
+                "sqrt_s",
+                _finite_float(self.sqrt_s, "check.sqrt_s", minimum=0.0, exclusive=True),
+            )
+        object.__setattr__(
+            self, "seed", _optional_integer(self.seed, "check.seed", minimum=0)
+        )
+        object.__setattr__(
+            self,
+            "precision",
+            _enum(self.precision, CheckPrecision, "check.precision"),
+        )
+        if self.arbitrary_digits is not None and self.precision is not (
+            CheckPrecision.AUTO
+        ):
+            raise ConfigurationError(
+                "check.arbitrary_digits sets the arbitrary-precision rung of the "
+                "auto ladder; check.precision must be auto"
+            )
+        if self.model is not None and (
+            not isinstance(self.model, str) or not self.model
+        ):
+            raise ConfigurationError("check.model must be a non-empty string or null")
+
+
+@dataclass(frozen=True, slots=True)
 class OutputConfig:
     format: OutputFormat = field(
         default=OutputFormat.HUMAN,
@@ -1049,8 +1799,10 @@ class OutputConfig:
         default=ProgressMode.AUTO,
         metadata=_setting("str", choices=tuple(ProgressMode)),
     )
+    # The CLI's logger records (warnings and errors by default; its notices
+    # show as short lines, ``reporting.logging.notice``).
     log_level: LogLevel = field(
-        default=LogLevel.INFO,
+        default=LogLevel.WARNING,
         metadata=_setting("str", choices=tuple(LogLevel)),
     )
 
@@ -1077,11 +1829,272 @@ class SymbolicaConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LoopSchemeConfig:
+    dimensional_regularization: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    external_states: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    gamma5: str | None = field(default=None, metadata=_setting("str", nullable=True))
+    renormalization: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    mass_scheme: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    finite_restoration: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    model_convention: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ConfigurationError(
+                    f"loop.model.scheme.{name} must be a nonempty string or null"
+                )
+
+    @property
+    def supplied(self) -> bool:
+        return any(
+            getattr(self, name) is not None for name in self.__dataclass_fields__
+        )
+
+    def to_declaration(self) -> LoopSchemeDeclaration:
+        from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
+
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__}
+        missing = [name for name, value in values.items() if value is None]
+        if missing:
+            raise ConfigurationError(
+                "loop.model.scheme requires explicit " + ", ".join(missing)
+            )
+        return LoopSchemeDeclaration.from_dict(values)
+
+
+@dataclass(frozen=True, slots=True)
+class LoopModelConfig:
+    """A complete explicit override of the model's NLO declaration, if supplied."""
+
+    loop_coupling_orders: tuple[str, ...] | None = field(
+        default=None, metadata=_setting("list_str", nullable=True)
+    )
+    uv_complete: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
+    model_r2_complete: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
+    scheme: LoopSchemeConfig = field(
+        default_factory=LoopSchemeConfig, metadata=_section()
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.scheme, LoopSchemeConfig):
+            raise ConfigurationError("loop.model.scheme must be a LoopSchemeConfig")
+        if self.loop_coupling_orders is not None:
+            values = self.loop_coupling_orders
+            if (
+                isinstance(values, (str, bytes))
+                or not isinstance(values, Sequence)
+                or not values
+                or any(
+                    not isinstance(value, str) or not value.strip() for value in values
+                )
+            ):
+                raise ConfigurationError(
+                    "loop.model.loop_coupling_orders must be a nonempty string sequence"
+                )
+            object.__setattr__(self, "loop_coupling_orders", tuple(sorted(set(values))))
+        for name in ("uv_complete", "model_r2_complete"):
+            if getattr(self, name) is not None and not isinstance(
+                getattr(self, name), bool
+            ):
+                raise ConfigurationError(f"loop.model.{name} must be a boolean or null")
+        self.to_declaration()
+
+    @property
+    def mass_scheme_only(self) -> bool:
+        """Whether only ``[loop.model.scheme] mass_scheme`` is set: it then
+        selects the mass scheme of the model's own (source or shipped)
+        declaration, MadLoop's ``set complex_mass_scheme True``
+        (``generation.loop_service``), instead of a whole override."""
+
+        return (
+            self.loop_coupling_orders is None
+            and self.uv_complete is None
+            and self.model_r2_complete is None
+            and self.scheme.mass_scheme is not None
+            and all(
+                getattr(self.scheme, name) is None
+                for name in self.scheme.__dataclass_fields__
+                if name != "mass_scheme"
+            )
+        )
+
+    def to_declaration(self) -> LoopModelDeclaration | None:
+        from pyamplicol.models.loop_declaration import LoopModelDeclaration
+
+        if (
+            self.loop_coupling_orders is None
+            and self.uv_complete is None
+            and self.model_r2_complete is None
+            and not self.scheme.supplied
+        ) or self.mass_scheme_only:
+            return None
+        if (
+            self.loop_coupling_orders is None
+            or self.uv_complete is None
+            or self.model_r2_complete is None
+        ):
+            raise ConfigurationError(
+                "loop.model requires explicit loop_coupling_orders, uv_complete "
+                "and model_r2_complete; partial declarations are not merged "
+                "with source metadata"
+            )
+        return LoopModelDeclaration(
+            scheme=self.scheme.to_declaration(),
+            loop_coupling_orders=self.loop_coupling_orders,
+            uv_complete=self.uv_complete,
+            model_r2_complete=self.model_r2_complete,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LoopPreparationConfig:
+    """An explicit whole override; None on LoopConfig means source inheritance."""
+
+    compatibility: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    covariant_multiplets: Mapping[str, tuple[int, ...]] = field(
+        default_factory=dict,
+        metadata=_setting("map_list_int", dynamic_kind="list_int"),
+    )
+    fixed_parameters: Mapping[str, str | tuple[str, str]] = field(
+        default_factory=dict,
+        metadata=_setting("map_exact_scalar", dynamic_kind="exact_scalar"),
+    )
+
+    def __post_init__(self) -> None:
+        try:
+            prepared = self.to_preparation()
+        except (TypeError, ValueError, DecimalException) as error:
+            raise ConfigurationError(f"loop.preparation: {error}") from error
+        object.__setattr__(
+            self,
+            "covariant_multiplets",
+            MappingProxyType(
+                {
+                    str(pdg): partners
+                    for pdg, partners in prepared.covariant_multiplets.items()
+                }
+            ),
+        )
+        object.__setattr__(self, "fixed_parameters", prepared.fixed_parameters)
+
+    def to_preparation(self) -> LoopPreparation:
+        from pyamplicol.models.loop_preparation import LoopPreparation
+
+        return LoopPreparation(
+            self.compatibility,
+            {key: value for key, value in self.covariant_multiplets.items()},
+            self.fixed_parameters,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LoopConfig:
+    r2_strategy: R2Strategy = field(
+        default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
+    )
+    # The generation default of the reduction backend (``ReductionBackend``),
+    # recorded in the artifact when not ``auto``; evaluations override it
+    # (``evaluation.reduction``).
+    reduction: ReductionBackend = field(
+        default=ReductionBackend.AUTO,
+        metadata=_setting("str", choices=tuple(ReductionBackend)),
+    )
+    model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
+    preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
+    # External states' widths (``loops.external_widths``): "model" (the
+    # default) keeps the model's widths, "zero" fixes the width parameter of
+    # every external particle of the request to zero (stable external
+    # states) unless ``preparation.fixed_parameters`` names it.
+    external_widths: str = field(
+        default="model", metadata=_setting("str", choices=("model", "zero"))
+    )
+    # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
+    # adjustable external model parameter); None: the unique SLHA SMINPUTS 3
+    # one, else no QCD pole prediction.
+    alpha_s_parameter: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    # The on-shell external photons that couple with alpha(0) in requests
+    # with the electromagnetic correction (MG5_aMC's ``!a!`` tags; the v2
+    # ``SliceRequest.external_photons``): "final" (final-state photons,
+    # isolated photons), "all", "none", or a list of 1-based leg labels
+    # (initial legs allowed).
+    external_photons: str | tuple[int, ...] = field(
+        default="final",
+        metadata=_setting("choice_or_list_int", choices=("final", "all", "none")),
+    )
+    # The tagged photons' conversion counterterm and adjustable 1/alpha(0)
+    # parameter (``SliceRequest.alpha0_conversion`` / ``alpha0_inverse``):
+    # MG5_aMC's eCoup_DGmua0_UV_EW and the unique adjustable SLHA SMINPUTS 1
+    # parameter by default.
+    alpha0_conversion_parameter: str = field(
+        default="eCoup_DGmua0_UV_EW", metadata=_setting("str")
+    )
+    alpha0_inverse_parameter: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+
+    def __new__(cls, *args: object, **kwargs: object) -> LoopConfig:
+        # The removed engine switch is refused with its reason, as in TOML,
+        # overrides and the CLI (``config.resolver``).
+        if "engine" in kwargs:
+            raise ConfigurationError(LOOP_ENGINE_REMOVED)
+        return object.__new__(cls)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.model, LoopModelConfig):
+            raise ConfigurationError("loop.model must be a LoopModelConfig")
+        if self.preparation is not None and not isinstance(
+            self.preparation, LoopPreparationConfig
+        ):
+            raise ConfigurationError(
+                "loop.preparation must be a LoopPreparationConfig or null"
+            )
+        object.__setattr__(
+            self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
+        )
+        _choice(self.external_widths, ("model", "zero"), "loop.external_widths")
+        object.__setattr__(
+            self,
+            "reduction",
+            _enum(self.reduction, ReductionBackend, "loop.reduction"),
+        )
+        from pyamplicol.loops.v2.ew_policy import photon_tag_option
+
+        try:
+            tags = photon_tag_option(self.external_photons)
+        except ValueError as exc:
+            raise ConfigurationError(f"loop.{exc}") from exc
+        object.__setattr__(self, "external_photons", tags)
+
+
+@dataclass(frozen=True, slots=True)
 class RunConfig:
     action: Action = field(metadata=_setting("str", choices=ACTIONS))
     schema_version: int = field(default=1, metadata=_setting("int", choices=(1,)))
     model: ModelConfig = field(default_factory=ModelConfig, metadata=_section())
     process: ProcessConfig = field(default_factory=ProcessConfig, metadata=_section())
+    loop: LoopConfig = field(default_factory=LoopConfig, metadata=_section())
     color: ColorConfig = field(default_factory=ColorConfig, metadata=_section())
     generation: GenerationConfig = field(
         default_factory=GenerationConfig, metadata=_section()
@@ -1095,6 +2108,7 @@ class RunConfig:
     benchmark: BenchmarkConfig = field(
         default_factory=BenchmarkConfig, metadata=_section()
     )
+    check: CheckConfig = field(default_factory=CheckConfig, metadata=_section())
     output: OutputConfig = field(default_factory=OutputConfig, metadata=_section())
     symbolica: SymbolicaConfig = field(
         default_factory=SymbolicaConfig, metadata=_section()
@@ -1110,29 +2124,135 @@ class RunConfig:
         expected = (
             ("model", ModelConfig),
             ("process", ProcessConfig),
+            ("loop", LoopConfig),
             ("color", ColorConfig),
             ("generation", GenerationConfig),
             ("evaluator", EvaluatorConfig),
             ("evaluation", EvaluationConfig),
             ("benchmark", BenchmarkConfig),
+            ("check", CheckConfig),
             ("output", OutputConfig),
             ("symbolica", SymbolicaConfig),
         )
         for name, expected_type in expected:
             if not isinstance(getattr(self, name), expected_type):
                 raise ConfigurationError(f"{name} must be a {expected_type.__name__}")
+        mode = self.evaluator.execution_mode
+        virtual = self.process.loop_coupling_orders is not None
+        if self.color.accuracy is None:
+            # The request kind's colour default (user ruling 2026-10-28 Q1):
+            # one-loop requests full colour, as MadLoop; tree requests LC.
+            object.__setattr__(
+                self,
+                "color",
+                replace(
+                    self.color,
+                    accuracy=ColorAccuracy.FULL if virtual else ColorAccuracy.LC,
+                ),
+            )
+        if virtual and mode not in {
+            EvaluatorExecutionMode.AUTO,
+            EvaluatorExecutionMode.LOOP_RECURRENCE,
+        }:
+            raise ConfigurationError(
+                "process.loop_coupling_orders requires evaluator.execution_mode="
+                "'auto' or 'loop_recurrence'"
+            )
+        if not virtual and mode is EvaluatorExecutionMode.LOOP_RECURRENCE:
+            raise ConfigurationError(
+                "evaluator.execution_mode='loop_recurrence' requires "
+                "process.loop_coupling_orders"
+            )
+        if self.generation.particle_veto and not virtual:
+            raise ConfigurationError(
+                "generation.particle_veto requires one-loop generation "
+                "(process.loop_coupling_orders)"
+            )
+        if not virtual and self.loop.reduction is not ReductionBackend.AUTO:
+            raise ConfigurationError(
+                f"loop.reduction = {str(self.loop.reduction)!r} requires one-loop "
+                "generation (process.loop_coupling_orders); an evaluation "
+                "overrides an artifact's backend with evaluation.reduction"
+            )
+        if not virtual and self.process.squared_coupling_orders:
+            raise ConfigurationError(
+                "process.squared_coupling_orders selects the squared-order "
+                "sectors of a one-loop request and requires "
+                "process.loop_coupling_orders"
+            )
+        if not virtual and self.process.loop_induced in (
+            LoopInducedPolicy.ONLY,
+            LoopInducedPolicy.INCLUDE,
+        ):
+            raise ConfigurationError(
+                f"process.loop_induced = {str(self.process.loop_induced)!r} "
+                "requires one-loop generation (process.loop_coupling_orders)"
+            )
+        if self.color.nc_graded:
+            self._validate_nc_expansion(virtual=virtual)
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
-            and self.evaluator.execution_mode
+            and self.resolved_execution_mode
             not in {
                 EvaluatorExecutionMode.RECURRENCE,
                 EvaluatorExecutionMode.ON_THE_FLY,
+                EvaluatorExecutionMode.LOOP_RECURRENCE,
             }
         ):
             raise ConfigurationError(
                 "color.contraction='symmetric-group-fft' requires "
-                "evaluator.execution_mode='recurrence' or 'on-the-fly'"
+                "evaluator.execution_mode='recurrence', 'on-the-fly' or "
+                "'loop_recurrence'"
             )
+
+    def _validate_nc_expansion(self, *, virtual: bool) -> None:
+        """Strict and graded tree colour: the formal N_c expansion of the
+        complete full-colour basis, implemented in the compiled lane."""
+
+        if virtual:
+            raise ConfigurationError(
+                "strict and graded colour (color.accuracy='strict-lc' or "
+                "'strict-nlc', color.graded) are implemented for tree requests; "
+                "one-loop requests take color.accuracy='lc', 'nlc' (the loop "
+                "engine's formal-N_c projection) or 'full'"
+            )
+        mode = self.evaluator.execution_mode
+        if mode not in {
+            EvaluatorExecutionMode.AUTO,
+            EvaluatorExecutionMode.COMPILED,
+        }:
+            raise ConfigurationError(
+                "strict and graded tree colour (color.accuracy='strict-lc' or "
+                "'strict-nlc', color.graded) are implemented for "
+                "evaluator.execution_mode='compiled' (the default for them); "
+                f"got {str(mode)!r}"
+            )
+        restricted = [
+            name
+            for name in (
+                "max_color_sectors",
+                "reference_color_order",
+                "selected_color_sector_ids",
+            )
+            if getattr(self.process, name)
+        ]
+        if restricted:
+            raise ConfigurationError(
+                "strict and graded tree colour expand the complete colour basis; "
+                "remove " + ", ".join(f"process.{name}" for name in restricted)
+            )
+
+    @property
+    def resolved_execution_mode(self) -> EvaluatorExecutionMode:
+        if self.evaluator.execution_mode is not EvaluatorExecutionMode.AUTO:
+            return self.evaluator.execution_mode
+        if self.process.loop_coupling_orders is not None:
+            return EvaluatorExecutionMode.LOOP_RECURRENCE
+        if self.color.nc_graded:
+            # Strict and graded tree colour are implemented in the compiled
+            # lane (``_validate_nc_expansion``).
+            return EvaluatorExecutionMode.COMPILED
+        return EvaluatorExecutionMode.RECURRENCE
 
     @property
     def resolved_color(self) -> ColorConfig:
@@ -1148,10 +2268,11 @@ class RunConfig:
             color.contraction is ColorContraction.AUTO
             and (
                 color.accuracy is ColorAccuracy.LC
-                or self.evaluator.execution_mode
+                or self.resolved_execution_mode
                 not in {
                     EvaluatorExecutionMode.RECURRENCE,
                     EvaluatorExecutionMode.ON_THE_FLY,
+                    EvaluatorExecutionMode.LOOP_RECURRENCE,
                 }
             )
         ):
@@ -1169,6 +2290,8 @@ __all__ = [
     "AutoBool",
     "AutoInt",
     "BenchmarkConfig",
+    "CheckConfig",
+    "CheckPrecision",
     "ColorAccuracy",
     "ColorConfig",
     "ColorContraction",
@@ -1189,14 +2312,20 @@ __all__ = [
     "JITConfig",
     "LCFlowLayout",
     "LogLevel",
+    "LoopConfig",
+    "LoopModelConfig",
+    "LoopSchemeConfig",
     "ModelConfig",
     "OutputConfig",
     "OutputFormat",
+    "PoleSelection",
     "ProcessConfig",
     "ProcessEntry",
     "ProcessGroupAnalysis",
     "ProgressMode",
+    "R2Strategy",
     "RecurrenceEvaluatorConfig",
+    "ReductionBackend",
     "RelationDiscoveryMode",
     "RunConfig",
     "SymbolicaConfig",

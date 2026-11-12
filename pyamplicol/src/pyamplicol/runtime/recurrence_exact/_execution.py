@@ -54,6 +54,8 @@ _CERTIFIED_REUSE_FLAGS = (
 
 _Point = Sequence[tuple[Decimal, Decimal, Decimal, Decimal]]
 _CurrentObserver = Callable[[int, tuple[_ComplexDecimal, ...]], None]
+# Mutable per-component amplitudes: [amplitude coupling-order component][destination].
+_OrderAmplitudes = Sequence[list[_ComplexDecimal]]
 _FactorCache = list[_ComplexDecimal | None]
 
 _INPUT_CURRENT = 0
@@ -84,6 +86,7 @@ def _evaluate_replay_point(
     precision: int,
     *,
     current_observer: _CurrentObserver | None = None,
+    order_amplitudes: _OrderAmplitudes | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     sections = plan.sections
     permutation = sections.source_permutations[
@@ -107,6 +110,7 @@ def _evaluate_replay_point(
             precision,
             selected_source_variants=None,
             current_observer=current_observer,
+            order_amplitudes=order_amplitudes,
         )
     )
 
@@ -120,6 +124,11 @@ def _evaluate_replay_point(
                 amplitudes[destination.destination_id],
                 replay_factor,
             )
+            for component in order_amplitudes or ():
+                component[destination.destination_id] = _complex_mul(
+                    component[destination.destination_id],
+                    replay_factor,
+                )
     return tuple(amplitudes)
 
 
@@ -131,6 +140,7 @@ def _evaluate_union_point(
     precision: int,
     *,
     current_observer: _CurrentObserver | None = None,
+    order_amplitudes: _OrderAmplitudes | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     """Execute one all-flow union once for one runtime-selected helicity."""
 
@@ -184,6 +194,7 @@ def _evaluate_union_point(
         precision,
         selected_source_variants=selected_source_variants,
         current_observer=current_observer,
+        order_amplitudes=order_amplitudes,
     )
 
 
@@ -194,6 +205,7 @@ def _evaluate_contracted_point(
     precision: int,
     *,
     current_observer: _CurrentObserver | None = None,
+    order_amplitudes: _OrderAmplitudes | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     """Execute the fixed-source contracted-color schedule once."""
 
@@ -214,6 +226,7 @@ def _evaluate_contracted_point(
         precision,
         selected_source_variants=None,
         current_observer=current_observer,
+        order_amplitudes=order_amplitudes,
     )
 
 
@@ -225,7 +238,17 @@ def _execute_schedule(
     *,
     selected_source_variants: Mapping[int, _SourceDispatchVariant] | None,
     current_observer: _CurrentObserver | None = None,
+    order_amplitudes: _OrderAmplitudes | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
+    """Execute one schedule; optionally split closures by coupling order.
+
+    ``order_amplitudes[component][destination]`` receives every closure
+    row's value by its amplitude coupling-order component. A closure row adds
+    exactly one scalar to its destination, so evaluating it into a cleared
+    destination and adding that value to the previous sum performs the same
+    single Decimal addition as the ordinary path: totals are unchanged.
+    """
+
     sections = plan.sections
     zero = _complex_zero()
     arena = [zero] * sections.current_arena_components
@@ -328,7 +351,21 @@ def _execute_schedule(
                     factor_cache=factor_cache,
                 )
         elif group.role == _ROLE_CLOSURE:
-            for closure_row in sections.closures[start:stop]:
+            if (
+                order_amplitudes is not None
+                and executor.runtime_template is None
+                and executor.destination_component_count != 1
+            ):
+                raise ArtifactError(
+                    "coupling-order partials require scalar recurrence closures"
+                )
+            for closure_index, closure_row in enumerate(
+                sections.closures[start:stop], start
+            ):
+                destination = closure_row.amplitude_destination_id
+                previous = amplitudes[destination]
+                if order_amplitudes is not None:
+                    amplitudes[destination] = zero
                 if executor.runtime_template is not None:
                     _execute_intrinsic_closure(
                         plan,
@@ -349,6 +386,13 @@ def _execute_schedule(
                         precision,
                         factor_cache=factor_cache,
                     )
+                if order_amplitudes is not None:
+                    value = amplitudes[destination]
+                    amplitudes[destination] = _complex_add(previous, value)
+                    component = order_amplitudes[
+                        sections.closure_amplitude_orders[closure_index]
+                    ]
+                    component[destination] = _complex_add(component[destination], value)
         else:  # pragma: no cover - native plan validation rejects this
             raise ArtifactError(f"unsupported recurrence row role {group.role}")
     if active_stage is not None:

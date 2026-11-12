@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: 0BSD
-# Exhaustive TOML schema-v1 reference. Every current registry leaf is active.
+# Exhaustive TOML schema-v1 reference. Every current registry leaf is active,
+# except virtual-only settings that this tree card cannot combine; those are
+# commented example assignments directly below their descriptions.
 # This card is for resolution/documentation, not as a recommended physics run.
 
 # action: Required command action. Choices are generate, evaluate, benchmark,
-# inspect, model-inspect, model-compile, model-processes, and group-processes.
+# inspect, model-inspect, model-compile, model-processes, group-processes, and
+# check.
 action = "generate"
 
 # schema_version: Configuration schema. The only current value is 1.
@@ -22,6 +25,11 @@ simplify = true
 cache = true
 # model.cache_dir: Optional cache directory. Default is platform-specific/null.
 cache_dir = "cache/models"
+# model.loop_preparation_cache: Reuse the persistent cache of one-loop
+# request-model preparations (the lowered scalar program of a model, in the
+# model cache's loop-preparations subdirectory). Default true; off when
+# model.cache is false or $PYAMPLICOL_LOOP_PREPARATION_CACHE is false.
+loop_preparation_cache = true
 
 [process]
 # process.entries: Typed process expressions with optional unique stable names.
@@ -34,6 +42,23 @@ flavor_scheme = 2
 max_quark_lines = 2
 # process.coupling_order_policy: "minimal" or "explicit". Default minimal.
 coupling_order_policy = "explicit"
+# process.loop_coupling_orders: Optional one-loop correction orders, for example
+# ["QCD"]. Default null (tree generation). A list selects virtual generation and
+# requires evaluator.execution_mode "auto" or "loop_recurrence".
+# loop_coupling_orders = ["QCD"]
+# process.loop_induced: One-loop processes without a Born amplitude within their
+# coupling-order limits (loop-induced, |A_loop|^2): "auto" serves a request none
+# of whose processes has a Born loop-induced and skips the Born-less members of a
+# mixed multiparticle request, "skip" serves none, "only" serves only them,
+# "include" serves both kinds as separate contributions. Default auto.
+# loop_induced = "auto"
+# process.squared_coupling_orders: One-loop squared-coupling-order sectors
+# served, MG5_aMC constraints "NAME^2<=N" (also ==, <, >, >=; "NAME<=N" and "="
+# for "<=" accepted): a sector is reported and summed only when its power of
+# each named order passes. At one loop the power is that of the Born x loop
+# interference (loop x loop for loop-induced). Default empty (every sector).
+# The MG5_aMC process syntax "u u~ > d d~ QCD^2<=4 [QCD]" sets it.
+# squared_coupling_orders = ["QCD^2<=4", "QED^2<=6"]
 # The following four topology-extraction controls are unstable, developer-only
 # implementation details. Do not rely on them in production run cards.
 # process.max_color_sectors: Optional cap on generated color sectors. Default null.
@@ -79,8 +104,86 @@ j = ["d", "d~", "u", "u~", "g"]
 QCD = 4
 QED = 2
 
+[loop]
+# loop.r2_strategy: "auto", "model" (model-supplied UV/R2 rules), or "direct".
+# Default auto, which selects a complete eligible R2 branch of the artifact.
+r2_strategy = "auto"
+# loop.reduction: The reduction backend recorded as the artifact's default:
+# "auto" (default: TIRust, tensor-integral reduction, for loop-induced and
+# NinjaRS, integrand reduction, for Born-interfered processes, falling back to
+# NinjaRS with the reason recorded where TIRust cannot serve a call),
+# "ninjars" or "tirust" (refused where it cannot serve a call). Artifacts do
+# not depend on it; evaluation.reduction overrides it per evaluation.
+reduction = "auto"
+# loop.external_widths: "model" (default: the model's widths) or "zero" (stable
+# external states: the width parameter of every external particle of the
+# request fixed to 0 unless loop.preparation.fixed_parameters names it).
+external_widths = "model"
+# loop.alpha_s_parameter: The v2 engine's alpha_s of the QCD IR-pole prediction
+# (an adjustable external model parameter). Default absent: the unique SLHA
+# SMINPUTS 3 parameter, else no QCD pole prediction (the virtual is unchanged).
+# alpha_s_parameter = "aS"
+# loop.external_photons: The on-shell external photons that couple with alpha(0)
+# in requests with QED corrections (MG5_aMC's !a! tags): "final" (default:
+# final-state photons; initial ones are PDF photons and keep the loops'
+# coupling), "all", "none", or a list of 1-based leg labels, e.g. [1, 3].
+external_photons = "final"
+# loop.alpha0_conversion_parameter: The model's conversion counterterm of tagged
+# photons (delta Z_e^Gmu - delta Z_e^alpha(0)). Default MG5_aMC's name.
+alpha0_conversion_parameter = "eCoup_DGmua0_UV_EW"
+# loop.alpha0_inverse_parameter: The model's adjustable 1/alpha(0). Default
+# absent: the unique adjustable SLHA SMINPUTS 1 parameter (MG5_aMC's aEW0M1). A
+# parameter whose inverse is the loops' alpha declares alpha(0) loops: tagged
+# photons then need no conversion.
+# alpha0_inverse_parameter = "aEW0M1"
+# loop.model: Optional whole override of the source model's NLO declaration.
+# Default absent (use the source declaration). A supplied declaration needs all
+# of loop_coupling_orders, uv_complete, model_r2_complete and the seven scheme
+# strings; partial declarations are rejected instead of merged.
+# [loop.model]
+# loop.model.loop_coupling_orders: Joint correction set the declaration covers.
+# loop_coupling_orders = ["QCD"]
+# loop.model.uv_complete: Declare complete UV counterterms.
+# uv_complete = true
+# loop.model.model_r2_complete: Declare complete model R2 rules.
+# model_r2_complete = true
+# [loop.model.scheme]
+# loop.model.scheme.dimensional_regularization: Regularization scheme label.
+# dimensional_regularization = "HV"
+# loop.model.scheme.external_states: External-state convention label.
+# external_states = "physical-four-dimensional"
+# loop.model.scheme.gamma5: Gamma5 prescription label.
+# gamma5 = "source-UFO-four-dimensional-prescription"
+# loop.model.scheme.renormalization: Renormalization scheme label.
+# renormalization = "source-UFO mass-dependent decoupling"
+# loop.model.scheme.mass_scheme: Mass scheme label.
+# mass_scheme = "real-on-shell"
+# loop.model.scheme.finite_restoration: Finite-restoration convention label.
+# finite_restoration = "source-UFO-local-rules"
+# loop.model.scheme.model_convention: Free-form model convention label.
+# model_convention = "loop_sm lhv=1 supplied QCD rules"
+# loop.preparation: Optional explicit one-loop source preparation record.
+# Default absent, which inherits the source sidecar record; an explicit table,
+# even an empty one, replaces it as a whole.
+# [loop.preparation]
+# loop.preparation.compatibility: Named source compatibility profile or null.
+# compatibility = "gmu_particle_anti"
+# loop.preparation.covariant_multiplets: Covariant partner PDG lists keyed by
+# PDG code. Default empty.
+# [loop.preparation.covariant_multiplets]
+# "23" = [23, 250, 9000002, -9000002]
+# loop.preparation.fixed_parameters: Exact structural parameter values, as
+# decimal strings or ["real", "imaginary"] string pairs. Default empty.
+# [loop.preparation.fixed_parameters]
+# epsUV = "1"
+
 [color]
-# color.accuracy: "lc", "nlc", or "full". Default lc.
+# color.accuracy: "lc", "nlc", "full", "strict-lc" or "strict-nlc". Default: lc
+# for tree requests, full for one-loop requests. For trees lc/nlc are the
+# inherited colour-matrix approximation (amplitude coefficients at N_c = 3) and
+# strict-lc/strict-nlc the formal 1/N_c expansion (leading degree, or three
+# degrees); one-loop lc/nlc are the loop engine's formal-N_c projection, and
+# one-loop requests refuse strict-lc/strict-nlc and color.graded.
 accuracy = "lc"
 # color.contraction: "direct" or "symmetric-group-fft". Default direct.
 # The FFT method requires NLC/full with recurrence or on-the-fly execution.
@@ -96,6 +199,18 @@ fft_basis = "trace"
 # topology-replay. The all-flow union is LC-only and cannot be combined with
 # generation-selected or truncated color/helicity coverage.
 lc_flow_layout = "topology-replay"
+# color.graded: report trees split by power of N_c (one contracted colour
+# component per N_c degree). Always on for strict-lc/strict-nlc; true with full
+# colour reports every degree. Tree requests, compiled execution. Default false.
+graded = false
+# color.adjoint_dense_max_gluons: tuning, no capability bound. The automatic
+# tree basis prefers the (equally exact) DDM basis up to this many adjoint
+# labels and the trace basis above. Default 12.
+adjoint_dense_max_gluons = 12
+# color.fused_selector_max_sectors: tuning, results unchanged. Integer or null
+# (no bound): the auxiliary all-colour lane for runtime helicity selection is
+# built up to this many colour sectors. Default 128.
+fused_selector_max_sectors = 128
 
 [generation]
 # generation.output: Optional artifact output path. Default null.
@@ -108,6 +223,44 @@ workers = "auto"
 emit_api_bundle = true
 # generation.pack_payloads: Store per-process payloads and recurrence schedules in one payloads.pacbin. Default false.
 pack_payloads = false
+# generation.particle_veto: Model particle names (a name vetoes its
+# antiparticle too) removed from every tree vertex of one-loop generation:
+# Born, loop blocks, loop vertices and propagators and the counterterm
+# program; counterterm terms whose loop content (UFO loop_particles) holds a
+# vetoed particle are dropped. Virtual-only. Default empty. Example: the five-flavour QCD of a model with a top quark.
+# particle_veto = ["t"]
+# generation.allow_anomalous_veto: Lower the Levi-Civita counterterm cells that
+# particle_veto keeps from cancelling but that cancel without it (an anomalous
+# veto, e.g. one breaking a quark doublet with a Z and gluons); such requests
+# are refused by default. Recorded in the artifact. Needs particle_veto.
+# Virtual-only. Default false.
+# allow_anomalous_veto = true
+# generation.loop_induced_probes: Run the generation-time finiteness, Ward and
+# Goldstone probes of loop-induced processes (binary64, double-double where a
+# binary64 probe fails its verdict or is refused; pass within ten times the
+# probe's own estimate): they validate the model's R2 vertices, the loop
+# families and the Goldstone-side vertices, and a failure refuses the process.
+# The written artifact and its values do not depend on them. Recorded in the
+# artifact. Virtual-only. Default false.
+# loop_induced_probes = true
+# generation.allow_failed_probes: Store a loop-induced process whose
+# generation-time finiteness or Ward probe failed; such processes are refused
+# by default. Recorded in the artifact. Acts only with loop_induced_probes.
+# Virtual-only. Default false.
+# allow_failed_probes = true
+# generation.helicity_filter_failure_probability: The stated failure
+# probability of the exact helicity-zero filter of loop-induced processes (that
+# it drops a helicity row that is not an integrand zero); 0 drops nothing and
+# skips the filter. Recorded in the artifact. Virtual-only. Default 1e-12.
+# helicity_filter_failure_probability = 1e-12
+# generation.loop_induced_folding: Fold the loop chains of a loop-induced
+# process whose numerators the exact test (the helicity filter's, at
+# helicity_filter_failure_probability; 0 folds nothing) certifies
+# proportional with an exact rational ratio: one dressing per group; a group
+# whose weights cancel exactly is dropped, and a process left with nothing is
+# an exact zero with its certificate. Values change at rounding level.
+# Recorded in the artifact. Virtual-only. Default true.
+# loop_induced_folding = false
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true
@@ -122,6 +275,10 @@ absolute_tolerance = 1e-300
 # generation.validation.post_build_validation: Re-open and numerically smoke-test
 # the built evaluator. Default false; structural artifact checks always run.
 post_build_validation = false
+# generation.validation.max_resolved_components: Integer or null. Compiled
+# post-build validation checks every resolved component up to this count and
+# one helicity and/or flow slice above it; null checks every one. Default 1000000.
+max_resolved_components = 1000000
 
 [generation.relation_discovery]
 # generation.relation_discovery.mode: "off", "diagnostic", or
@@ -230,6 +387,28 @@ process = "d d~ > g z g"
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.
 resolved = true
+# evaluation.orders: Split recurrence tree totals by squared coupling order.
+# Default false; cannot combine with resolved.
+orders = false
+# evaluation.on_failure: Virtual points no configured alternative accepts:
+# best-effort returns each with its best available value (the unchecked
+# reduction's), the refusal and its uncertainty (status best-effort, never a
+# success); return keeps them as null rows with diagnostics; raise stops at the
+# first one. Default null = best-effort (since 1.0.3; nothing is printed: the
+# result's statuses and warnings carry it).
+# on_failure = "best-effort"
+# evaluation.correlated_requests: Optional evaluate-only labelled colour/spin
+# request JSON. Default null; cannot combine with resolved or colour-flow axes.
+# correlated_requests = "data/requests.json"
+# evaluation.arithmetic: Virtual carrier selected before binding parameters.
+# Default null; explicit choices double, double-double, arbitrary.
+# arithmetic = "arbitrary"
+# evaluation.mu_r2: Positive virtual renormalization scale squared, as exact text.
+# Default null. Mutually exclusive with mu_r2_file.
+# mu_r2 = "1000000"
+# evaluation.mu_r2_file: Per-point scale-squared JSON list; numbers or exact text.
+# Default null. Paths are relative to this card.
+# mu_r2_file = "data/scales.json"
 # evaluation.helicity_ids: Stable physical helicity selectors. Default empty.
 helicity_ids = []
 # evaluation.color_flow_ids: Stable LC flow selectors. Default empty.
@@ -240,6 +419,92 @@ color_flow_ids = []
 model_parameters = "data/model_parameters.json"
 # evaluation.momenta: Optional JSON phase-space points path. Default null.
 momenta = "data/pp_zjj_momenta.json"
+# evaluation.poles: v2 virtuals: the pole selection. "all" also computes the
+# 1/eps and 1/eps^2 coefficients; "none" evaluates the finite part only (the
+# poles are absent); "uv" returns the UV poles of the bare (unrenormalised)
+# loop amplitude and "ir" the IR (Catani) poles of the renormalised virtual,
+# for inclusive, correlated and resolved evaluations alike (both origins'
+# parts per component, counterterms included, are in pole_parts). The finite
+# part is the same under every selection. Default "all".
+poles = "all"
+# evaluation.reduction: v2 virtuals: the reduction backend of the evaluation,
+# overriding the artifact's loop.reduction ("auto", "ninjars" or "tirust");
+# every result's lane diagnostics name the requested and effective backends
+# and the reason. Default absent: the artifact's default.
+# reduction = "ninjars"
+# evaluation.reduction_target: v2 virtuals: the target accuracy TIRust's
+# method-choice acceptance follows (the relative accuracy of each point's
+# result, every squared-order sector against its own size; a finite positive
+# number). Default absent: 1e-5.
+# reduction_target = 1e-5
+# evaluation.reduction_unchecked: v2 virtuals: true reduces without the
+# reduction backends' own acceptance and refusal checks (TIRust: its gates and
+# method choice as method selection, no acceptance pass, plain PV at gate 0
+# for what they refuse; NinjaRS: zero stability thresholds); only points
+# without a finite value fail. pyAmpliCol's stability checks stay their own
+# settings. Default false.
+reduction_unchecked = false
+# evaluation.kinematics_improvement: the improvement of the input points to
+# exact energy-momentum conservation and exact on-shell externals, in each
+# carrier above binary64 (double-double, arbitrary precision) before anything
+# is evaluated there: "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own
+# fallback to ImprovePSPoint 1, finished by the projection where MadLoop leaves
+# the point inexact; beams along z are improved exactly by MadLoop, other
+# frames by the fallback and the projection),
+# "rescaling" (MadLoop's ImprovePSPoint 1, with the fallback to 2 and the
+# same finish),
+# "projection" (the frame-independent minimal-norm projection, exact in every
+# frame) or "off". Every result records the variant that produced its point.
+# Default absent: "z-shift" (MadLoop's default); tree and loop evaluations.
+kinematics_improvement = "z-shift"
+# evaluation.kinematics_improvement_binary64: true also improves the points of
+# binary64 (double-precision) evaluations with the selected variant. Default
+# absent: false.
+kinematics_improvement_binary64 = false
+
+[evaluation.stability]
+# The precision-rescue policy was removed with the legacy loop engine: only
+# these defaults are accepted (stored configurations carry them); any other
+# value is refused with the reason. v2 virtuals return estimates
+# ([evaluation.stability_checks]) and leave escalating the arithmetic to you.
+# evaluation.stability.higher: Removed; default empty.
+higher = []
+# evaluation.stability.relative_tolerance: Removed; unset.
+# relative_tolerance = "1e-8"
+# evaluation.stability.absolute_tolerance: Removed; unset.
+# absolute_tolerance = "1e-20"
+# evaluation.stability.verify_successful: Removed; default false.
+verify_successful = false
+
+[evaluation.stability_checks]
+# Stability checks of v2 virtual evaluations; with none, no estimate is returned.
+# Recommended: rotation_count = 1, reduction_direction = true, rescaled = true.
+# evaluation.stability_checks.rotations: Exact rotations, "<x|y|z>:<cos>:<sin>"
+# (e.g. "x:3/5:4/5"; avoid the beam axis) or "<ax>,<ay>,<az>:<radians>".
+# Default empty.
+rotations = []
+# evaluation.stability_checks.rotation_count: Number of default rotations
+# (generic axes) instead of an explicit list. Default 0.
+rotation_count = 0
+# evaluation.stability_checks.reduction_direction: Re-reduce every loop
+# numerator in a reversed frame (cached masters). Default false.
+reduction_direction = false
+# evaluation.stability_checks.rescaled: Run that re-reduction at rescaled
+# inputs, evaluating the master integrals again (requires
+# reduction_direction). Default false.
+rescaled = false
+
+[evaluation.phase_space]
+# Flat (RAMBO) phase-space points that evaluate and profile draw when
+# evaluation.momenta is not set, with the external masses of the artifact's
+# validation point; mu_r2 then defaults to s per point.
+# evaluation.phase_space.points: Number of points. Default 2.
+points = 2
+# evaluation.phase_space.seed: Point i is drawn from seed + i. Default 1.
+seed = 1
+# evaluation.phase_space.sqrt_s: Centre-of-mass energy of a 2 -> n scattering.
+# Default null: the artifact's validation-point energy.
+sqrt_s = 1000.0
 
 [benchmark]
 # benchmark.target_runtime: Positive target duration in seconds. Default 10.0.
@@ -258,6 +523,53 @@ helicity_ids = []
 # benchmark.color_flow_ids: Optional benchmark LC flow selectors. With both
 # selector lists empty, profiling chooses the generated layout's hot workload.
 color_flow_ids = []
+# benchmark.runtime: Loop artifacts: profile the runtime (time per point and
+# per stage of each reduction backend). Neither runtime nor stability set
+# profiles the runtime only. Default false.
+runtime = false
+# benchmark.stability: Loop artifacts: the stability statistics of each
+# reduction backend (binary64 stable digits against a double-double re-run,
+# and the accuracy of the default rotation estimate) over flat points.
+# Default false.
+stability = false
+# benchmark.stability_points: Positive count of flat (RAMBO) phase-space
+# points of the stability statistics (drawn with evaluation.phase_space's
+# seed and sqrt_s). Default 1000.
+stability_points = 1000
+# benchmark.n_core: Positive count of worker processes of the stability
+# statistics (`--n_core`; at most the usable cores; 1 runs in-process; the
+# result does not depend on it). Default 10.
+n_core = 10
+
+[check]
+# check.points: Positive count of seeded phase-space points per process of
+# `pyamplicol check` (one-loop requests). Default 3.
+points = 3
+# check.seed: Optional seed of the first point; null takes
+# generation.validation.seed. Default null.
+seed = 12345
+# check.precision: "auto" (binary64 first, double-double only where binary64
+# fails, is refused or is out of scope), "double", or "double-double".
+# Default auto.
+precision = "auto"
+# check.model: Optional model source to regenerate the request from (resolved
+# as model.source); null takes model.source, or for an artifact the source its
+# config/effective.toml records, which must resolve to the stored model.
+# Default null.
+model = "loop_sm"
+# check.sqrt_s: Optional centre-of-mass energy of a 2 -> n scattering's check
+# points, in the model's mass unit; it must exceed the final-state threshold.
+# null keeps the generation's validation convention (massless beams: sqrt(s) =
+# max(1000, final threshold + 100); massive beams: twice the larger threshold).
+# Default null.
+sqrt_s = 1000.0
+# check.arbitrary_digits: Optional digit count of the auto ladder's
+# arbitrary-precision rung, which re-runs only a row double-double leaves
+# undecided (its residual above the criterion while within ten times its own
+# estimate); null derives it per row from the double-double shortfall (the
+# carrier's digits plus the decimal digits by which ten times the estimate
+# exceeds the row's bound). Needs precision = "auto". Default null.
+arbitrary_digits = 50
 
 [output]
 # output.format: typed API/config provenance default. The CLI uses --json.
@@ -266,8 +578,10 @@ format = "human"
 color = "auto"
 # output.progress: "auto", "tty", "log", or "off". Default auto.
 progress = "auto"
-# output.log_level: "debug", "info", "warning", or "error". Default info.
-log_level = "info"
+# output.log_level: "debug", "info", "warning", or "error" (the logger
+# records shown; the CLI's own notice lines show at any level). Default
+# warning.
+log_level = "warning"
 
 [symbolica]
 # symbolica.suggest_license: Show one restricted-mode license reminder. Default true.

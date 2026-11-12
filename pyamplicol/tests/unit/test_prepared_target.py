@@ -84,11 +84,14 @@ def test_prepared_jit_target_rejects_architecture_scoped_legacy_target() -> None
         )
 
 
-def test_prepared_jit_target_rejects_unknown_application_abi() -> None:
+@pytest.mark.parametrize(
+    "abi", ["symjit-application-storage-v3", "symjit-application-storage-v5"]
+)
+def test_prepared_jit_target_rejects_unknown_application_abi(abi: str) -> None:
     with pytest.raises(PreparedTargetError, match="unsupported SymJIT"):
         validate_prepared_target(
             symjit_storage_v4_target(machine="arm64"),
             backend="jit",
-            symjit_application_abi="symjit-application-storage-v3",
+            symjit_application_abi=abi,
             machine="arm64",
         )

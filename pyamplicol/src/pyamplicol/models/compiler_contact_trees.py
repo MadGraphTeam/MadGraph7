@@ -19,6 +19,7 @@ from .compiler_contacts import (
     _source_structure_constant_product_coefficient,
 )
 from .compiler_kernels import (
+    DenseTensors,
     _as_expression,
     _canonicalize_oriented_kernel_component,
     _function_arguments,
@@ -195,7 +196,13 @@ def _compile_heft_colored_contact_trees(
     start_kind: int,
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[tuple[CompiledParticleRecord, ...], tuple[CompiledOrientedKernel, ...]]:
-    """Lower only the scalar-HEFT one- and two-``f`` contact families."""
+    """Lower only the scalar-HEFT one- and two-``f`` contact families, and the
+    two-identity colour ``Identity(a,b)*Identity(c,d)`` of a five-point contact
+    of four adjoint legs and a colour singlet (a counterterm colour,
+    ``models.ct_color_flow``): each identity pair closes into a colour-singlet
+    node for a singlet result; for an adjoint result the pair without it
+    closes into one, its partner joins the singlet leg (an identity node) and
+    the final identity passes that colour to the result."""
 
     particle_by_name = {particle.name: particle for particle in particles}
     used_pdgs = {abs(particle.pdg_code) for particle in particles}
@@ -221,7 +228,7 @@ def _compile_heft_colored_contact_trees(
         )
         if topology is None:
             continue
-        factors, source_coefficient = topology
+        factors, source_coefficient, topology_kind = topology
         singlet_leg = next(
             index
             for index, particle in enumerate(source_particles)
@@ -254,6 +261,7 @@ def _compile_heft_colored_contact_trees(
             left_token: int | None,
             right_token: int | None,
             output_token: int,
+            color: int = 8,
             term: CompiledVertexTerm = term,
             source_particles: tuple[CompiledParticleRecord, ...] = source_particles,
         ) -> _ContactTreeNode:
@@ -266,7 +274,7 @@ def _compile_heft_colored_contact_trees(
                 antiname=auxiliary_name,
                 pdg_code=allocate_pdg(),
                 spin=-1,
-                color=8,
+                color=color,
                 mass="ZERO",
                 width="ZERO",
                 charge=0.0,
@@ -362,6 +370,52 @@ def _compile_heft_colored_contact_trees(
                     left_token = standalone_leg + 1
                     right_token = identity_leg + 1
                     final_factor = factor
+            elif topology_kind == "identity-pairs":
+                # Identity(a,b)*Identity(c,d): no structure constant, so no
+                # permutation sign (tokens are bookkeeping only).
+                if result_token is None:
+                    roots = [
+                        combine(
+                            leaf(pair[0] - 1),
+                            leaf(pair[1] - 1),
+                            result_leg=result_leg,
+                            label=f"i{index}",
+                            factor=None,
+                            left_token=pair[0],
+                            right_token=pair[1],
+                            output_token=pair[0],
+                            color=1,
+                        )
+                        for index, pair in enumerate(factors)
+                    ]
+                    left_root, right_root = roots
+                else:
+                    result_pair = next(pair for pair in factors if result_token in pair)
+                    other_pair = next(pair for pair in factors if pair != result_pair)
+                    partner = next(value for value in result_pair if value != result_token)
+                    left_root = combine(
+                        leaf(other_pair[0] - 1),
+                        leaf(other_pair[1] - 1),
+                        result_leg=result_leg,
+                        label="closed-pair",
+                        factor=None,
+                        left_token=other_pair[0],
+                        right_token=other_pair[1],
+                        output_token=other_pair[0],
+                        color=1,
+                    )
+                    right_root = combine(
+                        leaf(partner - 1),
+                        leaf(singlet_leg),
+                        result_leg=result_leg,
+                        label="identity",
+                        factor=None,
+                        left_token=partner,
+                        right_token=None,
+                        output_token=partner,
+                    )
+                left_token = right_token = 0
+                final_factor = None
             else:
                 dummy = next(value for value in factors[0] if value < 0)
                 if result_token is None:
@@ -531,12 +585,27 @@ def _heft_contact_color_topology(
     source_particles: Sequence[CompiledParticleRecord],
     *,
     model_symbols: ModelSymbolRegistry,
-) -> tuple[tuple[tuple[int, int, int], ...], str] | None:
+) -> tuple[tuple[tuple[int, ...], ...], str, str] | None:
+    """(colour factors, scalar coefficient, kind) of a supported HEFT
+    contact: kind ``"structure-constants"`` (the oriented ``f`` token
+    triples) or ``"identity-pairs"`` (the two adjoint leg pairs of
+    ``Identity(a,b)*Identity(c,d)`` on five legs); ``None`` otherwise."""
+
+    proof = term.contact_decomposition_proof
+    if proof is not None and proof.status == "proven":
+        # The four-point contact path lowers it (a momentum-independent term
+        # with a proven decomposition, e.g. the f-colour, Levi-Civita R2 of
+        # three gluons and a Z): one family per term, never both.
+        return None
     colors = tuple(particle.color for particle in source_particles)
     if term.valence == 4 and colors.count(8) == 3 and colors.count(1) == 1:
         expected_count = 1
     elif term.valence == 5 and colors.count(8) == 4 and colors.count(1) == 1:
         expected_count = 2
+        identities = _heft_identity_pairs(term.color_source, colors)
+        if identities is not None:
+            pairs, coefficient = identities
+            return pairs, coefficient, "identity-pairs"
     else:
         return None
     factors = _normalized_structure_constant_factors(
@@ -589,7 +658,36 @@ def _heft_contact_color_topology(
     )
     if oriented_factors is None:
         return None
-    return oriented_factors, coefficient
+    return oriented_factors, coefficient, "structure-constants"
+
+
+_IDENTITY_FACTOR = re.compile(r"Identity\((?P<a>\d+),(?P<b>\d+)\)")
+_RATIONAL_FACTOR = re.compile(r"-?\d+(?:/\d+)?")
+
+
+def _heft_identity_pairs(
+    color_source: str, colors: Sequence[int]
+) -> tuple[tuple[tuple[int, int], ...], str] | None:
+    """The two leg pairs (ascending) and the rational coefficient of
+    ``c*Identity(a,b)*Identity(c,d)`` pairing every adjoint leg, else None."""
+
+    from fractions import Fraction
+
+    compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", color_source)
+    coefficient = Fraction(1)
+    pairs = []
+    for text in compact.split("*"):
+        match = _IDENTITY_FACTOR.fullmatch(text)
+        if match is not None:
+            pairs.append(tuple(sorted((int(match["a"]), int(match["b"])))))
+        elif _RATIONAL_FACTOR.fullmatch(text):
+            coefficient *= Fraction(text)
+        else:
+            return None
+    adjoint = [leg for leg, value in enumerate(colors, 1) if value == 8]
+    if len(pairs) != 2 or sorted(leg for pair in pairs for leg in pair) != adjoint:
+        return None
+    return tuple(sorted(pairs)), str(coefficient)
 
 
 def _heft_trilinear_color(
@@ -611,6 +709,9 @@ def _heft_trilinear_color(
         source = f"UFO::Identity({colored_slots[0]},{colored_slots[1]})"
         expected = "color-identity"
         normalization_power = 0
+    elif set(representations) == {1}:
+        # The final of two closed identity pairs into a colour singlet.
+        return "1", "1", 0
     else:
         raise ValueError(
             f"scalar-HEFT contact node has unsupported colors {representations!r}"
@@ -1340,17 +1441,12 @@ def _contact_tree_final_component_expressions(
         )
         for component in range(4)
     )
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     expression = _sym.E(term.lorentz_expression)
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
-        library.register(
-            _sym.Tensor.dense(
-                _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))(
-                    minkowski
-                ),
-                momentum,
-            )
+        library.register_dense(
+            model_symbols.ufo_momentum_tensor_name(leg + 1), (minkowski,), momentum
         )
     input_work = math.prod(
         _spin_dimension(source_particles[leg].spin) for leg in payload_by_leg
@@ -1399,7 +1495,7 @@ def _contact_tree_final_component_expressions(
 
 def _execute_contact_tensor_staged(
     expression: _sym.Expression,
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     source_particles: Sequence[CompiledParticleRecord],
     *,
     payload_by_leg: Mapping[
@@ -1474,7 +1570,7 @@ def _execute_contact_tensor_staged(
             if len(dense) != 1:
                 raise ValueError("scalar staged contact must have one component")
             expression = _as_expression(dense[0])
-            library = _sym.TensorLibrary.hep_lib_atom()
+            library = DenseTensors()
             continue
         slots = tuple(
             slot
@@ -1484,17 +1580,14 @@ def _execute_contact_tensor_staged(
                 remaining_leg + 1,
             )
         )
-        library = _sym.TensorLibrary.hep_lib_atom()
-        name = _sym.TensorName(
-            model_symbols.kernel_tensor_name(kind, f"contact_stage_{step}")
+        library = DenseTensors()
+        name = model_symbols.kernel_tensor_name(kind, f"contact_stage_{step}")
+        library.register_dense(
+            name,
+            representations,
+            tuple(_as_expression(component) for component in dense),
         )
-        library.register(
-            _sym.Tensor.dense(
-                name(*representations),
-                tuple(_as_expression(component) for component in dense),
-            )
-        )
-        expression = name(*slots).to_expression()
+        expression = _sym.TensorName(name)(*slots).to_expression()
         step += 1
     raise ValueError("staged contact contraction has no input legs")
 
@@ -1526,7 +1619,7 @@ def eager_color_singlet_vertex_term_components(
             "eager n-ary inputs must provide every non-result leg exactly once"
         )
 
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     expression = _sym.E(term.lorentz_expression)
     momentum_by_leg: dict[int, tuple[_sym.Expression, ...]] = {}
     for leg in sorted(input_legs):
@@ -1559,13 +1652,8 @@ def eager_color_singlet_vertex_term_components(
     )
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
-        library.register(
-            _sym.Tensor.dense(
-                _sym.TensorName(tensor_symbols.ufo_momentum_tensor_name(leg + 1))(
-                    minkowski
-                ),
-                momentum,
-            )
+        library.register_dense(
+            tensor_symbols.ufo_momentum_tensor_name(leg + 1), (minkowski,), momentum
         )
     if coupling is not None:
         expression *= coupling
@@ -1622,7 +1710,7 @@ def _contact_tree_payload_by_leg(
 
 
 def _contact_tree_physical_tensor_expression(
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     *,
     kind: int,
     leg: int,
@@ -1635,9 +1723,9 @@ def _contact_tree_physical_tensor_expression(
         if len(components) != 1:
             raise ValueError("scalar contact input must have one component")
         return components[0]
-    name = _sym.TensorName(model_symbols.contact_leg_tensor_name(kind, leg))
-    library.register(_sym.Tensor.dense(name(*representations), components))
-    return name(*_spin_slots(spin, leg + 1)).to_expression()
+    name = model_symbols.contact_leg_tensor_name(kind, leg)
+    library.register_dense(name, representations, components)
+    return _sym.TensorName(name)(*_spin_slots(spin, leg + 1)).to_expression()
 
 
 def _contact_tree_assignment_multiplicity(

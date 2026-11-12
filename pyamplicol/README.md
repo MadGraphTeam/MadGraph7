@@ -46,6 +46,10 @@ python -m pip install pyamplicol
 The binary wheels include the Rust runtime and native SDK; wheel users do not
 need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 
+To build the wheel from a checkout yourself and run the one-loop examples
+from it, follow
+[Build a wheel from a checkout and run the loop examples](docs/user/installation.md#build-a-wheel-from-a-checkout-and-run-the-loop-examples).
+
 Build the tagged 1.0.1 source snapshot with:
 
 ```console
@@ -54,12 +58,12 @@ cd pyamplicol
 python -m pip install .
 ```
 
-A source build requires Python 3.11 or newer, Rust 1.89 or newer, and a C/C++
+A source build requires Python 3.11 or newer, Rust 1.96 or newer (the workspace `rust-version`), and a C/C++
 toolchain. A Fortran compiler is required only for Fortran consumers.
 
 Contributor setup defaults to published Python dependencies from
-`pyproject.toml`, including Symbolica 3.0.0 and ufo-model-loader 1.0.0, and the
-release-mode native build with published SymJIT 2.27.3.
+`pyproject.toml`, including Symbolica 3.0.3 and ufo-model-loader 1.0.1, and the
+release-mode native build with SymJIT 2.28.3.
 Building a new release wheel requires a clean Git checkpoint and complete
 release assets; the dependency mode does not relax publication guards.
 
@@ -86,6 +90,22 @@ for current-source development and tests.
 
 Full installation details are in the
 [documentation](https://madgraph.org/pyamplicol/).
+
+One-loop matrix elements from a checkout, any process in MG5_aMC syntax
+([master card](examples/README.md#one-loop-examples)):
+
+```console
+git clone https://github.com/MadGraphTeam/pyamplicol.git && cd pyamplicol
+just dev-install                                   # build and stage into .venv
+source .venv/bin/activate                          # the pyamplicol command
+pyamplicol examples copy ./pyamplicol-examples     # editable example cards
+cd pyamplicol-examples
+pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output  # generate
+pyamplicol loop_generate.toml check --output=./my_loop_output     # poles and Ward identities
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points, poles, stability
+pyamplicol loop_generate.toml profile --output=./my_loop_output   # time per point and stage
+pyamplicol loop_generate.toml profile --output=./my_loop_output --runtime --stability  # both backends: runtime and stable digits
+```
 
 ## Quick start
 
@@ -236,6 +256,7 @@ Selected manual measurement snapshots are published in the upstream repository:
 - [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 - [FullColor FFT selected-helicity snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
 - [FullColor FFT helicity-sum snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
+- [One-loop benchmark report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/loop/README.md)
 
 ## Documentation
 
@@ -243,9 +264,12 @@ Read the complete [pyAmpliCol documentation](https://madgraph.org/pyamplicol/).
 
 ## Dependencies and license
 
-Release builds use pinned published dependencies plus SymJIT 2.25.0 from an
-immutable revision of the official
-[symjit-crate repository](https://github.com/siravan/symjit-crate).
+Release builds use pinned published Python dependencies (Symbolica 3.0.3,
+ufo-model-loader 1.0.1) and, in the native code, SymJIT 2.28.3 and pinned
+revisions of Symbolica (with
+[symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163)),
+NinjaRS, oneloopmaster and [TIRust](https://github.com/huashengshao/TIRust);
+see [dependencies/README.md](dependencies/README.md).
 
 pyAmpliCol is distributed under the 0BSD license. Third-party components and
 model assets retain their own terms; see

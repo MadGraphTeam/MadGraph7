@@ -13,7 +13,13 @@ from contextlib import suppress as _suppress
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from ._internal.versions import package_version
+from . import _native_loader
+
+# First: pyamplicol._rusticol is loaded only after the running glibc is checked
+# against the library's ELF version requirements (NativePlatformError).
+_native_loader.install()
+
+from ._internal.versions import package_version  # noqa: E402
 
 if TYPE_CHECKING:
     from types import ModuleType as _ModuleType
@@ -32,6 +38,12 @@ try:
             raise
         # Keep configuration/source-only tooling usable without native deps.
         _symbolica = None
+    except ImportError as _error:
+        # A Symbolica build that needs a newer glibc: name both versions.
+        _translated = _native_loader.translate_loader_error(_error)
+        if _translated is None:
+            raise
+        raise _translated from _error
 
     _set_library_key = getattr(_symbolica, "set_library_key", None)
     if callable(_set_library_key):
@@ -39,9 +51,9 @@ try:
         # key can still license this process, otherwise use restricted mode.
         with _suppress(ValueError, PermissionError):
             _set_library_key(
-                "SU-419-pyamplicol-2028.01.01-"
-                "KJBO3RLZJ3H5FKU5CL756QLKZCURABBCKRGHZRK5OVIUQXZBCLJTOUQPHXYVTANIX"
-                "SCKI6YTZDWGH2NWHQIBCPDUO5GVW2STVMP3MCQ"
+                "SU-419-pyamplicol-2028.03.01-"
+                "TYDKOSXVRWSMFPFBTI7UZTZD2BA2ZLWJEJYGU7ZC3MED6ZHYT4PYZWALKUUCGIRIN"
+                "HCWHEZIDIRXAHPJWEA65PTHXPEPLJUBUCRCKCQ"
             )
 finally:
     if _previous_banner is None:
@@ -60,6 +72,7 @@ if TYPE_CHECKING:
         BenchmarkStageTiming,
         BenchmarkStatistics,
         BenchmarkTimingBreakdown,
+        BornAnchoredColorComponent,
         ColorComponent,
         ColorFlow,
         CompatibilityError,
@@ -82,6 +95,7 @@ if TYPE_CHECKING:
         ModelError,
         ModelParameter,
         ModelSource,
+        NativePlatformError,
         PhysicsReduction,
         ProcessAlias,
         ProcessPhysics,
@@ -89,13 +103,35 @@ if TYPE_CHECKING:
         ProcessSet,
         PyAmpliColError,
         ReductionGroup,
+        ReductionUnavailable,
         ResolvedEvaluation,
         Runtime,
+        TreeGradedEvaluation,
+        TreeOrderEvaluation,
         WarmUpResult,
         benchmark,
         generate,
         group_processes,
         load,
+    )
+    from .api.virtual_results import (
+        LaurentCoefficients,
+        NumericalAccuracyWarning,
+        ResolvedVirtualEvaluation,
+        ResultWarning,
+        VirtualArithmeticSpec,
+        VirtualBestEffort,
+        VirtualColorContraction,
+        VirtualEvaluation,
+        VirtualFailureDiagnostic,
+        VirtualLaneDiagnostic,
+        VirtualReduction,
+        VirtualRescueAttempt,
+        VirtualRescueLevel,
+        VirtualRescuePolicy,
+        VirtualRescueRecord,
+        VirtualVerificationAttempt,
+        VirtualVerificationDiagnostic,
     )
     from .config import (
         BenchmarkConfig,
@@ -103,6 +139,9 @@ if TYPE_CHECKING:
         ColorFFTBasis,
         EvaluationConfig,
         GenerationConfig,
+        LoopConfig,
+        R2Strategy,
+        ReductionBackend,
         RunConfig,
     )
     from .correlators import (
@@ -111,6 +150,7 @@ if TYPE_CHECKING:
         CorrelatedValue,
         CorrelatorConfig,
         EmitGluon,
+        GradedCorrelatedEvaluation,
         SplitGluon,
     )
 
@@ -126,6 +166,7 @@ __all__ = [
     "BenchmarkStageTiming",
     "BenchmarkStatistics",
     "BenchmarkTimingBreakdown",
+    "BornAnchoredColorComponent",
     "ColorComponent",
     "ColorConfig",
     "ColorCorrelator",
@@ -151,23 +192,48 @@ __all__ = [
     "GenerationPlan",
     "GenerationResult",
     "Generator",
+    "GradedCorrelatedEvaluation",
     "HelicityConfiguration",
+    "LaurentCoefficients",
+    "LoopConfig",
     "ModelCompilationIssue",
     "ModelCompilationPhase",
     "ModelError",
     "ModelParameter",
     "ModelSource",
+    "NativePlatformError",
+    "NumericalAccuracyWarning",
     "PhysicsReduction",
     "ProcessAlias",
     "ProcessPhysics",
     "ProcessRequest",
     "ProcessSet",
     "PyAmpliColError",
+    "R2Strategy",
+    "ReductionBackend",
     "ReductionGroup",
+    "ReductionUnavailable",
     "ResolvedEvaluation",
+    "ResolvedVirtualEvaluation",
+    "ResultWarning",
     "RunConfig",
     "Runtime",
     "SplitGluon",
+    "TreeGradedEvaluation",
+    "TreeOrderEvaluation",
+    "VirtualArithmeticSpec",
+    "VirtualBestEffort",
+    "VirtualColorContraction",
+    "VirtualEvaluation",
+    "VirtualFailureDiagnostic",
+    "VirtualLaneDiagnostic",
+    "VirtualReduction",
+    "VirtualRescueAttempt",
+    "VirtualRescueLevel",
+    "VirtualRescuePolicy",
+    "VirtualRescueRecord",
+    "VirtualVerificationAttempt",
+    "VirtualVerificationDiagnostic",
     "WarmUpResult",
     "__version__",
     "benchmark",
@@ -184,7 +250,9 @@ _ERROR_EXPORTS = (
     "EvaluationError",
     "GenerationError",
     "ModelError",
+    "NativePlatformError",
     "PyAmpliColError",
+    "ReductionUnavailable",
 )
 _REQUEST_EXPORTS = (
     "ModelSource",
@@ -207,6 +275,7 @@ _RESULT_EXPORTS = (
     "BenchmarkStageTiming",
     "BenchmarkStatistics",
     "BenchmarkTimingBreakdown",
+    "BornAnchoredColorComponent",
     "ColorComponent",
     "ColorFlow",
     "ContractedColorComponent",
@@ -219,6 +288,8 @@ _RESULT_EXPORTS = (
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "TreeGradedEvaluation",
+    "TreeOrderEvaluation",
     "WarmUpResult",
 )
 _SERVICE_EXPORTS = (
@@ -235,9 +306,32 @@ _CONFIG_EXPORTS = (
     "ColorFFTBasis",
     "EvaluationConfig",
     "GenerationConfig",
+    "LoopConfig",
+    "R2Strategy",
+    "ReductionBackend",
     "RunConfig",
 )
+_VIRTUAL_RESULT_EXPORTS = (
+    "LaurentCoefficients",
+    "ResolvedVirtualEvaluation",
+    "VirtualEvaluation",
+    "VirtualFailureDiagnostic",
+    "VirtualLaneDiagnostic",
+    "VirtualColorContraction",
+    "VirtualArithmeticSpec",
+    "VirtualBestEffort",
+    "ResultWarning",
+    "NumericalAccuracyWarning",
+    "VirtualReduction",
+    "VirtualRescueAttempt",
+    "VirtualRescueLevel",
+    "VirtualRescuePolicy",
+    "VirtualRescueRecord",
+    "VirtualVerificationAttempt",
+    "VirtualVerificationDiagnostic",
+)
 _PUBLIC_EXPORTS = {
+    **{name: (".api.virtual_results", name) for name in _VIRTUAL_RESULT_EXPORTS},
     **{
         name: (".correlators", name)
         for name in (
@@ -246,6 +340,7 @@ _PUBLIC_EXPORTS = {
             "CorrelatedValue",
             "CorrelatorConfig",
             "EmitGluon",
+            "GradedCorrelatedEvaluation",
             "SplitGluon",
         )
     },

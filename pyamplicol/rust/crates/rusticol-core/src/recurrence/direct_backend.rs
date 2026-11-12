@@ -1798,7 +1798,7 @@ impl DirectSingletonContributionFanoutProgram {
             }
             groups[group_index] = Some(DirectSingletonFanoutGroup {
                 direct_executor_id: group.direct_executor_id,
-                row_count: rows.len() as u32,
+                row_count: crate::narrow::checked::<u32>(rows.len(), "singleton fanout rows")?,
                 step_start,
                 step_count,
                 raw,
@@ -2177,7 +2177,7 @@ impl DirectInteractionProgram {
         Self::build(schedule)
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(crate) fn build(schedule: DirectInteractionScheduleView<'_>) -> RusticolResult<Self> {
         let mut actions = vec![DirectInteractionGroupAction::Normal; schedule.groups.len()];
@@ -5037,6 +5037,49 @@ pub(crate) fn execute_certified_reuse_rows(
         }
     }
     Ok(())
+}
+
+/// Execute closure rows outside the plan schedule into `workspace`.
+///
+/// The rows must belong to `executor_id`'s plan; their amplitude destination
+/// IDs index the workspace's amplitude planes.
+pub(crate) fn execute_closure_rows(
+    executors: &DirectExecutorCatalog,
+    executor_id: u32,
+    rows: &[DirectClosureRow],
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+) -> RusticolResult<()> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    workspace.validate(point_count)?;
+    let row_count = u32::try_from(rows.len())
+        .map_err(|_| RusticolError::integrity("direct closure row count exceeds u32"))?;
+    let DirectExecutorHandle::Closure { call, context } =
+        executors.require(executor_id, DirectExecutorRole::Closure)?
+    else {
+        return Err(RusticolError::integrity(
+            "direct closure executor does not have the closure role",
+        ));
+    };
+    clear_direct_executor_error_detail();
+    let (arena, momenta, parameters, factors) = workspace.raw_views()?;
+    // SAFETY: the views describe the validated workspace slices, which stay
+    // borrowed for the duration of the call, and `rows` holds `row_count` rows.
+    let status = unsafe {
+        call(
+            context,
+            arena,
+            momenta,
+            parameters,
+            factors,
+            rows.as_ptr(),
+            row_count,
+            point_count,
+        )
+    };
+    check_status(DirectExecutorRole::Closure, executor_id, status)
 }
 
 pub(crate) fn check_status(

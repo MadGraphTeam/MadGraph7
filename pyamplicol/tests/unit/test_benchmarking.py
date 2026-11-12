@@ -880,7 +880,7 @@ def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
     assert result.sample_count == 5
-    assert runtime.calls == 7
+    assert runtime.calls == 8
     assert result.wall_time_per_point >= 0.0
     assert result.evaluator_time_per_point is None
     assert result.environment["batch_size"] == 4
@@ -1364,30 +1364,83 @@ def test_benchmark_extends_complete_blocks_when_calibration_undershoots(
     assert result.environment["completion_fraction"] == pytest.approx(1.0)
 
 
-def test_benchmark_fails_closed_when_target_extension_cap_is_exhausted(
+class _TimedRuntimeWithColdFirstCall(_TimedRuntime):
+    def evaluate(self, momenta: object, **selectors: object) -> tuple[complex, ...]:
+        self.duration = 1.0e-3 if self.calls == 0 else 6.0e-6
+        return super().evaluate(momenta, **selectors)
+
+
+def test_benchmark_calibration_does_not_plan_blocks_from_a_cold_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The CLI integration test's shape: warmup_runs = 0, so the probe is the cold
+    # first call, alone longer than the per-block target. Planning one-call
+    # blocks from it left 8 blocks far short of the target and failed closed.
     clock = _Clock()
     monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
-    monkeypatch.setattr(benchmark_module, "_MAX_TARGET_RUNTIME_SAMPLE_FACTOR", 1)
-    runtime = _TimedRuntimeWithCalibrationUndershoot(clock)
+    runtime = _TimedRuntimeWithColdFirstCall(clock)
+    config = BenchmarkConfig(
+        target_runtime=1.0e-3,
+        batch_size=2,
+        warmup_runs=0,
+        minimum_samples=2,
+    )
 
-    with pytest.raises(
-        EvaluationError,
-        match="could not reach its target duration of 5s within 20 complete blocks",
-    ):
-        BenchmarkBackend(
-            BenchmarkConfig(
-                target_runtime=5.0,
-                batch_size=2,
-                warmup_runs=1,
-                minimum_samples=20,
-            ),
-            None,
-        ).run(
-            runtime,
-            points=(((1.0, 0.0, 0.0, 1.0),),),
-        )
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.environment["calibration_probe_seconds"] == pytest.approx(1.0e-3)
+    assert result.repetitions_per_sample == 84
+    assert result.sample_count == 2
+    assert result.environment["elapsed_seconds"] >= config.target_runtime
+    assert result.wall_time_per_point == pytest.approx(3.0e-6)
+
+
+class _TimedRuntimeSpeedingUp(_TimedRuntimeWithCalibrationUndershoot):
+    def _benchmark_f64_wall_time(
+        self,
+        momenta: object,
+        repetitions: int,
+        *,
+        helicities: object,
+        color_flows: object,
+        precision: int,
+    ) -> float:
+        del momenta, helicities, color_flows, precision
+        self.native_wall_calls += 1
+        calls = self.native_wall_calls
+        # Calibrated at 0.233 s per repetition, then ten times faster.
+        per_repetition = 0.233 if calls <= self.calibration_calls else 0.0233
+        duration = 1.0 if calls == 1 else repetitions * per_repetition
+        self.clock.value += duration
+        return duration
+
+
+def test_benchmark_extends_blocks_until_the_target_without_a_block_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A host ten times faster after calibration needs more than four times
+    the planned blocks (formerly a refusal): the benchmark extends until it
+    reaches its target duration."""
+
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeSpeedingUp(clock)
+    runtime.calibration_calls = 3
+    config = BenchmarkConfig(
+        target_runtime=5.0, batch_size=2, warmup_runs=1, minimum_samples=20
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime, points=(((1.0, 0.0, 0.0, 1.0),),)
+    )
+
+    initial = result.environment["initial_planned_sample_count"]
+    assert result.environment["elapsed_seconds"] >= config.target_runtime
+    assert result.sample_count > 4 * initial
+    assert result.environment["completed_sample_count"] == result.sample_count
 
 
 def test_native_profile_calls_are_bounded_independently_of_wall_repetitions(
@@ -1441,6 +1494,29 @@ def test_native_profile_calls_are_capped_for_long_target_runtime(
         "separate_native_profile_diagnostic_v1"
     )
     assert runtime.profile_calls == config.warmup_runs + 5
+
+
+def test_native_profile_sample_count_follows_minimum_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-stage profile covers ``minimum_samples`` samples (formerly at
+    most 8)."""
+
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithNativeWall(clock)
+    config = BenchmarkConfig(
+        target_runtime=20.0, batch_size=2, warmup_runs=2, minimum_samples=12
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime, points=(((1.0, 0.0, 0.0, 1.0),),)
+    )
+
+    assert result.sample_count > 12
+    assert result.environment["native_profile_sample_limit"] == 12
+    assert result.environment["native_profile_sample_count"] == 12
+    assert runtime.profile_calls == config.warmup_runs + 12
 
 
 def test_benchmark_uses_repeated_native_rusticol_wall_timer(
@@ -1780,7 +1856,7 @@ def test_benchmark_reduces_planned_blocks_for_slow_runtime(
     assert result.sample_count == 5
     assert result.repetitions_per_sample == 1
     assert result.environment["elapsed_seconds"] == pytest.approx(10.0)
-    assert runtime.calls == 6
+    assert runtime.calls == 7
 
 
 def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
@@ -1797,7 +1873,7 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
     assert result.sample_count == 3
-    assert runtime.calls == 4
+    assert runtime.calls == 5
     assert runtime.profile_calls == 4
     assert result.wall_time_per_point >= 0.0
     assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
@@ -2440,7 +2516,7 @@ def test_benchmark_falls_back_when_native_profile_is_unavailable() -> None:
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
 
-    assert runtime.calls == 3
+    assert runtime.calls == 4
     assert result.environment["wall_time_source"] == (
         "python_outer_perf_counter_wall_time"
     )
@@ -2458,7 +2534,7 @@ def test_benchmark_uses_runtime_validation_point_when_points_are_omitted() -> No
     )
     result = BenchmarkBackend(config, None).run(runtime)
     assert result.sample_count == 2
-    assert runtime.calls == 3
+    assert runtime.calls == 4
 
 
 def test_benchmark_without_points_or_artifact_fixture_is_explicit() -> None:

@@ -54,9 +54,9 @@ dependencies = [
   "prettytable==3.18.0",
   "progressbar2==4.6.0",
   "six==1.17.0",
-  "symbolica==3.0.2",
+  "symbolica==3.0.3",
   "tomli-w==1.2.0",
-  "ufo-model-loader==1.0.0",
+  "ufo-model-loader==1.0.1",
 ]
 
 [project.optional-dependencies]
@@ -162,7 +162,8 @@ deployment-target = "11.0"
 
 [tool.pyamplicol.native-build.sdk]
 package = "rusticol-capi"
-profile = "release"
+# Cargo.toml's [profile.sdk]: release codegen without LTO bitcode in the archive.
+profile = "sdk"
 # Fat LTO folds libstd into referenced static-library objects, which makes the
 # archive impossible to link from a Rust consumer on ELF without duplicate symbols.
 rustc-codegen-arguments = ["-C", "lto=off", "-C", "embed-bitcode=no"]
@@ -171,6 +172,12 @@ rustc-codegen-arguments = ["-C", "lto=off", "-C", "embed-bitcode=no"]
 addopts = "-ra --import-mode=importlib"
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "loop_fast: one-loop unit and saved-control tests",
+  "loop_physics: one-loop generation and provider-reference comparisons",
+  "loop_nightly: long one-loop generation and precision controls",
+  "deferred_direct_r2: generic direct R2 (deferred); deselected unless selected with -m",
+]
 
 [tool.ruff]
 line-length = 88

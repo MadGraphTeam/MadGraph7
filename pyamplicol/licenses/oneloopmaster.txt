@@ -1,0 +1,37 @@
+oneloopmaster (Rust crate oneloop) linked into pyAmpliCol's native libraries
+
+Source: https://github.com/alphal00p/oneloopmaster, revision
+bd703d09a78f7849a6b86a07096e6f222fc01193 (pinned in
+rust/loop-reduction/Cargo.toml and Cargo.lock).
+
+License: the BSD Zero Clause License (0BSD), reproduced below. oneloopmaster
+was relicensed from its provisional MIT identifier to 0BSD by its authors in
+commit 37d9a9b320beb72a80f7a94d4547c8e80c08c502; the grant covers the
+project, including the pinned revision. The crate is a Rust/Symbolica
+transcription of OneLOop by Andreas van Hameren; he gave his permission for
+the distribution and relicensing of this transcription (received by Valentin
+Hirschi by email, recorded on 2026-11-06).
+
+The oneloopmaster README asks users to credit the original work:
+
+- A. van Hameren, OneLOop: for the evaluation of one-loop scalar functions,
+  Computer Physics Communications 182 (2011) 2427-2438, arXiv:1007.4716,
+  doi:10.1016/j.cpc.2011.06.011.
+- A. van Hameren, C. G. Papadopoulos and R. Pittau, Automated one-loop
+  calculations: a proof of concept, JHEP 09 (2009) 106, arXiv:0903.4665,
+  doi:10.1088/1126-6708/2009/09/106.
+
+BSD Zero Clause License
+
+Copyright (c) 2026 The oneloopmaster authors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.

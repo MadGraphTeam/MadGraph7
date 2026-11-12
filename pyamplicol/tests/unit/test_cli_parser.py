@@ -55,6 +55,61 @@ def test_generate_accepts_on_the_fly_execution_mode_override() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
 
 
+def test_generate_accepts_a_repeated_particle_veto() -> None:
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "--loop-coupling-order",
+                "QCD",
+                "--particle-veto",
+                "t",
+                "--particle-veto",
+                "b",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert config.generation.particle_veto == ("t", "b")
+    assert config.generation.allow_anomalous_veto is False
+    with pytest.raises(ConfigurationError, match="particle_veto requires"):
+        parse_cli(("generate", "--particle-veto", "t")).resolve()
+    # [U2]: the override of an anomalous veto (refused by default).
+    allowed = (
+        parse_cli(
+            (
+                "generate",
+                "--loop-coupling-order",
+                "QCD",
+                "--particle-veto",
+                "t",
+                "--allow-anomalous-veto",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert allowed.generation.allow_anomalous_veto is True
+
+
+def test_generate_refuses_the_removed_loop_engine_option() -> None:
+    """The legacy one-loop engine was removed: naming the engine (on the
+    command line or as an override) is refused with the reason."""
+
+    for argv in (
+        ("generate", "--loop-engine", "legacy"),
+        ("generate", "--loop-engine", "v2"),
+        ("generate", "--set", "loop.engine=legacy"),
+    ):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"'loop\.engine' was removed: the legacy one-loop engine was "
+            r"removed; v2 .* is the only one-loop engine; delete the setting",
+        ):
+            parse_cli(argv).resolve()
+
+
 def test_generate_defaults_to_recurrence_execution() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
@@ -100,13 +155,19 @@ def test_automatic_fft_default_is_limited_to_supported_lanes(
             accuracy,
             "--execution-mode",
             execution_mode.value,
+            *(
+                ("--loop-coupling-order", "QCD")
+                if execution_mode is EvaluatorExecutionMode.LOOP_RECURRENCE
+                else ()
+            ),
         )
     ).resolve()
     assert resolution.requested.color.contraction is ColorContraction.AUTO
     assert resolution.requested.color.fft_basis is ColorFFTBasis.ADJOINT
-    supported = accuracy != "lc" and execution_mode in {
+    supported = accuracy != "lc" and resolution.effective.evaluator.execution_mode in {
         EvaluatorExecutionMode.RECURRENCE,
         EvaluatorExecutionMode.ON_THE_FLY,
+        EvaluatorExecutionMode.LOOP_RECURRENCE,
     }
     assert resolution.effective.color.contraction is (
         ColorContraction.AUTO if supported else ColorContraction.DIRECT
@@ -677,6 +738,22 @@ def test_runtime_color_flow_flags_remain_available() -> None:
     assert benchmark.resolve().effective.benchmark.color_flow_ids == ("flow:2,4,1",)
 
 
+@pytest.mark.parametrize("selection", ["all", "none", "uv", "ir"])
+def test_evaluate_pole_selection_takes_every_pole_selection(selection: str) -> None:
+    from pyamplicol.config import PoleSelection
+
+    config = parse_cli(("evaluate", "--poles", selection)).resolve().effective
+    assert config.evaluation.poles is PoleSelection(selection)
+
+
+def test_evaluate_pole_selection_names_its_choices(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli(("evaluate", "--poles", "both"))
+    assert "(choose from 'all', 'none', 'uv', 'ir')" in capsys.readouterr().err
+
+
 def test_profile_is_primary_cli_spelling_for_typed_benchmark_config(
     tmp_path: Path,
 ) -> None:
@@ -724,3 +801,121 @@ def test_profile_is_primary_cli_spelling_for_typed_benchmark_config(
     assert profile.evaluation.process == "d d~ > z g"
     assert profile.benchmark.batch_size == 64
     assert profile.benchmark.minimum_samples == 8
+
+
+def test_check_takes_a_card_or_an_artifact_and_its_options(tmp_path: Path) -> None:
+    """``pyamplicol check CARD_OR_ARTIFACT``: a file is the run card (its
+    request), a directory the artifact (``evaluation.artifact``)."""
+
+    card = tmp_path / "card.toml"
+    card.write_text(
+        'action = "generate"\n[process]\n'
+        'entries = [{expression = "u u~ > g g"}]\nloop_coupling_orders = ["QCD"]\n'
+    )
+    invocation = parse_cli(
+        ("check", str(card), "--points", "5", "--seed", "7", "--precision", "double")
+    )
+    assert invocation.action == "check" and invocation.card == card.resolve()
+    effective = invocation.resolve().effective
+    assert effective.action == "check"
+    assert (effective.check.points, effective.check.seed) == (5, 7)
+    assert effective.check.precision == "double"
+    assert effective.evaluation.artifact is None
+    artifact = tmp_path / "artifact"
+    artifact.mkdir()
+    direct = parse_cli(("check", str(artifact))).resolve().effective
+    assert direct.evaluation.artifact == artifact.resolve()
+    assert (direct.check.points, direct.check.seed) == (3, None)
+    assert direct.check.precision == "auto"
+    assert direct.check.model is None
+    # --model: the model source to regenerate from, resolved as model.source
+    # (a bare shipped name selects the packaged UFO).
+    ufo = tmp_path / "my_ufo"
+    ufo.mkdir()
+    named = parse_cli(("check", str(artifact), "--model", str(ufo))).resolve()
+    assert named.effective.check.model == str(ufo.resolve())
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(("check", str(card), "--precision", "quad"))
+    # --sqrt-s: the scattering points' energy (default None: the generation's
+    # validation convention).
+    assert direct.check.sqrt_s is None
+    energetic = parse_cli(("check", str(card), "--sqrt-s", "2500")).resolve()
+    assert energetic.effective.check.sqrt_s == 2500.0
+    # --arbitrary-digits: the auto ladder's arbitrary-precision rung (default
+    # None: derived per row); an explicit precision runs no rung.
+    assert direct.check.arbitrary_digits is None
+    digits = parse_cli(("check", str(artifact), "--arbitrary-digits", "48")).resolve()
+    assert digits.effective.check.arbitrary_digits == 48
+    with pytest.raises(ConfigurationError, match="must be auto"):
+        parse_cli(
+            (
+                "check",
+                str(artifact),
+                "--precision",
+                "double",
+                "--arbitrary-digits",
+                "48",
+            )
+        ).resolve()
+
+
+def test_profile_takes_the_loop_settings() -> None:
+    effective = (
+        parse_cli(
+            (
+                "profile",
+                "artifact",
+                "--loop-reduction",
+                "tirust",
+                "--reduction-unchecked",
+                "--mu-r2",
+                "1e4",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert effective.evaluation.reduction == "tirust"
+    assert effective.evaluation.reduction_unchecked is True
+    assert effective.evaluation.mu_r2 == "1e4"
+
+
+def test_evaluate_profile_and_check_take_the_kinematics_improvement() -> None:
+    """m-lit lit-psimprove: the two runtime settings on the CLI of
+    ``evaluate``, ``profile`` and ``check`` (its rungs, (G5)), parsed into
+    the evaluation keys. Parsing only: the value is validated by the native
+    policy when the configuration is resolved (no argparse ``choices``; the
+    resolved configuration and the native refusal text are tested in
+    tests/unit/test_kinematics_improvement.py, which has the native
+    extension this job lacks)."""
+
+    for command, value, switch, expected in (
+        ("evaluate", "projection", "--kinematics-improvement-binary64", True),
+        ("profile", "off", "--no-kinematics-improvement-binary64", False),
+        ("check", "rescaling", "--kinematics-improvement-binary64", True),
+    ):
+        invocation = parse_cli((command, "--kinematics-improvement", value, switch))
+        assert invocation.dedicated["evaluation.kinematics_improvement"] == value
+        assert (
+            invocation.dedicated["evaluation.kinematics_improvement_binary64"]
+            is expected
+        ), command
+    default = parse_cli(("evaluate",))
+    assert "evaluation.kinematics_improvement" not in default.dedicated
+    assert "evaluation.kinematics_improvement_binary64" not in default.dedicated
+
+
+def test_fields_description_help_and_n_core_options():
+    """ux-cli C5/C6: --fields-description-help on every action, --n_core and
+    --n-core set benchmark.n_core."""
+
+    from pyamplicol.cli.parser import parse_cli
+
+    for action in ("evaluate", "check", "profile"):
+        invocation = parse_cli([action, "artifact", "--fields-description-help"])
+        assert invocation.fields_help is True
+    assert parse_cli(["profile", "artifact"]).fields_help is False
+    for spelling in ("--n_core", "--n-core"):
+        invocation = parse_cli(["profile", "artifact", spelling, "3"])
+        assert invocation.resolve().effective.benchmark.n_core == 3
+    assert parse_cli(["profile", "artifact"]).resolve().effective.benchmark.n_core == 10

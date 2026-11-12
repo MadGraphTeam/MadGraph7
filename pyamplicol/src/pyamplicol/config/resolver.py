@@ -11,10 +11,24 @@ from types import MappingProxyType
 from typing import Any, NoReturn, TypeVar, cast, get_type_hints
 
 from .errors import ConfigurationError
-from .models import Action, ProcessEntry, RunConfig
-from .registry import CONFIG_SECTIONS, FIELD_REGISTRY, ConfigField, default_values
+from .models import LOOP_ENGINE_REMOVED, Action, ProcessEntry, RunConfig
+from .registry import (
+    CONFIG_SECTIONS,
+    FIELD_REGISTRY,
+    ConfigField,
+    default_values,
+    section_type,
+)
 
 _DataclassT = TypeVar("_DataclassT")
+
+# Removed settings, refused with their reason wherever they are named (card,
+# mapping, dedicated CLI option or dotted override).
+REMOVED_FIELDS = MappingProxyType(
+    {
+        "loop.engine": LOOP_ENGINE_REMOVED,
+    }
+)
 
 
 def _extend_errors(errors: list[str], error: ConfigurationError) -> None:
@@ -104,6 +118,8 @@ def _unknown_field(path: str) -> NoReturn:
 
 
 def _unknown_field_message(path: str) -> str:
+    if path in REMOVED_FIELDS:
+        return REMOVED_FIELDS[path]
     candidates = list(FIELD_REGISTRY)
     suggestion = difflib.get_close_matches(path, candidates, n=1, cutoff=0.55)
     suffix = f"; did you mean {suggestion[0]!r}?" if suggestion else ""
@@ -232,16 +248,39 @@ def _coerce(
 
     kind = item.kind
     result: object
-    if kind == "str":
+    if kind == "section":
+        if not isinstance(value, Mapping):
+            raise ConfigurationError(f"{item.path} must be a table or null")
+        _coerce_flat(_flatten_mapping(value, prefix=item.path), base_dir=base_dir)
+        result = dict(value)
+    elif kind == "exact_scalar":
+        if isinstance(value, str):
+            result = value
+        elif (
+            isinstance(value, (list, tuple))
+            and len(value) == 2
+            and all(isinstance(part, str) for part in value)
+        ):
+            result = tuple(value)
+        else:
+            raise ConfigurationError(
+                f"{item.path} requires a decimal string or two decimal strings"
+            )
+    elif kind == "str":
         if not isinstance(value, str):
             raise ConfigurationError(f"{item.path} must be a string")
-        if item.path == "model.source":
+        if item.path in ("model.source", "check.model"):
             from .._internal.sm_heft import is_sm_heft_alias
 
             if value in {"built-in-sm", "builtin_sm"} or is_sm_heft_alias(value):
                 result = value
             else:
-                result = str(_resolve_path(value, base_dir, item.path))
+                from .._internal.packaged_models import resolve_model_path
+
+                # A bare name of a shipped UFO model ("loop_sm") selects it
+                # when no such path exists next to the card.
+                _resolve_path(value, base_dir, item.path)
+                result = str(resolve_model_path(value, base_dir))
         else:
             result = value
     elif kind == "path":
@@ -284,12 +323,33 @@ def _coerce(
         ):
             raise ConfigurationError(f"{item.path} must be a list of integers")
         result = tuple(cast(Sequence[int], value))
+    elif kind == "choice_or_list_int":
+        # One of the choices, or a list of integers (``loop.external_photons``).
+        if isinstance(value, str):
+            result = value
+        elif isinstance(value, Sequence) and not isinstance(value, bytes):
+            if any(
+                isinstance(entry, bool) or not isinstance(entry, int) for entry in value
+            ):
+                raise ConfigurationError(
+                    f"{item.path} must be one of the choices or a list of integers"
+                )
+            return tuple(cast(Sequence[int], value))
+        else:
+            raise ConfigurationError(
+                f"{item.path} must be one of the choices or a list of integers"
+            )
     elif kind == "process_entries":
         result = _coerce_process_entries(value, item.path)
-    elif kind in ("map_list_str", "map_int"):
+    elif kind in ("map_list_str", "map_int", "map_list_int", "map_exact_scalar"):
         if not isinstance(value, Mapping):
             raise ConfigurationError(f"{item.path} must be a table")
-        dynamic_kind = "list_str" if kind == "map_list_str" else "int"
+        dynamic_kind = {
+            "map_list_str": "list_str",
+            "map_int": "int",
+            "map_list_int": "list_int",
+            "map_exact_scalar": "exact_scalar",
+        }[kind]
         converted: dict[str, object] = {}
         for key, entry in value.items():
             if not isinstance(key, str) or not key:
@@ -338,7 +398,13 @@ def parse_override(
         try:
             parsed = tomllib.loads(f"value = {value_text}\n")["value"]
         except tomllib.TOMLDecodeError as exc:
-            if item.kind not in ("str", "path", "auto_int", "auto_bool"):
+            if item.kind not in (
+                "str",
+                "path",
+                "auto_int",
+                "auto_bool",
+                "choice_or_list_int",
+            ):
                 raise ConfigurationError(
                     f"invalid value for override {path!r}: {value_text!r}"
                 ) from exc
@@ -349,8 +415,29 @@ def parse_override(
     return ConfigOverride(path, _coerce(item, parsed, base_dir=root))
 
 
-def _apply_value(values: dict[str, object], path: str, value: object) -> None:
-    _item, dynamic_key = _field_for_path(path)
+def _apply_value(
+    values: dict[str, object], path: str, value: object, *, base_dir: Path
+) -> None:
+    item, dynamic_key = _field_for_path(path)
+    if item.kind == "section":
+        for child_path, default in default_values().items():
+            if child_path.startswith(path + "."):
+                values[child_path] = default
+        values[path] = None if value is None else {}
+        if value is not None:
+            for child_path, child_value in _coerce_flat(
+                _flatten_mapping(cast(Mapping[str, object], value), prefix=path),
+                base_dir=base_dir,
+            ).items():
+                _apply_value(values, child_path, child_value, base_dir=base_dir)
+        return
+    for parent_path, parent in FIELD_REGISTRY.items():
+        if (
+            parent.kind == "section"
+            and path.startswith(parent_path + ".")
+            and values[parent_path] is None
+        ):
+            values[parent_path] = {}
     if dynamic_key is None:
         values[path] = value
         return
@@ -393,7 +480,12 @@ def _build_dataclass(
         path = f"{prefix}.{item.name}" if prefix else item.name
         if item.metadata.get("config_section"):
             try:
-                kwargs[item.name] = _build_dataclass(hints[item.name], path, values)
+                child, nullable = section_type(hints[item.name])
+                kwargs[item.name] = (
+                    None
+                    if nullable and values[path] is None
+                    else _build_dataclass(child, path, values)
+                )
             except ConfigurationError as exc:
                 _extend_errors(errors, exc)
         else:
@@ -452,11 +544,17 @@ def resolve_config(
     card_flat = _coerce_flat(card_fields, base_dir=root, _errors=card_errors)
     _raise_errors(card_errors)
     for path, value in card_flat.items():
-        _apply_value(values, path, value)
+        _apply_value(values, path, value, base_dir=root)
+    # The paths the user states (card, dedicated options, overrides): a
+    # setting translated from a process's MG5_aMC syntax must agree with them
+    # (``processes.mg5_syntax``).
+    explicit_paths: set[str] = set(card_flat)
 
     if action is not None:
         action_item = FIELD_REGISTRY["action"]
-        _apply_value(values, "action", _coerce(action_item, action, base_dir=root))
+        _apply_value(
+            values, "action", _coerce(action_item, action, base_dir=root), base_dir=root
+        )
 
     if dedicated:
         dedicated_errors: list[str] = []
@@ -466,7 +564,8 @@ def resolve_config(
         )
         _raise_errors(dedicated_errors)
         for path, value in dedicated_flat.items():
-            _apply_value(values, path, value)
+            _apply_value(values, path, value, base_dir=root)
+        explicit_paths.update(dedicated_flat)
 
     override_errors: list[str] = []
     for raw_override in overrides:
@@ -478,14 +577,26 @@ def resolve_config(
             )
             item, _dynamic_key = _field_for_path(parsed_override.path)
             normalized = _coerce(item, parsed_override.value, base_dir=root)
-            _apply_value(values, parsed_override.path, normalized)
+            _apply_value(values, parsed_override.path, normalized, base_dir=root)
+            explicit_paths.add(parsed_override.path)
         except ConfigurationError as exc:
             _extend_errors(override_errors, exc)
     _raise_errors(override_errors)
 
+    # MG5_aMC process syntax (``[QCD]``, ``QCD^2<=4``, ``/ x``, ...) becomes
+    # run-card settings here, for cards, CLI options and overrides alike.
+    # The requested configuration keeps the expressions as written (with the
+    # translated settings, so that it is valid on its own); the effective one
+    # holds the plain expressions.
+    from pyamplicol.processes.mg5_syntax import apply_to_values
+
+    translated_values = dict(values)
+    apply_to_values(translated_values, explicit_paths)
+    if translated_values.get("process.entries") != values.get("process.entries"):
+        values = {**translated_values, "process.entries": values["process.entries"]}
     requested = _make_run_config(values)
 
-    effective_values = dict(values)
+    effective_values = dict(translated_values)
     records: list[ConfigClamp] = []
     clamp_errors: list[str] = []
     for clamp in clamps:
@@ -501,7 +612,7 @@ def resolve_config(
                         f"cannot clamp missing configuration field {clamp.path!r}"
                     )
                 requested_value = parent[dynamic_key]
-            _apply_value(effective_values, clamp.path, effective_value)
+            _apply_value(effective_values, clamp.path, effective_value, base_dir=root)
             records.append(
                 ConfigClamp(
                     path=clamp.path,
@@ -515,6 +626,12 @@ def resolve_config(
     _raise_errors(clamp_errors)
 
     effective = _make_run_config(effective_values)
+    effective = replace(
+        effective,
+        evaluator=replace(
+            effective.evaluator, execution_mode=effective.resolved_execution_mode
+        ),
+    )
     effective = replace(effective, color=effective.resolved_color)
     if effective.evaluator.jit.compress == "auto":
         effective = replace(

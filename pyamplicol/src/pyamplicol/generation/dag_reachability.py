@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from ..models.base import CouplingOrders, Model, Vertex
@@ -325,19 +325,30 @@ def _useful_states_by_mask(
     }
 
 
-def _closure_total_coupling_orders(
+def _species_coupling_orders_by_mask(
     process_ir: CanonicalProcessIR,
     model: Model,
-    color_engine: ColorEngine,
-    closure_candidate_splits: Iterable[tuple[int, int]],
-    closure_reachable_masks: frozenset[int] | None,
-    color_order_reachable_masks: frozenset[int] | None,
     *,
     max_coupling_orders: Mapping[str, int],
     ignored_particle_ids: frozenset[int],
-    ignored_vertex_kinds: frozenset[int],
-) -> frozenset[CouplingOrders]:
-    """Return model-reachable total coupling orders for amplitude closures."""
+    ignored_vertex_kinds: frozenset[int] = frozenset(),
+    vertex_allowed: Callable[[Vertex], bool] | None = None,
+    mask_allowed: Callable[[int], bool] | None = None,
+    include_full_mask: bool = False,
+) -> dict[int, dict[int, set[CouplingOrders]]]:
+    """The forward species and coupling-order sweep: per leg set, the
+    particles a current over it can carry, each with its Pareto-minimal
+    coupling orders within ``max_coupling_orders``.
+
+    Single legs are the external particles; larger leg sets combine two
+    disjoint ones through a model vertex that is not of an
+    ``ignored_vertex_kinds`` kind, does not produce an
+    ``ignored_particle_ids`` particle and passes ``vertex_allowed`` (the
+    colour engine's filter in the DAG compiler). ``mask_allowed`` restricts
+    the leg sets and their splits; the full leg set is left to the closure
+    unless ``include_full_mask``. A species with no order within the limits
+    may be present with an empty order set.
+    """
 
     full_mask = _labels_mask(leg.label for leg in process_ir.legs)
     possible: dict[int, dict[int, set[CouplingOrders]]] = {}
@@ -358,26 +369,13 @@ def _closure_total_coupling_orders(
         color_accuracy=process_ir.color_accuracy,
     )
     for mask in _masks_by_size(full_mask):
-        if mask & (mask - 1) == 0 or mask == full_mask:
+        if mask & (mask - 1) == 0 or (mask == full_mask and not include_full_mask):
             continue
-        if not _mask_allowed_by_reachability(
-            mask,
-            closure_reachable_masks,
-            color_order_reachable_masks,
-        ):
+        if mask_allowed is not None and not mask_allowed(mask):
             continue
         for left_mask, right_mask in _ordered_splits(mask):
-            if not (
-                _mask_allowed_by_reachability(
-                    left_mask,
-                    closure_reachable_masks,
-                    color_order_reachable_masks,
-                )
-                and _mask_allowed_by_reachability(
-                    right_mask,
-                    closure_reachable_masks,
-                    color_order_reachable_masks,
-                )
+            if mask_allowed is not None and not (
+                mask_allowed(left_mask) and mask_allowed(right_mask)
             ):
                 continue
             left_species = possible.get(left_mask)
@@ -402,7 +400,10 @@ def _closure_total_coupling_orders(
                         if (
                             vertex.kind in ignored_vertex_kinds
                             or vertex.particles[2] in ignored_particle_ids
-                            or not color_engine.vertex_allowed(vertex)
+                            or (
+                                vertex_allowed is not None
+                                and not vertex_allowed(vertex)
+                            )
                             or model.skip_duplicate_vertex_orientation(vertex)
                         ):
                             continue
@@ -428,6 +429,36 @@ def _closure_total_coupling_orders(
                         possible[mask][result_particle] = set(
                             _pareto_minimal_coupling_orders(order_bucket)
                         )
+    return possible
+
+
+def _closure_total_coupling_orders(
+    process_ir: CanonicalProcessIR,
+    model: Model,
+    color_engine: ColorEngine,
+    closure_candidate_splits: Iterable[tuple[int, int]],
+    closure_reachable_masks: frozenset[int] | None,
+    color_order_reachable_masks: frozenset[int] | None,
+    *,
+    max_coupling_orders: Mapping[str, int],
+    ignored_particle_ids: frozenset[int],
+    ignored_vertex_kinds: frozenset[int],
+) -> frozenset[CouplingOrders]:
+    """Return model-reachable total coupling orders for amplitude closures."""
+
+    possible = _species_coupling_orders_by_mask(
+        process_ir,
+        model,
+        max_coupling_orders=max_coupling_orders,
+        ignored_particle_ids=ignored_particle_ids,
+        ignored_vertex_kinds=ignored_vertex_kinds,
+        vertex_allowed=color_engine.vertex_allowed,
+        mask_allowed=lambda mask: _mask_allowed_by_reachability(
+            mask,
+            closure_reachable_masks,
+            color_order_reachable_masks,
+        ),
+    )
 
     closure_right_particles_by_left = _closure_right_particles_by_left(
         model,

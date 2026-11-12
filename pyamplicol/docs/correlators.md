@@ -20,7 +20,12 @@ loop amplitudes, kinematic splitting kernels, integrated counterterms, or
 extra-dimensional spin components are supplied.
 
 The correlated path supports **LC, NLC and full colour** through Python and
-the native C/C++/Fortran/Rust SDKs, with the approximation selected at generation. It retains the
+the native C/C++/Fortran/Rust SDKs, with the approximation selected at generation.
+The strict accuracies `strict-lc` and `strict-nlc` (the formal 1/N_c expansion,
+[Correlation Conventions](correlator-conventions.md#strict-colour-the-formal-1nc-expansion))
+are graded: `Runtime.evaluate_correlated_graded` and the Rust
+`NativeRuntime::evaluate_correlated_graded_f64` split each correlation by N_c
+degree, as does full colour generated with `color.graded = true`. It retains the
 complete colour basis and uses direct contraction. Ordinary uncorrelated
 generation and evaluation are unchanged.
 
@@ -192,7 +197,10 @@ that are rounded when entering DoubleFloat, not when defining the vector.
 Both modes return `Decimal` real/imaginary parts. Supply `Decimal` momenta as
 well when kinematic input accuracy beyond binary64 is needed. Native SDK
 correlated calls are binary64 only; the Python arithmetic selection does not
-change their numerical type.
+change their numerical type. A Rust program linking `rusticol-core` with its
+`symbolica-runtime` feature can also evaluate correlations natively in
+double-double and arbitrary precision
+([Native APIs](user/native-apis.md#correlated-born-evaluations)).
 
 The nonempty set of supplied legs must match a declared class **exactly**.
 Here `{3}` and `{3, 4}` are allowed, but `{4}` is not. Every declared leg must
@@ -376,16 +384,20 @@ pyamplicol generate 'g g > g g' artifacts/gg_correlated_cli \
 
 `CorrelatorConfig.to_json_dict()` and `from_json_dict()` use this same schema.
 A splitting step uses `{"kind": "split-gluon", "parent": -1,
-"quark": -2, "antiquark": -3}`. The CLI option prepares the artifact;
-numerical vector setting and correlated evaluation use Python or the native
-SDKs rather than the CLI `evaluate` command.
+"quark": -2, "antiquark": -3}`. The generation CLI option prepares the artifact.
+Numerical evaluation uses `evaluate --correlated-requests requests.json`, the
+Python API or the native SDKs. The request file maps labels to colour IDs and
+exact spin vectors and evaluates all named requests over one batch; see
+[correlated CLI requests](user/command-line-interface.md#correlated-requests).
 
 ## Native correlated evaluations
 
 The `correlators` development branch provides binary64 correlated evaluation
 in C, C++, Fortran and standalone Rust. These entry points use RustiCol and do
 not load Python or Symbolica. Python's separate executor supports
-double-double and arbitrary precision. See [Native APIs](user/native-apis.md#correlated-born-evaluations)
+double-double and arbitrary precision, and so does RustiCol's
+`NativeRuntime::evaluate_correlated_many_with_precision` (feature
+`symbolica-runtime`). See [Native APIs](user/native-apis.md#correlated-born-evaluations)
 for the language-specific owned request types, catalogue enumeration, spin
 setter and result indexing.
 
@@ -460,7 +472,8 @@ amplitudes and disables helicity-specific zero/parity reductions and current
 reuse that would invalidate arbitrary source vectors. Python correlated
 evaluation uses a separate exact executor over retained Symbolica evaluator
 states. Native SDK correlated evaluation uses RustiCol's binary64 coherent
-amplitude executor. Both share amplitudes and unchanged stages between
+amplitude executor; its double-double and arbitrary-precision counterpart
+evaluates the retained exact stage evaluators. Both share amplitudes and unchanged stages between
 requests and contract the generation-time colour matrices directly; neither
 uses FFT or physical-helicity reductions for the correlated result.
 

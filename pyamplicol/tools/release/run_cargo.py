@@ -57,6 +57,10 @@ def main(argv: list[str] | None = None) -> int:
             "PYTHONDONTWRITEBYTECODE": "1",
         }
         updates.update(_python_test_loader_updates(arguments))
+        if arguments[:1] == ["test"]:
+            # Unoptimised test threads of the generic reduction engine need more
+            # than Rust's 2 MiB default stack (8 MiB measured; twice that here).
+            updates["RUST_MIN_STACK"] = os.environ.get("RUST_MIN_STACK", "16777216")
         updates.update(backend._macos_native_build_updates())
         environment = backend._clean_environment(updates)
         completed = subprocess.run(

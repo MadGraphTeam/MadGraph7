@@ -5,6 +5,9 @@ import importlib
 from typing import Any
 
 _LAZY_EXPORTS = {
+    "LoopPreparation": (".loop_preparation", "LoopPreparation"),
+    "resolve_loop_preparation": (".loop_preparation", "resolve_loop_preparation"),
+    "with_loop_preparation": (".loop_preparation", "with_loop_preparation"),
     "BuiltinSMModel": (".builtin", "BuiltinSMModel"),
     "CompiledUFOModel": (".external", "CompiledUFOModel"),
     "ModelCompileOptions": (".loading", "ModelCompileOptions"),
@@ -28,9 +31,12 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "BuiltinSMModel",
     "CompiledUFOModel",
+    "LoopPreparation",
     "ModelCompileOptions",
     "compile_builtin_model_ir",
     "compile_model_source",
     "compile_ufo_model_ir",
     "load_compiled_model",
+    "resolve_loop_preparation",
+    "with_loop_preparation",
 ]

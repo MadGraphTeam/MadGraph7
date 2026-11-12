@@ -117,7 +117,7 @@ impl DirectArenaLayout {
 
         let mut semantic_components = 0u64;
         for (index, assignment) in self.assignments.iter().copied().enumerate() {
-            if assignment.semantic_current_id != index as u32 {
+            if !crate::narrow::is_index(assignment.semantic_current_id, index) {
                 return Err(invalid(format!(
                     "direct-arena assignment row {index} has semantic current ID {}",
                     assignment.semantic_current_id

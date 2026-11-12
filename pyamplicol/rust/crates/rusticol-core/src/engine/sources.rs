@@ -200,16 +200,18 @@ impl ExecutionRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    pub(super) fn fill_sources_row_generic_with_states<T>(
+    pub(super) fn fill_sources_row_generic_with_states<T, M>(
         sources: &[GenericSourceRecordManifest],
         source_states: &[RuntimeSourceState],
         external_count: usize,
-        particle_masses: &BTreeMap<i32, f64>,
+        particle_masses: &M,
         row: &mut [Complex<T>],
         point: &[[T; 4]],
+        binary_precision: Option<u32>,
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
+        M: SourceMasses<T> + ?Sized,
         Complex<T>: Real + EvaluationDomain,
     {
         if source_states.len() != sources.len() {
@@ -242,8 +244,8 @@ impl ExecutionRuntime {
             )?;
             if runtime_state.factor != c64(1.0, 0.0) {
                 let factor = c_generic(
-                    T::from(runtime_state.factor.re),
-                    T::from(runtime_state.factor.im),
+                    T::from_f64_constant(runtime_state.factor.re, binary_precision),
+                    T::from_f64_constant(runtime_state.factor.im, binary_precision),
                 );
                 for component in &mut row[start..stop] {
                     *component *= factor.clone();
@@ -346,15 +348,16 @@ impl ExecutionRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    pub(super) fn fill_sources_row_generic<T>(
+    pub(super) fn fill_sources_row_generic<T, M>(
         sources: &[GenericSourceRecordManifest],
         external_count: usize,
-        particle_masses: &BTreeMap<i32, f64>,
+        particle_masses: &M,
         row: &mut [Complex<T>],
         point: &[[T; 4]],
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
+        M: SourceMasses<T> + ?Sized,
         Complex<T>: Real + EvaluationDomain,
     {
         for source in sources {
@@ -497,10 +500,12 @@ impl ExecutionRuntime {
         Ok(())
     }
 
+    /// Fills the model-parameter block with values already at the working
+    /// precision (`generic_model_parameters`).
     #[cfg(feature = "symbolica-runtime")]
     pub(super) fn fill_model_parameters_row_generic<T>(
         model_parameter_start: usize,
-        model_parameter_values: &[f64],
+        model_parameter_values: &[T],
         row: &mut [Complex<T>],
     ) -> RusticolResult<()>
     where
@@ -514,7 +519,7 @@ impl ExecutionRuntime {
             ));
         }
         for (index, value) in model_parameter_values.iter().enumerate() {
-            row[model_parameter_start + index] = c_generic(T::from(*value), T::new_zero());
+            row[model_parameter_start + index] = c_generic(value.clone(), T::new_zero());
         }
         Ok(())
     }
@@ -556,15 +561,16 @@ impl ExecutionRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    pub(super) fn write_source_wavefunction_generic<T>(
+    pub(super) fn write_source_wavefunction_generic<T, M>(
         source: &GenericSourceRecordManifest,
         external_count: usize,
-        particle_masses: &BTreeMap<i32, f64>,
+        particle_masses: &M,
         point: &[[T; 4]],
         out: &mut [Complex<T>],
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
+        M: SourceMasses<T> + ?Sized,
         Complex<T>: Real + EvaluationDomain,
     {
         let state = default_source_state(source)?;
@@ -579,16 +585,17 @@ impl ExecutionRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    pub(super) fn write_source_wavefunction_generic_with_state<T>(
+    pub(super) fn write_source_wavefunction_generic_with_state<T, M>(
         source: &GenericSourceRecordManifest,
         state: &GenericSourceStateIrManifest,
         external_count: usize,
-        particle_masses: &BTreeMap<i32, f64>,
+        particle_masses: &M,
         point: &[[T; 4]],
         out: &mut [Complex<T>],
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
+        M: SourceMasses<T> + ?Sized,
         Complex<T>: Real + EvaluationDomain,
     {
         Self::write_source_wavefunction_generic_unphased(
@@ -604,16 +611,17 @@ impl ExecutionRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn write_source_wavefunction_generic_unphased<T>(
+    fn write_source_wavefunction_generic_unphased<T, M>(
         source: &GenericSourceRecordManifest,
         state: &GenericSourceStateIrManifest,
         external_count: usize,
-        particle_masses: &BTreeMap<i32, f64>,
+        particle_masses: &M,
         point: &[[T; 4]],
         out: &mut [Complex<T>],
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
+        M: SourceMasses<T> + ?Sized,
         Complex<T>: Real + EvaluationDomain,
     {
         if source.source_kind != "external-wavefunction" {
@@ -676,31 +684,21 @@ impl ExecutionRuntime {
                 )));
             }
             let wave = if family == GenericWavefunctionFamilyManifest::Fermion {
-                let mass = particle_mass_from_map(
-                    particle_masses,
-                    identity.pdg_label,
-                    identity.anti_pdg_label,
-                );
-                if mass != 0.0 {
-                    return Err(RusticolError::invalid_argument(
-                        "high-precision generic massive fermion sources are not implemented",
-                    ));
-                }
-                if source_is_antiparticle(source)? {
+                let mass = particle_masses.mass(identity.pdg_label, identity.anti_pdg_label);
+                let antiparticle = source_is_antiparticle(source)?;
+                if !is_zero(&mass) {
+                    ext_dirac_massive_generic(&momentum, state.helicity, mass, antiparticle)?
+                } else if antiparticle {
                     ext_antiquark_dirac_generic(&momentum, state.helicity)
                 } else {
                     ext_quark_dirac_generic(&momentum, state.helicity)
                 }
             } else if family == GenericWavefunctionFamilyManifest::Vector {
-                let mass = particle_mass_from_map(
-                    particle_masses,
-                    identity.pdg_label,
-                    identity.anti_pdg_label,
-                );
-                if mass == 0.0 {
+                let mass = particle_masses.mass(identity.pdg_label, identity.anti_pdg_label);
+                if is_zero(&mass) {
                     ext_gluon_generic(&momentum, state.helicity)
                 } else {
-                    ext_massive_vector_generic(&momentum, state.helicity, T::from(mass))
+                    ext_massive_vector_generic(&momentum, state.helicity, mass)
                 }
             } else {
                 return Err(unsupported_source_wavefunction(source));
@@ -719,11 +717,7 @@ impl ExecutionRuntime {
             let wave = ext_spin2_generic(
                 &momentum,
                 state.helicity,
-                T::from(particle_mass_from_map(
-                    particle_masses,
-                    identity.pdg_label,
-                    identity.anti_pdg_label,
-                )),
+                particle_masses.mass(identity.pdg_label, identity.anti_pdg_label),
             )?;
             out.clone_from_slice(&wave);
             return Ok(());
@@ -811,4 +805,219 @@ fn particle_mass_from_map(
         .copied()
         .or_else(|| particle_masses.get(&anti_particle_id).copied())
         .unwrap_or(0.0)
+}
+
+/// External masses of the generic (high-precision) source wavefunctions by
+/// PDG code: the tree runtime's binary64 values, or values in the carrier
+/// itself (`CarrierMasses`, the loop engine's native trees). A particle
+/// absent from the table is massless.
+#[cfg(feature = "symbolica-runtime")]
+pub(super) trait SourceMasses<T> {
+    fn mass(&self, particle_id: i32, anti_particle_id: i32) -> T;
+}
+
+#[cfg(feature = "symbolica-runtime")]
+impl<T: From<f64>> SourceMasses<T> for BTreeMap<i32, f64> {
+    fn mass(&self, particle_id: i32, anti_particle_id: i32) -> T {
+        T::from(particle_mass_from_map(self, particle_id, anti_particle_id))
+    }
+}
+
+/// Masses in the carrier `T` by PDG code.
+#[cfg(feature = "symbolica-runtime")]
+pub(super) struct CarrierMasses<'a, T>(pub(super) &'a BTreeMap<i32, T>);
+
+/// The binary64 mass table at the working precision, for [`CarrierMasses`].
+#[cfg(feature = "symbolica-runtime")]
+pub(super) fn masses_at_precision<T>(
+    masses: &BTreeMap<i32, f64>,
+    binary_precision: Option<u32>,
+) -> BTreeMap<i32, T>
+where
+    T: RusticolHighPrecisionNumber,
+    Complex<T>: Real + EvaluationDomain,
+{
+    masses
+        .iter()
+        .map(|(pdg, mass)| (*pdg, T::from_f64_constant(*mass, binary_precision)))
+        .collect()
+}
+
+#[cfg(feature = "symbolica-runtime")]
+impl<T: Real + Clone> SourceMasses<T> for CarrierMasses<'_, T> {
+    fn mass(&self, particle_id: i32, anti_particle_id: i32) -> T {
+        self.0
+            .get(&particle_id)
+            .or_else(|| self.0.get(&anti_particle_id))
+            .cloned()
+            .unwrap_or_else(T::new_zero)
+    }
+}
+
+/// The external wavefunctions of a runtime schema's `source_fill` for a
+/// caller outside the tree engine (the loop engine's native trees,
+/// `loop_v2::trees`): the same records, formulas and crossing phases as
+/// the tree runtime, one helicity per source. Binary64 takes binary64
+/// masses (the tree runtime's path); DoubleFloat and MPFR take the masses in
+/// the carrier, so the wavefunctions carry its precision.
+#[cfg(feature = "symbolica-runtime")]
+pub struct SchemaSources {
+    sources: Vec<GenericSourceRecordManifest>,
+}
+
+#[cfg(feature = "symbolica-runtime")]
+impl SchemaSources {
+    pub(crate) fn from_value(source_fill: &Value) -> RusticolResult<Self> {
+        let fill: GenericSourceFillManifest =
+            serde_json::from_value(source_fill.clone()).map_err(|error| {
+                RusticolError::invalid_argument(format!("schema source fill: {error}"))
+            })?;
+        if fill.source_count != fill.sources.len() {
+            return Err(RusticolError::invalid_argument(
+                "schema source fill count differs from its sources",
+            ));
+        }
+        Ok(Self {
+            sources: fill.sources,
+        })
+    }
+
+    /// The four-component vector sources of the fill: per source its
+    /// 1-based leg label, the start of its value slot and its applied
+    /// crossing phase, the targets of a literal four-vector that replaces
+    /// the leg's wavefunction (the Python lane's
+    /// `native_observables._source_slots`, read from the same records).
+    pub(crate) fn vector_slots(&self) -> Vec<(usize, usize, [f64; 2])> {
+        self.sources
+            .iter()
+            .filter(|source| {
+                source.source_ir.wavefunction_family == GenericWavefunctionFamilyManifest::Vector
+                    && source.value_slot.component_stop == source.value_slot.component_start + 4
+            })
+            .map(|source| {
+                (
+                    source.leg_label,
+                    source.value_slot.component_start,
+                    source.applied_crossing.phase,
+                )
+            })
+            .collect()
+    }
+
+    /// The value slots (component start, stop) of every source of the
+    /// 1-based leg `leg` (each of its helicities), in fill order.
+    pub(crate) fn leg_slots(&self, leg: usize) -> Vec<(usize, usize)> {
+        self.sources
+            .iter()
+            .filter(|source| source.leg_label == leg)
+            .map(|source| {
+                (
+                    source.value_slot.component_start,
+                    source.value_slot.component_stop,
+                )
+            })
+            .collect()
+    }
+
+    /// The squared mass of each of `legs` legs' external states, in leg
+    /// order, by the wavefunctions' own lookup ([`SourceMasses`]): the mass of
+    /// the particle's PDG code, else its antiparticle's, absent = massless.
+    /// Every leg needs a source, and all sources of a leg one mass. `masses`
+    /// holds every massive particle's exact mass: an exact external
+    /// parameter, or the exact value of a derived mass's carrier (its legs'
+    /// invariants are then its square, the value its sources take).
+    pub(crate) fn leg_masses(
+        &self,
+        legs: usize,
+        masses: &BTreeMap<i32, Rational>,
+    ) -> RusticolResult<Vec<Rational>> {
+        let mut out: Vec<Option<Rational>> = vec![None; legs];
+        for source in &self.sources {
+            let index = source
+                .leg_label
+                .checked_sub(1)
+                .filter(|&index| index < legs)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "generic source {} refers to unknown external label {}",
+                        source.source_id, source.leg_label
+                    ))
+                })?;
+            let identity = &source.source_ir.identity;
+            let mass = masses
+                .get(&identity.pdg_label)
+                .or_else(|| masses.get(&identity.anti_pdg_label))
+                .cloned()
+                .unwrap_or_else(|| Rational::from(0));
+            let square = &mass * &mass;
+            match &out[index] {
+                Some(found) if *found != square => {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "the sources of external label {} disagree on its mass",
+                        source.leg_label
+                    )));
+                }
+                Some(_) => {}
+                None => out[index] = Some(square),
+            }
+        }
+        out.into_iter()
+            .enumerate()
+            .map(|(index, square)| {
+                square.ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "external label {} has no source",
+                        index + 1
+                    ))
+                })
+            })
+            .collect()
+    }
+
+    /// Binary64 wavefunctions of physical momenta `point` into `row`.
+    pub(crate) fn fill_f64(
+        &self,
+        masses: &BTreeMap<i32, f64>,
+        point: &[[f64; 4]],
+        row: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
+        ExecutionRuntime::fill_sources_row(&self.sources, point.len(), masses, row, point)
+    }
+
+    pub(crate) fn fill_double_float(
+        &self,
+        masses: &BTreeMap<i32, DoubleFloat>,
+        point: &[[DoubleFloat; 4]],
+        row: &mut [Complex<DoubleFloat>],
+    ) -> RusticolResult<()> {
+        self.fill_generic(masses, point, row)
+    }
+
+    pub(crate) fn fill_float(
+        &self,
+        masses: &BTreeMap<i32, Float>,
+        point: &[[Float; 4]],
+        row: &mut [Complex<Float>],
+    ) -> RusticolResult<()> {
+        self.fill_generic(masses, point, row)
+    }
+
+    fn fill_generic<T>(
+        &self,
+        masses: &BTreeMap<i32, T>,
+        point: &[[T; 4]],
+        row: &mut [Complex<T>],
+    ) -> RusticolResult<()>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        ExecutionRuntime::fill_sources_row_generic(
+            &self.sources,
+            point.len(),
+            &CarrierMasses(masses),
+            row,
+            point,
+        )
+    }
 }
