@@ -23,7 +23,9 @@
 
 use crate::{CorrelatedEvaluation, Evaluation, PointStatus, Runtime, Selection};
 use rusticol_core::loop_execution::LoopInputs;
+use rusticol_core::loop_execution::v2::{LaneMeasure, MeasureKind};
 use rusticol_core::{RusticolError, RusticolResult};
+use rusticol_loop_reduction::v2_runtime::summarise;
 use rusticol_loop_reduction::v2_stability::StabilityChecks;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -316,6 +318,34 @@ fn joined(reasons: &BTreeMap<u64, Vec<String>>, id: u64) -> String {
         .unwrap_or_else(|| "no value".to_owned())
 }
 
+/// The largest method-choice deviation and the smallest conditioning
+/// estimate the reduction backend states for the refused lanes of point
+/// `id` (the diagnostics' `"refusal_measures"`, data from the native
+/// reduction; m-lit ux-polish item 4), where stated.
+fn measures_of(diagnostics: &serde_json::Value, id: u64) -> (Option<f64>, Option<f64>) {
+    let measures: Vec<LaneMeasure> = diagnostics
+        .get("refusal_measures")
+        .and_then(|all| all.get(id.to_string()))
+        .and_then(|list| list.as_array())
+        .map(|list| {
+            list.iter()
+                .filter_map(|pair| {
+                    let kind = match pair.get(0)?.as_str()? {
+                        "method-choice-deviation" => MeasureKind::MethodChoiceDeviation,
+                        "gram-conditioning" => MeasureKind::GramConditioning,
+                        _ => return None,
+                    };
+                    Some(LaneMeasure {
+                        kind,
+                        value: pair.get(1)?.as_f64()?,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    summarise(&measures)
+}
+
 /// The relative estimate of the `position`-th successful point of a
 /// result's diagnostics (`"stability"."estimates"[position]."relative"`),
 /// when the binary64 monitoring formed one and it is a finite number.
@@ -484,12 +514,18 @@ impl Runtime {
                 })?;
                 base.statuses_mut()[index] = PointStatus::BestEffort;
                 base.uncertainties_mut()[index] = uncertainty.unwrap_or(f64::NAN);
+                let (deviation, conditioning) = measures_of(&diagnostics, id);
                 best.insert(
                     id,
                     serde_json::json!({
                         "refusal": joined(&reasons, id),
                         "uncertainty": uncertainty,
                         "source": if uncertainty.is_some() { source } else { "none" },
+                        // The backend's own lane-level measures of the
+                        // refusal (the Python API's `VirtualBestEffort`
+                        // fields), null where none is stated.
+                        "backend_deviation": deviation,
+                        "gram_conditioning": conditioning,
                         "detail": match uncertainty {
                             None => "no uncertainty could be estimated (the unchecked value \
                                      has no binary64 stability estimate)",
@@ -545,6 +581,15 @@ impl Runtime {
             .as_object_mut()
             .ok_or_else(|| RusticolError::internal("diagnostics are a JSON object"))?;
         object.insert("failures".to_owned(), serde_json::json!(reasons));
+        // The served points' measures are in their best-effort record.
+        if let Some(measures) = object
+            .get_mut("refusal_measures")
+            .and_then(|m| m.as_object_mut())
+        {
+            for id in best.keys() {
+                measures.remove(&id.to_string());
+            }
+        }
         object.insert(
             "successful_point_ids".to_owned(),
             serde_json::json!(base.successful()),

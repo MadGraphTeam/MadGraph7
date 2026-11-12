@@ -112,7 +112,7 @@ use rusticol_core::loop_artifact::{
     read_loop_v2_native_inputs, read_loop_v2_observables,
 };
 use rusticol_core::loop_execution::v2::{
-    Contraction, LaneKey, PointResult, Poles, V2Executor, V2Options,
+    Contraction, LaneKey, LaneMeasure, MeasureKind, PointResult, Poles, V2Executor, V2Options,
 };
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{LiveRows, LoopProgramV4};
@@ -399,7 +399,75 @@ fn model_externals(artifact: &VerifiedArtifact) -> RusticolResult<BTreeSet<Strin
 /// virtual per declared sector, `[finite, 1/ε, 1/ε²]` (finite only without
 /// poles), or the executor's failures; binary64 values by default, Python
 /// `Decimal` values ([`Decimal`]) in double-double and arbitrary precision.
-pub type V2Point<N = f64> = Result<(Vec<N>, Vec<Vec<N>>), Vec<String>>;
+pub type V2Point<N = f64> = Result<(Vec<N>, Vec<Vec<N>>), PointFailure>;
+
+/// A failed point's reasons (one message per failed lane or check, as
+/// before) and, as data next to them, the reduction backend's measures of
+/// its refused lanes (`PointResult::measures`, m-lit ux-polish item 4: a
+/// TIRust method-choice deviation relative to its term scale, TIRust's
+/// conditioning estimate). Dereferences to the reasons.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PointFailure {
+    pub reasons: Vec<String>,
+    pub measures: Vec<LaneMeasure>,
+}
+
+impl PointFailure {
+    /// `reasons` with `measures`.
+    pub fn new(reasons: Vec<String>, measures: Vec<LaneMeasure>) -> Self {
+        Self { reasons, measures }
+    }
+
+    /// Append `other`'s reasons and measures.
+    pub fn absorb(&mut self, other: PointFailure) {
+        self.reasons.extend(other.reasons);
+        self.measures.extend(other.measures);
+    }
+
+    /// The largest method-choice deviation and the smallest conditioning
+    /// estimate among the measures, where stated.
+    pub fn summary(&self) -> (Option<f64>, Option<f64>) {
+        summarise(&self.measures)
+    }
+}
+
+/// The largest method-choice deviation and the smallest conditioning
+/// estimate among `measures`, where stated (NaN ignored).
+pub fn summarise(measures: &[LaneMeasure]) -> (Option<f64>, Option<f64>) {
+    let pick = |kind: MeasureKind, larger: bool| {
+        measures
+            .iter()
+            .filter(|m| m.kind == kind && !m.value.is_nan())
+            .map(|m| m.value)
+            .reduce(|a, b| if (b > a) == larger { b } else { a })
+    };
+    (
+        pick(MeasureKind::MethodChoiceDeviation, true),
+        pick(MeasureKind::GramConditioning, false),
+    )
+}
+
+impl From<Vec<String>> for PointFailure {
+    fn from(reasons: Vec<String>) -> Self {
+        Self {
+            reasons,
+            measures: Vec::new(),
+        }
+    }
+}
+
+impl std::ops::Deref for PointFailure {
+    type Target = Vec<String>;
+    fn deref(&self) -> &Vec<String> {
+        &self.reasons
+    }
+}
+
+impl std::ops::DerefMut for PointFailure {
+    fn deref_mut(&mut self) -> &mut Vec<String> {
+        &mut self.reasons
+    }
+}
 
 /// The pole selection of an evaluation (REQUIREMENTS_ADDENDUM I,
 /// `loops/v2/poles.py`): the renormalised virtual's poles (`All`), the
@@ -2075,14 +2143,16 @@ impl V2Runtime {
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);
             let mut failures = result.failures;
+            let mut measures = result.measures;
             if let Some(twin) = twin {
                 failures.extend(twin.failures.iter().cloned());
+                measures.extend(twin.measures.iter().copied());
             }
             if !failures.is_empty() {
                 if COLLECT {
                     collected.push(None);
                 }
-                out.push(Err(failures));
+                out.push(Err(PointFailure::new(failures, measures)));
                 continue;
             }
             // Per sector the lanes' combined Laurent (and in a split

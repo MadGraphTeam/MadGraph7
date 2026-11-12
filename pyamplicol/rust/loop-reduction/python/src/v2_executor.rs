@@ -618,6 +618,9 @@ struct Evaluation {
     /// None (every row).
     amplitude_rows: Option<Vec<usize>>,
     failures: Vec<Vec<String>>,
+    /// Per point the backend's measures of its refused lanes, `(kind,
+    /// value)` (`PointResult::measures`; m-lit ux-polish item 4).
+    refusal_measures: Vec<Vec<(&'static str, f64)>>,
     report: ReportObject,
 }
 
@@ -746,6 +749,15 @@ fn export_evaluation<T: Exchanged + Real>(
                         .map(|column| column.iter().map(|x| x.to_f64()).collect())
                         .collect()
                 })
+            })
+            .collect(),
+        refusal_measures: results
+            .iter()
+            .map(|r| {
+                r.measures
+                    .iter()
+                    .map(|m| (m.kind.name(), m.value))
+                    .collect()
             })
             .collect(),
         failures: results.into_iter().map(|r| r.failures).collect(),
@@ -2367,7 +2379,7 @@ fn evaluate_v2_artifact(
         .into_iter()
         .map(|point| match point {
             Ok(values) => (Some(values), Vec::new()),
-            Err(failures) => (None, failures),
+            Err(failures) => (None, failures.reasons),
         })
         .collect())
 }

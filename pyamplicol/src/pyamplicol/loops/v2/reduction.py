@@ -111,7 +111,6 @@ from __future__ import annotations
 import functools
 import json
 import math
-import re
 from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -729,7 +728,9 @@ def _with_fallback(
                 estimate=estimate,
                 target=target,
             )
-            failures[index] = [reason]
+            from .plan_export import measures_of, with_measures
+
+            failures[index] = with_measures([reason], measures_of(failures[index]))
             records[index] = VirtualReduction(
                 choice.requested,
                 fallback,
@@ -775,30 +776,38 @@ def with_fallback(
     return results, failures, records
 
 
-# A TIRust method-choice refusal's measure: its two frames' deviation and
-# the lane's term scale (``v2_tir``'s reason text).
-_DEVIATION = re.compile(
-    r"deviation ([-+0-9.eE]+) of term scale ([-+0-9.eE]+) between its two frames"
-)
-
-
 def backend_deviation(reasons: Collection[str]) -> float | None:
-    """The backend's own accuracy measure stated by refusal ``reasons``: the
+    """The backend's own accuracy measure of refusal ``reasons``: the
     largest deviation of a TIRust method-choice lane between its two frames
     relative to that lane's term scale (a lane-level measure), None when no
-    reason states one."""
+    refused lane states one. Read from the measures the native executor
+    returns as data with the reasons (``plan_export.Refusal``, m-lit
+    ux-polish item 4), never from their text."""
 
-    found: list[float] = []
-    for reason in reasons:
-        for deviation, scale in _DEVIATION.findall(reason):
-            try:
-                size = float(scale)
-                value = float(deviation) / size if size > 0 else math.inf
-            except ValueError:
-                continue
-            if not math.isnan(value):
-                found.append(value)
-    return max(found) if found else None
+    return _measure(reasons, "method-choice-deviation", max)
+
+
+def gram_conditioning(reasons: Collection[str]) -> float | None:
+    """TIRust's smallest conditioning estimate of the lanes refusal
+    ``reasons`` refused (``"gram-conditioning"``: the Gram, Cayley or
+    coordinate-system measure its stability threshold refused; zero for an
+    exactly singular pivot), None when no refused lane states one; data as
+    ``backend_deviation``."""
+
+    return _measure(reasons, "gram-conditioning", min)
+
+
+def _measure(
+    reasons: Collection[str], kind: str, pick: Callable[[list[float]], float]
+) -> float | None:
+    from .plan_export import measures_of
+
+    found = [
+        value
+        for name, value in measures_of(reasons)
+        if name == kind and not math.isnan(value)
+    ]
+    return pick(found) if found else None
 
 
 def _point_estimate(result: Any) -> float:
@@ -874,6 +883,8 @@ def _best_effort(
             )
     for local, index in enumerate(indices):
         refusal = bounded_reasons(failures[index])
+        deviation = backend_deviation(failures[index])
+        conditioning = gram_conditioning(failures[index])
         if local in still or values[local] is None:
             failures[index] = bounded_reasons(
                 [
@@ -905,7 +916,8 @@ def _best_effort(
                 "; ".join(refusal),
                 uncertainty,
                 source if uncertainty is not None else "none",
-                backend_deviation(refusal),
+                deviation,
+                conditioning,
             ),
         )
         results[index] = (

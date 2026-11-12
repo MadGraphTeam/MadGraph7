@@ -169,7 +169,8 @@ use iregi_rust::{
 };
 use ninjars::fast::tensor_layout::{monomials, ncoeff};
 use rusticol_core::loop_execution::v2::{
-    BackendStatistics, FamilyLanes, LaneOutcome, Poles, Reduced,
+    BackendStatistics, FamilyLanes, LaneMeasure, LaneOutcome, MeasureKind, MeasuredLane, Poles,
+    Reduced,
 };
 use rusticol_core::loop_v2::bounds::{Reducer, rank_refusal};
 use rusticol_core::loop_v2::retest::ReductionCheck;
@@ -648,11 +649,14 @@ struct Moments<T> {
     choice: bool,
 }
 
-/// A row's moments in one frame, with its frame map's origin and undo.
+/// A row's moments in one frame, with its frame map's origin and undo,
+/// and, for a refused row, TIRust's conditioning estimate where it states
+/// one (`last_conditions`, m-lit ux-polish item 4).
 struct FrameRow<T> {
     moments: Result<Moments<T>, String>,
     origin: [Complex<T>; 4],
     undo: Option<Complex<T>>,
+    measure: Option<LaneMeasure>,
 }
 
 /// The rows of one (propagators, rank) and their TIRust inputs.
@@ -843,6 +847,9 @@ pub struct TirReductionBackend {
     store: Option<TensorStore>,
     /// [`TirOptions::masters_census`]: the store's census provider.
     census: Option<std::sync::Arc<MastersCensus>>,
+    /// The measures of the last `reduce`'s refused lanes
+    /// ([`Self::take_lane_measures`]).
+    measures: Vec<MeasuredLane>,
 }
 
 /// `|z|` in binary64.
@@ -850,6 +857,39 @@ fn norm<T: Carrier>(z: &Complex<T>) -> f64 {
     (z.re.clone() * &z.re + &(z.im.clone() * &z.im))
         .sqrt()
         .to_f64()
+}
+
+/// TIRust's conditioning estimate of the lanes of `result` it refused as
+/// `Unstable` (`last_conditions` of `workspace`, the call's own; empty when
+/// no lane is: nothing is copied on the common path).
+fn conditions_of<T: TirCarrier>(
+    result: &BatchResult<T>,
+    workspace: &DirectWorkspace<T>,
+) -> Vec<Option<f64>>
+where
+    Complex<T>: EvaluationDomain,
+{
+    if result
+        .statuses
+        .iter()
+        .any(|status| matches!(status, LaneStatus::Unstable(_)))
+    {
+        workspace.last_conditions().to_vec()
+    } else {
+        Vec::new()
+    }
+}
+
+/// The conditioning measure of lane `k` (`conditions_of`), if stated.
+fn conditioning(conditions: &[Option<f64>], k: usize) -> Option<LaneMeasure> {
+    conditions
+        .get(k)
+        .copied()
+        .flatten()
+        .map(|value| LaneMeasure {
+            kind: MeasureKind::GramConditioning,
+            value,
+        })
 }
 
 fn status_text(status: &LaneStatus) -> String {
@@ -862,12 +902,15 @@ fn status_text(status: &LaneStatus) -> String {
 }
 
 /// A gates pass's lanes into the rows `members[k]` of `out`: a served
-/// lane's moments, any other status the row's reason. Returns the lanes the
-/// gates refused (`Unstable`: for the method choice), ascending.
+/// lane's moments, any other status the row's reason (and an `Unstable`
+/// lane's conditioning measure, `conditions_of`; empty where TIRust's
+/// diagnostics describe another result). Returns the lanes the gates
+/// refused (`Unstable`: for the method choice), ascending.
 fn gated<T: Carrier>(
     result: &BatchResult<T>,
     members: &[usize],
     position: &[usize],
+    conditions: &[Option<f64>],
     out: &mut [FrameRow<T>],
 ) -> Vec<usize> {
     let mut refused = Vec::new();
@@ -881,6 +924,7 @@ fn gated<T: Carrier>(
             }
             Err(status @ LaneStatus::Unstable(_)) => {
                 out[index].moments = Err(status_text(status));
+                out[index].measure = conditioning(conditions, k);
                 refused.push(k);
             }
             Err(status) => out[index].moments = Err(status_text(status)),
@@ -892,14 +936,16 @@ fn gated<T: Carrier>(
 /// A method-choice pass's lanes into `out`: lane `r` of `result` is the
 /// gate-refused row `rows[r]`; `flagged` the lanes TIRust served with
 /// small-Gram expansions (`last_gram_lanes`; empty where TIRust's
-/// diagnostics describe another result: the rotation copy's). Returns the
-/// lanes `r` the method choice refused (`Unstable`: for the unchecked
-/// mode's last resort), ascending.
+/// diagnostics describe another result: the rotation copy's) and
+/// `conditions` their conditioning measures (`conditions_of`; empty
+/// alike); a lane refused again keeps the gates' measure unless the method
+/// choice states its own. Returns the lanes `r` the method choice refused
+/// (`Unstable`: for the unchecked mode's last resort), ascending.
 fn retried<T: Carrier>(
     result: &BatchResult<T>,
     rows: &[usize],
     position: &[usize],
-    flagged: &[bool],
+    (flagged, conditions): (&[bool], &[Option<f64>]),
     out: &mut [FrameRow<T>],
     counters: &mut Counters,
 ) -> Vec<usize> {
@@ -915,10 +961,14 @@ fn retried<T: Carrier>(
                     values: permuted(values, position),
                     choice: true,
                 });
+                out[index].measure = None;
             }
             Err(status) => {
                 if matches!(status, LaneStatus::Unstable(_)) {
                     refused.push(r);
+                    if let Some(measure) = conditioning(conditions, r) {
+                        out[index].measure = Some(measure);
+                    }
                 }
                 out[index].moments = Err(format!(
                     "{} (refused by the gates, then by the method choice: {})",
@@ -952,6 +1002,7 @@ fn resorted<T: Carrier>(
                     values: permuted(values, position),
                     choice: false,
                 });
+                out[index].measure = None;
             }
             Err(status) => {
                 if let Err(reason) = &mut out[index].moments {
@@ -982,7 +1033,18 @@ impl TirReductionBackend {
                 })
             }),
             census,
+            measures: Vec::new(),
         }
+    }
+
+    /// The measures of the refused lanes of the last [`Self::reduce`]
+    /// (m-lit ux-polish item 4): a method-choice lane refused by its
+    /// acceptance, its deviation between its two frames relative to its
+    /// term scale; any other refused lane, TIRust's conditioning estimate
+    /// where it states one (`last_conditions`). The reason texts are
+    /// unchanged.
+    pub fn take_lane_measures(&mut self) -> Vec<MeasuredLane> {
+        std::mem::take(&mut self.measures)
     }
 
     /// A backend whose plans are built for every (propagators, rank up to
@@ -1170,6 +1232,7 @@ impl TirReductionBackend {
                 moments: Err(String::new()),
                 origin,
                 undo: map.undo(),
+                measure: None,
             });
             let (members, values) = bins.entry((n, row.rank)).or_default();
             members.push(index);
@@ -1191,6 +1254,7 @@ impl TirReductionBackend {
                     moments: Err(String::new()),
                     origin: row.origin.clone(),
                     undo: row.undo.clone(),
+                    measure: None,
                 })
                 .collect()
         });
@@ -1221,9 +1285,11 @@ impl TirReductionBackend {
                 None => (workspace.reduce_batch(&batch).map_err(tirust)?, None),
             };
             self.counters.call(workspace, options.profile);
-            let refused = gated(&result, &members, &bin.position, &mut out);
+            // TIRust's diagnostics describe the primary.
+            let conditions = conditions_of(&result, workspace);
+            let refused = gated(&result, &members, &bin.position, &conditions, &mut out);
             let refused_copy = match (&copied, &mut copies) {
-                (Some(copied), Some(copies)) => gated(copied, &members, &bin.position, copies),
+                (Some(copied), Some(copies)) => gated(copied, &members, &bin.position, &[], copies),
                 _ => Vec::new(),
             };
             let passes = if copy.is_some() { 2 } else { 1 };
@@ -1296,11 +1362,13 @@ impl TirReductionBackend {
                 self.counters.call(workspace, options.profile);
                 // TIRust's diagnostics describe the primary.
                 let flagged = workspace.last_gram_lanes().to_vec();
+                let conditions = conditions_of(&result, workspace);
                 self.counters.rows += 2 * both.len() as u64;
                 let (rows, position, c) = (indices(&both), &bin.position, &mut self.counters);
-                let refused = retried(&result, &rows, position, &flagged, &mut out, c);
+                let diagnostics = (flagged.as_slice(), conditions.as_slice());
+                let refused = retried(&result, &rows, position, diagnostics, &mut out, c);
                 last.extend(refused.into_iter().map(|r| both[r]));
-                let refused = retried(&copied, &rows, position, &[], copies, c);
+                let refused = retried(&copied, &rows, position, (&[], &[]), copies, c);
                 last_copy.extend(refused.into_iter().map(|r| both[r]));
             }
             if !alone.is_empty() {
@@ -1309,9 +1377,11 @@ impl TirReductionBackend {
                 let result = workspace.reduce_batch(&retry(&alone)).map_err(tirust)?;
                 self.counters.call(workspace, options.profile);
                 let flagged = workspace.last_gram_lanes().to_vec();
+                let conditions = conditions_of(&result, workspace);
                 self.counters.rows += alone.len() as u64;
                 let (rows, position, c) = (indices(&alone), &bin.position, &mut self.counters);
-                let refused = retried(&result, &rows, position, &flagged, &mut out, c);
+                let diagnostics = (flagged.as_slice(), conditions.as_slice());
+                let refused = retried(&result, &rows, position, diagnostics, &mut out, c);
                 last.extend(refused.into_iter().map(|r| alone[r]));
             }
             if let (false, Some(rotation), Some(copies)) =
@@ -1328,9 +1398,11 @@ impl TirReductionBackend {
                 let result = workspace.reduce_batch(&rotated).map_err(tirust)?;
                 self.counters.call(workspace, options.profile);
                 let flagged = workspace.last_gram_lanes().to_vec();
+                let conditions = conditions_of(&result, workspace);
                 self.counters.rows += copy_alone.len() as u64;
                 let (rows, position, c) = (indices(&copy_alone), &bin.position, &mut self.counters);
-                let refused = retried(&result, &rows, position, &flagged, copies, c);
+                let diagnostics = (flagged.as_slice(), conditions.as_slice());
+                let refused = retried(&result, &rows, position, diagnostics, copies, c);
                 last_copy.extend(refused.into_iter().map(|r| copy_alone[r]));
             }
             if options.unchecked && !(last.is_empty() && last_copy.is_empty()) {
@@ -1429,6 +1501,7 @@ impl TirReductionBackend {
     where
         Complex<T>: EvaluationDomain,
     {
+        self.measures.clear();
         // The carrier (its precision) of the groups' values.
         let Some(prototype) = groups
             .iter()
@@ -1617,6 +1690,9 @@ impl TirReductionBackend {
                     .zip(check_map.as_ref())
                     .map(|(checked, map)| in_frame(&checked[r], map, width));
                 self.counters.lanes += 1;
+                // The measure of a refused lane: the acceptance's deviation
+                // (below), else the row's conditioning.
+                let mut measure = first.measure;
                 let verified = match (&first.moments, &value) {
                     (Ok(m), Ok(value)) if verify && m.choice => {
                         // The acceptance compares every Laurent slot the
@@ -1646,6 +1722,14 @@ impl TirReductionBackend {
                                     Ok(value.clone())
                                 } else {
                                     self.counters.unverified += 1;
+                                    measure = Some(LaneMeasure {
+                                        kind: MeasureKind::MethodChoiceDeviation,
+                                        value: if scale > 0.0 {
+                                            deviation / scale
+                                        } else {
+                                            f64::INFINITY
+                                        },
+                                    });
                                     Err(format!(
                                         "TIRust method-choice lane refused by its check: deviation \
                                          {deviation:e} of term scale {scale:e} between its two frames \
@@ -1663,9 +1747,28 @@ impl TirReductionBackend {
                     }
                     (_, value) => value.clone().map_err(Clone::clone),
                 };
+                if let (Err(_), Some(measure)) = (&verified, measure) {
+                    self.measures.push(MeasuredLane {
+                        group: row.group,
+                        lane,
+                        check: false,
+                        measure,
+                    });
+                }
                 direct_out[row.group].push(verified);
                 if let Some(check_out) = &mut check_out {
-                    check_out[row.group].push(again.expect("every row is checked"));
+                    let again = again.expect("every row is checked");
+                    if let (Err(_), Some(checked)) = (&again, &checked)
+                        && let Some(measure) = checked[r].measure
+                    {
+                        self.measures.push(MeasuredLane {
+                            group: row.group,
+                            lane,
+                            check: true,
+                            measure,
+                        });
+                    }
+                    check_out[row.group].push(again);
                 }
             }
         }

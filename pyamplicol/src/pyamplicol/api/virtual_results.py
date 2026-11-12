@@ -393,12 +393,15 @@ class VirtualBestEffort:
     one-rotation estimate; 219 of 219 within the recommended one).
     ``"none"``: no
     estimate could be formed (the re-test failed or was not a number), and
-    ``uncertainty`` is None. ``backend_deviation`` is the backend's own
-    accuracy measure where its refusal states one: the largest deviation
+    ``uncertainty`` is None. ``backend_deviation`` and
+    ``gram_conditioning`` are the backend's own lane-level measures where
+    its refused lanes state one (data from the native reduction, never read
+    from the reason text; not the result's accuracy): the largest deviation
     of a TIRust method-choice lane between its two frames relative to that
-    lane's term scale (a lane-level measure, not the result's accuracy);
-    None when the refusals state none (e.g. an ill-conditioned Gram matrix,
-    NinjaRS's thresholds)."""
+    lane's term scale, and TIRust's smallest conditioning estimate of a
+    refused lane (the Gram, Cayley or coordinate-system measure its
+    stability threshold refused; zero for an exactly singular pivot); None
+    when no refused lane states one (e.g. NinjaRS's thresholds)."""
 
     refusal: str
     uncertainty: float | None
@@ -409,6 +412,7 @@ class VirtualBestEffort:
         "none",
     ]
     backend_deviation: float | None = None
+    gram_conditioning: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.refusal, str) or not self.refusal:
@@ -420,7 +424,7 @@ class VirtualBestEffort:
                 "a best-effort uncertainty is given exactly when its source is "
                 "not 'none'"
             )
-        for name in ("uncertainty", "backend_deviation"):
+        for name in ("uncertainty", "backend_deviation", "gram_conditioning"):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -447,6 +451,8 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
         tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
     if record.backend_deviation is not None:
         tail += f"; backend deviation {record.backend_deviation:.2e}"
+    if record.gram_conditioning is not None:
+        tail += f"; Gram conditioning {record.gram_conditioning:.2e}"
     return f"{head}; {tail}; refusal in failures / --json"
 
 

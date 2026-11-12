@@ -139,7 +139,7 @@ impl V2Runtime {
             frame,
             &mut collected,
         )?;
-        let mut failures: Vec<Vec<String>> = points
+        let mut failures: Vec<PointFailure> = points
             .iter()
             .map(|point| point.as_ref().err().cloned().unwrap_or_default())
             .collect();
@@ -164,6 +164,9 @@ impl V2Runtime {
                             .iter()
                             .map(|reason| format!("{}: {reason}", stability::rotation_name(k))),
                     );
+                    failures[index]
+                        .measures
+                        .extend(reasons.measures.iter().copied());
                 }
             }
             rotated.push(runs);
@@ -260,7 +263,7 @@ impl V2Runtime {
                 induced.square_vectors(&Binary64, vectors, &rows, &gram, width, average)
             },
         )?;
-        let mut failures: Vec<Vec<String>> = points
+        let mut failures: Vec<PointFailure> = points
             .iter()
             .map(|point| point.as_ref().err().cloned().unwrap_or_default())
             .collect();
@@ -291,6 +294,9 @@ impl V2Runtime {
                             .iter()
                             .map(|reason| format!("{}: {reason}", stability::rotation_name(k))),
                     );
+                    failures[index]
+                        .measures
+                        .extend(reasons.measures.iter().copied());
                 }
             }
             rotated.push(runs);
@@ -628,7 +634,7 @@ impl V2Runtime {
                     // its rotation's, as the Python API's guarded evaluation
                     // reports them (the guard's check runs with it).
                     if let Err(more) = &turned {
-                        reasons.extend(guard_rotation_failure(more));
+                        reasons.absorb(guard_rotation_failure(more));
                     }
                     return Ok((Err(reasons), None));
                 }
@@ -758,7 +764,7 @@ impl V2Runtime {
                     // The fallback's own failures, then its rotation's (the
                     // Python API's guarded evaluation).
                     if let Some(more) = turned[index].as_ref().err() {
-                        reasons.extend(guard_rotation_failure(more));
+                        reasons.absorb(guard_rotation_failure(more));
                     }
                     out.push((Err(reasons), None));
                     continue;
@@ -813,7 +819,7 @@ impl V2Runtime {
         zero: &T,
         arith: &DecimalArith,
     ) -> RusticolResult<(
-        Vec<Result<(), Vec<String>>>,
+        Vec<Result<(), PointFailure>>,
         Vec<Option<InducedCollected<Decimal>>>,
     )>
     where
@@ -914,11 +920,14 @@ fn guard_rotation() -> RusticolResult<stability::Rotation> {
 
 /// The reasons of a point whose guard rotation failed (the rotation check's
 /// own failure text, `stability::rotation_name` 0: the Python API's).
-fn guard_rotation_failure(reasons: &[String]) -> Vec<String> {
-    reasons
-        .iter()
-        .map(|reason| format!("{}: {reason}", stability::rotation_name(0)))
-        .collect()
+fn guard_rotation_failure(reasons: &PointFailure) -> PointFailure {
+    PointFailure::new(
+        reasons
+            .iter()
+            .map(|reason| format!("{}: {reason}", stability::rotation_name(0)))
+            .collect(),
+        reasons.measures.clone(),
+    )
 }
 
 /// Every point's spin source vectors rotated exactly with its momenta

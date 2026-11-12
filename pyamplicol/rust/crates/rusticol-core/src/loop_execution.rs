@@ -207,6 +207,48 @@ pub mod v2 {
         pub counts: Vec<(&'static str, u64)>,
     }
 
+    /// The kind of a refused lane's measure ([`LaneMeasure`]).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum MeasureKind {
+        /// A method-choice lane's deviation between its two frames relative
+        /// to its term scale (what TIRust's acceptance bounds).
+        MethodChoiceDeviation,
+        /// The reducer's conditioning estimate of a refused lane (TIRust's
+        /// `last_conditions`: the Gram, Cayley or coordinate-system measure
+        /// compared with its stability threshold; zero for an exactly
+        /// singular pivot).
+        GramConditioning,
+    }
+
+    impl MeasureKind {
+        /// The kind's name in the Python and SDK records.
+        pub fn name(self) -> &'static str {
+            match self {
+                Self::MethodChoiceDeviation => "method-choice-deviation",
+                Self::GramConditioning => "gram-conditioning",
+            }
+        }
+    }
+
+    /// The backend's own accuracy measure of a refused lane, as data next
+    /// to its reason text (m-lit ux-polish item 4).
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct LaneMeasure {
+        pub kind: MeasureKind,
+        pub value: f64,
+    }
+
+    /// A refused lane's measure of the last [`V2Backend::reduce`]: lane
+    /// `lane` of group `group`, of the re-test (`check`) or the direct
+    /// outcome.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct MeasuredLane {
+        pub group: usize,
+        pub lane: usize,
+        pub check: bool,
+        pub measure: LaneMeasure,
+    }
+
     /// The reduction side of the v2 path: NinjaRS engines and caches.
     pub trait V2Backend<T> {
         /// Start a chunk of points (master caches hold one chunk's masters).
@@ -220,6 +262,11 @@ pub mod v2 {
         /// The counters collected since the last call (none by default).
         fn take_statistics(&mut self) -> BackendStatistics {
             BackendStatistics::default()
+        }
+        /// The measures of the refused lanes of the last `reduce` that the
+        /// backend states one for (none by default; TIRust's).
+        fn take_lane_measures(&mut self) -> Vec<MeasuredLane> {
+            Vec::new()
         }
     }
 
@@ -283,6 +330,9 @@ pub mod v2 {
         pub amplitude_scale: Vec<Vec<T>>,
         /// Numerical failures; a failed point has no values.
         pub failures: Vec<String>,
+        /// The backend's measures of the point's refused lanes, where it
+        /// states one ([`V2Backend::take_lane_measures`]); empty otherwise.
+        pub measures: Vec<LaneMeasure>,
     }
 
     /// Development measurements of one run: seconds per stage, work counts
@@ -1171,6 +1221,8 @@ pub mod v2 {
     /// What the reductions of one evaluation collect per point.
     struct Lanes<T> {
         failures: Vec<Vec<String>>,
+        /// Per point the backend's measures of its refused lanes.
+        measures: Vec<Vec<LaneMeasure>>,
         families: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
         checks: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
         /// [`V2Options::term_scale`]: per point and (loop order, column)
@@ -1288,6 +1340,14 @@ pub mod v2 {
                 report.count(name, value);
             }
             let sink = &mut *self.sink;
+            for measured in self.backend.take_lane_measures() {
+                if let Some(&point) = groups
+                    .get(measured.group)
+                    .and_then(|group| group.points.get(measured.lane))
+                {
+                    sink.measures[point].push(measured.measure);
+                }
+            }
             for (index, group) in groups.iter().enumerate() {
                 // A family's dependent columns (lit-fold F1d): `c` times
                 // their representative's integrals, direct and re-test.
@@ -1346,6 +1406,14 @@ pub mod v2 {
             let width = self.options.poles.width();
             let slots = self.plan.order_count * self.plan.columns;
             let sink = &mut *self.sink;
+            for measured in self.backend.take_lane_measures() {
+                if let Some(&point) = units
+                    .get(measured.group)
+                    .and_then(|unit| unit.points.get(measured.lane))
+                {
+                    sink.measures[point].push(measured.measure);
+                }
+            }
             for ((group, unit), moments) in groups.iter().zip(&units).zip(&moments) {
                 let monomials = group.coefficients.len() / group.keys.len().max(1);
                 let formed = Formed::of(self.plan, group.family, self.data);
@@ -1488,6 +1556,7 @@ pub mod v2 {
         }
         let mut sink = Lanes {
             failures: vec![Vec::new(); points],
+            measures: vec![Vec::new(); points],
             families: vec![Vec::new(); points],
             checks: vec![Vec::new(); points],
             terms: vec![Vec::new(); points],
@@ -1579,6 +1648,7 @@ pub mod v2 {
         }
         let Lanes {
             mut failures,
+            mut measures,
             mut families,
             mut checks,
             mut terms,
@@ -1590,7 +1660,7 @@ pub mod v2 {
             zero.one() / (zero.from_usize(16) * &pi * &pi * zero.from_usize(plan.average as usize)),
         );
         let mut results = Vec::with_capacity(points);
-        let failed = |failures: Vec<String>| PointResult {
+        let failed = |failures: Vec<String>, measures: Vec<LaneMeasure>| PointResult {
             families: Vec::new(),
             check: None,
             bare: Vec::new(),
@@ -1600,13 +1670,17 @@ pub mod v2 {
             amplitude_budget: None,
             amplitude_scale: Vec::new(),
             failures,
+            measures,
         };
         if plan.amplitude {
             // Amplitude-mode plans (decided once per call): the native
             // amplitude sum per (loop order, column).
             for point in 0..points {
                 if !failures[point].is_empty() {
-                    results.push(failed(std::mem::take(&mut failures[point])));
+                    results.push(failed(
+                        std::mem::take(&mut failures[point]),
+                        std::mem::take(&mut measures[point]),
+                    ));
                     continue;
                 }
                 let mut lanes = std::mem::take(&mut families[point]);
@@ -1634,7 +1708,10 @@ pub mod v2 {
         }
         for point in 0..points {
             if !failures[point].is_empty() {
-                results.push(failed(std::mem::take(&mut failures[point])));
+                results.push(failed(
+                    std::mem::take(&mut failures[point]),
+                    std::mem::take(&mut measures[point]),
+                ));
                 continue;
             }
             let mut sums =
@@ -1682,6 +1759,7 @@ pub mod v2 {
                 amplitude_budget: None,
                 amplitude_scale: Vec::new(),
                 failures: Vec::new(),
+                measures: Vec::new(),
             });
         }
         report.count("points", points as u64);
@@ -1758,6 +1836,7 @@ pub mod v2 {
             amplitude_budget,
             amplitude_scale,
             failures: Vec::new(),
+            measures: Vec::new(),
         }
     }
 

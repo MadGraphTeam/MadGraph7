@@ -123,7 +123,7 @@ pub struct ColumnValues<N> {
 }
 
 /// One evaluated point: per requested column its values, or the failures.
-pub type ColumnPoint<N> = Result<Vec<ColumnValues<N>>, Vec<String>>;
+pub type ColumnPoint<N> = Result<Vec<ColumnValues<N>>, PointFailure>;
 
 impl Observables {
     /// The stored observables of a process (`artifact.read_native_process`'s
@@ -1111,11 +1111,13 @@ impl V2Runtime {
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);
             let mut failures = result.failures;
+            let mut measures = result.measures;
             if let Some(twin) = twin {
                 failures.extend(twin.failures.iter().cloned());
+                measures.extend(twin.measures.iter().copied());
             }
             if !failures.is_empty() {
-                out.push(Err(failures));
+                out.push(Err(PointFailure::new(failures, measures)));
                 continue;
             }
             // Per lane column its summed Laurent (`omega`), and in a split

@@ -22,8 +22,8 @@ use rusticol_loop_reduction::v2_runtime::induced_outputs::{
 };
 use rusticol_loop_reduction::v2_runtime::kinematics_improvement;
 use rusticol_loop_reduction::v2_runtime::{
-    C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
-    is_v2_artifact, named_parameters,
+    C, ColumnPoint, Decimal, PointFailure, Rational, V2Point, V2Poles, V2Precision, V2Runtime,
+    decimal_parameter, is_v2_artifact, named_parameters,
 };
 use rusticol_loop_reduction::v2_runtime::{Monitored, ResolvedPoints, cross_reduction};
 use rusticol_loop_reduction::v2_stability::CROSS;
@@ -1613,8 +1613,8 @@ fn decimal_values(
 /// arithmetic, or its failures (`ordinary`: the inclusive virtual).
 fn statuses_of<T>(
     ids: &[u64],
-    points: &[Result<T, Vec<String>>],
-) -> (Vec<u64>, Vec<PointStatus>, BTreeMap<u64, Vec<String>>) {
+    points: &[Result<T, PointFailure>],
+) -> (Vec<u64>, Vec<PointStatus>, BTreeMap<u64, PointFailure>) {
     let mut successful = Vec::new();
     let mut statuses = Vec::with_capacity(points.len());
     let mut failures = BTreeMap::new();
@@ -1638,18 +1638,18 @@ fn statuses_of<T>(
 /// evaluation ran the fallback guard's check with it, that check's relative
 /// estimate (no second re-test).
 pub(crate) trait PointOutcome: Sized {
-    fn reasons(&self) -> Option<&[String]>;
-    fn failed(reasons: Vec<String>) -> Self;
+    fn reasons(&self) -> Option<&PointFailure>;
+    fn failed(reasons: PointFailure) -> Self;
     fn guard_estimate(&self) -> Option<f64> {
         None
     }
 }
 
-impl<T> PointOutcome for Result<T, Vec<String>> {
-    fn reasons(&self) -> Option<&[String]> {
-        self.as_ref().err().map(Vec::as_slice)
+impl<T> PointOutcome for Result<T, PointFailure> {
+    fn reasons(&self) -> Option<&PointFailure> {
+        self.as_ref().err()
     }
-    fn failed(reasons: Vec<String>) -> Self {
+    fn failed(reasons: PointFailure) -> Self {
         Err(reasons)
     }
 }
@@ -1657,11 +1657,11 @@ impl<T> PointOutcome for Result<T, Vec<String>> {
 /// A point of an evaluation that ran the per-point fallback's guard check
 /// with it (`V2Runtime::evaluate_extended_guarded`): its outcome and, when
 /// it succeeded, the guard's estimate.
-impl<T> PointOutcome for (Result<T, Vec<String>>, Option<f64>) {
-    fn reasons(&self) -> Option<&[String]> {
+impl<T> PointOutcome for (Result<T, PointFailure>, Option<f64>) {
+    fn reasons(&self) -> Option<&PointFailure> {
         self.0.reasons()
     }
-    fn failed(reasons: Vec<String>) -> Self {
+    fn failed(reasons: PointFailure) -> Self {
         (Err(reasons), None)
     }
     fn guard_estimate(&self) -> Option<f64> {
@@ -1670,10 +1670,10 @@ impl<T> PointOutcome for (Result<T, Vec<String>>, Option<f64>) {
 }
 
 impl PointOutcome for Monitored {
-    fn reasons(&self) -> Option<&[String]> {
+    fn reasons(&self) -> Option<&PointFailure> {
         self.0.reasons()
     }
-    fn failed(reasons: Vec<String>) -> Self {
+    fn failed(reasons: PointFailure) -> Self {
         (Err(reasons), None, None)
     }
 }
@@ -1685,15 +1685,15 @@ pub(crate) trait IntoPoint {
     fn into_point(self) -> Self::Point;
 }
 
-impl<T> IntoPoint for Result<T, Vec<String>> {
+impl<T> IntoPoint for Result<T, PointFailure> {
     type Point = Self;
     fn into_point(self) -> Self {
         self
     }
 }
 
-impl<T> IntoPoint for (Result<T, Vec<String>>, Option<f64>) {
-    type Point = Result<T, Vec<String>>;
+impl<T> IntoPoint for (Result<T, PointFailure>, Option<f64>) {
+    type Point = Result<T, PointFailure>;
     fn into_point(self) -> Self::Point {
         self.0
     }
@@ -1814,7 +1814,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                     == rusticol_core::RusticolErrorKind::UnsupportedRuntimeCapability =>
         {
             (0..count)
-                .map(|_| P::failed(vec![error.to_string()]))
+                .map(|_| P::failed(vec![error.to_string()].into()))
                 .collect()
         }
         Err(error) => return Err(error),
@@ -1849,9 +1849,9 @@ pub(crate) fn with_fallback<P: PointOutcome>(
         .collect();
     let target = native.target();
     for ((&index, point), guarded) in failed.iter().zip(again).zip(guarded) {
-        let first = points[index].reasons().unwrap_or_default().to_vec();
+        let first = points[index].reasons().cloned().unwrap_or_default();
         let outcome = match (point.reasons(), guarded) {
-            (Some(second), _) => Err(second.to_vec()),
+            (Some(second), _) => Err(second.clone()),
             (None, Some(estimate)) if checking => Ok(Some(estimate)),
             (None, None) if !checking => Ok(None),
             (None, _) => {
@@ -1879,7 +1879,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                         estimate: Some(estimate),
                     },
                 );
-                points[index] = P::failed(vec![reason]);
+                points[index] = P::failed(PointFailure::new(vec![reason], first.measures));
                 continue;
             }
             Ok(estimate) => {
@@ -1900,10 +1900,13 @@ pub(crate) fn with_fallback<P: PointOutcome>(
             }
             Err(second) => second,
         };
-        let second: Vec<String> = second
-            .iter()
-            .map(|reason| reduction_policy::fallback_failed(fallback, reason))
-            .collect();
+        let second = PointFailure::new(
+            second
+                .iter()
+                .map(|reason| reduction_policy::fallback_failed(fallback, reason))
+                .collect(),
+            second.measures,
+        );
         // One message per reason class with the count of the others (the
         // Python API's bounded reasons, m-lit ux-besteffort F6).
         record.points.insert(
@@ -1915,7 +1918,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
             },
         );
         let mut reasons = first;
-        reasons.extend(second);
+        reasons.absorb(second);
         points[index] = P::failed(reasons);
     }
     Ok((points, record))
@@ -2862,7 +2865,7 @@ fn public_estimate(estimate: &Estimate, with_poles: bool, native: &V2Runtime) ->
 pub(crate) fn diagnostics(
     requested: &[u64],
     successful: &[u64],
-    failures: &BTreeMap<u64, Vec<String>>,
+    failures: &BTreeMap<u64, PointFailure>,
     poles: Poles,
     arithmetic: Arithmetic,
     reduction: &Choice,
@@ -2894,7 +2897,29 @@ pub(crate) fn diagnostics(
         "fallbacks": fallbacks.record(requested),
         "requested_point_ids":requested,
         "successful_point_ids":successful,
-        "failures":failures,
+        "failures": failures
+            .iter()
+            .map(|(id, failure)| (*id, &failure.reasons))
+            .collect::<BTreeMap<_, _>>(),
+        // Per failed point whose refused lanes the reduction backend states
+        // a measure for (m-lit ux-polish item 4): `[kind, value]` pairs
+        // (TIRust's "method-choice-deviation" relative to the term scale,
+        // its "gram-conditioning" estimate); data, never parsed from the
+        // reason text. Points without one are absent.
+        "refusal_measures": failures
+            .iter()
+            .filter(|(_, failure)| !failure.measures.is_empty())
+            .map(|(id, failure)| {
+                (
+                    *id,
+                    failure
+                        .measures
+                        .iter()
+                        .map(|m| serde_json::json!([m.kind.name(), m.value]))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>(),
         "r2_strategy":"model", "engine":"v2", "poles":poles.name(),
         "arithmetic": arithmetic.name(),
         "working_digits": (arithmetic != Arithmetic::Double).then(|| arithmetic.working_digits()),
