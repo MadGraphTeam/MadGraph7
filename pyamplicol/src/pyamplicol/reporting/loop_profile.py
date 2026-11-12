@@ -356,7 +356,8 @@ def interrupted_line(setup: Any, color: bool) -> str | None:
     per = setup.get("evaluated_per_backend") or {}
     detail = ", ".join(f"{_name(name)} {count}" for name, count in per.items())
     return palette.paint(
-        f"interrupted: {setup.get('measured', 0)} of {setup.get('requested', 0)} "
+        f"interrupted: {setup.get('measured_points', 0)} of "
+        f"{setup.get('requested', 0)} "
         "requested points evaluated"
         + (f" ({detail})" if len(set(per.values())) > 1 else "")
         + "; the tables hold those points",
@@ -373,7 +374,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     rows = report.stability
     served = [row for row in rows if row.refusal is None and row.points]
     points = (
-        f"{setup.get('measured', 0)} of {setup['points']}"
+        f"{setup.get('measured_points', 0)} of {setup['points']}"
         if setup.get("interrupted")
         else str(setup["points"])
     )

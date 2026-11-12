@@ -972,16 +972,14 @@ def _stability(
     setup = {
         "points": count,
         "requested": count,
-        "measured": min(complete.values(), default=0),
+        "measured_points": min(complete.values(), default=0),
         "evaluated_per_backend": complete,
         "interrupted": interrupted,
         "n_core": workers,
         "seed": flat.seed,
         "sqrt_s": flat.sqrt_s,
         "generator": "flat (RAMBO), beams along +-z in the centre-of-mass frame",
-        "measured_quantity": (
-            "finite part of the total (sum over the squared-order sectors)"
-        ),
+        "measured": "finite part of the total (sum over the squared-order sectors)",
         "reference": "double-double re-run of the same point on the same backend",
         "estimate": (
             "the binary64 call's own estimate, "
