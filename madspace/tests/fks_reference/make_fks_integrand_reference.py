@@ -81,7 +81,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 
 import make_fks_reference as mfr
@@ -153,9 +152,7 @@ def generate(name, process, work, log):
             f.write("set automatic_html_opening False\n")
             f.write(f"generate {process}\n")
             f.write(f"output {out}\n")
-        mfr.run(
-            ["python3", os.path.join(MG_ROOT, "bin", "madgraph"), script], work, log
-        )
+        mfr.madgraph(script, work, log, expect=os.path.join(out, "SubProcesses"))
     return out
 
 
@@ -205,15 +202,9 @@ def launch(out, values, points, work, name):
             f.write(f"set {key} {value}\n")
         f.write("done\n")
     env = dict(os.environ, MADFKS_INTEGRAND_DUMP=str(points))
-    with open(os.path.join(work, f"{name}_launch.log"), "w") as log:
-        subprocess.run(
-            ["python3", os.path.join(MG_ROOT, "bin", "madgraph"), script],
-            cwd=work,
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
+    log = os.path.join(work, f"{name}_launch.log")
+    summary = os.path.join(out, "Events", run_name, "summary.txt")
+    mfr.madgraph(script, work, log, env=env, expect=summary)
 
 
 def floats(fields):

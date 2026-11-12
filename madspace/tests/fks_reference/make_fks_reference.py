@@ -244,6 +244,21 @@ def run(cmd, cwd, log, stdin=None):
         )
 
 
+def madgraph(script, cwd, log, env=None, expect=None):
+    """Runs a MadGraph7 script with the Python of this script, as MadGraph
+    exits with 0 also where it fails. Raises RuntimeError with the end of the
+    log where the file expect is missing afterwards."""
+    command = [sys.executable, os.path.join(MG_ROOT, "bin", "madgraph"), script]
+    with open(log, "w") as f:
+        subprocess.run(
+            command, cwd=cwd, env=env, stdout=f, stderr=subprocess.STDOUT, check=True
+        )
+    if expect and not os.path.exists(expect):
+        with open(log) as f:
+            tail = "".join(f.readlines()[-30:])
+        raise RuntimeError(f"{script} left no {expect}, the end of {log}:\n{tail}")
+
+
 def generate(name, process, work, run_card=None, model=None):
     out = os.path.join(work, name)
     if not os.path.isdir(os.path.join(out, "SubProcesses")):
@@ -254,11 +269,8 @@ def generate(name, process, work, run_card=None, model=None):
                 f.write(f"import model {model}\n")
             f.write(f"generate {process}\n")
             f.write(f"output standalone_fortran {out} --fks --limits\n")
-        run(
-            ["python3", os.path.join(MG_ROOT, "bin", "madgraph"), script],
-            work,
-            os.path.join(work, f"{name}_mg.log"),
-        )
+        log = os.path.join(work, f"{name}_mg.log")
+        madgraph(script, work, log, expect=os.path.join(out, "SubProcesses"))
     if run_card:
         # Source turns the run_card into run_card.inc
         set_run_card(out, run_card)

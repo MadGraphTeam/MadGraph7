@@ -12,7 +12,7 @@ an iteration (four adapt the grids, six add up), POINTS by default, with
 which all setups take a minute on one core, half of it for the virtual of
 g g > t t~. With MADSPACE_FKS_ACCURACY=reference the runs go on to the
 accuracy of each reference instead (req_acc_FO of its run card), as a
-fixed-order run of MG5aMC does, in about an hour.
+fixed-order run of MG5aMC does, in about 20 minutes on one core.
 """
 
 import functools

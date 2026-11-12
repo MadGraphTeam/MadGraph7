@@ -27,7 +27,6 @@ import glob
 import json
 import os
 import re
-import subprocess
 
 import make_fks_integrand_reference as mfir
 
@@ -81,16 +80,10 @@ def launch(out, values, order, accuracy, work, name):
             f.write(f"set {key} {value}\n")
         f.write("done\n")
     env = {k: v for k, v in os.environ.items() if k != "MADFKS_INTEGRAND_DUMP"}
-    with open(os.path.join(work, f"{run_name}_launch.log"), "w") as log:
-        subprocess.run(
-            ["python3", os.path.join(mfir.MG_ROOT, "bin", "madgraph"), script],
-            cwd=work,
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
-    return os.path.join(out, "Events", run_name, "summary.txt")
+    log = os.path.join(work, f"{run_name}_launch.log")
+    summary = os.path.join(out, "Events", run_name, "summary.txt")
+    mfir.mfr.madgraph(script, work, log, env=env, expect=summary)
+    return summary
 
 
 def parse_summary(path):
