@@ -276,7 +276,21 @@ namespace
     }
     // rambo exits on a closed phase space: check it first
     if( npar - npari < 2 || ( npari == 1 && !( masses[0] > mfinal ) ) ) return;
-    const double energy = std::max( 1500., 2 * mtotal ); // a decay is at rest instead
+    // The points are spread over the partonic energy: two of them (one in the
+    // centre-of-mass frame, one boosted, see below) at each of nevt/2 energies, from
+    // just above the threshold of the process up to max( 1500 GeV, twice the sum of
+    // the masses ), in geometric steps. A helicity whose |M|^2 is a power of
+    // m/sqrt(s) below the others falls under the filter's limhel/ncomb at high energy
+    // and yet is large near threshold: the all-plus helicities of g g > h g in the
+    // heft model are (m_H^2/s)^4 of the rest, 1e-9 at 1.5 TeV and 20% at 150 GeV.
+    // Chosen at 1.5 TeV only, they were dropped for the rest of the run and |M|^2 came
+    // out 42% low at sqrt(s) = 130 GeV. With massless external legs there is no
+    // threshold, the helicities scale alike up to the internal masses, and the lowest
+    // energy is 1/100 of the highest. A decay is at rest instead (one energy).
+    const double ehigh = std::max( 1500., 2 * mtotal );
+    const double threshold = std::max( mtotal - mfinal, mfinal ); // incoming or outgoing masses
+    const double elow = ( npari == 1 ? ehigh : threshold > 0 ? 1.1 * threshold : ehigh / 100 );
+    constexpr std::size_t nenergy = nevt / 2;
     // A private generator: the shared one (rambo::rn) makes the points of the check
     // drivers, which must not move.
     rambo::Random random;
@@ -290,6 +304,7 @@ namespace
     std::vector<double> momenta( nevt * npar * 4 ); // momenta[nevt * ( npar * mu + ipar ) + ievt]
     for( std::size_t ievt = 0; ievt < nevt; ++ievt )
     {
+      const double energy = elow * std::pow( ehigh / elow, double( ievt / 2 ) / ( nenergy - 1 ) );
       double weight = 0;
       std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
       // RAMBO points are in the partonic centre-of-mass frame, but with PDFs the matrix

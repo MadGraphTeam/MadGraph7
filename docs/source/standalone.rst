@@ -60,10 +60,15 @@ for those. The log says what it built::
 The good helicities are chosen as madevent does (a helicity is kept if its
 |M|^2 exceeds ``limhel``/ncomb of the sum over helicities at one of the points,
 with ``limhel`` = 1e-14 for the warm-up, 1e-8 at run time), on RAMBO points
-boosted along the beams when an incoming parton comes from a PDF: the matrix
-element is called in the lab frame, where the helicity of a massive leg is not
-boost invariant, so a configuration that vanishes in the partonic centre-of-mass
-frame can contribute there (gg > t t~ builds 16 rows where madevent keeps 12).
+spread in energy from just above the threshold of the process to 1.5 TeV: a
+helicity that is a power of m/sqrt(s) below the others falls under the threshold
+at high energy and still matters near threshold (the all-plus helicities of
+g g > h g in the ``heft`` model are (m_H^2/s)^4 of the rest: 1e-9 at 1.5 TeV,
+20% at 150 GeV). Half of the points are boosted along the beams when an incoming
+parton comes from a PDF: the matrix element is called in the lab frame, where
+the helicity of a massive leg is not boost invariant, so a configuration that
+vanishes in the partonic centre-of-mass frame can contribute there (gg > t t~
+builds 16 rows where madevent keeps 12).
 
 Two limits keep the recycled code where it is faster than the plain one:
 

@@ -2884,6 +2884,95 @@ print(json.dumps(out))
                                      'alpha_s = %s: %s instead of %s'
                                      % (value, me, expected))
 
+    def test_madmatrix_heft_ggh_vs_analytic(self):
+        """standalone (madmatrix) g g > h g in the heft model against the analytic result.
+
+        With C = alpha_s P / (6 pi v) the coefficient of H tr(G G)/2 (P the
+        finite-m_t factor of the model's GH), the H + 3 gluon helicity
+        amplitudes (Dixon, Glover, Khoze, hep-th/0411092) give
+
+          |M|^2 = alpha_s^3 P^2 / (24 pi v^2) (m_H^8 + s^4 + t^4 + u^4) / (s t u)
+
+        averaged over the initial helicities and colours. The all-plus
+        helicities (all outgoing) give the m_H^8 term: (m_H^2/s)^4 of the others,
+        1e-9 at sqrt(s) = 1.5 TeV and 42% at 130 GeV. The good helicities were
+        chosen on RAMBO points at 1.5 TeV only, where they fell under the
+        filter's relative threshold (limhel/ncomb): they were dropped for the
+        whole run, and |M|^2 came out 42% low at 130 GeV, 2% at 200 GeV and
+        4e-8 at 1 TeV. The points of the filter now run from just above the
+        threshold of the process to 1.5 TeV.
+
+        16 points in the partonic centre-of-mass frame, sqrt(s) from 130 GeV to
+        3 TeV, scalar and simd_128 in double precision.
+        """
+        import array
+        import math
+        import madgraph.models.check_param_card as check_param_card
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model heft')
+        self.do('generate g g > h g')
+        self.do('output standalone %s' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = [d for d in os.listdir(proc_root)
+                if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+        self.assertEqual(len(dirs), 1, dirs)
+        proc_dir = pjoin(proc_root, dirs[0])
+
+        card = check_param_card.ParamCard(pjoin(self.out_dir, 'Cards', 'param_card.dat'))
+        alpha_s = card['sminputs'].get(3).value
+        gf = card['sminputs'].get(2).value
+        mt = card['mass'].get(6).value
+        mh = card['mass'].get(25).value
+        vev = 1. / math.sqrt(math.sqrt(2.) * gf)  # = 2 MW sw / ee in the model
+        tau = mh**2 / mt**2
+        poly = 1. + 7. * tau / 120. + tau**2 / 168. + 13. * tau**3 / 16800.
+
+        rng = random.Random(4242)
+        points, expected = [], []
+        for energy in (130., 150., 200., 300., 500., 1000., 1500., 3000.):
+            for _ in range(2):
+                pabs = (energy**2 - mh**2) / (2 * energy)  # the gluon's
+                cth = rng.uniform(-0.95, 0.95)
+                sth = math.sqrt(1. - cth**2)
+                phi = rng.uniform(0., 2 * math.pi)
+                k = [pabs, pabs * sth * math.cos(phi), pabs * sth * math.sin(phi),
+                     pabs * cth]
+                h = [energy - pabs, -k[1], -k[2], -k[3]]
+                points.extend([energy / 2, 0., 0., energy / 2,
+                               energy / 2, 0., 0., -energy / 2] + h + k)
+                s = energy**2
+                t = -energy * (k[0] - k[3])  # (p1 - k)^2
+                u = -energy * (k[0] + k[3])  # (p2 - k)^2
+                expected.append(alpha_s**3 * poly**2 / (24 * math.pi * vev**2)
+                                * (mh**8 + s**4 + t**4 + u**4) / (s * t * u))
+        nevt = len(expected)
+        with open(pjoin(proc_dir, 'pts.bin'), 'wb') as fsock:
+            array.array('d', points).tofile(fsock)
+
+        devnull = open(os.devnull, 'w')
+        for backend in ('scalar', 'simd_128'):
+            subprocess.call(['make', 'BACKEND=%s' % backend, 'FPTYPE=d'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'check_sa.exe')),
+                            'check_sa.exe did not build for %s' % backend)
+            dump = 'me_%s.bin' % backend
+            subprocess.call(['./check_sa.exe', 'perf', '--momenta', 'pts.bin',
+                             '--dump-me', dump, '1', str(nevt), '1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, dump)),
+                            'check_sa.exe perf wrote no %s' % dump)
+            mes = array.array('d')
+            with open(pjoin(proc_dir, dump), 'rb') as fsock:
+                mes.frombytes(fsock.read())
+            self.assertEqual(len(mes), nevt)
+            for ievt, (me, ref) in enumerate(zip(mes, expected)):
+                energy = 2 * points[16 * ievt]  # 2 E of the first gluon
+                self.assertLessEqual(abs(me / ref - 1), 1e-10,
+                                     '%s, sqrt(s) = %g GeV: %r instead of %r'
+                                     % (backend, energy, me, ref))
+
     def test_madmatrix_vs_fortran(self):
         """Cross-check that standalone (madmatrix) reproduces the
         standalone_fortran matrix elements for p p > e+ e- QCD=0.
