@@ -105,6 +105,8 @@ def main():
                 reference = observation
             result = {"source": source, "backend": backend, "status": "complete",
                       "performance_eligible": False, "observation": observation,
+                      "precision_usage": bench.aggregate_precision_usage(
+                          [observation], [backend], inputs["settings"]),
                       "comparison": bench.compare_rows(reference["rows"], observation["rows"],
                         config["relative_tolerance"]) if reference is not None else None}
             bench.dump(run_dir / "result.json", result)

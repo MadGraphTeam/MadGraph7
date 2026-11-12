@@ -18,7 +18,8 @@ import threading
 import time
 
 
-OUTPUTS = ("timing.dat", "values.dat", "timed_status.dat")
+ROUTE_STATISTICS_OUTPUT = "tirust_routes.dat"
+OUTPUTS = ("timing.dat", "values.dat", "timed_status.dat", ROUTE_STATISTICS_OUTPUT)
 RAW_OUTPUTS = (*OUTPUTS, "dimensions.dat", "warmup.dat")
 SCHEME = "tirust-persistent-worker-v1"
 BACKEND_CODES = {
@@ -28,6 +29,253 @@ BACKEND_CODES = {
     (2, 8): (8, "DP"), (3, 2): (8, "QP"),
     (2, 9): (9, "DP"), (3, 3): (9, "QP"),
 }
+
+
+def route_statistics_hooks(prefix, enabled=False):
+    """Optional fixed-form hooks, entirely outside the measured interval.
+
+    The generated Fortran getter owns MTIRUST capability handling.  No USE of
+    a new module symbol is introduced into a legacy benchmark driver.
+    """
+    if not isinstance(prefix, str) or type(enabled) is not bool:
+        raise ValueError("Invalid route-statistics render parameters")
+    empty = dict.fromkeys(("DECLARATIONS", "BEFORE", "AFTER", "WRITE"), "")
+    if not enabled:
+        return empty
+    return {
+        "DECLARATIONS": ("      INTEGER*8 TIRUST_ROUTE_BEFORE(20),TIRUST_ROUTE_AFTER(20)\n"
+                         "      INTEGER TIRUST_ROUTE_STATUS_BEFORE,TIRUST_ROUTE_STATUS_AFTER"),
+        "BEFORE": (f"      CALL {prefix}GET_TIRUST_DP_ROUTE_STATISTICS(\n"
+                   "     $ TIRUST_ROUTE_BEFORE,TIRUST_ROUTE_STATUS_BEFORE)"),
+        "AFTER": (f"      CALL {prefix}GET_TIRUST_DP_ROUTE_STATISTICS(\n"
+                  "     $ TIRUST_ROUTE_AFTER,TIRUST_ROUTE_STATUS_AFTER)"),
+        "WRITE": ("      OPEN(73,FILE='tirust_routes.dat',STATUS='REPLACE')\n"
+                  "      WRITE(73,*) 1,SEQUENCE,NLOOPS,NPOINTS,\n"
+                  "     $ TIRUST_ROUTE_STATUS_BEFORE,TIRUST_ROUTE_STATUS_AFTER,\n"
+                  "     $ TIRUST_ROUTE_BEFORE,TIRUST_ROUTE_AFTER,\n"
+                  "     $ TIRUST_ROUTE_AFTER-TIRUST_ROUTE_BEFORE\n"
+                  "      CLOSE(73)"),
+    }
+
+
+"""Pure interpretation of optional TIRust route evidence.
+
+MadLoop return codes describe accepted input/output precision.  They do not
+identify every internal arithmetic tier.  This module does not change legacy
+observations and cannot certify arithmetic hidden by Fortran coefficient caches.
+"""
+import re
+
+MAX_I64 = (1 << 63) - 1
+COUNTERS = ("direct", "method_choice", "tier106", "tier256", "tier512",
+            "refused", "unreported", "attempt106", "attempt256", "attempt512")
+BITS = (106, 256, 512)
+SCOPE = "bridge computations only; Fortran coefficient-cache hits are not observed"
+
+
+def _positive_int(value, name):
+    if type(value) is not int or not 1 <= value <= MAX_I64:
+        raise ValueError(name + " must be a positive signed-64-bit integer")
+
+
+def parse_route_statistics(text, points, loops, sequence=None):
+    """Parse schema1: six header integers, then before20/after20/delta20.
+
+    Nonzero snapshot statuses make the counters unavailable.  A syntactically
+    valid but unavailable snapshot never supplies evidence of native DP.
+    """
+    _positive_int(points, "points")
+    _positive_int(loops, "loops")
+    if points * loops > MAX_I64:
+        raise ValueError("timed amplitude count exceeds signed-64-bit range")
+    if sequence is not None:
+        _positive_int(sequence, "sequence")
+    if not isinstance(text, str) or not text.isascii():
+        raise ValueError("route statistics must be ASCII text")
+    words = text.split()
+    if (len(words) != 66
+            or any(re.fullmatch(r"\+?[0-9]+", w) is None for w in words[:46])
+            or any(re.fullmatch(r"[+-]?[0-9]+", w) is None for w in words[46:])):
+        raise ValueError("route statistics require exactly66 decimal integers")
+    values = [int(w) for w in words]
+    if any(v > MAX_I64 or v < -MAX_I64 - 1 for v in values):
+        raise ValueError("route statistic exceeds signed-64-bit range")
+    schema, seq, actual_loops, actual_points, status_before, status_after = values[:6]
+    if schema != 1 or seq < 1 or actual_loops != loops or actual_points != points:
+        raise ValueError("route header differs from requested observation")
+    if sequence is not None and seq != sequence:
+        raise ValueError("route sequence differs from requested observation")
+    before, after, delta = values[6:26], values[26:46], values[46:66]
+    available = status_before == status_after == 0
+    if any(a - b != d or (available and a < b) for b, a, d in zip(before, after, delta)):
+        raise ValueError("route counters reset or do not match exact delta")
+    return {"schema": schema, "sequence": seq, "loops": loops, "points": points,
+            "status_before": status_before, "status_after": status_after,
+            "available": available,
+            "scope": SCOPE, "before": before, "after": after, "delta": delta,
+            "primary": dict(zip(COUNTERS, delta[:10])),
+            "check": dict(zip(COUNTERS, delta[10:]))}
+
+
+def aggregate_native_dp_only(flags):
+    """Three-valued aggregation: False dominates, otherwise unknown dominates."""
+    flags = list(flags)
+    if any(v is not None and type(v) is not bool for v in flags):
+        raise ValueError("native-DP flags must be bool or None")
+    if any(v is False for v in flags):
+        return False
+    return True if flags and all(v is True for v in flags) else None
+
+
+def precision_usage(observation, selected=None, use_qp_integrand_for_tirust=None):
+    """Conservative arithmetic classification, separate from legacy status fields.
+
+    ``selected`` is the requested backend/chain known to the parser; it need
+    not be inserted into the stored legacy observation.  Pass parsed schema1
+    evidence as ``observation['route_statistics']``.  A complete binary64-only
+    bridge interval can establish ``bridge_native_dp_only=True``.  It cannot
+    establish ``native_dp_only=True`` for the complete amplitude because this
+    sidecar does not observe Fortran coefficient-cache reuse.
+    """
+    if not isinstance(observation, dict):
+        raise ValueError("observation must be a mapping")
+    if use_qp_integrand_for_tirust is not None and type(use_qp_integrand_for_tirust) is not bool:
+        raise ValueError("UseQPIntegrandForTIRust evidence must be bool or None")
+    counts = observation.get("backend_precision_counts", {})
+    if not isinstance(counts, dict):
+        raise ValueError("backend precision counts must be a mapping")
+    decoded = []
+    for key, count in counts.items():
+        if (not isinstance(key, str) or re.fullmatch(r"(?:1|6|7|8|9):(?:DP|QP)", key) is None
+                or type(count) is not int or not 1 <= count <= MAX_I64 or key == "7:QP"):
+            raise ValueError("invalid accepted backend/transport count")
+        backend, precision = key.split(":")
+        decoded.append((int(backend), precision))
+    if selected is None:
+        selected = observation.get("selected_chain")
+    if type(selected) is int:
+        selected = (selected,)
+    if selected is not None and (not isinstance(selected, (tuple, list)) or not selected
+            or any(type(x) is not int or x not in (1, 6, 7, 8, 9) for x in selected)):
+        raise ValueError("selected backend/chain is invalid")
+    first = selected[0] if selected is not None else None
+    qp = any(precision == "QP" for _, precision in decoded)
+    backends = {backend for backend, _ in decoded}
+    fallback = (None if not backends else
+                any(backend != first for backend in backends) if first is not None
+                else True if len(backends) > 1 else None)
+    tirust_qp = (9, "QP") in decoded
+    route = observation.get("route_statistics")
+    bridge_native = higher = success = None
+    maximum = None
+    successes = attempts = None
+    state, bounds, counter_delta = "absent", "unknown", None
+    if route is not None:
+        # Reconstruct and revalidate instead of trusting caller-added flags/maps.
+        if not isinstance(route, dict):
+            raise ValueError("route statistics must be a parsed mapping")
+        try:
+            if any(not isinstance(route[k], (list, tuple)) or len(route[k]) != 20
+                   for k in ("before", "after", "delta")):
+                raise ValueError("route counter blocks must each contain20 integers")
+            header = [route[k] for k in ("schema", "sequence", "loops", "points",
+                                         "status_before", "status_after")]
+            raw = header + list(route["before"]) + list(route["after"]) + list(route["delta"])
+            if any(type(x) is not int for x in raw):
+                raise ValueError("route statistics contain noninteger fields")
+            checked = parse_route_statistics(" ".join(map(str, raw)), route["points"],
+                                             route["loops"], route["sequence"])
+        except (KeyError, TypeError) as error:
+            raise ValueError("incomplete parsed route statistics") from error
+        state = "snapshot-unavailable"
+        if checked["available"]:
+            counter_delta = checked["delta"]
+            blocks = [checked["primary"], checked["check"]]
+            successes = {name: {str(bit): block["tier" + str(bit)] for bit in BITS}
+                         for name, block in zip(("primary", "check"), blocks)}
+            attempts = {name: {str(bit): block["attempt" + str(bit)] for bit in BITS}
+                        for name, block in zip(("primary", "check"), blocks)}
+            observed = [bit for bit in BITS if any(block["tier" + str(bit)]
+                        or block["attempt" + str(bit)] for block in blocks)]
+            success = any(block["tier" + str(bit)] for block in blocks for bit in BITS)
+            # Old warmup errors do not censor an otherwise complete new interval.
+            censored = any(checked["delta"][offset + 6] for offset in (0, 10))
+            refused = any(block["refused"] for block in blocks)
+            complete_dp = all(block["direct"] + block["method_choice"] > 0 for block in blocks)
+            bounds = "lower bounds" if censored else "reported counts"
+            if observed:
+                higher, maximum, bridge_native = True, max(observed), False
+                state = "censored" if censored else "higher-precision-observed"
+            elif censored or refused:
+                state = "censored" if censored else "refused-route-observed"
+            elif complete_dp:
+                higher, bridge_native, state = False, True, "complete-binary64-bridge-interval"
+            else:
+                state = "no-bridge-computations" if not any(checked["delta"]) else "partial-route-coverage"
+    if qp:
+        bridge_native = False
+    full_native = False if qp or fallback is True or higher is True else None
+    label = ("genuine Fortran QP transport present" if qp else
+             "fallback backend accepted" if fallback is True else
+             "internal higher-precision attempted" if higher is True else
+             "internal arithmetic unqualified")
+    return {"accepted_backend_precision_counts": dict(counts),
+            "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+            "requested_first_backend": first, "accepted_qp_transport": qp if decoded else None,
+            "tirust_qp_transport_observed": tirust_qp if decoded else None,
+            "use_qp_integrand_for_tirust": use_qp_integrand_for_tirust,
+            "tirust_qp_numerator_enabled": (use_qp_integrand_for_tirust if tirust_qp else None),
+            "tirust_qp_numerator_scope": ("QP numerator coefficients enabled by verified effective card"
+                if tirust_qp and use_qp_integrand_for_tirust is True else
+                "copied DP numerator coefficients selected by verified effective card"
+                if tirust_qp and use_qp_integrand_for_tirust is False else
+                "unknown; accepted transport alone does not establish numerator precision"),
+            "fallback_backend_observed": fallback, "route_evidence_status": state,
+            "route_counter_delta": counter_delta,
+            "route_scope": SCOPE, "attempt_count_scope": bounds,
+            "higher_precision_success_counts": successes,
+            "higher_precision_attempt_counts": attempts,
+            "internal_higher_precision_attempted": higher,
+            "internal_higher_precision_success_observed": success,
+            "highest_observed_internal_bits": maximum,
+            "bridge_native_dp_only": bridge_native, "native_dp_only": full_native,
+            "precision_classification": label}
+
+
+def aggregate_precision_usage(observations, selected=None, use_qp_integrand_for_tirust=None):
+    """Sum reported intervals, retaining unknown coverage and separate attempt counts."""
+    uses = [precision_usage(o, selected, use_qp_integrand_for_tirust) for o in observations]
+    deltas = [u["route_counter_delta"] for u in uses if u["route_counter_delta"] is not None]
+    total = [sum(d[i] for d in deltas) for i in range(20)] if deltas else None
+    complete = bool(uses) and len(deltas) == len(uses) and all(
+        u["attempt_count_scope"] == "reported counts" for u in uses)
+    counts = {key: sum(u["accepted_backend_precision_counts"].get(key, 0) for u in uses)
+              for key in {k for u in uses for k in u["accepted_backend_precision_counts"]}}
+    if any(x > MAX_I64 for x in (total or []) + list(counts.values())):
+        raise ValueError("aggregate count exceeds signed-64-bit range")
+    reported = {key: ({side: {str(bit): sum(u[key][side][str(bit)] for u in uses if u[key] is not None)
+                              for bit in BITS} for side in ("primary", "check")}
+                     if deltas else None)
+                for key in ("higher_precision_success_counts", "higher_precision_attempt_counts")}
+    higher = [u["internal_higher_precision_attempted"] for u in uses]
+    qp_numerators = [u["tirust_qp_numerator_enabled"] for u in uses if u["tirust_qp_transport_observed"]]
+    return {"observations": len(uses), "reported_route_intervals": len(deltas),
+            "route_interval_coverage": "complete" if complete else "partial" if uses else "unknown",
+            "attempt_count_scope": "reported counts" if complete else "lower bounds" if deltas else "unknown",
+            "route_counter_delta": total, **reported, "accepted_backend_precision_counts": counts,
+            "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+            "native_dp_only": aggregate_native_dp_only(u["native_dp_only"] for u in uses),
+            "bridge_native_dp_only": aggregate_native_dp_only(u["bridge_native_dp_only"] for u in uses),
+            "internal_higher_precision_attempted": (True if any(v is True for v in higher) else
+                False if higher and all(v is False for v in higher) else None),
+            "highest_observed_internal_bits": max((u["highest_observed_internal_bits"] for u in uses
+                if u["highest_observed_internal_bits"] is not None), default=None),
+            "precision_classifications": sorted({u["precision_classification"] for u in uses}),
+            "route_evidence_statuses": sorted({u["route_evidence_status"] for u in uses}),
+            "tirust_qp_numerator_enabled": aggregate_native_dp_only(qp_numerators),
+            "use_qp_integrand_for_tirust": use_qp_integrand_for_tirust,
+            "route_scope": SCOPE,
+            "whole_amplitude_qp_scope": "transport and optional numerator-card evidence only; no whole-amplitude precision claim"}
 
 
 class ProtocolError(RuntimeError):
@@ -208,6 +456,13 @@ class Worker:
             message = self._message()
             if message != ["DONE", str(self.sequence), str(loops)]:
                 raise ProtocolError(f"Unexpected worker completion: {message}")
+            route_file = self.directory / ROUTE_STATISTICS_OUTPUT
+            if route_file.is_file():
+                try:
+                    parse_route_statistics(route_file.read_text(), self.points, loops,
+                                           sequence=self.sequence)
+                except (OSError, ValueError) as error:
+                    raise MeasurementError(str(error), raw_outputs(self.directory)) from error
             return time.perf_counter() - start
         except BaseException as error:
             failure = {"type": type(error).__name__, "message": str(error)}
@@ -340,13 +595,22 @@ def parse_outputs(directory, backend, points, loops):
         for start in range(0, len(rows), ndim+1):
             if len({r["status"] for r in rows[start:start+ndim+1]}) != 1:
                 raise ValueError("Split orders have inconsistent evaluation statuses")
-        return {"cold_seconds": timing[0], "seconds": timing[1],
+        result = {"cold_seconds": timing[0], "seconds": timing[1],
                 "seconds_per_point": timing[1]/(loops*points), "rows": rows,
                 "status_counts": counts, "timed_status_counts": timed,
                 "backend_precision_counts": usage,
                 "native_dp_only": set(usage) == {f"{selected[0]}:DP"},
                 "answer_dimensions": {"allocated": ndim, "loop_orders": nso,
                                       "born_orders": nborn}}
+        # Keep historical observations byte-compatible when this opt-in schema
+        # is absent. Their legacy native_dp_only flag is dispatch-scoped only;
+        # current reports must use precision_usage() instead.
+        if ROUTE_STATISTICS_OUTPUT in raw:
+            result["route_statistics"] = parse_route_statistics(
+                raw[ROUTE_STATISTICS_OUTPUT], points, loops)
+            result["precision_usage"] = precision_usage(result, selected=selected)
+            result["native_dp_only"] = result["precision_usage"]["native_dp_only"]
+        return result
     except (ValueError, KeyError, TypeError) as error:
         raise MeasurementError(str(error), raw) from error
 

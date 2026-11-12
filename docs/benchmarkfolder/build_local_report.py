@@ -86,7 +86,9 @@ def numerical_rows(config):
                           "target_pass": comparison["ordinary_target_passed"],
                           "max_relative_error": comparison["maximum_relative_error"],
                           "backend_precision_counts": observation["backend_precision_counts"],
-                          "cold_seconds": observation["cold_seconds"]})
+                          "cold_seconds": observation["cold_seconds"],
+                          "precision_usage": bench.aggregate_precision_usage([observation], [backend],
+                              read(directory / f"{source}-{backend}" / (source + "-inputs.json"))["settings"])})
         rows.append({**case, "points": 100, "regression_pass": all(r["regression_pass"] for r in lanes),
                      "ordinary_target_passed": all(r["target_pass"] for r in lanes), "lanes": lanes})
     return {"status": "complete", "measurement_phase": "steady-warmup",
@@ -101,7 +103,7 @@ def attempt(case, directory, config):
               "status": "pending", "selected": False, "acceptance_eligible": None,
               "passed": None, "core_passed": None, "ratio": None, "lower_95": None,
               "upper_95": None, "pairs": None, "baseline_seconds_per_point": None,
-              "candidate_seconds_per_point": None, "numerical_pass": None, "usage": {}, "error": None}
+              "candidate_seconds_per_point": None, "numerical_pass": None, "usage": {}, "precision_usage": {}, "error": None}
     if (directory / "failure.json").exists():
         result.update(status="failed", error=read(directory / "failure.json").get("error", "Retained measurement failure"))
     elif (directory / "summary.json").exists():
@@ -110,7 +112,7 @@ def attempt(case, directory, config):
             label = declared["label"]
             if label not in LABELS:
                 raise ValueError("Unrecognized local timing label")
-            value, _ = bench.validate_retained_result(directory, label, case, config)
+            value, anchors = bench.validate_retained_result(directory, label, case, config)
             stats = value["statistics"]
             eligible = value["acceptance_eligible"]
             status = ("failed" if not value["numerical_pass"] else "timing-ineligible" if not eligible
@@ -123,7 +125,10 @@ def attempt(case, directory, config):
                 baseline_seconds_per_point=statistics.median(value["timings"]["baseline"]),
                 candidate_seconds_per_point=statistics.median(value["timings"]["candidate"]),
                 numerical_pass=value["numerical_pass"],
-                usage={source: bench.aggregate_usage(value["raw_observations"][source]) for source in ("baseline", "candidate")})
+                usage={source: bench.aggregate_usage(value["raw_observations"][source]) for source in ("baseline", "candidate")},
+                precision_usage={source: bench.aggregate_precision_usage(value["raw_observations"][source],
+                    bench.parse_chain(anchors[source]["settings"]["mlreductionlib"]),
+                    anchors[source]["settings"]) for source in ("baseline", "candidate")})
         except (OSError, ValueError, KeyError, RuntimeError) as error:
             result.update(status="invalid-evidence", error=str(error))
     if label in LABELS:
@@ -237,7 +242,8 @@ def collect(measurement, value, measurement_root):
                        "core_summary_sha256": bench.digest(bench.REPORT / "summary.json")},
         "definitions": {"full100": "Complete final steady warmup stream; numerical evidence, no warmed timing",
                         "timed_standalone": "Separate cross-backend checks from timed standalone observations",
-                        "usage": "Final accepted amplitude backend/precision; internal compensated retries are not enumerated",
+                        "usage": "Final accepted input/output transport; 219 can include internal106/DD,256or512-bit tensor work. 323 transport does not prove a QP numerator without its effective card.",
+                        "precision_usage": "Strict optional bridge-route deltas; coefficients cached in Fortran bypass counters, so complete amplitude-native precision may remain unknown. Attempt counts are lower bounds when errors are unreported.",
                         "controls": "All control runtime ratios and standalone backend-9 ratios are descriptive",
                         "initialization": "cold_seconds includes initialization and warmup; excludes startup/SETPARA"}}
     return dossier, core

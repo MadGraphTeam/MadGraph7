@@ -19,6 +19,7 @@ C     Usage: check --masses, or check points.dat protocol.fifo.
       INTEGER PREVIOUS_SEQUENCE
       LOGICAL BENCHMARK_WARM_STATUS
       INTEGER*8 TIMED_CODES(0:499),T0,T1,RATE
+C@TIRUST_ROUTE_DECLARATIONS@
       CHARACTER*1024 ARG
       CHARACTER*16 COMMAND
 
@@ -129,6 +130,7 @@ C     Keep exactly the same diagnostic policy for every measured backend.
       IF(SEQUENCE.NE.PREVIOUS_SEQUENCE+1.OR.NLOOPS.LE.0) GOTO 800
       PREVIOUS_SEQUENCE=SEQUENCE
       TIMED_CODES=0
+C@TIRUST_ROUTE_BEFORE@
       CALL SYSTEM_CLOCK(T0)
       DO L=1,NLOOPS
          DO K=1,NPOINTS
@@ -149,7 +151,9 @@ C           The final timed traversal supplies numerical evidence.
          ENDDO
       ENDDO
       CALL SYSTEM_CLOCK(T1)
+C@TIRUST_ROUTE_AFTER@
       ELAPSED=DBLE(T1-T0)/DBLE(RATE)
+C@TIRUST_ROUTE_WRITE@
       OPEN(73,FILE='timing.dat',STATUS='REPLACE')
       WRITE(73,'(2ES26.17E3)') COLD,ELAPSED
       CLOSE(73)

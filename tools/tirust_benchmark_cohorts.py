@@ -402,6 +402,9 @@ def measure(worker, report, backend, indices, loops, expected, reference):
 
 
 def run(args):
+    if args.backend == 9:
+        raise ValueError("TIRust precision-cohort timing requires a qualified per-call route adapter; "
+                         "return code 219 and batch counters cannot classify native-DP points")
     bench.campaign_guard("cohort-before")
     config = bench.load_config()
     case = next(case for case in config["cases"] if case["id"] == args.case)

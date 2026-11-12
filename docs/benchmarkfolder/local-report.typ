@@ -61,6 +61,33 @@
   if value == none or value.len() == 0 { return [—] }
   value.pairs().map(pair => [#pair.at(0): #usage(pair.at(1))]).join(linebreak())
 }
+#let tier-counts(value) = {
+  if value == none { return [unknown] }
+  let counts = ("primary", "check").map(side => {
+    let block = value.at(side, default: (:))
+    ("106", "256", "512").map(bits => str(block.at(bits, default: 0))).join("/")
+  })
+  [P #counts.at(0); C #counts.at(1)]
+}
+#let arithmetic(value) = {
+  if value == none or value.len() == 0 { return [unknown] }
+  let labels = value.at("precision_classifications", default: ())
+  let highest = value.at("highest_observed_internal_bits", default: none)
+  [#if labels.len() == 0 { [unknown] } else { labels.join([; ]) }
+   #if highest != none {
+     [ · observed tier #highest bits]
+     linebreak()
+     text(6.2pt)[success106/256/512: #tier-counts(value.at("higher_precision_success_counts", default: none))]
+     linebreak()
+     text(6.2pt)[attempt106/256/512: #tier-counts(value.at("higher_precision_attempt_counts", default: none))]
+   }
+   #linebreak()#text(6.5pt)[route coverage: #value.at("route_interval_coverage", default: "unknown")]
+   #linebreak()#text(6.5pt)[attempts: #value.at("attempt_count_scope", default: "unknown")]]
+}
+#let arithmetic-by-source(value) = {
+  if value == none or value.len() == 0 { return [unknown] }
+  value.pairs().map(pair => [#pair.at(0): #arithmetic(pair.at(1))]).join(linebreak())
+}
 #let property-table(entries) = table-style(table(columns: (1fr, 2.7fr),
   inset: 5pt, stroke: table-stroke, fill: table-fill,
   table.header([Identity / input], [Recorded value]),
@@ -198,9 +225,13 @@ Initialization and warmup elapsed times below come from the untimed numerical
 runs and are reported separately from warmed batches. They include the first
 amplitude initialization and saved-stream warmup, excluding process startup
 and parameter loading. Accepted backend/precision counts
-describe final amplitude outcomes. An accepted DP outcome does not establish
-that no internal retry or compensated evaluation occurred. This dataset does
-not provide native-DP-only or rescued-cohort runtime measurements.
+describe final input/output transport. TIRust219 may include internal106-bit
+DD or256/512-bit tensor rescues of DP inputs and a DP numerator. Genuine113-bit
+QP transport323 is separate from recomputing a QP numerator, which also requires
+the effective card. Optional route snapshots are taken outside timed batches;
+Fortran coefficient-cache hits bypass these bridge counters. Missing/censored
+route data and complete-amplitude native precision remain unknown. This dataset
+does not provide separately timed native-DP-only or rescued cohorts.
 
 #for c in d.numerical.cases {
   heading(level: 2)[#process(c)]
@@ -216,11 +247,12 @@ not provide native-DP-only or rescued-cohort runtime measurements.
 }
 
 #heading(level: 2)[Usage in selected timing observations]
-#table-style(table(columns: (1.05fr, 1fr, 2.4fr), inset: 5pt,
+#table-style(table(columns: (1.05fr, 1fr, 1.7fr, 2.2fr), inset: 5pt,
   stroke: table-stroke, fill: table-fill,
-  table.header([Process], [Comparison], [Accepted outcomes · timed evaluations]),
+  table.header([Process], [Comparison], [Accepted transport · evaluations], [Observed arithmetic]),
   ..d.timing.cases.map(c => c.comparisons.map(row => (
     [#process(c)], [#comparison(row.label)], [#usage-by-source(row.usage)],
+    [#arithmetic-by-source(row.at("precision_usage", default: (:)))],
   )).flatten()).flatten()))
 
 #pagebreak()

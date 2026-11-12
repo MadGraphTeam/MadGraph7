@@ -474,10 +474,40 @@ def generated_sources(output):
                                or p.name in ("make_opts", "MadLoop_makefile_definitions"))}
 
 
+def tirust_dp_route_statistics_enabled(source, prefix=None):
+    """Read the installed optional capability; never load a native library."""
+    if source != "candidate":
+        return False
+    path = Path(prefix if prefix is not None else TIRUST_PREFIX) / "lib/tirust-config.json"
+    if not path.is_file():
+        return False
+    config = json.loads(path.read_text())
+    if not isinstance(config, dict):
+        raise ValueError("Invalid TIRust capability metadata")
+    return config.get("dp_route_statistics") is True
+
+
 def render_worker(template, parameters):
-    return (template.replace("@PREFIX@", parameters["prefix"])
+    from tirust_benchmark_worker import route_statistics_hooks
+    text = (template.replace("@PREFIX@", parameters["prefix"])
             .replace("@NEXTERNAL@", str(parameters["nexternal"]))
             .replace("@NBORN@", str(parameters["nborn"])))
+    hooks = route_statistics_hooks(parameters["prefix"],
+        parameters.get("tirust_dp_route_statistics", False))
+    anchors = {"C@TIRUST_ROUTE_" + name + "@": hook for name, hook in hooks.items()}
+    lines = text.splitlines(keepends=True)
+    bodies = [line.rstrip("\r\n") for line in lines]
+    if any("C@TIRUST_ROUTE_" in body and body not in anchors for body in bodies):
+        raise ValueError("Route-statistics anchors must be whole fixed-form comment lines")
+    counts = [bodies.count(anchor) for anchor in anchors]
+    # Historical/auxiliary templates have no anchors and render exactly as before.
+    # Three-token legacy renderers can leave the new anchors untouched: comments.
+    if not any(counts):
+        return text
+    if any(count != 1 for count in counts):
+        raise ValueError("Incomplete or duplicate route-statistics comment anchors")
+    return "".join(anchors[body] + line[len(body):] if body in anchors else line
+                   for line, body in zip(lines, bodies))
 
 
 def verify_worker_template(compilation, template_path):
@@ -552,6 +582,8 @@ def build(source, case, jobs=4):
     born = directory / "nsqso_born.inc"
     nborn = int(re.search(r"NSQSO_BORN\s*=\s*(\d+)", born.read_text(), re.I).group(1)) if born.exists() else 0
     render_parameters = {"prefix": prefix, "nexternal": case["nfinal"] + 2, "nborn": nborn}
+    if tirust_dp_route_statistics_enabled(source):
+        render_parameters["tirust_dp_route_statistics"] = True
     driver_path.write_text(render_worker(template_path.read_text(), render_parameters))
     before = generated_sources(output)
     flags_before = capture_effective_flags(directory, env=environment())
@@ -798,7 +830,7 @@ def select_quiet_cpu():
 
 def retain_observation(directory, destination):
     destination.mkdir(parents=True, exist_ok=False)
-    for name in ("timing.dat", "values.dat", "timed_status.dat", "dimensions.dat"):
+    for name in ("timing.dat", "values.dat", "timed_status.dat", "dimensions.dat", "tirust_routes.dat"):
         path = directory / name
         if path.exists():
             shutil.copy2(path, destination / name)
@@ -1109,6 +1141,16 @@ def aggregate_usage(observations):
     return counts
 
 
+def aggregate_precision_usage(observations, chain=None, settings=None):
+    """Current arithmetic interpretation; never trust legacy native-DP aliases."""
+    from tirust_benchmark_worker import aggregate_precision_usage as strict_usage
+    qp_numerator = (settings or {}).get("useqpintegrandfortirust")
+    if type(qp_numerator) is not bool:
+        qp_numerator = None
+    return strict_usage(observations, selected=chain,
+        use_qp_integrand_for_tirust=qp_numerator)
+
+
 def selected_run_directory(base, label):
     selector = base / "selected-attempts.json"
     selections = json.loads(selector.read_text()) if selector.exists() else {}
@@ -1339,6 +1381,8 @@ def summarize(config):
             complete = (len(checks) == config["repetitions"])
             correct = complete and all(check["passed"] for check in checks)
             usage = aggregate_usage(observations)
+            precision = aggregate_precision_usage(observations, [backend],
+                anchors.get(label, {}).get("candidate", {}).get("settings"))
             correctness.append({"backend": backend,
                 "status": "complete" if complete else "failed" if failed else "pending",
                 "passed": correct if complete else None, "samples": len(checks),
@@ -1346,7 +1390,7 @@ def summarize(config):
                 "ordinary_target_passed": all(check["ordinary_target_passed"] for check in checks) if complete else None,
                 "failures": [failure for check in checks for failure in check["failures"]],
                 "actual_backend_precision_counts": usage,
-                "native_dp_only": all(item["native_dp_only"] for item in observations) if observations else None})
+                "native_dp_only": precision["native_dp_only"], "precision_usage": precision})
             seconds = [item["seconds_per_point"] for item in observations]
             median = statistics.median(seconds) if seconds else None
             mad = statistics.median(abs(x - median) for x in seconds) if seconds else None
@@ -1359,13 +1403,13 @@ def summarize(config):
                 "lower_95": None, "upper_95": None, "samples": len(seconds),
                 "actual_backend_precision_counts": usage,
                 "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted",
-                "native_dp_only": all(item["native_dp_only"] for item in observations) if observations else None})
+                "native_dp_only": precision["native_dp_only"], "precision_usage": precision})
         gate = loaded.get("tirust-first")
         performance = {"status": "pending", "complete": False, "pairs": 0,
             "baseline_chain": None, "candidate_chain": None,
             "baseline_median_seconds_per_point": None, "candidate_median_seconds_per_point": None,
             "geometric_mean_ratio": None, "lower_95": None, "upper_95": None, "passed": None,
-            "actual_backend_precision_counts": {}}
+            "actual_backend_precision_counts": {}, "precision_usage": {}}
         if gate:
             stats = gate["statistics"]
             gate_directory = selected_run_directory(base, "tirust-first")
@@ -1380,7 +1424,9 @@ def summarize(config):
                 candidate_median_seconds_per_point=statistics.median(gate["timings"]["candidate"]),
                 geometric_mean_ratio=stats["geometric_mean_ratio"], lower_95=stats["lower_95"],
                 upper_95=stats["upper_95"], passed=gate["passed"],
-                actual_backend_precision_counts=aggregate_usage(gate["raw_observations"]["candidate"]))
+                actual_backend_precision_counts=aggregate_usage(gate["raw_observations"]["candidate"]),
+                precision_usage=aggregate_precision_usage(gate["raw_observations"]["candidate"],
+                    gate_specification["candidate_chain"], anchors["tirust-first"]["candidate"]["settings"]))
         elif (selected_run_directory(base, "tirust-first") / "failure.json").exists() or "tirust-first" in validation_errors:
             performance["status"] = "failed"
         regressions = []
@@ -1437,8 +1483,9 @@ def summarize(config):
     if not isinstance(qualification, list):
         raise ValueError("qualification.json must contain an array of observed qualification records")
     summary = {**campaign_fields(), "schema": "madloop-tirust-summary-v1", "created_utc": utc_now(),
-        "field_definitions": {"native_dp_only": "Every accepted amplitude result used the first selected backend in DP; does not identify internal retry or higher-precision attempts",
-                              "actual_backend_precision_counts": "Final accepted backend and precision per amplitude evaluation; internal reducer attempts are not counted"},
+        "field_definitions": {"native_dp_only": "Strict arithmetic evidence: False for observed QP/fallback/internal tiers; None when complete amplitude/cache provenance is unavailable. Legacy observation aliases are ignored.",
+                              "actual_backend_precision_counts": "Final accepted input/output transport per amplitude; 219 may include internal DD/256/512 tensor work. 323 input transport and verified QP-numerator card are separate.",
+                              "precision_usage": "Optional20-counter primary/check bridge deltas; Fortran coefficient-cache hits bypass counters. Unreported/error intervals make attempts lower bounds."},
         "candidate_revision": candidate_revision, "candidate_revisions": sorted(candidate_revisions),
         "candidate_source_hashes": sorted(candidate_source_hashes),
         "reduction_chains": reduction_chains,
