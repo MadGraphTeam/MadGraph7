@@ -41,6 +41,11 @@ namespace madmatrix
     int goodHel[ProcessData::ncomb] = {};
     int nGoodHelRows = 0;      // the good rows before the C-parity reduction (madmatrix_good_helicity_count)
     bool csymOk = false;       // cpu/simd: the good helicities are the C-parity representatives, each counted twice
+    // --hel_recycling: an amplitude the recycled build skips does not vanish at
+    // these parameters, so this instance uses the plain code. Set by
+    // sigmaKin_getGoodHel along with the good helicities (hr_check_stale in
+    // backend/{cpu,simd}/SigmaKin.cc), hence mutable.
+    mutable bool hrStale = false;
 #ifndef MGONGPU_HARDCODE_PARAM
     // The model parameters these were taken from (host memory), for the HelAmps routines
     // that read a model parameter on CPUs (see Parameters::current)

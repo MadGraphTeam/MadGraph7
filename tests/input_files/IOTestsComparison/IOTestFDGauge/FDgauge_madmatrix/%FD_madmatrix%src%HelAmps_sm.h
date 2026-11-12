@@ -1321,6 +1321,17 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'F1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV2MP1N_1( const ALOHAOBJ  & F2,
+              const ALOHAOBJ  & V3,
+              const FLV_COUPLING_VIEW &MCOUP,
+              const fptype Ccoeff,
+              ALOHAOBJ  & F1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
   // Compute the output wavefunction 'F2[6]' from the input wavefunctions 
   template<class W_ACCESS, class C_ACCESS>
   __device__ INLINE void
@@ -1334,6 +1345,17 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'F2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV2MP1N_2( const ALOHAOBJ  & F1,
+              const ALOHAOBJ  & V3,
+              const FLV_COUPLING_VIEW &MCOUP,
+              const fptype Ccoeff,
+              ALOHAOBJ  & F2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
   // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
   template<class W_ACCESS, class C_ACCESS>
   __device__ INLINE void
@@ -1344,6 +1366,17 @@ namespace madmatrix
            const fptype & M3,
            const fptype & W3,
            ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV2MP1N_3( const ALOHAOBJ  & F1,
+              const ALOHAOBJ  & F2,
+              const FLV_COUPLING_VIEW &MCOUP,
+              const fptype Ccoeff,
+              ALOHAOBJ  & V3 ) ALWAYS_INLINE;
 
   //--------------------------------------------------------------------------
 
@@ -1397,6 +1430,147 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VVS1_VSV2_VSS1P1N_1( const ALOHAOBJ  & V2,
+                            const ALOHAOBJ  & V3,
+                            const fptype allCOUP1[],
+                            const fptype Ccoeff1,
+                            const fptype allCOUP2[],
+                            const fptype Ccoeff2,
+                            const fptype allCOUP3[],
+                            const fptype Ccoeff3,
+                            const fptype allCOUP4[],
+                            const fptype Ccoeff4,
+                            ALOHAOBJ  & V1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_1( const ALOHAOBJ  & V2,
+                                      const ALOHAOBJ  & V3,
+                                      const fptype allCOUP1[],
+                                      const fptype Ccoeff1,
+                                      const fptype allCOUP2[],
+                                      const fptype Ccoeff2,
+                                      const fptype allCOUP3[],
+                                      const fptype Ccoeff3,
+                                      const fptype allCOUP4[],
+                                      const fptype Ccoeff4,
+                                      const fptype allCOUP5[],
+                                      const fptype Ccoeff5,
+                                      const fptype allCOUP6[],
+                                      const fptype Ccoeff6,
+                                      ALOHAOBJ  & V1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VVS1_VSV2_VSS1P1N_2( const ALOHAOBJ  & V1,
+                            const ALOHAOBJ  & V3,
+                            const fptype allCOUP1[],
+                            const fptype Ccoeff1,
+                            const fptype allCOUP2[],
+                            const fptype Ccoeff2,
+                            const fptype allCOUP3[],
+                            const fptype Ccoeff3,
+                            const fptype allCOUP4[],
+                            const fptype Ccoeff4,
+                            ALOHAOBJ  & V2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_2( const ALOHAOBJ  & V1,
+                                      const ALOHAOBJ  & V3,
+                                      const fptype allCOUP1[],
+                                      const fptype Ccoeff1,
+                                      const fptype allCOUP2[],
+                                      const fptype Ccoeff2,
+                                      const fptype allCOUP3[],
+                                      const fptype Ccoeff3,
+                                      const fptype allCOUP4[],
+                                      const fptype Ccoeff4,
+                                      const fptype allCOUP5[],
+                                      const fptype Ccoeff5,
+                                      const fptype allCOUP6[],
+                                      const fptype Ccoeff6,
+                                      ALOHAOBJ  & V2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VVS1_VSV2_VSS1P1N_3( const ALOHAOBJ  & V1,
+                            const ALOHAOBJ  & V2,
+                            const fptype allCOUP1[],
+                            const fptype Ccoeff1,
+                            const fptype allCOUP2[],
+                            const fptype Ccoeff2,
+                            const fptype allCOUP3[],
+                            const fptype Ccoeff3,
+                            const fptype allCOUP4[],
+                            const fptype Ccoeff4,
+                            ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_3( const ALOHAOBJ  & V1,
+                                      const ALOHAOBJ  & V2,
+                                      const fptype allCOUP1[],
+                                      const fptype Ccoeff1,
+                                      const fptype allCOUP2[],
+                                      const fptype Ccoeff2,
+                                      const fptype allCOUP3[],
+                                      const fptype Ccoeff3,
+                                      const fptype allCOUP4[],
+                                      const fptype Ccoeff4,
+                                      const fptype allCOUP5[],
+                                      const fptype Ccoeff5,
+                                      const fptype allCOUP6[],
+                                      const fptype Ccoeff6,
+                                      ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ INLINE void
@@ -1406,6 +1580,39 @@ namespace madmatrix
           const fptype allCOUP[],
           const fptype Ccoeff,
           fptype_amp allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVS1P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVS1P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVS1P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 ) ALWAYS_INLINE;
 
   //--------------------------------------------------------------------------
 
@@ -1421,6 +1628,39 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSV2P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSV2P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSV2P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ INLINE void
@@ -1430,6 +1670,39 @@ namespace madmatrix
           const fptype allCOUP[],
           const fptype Ccoeff,
           fptype_amp allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS1P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS1P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS1P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 ) ALWAYS_INLINE;
 
   //--------------------------------------------------------------------------
 
@@ -1445,6 +1718,39 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS2P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS2P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS2P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ INLINE void
@@ -1454,6 +1760,39 @@ namespace madmatrix
           const fptype allCOUP[],
           const fptype Ccoeff,
           fptype_amp allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVV2P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVV2P1N_2( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVV2P1N_3( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 ) ALWAYS_INLINE;
 
   //--------------------------------------------------------------------------
 
@@ -1469,6 +1808,39 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'S1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVS2P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVS2P1N_2( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVS2P1N_3( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ INLINE void
@@ -1478,6 +1850,39 @@ namespace madmatrix
           const fptype allCOUP[],
           const fptype Ccoeff,
           fptype_amp allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SSV3P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S1 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SSV3P1N_2( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SSV3P1N_3( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 ) ALWAYS_INLINE;
 
   //==========================================================================
 
@@ -1730,6 +2135,55 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'F1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV2MP1N_1( const ALOHAOBJ  & F2,
+              const ALOHAOBJ  & V3,
+              const FLV_COUPLING_VIEW &MCOUP,
+              const fptype Ccoeff,
+              ALOHAOBJ  & F1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wF2 = W_ACCESS::kernelAccessConst( F2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv COUP;
+    cxtype_amp_sv* wF1 = W_ACCESS::kernelAccess( F1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    F1.pvec[0] = +F2.pvec[0] + V3.pvec[0];
+    F1.pvec[1] = +F2.pvec[1] + V3.pvec[1];
+    F1.pvec[2] = +F2.pvec[2] + V3.pvec[2];
+    F1.pvec[3] = +F2.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-F1.pvec[0]), fpamp_of_mom(-F1.pvec[1]), fpamp_of_mom(-F1.pvec[2]), fpamp_of_mom(-F1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -F1.pvec[0], -F1.pvec[1], -F1.pvec[2], -F1.pvec[3] };
+    int flv_index2 = F2.flv_index;
+    if(flv_index2 == -1){
+      for(int i=0; i<F1.nw6; i++) { wF1[i] = cxzero_sv(); }
+      F1.flv_index = -1;
+      return;
+    }
+    int flv_index1 = MCOUP.partner2[flv_index2];
+    int flv_sel = flv_index1;
+    if(flv_index1 == -1) { flv_index1 = MCOUP.partner1[flv_index2]; flv_sel = flv_index2; }
+    if(flv_index1 == -1){
+      for(int i=0; i<F1.nw6; i++) { wF1[i] = cxzero_sv(); }
+      F1.flv_index = -1;
+      return;
+    }
+    F1.flv_index = flv_index1;
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wF1[0] = denom * ( -cI ) * ( wF2[2] * ( wV3[0] + wV3[3] ) + wF2[3] * ( wV3[1] + cI * wV3[2] ) );
+    wF1[1] = denom * cI * ( wF2[2] * ( -wV3[1] + cI * wV3[2] ) + wF2[3] * ( -wV3[0] + wV3[3] ) );
+    wF1[2] = denom * 0.;
+    wF1[3] = denom * 0.;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
   // Compute the output wavefunction 'F2[6]' from the input wavefunctions 
   template<class W_ACCESS, class C_ACCESS>
   __device__ void
@@ -1775,6 +2229,57 @@ namespace madmatrix
     wF2[1] = denom * cI * ( wF1[0] * ( P2[0] * ( wV3[1] + cI * wV3[2] ) + ( P2[1] * ( -one ) * ( wV3[0] + wV3[3] ) + ( P2[2] * ( -one ) * ( +cI * ( wV3[0] + wV3[3] ) ) + P2[3] * ( wV3[1] + cI * wV3[2] ) ) ) ) + wF1[1] * ( P2[0] * ( wV3[0] - wV3[3] ) + ( P2[1] * ( -wV3[1] + cI * wV3[2] ) + ( P2[2] * ( -one ) * ( +cI * wV3[1] + wV3[2] ) + P2[3] * ( wV3[0] - wV3[3] ) ) ) ) );
     wF2[2] = denom * -cI * M2 * ( wF1[0] * ( -one ) * ( wV3[0] + wV3[3] ) + wF1[1] * ( -wV3[1] + cI * wV3[2] ) );
     wF2[3] = denom * cI * M2 * ( wF1[0] * ( wV3[1] + cI * wV3[2] ) + wF1[1] * ( wV3[0] - wV3[3] ) );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'F2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV2MP1N_2( const ALOHAOBJ  & F1,
+              const ALOHAOBJ  & V3,
+              const FLV_COUPLING_VIEW &MCOUP,
+              const fptype Ccoeff,
+              ALOHAOBJ  & F2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv COUP;
+    cxtype_amp_sv* wF2 = W_ACCESS::kernelAccess( F2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    F2.pvec[0] = +F1.pvec[0] + V3.pvec[0];
+    F2.pvec[1] = +F1.pvec[1] + V3.pvec[1];
+    F2.pvec[2] = +F1.pvec[2] + V3.pvec[2];
+    F2.pvec[3] = +F1.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-F2.pvec[0]), fpamp_of_mom(-F2.pvec[1]), fpamp_of_mom(-F2.pvec[2]), fpamp_of_mom(-F2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -F2.pvec[0], -F2.pvec[1], -F2.pvec[2], -F2.pvec[3] };
+    int flv_index1 = F1.flv_index;
+    if(flv_index1 == -1) {
+      for(int i=0; i<F2.nw6; i++) { wF2[i] = cxzero_sv(); }
+      F2.flv_index = -1;
+      return;
+    }
+    int flv_index2 = MCOUP.partner1[flv_index1];
+    int flv_sel = flv_index1;
+    if(flv_index2 == -1) { flv_index2 = MCOUP.partner2[flv_index1]; flv_sel = flv_index2; }
+    if(flv_index2 == -1){
+      for(int i=0; i<F2.nw6; i++) { wF2[i] = cxzero_sv(); }
+      F2.flv_index = -1;
+      return;
+    }
+    F2.flv_index = flv_index2;
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    constexpr fptype_amp one( 1. );
+    constexpr fptype_denom oned( 1. );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wF2[0] = denom * 0.;
+    wF2[1] = denom * 0.;
+    wF2[2] = denom * cI * ( wF1[0] * ( -one ) * ( wV3[0] + wV3[3] ) + wF1[1] * ( -wV3[1] + cI * wV3[2] ) );
+    wF2[3] = denom * ( -cI ) * ( wF1[0] * ( wV3[1] + cI * wV3[2] ) + wF1[1] * ( wV3[0] - wV3[3] ) );
     mgDebug( 1, __FUNCTION__ );
     return;
   }
@@ -1840,6 +2345,58 @@ namespace madmatrix
     wV3[2] = wV3[2] - FDQ[2] * FDJS1 - FDN[2] * FDJS2;
     wV3[3] = wV3[3] - FDQ[3] * FDJS1 - FDN[3] * FDJS2;
     wV3[4] = wV3[4] - FDQ[4] * FDJS1 - FDN[4] * FDJS2;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV2MP1N_3( const ALOHAOBJ  & F1,
+              const ALOHAOBJ  & F2,
+              const FLV_COUPLING_VIEW &MCOUP,
+              const fptype Ccoeff,
+              ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_amp_sv* wF2 = W_ACCESS::kernelAccessConst( F2.w );
+    cxtype_sv COUP;
+    cxtype_amp_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    V3.pvec[0] = +F1.pvec[0] + F2.pvec[0];
+    V3.pvec[1] = +F1.pvec[1] + F2.pvec[1];
+    V3.pvec[2] = +F1.pvec[2] + F2.pvec[2];
+    V3.pvec[3] = +F1.pvec[3] + F2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-V3.pvec[0]), fpamp_of_mom(-V3.pvec[1]), fpamp_of_mom(-V3.pvec[2]), fpamp_of_mom(-V3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    const int & flv_index1 = F1.flv_index;
+    const int & flv_index2 = F2.flv_index;
+    if(flv_index1 == -1 || flv_index2 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    int flv_sel = -1;
+    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
+    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
+    if(flv_sel == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV3[0] = denom * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] );
+    wV3[1] = denom * cI * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] );
+    wV3[2] = denom * cI * ( -cI * ( wF2[3] * wF1[0] ) + cI * ( wF2[2] * wF1[1] ) );
+    wV3[3] = denom * cI * ( -wF2[2] * wF1[0] + wF2[3] * wF1[1] );
     mgDebug( 1, __FUNCTION__ );
     return;
   }
@@ -1987,6 +2544,555 @@ namespace madmatrix
   }
 
   //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+V2.pvec[0]), fpamp_of_mom(+V2.pvec[1]), fpamp_of_mom(+V2.pvec[2]), fpamp_of_mom(+V2.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+V3.pvec[0]), fpamp_of_mom(+V3.pvec[1]), fpamp_of_mom(+V3.pvec[2]), fpamp_of_mom(+V3.pvec[3]) };
+    V1.pvec[0] = +V2.pvec[0] + V3.pvec[0];
+    V1.pvec[1] = +V2.pvec[1] + V3.pvec[1];
+    V1.pvec[2] = +V2.pvec[2] + V3.pvec[2];
+    V1.pvec[3] = +V2.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-V1.pvec[0]), fpamp_of_mom(-V1.pvec[1]), fpamp_of_mom(-V1.pvec[2]), fpamp_of_mom(-V1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -V1.pvec[0], -V1.pvec[1], -V1.pvec[2], -V1.pvec[3] };
+    wV1[0] = CZERO ;
+    wV1[1] = CZERO ;
+    wV1[2] = CZERO ;
+    wV1[3] = CZERO ;
+    wV1[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV1[0] = denom * ( TMP7 * ( -cI * P2[0] + cI * P3[0] ) + ( wV2[0] * ( -cI * TMP2 + cI * TMP3 ) + wV3[0] * ( +cI * TMP4 - cI * TMP6 ) ) );
+    wV1[1] = denom * ( TMP7 * ( +cI * P2[1] - cI * P3[1] ) + ( wV2[1] * ( +cI * TMP2 - cI * TMP3 ) + wV3[1] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    wV1[2] = denom * ( TMP7 * ( +cI * P2[2] - cI * P3[2] ) + ( wV2[2] * ( +cI * TMP2 - cI * TMP3 ) + wV3[2] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    wV1[3] = denom * ( TMP7 * ( +cI * P2[3] - cI * P3[3] ) + ( wV2[3] * ( +cI * TMP2 - cI * TMP3 ) + wV3[3] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VVS1_VSV2_VSS1P1N_1( const ALOHAOBJ  & V2,
+                            const ALOHAOBJ  & V3,
+                            const fptype allCOUP1[],
+                            const fptype Ccoeff1,
+                            const fptype allCOUP2[],
+                            const fptype Ccoeff2,
+                            const fptype allCOUP3[],
+                            const fptype Ccoeff3,
+                            const fptype allCOUP4[],
+                            const fptype Ccoeff4,
+                            ALOHAOBJ  & V1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+V2.pvec[0]), fpamp_of_mom(+V2.pvec[1]), fpamp_of_mom(+V2.pvec[2]), fpamp_of_mom(+V2.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+V3.pvec[0]), fpamp_of_mom(+V3.pvec[1]), fpamp_of_mom(+V3.pvec[2]), fpamp_of_mom(+V3.pvec[3]) };
+    V1.pvec[0] = +V2.pvec[0] + V3.pvec[0];
+    V1.pvec[1] = +V2.pvec[1] + V3.pvec[1];
+    V1.pvec[2] = +V2.pvec[2] + V3.pvec[2];
+    V1.pvec[3] = +V2.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-V1.pvec[0]), fpamp_of_mom(-V1.pvec[1]), fpamp_of_mom(-V1.pvec[2]), fpamp_of_mom(-V1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -V1.pvec[0], -V1.pvec[1], -V1.pvec[2], -V1.pvec[3] };
+    wV1[0] = CZERO ;
+    wV1[1] = CZERO ;
+    wV1[2] = CZERO ;
+    wV1[3] = CZERO ;
+    wV1[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    const cxtype_amp_sv denom1 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff1) * static_cast<cxtype_denom_sv>(COUP1) );
+    wV1[0] = wV1[0] + denom1 * ( TMP7 * ( -cI * P2[0] + cI * P3[0] ) + ( wV2[0] * ( -cI * TMP2 + cI * TMP3 ) + wV3[0] * ( +cI * TMP4 - cI * TMP6 ) ) );
+    wV1[1] = wV1[1] + denom1 * ( TMP7 * ( +cI * P2[1] - cI * P3[1] ) + ( wV2[1] * ( +cI * TMP2 - cI * TMP3 ) + wV3[1] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    wV1[2] = wV1[2] + denom1 * ( TMP7 * ( +cI * P2[2] - cI * P3[2] ) + ( wV2[2] * ( +cI * TMP2 - cI * TMP3 ) + wV3[2] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    wV1[3] = wV1[3] + denom1 * ( TMP7 * ( +cI * P2[3] - cI * P3[3] ) + ( wV2[3] * ( +cI * TMP2 - cI * TMP3 ) + wV3[3] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    const cxtype_amp_sv denom2 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff2) * static_cast<cxtype_denom_sv>(COUP2) );
+    wV1[0] = wV1[0] + denom2 * -cI * wV2[0] * wV3[4];
+    wV1[1] = wV1[1] + denom2 * cI * wV2[1] * wV3[4];
+    wV1[2] = wV1[2] + denom2 * cI * wV2[2] * wV3[4];
+    wV1[3] = wV1[3] + denom2 * cI * wV2[3] * wV3[4];
+    const cxtype_amp_sv denom3 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff3) * static_cast<cxtype_denom_sv>(COUP3) );
+    wV1[0] = wV1[0] + denom3 * -cI * wV3[0] * wV2[4];
+    wV1[1] = wV1[1] + denom3 * cI * wV3[1] * wV2[4];
+    wV1[2] = wV1[2] + denom3 * cI * wV3[2] * wV2[4];
+    wV1[3] = wV1[3] + denom3 * cI * wV3[3] * wV2[4];
+    const cxtype_amp_sv denom4 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff4) * static_cast<cxtype_denom_sv>(COUP4) );
+    wV1[0] = wV1[0] + denom4 * wV2[4] * wV3[4] * ( -cI * P2[0] + cI * P3[0] );
+    wV1[1] = wV1[1] + denom4 * wV2[4] * wV3[4] * ( +cI * P2[1] - cI * P3[1] );
+    wV1[2] = wV1[2] + denom4 * wV2[4] * wV3[4] * ( +cI * P2[2] - cI * P3[2] );
+    wV1[3] = wV1[3] + denom4 * wV2[4] * wV3[4] * ( +cI * P2[3] - cI * P3[3] );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_1( const ALOHAOBJ  & V2,
+                                      const ALOHAOBJ  & V3,
+                                      const fptype allCOUP1[],
+                                      const fptype Ccoeff1,
+                                      const fptype allCOUP2[],
+                                      const fptype Ccoeff2,
+                                      const fptype allCOUP3[],
+                                      const fptype Ccoeff3,
+                                      const fptype allCOUP4[],
+                                      const fptype Ccoeff4,
+                                      const fptype allCOUP5[],
+                                      const fptype Ccoeff5,
+                                      const fptype allCOUP6[],
+                                      const fptype Ccoeff6,
+                                      ALOHAOBJ  & V1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    const cxtype_sv COUP5 = C_ACCESS::kernelAccessConst( allCOUP5 );
+    const cxtype_sv COUP6 = C_ACCESS::kernelAccessConst( allCOUP6 );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+V2.pvec[0]), fpamp_of_mom(+V2.pvec[1]), fpamp_of_mom(+V2.pvec[2]), fpamp_of_mom(+V2.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+V3.pvec[0]), fpamp_of_mom(+V3.pvec[1]), fpamp_of_mom(+V3.pvec[2]), fpamp_of_mom(+V3.pvec[3]) };
+    V1.pvec[0] = +V2.pvec[0] + V3.pvec[0];
+    V1.pvec[1] = +V2.pvec[1] + V3.pvec[1];
+    V1.pvec[2] = +V2.pvec[2] + V3.pvec[2];
+    V1.pvec[3] = +V2.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-V1.pvec[0]), fpamp_of_mom(-V1.pvec[1]), fpamp_of_mom(-V1.pvec[2]), fpamp_of_mom(-V1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -V1.pvec[0], -V1.pvec[1], -V1.pvec[2], -V1.pvec[3] };
+    wV1[0] = CZERO ;
+    wV1[1] = CZERO ;
+    wV1[2] = CZERO ;
+    wV1[3] = CZERO ;
+    wV1[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    const cxtype_amp_sv denom1 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff1) * static_cast<cxtype_denom_sv>(COUP1) );
+    wV1[0] = wV1[0] + denom1 * ( TMP7 * ( -cI * P2[0] + cI * P3[0] ) + ( wV2[0] * ( -cI * TMP2 + cI * TMP3 ) + wV3[0] * ( +cI * TMP4 - cI * TMP6 ) ) );
+    wV1[1] = wV1[1] + denom1 * ( TMP7 * ( +cI * P2[1] - cI * P3[1] ) + ( wV2[1] * ( +cI * TMP2 - cI * TMP3 ) + wV3[1] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    wV1[2] = wV1[2] + denom1 * ( TMP7 * ( +cI * P2[2] - cI * P3[2] ) + ( wV2[2] * ( +cI * TMP2 - cI * TMP3 ) + wV3[2] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    wV1[3] = wV1[3] + denom1 * ( TMP7 * ( +cI * P2[3] - cI * P3[3] ) + ( wV2[3] * ( +cI * TMP2 - cI * TMP3 ) + wV3[3] * ( -cI * TMP4 + cI * TMP6 ) ) );
+    const cxtype_amp_sv denom2 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff2) * static_cast<cxtype_denom_sv>(COUP2) );
+    wV1[0] = wV1[0] + denom2 * -cI * wV3[0] * wV2[4];
+    wV1[1] = wV1[1] + denom2 * cI * wV3[1] * wV2[4];
+    wV1[2] = wV1[2] + denom2 * cI * wV3[2] * wV2[4];
+    wV1[3] = wV1[3] + denom2 * cI * wV3[3] * wV2[4];
+    const cxtype_amp_sv denom3 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff3) * static_cast<cxtype_denom_sv>(COUP3) );
+    wV1[0] = wV1[0] + denom3 * wV2[4] * wV3[4] * ( -cI * P3[0] + cI * P2[0] );
+    wV1[1] = wV1[1] + denom3 * wV2[4] * wV3[4] * ( +cI * P3[1] - cI * P2[1] );
+    wV1[2] = wV1[2] + denom3 * wV2[4] * wV3[4] * ( +cI * P3[2] - cI * P2[2] );
+    wV1[3] = wV1[3] + denom3 * wV2[4] * wV3[4] * ( +cI * P3[3] - cI * P2[3] );
+    const cxtype_amp_sv denom4 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff4) * static_cast<cxtype_denom_sv>(COUP4) );
+    wV1[4] = wV1[4] + denom4 * -cI * TMP7;
+    const cxtype_amp_sv denom5 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff5) * static_cast<cxtype_denom_sv>(COUP5) );
+    wV1[4] = wV1[4] + denom5 * wV3[4] * ( -cI * TMP6 + cI * TMP4 );
+    const cxtype_amp_sv denom6 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff6) * static_cast<cxtype_denom_sv>(COUP6) );
+    wV1[4] = wV1[4] + denom6 * wV2[4] * ( -cI * TMP2 + cI * TMP3 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV2 = W_ACCESS::kernelAccess( V2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+V1.pvec[0]), fpamp_of_mom(+V1.pvec[1]), fpamp_of_mom(+V1.pvec[2]), fpamp_of_mom(+V1.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+V3.pvec[0]), fpamp_of_mom(+V3.pvec[1]), fpamp_of_mom(+V3.pvec[2]), fpamp_of_mom(+V3.pvec[3]) };
+    V2.pvec[0] = +V1.pvec[0] + V3.pvec[0];
+    V2.pvec[1] = +V1.pvec[1] + V3.pvec[1];
+    V2.pvec[2] = +V1.pvec[2] + V3.pvec[2];
+    V2.pvec[3] = +V1.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-V2.pvec[0]), fpamp_of_mom(-V2.pvec[1]), fpamp_of_mom(-V2.pvec[2]), fpamp_of_mom(-V2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -V2.pvec[0], -V2.pvec[1], -V2.pvec[2], -V2.pvec[3] };
+    wV2[0] = CZERO ;
+    wV2[1] = CZERO ;
+    wV2[2] = CZERO ;
+    wV2[3] = CZERO ;
+    wV2[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV2[0] = denom * ( TMP5 * ( +cI * P1[0] - cI * P3[0] ) + ( wV1[0] * ( -cI * TMP2 + cI * TMP3 ) + wV3[0] * ( -cI * TMP8 + cI * TMP9 ) ) );
+    wV2[1] = denom * ( TMP5 * ( -cI * P1[1] + cI * P3[1] ) + ( wV1[1] * ( +cI * TMP2 - cI * TMP3 ) + wV3[1] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV2[2] = denom * ( TMP5 * ( -cI * P1[2] + cI * P3[2] ) + ( wV1[2] * ( +cI * TMP2 - cI * TMP3 ) + wV3[2] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV2[3] = denom * ( TMP5 * ( -cI * P1[3] + cI * P3[3] ) + ( wV1[3] * ( +cI * TMP2 - cI * TMP3 ) + wV3[3] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VVS1_VSV2_VSS1P1N_2( const ALOHAOBJ  & V1,
+                            const ALOHAOBJ  & V3,
+                            const fptype allCOUP1[],
+                            const fptype Ccoeff1,
+                            const fptype allCOUP2[],
+                            const fptype Ccoeff2,
+                            const fptype allCOUP3[],
+                            const fptype Ccoeff3,
+                            const fptype allCOUP4[],
+                            const fptype Ccoeff4,
+                            ALOHAOBJ  & V2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    cxtype_amp_sv* wV2 = W_ACCESS::kernelAccess( V2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+V1.pvec[0]), fpamp_of_mom(+V1.pvec[1]), fpamp_of_mom(+V1.pvec[2]), fpamp_of_mom(+V1.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+V3.pvec[0]), fpamp_of_mom(+V3.pvec[1]), fpamp_of_mom(+V3.pvec[2]), fpamp_of_mom(+V3.pvec[3]) };
+    V2.pvec[0] = +V1.pvec[0] + V3.pvec[0];
+    V2.pvec[1] = +V1.pvec[1] + V3.pvec[1];
+    V2.pvec[2] = +V1.pvec[2] + V3.pvec[2];
+    V2.pvec[3] = +V1.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-V2.pvec[0]), fpamp_of_mom(-V2.pvec[1]), fpamp_of_mom(-V2.pvec[2]), fpamp_of_mom(-V2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -V2.pvec[0], -V2.pvec[1], -V2.pvec[2], -V2.pvec[3] };
+    wV2[0] = CZERO ;
+    wV2[1] = CZERO ;
+    wV2[2] = CZERO ;
+    wV2[3] = CZERO ;
+    wV2[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom1 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff1) * static_cast<cxtype_denom_sv>(COUP1) );
+    wV2[0] = wV2[0] + denom1 * ( TMP5 * ( +cI * P1[0] - cI * P3[0] ) + ( wV1[0] * ( -cI * TMP2 + cI * TMP3 ) + wV3[0] * ( -cI * TMP8 + cI * TMP9 ) ) );
+    wV2[1] = wV2[1] + denom1 * ( TMP5 * ( -cI * P1[1] + cI * P3[1] ) + ( wV1[1] * ( +cI * TMP2 - cI * TMP3 ) + wV3[1] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV2[2] = wV2[2] + denom1 * ( TMP5 * ( -cI * P1[2] + cI * P3[2] ) + ( wV1[2] * ( +cI * TMP2 - cI * TMP3 ) + wV3[2] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV2[3] = wV2[3] + denom1 * ( TMP5 * ( -cI * P1[3] + cI * P3[3] ) + ( wV1[3] * ( +cI * TMP2 - cI * TMP3 ) + wV3[3] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    const cxtype_amp_sv denom2 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff2) * static_cast<cxtype_denom_sv>(COUP2) );
+    wV2[0] = wV2[0] + denom2 * -cI * wV1[0] * wV3[4];
+    wV2[1] = wV2[1] + denom2 * cI * wV1[1] * wV3[4];
+    wV2[2] = wV2[2] + denom2 * cI * wV1[2] * wV3[4];
+    wV2[3] = wV2[3] + denom2 * cI * wV1[3] * wV3[4];
+    const cxtype_amp_sv denom3 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff3) * static_cast<cxtype_denom_sv>(COUP3) );
+    wV2[4] = wV2[4] + denom3 * -cI * TMP5;
+    const cxtype_amp_sv denom4 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff4) * static_cast<cxtype_denom_sv>(COUP4) );
+    wV2[4] = wV2[4] + denom4 * wV3[4] * ( -cI * TMP8 + cI * TMP9 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_2( const ALOHAOBJ  & V1,
+                                      const ALOHAOBJ  & V3,
+                                      const fptype allCOUP1[],
+                                      const fptype Ccoeff1,
+                                      const fptype allCOUP2[],
+                                      const fptype Ccoeff2,
+                                      const fptype allCOUP3[],
+                                      const fptype Ccoeff3,
+                                      const fptype allCOUP4[],
+                                      const fptype Ccoeff4,
+                                      const fptype allCOUP5[],
+                                      const fptype Ccoeff5,
+                                      const fptype allCOUP6[],
+                                      const fptype Ccoeff6,
+                                      ALOHAOBJ  & V2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    const cxtype_sv COUP5 = C_ACCESS::kernelAccessConst( allCOUP5 );
+    const cxtype_sv COUP6 = C_ACCESS::kernelAccessConst( allCOUP6 );
+    cxtype_amp_sv* wV2 = W_ACCESS::kernelAccess( V2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+V1.pvec[0]), fpamp_of_mom(+V1.pvec[1]), fpamp_of_mom(+V1.pvec[2]), fpamp_of_mom(+V1.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+V3.pvec[0]), fpamp_of_mom(+V3.pvec[1]), fpamp_of_mom(+V3.pvec[2]), fpamp_of_mom(+V3.pvec[3]) };
+    V2.pvec[0] = +V1.pvec[0] + V3.pvec[0];
+    V2.pvec[1] = +V1.pvec[1] + V3.pvec[1];
+    V2.pvec[2] = +V1.pvec[2] + V3.pvec[2];
+    V2.pvec[3] = +V1.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-V2.pvec[0]), fpamp_of_mom(-V2.pvec[1]), fpamp_of_mom(-V2.pvec[2]), fpamp_of_mom(-V2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -V2.pvec[0], -V2.pvec[1], -V2.pvec[2], -V2.pvec[3] };
+    wV2[0] = CZERO ;
+    wV2[1] = CZERO ;
+    wV2[2] = CZERO ;
+    wV2[3] = CZERO ;
+    wV2[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom1 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff1) * static_cast<cxtype_denom_sv>(COUP1) );
+    wV2[0] = wV2[0] + denom1 * ( TMP5 * ( +cI * P1[0] - cI * P3[0] ) + ( wV1[0] * ( -cI * TMP2 + cI * TMP3 ) + wV3[0] * ( -cI * TMP8 + cI * TMP9 ) ) );
+    wV2[1] = wV2[1] + denom1 * ( TMP5 * ( -cI * P1[1] + cI * P3[1] ) + ( wV1[1] * ( +cI * TMP2 - cI * TMP3 ) + wV3[1] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV2[2] = wV2[2] + denom1 * ( TMP5 * ( -cI * P1[2] + cI * P3[2] ) + ( wV1[2] * ( +cI * TMP2 - cI * TMP3 ) + wV3[2] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV2[3] = wV2[3] + denom1 * ( TMP5 * ( -cI * P1[3] + cI * P3[3] ) + ( wV1[3] * ( +cI * TMP2 - cI * TMP3 ) + wV3[3] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    const cxtype_amp_sv denom2 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff2) * static_cast<cxtype_denom_sv>(COUP2) );
+    wV2[4] = wV2[4] + denom2 * -cI * TMP5;
+    const cxtype_amp_sv denom3 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff3) * static_cast<cxtype_denom_sv>(COUP3) );
+    wV2[4] = wV2[4] + denom3 * wV3[4] * ( -cI * TMP9 + cI * TMP8 );
+    const cxtype_amp_sv denom4 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff4) * static_cast<cxtype_denom_sv>(COUP4) );
+    wV2[0] = wV2[0] + denom4 * -cI * wV3[0] * wV1[4];
+    wV2[1] = wV2[1] + denom4 * cI * wV3[1] * wV1[4];
+    wV2[2] = wV2[2] + denom4 * cI * wV3[2] * wV1[4];
+    wV2[3] = wV2[3] + denom4 * cI * wV3[3] * wV1[4];
+    const cxtype_amp_sv denom5 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff5) * static_cast<cxtype_denom_sv>(COUP5) );
+    wV2[0] = wV2[0] + denom5 * wV1[4] * wV3[4] * ( -cI * P3[0] + cI * P1[0] );
+    wV2[1] = wV2[1] + denom5 * wV1[4] * wV3[4] * ( +cI * P3[1] - cI * P1[1] );
+    wV2[2] = wV2[2] + denom5 * wV1[4] * wV3[4] * ( +cI * P3[2] - cI * P1[2] );
+    wV2[3] = wV2[3] + denom5 * wV1[4] * wV3[4] * ( +cI * P3[3] - cI * P1[3] );
+    const cxtype_amp_sv denom6 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff6) * static_cast<cxtype_denom_sv>(COUP6) );
+    wV2[4] = wV2[4] + denom6 * wV1[4] * ( -cI * TMP2 + cI * TMP3 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+V1.pvec[0]), fpamp_of_mom(+V1.pvec[1]), fpamp_of_mom(+V1.pvec[2]), fpamp_of_mom(+V1.pvec[3]) };
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+V2.pvec[0]), fpamp_of_mom(+V2.pvec[1]), fpamp_of_mom(+V2.pvec[2]), fpamp_of_mom(+V2.pvec[3]) };
+    V3.pvec[0] = +V1.pvec[0] + V2.pvec[0];
+    V3.pvec[1] = +V1.pvec[1] + V2.pvec[1];
+    V3.pvec[2] = +V1.pvec[2] + V2.pvec[2];
+    V3.pvec[3] = +V1.pvec[3] + V2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-V3.pvec[0]), fpamp_of_mom(-V3.pvec[1]), fpamp_of_mom(-V3.pvec[2]), fpamp_of_mom(-V3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    const cxtype_amp_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV3[0] = denom * ( TMP1 * ( -cI * P1[0] + cI * P2[0] ) + ( wV1[0] * ( +cI * TMP4 - cI * TMP6 ) + wV2[0] * ( -cI * TMP8 + cI * TMP9 ) ) );
+    wV3[1] = denom * ( TMP1 * ( +cI * P1[1] - cI * P2[1] ) + ( wV1[1] * ( -cI * TMP4 + cI * TMP6 ) + wV2[1] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV3[2] = denom * ( TMP1 * ( +cI * P1[2] - cI * P2[2] ) + ( wV1[2] * ( -cI * TMP4 + cI * TMP6 ) + wV2[2] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV3[3] = denom * ( TMP1 * ( +cI * P1[3] - cI * P2[3] ) + ( wV1[3] * ( -cI * TMP4 + cI * TMP6 ) + wV2[3] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VVS1_VSV2_VSS1P1N_3( const ALOHAOBJ  & V1,
+                            const ALOHAOBJ  & V2,
+                            const fptype allCOUP1[],
+                            const fptype Ccoeff1,
+                            const fptype allCOUP2[],
+                            const fptype Ccoeff2,
+                            const fptype allCOUP3[],
+                            const fptype Ccoeff3,
+                            const fptype allCOUP4[],
+                            const fptype Ccoeff4,
+                            ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    cxtype_amp_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+V1.pvec[0]), fpamp_of_mom(+V1.pvec[1]), fpamp_of_mom(+V1.pvec[2]), fpamp_of_mom(+V1.pvec[3]) };
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+V2.pvec[0]), fpamp_of_mom(+V2.pvec[1]), fpamp_of_mom(+V2.pvec[2]), fpamp_of_mom(+V2.pvec[3]) };
+    V3.pvec[0] = +V1.pvec[0] + V2.pvec[0];
+    V3.pvec[1] = +V1.pvec[1] + V2.pvec[1];
+    V3.pvec[2] = +V1.pvec[2] + V2.pvec[2];
+    V3.pvec[3] = +V1.pvec[3] + V2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-V3.pvec[0]), fpamp_of_mom(-V3.pvec[1]), fpamp_of_mom(-V3.pvec[2]), fpamp_of_mom(-V3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    const cxtype_amp_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom1 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff1) * static_cast<cxtype_denom_sv>(COUP1) );
+    wV3[0] = wV3[0] + denom1 * ( TMP1 * ( -cI * P1[0] + cI * P2[0] ) + ( wV1[0] * ( +cI * TMP4 - cI * TMP6 ) + wV2[0] * ( -cI * TMP8 + cI * TMP9 ) ) );
+    wV3[1] = wV3[1] + denom1 * ( TMP1 * ( +cI * P1[1] - cI * P2[1] ) + ( wV1[1] * ( -cI * TMP4 + cI * TMP6 ) + wV2[1] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV3[2] = wV3[2] + denom1 * ( TMP1 * ( +cI * P1[2] - cI * P2[2] ) + ( wV1[2] * ( -cI * TMP4 + cI * TMP6 ) + wV2[2] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV3[3] = wV3[3] + denom1 * ( TMP1 * ( +cI * P1[3] - cI * P2[3] ) + ( wV1[3] * ( -cI * TMP4 + cI * TMP6 ) + wV2[3] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    const cxtype_amp_sv denom2 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff2) * static_cast<cxtype_denom_sv>(COUP2) );
+    wV3[4] = wV3[4] + denom2 * -cI * TMP1;
+    const cxtype_amp_sv denom3 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff3) * static_cast<cxtype_denom_sv>(COUP3) );
+    wV3[0] = wV3[0] + denom3 * -cI * wV1[0] * wV2[4];
+    wV3[1] = wV3[1] + denom3 * cI * wV1[1] * wV2[4];
+    wV3[2] = wV3[2] + denom3 * cI * wV1[2] * wV2[4];
+    wV3[3] = wV3[3] + denom3 * cI * wV1[3] * wV2[4];
+    const cxtype_amp_sv denom4 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff4) * static_cast<cxtype_denom_sv>(COUP4) );
+    wV3[4] = wV3[4] + denom4 * wV2[4] * ( -cI * TMP8 + cI * TMP9 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_3( const ALOHAOBJ  & V1,
+                                      const ALOHAOBJ  & V2,
+                                      const fptype allCOUP1[],
+                                      const fptype Ccoeff1,
+                                      const fptype allCOUP2[],
+                                      const fptype Ccoeff2,
+                                      const fptype allCOUP3[],
+                                      const fptype Ccoeff3,
+                                      const fptype allCOUP4[],
+                                      const fptype Ccoeff4,
+                                      const fptype allCOUP5[],
+                                      const fptype Ccoeff5,
+                                      const fptype allCOUP6[],
+                                      const fptype Ccoeff6,
+                                      ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    const cxtype_sv COUP5 = C_ACCESS::kernelAccessConst( allCOUP5 );
+    const cxtype_sv COUP6 = C_ACCESS::kernelAccessConst( allCOUP6 );
+    cxtype_amp_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+V1.pvec[0]), fpamp_of_mom(+V1.pvec[1]), fpamp_of_mom(+V1.pvec[2]), fpamp_of_mom(+V1.pvec[3]) };
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+V2.pvec[0]), fpamp_of_mom(+V2.pvec[1]), fpamp_of_mom(+V2.pvec[2]), fpamp_of_mom(+V2.pvec[3]) };
+    V3.pvec[0] = +V1.pvec[0] + V2.pvec[0];
+    V3.pvec[1] = +V1.pvec[1] + V2.pvec[1];
+    V3.pvec[2] = +V1.pvec[2] + V2.pvec[2];
+    V3.pvec[3] = +V1.pvec[3] + V2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-V3.pvec[0]), fpamp_of_mom(-V3.pvec[1]), fpamp_of_mom(-V3.pvec[2]), fpamp_of_mom(-V3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    const cxtype_amp_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom1 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff1) * static_cast<cxtype_denom_sv>(COUP1) );
+    wV3[0] = wV3[0] + denom1 * ( TMP1 * ( -cI * P1[0] + cI * P2[0] ) + ( wV1[0] * ( +cI * TMP4 - cI * TMP6 ) + wV2[0] * ( -cI * TMP8 + cI * TMP9 ) ) );
+    wV3[1] = wV3[1] + denom1 * ( TMP1 * ( +cI * P1[1] - cI * P2[1] ) + ( wV1[1] * ( -cI * TMP4 + cI * TMP6 ) + wV2[1] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV3[2] = wV3[2] + denom1 * ( TMP1 * ( +cI * P1[2] - cI * P2[2] ) + ( wV1[2] * ( -cI * TMP4 + cI * TMP6 ) + wV2[2] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    wV3[3] = wV3[3] + denom1 * ( TMP1 * ( +cI * P1[3] - cI * P2[3] ) + ( wV1[3] * ( -cI * TMP4 + cI * TMP6 ) + wV2[3] * ( +cI * TMP8 - cI * TMP9 ) ) );
+    const cxtype_amp_sv denom2 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff2) * static_cast<cxtype_denom_sv>(COUP2) );
+    wV3[0] = wV3[0] + denom2 * -cI * wV1[0] * wV2[4];
+    wV3[1] = wV3[1] + denom2 * cI * wV1[1] * wV2[4];
+    wV3[2] = wV3[2] + denom2 * cI * wV1[2] * wV2[4];
+    wV3[3] = wV3[3] + denom2 * cI * wV1[3] * wV2[4];
+    const cxtype_amp_sv denom3 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff3) * static_cast<cxtype_denom_sv>(COUP3) );
+    wV3[4] = wV3[4] + denom3 * wV2[4] * ( -cI * TMP9 + cI * TMP8 );
+    const cxtype_amp_sv denom4 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff4) * static_cast<cxtype_denom_sv>(COUP4) );
+    wV3[0] = wV3[0] + denom4 * -cI * wV2[0] * wV1[4];
+    wV3[1] = wV3[1] + denom4 * cI * wV2[1] * wV1[4];
+    wV3[2] = wV3[2] + denom4 * cI * wV2[2] * wV1[4];
+    wV3[3] = wV3[3] + denom4 * cI * wV2[3] * wV1[4];
+    const cxtype_amp_sv denom5 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff5) * static_cast<cxtype_denom_sv>(COUP5) );
+    wV3[4] = wV3[4] + denom5 * wV1[4] * ( -cI * TMP6 + cI * TMP4 );
+    const cxtype_amp_sv denom6 = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff6) * static_cast<cxtype_denom_sv>(COUP6) );
+    wV3[0] = wV3[0] + denom6 * wV1[4] * wV2[4] * ( -cI * P1[0] + cI * P2[0] );
+    wV3[1] = wV3[1] + denom6 * wV1[4] * wV2[4] * ( +cI * P1[1] - cI * P2[1] );
+    wV3[2] = wV3[2] + denom6 * wV1[4] * wV2[4] * ( +cI * P1[2] - cI * P2[2] );
+    wV3[3] = wV3[3] + denom6 * wV1[4] * wV2[4] * ( +cI * P1[3] - cI * P2[3] );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ void
@@ -2013,6 +3119,118 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVS1P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    V1.pvec[0] = +V2.pvec[0] + S3.pvec[0];
+    V1.pvec[1] = +V2.pvec[1] + S3.pvec[1];
+    V1.pvec[2] = +V2.pvec[2] + S3.pvec[2];
+    V1.pvec[3] = +V2.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-V1.pvec[0]), fpamp_of_mom(-V1.pvec[1]), fpamp_of_mom(-V1.pvec[2]), fpamp_of_mom(-V1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -V1.pvec[0], -V1.pvec[1], -V1.pvec[2], -V1.pvec[3] };
+    wV1[0] = CZERO ;
+    wV1[1] = CZERO ;
+    wV1[2] = CZERO ;
+    wV1[3] = CZERO ;
+    wV1[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV1[0] = denom * -cI * wV2[0] * wS3[4];
+    wV1[1] = denom * cI * wV2[1] * wS3[4];
+    wV1[2] = denom * cI * wV2[2] * wS3[4];
+    wV1[3] = denom * cI * wV2[3] * wS3[4];
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVS1P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV2 = W_ACCESS::kernelAccess( V2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    V2.pvec[0] = +V1.pvec[0] + S3.pvec[0];
+    V2.pvec[1] = +V1.pvec[1] + S3.pvec[1];
+    V2.pvec[2] = +V1.pvec[2] + S3.pvec[2];
+    V2.pvec[3] = +V1.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-V2.pvec[0]), fpamp_of_mom(-V2.pvec[1]), fpamp_of_mom(-V2.pvec[2]), fpamp_of_mom(-V2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -V2.pvec[0], -V2.pvec[1], -V2.pvec[2], -V2.pvec[3] };
+    wV2[0] = CZERO ;
+    wV2[1] = CZERO ;
+    wV2[2] = CZERO ;
+    wV2[3] = CZERO ;
+    wV2[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV2[0] = denom * -cI * wV1[0] * wS3[4];
+    wV2[1] = denom * cI * wV1[1] * wS3[4];
+    wV2[2] = denom * cI * wV1[2] * wS3[4];
+    wV2[3] = denom * cI * wV1[3] * wS3[4];
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VVS1P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS3 = W_ACCESS::kernelAccess( S3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    S3.pvec[0] = +V1.pvec[0] + V2.pvec[0];
+    S3.pvec[1] = +V1.pvec[1] + V2.pvec[1];
+    S3.pvec[2] = +V1.pvec[2] + V2.pvec[2];
+    S3.pvec[3] = +V1.pvec[3] + V2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-S3.pvec[0]), fpamp_of_mom(-S3.pvec[1]), fpamp_of_mom(-S3.pvec[2]), fpamp_of_mom(-S3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -S3.pvec[0], -S3.pvec[1], -S3.pvec[2], -S3.pvec[3] };
+    wS3[0] = CZERO ;
+    wS3[1] = CZERO ;
+    wS3[2] = CZERO ;
+    wS3[3] = CZERO ;
+    wS3[4] = CZERO ;
+    const cxtype_amp_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS3[4] = denom * -cI * TMP1;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ void
@@ -2033,6 +3251,118 @@ namespace madmatrix
     const cxtype_amp_sv cI = cxmake( 0., 1. );
     const cxtype_amp_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
     ( *vertex ) = (cxtype_amp_sv)( Ccoeff * COUP * -cI * TMP5 * wS2[4] );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSV2P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    V1.pvec[0] = +S2.pvec[0] + V3.pvec[0];
+    V1.pvec[1] = +S2.pvec[1] + V3.pvec[1];
+    V1.pvec[2] = +S2.pvec[2] + V3.pvec[2];
+    V1.pvec[3] = +S2.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-V1.pvec[0]), fpamp_of_mom(-V1.pvec[1]), fpamp_of_mom(-V1.pvec[2]), fpamp_of_mom(-V1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -V1.pvec[0], -V1.pvec[1], -V1.pvec[2], -V1.pvec[3] };
+    wV1[0] = CZERO ;
+    wV1[1] = CZERO ;
+    wV1[2] = CZERO ;
+    wV1[3] = CZERO ;
+    wV1[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV1[0] = denom * -cI * wV3[0] * wS2[4];
+    wV1[1] = denom * cI * wV3[1] * wS2[4];
+    wV1[2] = denom * cI * wV3[2] * wS2[4];
+    wV1[3] = denom * cI * wV3[3] * wS2[4];
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSV2P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS2 = W_ACCESS::kernelAccess( S2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    S2.pvec[0] = +V1.pvec[0] + V3.pvec[0];
+    S2.pvec[1] = +V1.pvec[1] + V3.pvec[1];
+    S2.pvec[2] = +V1.pvec[2] + V3.pvec[2];
+    S2.pvec[3] = +V1.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-S2.pvec[0]), fpamp_of_mom(-S2.pvec[1]), fpamp_of_mom(-S2.pvec[2]), fpamp_of_mom(-S2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -S2.pvec[0], -S2.pvec[1], -S2.pvec[2], -S2.pvec[3] };
+    wS2[0] = CZERO ;
+    wS2[1] = CZERO ;
+    wS2[2] = CZERO ;
+    wS2[3] = CZERO ;
+    wS2[4] = CZERO ;
+    const cxtype_amp_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS2[4] = denom * -cI * TMP5;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSV2P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    V3.pvec[0] = +V1.pvec[0] + S2.pvec[0];
+    V3.pvec[1] = +V1.pvec[1] + S2.pvec[1];
+    V3.pvec[2] = +V1.pvec[2] + S2.pvec[2];
+    V3.pvec[3] = +V1.pvec[3] + S2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-V3.pvec[0]), fpamp_of_mom(-V3.pvec[1]), fpamp_of_mom(-V3.pvec[2]), fpamp_of_mom(-V3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV3[0] = denom * -cI * wV1[0] * wS2[4];
+    wV3[1] = denom * cI * wV1[1] * wS2[4];
+    wV3[2] = denom * cI * wV1[2] * wS2[4];
+    wV3[3] = denom * cI * wV1[3] * wS2[4];
     mgDebug( 1, __FUNCTION__ );
     return;
   }
@@ -2068,6 +3398,122 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS1P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+S2.pvec[0]), fpamp_of_mom(+S2.pvec[1]), fpamp_of_mom(+S2.pvec[2]), fpamp_of_mom(+S2.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+S3.pvec[0]), fpamp_of_mom(+S3.pvec[1]), fpamp_of_mom(+S3.pvec[2]), fpamp_of_mom(+S3.pvec[3]) };
+    V1.pvec[0] = +S2.pvec[0] + S3.pvec[0];
+    V1.pvec[1] = +S2.pvec[1] + S3.pvec[1];
+    V1.pvec[2] = +S2.pvec[2] + S3.pvec[2];
+    V1.pvec[3] = +S2.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-V1.pvec[0]), fpamp_of_mom(-V1.pvec[1]), fpamp_of_mom(-V1.pvec[2]), fpamp_of_mom(-V1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -V1.pvec[0], -V1.pvec[1], -V1.pvec[2], -V1.pvec[3] };
+    wV1[0] = CZERO ;
+    wV1[1] = CZERO ;
+    wV1[2] = CZERO ;
+    wV1[3] = CZERO ;
+    wV1[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV1[0] = denom * wS2[4] * wS3[4] * ( -cI * P2[0] + cI * P3[0] );
+    wV1[1] = denom * wS2[4] * wS3[4] * ( +cI * P2[1] - cI * P3[1] );
+    wV1[2] = denom * wS2[4] * wS3[4] * ( +cI * P2[2] - cI * P3[2] );
+    wV1[3] = denom * wS2[4] * wS3[4] * ( +cI * P2[3] - cI * P3[3] );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS1P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS2 = W_ACCESS::kernelAccess( S2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+S3.pvec[0]), fpamp_of_mom(+S3.pvec[1]), fpamp_of_mom(+S3.pvec[2]), fpamp_of_mom(+S3.pvec[3]) };
+    S2.pvec[0] = +V1.pvec[0] + S3.pvec[0];
+    S2.pvec[1] = +V1.pvec[1] + S3.pvec[1];
+    S2.pvec[2] = +V1.pvec[2] + S3.pvec[2];
+    S2.pvec[3] = +V1.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-S2.pvec[0]), fpamp_of_mom(-S2.pvec[1]), fpamp_of_mom(-S2.pvec[2]), fpamp_of_mom(-S2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -S2.pvec[0], -S2.pvec[1], -S2.pvec[2], -S2.pvec[3] };
+    wS2[0] = CZERO ;
+    wS2[1] = CZERO ;
+    wS2[2] = CZERO ;
+    wS2[3] = CZERO ;
+    wS2[4] = CZERO ;
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS2[4] = denom * wS3[4] * ( -cI * TMP8 + cI * TMP9 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS1P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS3 = W_ACCESS::kernelAccess( S3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+S2.pvec[0]), fpamp_of_mom(+S2.pvec[1]), fpamp_of_mom(+S2.pvec[2]), fpamp_of_mom(+S2.pvec[3]) };
+    S3.pvec[0] = +V1.pvec[0] + S2.pvec[0];
+    S3.pvec[1] = +V1.pvec[1] + S2.pvec[1];
+    S3.pvec[2] = +V1.pvec[2] + S2.pvec[2];
+    S3.pvec[3] = +V1.pvec[3] + S2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-S3.pvec[0]), fpamp_of_mom(-S3.pvec[1]), fpamp_of_mom(-S3.pvec[2]), fpamp_of_mom(-S3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -S3.pvec[0], -S3.pvec[1], -S3.pvec[2], -S3.pvec[3] };
+    wS3[0] = CZERO ;
+    wS3[1] = CZERO ;
+    wS3[2] = CZERO ;
+    wS3[3] = CZERO ;
+    wS3[4] = CZERO ;
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS3[4] = denom * wS2[4] * ( -cI * TMP8 + cI * TMP9 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ void
@@ -2097,6 +3543,122 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'V1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS2P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+S2.pvec[0]), fpamp_of_mom(+S2.pvec[1]), fpamp_of_mom(+S2.pvec[2]), fpamp_of_mom(+S2.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+S3.pvec[0]), fpamp_of_mom(+S3.pvec[1]), fpamp_of_mom(+S3.pvec[2]), fpamp_of_mom(+S3.pvec[3]) };
+    V1.pvec[0] = +S2.pvec[0] + S3.pvec[0];
+    V1.pvec[1] = +S2.pvec[1] + S3.pvec[1];
+    V1.pvec[2] = +S2.pvec[2] + S3.pvec[2];
+    V1.pvec[3] = +S2.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-V1.pvec[0]), fpamp_of_mom(-V1.pvec[1]), fpamp_of_mom(-V1.pvec[2]), fpamp_of_mom(-V1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -V1.pvec[0], -V1.pvec[1], -V1.pvec[2], -V1.pvec[3] };
+    wV1[0] = CZERO ;
+    wV1[1] = CZERO ;
+    wV1[2] = CZERO ;
+    wV1[3] = CZERO ;
+    wV1[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV1[0] = denom * wS2[4] * wS3[4] * ( -cI * P3[0] + cI * P2[0] );
+    wV1[1] = denom * wS2[4] * wS3[4] * ( +cI * P3[1] - cI * P2[1] );
+    wV1[2] = denom * wS2[4] * wS3[4] * ( +cI * P3[2] - cI * P2[2] );
+    wV1[3] = denom * wS2[4] * wS3[4] * ( +cI * P3[3] - cI * P2[3] );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS2P1N_2( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS2 = W_ACCESS::kernelAccess( S2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+S3.pvec[0]), fpamp_of_mom(+S3.pvec[1]), fpamp_of_mom(+S3.pvec[2]), fpamp_of_mom(+S3.pvec[3]) };
+    S2.pvec[0] = +V1.pvec[0] + S3.pvec[0];
+    S2.pvec[1] = +V1.pvec[1] + S3.pvec[1];
+    S2.pvec[2] = +V1.pvec[2] + S3.pvec[2];
+    S2.pvec[3] = +V1.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-S2.pvec[0]), fpamp_of_mom(-S2.pvec[1]), fpamp_of_mom(-S2.pvec[2]), fpamp_of_mom(-S2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -S2.pvec[0], -S2.pvec[1], -S2.pvec[2], -S2.pvec[3] };
+    wS2[0] = CZERO ;
+    wS2[1] = CZERO ;
+    wS2[2] = CZERO ;
+    wS2[3] = CZERO ;
+    wS2[4] = CZERO ;
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS2[4] = denom * wS3[4] * ( -cI * TMP9 + cI * TMP8 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS2P1N_3( const ALOHAOBJ  & V1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS3 = W_ACCESS::kernelAccess( S3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+S2.pvec[0]), fpamp_of_mom(+S2.pvec[1]), fpamp_of_mom(+S2.pvec[2]), fpamp_of_mom(+S2.pvec[3]) };
+    S3.pvec[0] = +V1.pvec[0] + S2.pvec[0];
+    S3.pvec[1] = +V1.pvec[1] + S2.pvec[1];
+    S3.pvec[2] = +V1.pvec[2] + S2.pvec[2];
+    S3.pvec[3] = +V1.pvec[3] + S2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-S3.pvec[0]), fpamp_of_mom(-S3.pvec[1]), fpamp_of_mom(-S3.pvec[2]), fpamp_of_mom(-S3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -S3.pvec[0], -S3.pvec[1], -S3.pvec[2], -S3.pvec[3] };
+    wS3[0] = CZERO ;
+    wS3[1] = CZERO ;
+    wS3[2] = CZERO ;
+    wS3[3] = CZERO ;
+    wS3[4] = CZERO ;
+    const cxtype_amp_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_amp_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS3[4] = denom * wS2[4] * ( -cI * TMP9 + cI * TMP8 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ void
@@ -2117,6 +3679,118 @@ namespace madmatrix
     const cxtype_amp_sv cI = cxmake( 0., 1. );
     const cxtype_amp_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
     ( *vertex ) = (cxtype_amp_sv)( Ccoeff * COUP * -cI * TMP7 * wS1[4] );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SVV2P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS1 = W_ACCESS::kernelAccess( S1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    S1.pvec[0] = +V2.pvec[0] + V3.pvec[0];
+    S1.pvec[1] = +V2.pvec[1] + V3.pvec[1];
+    S1.pvec[2] = +V2.pvec[2] + V3.pvec[2];
+    S1.pvec[3] = +V2.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-S1.pvec[0]), fpamp_of_mom(-S1.pvec[1]), fpamp_of_mom(-S1.pvec[2]), fpamp_of_mom(-S1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -S1.pvec[0], -S1.pvec[1], -S1.pvec[2], -S1.pvec[3] };
+    wS1[0] = CZERO ;
+    wS1[1] = CZERO ;
+    wS1[2] = CZERO ;
+    wS1[3] = CZERO ;
+    wS1[4] = CZERO ;
+    const cxtype_amp_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS1[4] = denom * -cI * TMP7;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SVV2P1N_2( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV2 = W_ACCESS::kernelAccess( V2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    V2.pvec[0] = +S1.pvec[0] + V3.pvec[0];
+    V2.pvec[1] = +S1.pvec[1] + V3.pvec[1];
+    V2.pvec[2] = +S1.pvec[2] + V3.pvec[2];
+    V2.pvec[3] = +S1.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-V2.pvec[0]), fpamp_of_mom(-V2.pvec[1]), fpamp_of_mom(-V2.pvec[2]), fpamp_of_mom(-V2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -V2.pvec[0], -V2.pvec[1], -V2.pvec[2], -V2.pvec[3] };
+    wV2[0] = CZERO ;
+    wV2[1] = CZERO ;
+    wV2[2] = CZERO ;
+    wV2[3] = CZERO ;
+    wV2[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV2[0] = denom * -cI * wV3[0] * wS1[4];
+    wV2[1] = denom * cI * wV3[1] * wS1[4];
+    wV2[2] = denom * cI * wV3[2] * wS1[4];
+    wV2[3] = denom * cI * wV3[3] * wS1[4];
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SVV2P1N_3( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    V3.pvec[0] = +S1.pvec[0] + V2.pvec[0];
+    V3.pvec[1] = +S1.pvec[1] + V2.pvec[1];
+    V3.pvec[2] = +S1.pvec[2] + V2.pvec[2];
+    V3.pvec[3] = +S1.pvec[3] + V2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-V3.pvec[0]), fpamp_of_mom(-V3.pvec[1]), fpamp_of_mom(-V3.pvec[2]), fpamp_of_mom(-V3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV3[0] = denom * -cI * wV2[0] * wS1[4];
+    wV3[1] = denom * cI * wV2[1] * wS1[4];
+    wV3[2] = denom * cI * wV2[2] * wS1[4];
+    wV3[3] = denom * cI * wV2[3] * wS1[4];
     mgDebug( 1, __FUNCTION__ );
     return;
   }
@@ -2152,6 +3826,122 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Compute the output wavefunction 'S1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SVS2P1N_1( const ALOHAOBJ  & V2,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS1 = W_ACCESS::kernelAccess( S1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+S3.pvec[0]), fpamp_of_mom(+S3.pvec[1]), fpamp_of_mom(+S3.pvec[2]), fpamp_of_mom(+S3.pvec[3]) };
+    S1.pvec[0] = +V2.pvec[0] + S3.pvec[0];
+    S1.pvec[1] = +V2.pvec[1] + S3.pvec[1];
+    S1.pvec[2] = +V2.pvec[2] + S3.pvec[2];
+    S1.pvec[3] = +V2.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-S1.pvec[0]), fpamp_of_mom(-S1.pvec[1]), fpamp_of_mom(-S1.pvec[2]), fpamp_of_mom(-S1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -S1.pvec[0], -S1.pvec[1], -S1.pvec[2], -S1.pvec[3] };
+    wS1[0] = CZERO ;
+    wS1[1] = CZERO ;
+    wS1[2] = CZERO ;
+    wS1[3] = CZERO ;
+    wS1[4] = CZERO ;
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS1[4] = denom * wS3[4] * ( -cI * TMP6 + cI * TMP4 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SVS2P1N_2( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & S3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_amp_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV2 = W_ACCESS::kernelAccess( V2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+S1.pvec[0]), fpamp_of_mom(+S1.pvec[1]), fpamp_of_mom(+S1.pvec[2]), fpamp_of_mom(+S1.pvec[3]) };
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(+S3.pvec[0]), fpamp_of_mom(+S3.pvec[1]), fpamp_of_mom(+S3.pvec[2]), fpamp_of_mom(+S3.pvec[3]) };
+    V2.pvec[0] = +S1.pvec[0] + S3.pvec[0];
+    V2.pvec[1] = +S1.pvec[1] + S3.pvec[1];
+    V2.pvec[2] = +S1.pvec[2] + S3.pvec[2];
+    V2.pvec[3] = +S1.pvec[3] + S3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-V2.pvec[0]), fpamp_of_mom(-V2.pvec[1]), fpamp_of_mom(-V2.pvec[2]), fpamp_of_mom(-V2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -V2.pvec[0], -V2.pvec[1], -V2.pvec[2], -V2.pvec[3] };
+    wV2[0] = CZERO ;
+    wV2[1] = CZERO ;
+    wV2[2] = CZERO ;
+    wV2[3] = CZERO ;
+    wV2[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV2[0] = denom * wS1[4] * wS3[4] * ( -cI * P3[0] + cI * P1[0] );
+    wV2[1] = denom * wS1[4] * wS3[4] * ( +cI * P3[1] - cI * P1[1] );
+    wV2[2] = denom * wS1[4] * wS3[4] * ( +cI * P3[2] - cI * P1[2] );
+    wV2[3] = denom * wS1[4] * wS3[4] * ( +cI * P3[3] - cI * P1[3] );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SVS2P1N_3( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS3 = W_ACCESS::kernelAccess( S3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+S1.pvec[0]), fpamp_of_mom(+S1.pvec[1]), fpamp_of_mom(+S1.pvec[2]), fpamp_of_mom(+S1.pvec[3]) };
+    S3.pvec[0] = +S1.pvec[0] + V2.pvec[0];
+    S3.pvec[1] = +S1.pvec[1] + V2.pvec[1];
+    S3.pvec[2] = +S1.pvec[2] + V2.pvec[2];
+    S3.pvec[3] = +S1.pvec[3] + V2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-S3.pvec[0]), fpamp_of_mom(-S3.pvec[1]), fpamp_of_mom(-S3.pvec[2]), fpamp_of_mom(-S3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -S3.pvec[0], -S3.pvec[1], -S3.pvec[2], -S3.pvec[3] };
+    wS3[0] = CZERO ;
+    wS3[1] = CZERO ;
+    wS3[2] = CZERO ;
+    wS3[3] = CZERO ;
+    wS3[4] = CZERO ;
+    const cxtype_amp_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_amp_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS3[4] = denom * wS1[4] * ( -cI * TMP6 + cI * TMP4 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
   // Compute the output amplitude 'vertex' from the input wavefunctions 
   template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
   __device__ void
@@ -2175,6 +3965,122 @@ namespace madmatrix
     const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
     const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
     ( *vertex ) = (cxtype_amp_sv)( Ccoeff * COUP * wS1[4] * wS2[4] * ( -cI * TMP2 + cI * TMP3 ) );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S1[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SSV3P1N_1( const ALOHAOBJ  & S2,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S1 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS1 = W_ACCESS::kernelAccess( S1.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+S2.pvec[0]), fpamp_of_mom(+S2.pvec[1]), fpamp_of_mom(+S2.pvec[2]), fpamp_of_mom(+S2.pvec[3]) };
+    S1.pvec[0] = +S2.pvec[0] + V3.pvec[0];
+    S1.pvec[1] = +S2.pvec[1] + V3.pvec[1];
+    S1.pvec[2] = +S2.pvec[2] + V3.pvec[2];
+    S1.pvec[3] = +S2.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(-S1.pvec[0]), fpamp_of_mom(-S1.pvec[1]), fpamp_of_mom(-S1.pvec[2]), fpamp_of_mom(-S1.pvec[3]) };
+    const fptype_denom_sv dP1[4] = { -S1.pvec[0], -S1.pvec[1], -S1.pvec[2], -S1.pvec[3] };
+    wS1[0] = CZERO ;
+    wS1[1] = CZERO ;
+    wS1[2] = CZERO ;
+    wS1[3] = CZERO ;
+    wS1[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS1[4] = denom * wS2[4] * ( -cI * TMP2 + cI * TMP3 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'S2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SSV3P1N_2( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & V3,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & S2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wS2 = W_ACCESS::kernelAccess( S2.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+S1.pvec[0]), fpamp_of_mom(+S1.pvec[1]), fpamp_of_mom(+S1.pvec[2]), fpamp_of_mom(+S1.pvec[3]) };
+    S2.pvec[0] = +S1.pvec[0] + V3.pvec[0];
+    S2.pvec[1] = +S1.pvec[1] + V3.pvec[1];
+    S2.pvec[2] = +S1.pvec[2] + V3.pvec[2];
+    S2.pvec[3] = +S1.pvec[3] + V3.pvec[3];
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(-S2.pvec[0]), fpamp_of_mom(-S2.pvec[1]), fpamp_of_mom(-S2.pvec[2]), fpamp_of_mom(-S2.pvec[3]) };
+    const fptype_denom_sv dP2[4] = { -S2.pvec[0], -S2.pvec[1], -S2.pvec[2], -S2.pvec[3] };
+    wS2[0] = CZERO ;
+    wS2[1] = CZERO ;
+    wS2[2] = CZERO ;
+    wS2[3] = CZERO ;
+    wS2[4] = CZERO ;
+    const cxtype_amp_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_amp_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wS2[4] = denom * wS1[4] * ( -cI * TMP2 + cI * TMP3 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  SSV3P1N_3( const ALOHAOBJ  & S1,
+             const ALOHAOBJ  & S2,
+             const fptype allCOUP[],
+             const fptype Ccoeff,
+             ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_amp_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_amp_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_amp_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_amp_sv CZERO = cxzero_sv<cxtype_amp_sv>(); 
+    const cxtype_amp_sv cI = cxmake( 0., 1. );
+    const fptype_amp_sv P1[4] = { fpamp_of_mom(+S1.pvec[0]), fpamp_of_mom(+S1.pvec[1]), fpamp_of_mom(+S1.pvec[2]), fpamp_of_mom(+S1.pvec[3]) };
+    const fptype_amp_sv P2[4] = { fpamp_of_mom(+S2.pvec[0]), fpamp_of_mom(+S2.pvec[1]), fpamp_of_mom(+S2.pvec[2]), fpamp_of_mom(+S2.pvec[3]) };
+    V3.pvec[0] = +S1.pvec[0] + S2.pvec[0];
+    V3.pvec[1] = +S1.pvec[1] + S2.pvec[1];
+    V3.pvec[2] = +S1.pvec[2] + S2.pvec[2];
+    V3.pvec[3] = +S1.pvec[3] + S2.pvec[3];
+    const fptype_amp_sv P3[4] = { fpamp_of_mom(-V3.pvec[0]), fpamp_of_mom(-V3.pvec[1]), fpamp_of_mom(-V3.pvec[2]), fpamp_of_mom(-V3.pvec[3]) };
+    const fptype_denom_sv dP3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
+    wV3[0] = denom * wS1[4] * wS2[4] * ( -cI * P1[0] + cI * P2[0] );
+    wV3[1] = denom * wS1[4] * wS2[4] * ( +cI * P1[1] - cI * P2[1] );
+    wV3[2] = denom * wS1[4] * wS2[4] * ( +cI * P1[2] - cI * P2[2] );
+    wV3[3] = denom * wS1[4] * wS2[4] * ( +cI * P1[3] - cI * P2[3] );
     mgDebug( 1, __FUNCTION__ );
     return;
   }

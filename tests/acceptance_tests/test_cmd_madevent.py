@@ -4203,7 +4203,12 @@ set draw_rivet_plots True
                          stdout=stdout, stderr=stderr)
 
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet_result.yoda')))
-        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet-plots','index.html')))
+        # rivet-mkhtml writes its errors to rivet-plots.log, which tearDown
+        # deletes: show its end in the failure message
+        log = pjoin(self.run_dir, 'Events', 'run_01', 'rivet-plots.log')
+        tail = open(log).read()[-3000:] if os.path.exists(log) else 'no %s' % log
+        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet-plots','index.html')),
+                        'rivet-mkhtml made no index.html; rivet-plots.log ends with:\n%s' % tail)
 
 
     #==========================================================================

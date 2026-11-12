@@ -1,4 +1,4 @@
-"""Check the variance of the iteration estimator that MINT actually computes."""
+"""Check MINT's iteration estimator and recovery after rejected iterations."""
 
 import math
 import pathlib
@@ -141,6 +141,16 @@ class TestMintUncertainty(unittest.TestCase):
         self.assertEqual(result['RESET'], [0., 0., 0.])
         self.assertEqual(result['RESTART'], [3., 2., 2.])
 
+    def test_mint1_resumes_after_rejected_iterations(self):
+        for mode, rejected in (('reject', (4,)), ('reject_fo', (4,)),
+                               ('reject_twice', (4, 5)),
+                               ('reject_separate', (4, 7))):
+            with self.subTest(mode=mode):
+                result = self.run_case(mode)
+                means = [10. * j for j in range(1, 11) if j not in rejected]
+                self.assertEqual(result['INCLUDED'], [len(means)])
+                self.assert_combined(result, means, [1.] * len(means))
+
 
 PROGRAM = r'''
 program check_mint_errors
@@ -157,6 +167,43 @@ nchans=2
 double_events=.false.
 if(mode.eq.'mc') fixed_order=.false.
 if(mode.eq.'adaptive') double_events=.true.
+if(index(mode,'reject').eq.1) then
+ fixed_order=mode.eq.'reject_fo'
+ nchans=1
+ imode=1
+ ndim=4
+ n_ord_virt=0
+ ifold=1
+ ncalls0=100
+ itmax=10
+ accuracy=0d0
+ iconfigs(1)=1
+ ans=1d0
+ virtual_fraction=1d0
+ nhits=0
+ nhits_in_grids=0
+ regridded=.false.
+ call setup_basic_mint
+ call setup_imode_1
+ call setup_common
+ do j=1,10
+  call start_iteration
+  ntotcalls=ncalls
+  vtot(1:2,0:1)=10d0*j
+  etot(1:2,0:1)=1d0
+  if(j.eq.4.or.(mode.eq.'reject_twice'.and.j.eq.5).or. &
+       (mode.eq.'reject_separate'.and.j.eq.7)) then
+   ! An unmistakable outlier triggers the production 30% rejection rule.
+   vtot(1:2,0:1)=1d6
+   etot(1:2,0:1)=4d5
+  endif
+  call update_accumulated_results
+ enddo
+ write(*,*) 'CHECK INCLUDED',nit_included
+ write(*,*) 'CHECK TOTAL',ans(2,0),unc(2,0)
+ write(*,*) 'CHECK NORM',iteration_weight_unc(2)
+ stop
+endif
 if(mode.eq.'ensemble') then
  nchans=1
  errors=[1d0,4d0,2d0,3d0,1.5d0]

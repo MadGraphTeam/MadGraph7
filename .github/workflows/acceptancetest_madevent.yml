@@ -43,12 +43,11 @@ jobs:
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools_core
-      - uses: ./.github/actions/restore_all
-
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_hepmc_decay test_lhe_none_decay test_madspin_spin_only test_madspin_mixed_flavor_decay_log_summary test_madspin_wplus_all_all_flavor_balance test_madspin_wplus_all_all_flavor_balance_2to1
@@ -61,16 +60,16 @@ jobs:
             ./tests/test_manager.py test_madspin_wplus_all_all_flavor_balance -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_wplus_all_all_flavor_balance_2to1 -pA -t0 -l INFO
 
-
   acceptancetest_madevent_bundle_1:
     # former jobs, run one after the other: acceptancetest_10 acceptancetest_50
     #   acceptancetest_contur acceptancetest_60
     #   acceptancetest_uncovered_madevent
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
@@ -96,7 +95,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             #./tests/test_manager.py test_contur_from_file test_rivet_from_file -pA -t0 -l INFO
-            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10:/home/runner/.cache/HEPTools/rivet/local/lib/python3.10/dist-packages/:/home/runner/.cache/HEPTools/yoda/local/lib/python3.10/dist-packages/ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py  test_rivet_from_file -pA -t0 -l INFO
+            PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/contur/python3.10:$HOME/.cache/HEPTools/rivet/local/lib/python3.10/dist-packages/:$HOME/.cache/HEPTools/yoda/local/lib/python3.10/dist-packages/ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPTools/lib ./tests/test_manager.py  test_rivet_from_file -pA -t0 -l INFO
 
       # ---- acceptancetest_60 ----
       - name: "acceptancetest_60"
@@ -114,12 +113,15 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_flavor_grouping_consistency_width test_madevent_dy3j_mlm -pA -t0 -l INFO
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_madevent_bundle_2:
-    # former jobs, run one after the other: acceptancetest_17 acceptancetest_21
-    #   acceptancetest_25 acceptancetest_35 acceptancetest_44 acceptancetest_55
-    #   acceptancetest_59 acceptancetest_mssm_gogo
-    # Each keeps its own steps, run even when an earlier one failed.
+    # merged jobs, run one after the other: acceptancetest_madevent_bundle_2
+    #   acceptancetest_madevent_bundle_3 acceptancetest_madevent_bundle_6
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -187,21 +189,6 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madevent_mssm_gogo -pA -t0 -l INFO
 
-
-  acceptancetest_madevent_bundle_3:
-    # former jobs, run one after the other: acceptancetest_19 acceptancetest_51
-    #   acceptancetest_54 acceptancetest_uncovered_merged
-    #   acceptancetest_density_wpwm acceptancetest_density_decay1
-    #   acceptancetest_density_decay2
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore-pip-cache
-
       # ---- acceptancetest_19 ----
       - name: "acceptancetest_19"
         if: ${{ !cancelled() }}
@@ -253,11 +240,61 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_decay2 -pA -t0 -l INFO
 
+      # ---- acceptancetest_42 ----
+      - name: "acceptancetest_42"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_scan_reweighting -pA -t0 -l INFO
 
-  acceptancetest_madevent_bundle_4:
-    # former jobs, run one after the other: acceptancetest_20 acceptancetest_22
-    #   acceptancetest_24 acceptancetest_38 acceptancetest_45 acceptancetest_47
-    #   acceptancetest_56 acceptancetest_density_ttbar
+      # ---- reweight with a second library (change process) ----
+      - name: "test_change_process_second_library"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_change_process_second_library -pA -t0 -l INFO
+
+      # ---- acceptancetest_43 ----
+      - name: "acceptancetest_43"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_complex_mass_scheme -pA -t0 -l INFO
+
+      # ---- acceptancetest_46 ----
+      - name: "acceptancetest_46"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_e_e_collision -pA -t0 -l INFO
+
+      # ---- acceptancetest_49 ----
+      - name: "acceptancetest_49"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_eva_collision test_eva_oldrelease_collision test_ieva_collision -pA -t0 -l INFO
+
+      # ---- acceptancetest_contur2 ----
+      - name: "acceptancetest_contur2: run the test"
+        if: ${{ !cancelled() }}
+        run: |
+            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py test_rivet_from_file -pA -t0 -l INFO
+
+      # ---- acceptancetest_density_tttbartbar ----
+      - name: "acceptancetest_density_tttbartbar"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            # NB: no 'cp input/.mg7_configuration_default.txt' here -- it would
+            # run after restore_heptools and wipe the lhapdf paths it wrote,
+            # leaving the LO default (pdlabel=lhapdf) with no lhapdf-config.
+            # checkout_mg5 already resets the file, before restore_heptools.
+            ./tests/test_manager.py test_density_mode_doublettbar -pA -t0 -l INFO
+
+  acceptancetest_madevent_bundle_5:
+    # former jobs, run one after the other: acceptancetest_37 acceptancetest_52
+    #   acceptancetest_density_interface
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
@@ -266,6 +303,97 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools_core
       - uses: ./.github/actions/restore-pip-cache
+
+      # ---- acceptancetest_37 ----
+      - name: "acceptancetest_37"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py  test_w_production_with_ms_decay test_add_time_of_flight -pA -t0 -l INFO
+
+      # ---- acceptancetest_52 ----
+      - name: "acceptancetest_52"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madspin_gridpack test_madspin_gridpack_unequal_br test_madspin_use_old_dir -pA -t0 -l INFO
+
+      # ---- acceptancetest_density_interface ----
+      - name: "acceptancetest_density_interface"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_user_interface -pA -t0 -l INFO
+
+  acceptancetest_madevent_bundle_7:
+    # former jobs, run one after the other: acceptancetest_48
+    #   acceptancetest_heft acceptancetest_madevent_flavor_zud
+    # Each keeps its own steps, run even when an earlier one failed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
+
+      # ---- acceptancetest_48 ----
+      - name: "acceptancetest_48"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            echo "install RunningCoupling" > cmd
+            ./bin/madgraph cmd
+            ./tests/test_manager.py test_eft_running test_eft_running_nlo -pA -t0 -l INFO
+
+      # ---- acceptancetest_heft ----
+      - name: "acceptancetest_heft"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_generation_heft -pA -t0 -l INFO
+
+      # ---- acceptancetest_madevent_flavor_zud ----
+      # Flavor-grouped u q > Z u q QCD=0 tests (grouped and ungrouped).
+      - name: "acceptancetest_madevent_flavor_zud: test madevent flavor zud (grouped and nogroup)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madevent_flavor_zud test_madevent_flavor_zud_nogroup -pA -t0 -l INFO
+
+      # ---- acceptancetest_gamma_upc ----
+      # a a > mu+ mu- in PbPb (edff) and in OO with neutron tagging (edf1n1n,
+      # plus a refused edf3n3n): builds and links libgammaUPC in a parallel
+      # Source build; test_upc_source_build_switch switches the pdlabel between
+      # gamma-UPC and regular in one output (a few seconds). The other
+      # TestGammaUPCMadEvent / TestGammaUPCNLO tests need several runs each and
+      # are left out.
+      - name: "acceptancetest_gamma_upc"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_upc_pbpb_edff test_upc_oo test_upc_source_build_switch -pA -t0 -l INFO
+
+  acceptancetest_madevent_bundle_4:
+    # merged jobs, run one after the other: acceptancetest_53
+    #   acceptancetest_madevent_bundle_4 acceptancetest_madevent_bundle_8
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools_core
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
+
+      # ---- acceptancetest_53 ----
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_width_computation
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_width_computation -pA -t0 -l INFO
 
       # ---- acceptancetest_20 ----
       - name: "acceptancetest_20"
@@ -322,268 +450,6 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_ttbar -pA -t0 -l DEBUG
-
-
-  acceptancetest_madevent_bundle_5:
-    # former jobs, run one after the other: acceptancetest_37 acceptancetest_52
-    #   acceptancetest_density_interface
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_core
-
-      # ---- acceptancetest_37 ----
-      - name: "acceptancetest_37"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py  test_w_production_with_ms_decay test_add_time_of_flight -pA -t0 -l INFO
-
-      # ---- acceptancetest_52 ----
-      - name: "acceptancetest_52"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madspin_gridpack test_madspin_gridpack_unequal_br test_madspin_use_old_dir -pA -t0 -l INFO
-
-      # ---- acceptancetest_density_interface ----
-      - name: "acceptancetest_density_interface"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_density_mode_user_interface -pA -t0 -l INFO
-
-
-  test_oneloop_reweighting:
-    # The type of runner that the job will run on
-    runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    strategy:
-      matrix:
-        os: [ubuntu-24.04]
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
-
-      - name: Install Meson and Ninja
-        run: |
-           sudo apt-get update
-           sudo apt-get install -y meson ninja-build
-
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_oneloop_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_oneloop_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_oneloop_reweighting -pA -t0 -l INFO
-
-
-  acceptancetest_madevent_bundle_6:
-    # former jobs, run one after the other: acceptancetest_42 acceptancetest_43
-    #   acceptancetest_46 acceptancetest_49 acceptancetest_contur2
-    #   acceptancetest_density_tttbartbar
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/restore-pip-cache
-
-      # ---- acceptancetest_42 ----
-      - name: "acceptancetest_42"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_scan_reweighting -pA -t0 -l INFO
-
-      # ---- reweight with a second library (change process) ----
-      - name: "test_change_process_second_library"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_change_process_second_library -pA -t0 -l INFO
-
-      # ---- acceptancetest_43 ----
-      - name: "acceptancetest_43"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_complex_mass_scheme -pA -t0 -l INFO
-
-      # ---- acceptancetest_46 ----
-      - name: "acceptancetest_46"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_e_e_collision -pA -t0 -l INFO
-
-      # ---- acceptancetest_49 ----
-      - name: "acceptancetest_49"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_eva_collision test_eva_oldrelease_collision test_ieva_collision -pA -t0 -l INFO
-
-      # ---- acceptancetest_contur2 ----
-      - name: "acceptancetest_contur2: run the test"
-        if: ${{ !cancelled() }}
-        run: |
-            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py test_rivet_from_file -pA -t0 -l INFO
-
-      # ---- acceptancetest_density_tttbartbar ----
-      - name: "acceptancetest_density_tttbartbar"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            # NB: no 'cp input/.mg7_configuration_default.txt' here -- it would
-            # run after restore_heptools and wipe the lhapdf paths it wrote,
-            # leaving the LO default (pdlabel=lhapdf) with no lhapdf-config.
-            # checkout_mg5 already resets the file, before restore_heptools.
-            ./tests/test_manager.py test_density_mode_doublettbar -pA -t0 -l INFO
-
-
-  acceptancetest_madevent_bundle_7:
-    # former jobs, run one after the other: acceptancetest_48
-    #   acceptancetest_heft acceptancetest_madevent_flavor_zud
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools
-
-      # ---- acceptancetest_48 ----
-      - name: "acceptancetest_48"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            echo "install RunningCoupling" > cmd
-            ./bin/madgraph cmd
-            ./tests/test_manager.py test_eft_running test_eft_running_nlo -pA -t0 -l INFO
-
-      # ---- acceptancetest_heft ----
-      - name: "acceptancetest_heft"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_generation_heft -pA -t0 -l INFO
-
-      # ---- acceptancetest_madevent_flavor_zud ----
-      # Flavor-grouped u q > Z u q QCD=0 tests (grouped and ungrouped).
-      - name: "acceptancetest_madevent_flavor_zud: test madevent flavor zud (grouped and nogroup)"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_flavor_zud test_madevent_flavor_zud_nogroup -pA -t0 -l INFO
-
-      # ---- acceptancetest_gamma_upc ----
-      # a a > mu+ mu- in PbPb (edff) and in OO with neutron tagging (edf1n1n,
-      # plus a refused edf3n3n): builds and links libgammaUPC in a parallel
-      # Source build; test_upc_source_build_switch switches the pdlabel between
-      # gamma-UPC and regular in one output (a few seconds). The other
-      # TestGammaUPCMadEvent / TestGammaUPCNLO tests need several runs each and
-      # are left out.
-      - name: "acceptancetest_gamma_upc"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_upc_pbpb_edff test_upc_oo test_upc_source_build_switch -pA -t0 -l INFO
-
-
-  acceptancetest_53:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools_core
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_ufomodel
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_width_computation
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_width_computation -pA -t0 -l INFO
-
-  acceptancetest_102:
-    # The type of runner that the job will run on
-
-    runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    strategy:
-      matrix:
-        os: [ubuntu-24.04]
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools
-      - name: Install Meson and Ninja
-        run: |
-           sudo apt-get update
-           sudo apt-get install -y meson ninja-build
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_loop_improved_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
-            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
-            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
-            ./tests/test_manager.py  test_nlo_reweighting -pA -t0 -l INFO
-
-      # one process per test: two rw_me libraries in one python collide
-      - name: NLO-mode reweighting with a new parameter (rw_mevirt)
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
-            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
-            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
-            ./tests/test_manager.py  test_nlo_reweighting_new_parameter -pA -t0 -l INFO
-
-      - name: failing reweighting run out of process
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py  test_reweighting_failure_out_of_process -pA -t0 -l INFO
-
-
-  acceptancetest_madevent_bundle_8:
-    # former jobs, run one after the other: acceptancetest_103_polarization
-    #   acceptancetest_flavor acceptancetest_madevent_vbf_merged_flavor
-    # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_heptools_core
 
       # ---- acceptancetest_103_polarization ----
       - name: "acceptancetest_103_polarization"
@@ -669,3 +535,55 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_multicore -pA -t0 -l INFO
+
+  acceptancetest_reweighting:
+    # merged jobs, run one after the other: acceptancetest_102 test_oneloop_reweighting
+    # Each keeps its own steps, run even when an earlier one failed; one
+    # job restores the caches once instead of once per former job.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_ufomodel
+      - uses: ./.github/actions/restore-pip-cache
+
+      # ---- acceptancetest_102 ----
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_loop_improved_reweighting
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib
+            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
+            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
+            ./tests/test_manager.py  test_nlo_reweighting -pA -t0 -l INFO
+
+      # one process per test: two rw_me libraries in one python collide
+      - name: NLO-mode reweighting with a new parameter (rw_mevirt)
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib
+            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
+            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
+            ./tests/test_manager.py  test_nlo_reweighting_new_parameter -pA -t0 -l INFO
+
+      - name: failing reweighting run out of process
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py  test_reweighting_failure_out_of_process -pA -t0 -l INFO
+
+      # ---- test_oneloop_reweighting ----
+      - name: test one of the test test_oneloop_reweighting
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_oneloop_reweighting -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
