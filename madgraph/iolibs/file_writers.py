@@ -208,7 +208,7 @@ class FortranWriter(FileWriter):
     # Private variables
     __indent = 0
     __keyword_list = []
-    __comment_pattern = re.compile(r"^(\s*#|c\$|c$|(c\s+([^=]|$))|cf2py|c\-\-|c\*\*|\s*!|!\$)", re.IGNORECASE)
+    __comment_pattern = re.compile(r"^(\s*#|c\$|c$|(c\s+([^=]|==+|$))|cf2py|c\-\-|c\*\*|\s*!|!\$)", re.IGNORECASE)
     __continuation_line = re.compile(r"(?:     )[$&]")
     # A floating-point literal whose value is zero can be written with a
     # negative sign (-0.000...D+00) depending on the host's round-off / numpy

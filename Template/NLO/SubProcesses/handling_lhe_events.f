@@ -697,7 +697,7 @@ c
       DOUBLE PRECISION XWGTUP,SCALUP,AQEDUP,AQCDUP,
      # PUP(5,*),VTIMUP(*),SPINUP(*)
       character*1000 buff
-      integer ifile,i,kk,oo
+      integer ifile,i,kk,oo,cid
       character*9 ch1
       integer isorh_lhe,ifks_lhe,jfks_lhe,fksfather_lhe,ipartner_lhe
       double precision scale1_lhe,scale2_lhe
@@ -714,6 +714,10 @@ c
       CHARACTER(LEN=1000) ptclusstring
       common /c_ptclusstring/ ptclusstring
       include './run.inc'
+      INTEGER MAXFKSLOC
+      PARAMETER (MAXFKSLOC=512)
+      CHARACTER(LEN=2000) clusterstrings(0:MAXFKSLOC)
+      common /c_clusterstrings/ clusterstrings
       INTEGER MAXNUP
       PARAMETER (MAXNUP=500)
       DOUBLE PRECISION SCALUP_a(MAXNUP,MAXNUP)
@@ -721,10 +725,30 @@ c
       integer n_orderstags
       integer orderstags_glob(maxorders)
       common /c_orderstags_glob/n_orderstags, orderstags_glob
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      integer ipos,qend,iproc_val,nFKS_map,nFKS_attr,ipos_nfks,ipos2,ipos_evt,qend_evt
+      character*2000 tmpstr
+      character*16 nFKSstr
+      character*20 event_type_str
+      logical do_rwgt, printed_real, do_print, match_real
+      logical is_fxfx_ptclusstring
+c Matching scales also encode which FxFx partons need jet matching.
+c Check before writing any part of the event; an omitted or truncated
+c record would silently lose that information in the shower interface.
+      if (ickkw.eq.3) then
+         call require_lhef_fxfx_info(buff,'write_lhef_event')
+         if (.not.is_fxfx_ptclusstring(ptclusstring)) then
+            write(*,*) 'ERROR: Missing or invalid FxFx matching scales '
+     &           //'in write_lhef_event (ickkw=3).'
+            write(*,*) 'Expected a complete <scales pt_clust_...>'
+     &           //'</scales> record; cannot write this FxFx event.'
+            stop 1
+         endif
+      endif
 c     if event_id is zero or positive (that means that there was a call
 c     to write_lhef_header_banner) update it and write it
 c RF: don't use the event_id:
-      logical do_rwgt
       event_id = -99
 c
       do_rwgt = do_rwgt_scale .or. do_rwgt_pdf .or. store_rwgt_info
@@ -850,8 +874,103 @@ c
             endif
          endif
       endif
+      printed_real = .false.
+c FxFx: ptclusstring holds the <scales ...> line with pt_clust_*,
+c clusterstrings(iproc) one <clustering ...> line per iproc (0 = Born).
+c Matching scales were validated before writing the event. Clustering
+c strings are written only when set. S-events write the Born clustering
+c (iproc=0), H-events at
+c most one real clustering: the first whose iproc equals its nFKS
+c attribute, or NFKSPROCESS if it has none (any, if NFKSPROCESS <= 0).
+c event_type and nFKS attributes are added when absent.
       if (ickkw.eq.3) then
          write(ifile,'(a)') trim(adjustl(ptclusstring))
+          do cid = 0, MAXFKSLOC
+             if (len_trim(clusterstrings(cid)).gt.0) then
+                if (index(clusterstrings(cid),'<clustering').ne.0) then
+                   tmpstr = trim(adjustl(clusterstrings(cid)))
+                   iproc_val = 0
+                   ipos = index(tmpstr,'iproc="')
+                   if (ipos.gt.0) then
+                      qend = index(tmpstr(ipos+7:), '"')
+                      if (qend.gt.1) then
+                         read(tmpstr(ipos+7:ipos+7+qend-2),*,err=998) iproc_val
+998                      continue
+                      endif
+                   endif
+                  do_print = .false.
+                  nFKS_attr = -1
+                  ipos_nfks = index(tmpstr,'nFKS="')
+                  if (ipos_nfks.gt.0) then
+                     qend = index(tmpstr(ipos_nfks+6:), '"')
+                     if (qend.gt.1) then
+                        read(tmpstr(ipos_nfks+6:ipos_nfks+6+qend-2),*,err=999) 
+     &                       nFKS_attr
+ 999                    continue
+                     endif
+                  endif
+                  if (iSorH_lhe.eq.1 .and. iproc_val.eq.0) then
+                     do_print = .true.
+                  elseif (iSorH_lhe.eq.2 .and. iproc_val.ne.0) then
+                     match_real = .false.
+                     nFKS_map = NFKSPROCESS
+                     if (nFKS_attr.gt.0) then
+                        if (nFKS_attr.eq.iproc_val) match_real = .true.
+                     elseif (nFKS_map.gt.0) then
+                        if (iproc_val.eq.nFKS_map) match_real = .true.
+                     else
+                        match_real = .true.
+                     endif
+                     if (match_real .and. .not.printed_real) do_print = .true.
+                  endif
+                  if (.not.do_print) cycle
+                  if (index(tmpstr,'event_type="').eq.0) then
+                     if (iSorH_lhe.eq.1) then
+                        event_type_str = 'event_type="S"'
+                     else
+                        event_type_str = 'event_type="H"'
+                     endif
+                     if (index(tmpstr,'iproc="').gt.0) then
+                        ipos = index(tmpstr,'iproc="')
+                        qend = index(tmpstr(ipos+7:), '"')
+                        if (qend.gt.0) then
+                           tmpstr = tmpstr(1:ipos+7+qend-1)//
+     &                              ' '//trim(adjustl(event_type_str))//
+     &                              tmpstr(ipos+7+qend:)
+                        endif
+                     endif
+                  endif
+                  if (nFKS_attr.le.0) then
+                     nFKS_map = NFKSPROCESS
+                     if (nFKS_map.gt.0) then
+                        if (index(tmpstr,'nFKS="').eq.0) then
+                           write(nFKSstr,'(I0)') nFKS_map
+                           if (index(tmpstr,'iproc="').gt.0) then
+                              ipos = index(tmpstr,'iproc="')
+                              qend = index(tmpstr(ipos+7:), '"')
+                              if (qend.gt.0) then
+                                 ! insert after iproc="..." and event_type="..."
+                                 ipos2 = ipos+7+qend
+                                 if (index(tmpstr(ipos2:),'event_type="').gt.0) then
+                                    ipos_evt = index(tmpstr(ipos2:),'event_type="')
+                                    qend_evt = index(tmpstr(ipos2+ipos_evt+11:), '"')
+                                    if (qend_evt.gt.0) then
+                                       ipos2 = ipos2+ipos_evt+11+qend_evt
+                                    endif
+                                 endif
+                                 tmpstr = tmpstr(1:ipos2)//
+     &                                 ' nFKS="'//trim(adjustl(nFKSstr))//'"'//
+     &                                 tmpstr(ipos2+1:)
+                              endif
+                           endif
+                        endif
+                     endif
+                  endif
+                   write(ifile,'(a)') trim(adjustl(tmpstr))
+                  if (iproc_val.ne.0) printed_real = .true.
+                endif
+             endif
+          enddo
       endif
       if (mcatnlo_delta) then
 c Write the <scales> block only for scales related to valid colour lines
@@ -883,11 +1002,43 @@ c Write the <scales> block only for scales related to valid colour lines
          write(ifile,'(a)') "  </scales>"
       endif
       write(ifile,'(a)') '  </event>'
+      do cid = 0, MAXFKSLOC
+         clusterstrings(cid) = ''
+      enddo
  503  format(1x,i2,1x,i6,4(1x,e14.8))
  504  format(1x,i8,1x,i2,4(1x,i4),5(1x,e24.17),2(1x,e10.4))
  601  format(a12,i4,a2,1x,e11.5,a7)
  701  format(a8,i1,a1,i1,a2,e14.8,a1)
 c
+      return
+      end
+
+
+      subroutine require_lhef_fxfx_info(buff,routine)
+c FxFx history selection needs the S/H information in this record.
+c AddInfoLHE is true by default; disabling it is unsupported for FxFx.
+      implicit none
+      character*(*) buff,routine
+      if (buff(1:9).ne.'#aMCatNLO') then
+         write(*,*) 'ERROR: FxFx event is missing the #aMCatNLO info '
+     &        //'line in '//trim(routine)//'.'
+         write(*,*) 'Enable AddInfoLHE when generating FxFx '
+     &        //'(ickkw=3) events.'
+         stop 1
+      endif
+      return
+      end
+
+
+      logical function is_fxfx_ptclusstring(line)
+c Distinguish the one-line FxFx matching record from ordinary <scales>
+c blocks and from the separate EW Sudakov <clustering> history.
+      implicit none
+      character*(*) line
+      is_fxfx_ptclusstring=
+     &     index(adjustl(line),'<scales ').eq.1 .and.
+     &     index(line,'pt_clust_').ne.0 .and.
+     &     index(line,'</scales>').ne.0
       return
       end
 
@@ -902,7 +1053,7 @@ c
      # PUP(5,*),VTIMUP(*),SPINUP(*)
       integer ifile,i,kk,jj,oo
       character*1000 buff
-      character*500 string
+      character*2000 string
       character*9 ch1
       integer isorh_lhe,ifks_lhe,jfks_lhe,fksfather_lhe,ipartner_lhe
       double precision scale1_lhe,scale2_lhe
@@ -914,6 +1065,10 @@ c
       common/event_attributes/nattr,npNLO,npLO
       CHARACTER(LEN=1000) ptclusstring
       common /c_ptclusstring/ ptclusstring
+      INTEGER FKS_CONFIGS
+      PARAMETER (FKS_CONFIGS=512)
+      CHARACTER(LEN=2000) clusterstrings(0:FKS_CONFIGS)
+      common /c_clusterstrings/ clusterstrings
       integer n_orderstags
       integer orderstags_glob(maxorders)
       common /c_orderstags_glob/n_orderstags, orderstags_glob
@@ -923,7 +1078,9 @@ c
       DOUBLE PRECISION SCALUP_a(MAXNUP,MAXNUP)
       integer mg_rwgt_count
       common/rwgt_count/mg_rwgt_count
+      logical is_fxfx_ptclusstring
 c
+      ptclusstring=' '
       read(ifile,'(a)')string
       nattr=0
       npNLO=-1
@@ -944,6 +1101,8 @@ c
      #                  VTIMUP(I),SPINUP(I)
       enddo
       read(ifile,'(a)')buff
+      if (ickkw.eq.3) call require_lhef_fxfx_info(
+     &     buff,'read_lhef_event')
       if(buff(1:1).eq.'#')then
          read(buff,*)ch1,iSorH_lhe,ifks_lhe,jfks_lhe,
      #                    fksfather_lhe,ipartner_lhe,
@@ -1031,9 +1190,42 @@ c
             endif
          endif
 
-         if (ickkw.eq.3) then
-            read(ifile,'(a)') ptclusstring
-         endif
+          if (ickkw.eq.3) then
+             read(ifile,'(a)') string
+             if (is_fxfx_ptclusstring(string)) then
+                if (len_trim(string).gt.len(ptclusstring)) then
+                   write(*,*) 'ERROR: FxFx matching scales exceed '
+     &                  //'the ptclusstring buffer in read_lhef_event.'
+                   stop 1
+                endif
+                ptclusstring=string
+                read(ifile,'(a)') string
+             endif
+             ! Consume one or more <clustering ...> lines
+             do i=0,FKS_CONFIGS
+                clusterstrings(i) = ''
+             enddo
+             do while (index(string,'<clustering').ne.0)
+                ! slot = iproc attribute (0 if absent or out of range)
+                ii = 0
+                if (index(string,'iproc="').ne.0) then
+                   jj = index(string,'iproc="')
+                   kk = index(string(jj+7:), '"')
+                   if (kk.gt.1) then
+                      read(string(jj+7:jj+7+kk-2),*,err=1110) ii
+                   endif
+                endif
+1110            continue
+                if (ii.ge.0 .and. ii.le.FKS_CONFIGS) then
+                   clusterstrings(ii) = trim(adjustl(string))
+                else
+                   clusterstrings(0) = trim(adjustl(string))
+                endif
+                read(ifile,'(a)') string
+             enddo
+             ! re-read the first non-<clustering> line
+             backspace(ifile)
+          endif
       else
          if(mg_rwgt_count.ne.0) then
              read(ifile,'(a)')string ! this is for beginning <rwgt>
@@ -1041,10 +1233,6 @@ c
                 read(ifile,'(a)')string
              enddo
              read(ifile,'(a)')string ! this is for closing <\rwgt>
-         endif
-         if (ickkw.eq.3) then
-            ptclusstring=buff
-            read(ifile,'(a)')buff
          endif
          string=buff(1:len_trim(buff))
          buff=' '
@@ -1075,6 +1263,31 @@ c Read the <scales> block
          endif
       endif
       read(ifile,'(a)')string
+      ! a <scales> block not read above is read here (SCALUP_a);
+      ! otherwise the </event> check below would fail
+      if(index(string,'<scales').ne.0) then
+         do i=1,NUP
+            do j=1,NUP
+               SCALUP_a(i,j)=-1d0
+            enddo
+         enddo
+         do i=1,len(trim(string))-6
+            if(string(i:i+5).eq.'scalup' .or.
+     &           string(i:i+5).eq.'SCALUP')then
+               read(string(i+7:i+7),*)ii
+               read(string(i+9:i+9),*)jj
+               read(string(i+12:i+25),*)SCALUP_a(ii,jj)
+            endif
+         enddo
+         read(ifile,'(a)')string
+         if(index(string,'</scales').eq.0)then
+            write(*,*)'In read_lhef_event (late):'
+            write(*,*)'Could not find the end of scales block:'
+            write(*,*)string(1:len_trim(string))
+            stop
+         endif
+         read(ifile,'(a)')string
+      endif
       if(index(string,'</event').eq.0) then
          write (*,*) 'ERROR #3: Cannot find end of event in'/
      $        /' handling_lhe_event.f'
@@ -1097,7 +1310,7 @@ c Same as read_lhef_event, except for the end-of-file catch
      # PUP(5,*),VTIMUP(*),SPINUP(*)
       integer ifile,i,kk,jj,oo
       character*1000 buff
-      character*500 string
+      character*2000 string
       character*9 ch1
       integer isorh_lhe,ifks_lhe,jfks_lhe,fksfather_lhe,ipartner_lhe
       double precision scale1_lhe,scale2_lhe
@@ -1116,7 +1329,13 @@ c Same as read_lhef_event, except for the end-of-file catch
       DOUBLE PRECISION SCALUP_a(MAXNUP,MAXNUP)
       CHARACTER(LEN=1000) ptclusstring
       common /c_ptclusstring/ ptclusstring
+      INTEGER FKS_CONFIGS
+      PARAMETER (FKS_CONFIGS=512)
+      CHARACTER(LEN=2000) clusterstrings(0:fks_configs)
+      common /c_clusterstrings/ clusterstrings
+      logical is_fxfx_ptclusstring
 c
+      ptclusstring=' '
       read(ifile,'(a)')string
       if(index(string,'<event').eq.0)then
         if(index(string,'</LesHouchesEvents>').ne.0)then
@@ -1147,6 +1366,8 @@ c
      #                  VTIMUP(I),SPINUP(I)
       enddo
       read(ifile,'(a)')buff
+      if (ickkw.eq.3) call require_lhef_fxfx_info(
+     &     buff,'read_lhef_event_catch')
       if(buff(1:1).eq.'#')then
          read(buff,*)ch1,iSorH_lhe,ifks_lhe,jfks_lhe,
      #                    fksfather_lhe,ipartner_lhe,
@@ -1218,14 +1439,42 @@ c
                read(ifile,'(a)')string
             endif
          endif
-         if (ickkw.eq.3) then
-            read(ifile,'(a)') ptclusstring
-         endif
+          if (ickkw.eq.3) then
+             read(ifile,'(a)') string
+             if (is_fxfx_ptclusstring(string)) then
+                if (len_trim(string).gt.len(ptclusstring)) then
+                   write(*,*) 'ERROR: FxFx matching scales exceed the '
+     &                  //'ptclusstring buffer in read_lhef_event_catch.'
+                   stop 1
+                endif
+                ptclusstring=string
+                read(ifile,'(a)') string
+             endif
+             ! Consume one or more <clustering ...> lines
+             do i=0,fks_configs
+                clusterstrings(i) = ''
+             enddo
+             do while (index(string,'<clustering').ne.0)
+                ! slot = iproc attribute (0 if absent or out of range)
+                ii = 0
+                if (index(string,'iproc="').ne.0) then
+                   jj = index(string,'iproc="')
+                   kk = index(string(jj+7:), '"')
+                   if (kk.gt.1) then
+                      read(string(jj+7:jj+7+kk-2),*,err=2110) ii
+                   endif
+                endif
+2110            continue
+                if (ii.ge.0 .and. ii.le.fks_configs) then
+                   clusterstrings(ii) = trim(adjustl(string))
+                else
+                   clusterstrings(0) = trim(adjustl(string))
+                endif
+                read(ifile,'(a)') string
+             enddo
+             backspace(ifile)
+          endif
       else
-         if (ickkw.eq.3) then
-            ptclusstring=buff
-            read(ifile,'(a)')buff
-         endif
          string=buff(1:len_trim(buff))
          buff=' '
          backspace(ifile)
@@ -1255,6 +1504,31 @@ c Read the <scales> block
          endif
       endif
       read(ifile,'(a)')string
+      ! a <scales> block not read above is read here (SCALUP_a);
+      ! otherwise the </event> check below would fail
+      if(index(string,'<scales').ne.0) then
+         do i=1,NUP
+            do j=1,NUP
+               SCALUP_a(i,j)=-1d0
+            enddo
+         enddo
+         do i=1,len(trim(string))-6
+            if(string(i:i+5).eq.'scalup' .or.
+     &           string(i:i+5).eq.'SCALUP')then
+               read(string(i+7:i+7),*)ii
+               read(string(i+9:i+9),*)jj
+               read(string(i+12:i+25),*)SCALUP_a(ii,jj)
+            endif
+         enddo
+         read(ifile,'(a)')string
+         if(index(string,'</scales').eq.0)then
+            write(*,*)'In read_lhef_event_catch (late):'
+            write(*,*)'Could not find the end of scales block:'
+            write(*,*)string(1:len_trim(string))
+            stop
+         endif
+         read(ifile,'(a)')string
+      endif
       if(index(string,'</event').eq.0) then
          write (*,*) 'ERROR #4: Cannot find end of event in'/
      $        /' handling_lhe_event.f'
