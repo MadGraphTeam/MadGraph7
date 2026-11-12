@@ -223,7 +223,7 @@ jobs:
             pyamplicol/dependencies/release-lock.toml
             pyamplicol/dependencies/contributor-lock.toml
             pyamplicol/dependencies/python-runtime-lock.toml
-      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           # rust-toolchain.toml lists them: installed here, rustup has nothing to
           # add on the first cargo call, where it hit a cargo-fmt conflict.
@@ -235,9 +235,9 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-1.99.1-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/dependencies/contributor-lock.toml') }}
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/dependencies/contributor-lock.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-1.99.1-
+            ${{ runner.os }}-cargo-1.97.1-
       - name: Install C++17 and Fortran 2008 toolchains
         run: |
           sudo apt-get -o Acquire::Retries=5 update
@@ -337,6 +337,93 @@ jobs:
             tests/integration/test_generalized_adjoint_fft_runtime.py \
             tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings \
             -q
+      # One-loop support: a light subset of the loop tests (no nightly or
+      # provider-campaign tier) and a generate/evaluate smoke of a virtual
+      # and a loop-induced process. No SYMBOLICA_LICENSE is passed: the
+      # package's own Symbolica library key licenses the loop engine, and
+      # PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE makes the loop tests fail
+      # instead of skip if that key were refused. Deselected: the sgluon NLO
+      # UFO is not fetched here, and the canonical-stage probe drives
+      # Symbolica from a test script (outside the package, so the library key
+      # does not apply), which aborts without a personal licence. Tests that
+      # ask symbolica.is_licensed() from test code skip for the same reason.
+      - name: Run the light one-loop tests without SYMBOLICA_LICENSE (30 GiB RSS limit)
+        env:
+          PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
+          PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/pyamplicol/src/pyamplicol/assets/models/ufo/loop_sm
+          PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/pyamplicol/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
+          PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/pyamplicol/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+        run: |
+          env -u SYMBOLICA_LICENSE .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            .venv/bin/python -m pytest -m "not loop_nightly" \
+            tests/unit/test_loop_adjoint_scalar_counterterms.py \
+            tests/unit/test_loop_color_projection.py \
+            tests/unit/test_loop_request_scope.py \
+            tests/unit/test_loop_exact.py \
+            tests/unit/test_loop_model_color.py \
+            tests/unit/test_loop_native_loading.py \
+            tests/unit/test_loop_orders.py \
+            tests/unit/test_loop_request.py \
+            tests/unit/test_loop_tensor_components.py \
+            tests/unit/test_loop_charge_source.py \
+            tests/unit/test_loop_compiler.py \
+            tests/unit/test_loop_counterterms.py \
+            tests/unit/test_loop_control_models.py \
+            tests/unit/test_loop_flavor_grouping.py \
+            tests/unit/test_public_virtual_colour.py \
+            tests/unit/test_virtual_results.py \
+            tests/unit/test_cli_virtual.py \
+            tests/unit/test_loop_preparation.py \
+            tests/unit/test_api_services.py \
+            tests/unit/test_loop_color_declaration.py \
+            tests/unit/test_runtime_virtual.py \
+            tests/unit/test_loop_model_declaration.py \
+            tests/unit/test_virtual_api_bundle.py \
+            tests/unit/test_loop_color_grades.py \
+            tests/unit/test_loop_model_restrictions.py \
+            tests/unit/test_loop_flavor_mappings.py \
+            tests/unit/test_loop_source_color.py \
+            tests/unit/test_loop_config.py \
+            tests/unit/test_loop_generation_service.py \
+            tests/unit/test_loop_model.py \
+            tests/unit/test_loop_upstream_import.py \
+            tests/unit/test_native_glibc_floor.py \
+            tests/unit/test_loop_order_names.py \
+            tests/unit/test_loop_qcd_r2_color.py \
+            tests/unit/test_loop_model_import.py \
+            tests/unit/test_loop_v2_ct_colour_projection.py \
+            tests/unit/test_loop_source_colour_declaration.py \
+            tests/unit/test_loop_color_declaration_binding.py \
+            tests/unit/test_loop_v2_frame_rows.py \
+            tests/unit/test_loop_public_preparation.py \
+            tests/unit/test_loop_v2_observables_fast.py \
+            tests/unit/test_loop_scalar_bindings.py \
+            tests/unit/test_loop_scalar_frontend.py \
+            tests/unit/test_loop_paired_model.py \
+            --deselect tests/unit/test_loop_adjoint_scalar_counterterms.py::test_np_zero_is_exact_source_selection_not_particle_or_arity_pruning \
+            --deselect tests/unit/test_loop_v2_observables_fast.py::test_canonical_stages_do_not_depend_on_the_process_history \
+            -q -rs
+      - name: One-loop generate and evaluate smoke without SYMBOLICA_LICENSE
+        run: |
+          set -euo pipefail
+          smoke="$RUNNER_TEMP/loop-smoke"
+          mkdir -p "$smoke"
+          for case in "uux_ddxg|u u~ > d d~ g [QCD]" "gg_zz|g g > z z [noborn=QCD]"; do
+            name="${case%%|*}"
+            expression="${case#*|}"
+            env -u SYMBOLICA_LICENSE .venv/bin/python -m pyamplicol generate \
+              "$expression" "$smoke/$name" --model loop_sm
+            env -u SYMBOLICA_LICENSE .venv/bin/python -m pyamplicol evaluate \
+              "$smoke/$name" --json > "$smoke/$name.json"
+            .venv/bin/python - "$smoke/$name.json" <<'EOF'
+          import json, math, sys
+          result = json.load(open(sys.argv[1]))
+          assert result["statuses"] and set(result["statuses"]) == {"success"}, result["statuses"]
+          values = [v for point in result["values"] for sector in point for v in sector]
+          assert values and all(math.isfinite(v) for v in values), values
+          print(result["contribution"], result["values"])
+          EOF
+          done
       - name: Check Rust workspace (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
@@ -442,7 +529,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: dtolnay/rust-toolchain@1.97.1
       - uses: actions/download-artifact@v5
         with:
           name: pyamplicol-prepared-models
@@ -478,7 +565,7 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
       PYAMPLICOL_BUILD_MODE: release
-      RUSTUP_TOOLCHAIN: "1.99.1"
+      RUSTUP_TOOLCHAIN: "1.97.1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
@@ -489,7 +576,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: dtolnay/rust-toolchain@1.97.1
       - name: Install build and deployment tools
         run: python -m pip install "build>=1.2,<2" "maturin==1.15.0" "twine>=6,<7"
       - name: Build and audit from retained sdist
@@ -568,9 +655,9 @@ jobs:
               echo "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c  /tmp/rustup-init" \
                 | sha256sum --check --strict
               chmod +x /tmp/rustup-init
-              /tmp/rustup-init -y --profile minimal --default-toolchain 1.99.1
+              /tmp/rustup-init -y --profile minimal --default-toolchain 1.97.1
               source "$HOME/.cargo/env"
-              export RUSTUP_TOOLCHAIN=1.99.1
+              export RUSTUP_TOOLCHAIN=1.97.1
               PY311=/opt/python/cp311-cp311/bin/python
               PY314=/opt/python/cp314-cp314/bin/python
               "$PY311" -m pip install "build>=1.2,<2" "maturin==1.15.0" "twine>=6,<7"
