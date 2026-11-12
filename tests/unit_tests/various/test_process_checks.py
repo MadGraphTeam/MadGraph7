@@ -503,6 +503,35 @@ class TestLorentzInvariance(unittest.TestCase):
 
 
 
+    def test_check_sa_energy_absolute_masses(self):
+        """check language raises the energy to 2*sum|m| of the external legs,
+        as the Fortran pmass.inc: a negative mass must not lower it."""
+
+        class FakeEvaluator(object):
+            def __init__(self, masses):
+                self.masses = masses
+            def get_external_masses(self, proc):
+                return list(self.masses)
+
+        legs = base_objects.LegList(
+            [base_objects.Leg({'id': 6, 'state': False, 'number': 1}),
+             base_objects.Leg({'id': -6, 'state': False, 'number': 2}),
+             base_objects.Leg({'id': 24, 'state': True, 'number': 3}),
+             base_objects.Leg({'id': -24, 'state': True, 'number': 4})])
+        proc = base_objects.Process({'legs': legs, 'model': self.base_model})
+
+        signed = FakeEvaluator([-173., -173., 80., 80.])
+        self.assertAlmostEqual(
+            process_checks._check_sa_energy(proc, signed, 100.), 1012.)
+        self.assertAlmostEqual(
+            process_checks._check_sa_energy(proc, signed, 2000.), 2000.)
+        # a 1 -> n decay keeps the energy it is given
+        decay = base_objects.Process(
+            {'legs': base_objects.LegList(legs[1:]), 'model': self.base_model})
+        self.assertAlmostEqual(
+            process_checks._check_sa_energy(decay, signed, 100.), 100.)
+
+
 class TestFlavorCheck(unittest.TestCase):
     """Test the flavor-grouping check (check_flavor / output_flavor)."""
 

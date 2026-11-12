@@ -4009,8 +4009,9 @@ def _check_sa_energy(proc, evaluator_obj, energy):
     """
     if len([l for l in proc.get('legs') if not l.get('state')]) != 2:
         return energy
-    # signed, as the drivers' PMASS
-    return max(energy, 2. * sum(evaluator_obj.get_external_masses(proc)))
+    # |m|, as the Fortran pmass.inc (a model may carry a negative mass)
+    return max(energy, 2. * sum(abs(m) for m in
+                                evaluator_obj.get_external_masses(proc)))
 
 
 def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
