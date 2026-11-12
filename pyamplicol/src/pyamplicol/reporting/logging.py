@@ -17,9 +17,7 @@ NOTICE_ATTRIBUTE = "pyamplicol_notice"
 _NOTICE_MARKER = "_pyamplicol_cli_notice_handler"
 
 
-def notice(
-    logger: logging.Logger, label: str, message: str, *args: object
-) -> None:
+def notice(logger: logging.Logger, label: str, message: str, *args: object) -> None:
     """Log ``message`` at INFO as a user-facing notice labelled ``label``
     (e.g. "process", "widths"): an ordinary INFO record for library users;
     the CLI shows it at its default level as one short ``label  message``
@@ -36,8 +34,22 @@ class _NoticeFormatter(logging.Formatter):
         self._color = color
 
     def format(self, record: logging.LogRecord) -> str:
+        import shutil
+        import textwrap
+
         label = str(getattr(record, NOTICE_ATTRIBUTE, ""))
-        text = super().format(record)
+        # Wrapped within the terminal at word boundaries (a path stays
+        # whole), continuation lines under the message.
+        width = shutil.get_terminal_size((100, 24)).columns - 10
+        text = "\n".join(
+            textwrap.wrap(
+                super().format(record),
+                width=max(width, 20),
+                subsequent_indent=" " * 10,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+        )
         if self._color:
             try:
                 colorama: Any = importlib.import_module("colorama")
@@ -151,8 +163,9 @@ def configure_cli_logging(
         setattr(notices, _HANDLER_MARKER, True)
         notices.setLevel(logging.INFO)
         notices.addFilter(
-            lambda record: record.levelno == logging.INFO
-            and hasattr(record, NOTICE_ATTRIBUTE)
+            lambda record: (
+                record.levelno == logging.INFO and hasattr(record, NOTICE_ATTRIBUTE)
+            )
         )
         notices.setFormatter(_NoticeFormatter(color=color))
         logger.addHandler(notices)
