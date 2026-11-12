@@ -1,0 +1,3 @@
+arm,DSO_sha256,READY_seconds,outer_status,distinct_points,bootstrap_plus_warmup_calls,ordered_pairs,clock,formal_acceptance
+old,85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0,255.24129478,323,1,2,1,existing Fortran SYSTEM_CLOCK READY; launch/SETPARA excluded,False
+prototype,470d46df9c8fcb76dc5448a04187dfc23a757481b3d4ef0384e13bd6e7e9e709,15.345797304,219,1,2,1,existing Fortran SYSTEM_CLOCK READY; launch/SETPARA excluded,False

@@ -1,0 +1,31 @@
+{
+  "MODEL_recompiled_O2": true,
+  "all_compile_children_closed": true,
+  "build_elapsed_seconds": 19.023334234021604,
+  "cards_unchanged": true,
+  "closure_elapsed_seconds": 7.524036637041718,
+  "dependency_inputs_sha256": "2ff17b3d9b5fd037afb4931102796151f6b51ee667926fd2fdff5b50279f2777",
+  "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/zggg-fortran-o2-model-experiment-1/output/SubProcesses/P0_uux_zggg",
+  "effective_compiler_flags_sha256": "780ed71480f59b8c32152a18d6f1f9f004ee5e0d113667805d450f45f9e9e9cd",
+  "evidence": {
+    "build.py": "44490a3db7cc08961826bf0c37703e0555916ebcfca99665404f498ce4211f3d",
+    "close.py": "cb74d7458ae9bdeed33fd4bf31d803f4f8965408561e6b0e7d925192a09f5a46",
+    "compile-MODEL-O2.terminal.json": "32506e182557346a268dfea236ece7b576f7e01b601b2b28278d147977881895",
+    "elf-dynamic.txt": "67a91939c3d71016e5e858e2fafe24b856af52a12f29a4c3d24da0359b760280",
+    "relink-full-O2.terminal.json": "7a47fa9af6a5afe3b822bffc476ed9743f21aa6075e414b1576e647567ba59b6",
+    "terminal.json": "a47c0b3512a430d7136853775e613739f08ca264e98bae8ec2e9e418819f64e1"
+  },
+  "executable_sha256": "c4b5a2bdc7ed555939239360e357fbcc09fbae06cee35e816f3133c5848648f2",
+  "front_control_executable_sha256": "318b7eee9d475d755232703b57c7343ca19b9096c8418a9a7f06d5896ca85930",
+  "frontend_artifacts_unchanged": true,
+  "frontend_control_unchanged": true,
+  "libmodel_sha256": "6b12feee0ee597f2d4540c37628fd58bea29fc602552ad1becad4a90821db0ed",
+  "native_numerical_executions": 0,
+  "prior_administrative_failure": "MODEL refreshed shared include timestamps, causing make to recompile check_sa/MadLoopParamReader/MadLoopCommons; every frontend object and module remains byte-identical to the preserved control. Build and relink succeeded. Prior assertion retained.",
+  "scope": "All process and DHELAS and MODEL Fortran at O2, except original polynomial O3 rule; same sources/cards/dependencies and no added fast-math/reassociation/architecture flags",
+  "sdk_executions": 0,
+  "shared_unchanged": true,
+  "source_inventory_sha256": "84e684d904ad007f5e601b6690884688b31c505f3d10118e953d2c057513fcd8",
+  "sources_unchanged": true,
+  "status": "compiled-awaiting-numerical-comparison"
+}

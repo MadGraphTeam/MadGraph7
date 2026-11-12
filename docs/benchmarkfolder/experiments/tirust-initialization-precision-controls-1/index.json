@@ -1,0 +1,529 @@
+{
+  "closed": true,
+  "files": {
+    "README.md": {
+      "bytes": 2086,
+      "sha256": "7a910a23b25886756d8153e86a4e94471c3216ef9ccdf6c33e30f774d3e4d8ed"
+    },
+    "admission-evidence/docs/benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md": {
+      "bytes": 7459,
+      "sha256": "a908151eca149a1ed3714767d08aacd36f5955c187f2022832c621817ed36246"
+    },
+    "admission-evidence/docs/benchmarkfolder/campaigns/tirust-native-tiers-1/manifest.json": {
+      "bytes": 399939,
+      "sha256": "1ed7ff89800de0a1ec361c15db3795adb2e4173bd52d404fd36f2efb0d62b0dc"
+    },
+    "admission-evidence/initialization-native-tiers-production-proposal-1/numerical-identity-proof.json": {
+      "bytes": 1132,
+      "sha256": "fdb60858ab40ea25fdfb45bbb1b2281fee8f4756a5221f3b7ec50d0f7baab4e2"
+    },
+    "admission-evidence/native-tiers-benchmark-tooling-tests-1.log": {
+      "bytes": 149,
+      "sha256": "c969e3e72343d2879f369291b39c50e0f7634e71a634adf43e64e81f3bc00b8b"
+    },
+    "admission-evidence/native-tiers-production-integration-tests-2.log": {
+      "bytes": 166,
+      "sha256": "c72441cea5e839e49f49652a9a4a34b5bcbe12db317517cefca7e52d82fc9e4d"
+    },
+    "admission-evidence/tirust-initialization-report-proposal-3/final-artifact-admission.json": {
+      "bytes": 2813,
+      "sha256": "45f8c3b2d0efc845267b35a39258ec176cdb227f0525345e41348196cd113a0d"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/compiled.json": {
+      "bytes": 2170,
+      "sha256": "31f9d79b34e9ed7974807c87a53dcbc993e76c69841a96501617c17e106fa806"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/delivery-receipt.json": {
+      "bytes": 3318,
+      "sha256": "88f6b75392dcb9cb5e03df6487d0ade2802c919d37e9aac6e8b16e54f2673b64"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/execution/compile/terminal.json": {
+      "bytes": 4397,
+      "sha256": "332e7e77780516e959c3ad4c804035c0ee5518016c107fb4c633df74c462257f"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/execution/publish/terminal.json": {
+      "bytes": 1727,
+      "sha256": "d1b27c7e9ab16d82c51fa783feee0ead896b176f106742cf3d7271c8e2dfc4ff"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/execution/qualify/terminal.json": {
+      "bytes": 4250,
+      "sha256": "abf3722b7ac288854ebfda46f87096d76cb42856fb821a24febdba0831f90527"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/live-abi.json": {
+      "bytes": 725,
+      "sha256": "a26bb012be2685ab8b3e2eef69477bb84541d3924b55f4eca352a52b865fd2d4"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/published.json": {
+      "bytes": 1892,
+      "sha256": "0bf70892bb438c2ea2c06601b7d19c8938e67ed6e4dc8379b0c9720cac158c0e"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/qualified.json": {
+      "bytes": 1928,
+      "sha256": "198830a7292e9cf5c16f10dabfc5427fe735b471939a439a1a4fb2047fbf53ed"
+    },
+    "admission-evidence/tirust-native-tiers-final-1/source-prepared.json": {
+      "bytes": 7375,
+      "sha256": "7a42ed24a8735682a9a455d86b27e2ff576170cb2dea50b7a1a54a723781af78"
+    },
+    "admission-evidence/tirust-route-statistics-benchmark-independent-source-review-1/receipt.json": {
+      "bytes": 17349,
+      "sha256": "8ced302cfe43699a370bb5a773c2912a8b1e9fa567cd2936fc51e1025f2b00c9"
+    },
+    "admission-evidence/tirust-route-statistics-benchmark-native-qualification-1/result.json": {
+      "bytes": 24592,
+      "sha256": "5ae3312fac594fc4477be2e5c4b0aa8775da4f00b3fef1a8ad94f532b1eec85c"
+    },
+    "admission-inputs.json": {
+      "bytes": 3747,
+      "sha256": "2ce23d73885d5d957b77084eebccb83a0d4e6865418f695aa586217f7254dc0d"
+    },
+    "admit_final_artifact.py": {
+      "bytes": 9334,
+      "sha256": "cfa11875f6776632a622d13f9576178655b52b67359c88c074361a23ed620963"
+    },
+    "admit_route_tooling.py": {
+      "bytes": 7144,
+      "sha256": "1eaf7523050d86cbad0c56a02cd3a429aaef47bd916c5b1fedf7f87c15421d87"
+    },
+    "candidate-inputs.json": {
+      "bytes": 15599,
+      "sha256": "a7442d47b68ac646d26e5fe1e86c97bf4e018a218a84386db201bbacc843875f"
+    },
+    "control-inputs.json": {
+      "bytes": 13707,
+      "sha256": "0901e04a54d8dc3edcc24a2a0ba0e113e65f0cc73203e29a71cbd8b5d2377aeb"
+    },
+    "final-artifact-admission.json": {
+      "bytes": 2813,
+      "sha256": "45f8c3b2d0efc845267b35a39258ec176cdb227f0525345e41348196cd113a0d"
+    },
+    "independent-admission-review.json": {
+      "bytes": 590,
+      "sha256": "9eefbbe6b34fde0cc37f1256b48b751dafd6ec9c67f8d9afe8f7054c9efc3ef5"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/COUNTER_LIMITS.md": {
+      "bytes": 839,
+      "sha256": "71f23c7409f4dea92d7069b106d70ae3a1347fe17a5d42ea5cd764c27eced33f"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/captured-failures.jsonl": {
+      "bytes": 10371,
+      "sha256": "4027cb7d650c535d2813926c4244724b5b5e6ced19819e1ff2aacc0cb29eeeb0"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/compiled.json": {
+      "bytes": 2178,
+      "sha256": "716a5132775cad37926b2d40cc03de276232ce6c54a1e99029b13043020693c7"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/execution/functional-oracle/candidate-fixtures.log": {
+      "bytes": 135523,
+      "sha256": "88f710f6e873e2916c3bc48de957d6c126d8a4af832524b8643361546afe928f"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/execution/functional-oracle/comparison.json": {
+      "bytes": 4475013,
+      "sha256": "7967d6e6b5b7d7f612b6a992d09659555d1b3a0e017d9ff9629e2e3d1c368410"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/execution/functional-oracle/oracle.log": {
+      "bytes": 686729,
+      "sha256": "02dbe60d85a8e165594697715db0bf9aa2d57ea8039925a89ec69fe7d10e382d"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/execution/functional-oracle/terminal.json": {
+      "bytes": 4967,
+      "sha256": "bb824e47e769e7742c5acab0426935b6cba07795d9c188f8f319129c808746b8"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/fixture-comparison/source-index.json": {
+      "bytes": 601,
+      "sha256": "add74feb990c79050b20114abce43c8fca910363e7ba7630ea6485215863b0da"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/fixture-comparison/tensor_check.py": {
+      "bytes": 9606,
+      "sha256": "4e75170a0e688d06e91599962eb869c1c40dc9c5c1b24372869ec73a728dce8a"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/fixture-oracle/source-index.json": {
+      "bytes": 963,
+      "sha256": "342010ee7c37dba12347eb80dcc698e2a16e3966a720440177af986dc58d9c43"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/route-observation-correction.json": {
+      "bytes": 2054,
+      "sha256": "1403cb411c30ce7db10d25997aaf4e6840e3ed8f6bdca403fe5105a2659109c6"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/sealed.json": {
+      "bytes": 875,
+      "sha256": "1a0615c1a640392e001859f225640a85ffc05d79193cac113ea3a29247e2c84b"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/tensor-functional-qualification.json": {
+      "bytes": 2006,
+      "sha256": "e65e5b13dd4df9b15c340332db9d50b3de2d8a20d47a7dfb57a7cad39eb9437b"
+    },
+    "inputs/initialization-adaptive-tiers-build-1/unchanged-qp-poles-proof.json": {
+      "bytes": 614,
+      "sha256": "05b04e6c97ca36fb224e7ca85c5f5e4e93070c99f5ac2c3b63bae604e50f4f9e"
+    },
+    "inputs/tirust-initialization-clean-pair-1/first-point.dat": {
+      "bytes": 587,
+      "sha256": "8880598b2d448930eedda40d9797fd137a5845c5289345d1e31cbcd22ff10c3b"
+    },
+    "inputs/tirust-initialization-clean-pair-1/native-release.json": {
+      "bytes": 1277,
+      "sha256": "3a78c732f30a1e048e5e4a652dcc56934fdfaff674840bc7634059cced5b9ed4"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/candidate/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/candidate/learning.json": {
+      "bytes": 2078,
+      "sha256": "95fabc01a943f3a5fc88f93ec31440ef473b7ad18b81c72328149fc161585437"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/candidate/live-maps.txt": {
+      "bytes": 14337,
+      "sha256": "0df1c2171cda1cba57c09b3a1a7b48d24d164bdbada2b86e176c8bdb7a062983"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/candidate/loader-list.txt": {
+      "bytes": 1847,
+      "sha256": "d7a414a123d04afd3cf46fdb544ced09fffabfc64f6cc9f01733df5164b81128"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/candidate/result.json": {
+      "bytes": 95074,
+      "sha256": "b8e67a125cbc29c84cd93b9a193a9a1241f19c0cf137376659bf8e208c6097a9"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/candidate/warmup.dat": {
+      "bytes": 777,
+      "sha256": "6dcc17af71d361986fcf54a09df8f56a6cd4c0615aaad572d3c87835452e1f7b"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/comparison.json": {
+      "bytes": 60461,
+      "sha256": "1bb37fb2a078e2edcd156921f1b1972d389baf663b63dcb831bab8ce89bbd190"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/old/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/old/learning.json": {
+      "bytes": 2045,
+      "sha256": "ef5fb1f6b2127281930570418dc403b0bf96d18957d4b9693c1ecfc10fc2265a"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/old/live-maps.txt": {
+      "bytes": 14243,
+      "sha256": "bc859279f462142c69cb71d0c835bf9502f9fd3261f505517e58ff38dab7c714"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/old/loader-list.txt": {
+      "bytes": 1844,
+      "sha256": "aa0be6718a906952aafa16fc7c0075005f7808a3f679f638fd0daddce3164c26"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/old/result.json": {
+      "bytes": 95062,
+      "sha256": "1fcb72e6dba298ed7007077e696e53dadc4f6a2772858fcac25d0acbd6cdd1f7"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/old/warmup.dat": {
+      "bytes": 777,
+      "sha256": "c4d5c6b48e2d97bd2490a8ba2d4614f844d41b67ded218cbed30a5841be3d65d"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/result.json": {
+      "bytes": 222359,
+      "sha256": "cb71c4c2a11023ad71727972c9d1c62e0a7896792e25d7ae6f8e2343882c5ea8"
+    },
+    "inputs/tirust-initialization-clean-pair-1/observations/summary.json": {
+      "bytes": 3596,
+      "sha256": "1a9ce52992e71699af1e560f37296ca2d216ce84900fd4c437c6b37efc744210"
+    },
+    "inputs/tirust-initialization-clean-pair-1/preparation.json": {
+      "bytes": 241027,
+      "sha256": "77899b4d1eba50097a07b7247dab1293c9270f7729642421312a3b11914acae8"
+    },
+    "inputs/tirust-initialization-clean-pair-1/source-index.json": {
+      "bytes": 1181,
+      "sha256": "ba3d6c21156fdff07393524d049e5e5027ea199768a7c308d946e2255c8306b8"
+    },
+    "inputs/tirust-initialization-clean-pair-1/supervision/terminal.json": {
+      "bytes": 1226,
+      "sha256": "3fcfe3446bc05b4eb95fa010b4012886e7c4ebc4d316a74e0e4e930e8a884c8f"
+    },
+    "inputs/tirust-initialization-profile-1/first-point.dat": {
+      "bytes": 587,
+      "sha256": "8880598b2d448930eedda40d9797fd137a5845c5289345d1e31cbcd22ff10c3b"
+    },
+    "inputs/tirust-initialization-profile-1/libtirust_phase_profile.so": {
+      "bytes": 21016,
+      "sha256": "1bcd9e3c765d52bb37d15eb06022870c95e0aad020363b4c8031b78a491f8eec"
+    },
+    "inputs/tirust-initialization-profile-1/native-release-baseline-2.json": {
+      "bytes": 791,
+      "sha256": "505d06910daa510ed43f1996daecb3cf59364115f67d78a7fae016c965be3946"
+    },
+    "inputs/tirust-initialization-profile-1/preparation.json": {
+      "bytes": 6873,
+      "sha256": "0723fcdaf95c272c8f1c8f7f11bf88ad51987cdca14c35a81aa382e8b2ed0237"
+    },
+    "inputs/tirust-initialization-profile-1/profile.py": {
+      "bytes": 9111,
+      "sha256": "a3ab9a76bf90035d38c233f041af94dfc5fd425505028433517306a8f455f482"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/attribution.json": {
+      "bytes": 6601,
+      "sha256": "3fcd5c31a5e7d57dc311b417db4f4e5eb1dde260077249518ab51cb6429d8891"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/loader-list.txt": {
+      "bytes": 1996,
+      "sha256": "479817856e3fa007f92acfbe494aa5603caec20576367edcce713bc748c4dd77"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/phase-summary.json": {
+      "bytes": 4039665,
+      "sha256": "ef0a0eafa3e3ac7271a6084878ae7af1e8bdf7f3a530c6548b660fb213968d95"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/phases.jsonl": {
+      "bytes": 6659334,
+      "sha256": "5a73288a0931114cee1d0bc2f6f3bf2cb2733f9399c03197b3181797263925c1"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/phases.jsonl.maps": {
+      "bytes": 15046,
+      "sha256": "704efeed423c9cdd4115cf4750021bedab30750940aefac2275499198a7d67f9"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/result.json": {
+      "bytes": 101165,
+      "sha256": "cbfa9b69c678cad979bd9fb35de2746fcadbb945c942987237d8b807e76be6ad"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/same-epoch-repeats.json": {
+      "bytes": 3598,
+      "sha256": "4b8cf18d4e66e735fff7ed75b0c768ad62d8cce94c65ba80bdcc60d75ba15d31"
+    },
+    "inputs/tirust-initialization-profile-1/runs/baseline-2/warmup.dat": {
+      "bytes": 777,
+      "sha256": "c4d5c6b48e2d97bd2490a8ba2d4614f844d41b67ded218cbed30a5841be3d65d"
+    },
+    "inputs/tirust-initialization-profile-1/source-index-baseline-2.json": {
+      "bytes": 2184,
+      "sha256": "039c8be7c04e5c843b76faed88066adf4eb370518e0876d0225a3e3e020cf3b5"
+    },
+    "inputs/tirust-initialization-profile-1/summarize.py": {
+      "bytes": 5031,
+      "sha256": "8648278079735c6f18c0cda499117aec66690ff791418da3a67a06908e0b359d"
+    },
+    "inputs/tirust-initialization-profile-1/supervision/baseline-2/terminal.json": {
+      "bytes": 1075,
+      "sha256": "cabb3291ada8994cf1a9776e15085a63df40d9204b8de723289b318575cdf096"
+    },
+    "inputs/tirust-initialization-profile-1/trace.c": {
+      "bytes": 8523,
+      "sha256": "251b51a52997162cd9f67f74d0d6ee5c780f67045ebfe450884e1534c1af67ca"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/native-release-functional-1.json": {
+      "bytes": 965,
+      "sha256": "93c55ccc53ea85e3587c4ee74be3e07ad4f676db420250367b87a89ea1046652"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/preparation-snapshots/af0/candidate-binding-index.json": {
+      "bytes": 430,
+      "sha256": "e1abd52834a2c4c73325e607652a1ecdba7c1991ac43af481dba7a6a019e1f8d"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/preparation-snapshots/af0/candidate-bindings/COUNTER_LIMITS.md": {
+      "bytes": 839,
+      "sha256": "71f23c7409f4dea92d7069b106d70ae3a1347fe17a5d42ea5cd764c27eced33f"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/preparation-snapshots/af0/candidate-bindings/compiled.json": {
+      "bytes": 2178,
+      "sha256": "716a5132775cad37926b2d40cc03de276232ce6c54a1e99029b13043020693c7"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/preparation-snapshots/af0/genuine-QP-branch-preservation.json": {
+      "bytes": 509,
+      "sha256": "f6177ef3b9a4ea12484537f41f8aade6739dddf73e860225e2ac2c51c5a240cd"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/preparation-snapshots/af0/preparation.json": {
+      "bytes": 32510,
+      "sha256": "38aebae11559ad177df9b5e07e77aa5852ad8214faffff19d2ce313e90959e8b"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/preparation-snapshots/af0/routes.py": {
+      "bytes": 2954,
+      "sha256": "cbd4758cc34f84501b48b9082bcf2af7fb835b7e60e540b52e8a896abd8b8eaa"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/preparation-snapshots/af0/source-index.json": {
+      "bytes": 3859,
+      "sha256": "af0b4befc6284073a542b600e5687459fce73b25ede5f887e0946809cb15c17f"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/functional-comparison.json": {
+      "bytes": 50801,
+      "sha256": "2ad4eaea0e6218d79be8fb8499026c37a17137f409cb8d9fd640a547a7641940"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/functional-summary.json": {
+      "bytes": 10121,
+      "sha256": "ac70267103c6c740adb257991ad474c9794d26510889520917d848e67cfb4513"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/loader-list.txt": {
+      "bytes": 2014,
+      "sha256": "aecb8b16d992096d0e73a08759edb23abf037c26b34cbc4d0c8402bb0001ac7d"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/phase-summary.json": {
+      "bytes": 2077242,
+      "sha256": "71a985f4863c7f6b5010231b29001e8b11fd273a5b6c9937cb5dbac07e615aaf"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/phases.jsonl": {
+      "bytes": 3305397,
+      "sha256": "f67bff76540e8fd4712d361c3c78d2b0fd817aaaaf59cb5d739bbeae303194cd"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/phases.jsonl.maps": {
+      "bytes": 15162,
+      "sha256": "0d0f157ce523e73a2e203067423fcb92032587ea325016efb59309b3dc97fcf3"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/phases.jsonl.routes.jsonl": {
+      "bytes": 790538,
+      "sha256": "ab17ebf732b443f14da4657f22c65e6fa9fc721fa534551243381c6aa8ee5754"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/result.json": {
+      "bytes": 103986,
+      "sha256": "af7d1b420db1342dc29004cade3f699d9eaf76ce4389528673182811d7134e71"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/route-summary.json": {
+      "bytes": 2504,
+      "sha256": "6ffaad528a54e9e2b84e319c6c6435a765a6ea6c18c9efd1e11dc698c6989cc6"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/warmup.dat": {
+      "bytes": 777,
+      "sha256": "6dcc17af71d361986fcf54a09df8f56a6cd4c0615aaad572d3c87835452e1f7b"
+    },
+    "inputs/tirust-initialization-profile-adaptive-tiers-1/supervision/functional-1/terminal.json": {
+      "bytes": 1336,
+      "sha256": "3058cccbcdaba33431e248736ab2dd8135ac8b5ca8138a78042058c4a596c1af"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-binding-index.json": {
+      "bytes": 1075,
+      "sha256": "83164a3c8576d3c206b6ed844686fa66f04d1e0b3e9b2f5035b37984b3ef8a3b"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/cards-before.json": {
+      "bytes": 1064,
+      "sha256": "7af34a04fed1a1be534b7856d27d3164b6778508b6f01df6116ad4fff0bc1511"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/closure.json": {
+      "bytes": 2234,
+      "sha256": "e5ae42a417663a9825b64168466764c43148b3ffc0aef443abe81cd1d9f485ef"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/compile-MODEL-O2.terminal.json": {
+      "bytes": 3979,
+      "sha256": "32506e182557346a268dfea236ece7b576f7e01b601b2b28278d147977881895"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/dependency-inputs.json": {
+      "bytes": 4989,
+      "sha256": "2ff17b3d9b5fd037afb4931102796151f6b51ee667926fd2fdff5b50279f2777"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/effective-compiler-flags.json": {
+      "bytes": 175341,
+      "sha256": "780ed71480f59b8c32152a18d6f1f9f004ee5e0d113667805d450f45f9e9e9cd"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/generated-sources.json": {
+      "bytes": 24583,
+      "sha256": "84e684d904ad007f5e601b6690884688b31c505f3d10118e953d2c057513fcd8"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/link-inputs-after.json": {
+      "bytes": 4087,
+      "sha256": "c3028ef705b99a9d3af95313c7129d22f20209b5099aa803468a675eff529bf8"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/relink-full-O2.terminal.json": {
+      "bytes": 2427,
+      "sha256": "7a47fa9af6a5afe3b822bffc476ed9743f21aa6075e414b1576e647567ba59b6"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/build-bindings/shared-before.json": {
+      "bytes": 5450,
+      "sha256": "bc30b7e45ad0463a7214c25979dcf1aa5280e2c17afe2937219b555561e2b1eb"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/first-point.dat": {
+      "bytes": 587,
+      "sha256": "8880598b2d448930eedda40d9797fd137a5845c5289345d1e31cbcd22ff10c3b"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/libtirust_phase_profile.so": {
+      "bytes": 21016,
+      "sha256": "1bcd9e3c765d52bb37d15eb06022870c95e0aad020363b4c8031b78a491f8eec"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/native-release.json": {
+      "bytes": 761,
+      "sha256": "ed404907dc3566c95a4ea76038aac170b05adcd391572576ec88d0e9b0c9adfb"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/preparation.json": {
+      "bytes": 13856,
+      "sha256": "5e3a772705e7b957c37f37578a8984c95d610214b515ca7a15fa000e87db929e"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/profile.py": {
+      "bytes": 10897,
+      "sha256": "a65457ace52058ffc40cf032cf42e8976c7b05704aec0ae900841d36e088d0d7"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/call-sequence-comparison.json": {
+      "bytes": 571,
+      "sha256": "857228332408e2a847422accdbc97fcb389f305eb7d86f650cf939ca7fffbc81"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/comparison.json": {
+      "bytes": 20728,
+      "sha256": "6e916a533123f65c0d34e2c6fa430f1e228be744f5d06827f8e070c710e5345a"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/loader-list.txt": {
+      "bytes": 2004,
+      "sha256": "a8e77176bafa32ad3a764bd5f8df558693f98b9b8229150d39a27309afe101b3"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/phase-summary.json": {
+      "bytes": 4038875,
+      "sha256": "3fe30cf437dacb0e3a12d5c7bb0e0817179382ec6cd52a9f8276c17d8fe273f0"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/phases.jsonl": {
+      "bytes": 6659731,
+      "sha256": "145835a0ea2be1e9c930a24ee081a329057929e4decc89d74f455f840be25191"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/phases.jsonl.maps": {
+      "bytes": 15126,
+      "sha256": "83c3d5ea881af0de512e25f68e16e8fec8391f06369c46d454b5f219f6543080"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/result.json": {
+      "bytes": 101521,
+      "sha256": "50ac9b19564dca6a3550264f14108bf5152aa8ca282448c46780a9f1dfe11ea7"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/runs/o2-1/warmup.dat": {
+      "bytes": 777,
+      "sha256": "c4d5c6b48e2d97bd2490a8ba2d4614f844d41b67ded218cbed30a5841be3d65d"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/source-index.json": {
+      "bytes": 4460,
+      "sha256": "ed1f47abf22284d91bbd1d5fa7c6a6a2ca944769f866aabe02461fa2307ab196"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/supervision/o2-1/terminal.json": {
+      "bytes": 1076,
+      "sha256": "fa882d30e969a0eafd5d96b9e0817ffea0e844da939ae1b51685d6eae12a533a"
+    },
+    "inputs/tirust-initialization-profile-full-o2-1/trace.c": {
+      "bytes": 8523,
+      "sha256": "251b51a52997162cd9f67f74d0d6ee5c780f67045ebfe450884e1534c1af67ca"
+    },
+    "original-admission-inputs.json": {
+      "bytes": 2907,
+      "sha256": "a6bb52f431dc4c7e6e70463f6d726d12166d7699fd38a43f7690b7ffed532e32"
+    },
+    "original-candidate-inputs.json": {
+      "bytes": 12527,
+      "sha256": "d3eb96f59cf23a5f6a2e4bcf2e11a99f8a48b0fa55e9e7233280086fb68ef32f"
+    },
+    "original-control-inputs.json": {
+      "bytes": 10852,
+      "sha256": "e29e40c22319efd35426e59bb53df2e90277ad79c1227d944a0f33025292803c"
+    },
+    "original-tooling-admission-inputs.json": {
+      "bytes": 1669,
+      "sha256": "d87c04db896672d51ab07131c6bfa53fc84ab330840ef32122926e1f18448217"
+    },
+    "relocation.json": {
+      "bytes": 775,
+      "sha256": "d4922975f93d46b4f5f2583a2262292009509c822a06fedddae7da81c83dcf6b"
+    },
+    "route-tooling-admission.json": {
+      "bytes": 3374,
+      "sha256": "65a70bdd6da1907441b4fbcd62c284d0e24c77558d6a586c9562a06bc3356778"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "performance_acceptance": false,
+  "prototype_measurements_relabelled": false,
+  "schema": "madloop-initialization-precision-controls-closed-packet-v1"
+}

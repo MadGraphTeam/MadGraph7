@@ -1,0 +1,18 @@
+{
+  "committed_tooling_files": {
+    "docs/benchmarkfolder/build_local_report.py": "26e97b67c4f56bcebf2cd8ca03c07654f37e0a56fc60ba29db561ab189d47278",
+    "docs/benchmarkfolder/local-report.typ": "06197cdd768ef4542da2579d85aa08cd100b10eba37cf637d170bb49f8b608a8",
+    "tests/unit_tests/various/test_tirust_benchmark_route_statistics.py": "32f6b41e9ab846459e358fb4f6f2bd825f1ede52aed998e7397925e7311e15ed",
+    "tools/tirust_benchmark.py": "06f1863fe788bbb49d0e04285d8c4b2bfb6e4beeccfd29d777711fc18c2b6428",
+    "tools/tirust_benchmark_cohorts.py": "56e92f865a65cdb95abd37280a60339d9a5041f281ae80c8b6f4cefc8017082a",
+    "tools/tirust_benchmark_numerical.py": "569e0f7bf0b5ed78ae1a80a0796bc8f25acfabe01768c7705f88a800bd0c74a2",
+    "tools/tirust_benchmark_worker.f": "2c12ad3c54bb5a99b7e5126ade9c37ebb2fdbc342a3a98a520fd6365dc0a8b80",
+    "tools/tirust_benchmark_worker.py": "aceff7fdcbe674b0ad7fe897990079a8fb0fddb3be7aaf2a928e6b17172f2d33"
+  },
+  "final_dso_sha256": "d427667a0f2f55d0bd96778c1259ffcf52e3925341890b81c38f5f94e1eb7052",
+  "head": "77eb57b82d4858ff302fa9870778e01cc86d7326",
+  "native_source_commit": "8b74cdbb3e106f2859514bb4ca95d9fe5d70b370",
+  "native_tooling_parity_sha256": "5ae3312fac594fc4477be2e5c4b0aa8775da4f00b3fef1a8ad94f532b1eec85c",
+  "scope": "exact committed tooling plus originalcd014 generated O0 matrix; one diagnosed first frozen point",
+  "working_tree_status": ""
+}

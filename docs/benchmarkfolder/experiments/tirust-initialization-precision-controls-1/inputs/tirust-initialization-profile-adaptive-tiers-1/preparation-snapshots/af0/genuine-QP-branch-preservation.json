@@ -1,0 +1,11 @@
+{
+  "status": "byte-identical",
+  "baseline_git_revision": "cd01459229",
+  "baseline_whole_bridge_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "candidate_whole_bridge_sha256": "607e7f58842b50a07df7bbdbcbd00ee399f6baad0b670745b45cbf807de7ff07",
+  "MP_method_bytes": 1439,
+  "MP_method_sha256": "1ec73c51f52be1a4bf98f174bd040fb472e9f0b7b85b6766d377595273f1ada9",
+  "genuine_QP_input_precision_bits": 113,
+  "MPFR_work_bits": 256,
+  "source_only_no_numerical_execution": true
+}

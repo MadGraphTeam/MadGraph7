@@ -1,0 +1,58 @@
+{
+  "status": "prepared-env-order-repaired-baseline-2-no-native-reduction",
+  "paths": {
+    "trace.c": {
+      "sha256": "251b51a52997162cd9f67f74d0d6ee5c780f67045ebfe450884e1534c1af67ca",
+      "bytes": 8523
+    },
+    "libtirust_phase_profile.so": {
+      "sha256": "1bcd9e3c765d52bb37d15eb06022870c95e0aad020363b4c8031b78a491f8eec",
+      "bytes": 21016
+    },
+    "profile.py": {
+      "sha256": "a3ab9a76bf90035d38c233f041af94dfc5fd425505028433517306a8f455f482",
+      "bytes": 9111
+    },
+    "run-profile.py": {
+      "sha256": "12b5b81b05cbed9b3e0b78196963186fe42f22a0ea5df1ee7f17d6ae4154595a",
+      "bytes": 3168
+    },
+    "summarize.py": {
+      "sha256": "8648278079735c6f18c0cda499117aec66690ff791418da3a67a06908e0b359d",
+      "bytes": 5031
+    },
+    "preparation.json": {
+      "sha256": "0723fcdaf95c272c8f1c8f7f11bf88ad51987cdca14c35a81aa382e8b2ed0237",
+      "bytes": 6873
+    },
+    "first-point.dat": {
+      "sha256": "8880598b2d448930eedda40d9797fd137a5845c5289345d1e31cbcd22ff10c3b",
+      "bytes": 587
+    },
+    "interposition-symbols.txt": {
+      "sha256": "64c66698e1266fa8feb5777e68ead2cdd1814ddcba44326405605b2597b218f0",
+      "bytes": 914
+    },
+    "pure-replay-test.json": {
+      "sha256": "a4f6b6fb45560a76935b29bc9e7ae7d794ce32634890d804786e2da88441758d",
+      "bytes": 76
+    },
+    "README.md": {
+      "sha256": "1d5c9503fd62417d66a524b2d802ecd35369260b84e4e15139801fd7ad66dae2",
+      "bytes": 4046
+    }
+  },
+  "native_command": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3 -B .tirust-build/tirust-initialization-profile-1/run-profile.py --run-label baseline-2",
+  "workdir": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "root_numerical_go_required": true,
+  "c_compile": "gcc15.2 -O2 -fPIC -shared -Wall -Wextra -Werror -Wl,-z,defs -ldl",
+  "no_numerical_execution": true,
+  "validation": {
+    "gcc_werror": "pass",
+    "python_syntax": "pass",
+    "synthetic_replay_assertions": 6,
+    "static_interposition_symbols": "pass"
+  },
+  "predecessor_source_index_sha256": "e9f276af3bf01aa7b339e8a71755bbea798de4be69f553093fe5d223f9b2a9b7",
+  "predecessor_snapshot": "snapshots/baseline-1"
+}

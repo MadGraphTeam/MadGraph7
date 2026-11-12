@@ -1,0 +1,14 @@
+{
+  "no_compiler_or_native_executed": true,
+  "observations_only": [
+    "USE declarations",
+    "integer snapshot declarations",
+    "getter immediately before T0",
+    "getter immediately after T1",
+    "snapshot file write after T1"
+  ],
+  "observer_driver_sha256": "7e66a87c8bdef6d702ba9c3046b8513fc6decbbe4cdf57ef83f7dcecb34b4f73",
+  "original_driver_sha256": "84472aa2af7a1a0596cc17f364e025bbdf88e17c0c23747da49d20d7826fe417",
+  "warmed_numerical_loop_body_byte_identical": true,
+  "whole_bootstrap_and_warmup_timed_body_byte_identical": true
+}

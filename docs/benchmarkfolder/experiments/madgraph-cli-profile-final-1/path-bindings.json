@@ -1,0 +1,42 @@
+{
+  "8": {
+    "note": "Raw metadata paths remain original observations; resolve export-relative snapshot paths within retained_export_root. Runtime binaries are identified, not copied.",
+    "original_export_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-3/outputs/n1-8-1/SAVEDTMP_CHECK_uux_z",
+    "original_run_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-3/runs/n1-8-1",
+    "retained_export_root": "backends/8",
+    "retained_run_root": "backends/8/run",
+    "retained_source_snapshots": [
+      "SavedRunInfos/00_boot/check_sa.f",
+      "SavedRunInfos/00_boot/loop_matrix.f",
+      "SavedRunInfos/01_polarized_full/check_sa.f",
+      "SavedRunInfos/01_polarized_full/loop_matrix.f",
+      "SavedRunInfos/02_unpolarized_full/check_sa.f",
+      "SavedRunInfos/02_unpolarized_full/loop_matrix.f",
+      "SavedRunInfos/03_unpolarized_skip/check_sa.f",
+      "SavedRunInfos/03_unpolarized_skip/loop_matrix.f",
+      "SavedRunInfos/04_polarized_skip/check_sa.f",
+      "SavedRunInfos/04_polarized_skip/loop_matrix.f"
+    ]
+  },
+  "9": {
+    "note": "Raw metadata paths remain original observations; resolve export-relative snapshot paths within retained_export_root. Runtime binaries are identified, not copied.",
+    "original_export_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-3/outputs/n1-9-1/SAVEDTMP_CHECK_uux_z",
+    "original_run_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-3/runs/n1-9-1",
+    "retained_export_root": "backends/9",
+    "retained_run_root": "backends/9/run",
+    "retained_source_snapshots": [
+      "SavedRunInfos/00_estimate/check_sa.f",
+      "SavedRunInfos/00_estimate/loop_matrix.f",
+      "SavedRunInfos/01_boot/check_sa.f",
+      "SavedRunInfos/01_boot/loop_matrix.f",
+      "SavedRunInfos/02_polarized_full/check_sa.f",
+      "SavedRunInfos/02_polarized_full/loop_matrix.f",
+      "SavedRunInfos/03_unpolarized_full/check_sa.f",
+      "SavedRunInfos/03_unpolarized_full/loop_matrix.f",
+      "SavedRunInfos/04_unpolarized_skip/check_sa.f",
+      "SavedRunInfos/04_unpolarized_skip/loop_matrix.f",
+      "SavedRunInfos/05_polarized_skip/check_sa.f",
+      "SavedRunInfos/05_polarized_skip/loop_matrix.f"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "cap_seconds": 360.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2222058,
+        "pid": 2222081,
+        "process_group": 2222081,
+        "session": 2222081,
+        "start_time_ticks": 254716233,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2222081,
+        "pid": 2231612,
+        "process_group": 2231612,
+        "session": 2231612,
+        "start_time_ticks": 254716986,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60,
+  "console_sha256": "dca18105fffb1ed951cba5a5318f3509fb98b44d7061ecbc0b8c0ed3a559fac4",
+  "controller_sha256": "a65457ace52058ffc40cf032cf42e8976c7b05704aec0ae900841d36e088d0d7",
+  "cpu_reservation": false,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "diagnostic_status": "ready",
+  "elapsed_seconds": 267.54380918480456,
+  "performance_acceptance": false,
+  "returncode": 0,
+  "status": "observations-collected"
+}

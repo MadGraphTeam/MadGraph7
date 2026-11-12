@@ -1,0 +1,135 @@
+{
+  "PDF": {
+    "bytes": 109920,
+    "sha256": "7e976b881fb4e34eb5df3676bef53aa8b0fd9acbb1430f8a013da81e22a9a35f"
+  },
+  "canonical_publication_performed": false,
+  "closed": true,
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "--version"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "typst 0.15.1 (9dfd3a08)\n"
+    },
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "compile",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-initialization-profile-report-1/rendered-1/initialization-and-profile.typ",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-initialization-profile-report-1/rendered-1/initialization-profile-supplement.pdf",
+        "--creation-timestamp",
+        "1794441600",
+        "--font-path",
+        "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+        "--font-path",
+        "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    }
+  ],
+  "font_paths": [
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+  ],
+  "inputs": {
+    "candidate-routes.csv": {
+      "bytes": 3533,
+      "sha256": "dd88f0677f65ee9abfda230f5124486bd5955c7c5d4cec7cff0452d6dae924fd"
+    },
+    "clean-initialization.csv": {
+      "bytes": 451,
+      "sha256": "0a514cec283502947caae62875b79a6799105a44f6d9ccb98271a1a318a9cf3d"
+    },
+    "comparison-criterion-provenance.json": {
+      "bytes": 338,
+      "sha256": "3256878c2e7054e4ca3fbd1649a141961b2e00612efca2f58e2cbd9899d03300"
+    },
+    "comparison-criterion.py": {
+      "bytes": 2432,
+      "sha256": "336de8400f2cf744e5780ca71925229216a150a4886a0417a9b3822a270c687b"
+    },
+    "derive_initialization_profile.py": {
+      "bytes": 11630,
+      "sha256": "8717b4d8003370a7b0eea766ed00ef22bcaab47b55807cfd2ee927ae063d6e71"
+    },
+    "first-point-checks.csv": {
+      "bytes": 3733,
+      "sha256": "3237afa8c99b2db2e991d05f2496ff078f3035f688a9d5d86901d15ebe93bc1b"
+    },
+    "first-point-routes.csv": {
+      "bytes": 3407,
+      "sha256": "298c12a71ba3103930c932e867a66819299f99d4ff7103d2376c6728cffc0cde"
+    },
+    "first-point-timings.csv": {
+      "bytes": 740,
+      "sha256": "0e9cb83f93434d4121f6ff66100248a7a4de4ef8408ab1c5bf8510c7471080a7"
+    },
+    "initialization-and-profile.typ": {
+      "bytes": 10284,
+      "sha256": "dfec176dd516cf72679aeaaf77e7cba01bf988baf5aa6f1442863528e4a809ec"
+    },
+    "initialization-profile-data.json": {
+      "bytes": 113656,
+      "sha256": "a74d20d5471019ed8f269b9ba2e447816566f9d34f78cca014bdc15a834bb295"
+    },
+    "initialization-profile-selection.json": {
+      "bytes": 1582,
+      "sha256": "6f19746d428cd7d4953b045d1b350480fe048a1a0a04979bb069831c87dda980"
+    },
+    "initialization-source-binding.json": {
+      "bytes": 2216,
+      "sha256": "65f52e1ff0f726734da5009131f6c85f578bd727542bc67927963fcd9006cf39"
+    },
+    "phase-bars.svg": {
+      "bytes": 10835,
+      "sha256": "d23817d4cecd5d656f4edef7f2b5106080ad0efaa20274bc76c04235c9d4c659"
+    },
+    "phase-timings.csv": {
+      "bytes": 383,
+      "sha256": "7012b83da4014569878e61c35b79ead52bf1a3aa6a7bfcb741e55fdce23bade4"
+    },
+    "prototype_derivation.py": {
+      "bytes": 38829,
+      "sha256": "00a9ab750cd247c46251c4efe1b39b0aa62bd9f192ccc760a9df3594a6eb3e15"
+    },
+    "reference-component-misses.csv": {
+      "bytes": 37941,
+      "sha256": "e3548ccaf32cd92ea87215e6e9566f2f4043e7e5837a1281ea78348b1d21e772"
+    },
+    "render_phase_bars.py": {
+      "bytes": 2906,
+      "sha256": "ee4dada557af4c4259bdf20835afbece835b42415a0ed5249c9dd7dc5a9dee2b"
+    },
+    "stock-profile-current.csv": {
+      "bytes": 627,
+      "sha256": "e9cf3da6f670fe8260854b5e8cdff8d7e4ffed5bb79bb41b37839e6fcc85bccd"
+    },
+    "stock-profile.csv": {
+      "bytes": 841,
+      "sha256": "2a1d76d99b9e399be1bcc3fe3fcc41621e30a930444a34c05a1f058b67b16b2d"
+    },
+    "style-provenance.json": {
+      "bytes": 732,
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "page_count": 2,
+  "performance_acceptance": false,
+  "production_artifact_qualified": true,
+  "root_visual_review": "Both actual pages reviewed; existing owner/preservation checks remain required.",
+  "schema": "madloop-tirust-initialization-profile-tail-render-v1",
+  "tool_paths": {
+    "typst": "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst"
+  }
+}

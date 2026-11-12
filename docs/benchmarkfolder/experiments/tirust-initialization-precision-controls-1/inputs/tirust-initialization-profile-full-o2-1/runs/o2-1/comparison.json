@@ -1,0 +1,668 @@
+{
+  "schema": "tirust-zggg-fortran-o2-initialization-control-v1",
+  "baseline_result_sha256": "cbfa9b69c678cad979bd9fb35de2746fcadbb945c942987237d8b807e76be6ad",
+  "candidate_result_sha256": "50ac9b19564dca6a3550264f14108bf5152aa8ca282448c46780a9f1dfe11ea7",
+  "candidate_source_index_sha256": "ed1f47abf22284d91bbd1d5fa7c6a6a2ca944769f866aabe02461fa2307ab196",
+  "baseline": {
+    "ready_seconds": 261.931833532,
+    "executable_sha256": "ffb951914a087327ae05ed63e90fa9ecfa3603137a254cca2781fc431791ffa3",
+    "warmup_literal_rows": [
+      {
+        "call": "0",
+        "point": "1",
+        "order": "0",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      },
+      {
+        "call": "0",
+        "point": "1",
+        "order": "1",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      },
+      {
+        "call": "1",
+        "point": "1",
+        "order": "0",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      },
+      {
+        "call": "1",
+        "point": "1",
+        "order": "1",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      }
+    ],
+    "parsed_warmup": {
+      "cold_seconds": 261.931833532,
+      "seconds": null,
+      "seconds_per_point": null,
+      "rows": [
+        {
+          "point": 1,
+          "order": 0,
+          "status": 323,
+          "coefficients": [
+            1.064140201337546e-08,
+            -5.754113231260145e-09,
+            -8.041236113848739e-09,
+            -2.3315663508561254e-09
+          ],
+          "accuracy": 0.0,
+          "actual_backend": 9,
+          "precision": "QP"
+        },
+        {
+          "point": 1,
+          "order": 1,
+          "status": 323,
+          "coefficients": [
+            1.064140201337546e-08,
+            -5.754113231260145e-09,
+            -8.041236113848739e-09,
+            -2.3315663508561254e-09
+          ],
+          "accuracy": 0.0,
+          "actual_backend": 9,
+          "precision": "QP"
+        }
+      ],
+      "status_counts": {
+        "323": 1
+      },
+      "timed_status_counts": null,
+      "backend_precision_counts": {
+        "9:QP": 1
+      },
+      "native_dp_only": false,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 1
+      },
+      "measurement_phase": "steady-warmup",
+      "performance_eligible": false,
+      "warmup_first_call": 1,
+      "warmup_last_call": 1,
+      "warmup_call_point_order": [
+        {
+          "call": 1,
+          "point": 1
+        }
+      ],
+      "raw_outputs": {
+        "warmup.dat": "# call point order status Born finite single double accuracy\n           0           1           0         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n           0           1           1         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n           1           1           0         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n           1           1           1         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n",
+        "dimensions.dat": "           1           1           1\n"
+      }
+    },
+    "attribution": {
+      "phase_totals": {
+        "qp": {
+          "calls": 4640,
+          "wall_seconds": 76.38337386099997,
+          "thread_cpu_seconds": 74.20064167800003,
+          "status_counts": {
+            "0": 4640
+          }
+        },
+        "dp": {
+          "calls": 4640,
+          "wall_seconds": 28.467862853000003,
+          "thread_cpu_seconds": 27.723242447999993,
+          "status_counts": {
+            "1": 152,
+            "0": 4488
+          }
+        },
+        "budget": {
+          "calls": 9280,
+          "wall_seconds": 0.22218989299999922,
+          "thread_cpu_seconds": 0.20179602999999977,
+          "status_counts": {
+            "0": 9280
+          }
+        },
+        "register": {
+          "calls": 13,
+          "wall_seconds": 0.03722511300000001,
+          "thread_cpu_seconds": 0.032756859000000006,
+          "status_counts": {
+            "0": 13
+          }
+        },
+        "clear": {
+          "calls": 5,
+          "wall_seconds": 0.004870079,
+          "thread_cpu_seconds": 0.0047780240000000005,
+          "status_counts": {
+            "0": 5
+          }
+        },
+        "create": {
+          "calls": 1,
+          "wall_seconds": 0.002195859,
+          "thread_cpu_seconds": 0.002138912,
+          "status_counts": {
+            "0": 1
+          }
+        }
+      },
+      "event_interval_seconds": 258.58599751,
+      "bridge_completed_seconds": 105.117717658,
+      "outside_bridge_in_event_interval_seconds": 153.46827985200002,
+      "precision_blocks": [
+        {
+          "operation": "dp",
+          "first_sequence": 16,
+          "start_seconds_since_first_cabi": 0.041042667000000005,
+          "calls": 2320,
+          "wall_seconds": 13.238461776999996,
+          "status_counts": {
+            "0": 2244,
+            "1": 76
+          },
+          "end_seconds_since_first_cabi": 13.424429005
+        },
+        {
+          "operation": "qp",
+          "first_sequence": 4657,
+          "start_seconds_since_first_cabi": 83.185217018,
+          "calls": 2320,
+          "wall_seconds": 38.768452616000026,
+          "status_counts": {
+            "0": 2320
+          },
+          "end_seconds_since_first_cabi": 123.677325674
+        },
+        {
+          "operation": "dp",
+          "first_sequence": 9299,
+          "start_seconds_since_first_cabi": 127.24977801000001,
+          "calls": 2320,
+          "wall_seconds": 15.229401075999997,
+          "status_counts": {
+            "0": 2244,
+            "1": 76
+          },
+          "end_seconds_since_first_cabi": 142.64838162
+        },
+        {
+          "operation": "qp",
+          "first_sequence": 13940,
+          "start_seconds_since_first_cabi": 219.246541057,
+          "calls": 2320,
+          "wall_seconds": 37.61492124500001,
+          "status_counts": {
+            "0": 2320
+          },
+          "end_seconds_since_first_cabi": 258.58461921400004
+        }
+      ],
+      "dp_to_qp_gaps": [
+        {
+          "dp_end_seconds_since_first_cabi": 13.424429005,
+          "qp_start_seconds_since_first_cabi": 83.185217018,
+          "gap_seconds": 69.76078801300001
+        },
+        {
+          "dp_end_seconds_since_first_cabi": 142.64838162,
+          "qp_start_seconds_since_first_cabi": 219.246541057,
+          "gap_seconds": 76.598159437
+        }
+      ],
+      "unfinished_calls": []
+    }
+  },
+  "candidate": {
+    "ready_seconds": 257.446547913,
+    "executable_sha256": "c4b5a2bdc7ed555939239360e357fbcc09fbae06cee35e816f3133c5848648f2",
+    "warmup_literal_rows": [
+      {
+        "call": "0",
+        "point": "1",
+        "order": "0",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      },
+      {
+        "call": "0",
+        "point": "1",
+        "order": "1",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      },
+      {
+        "call": "1",
+        "point": "1",
+        "order": "0",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      },
+      {
+        "call": "1",
+        "point": "1",
+        "order": "1",
+        "status": "323",
+        "Born": "1.06414020133754608E-008",
+        "finite": "-5.75411323126014495E-009",
+        "single": "-8.04123611384873871E-009",
+        "double": "-2.33156635085612544E-009",
+        "accuracy": "0.00000000000000000E+000"
+      }
+    ],
+    "parsed_warmup": {
+      "cold_seconds": 257.446547913,
+      "seconds": null,
+      "seconds_per_point": null,
+      "rows": [
+        {
+          "point": 1,
+          "order": 0,
+          "status": 323,
+          "coefficients": [
+            1.064140201337546e-08,
+            -5.754113231260145e-09,
+            -8.041236113848739e-09,
+            -2.3315663508561254e-09
+          ],
+          "accuracy": 0.0,
+          "actual_backend": 9,
+          "precision": "QP"
+        },
+        {
+          "point": 1,
+          "order": 1,
+          "status": 323,
+          "coefficients": [
+            1.064140201337546e-08,
+            -5.754113231260145e-09,
+            -8.041236113848739e-09,
+            -2.3315663508561254e-09
+          ],
+          "accuracy": 0.0,
+          "actual_backend": 9,
+          "precision": "QP"
+        }
+      ],
+      "status_counts": {
+        "323": 1
+      },
+      "timed_status_counts": null,
+      "backend_precision_counts": {
+        "9:QP": 1
+      },
+      "native_dp_only": false,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 1
+      },
+      "measurement_phase": "steady-warmup",
+      "performance_eligible": false,
+      "warmup_first_call": 1,
+      "warmup_last_call": 1,
+      "warmup_call_point_order": [
+        {
+          "call": 1,
+          "point": 1
+        }
+      ],
+      "raw_outputs": {
+        "warmup.dat": "# call point order status Born finite single double accuracy\n           0           1           0         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n           0           1           1         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n           1           1           0         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n           1           1           1         323  1.06414020133754608E-008 -5.75411323126014495E-009 -8.04123611384873871E-009 -2.33156635085612544E-009  0.00000000000000000E+000\n",
+        "dimensions.dat": "           1           1           1\n"
+      }
+    },
+    "attribution": {
+      "phase_totals": {
+        "qp": {
+          "calls": 4640,
+          "wall_seconds": 80.86939461200004,
+          "thread_cpu_seconds": 78.53136786400003,
+          "status_counts": {
+            "0": 4640
+          }
+        },
+        "dp": {
+          "calls": 4640,
+          "wall_seconds": 30.108320460999998,
+          "thread_cpu_seconds": 29.038742434000003,
+          "status_counts": {
+            "1": 152,
+            "0": 4488
+          }
+        },
+        "budget": {
+          "calls": 9280,
+          "wall_seconds": 0.22860486599999974,
+          "thread_cpu_seconds": 0.21280715099999967,
+          "status_counts": {
+            "0": 9280
+          }
+        },
+        "register": {
+          "calls": 13,
+          "wall_seconds": 0.04360899000000002,
+          "thread_cpu_seconds": 0.035178218,
+          "status_counts": {
+            "0": 13
+          }
+        },
+        "clear": {
+          "calls": 5,
+          "wall_seconds": 0.021572868000000002,
+          "thread_cpu_seconds": 0.018122719000000002,
+          "status_counts": {
+            "0": 5
+          }
+        },
+        "create": {
+          "calls": 1,
+          "wall_seconds": 0.001778938,
+          "thread_cpu_seconds": 0.0017377010000000001,
+          "status_counts": {
+            "0": 1
+          }
+        }
+      },
+      "event_interval_seconds": 254.30032481100002,
+      "bridge_completed_seconds": 111.27328073500001,
+      "outside_bridge_in_event_interval_seconds": 143.027044076,
+      "precision_blocks": [
+        {
+          "operation": "dp",
+          "first_sequence": 16,
+          "start_seconds_since_first_cabi": 0.047779097,
+          "calls": 2320,
+          "wall_seconds": 14.821975660000007,
+          "status_counts": {
+            "0": 2244,
+            "1": 76
+          },
+          "end_seconds_since_first_cabi": 15.037663504000001
+        },
+        {
+          "operation": "qp",
+          "first_sequence": 4657,
+          "start_seconds_since_first_cabi": 81.162132262,
+          "calls": 2320,
+          "wall_seconds": 38.476496032999975,
+          "status_counts": {
+            "0": 2320
+          },
+          "end_seconds_since_first_cabi": 121.36307851800001
+        },
+        {
+          "operation": "dp",
+          "first_sequence": 9299,
+          "start_seconds_since_first_cabi": 124.134936717,
+          "calls": 2320,
+          "wall_seconds": 15.28634480099997,
+          "status_counts": {
+            "0": 2244,
+            "1": 76
+          },
+          "end_seconds_since_first_cabi": 139.580943346
+        },
+        {
+          "operation": "qp",
+          "first_sequence": 13940,
+          "start_seconds_since_first_cabi": 209.96843199900002,
+          "calls": 2320,
+          "wall_seconds": 42.392898578999976,
+          "status_counts": {
+            "0": 2320
+          },
+          "end_seconds_since_first_cabi": 254.279681986
+        }
+      ],
+      "dp_to_qp_gaps": [
+        {
+          "dp_end_seconds_since_first_cabi": 15.037663504000001,
+          "qp_start_seconds_since_first_cabi": 81.162132262,
+          "gap_seconds": 66.124468758
+        },
+        {
+          "dp_end_seconds_since_first_cabi": 139.580943346,
+          "qp_start_seconds_since_first_cabi": 209.96843199900002,
+          "gap_seconds": 70.387488653
+        }
+      ],
+      "unfinished_calls": []
+    }
+  },
+  "ready_ratio": 0.9828761339982297,
+  "literal_warmup_rows_identical": true,
+  "regression_3e_6": {
+    "passed": true,
+    "maximum_relative_error": 0.0,
+    "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+    "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+    "ordinary_target_tolerance": 1e-08,
+    "ordinary_target_passed": true,
+    "tolerance": 3e-06,
+    "failures": [],
+    "residuals": [
+      {
+        "point": 1,
+        "order": 0,
+        "column": 0,
+        "reference": 1.064140201337546e-08,
+        "candidate": 1.064140201337546e-08,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 0,
+        "column": 1,
+        "reference": -5.754113231260145e-09,
+        "candidate": -5.754113231260145e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 0,
+        "column": 2,
+        "reference": -8.041236113848739e-09,
+        "candidate": -8.041236113848739e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 1.397476168901827,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 0,
+        "column": 3,
+        "reference": -2.3315663508561254e-09,
+        "candidate": -2.3315663508561254e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 0.4051999425714316,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 0,
+        "reference": 1.064140201337546e-08,
+        "candidate": 1.064140201337546e-08,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 1,
+        "reference": -5.754113231260145e-09,
+        "candidate": -5.754113231260145e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 2,
+        "reference": -8.041236113848739e-09,
+        "candidate": -8.041236113848739e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 1.397476168901827,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 3,
+        "reference": -2.3315663508561254e-09,
+        "candidate": -2.3315663508561254e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 0.4051999425714316,
+        "passed": true
+      }
+    ]
+  },
+  "target_1e_8": {
+    "passed": true,
+    "maximum_relative_error": 0.0,
+    "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+    "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+    "ordinary_target_tolerance": 1e-08,
+    "ordinary_target_passed": true,
+    "tolerance": 1e-08,
+    "failures": [],
+    "residuals": [
+      {
+        "point": 1,
+        "order": 0,
+        "column": 0,
+        "reference": 1.064140201337546e-08,
+        "candidate": 1.064140201337546e-08,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 0,
+        "column": 1,
+        "reference": -5.754113231260145e-09,
+        "candidate": -5.754113231260145e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 0,
+        "column": 2,
+        "reference": -8.041236113848739e-09,
+        "candidate": -8.041236113848739e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 1.397476168901827,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 0,
+        "column": 3,
+        "reference": -2.3315663508561254e-09,
+        "candidate": -2.3315663508561254e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 0.4051999425714316,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 0,
+        "reference": 1.064140201337546e-08,
+        "candidate": 1.064140201337546e-08,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 1,
+        "reference": -5.754113231260145e-09,
+        "candidate": -5.754113231260145e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": null,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 2,
+        "reference": -8.041236113848739e-09,
+        "candidate": -8.041236113848739e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 1.397476168901827,
+        "passed": true
+      },
+      {
+        "point": 1,
+        "order": 1,
+        "column": 3,
+        "reference": -2.3315663508561254e-09,
+        "candidate": -2.3315663508561254e-09,
+        "relative_error": 0.0,
+        "symmetric_relative_error": 0.0,
+        "pole_to_finite": 0.4051999425714316,
+        "passed": true
+      }
+    ]
+  },
+  "scope": "single frozen point; identical bootstrap+one warmup; instrumented descriptive shared-host control, not warmed amplitude acceptance",
+  "performance_acceptance": false
+}

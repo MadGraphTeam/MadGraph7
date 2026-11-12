@@ -1,0 +1,41 @@
+{
+  "base_mg_revision": "cafb35d7987436661c3346e39c724d329846a1f2",
+  "native_execution": false,
+  "payloads": {
+    "README.md": {
+      "bytes": 3663,
+      "sha256": "f03159c7c5641b850e2b9a7f074b0b9146d174468ff23fd84ce5b36a01ddc64a"
+    },
+    "n1-8.mg5": {
+      "bytes": 1024,
+      "sha256": "efd5fd7544da914018f1b30460bedba75b8d5e188f8876502753fd5b982128c1"
+    },
+    "n1-9.mg5": {
+      "bytes": 1024,
+      "sha256": "23434a0f6ef88441d1dbdc938af7cc2402c15bf5ad9449e10db29f8beccd4043"
+    },
+    "n2-8.mg5": {
+      "bytes": 1033,
+      "sha256": "1426233f80e15a096a3c3707d98369fe91138396f1582716ae91743dbc663e62"
+    },
+    "n2-9.mg5": {
+      "bytes": 1033,
+      "sha256": "952d938b67e1e528fdd0ac2969d3b4ff7fd42a8349faabbd340df825fdad9f45"
+    },
+    "prepare.py": {
+      "bytes": 3644,
+      "sha256": "75bb3711e9d763a6d2d6f89f436ff4f4696745319c7adf51ffee728aa18b5d7f"
+    },
+    "prepared.json": {
+      "bytes": 277650,
+      "sha256": "8b3e2312a10e10e928dee2389de68f4c3150e5b9f4f1a94600d4de101d99c829"
+    },
+    "run_cli.py": {
+      "bytes": 10493,
+      "sha256": "5264e33a1e701647ee3047ef3cb4b8b9981aa268a5f4802946c7987c8712d8fd"
+    }
+  },
+  "performance_acceptance": false,
+  "schema": "madgraph-stock-profile-source-v1",
+  "status": "prepared-not-executed"
+}

@@ -1,5 +1,66 @@
 # TIRust / MadLoop benchmark
 
+The current source is `77eb57b82d4858ff302fa9870778e01cc86d7326`, including
+native-precision integration milestone `8b74cdbb3e10`. Its matching
+[`tirust-native-tiers-1` registration](campaigns/tirust-native-tiers-1/manifest.json)
+freezes the new source and inputs; **all 66 fresh numerical lanes and eight main
+runtime gates remain pending**. Use [the current local validation commands](LOCAL_FINAL_VALIDATION_TODO.md).
+The integration goal is incomplete.
+
+Backend 9 remains explicitly selected. Its accepted DP transport can include
+local tensor rescues at 106, 256 or 512 bits from 53-bit inputs and a DP
+numerator; return code `219` alone does not establish native-DP execution.
+The genuine Fortran-QP path retains 113-bit input transport and 256-bit
+arithmetic. Batch route counts do not assign individual points or describe
+Fortran coefficient-cache hits. The local handoff preserves these cohort limits.
+
+The native artifact and route-aware tools have separate bounded qualifications;
+they do not close the new process matrix or the paired runtime requirement.
+The report and older qualifications below retain their recorded source bindings.
+
+The current [47-page benchmark PDF](benchmark.pdf) is selected by
+[`build_initialization_profile_report.py`](build_initialization_profile_report.py)
+and the [current report ledger](report-build.json). Its
+[two-page final-source appendix](experiments/tirust-initialization-profile-report-1/rendered-1/README.md)
+preserves all 45 preceding pages and adds the actual final-source Zggg first-point
+five-reducer pilot, corrected stock `check profile`, and separately bound
+prototype initialization result. The selected-point matched-cycle TIRust/NinjaRS
+ratio is 1.5533; the unpaired stock full-amplitude ratio is 1.6051. TIRust remains
+slower in both warmed comparisons. The prototype’s 255.241→15.346s initialization
+improvement does not close runtime acceptance or become final-artifact timing.
+All retained strict-target misses, original 600s timeout and precision limits
+remain visible. Exact values, nine CSVs, Typst and pure replay accompany the appendix.
+
+Verify the current canonical report without native numerical work:
+
+```sh
+python3 -B docs/benchmarkfolder/build_initialization_profile_report.py --root docs/benchmarkfolder --verify-only
+```
+
+Enter `nix develop` before rebuilding pages; the flake supplies Pillow and
+Poppler. The page proof requires `pdfinfo`,
+`pdffonts`, `pdftotext`, `pdftoppm` and `pdfunite` on PATH. The ledger records
+actual document-tool paths and versions.
+
+Reproduce the 47-page composite into a fresh output path:
+
+```sh
+python3 -B docs/benchmarkfolder/build_initialization_profile_report.py --root docs/benchmarkfolder \
+  --archive docs/benchmarkfolder/history/report-before-initialization-profile-1 \
+  --archive-index-sha256 d003b855cd4ecdfc051795a2723f5c832d9f20fa365e612dfd9193288c57d368 \
+  --report docs/benchmarkfolder/experiments/tirust-initialization-profile-report-1/rendered-1 \
+  --report-index-sha256 e0c677d999e55c890e297a07be994665159ef09a9ee4a30dc021763b4fee447f \
+  --output /tmp/madloop-tirust-benchmark47.pdf
+```
+
+The current ledger proves all 45 prefix pages and both appendix pages match in
+paired 144 dpi RGB pixels, per-page text, fonts and geometry. The preserved 45-page
+PDF, ledger and owner remain byte-identical in
+[`history/report-before-initialization-profile-1`](history/report-before-initialization-profile-1/index.json).
+This document proof does not claim PDF object-graph or annotation/link equivalence.
+
+## Archived 45-page report and predecessor evidence
+
 The [current acceptance selection](CURRENT_STATUS.md) distinguishes production
 evidence, unapplied experiments and preserved historical indices.
 The [OEM signing and rebuild note](OEM_SIGNING.md) records the signed TIRust
@@ -7,19 +68,19 @@ pin, installation upgrade and its separate qualification. The [upstream-main pub
 now records completed functional validation and the published main commit;
 MadGraph intentionally retains its validated signed predecessor pin. Existing
 measured campaigns and the preserved 44-page prefix retain their original source
-identities. The current 45-page PDF adds the separately bound original
+identities. The archived 45-page PDF adds the separately bound original
 signed-source Zggg timing pilot. The
-[fresh signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
-provides the current installation, numerical, timing and report commands. Its
+[previous signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
+preserves its earlier installation, numerical, timing and report commands. Its
 eleven cases are registered with all new numerical/runtime qualifications pending.
 
 Review is tracked in [draft PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/437)
 into `madloop_ninjars`; the original [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315)
 targets `main`.
 
-**Current status.** Production registration `0fcd2cd873d6` has eleven closed
+**Historical ordinary qualification.** Registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
-target. The [45-page benchmark PDF](benchmark.pdf) preserves all preceding 44
+target. The [archived 45-page benchmark PDF](history/report-before-initialization-profile-1/benchmark.pdf) preserves all preceding 44
 pages, including [two pages of actual shared-host timings](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md)
 for four SM processes and all five reducers, including a fresh QCD 2→4
 four-lepton process and the [implementation qualifications](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md).
@@ -54,14 +115,12 @@ uses cache disabled. Independent amplitude truth and generic production coverage
 remain unqualified.
 
 
-The matching owner for the current canonical report is
-`build_zggg_timing_report.py`. Verify it without launching programs:
+The archived 45-page report’s owner is `build_zggg_timing_report.py`, retained
+with its PDF/ledger in `history/report-before-initialization-profile-1`.
+The following command reproduces that historical checkpoint; use the new owner
+above for the current 47-page report.
 
-```sh
-python3 -B docs/benchmarkfolder/build_zggg_timing_report.py --root docs/benchmarkfolder --verify-only
-```
-
-Reproduce the 45-page composite into a fresh output path:
+Reproduce the historical 45-page composite into a fresh output path:
 
 ```sh
 python3 -B docs/benchmarkfolder/build_zggg_timing_report.py --root docs/benchmarkfolder \
@@ -73,14 +132,14 @@ python3 -B docs/benchmarkfolder/build_zggg_timing_report.py --root docs/benchmar
 ```
 
 The archived original 44-page PDF, ledger and EW owner remain byte-identical under
-`history/report-before-zggg-timing-1`. The current ledger proves preservation
+`history/report-before-zggg-timing-1`. The archived 45-page ledger proves preservation
 of all 44 prefix pages and the new timing tail in paired 144 dpi RGB pixels,
 text, fonts and geometry. Its PDF SHA256 is
 `fa83602d57a43f25bc469e8d7185ba54b3236031eb861b12193a8788afd38678`.
 The checkpoint sections below retain their historical commands and page
-counts; use this owner for the current canonical PDF. Precise local baseline/
+counts; use the current 47-page owner above. Precise local baseline/
 rescue-chain acceptance and the original TIRust timeout remain open; later
-initialization-repair results must be appended as a separately bound phase.
+the separately bound initialization-repair phase is in the new appendix.
 
 The [generic CMS prototype's normal run](experiments/generic-owned-CMS-normal-qualification-1/README.md)
 now closes six fresh workers at `MLStabThres=1e-6`, with both caches disabled.

@@ -1,0 +1,82 @@
+{
+  "schema": "tirust-prototype-dp-route-observer-v1",
+  "snapshots": 4643,
+  "valid_snapshots": 4643,
+  "malformed_lines": [],
+  "query_statuses": [
+    0
+  ],
+  "all_getters_available": true,
+  "counter_monotonic": true,
+  "field_order_per_direction": [
+    "Direct",
+    "MethodChoice",
+    "Tier106_DP_input",
+    "Tier256_DP_input",
+    "Tier512_DP_input",
+    "Refused",
+    "unreported_reduction_error",
+    "attempted106",
+    "attempted256",
+    "attempted512"
+  ],
+  "dp_cabi_calls": {
+    "primary": 2320,
+    "check": 2320
+  },
+  "genuine_binary128_input_qp_cabi_calls": 0,
+  "precision_meaning": {
+    "DP_API": "binary64 kinematics and DP numerator, potentially using local tensor precision tiers",
+    "106": "double-double tensor rescue from binary64 inputs",
+    "256": "256bit tensor rescue from binary64 inputs",
+    "512": "512bit tensor rescue from binary64 inputs",
+    "QP_API": "genuine113bit Fortran inputs transported losslessly; original256bit branch"
+  },
+  "native_dp_only_cannot_be_inferred_from_amplitude_dispatch_status": true,
+  "scientific_timing_claim": false,
+  "performance_eligible": false,
+  "final_snapshot_reason": "before_clear",
+  "final_snapshot_sequence": 9296,
+  "directions": {
+    "primary": {
+      "counters": {
+        "Direct": 2128,
+        "MethodChoice": 112,
+        "Tier106_DP_input": 68,
+        "Tier256_DP_input": 12,
+        "Tier512_DP_input": 0,
+        "Refused": 0,
+        "unreported_reduction_error": 0,
+        "attempted106": 72,
+        "attempted256": 12,
+        "attempted512": 0
+      },
+      "completed_full_dp_api_requests_reaching_counter": 2320,
+      "observed_dp_api_calls": 2320,
+      "counter_total_matches_dp_api_calls": true,
+      "attempted_tier_counts_are_lower_bounds": false,
+      "accepted_dp_input_tensor_rescues": 80
+    },
+    "check": {
+      "counters": {
+        "Direct": 2148,
+        "MethodChoice": 100,
+        "Tier106_DP_input": 52,
+        "Tier256_DP_input": 20,
+        "Tier512_DP_input": 0,
+        "Refused": 0,
+        "unreported_reduction_error": 0,
+        "attempted106": 52,
+        "attempted256": 20,
+        "attempted512": 0
+      },
+      "completed_full_dp_api_requests_reaching_counter": 2320,
+      "observed_dp_api_calls": 2320,
+      "counter_total_matches_dp_api_calls": true,
+      "attempted_tier_counts_are_lower_bounds": false,
+      "accepted_dp_input_tensor_rescues": 72
+    }
+  },
+  "any_local_dp_input_tensor_rescue": true,
+  "counter_observation_complete": true
+}

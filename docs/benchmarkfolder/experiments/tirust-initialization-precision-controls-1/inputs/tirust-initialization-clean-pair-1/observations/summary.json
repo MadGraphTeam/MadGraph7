@@ -1,0 +1,89 @@
+{
+  "schema": "tirust-quiet-clean-onepair-summary-v1",
+  "old_READY_seconds": 255.24129478,
+  "candidate_READY_seconds": 15.345797304,
+  "candidate_over_old_ratio": 0.06012270591726544,
+  "old_over_candidate_speed_ratio": 16.63265125452096,
+  "initialization_time_decrease_percent": 93.98772940827345,
+  "literal_old_rows_match_prior_genuine_QP": true,
+  "literal_candidate_rows_match_prior_functional": true,
+  "scope": "one ordered pair on one frozen point; each READY covers bootstrap+onewarmup; quiet source executable with no shim/preload/counter sampling",
+  "actual_capture": "one ordered pair, single core12, nonexclusive sharedhost; existingFortranSYSTEM_CLOCK READY; noCshim/LD_PRELOAD/counterqueries",
+  "no_genuine_QP_or_tier_route_inference_from_elapsed_time": true,
+  "precision_usage_source": {
+    "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-initialization-profile-adaptive-tiers-1/runs/functional-1/functional-summary.json",
+    "sha256": "ac70267103c6c740adb257991ad474c9794d26510889520917d848e67cfb4513",
+    "precision_note": "DP input numerator with local tensor precision rescues; not native-DP-only; route evidence is from separate functional run, not queried in this capture"
+  },
+  "comparisons": {
+    "clean_old_vs_prior_genuine_QP": {
+      "passed_3e_6": true,
+      "passed_strict_1e_8_target": true,
+      "maximum_raw_relative_error": 0.0,
+      "failures_1e_8": []
+    },
+    "clean_candidate_vs_prior_adaptive_functional": {
+      "passed_3e_6": true,
+      "passed_strict_1e_8_target": true,
+      "maximum_raw_relative_error": 0.0,
+      "failures_1e_8": []
+    },
+    "clean_candidate_vs_clean_old_genuine_QP": {
+      "passed_3e_6": true,
+      "passed_strict_1e_8_target": true,
+      "maximum_raw_relative_error": 1.6830077254459505e-11,
+      "failures_1e_8": []
+    },
+    "1": {
+      "passed_3e_6": true,
+      "passed_strict_1e_8_target": false,
+      "maximum_raw_relative_error": 3.534096451306608e-08,
+      "failures_1e_8": [
+        {
+          "point": 1,
+          "order": 0,
+          "column": 1,
+          "reference": -5.754113028001076e-09,
+          "candidate": -5.754113231356987e-09,
+          "relative_error": 3.534096451306608e-08,
+          "symmetric_relative_error": 1.767048256877899e-08,
+          "pole_to_finite": null,
+          "passed": false
+        },
+        {
+          "point": 1,
+          "order": 1,
+          "column": 1,
+          "reference": -5.754113028001076e-09,
+          "candidate": -5.754113231356987e-09,
+          "relative_error": 3.534096451306608e-08,
+          "symmetric_relative_error": 1.767048256877899e-08,
+          "pole_to_finite": null,
+          "passed": false
+        }
+      ]
+    },
+    "6": {
+      "passed_3e_6": true,
+      "passed_strict_1e_8_target": true,
+      "maximum_raw_relative_error": 8.12846370511346e-12,
+      "failures_1e_8": []
+    },
+    "7": {
+      "passed_3e_6": true,
+      "passed_strict_1e_8_target": true,
+      "maximum_raw_relative_error": 9.846504049736966e-11,
+      "failures_1e_8": []
+    },
+    "8": {
+      "passed_3e_6": true,
+      "passed_strict_1e_8_target": true,
+      "maximum_raw_relative_error": 1.9734352725498115e-11,
+      "failures_1e_8": []
+    }
+  },
+  "formal_confidence_or_main_runtime_acceptance": false,
+  "comparison_sha256": "1bb37fb2a078e2edcd156921f1b1972d389baf663b63dcb831bab8ce89bbd190",
+  "source_index_sha256": "ba3d6c21156fdff07393524d049e5e5027ea199768a7c308d946e2255c8306b8",
+  "native_release_sha256": "3a78c732f30a1e048e5e4a652dcc56934fdfaff674840bc7634059cced5b9ed4"
+}

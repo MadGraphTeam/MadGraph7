@@ -1,0 +1,77 @@
+{
+  "abi_version": 1,
+  "all_compilers_and_sdk_jobs_closed": true,
+  "c_header_sha256": "a156ded913ac2487b30921d79fa355f05b16d6449ba9f6442b31d319b49f4807",
+  "compiled_receipt_sha256": "31f9d79b34e9ed7974807c87a53dcbc993e76c69841a96501617c17e106fa806",
+  "dp_route_statistics": true,
+  "finite_terms": true,
+  "fortran_archive_sha256": "37dbb061cb4391dbacea1d7f6b85d2fa116f005806b5b37054c16071dde3775a",
+  "fortran_module_sha256": "471fe1e5e4c5bbb31490608ddc59c15c1dbdd3ba0bdc9dc723c18e3d8a7f1bfa",
+  "fortran_module_source_sha256": "e7339586550a5d6d742363118b1bfc15d6dd6d1eb720e67db7665673e5b73c53",
+  "library_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+  "live_abi_capability_and_error_preservation_passed": true,
+  "live_abi_receipt_sha256": "a26bb012be2685ab8b3e2eef69477bb84541d3924b55f4eca352a52b865fd2d4",
+  "native_fortran_route_genuine_qp_poles_smoke_passed": true,
+  "native_smoke_source_sha256": "13672c66732ce41eddfdccd4374e5732e3e4cc316a60d5deee1a4e42210d8408",
+  "numerical_identity_proof_sha256": "fdb60858ab40ea25fdfb45bbb1b2281fee8f4756a5221f3b7ec50d0f7baab4e2",
+  "numerical_mutex_freecheck": true,
+  "old85ee_and_prototype470_preserved": true,
+  "owned_survivors": [],
+  "performance_eligible": false,
+  "pole_patch_sha256": "ccf070ba40a39f79151a7212bb9590043011143d67082c7c7c497137d919c5c0",
+  "poles_only": true,
+  "published_receipt_sha256": "0bf70892bb438c2ea2c06601b7d19c8938e67ed6e4dc8379b0c9720cac158c0e",
+  "quad_precision": true,
+  "qualification_log_sha256": "145136296b98b4e6830c7de3f2a7d0d3fc00f21ffdce01478100cba9f6c9a4e9",
+  "qualified_receipt_sha256": "198830a7292e9cf5c16f10dabfc5427fe735b471939a439a1a4fb2047fbf53ed",
+  "release_tests_failed": 0,
+  "release_tests_ignored": 0,
+  "release_tests_passed": 16,
+  "resolved_cargo_lock_sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+  "root_configuration_selected": false,
+  "route_observation_scope": "This final Rust-unit process only; do not infer another process or payload capture split.",
+  "rust_bridge_source_sha256": "0c2c1b078fad7f40caccb91661e24db0e18982ad4a1948bb4d3bac6cfb44584f",
+  "shared_library_sha256": "d427667a0f2f55d0bd96778c1259ffcf52e3925341890b81c38f5f94e1eb7052",
+  "stage_terminal_sha256": {
+    "compile": "332e7e77780516e959c3ad4c804035c0ee5518016c107fb4c633df74c462257f",
+    "publish": "d1b27c7e9ab16d82c51fa783feee0ead896b176f106742cf3d7271c8e2dfc4ff",
+    "qualify": "abf3722b7ac288854ebfda46f87096d76cb42856fb821a24febdba0831f90527"
+  },
+  "status": "qualified-final-private-installation-published",
+  "tirust_revision": "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1",
+  "unit_fixture_route_observation": [
+    {
+      "fixture": 0,
+      "route": "Tier106"
+    },
+    {
+      "fixture": 1,
+      "route": "Tier106"
+    },
+    {
+      "fixture": 2,
+      "route": "Tier106"
+    },
+    {
+      "fixture": 3,
+      "route": "Tier106"
+    },
+    {
+      "fixture": 4,
+      "route": "Tier106"
+    },
+    {
+      "fixture": 5,
+      "route": "Tier106"
+    },
+    {
+      "fixture": 6,
+      "route": "Tier106"
+    },
+    {
+      "fixture": 7,
+      "route": "Tier256"
+    }
+  ],
+  "validated_prototype_rust_source_sha256": "607e7f58842b50a07df7bbdbcbd00ee399f6baad0b670745b45cbf807de7ff07"
+}

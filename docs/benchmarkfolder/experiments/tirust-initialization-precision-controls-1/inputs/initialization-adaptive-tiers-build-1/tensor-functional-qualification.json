@@ -1,0 +1,45 @@
+{
+  "actions": [
+    {
+      "log_sha256": "02dbe60d85a8e165594697715db0bf9aa2d57ea8039925a89ec69fe7d10e382d",
+      "name": "oracle",
+      "returncode": 0,
+      "survivors": []
+    },
+    {
+      "log_sha256": "88f710f6e873e2916c3bc48de957d6c126d8a4af832524b8643361546afe928f",
+      "name": "candidate-fixtures",
+      "returncode": 0,
+      "survivors": []
+    },
+    {
+      "log_sha256": "86ac8bc0ae9dd75fe1a886ef972ef960d98b938e6d443c6ab760d1965576aa0a",
+      "name": "comparison",
+      "returncode": 0,
+      "survivors": []
+    }
+  ],
+  "all_pass_1e8": true,
+  "all_pass_3e6": true,
+  "both_zero_slot_groups": 42,
+  "candidate_dso_sha256": "470d46df9c8fcb76dc5448a04187dfc23a757481b3d4ef0384e13bd6e7e9e709",
+  "candidate_source_sha256": "607e7f58842b50a07df7bbdbcbd00ee399f6baad0b670745b45cbf807de7ff07",
+  "combined_degree_groups": 44,
+  "comparison_sha256": "7967d6e6b5b7d7f612b6a992d09659555d1b3a0e017d9ff9629e2e3d1c368410",
+  "component_differences": 3136,
+  "component_relative_misses_1e8": 50,
+  "component_relative_misses_3e6": 50,
+  "fixtures": 8,
+  "functional_mutex_freecheck": true,
+  "independent_physics_oracle": false,
+  "max_combined_degree_residual": "9.1944995101952976768723599447317720132281208122612151194314985002700429407461904034669217943328418506971797959878314141929578855262556119137790562776106580490892931268454627741625455920967630212428253E-17",
+  "max_slot_degree_residual": "9.2988081605401883119480500729736545827692782938330014636368300685040786066549246896317637035741957948002482666139109490649738892544267865959771922976582851824194157754399379573284864360198747056920764E-17",
+  "no_sdk_or_compile_jobs_remaining_in_this_agent": true,
+  "owned_survivors": [],
+  "performance_eligible": false,
+  "same_engine_precision_reference": true,
+  "slot_degree_groups": 176,
+  "status": "same-input-precision-functional-checks-passed",
+  "terminal_sha256": "bb824e47e769e7742c5acab0426935b6cba07795d9c188f8f319129c808746b8",
+  "unexpected_one_zero_slot_groups": 0
+}

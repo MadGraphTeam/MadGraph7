@@ -1,0 +1,924 @@
+{
+  "CPU_reservation": false,
+  "cap_seconds": 300,
+  "cleanup_reserve_seconds": 30,
+  "coefficient_and_warmup_bytes_equal": true,
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "-m",
+        "unittest",
+        "tests.unit_tests.various.test_tirust_benchmark_route_statistics",
+        "tests.unit_tests.various.test_tirust_benchmark_worker"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "log_sha256": "f84241f321fd6fdea3465631e9867fdd983ca578913d2efba70b519f32886ee1",
+      "name": "full50-tests",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O2",
+        "-ffixed-line-length-132",
+        "-fcheck=all",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+        "driver.f",
+        "stub.f90",
+        "-lgcc_s",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib/libtirust.a",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+        "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+        "-lmadloop_tirust",
+        "-o",
+        "check"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-route-statistics-benchmark-native-qualification-1/legacy",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "name": "legacy-compile",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O2",
+        "-ffixed-line-length-132",
+        "-fcheck=all",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+        "driver.f",
+        "stub.f90",
+        "-lgcc_s",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib/libtirust.a",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+        "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+        "-lmadloop_tirust",
+        "-o",
+        "check"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-route-statistics-benchmark-native-qualification-1/current",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "name": "current-compile",
+      "returncode": 0
+    }
+  ],
+  "elapsed_seconds": 3.708035293035209,
+  "exit_audits": {
+    "current": [
+      4,
+      13,
+      13,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      13,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "legacy": [
+      0,
+      13,
+      13,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      13,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "full_SM_amplitude_calls": 0,
+  "getter_preserves_IEEE_flags_and_diagnostic": true,
+  "mutex_released": true,
+  "native_DSO_sha256": "d427667a0f2f55d0bd96778c1259ffcf52e3925341890b81c38f5f94e1eb7052",
+  "observations": {
+    "current": [
+      {
+        "loops": 2,
+        "observation": {
+          "answer_dimensions": {
+            "allocated": 2,
+            "born_orders": 2,
+            "loop_orders": 1
+          },
+          "backend_precision_counts": {
+            "9:DP": 4
+          },
+          "cold_seconds": 0.001431596,
+          "native_dp_only": null,
+          "precision_usage": {
+            "accepted_backend_precision_counts": {
+              "9:DP": 4
+            },
+            "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+            "accepted_qp_transport": false,
+            "attempt_count_scope": "reported counts",
+            "bridge_native_dp_only": true,
+            "fallback_backend_observed": false,
+            "higher_precision_attempt_counts": {
+              "check": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              },
+              "primary": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              }
+            },
+            "higher_precision_success_counts": {
+              "check": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              },
+              "primary": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              }
+            },
+            "highest_observed_internal_bits": null,
+            "internal_higher_precision_attempted": false,
+            "internal_higher_precision_success_observed": false,
+            "native_dp_only": null,
+            "precision_classification": "internal arithmetic unqualified",
+            "requested_first_backend": 9,
+            "route_counter_delta": [
+              4,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              4,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "route_evidence_status": "complete-binary64-bridge-interval",
+            "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+            "tirust_qp_numerator_enabled": null,
+            "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+            "tirust_qp_transport_observed": false,
+            "use_qp_integrand_for_tirust": null
+          },
+          "route_statistics": {
+            "after": [
+              7,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              7,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "available": true,
+            "before": [
+              3,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              3,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "check": {
+              "attempt106": 0,
+              "attempt256": 0,
+              "attempt512": 0,
+              "direct": 4,
+              "method_choice": 0,
+              "refused": 0,
+              "tier106": 0,
+              "tier256": 0,
+              "tier512": 0,
+              "unreported": 0
+            },
+            "delta": [
+              4,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              4,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "loops": 2,
+            "points": 2,
+            "primary": {
+              "attempt106": 0,
+              "attempt256": 0,
+              "attempt512": 0,
+              "direct": 4,
+              "method_choice": 0,
+              "refused": 0,
+              "tier106": 0,
+              "tier256": 0,
+              "tier512": 0,
+              "unreported": 0
+            },
+            "schema": 1,
+            "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+            "sequence": 1,
+            "status_after": 0,
+            "status_before": 0
+          },
+          "rows": [
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            }
+          ],
+          "seconds": 5.1821e-05,
+          "seconds_per_point": 1.295525e-05,
+          "status_counts": {
+            "219": 2
+          },
+          "timed_status_counts": {
+            "219": 4
+          }
+        },
+        "status_sha256": "23bfb6bafe9b4002323ee410f0d39dbde69a18975b79dd4499ac50031ba7c6bc",
+        "values_sha256": "03b156df304183b557e87247cee23042a257d33c97a36b4b1fc370aee115f5dc"
+      },
+      {
+        "loops": 3,
+        "observation": {
+          "answer_dimensions": {
+            "allocated": 2,
+            "born_orders": 2,
+            "loop_orders": 1
+          },
+          "backend_precision_counts": {
+            "9:DP": 6
+          },
+          "cold_seconds": 0.001431596,
+          "native_dp_only": null,
+          "precision_usage": {
+            "accepted_backend_precision_counts": {
+              "9:DP": 6
+            },
+            "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+            "accepted_qp_transport": false,
+            "attempt_count_scope": "reported counts",
+            "bridge_native_dp_only": true,
+            "fallback_backend_observed": false,
+            "higher_precision_attempt_counts": {
+              "check": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              },
+              "primary": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              }
+            },
+            "higher_precision_success_counts": {
+              "check": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              },
+              "primary": {
+                "106": 0,
+                "256": 0,
+                "512": 0
+              }
+            },
+            "highest_observed_internal_bits": null,
+            "internal_higher_precision_attempted": false,
+            "internal_higher_precision_success_observed": false,
+            "native_dp_only": null,
+            "precision_classification": "internal arithmetic unqualified",
+            "requested_first_backend": 9,
+            "route_counter_delta": [
+              6,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              6,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "route_evidence_status": "complete-binary64-bridge-interval",
+            "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+            "tirust_qp_numerator_enabled": null,
+            "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+            "tirust_qp_transport_observed": false,
+            "use_qp_integrand_for_tirust": null
+          },
+          "route_statistics": {
+            "after": [
+              13,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              13,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "available": true,
+            "before": [
+              7,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              7,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "check": {
+              "attempt106": 0,
+              "attempt256": 0,
+              "attempt512": 0,
+              "direct": 6,
+              "method_choice": 0,
+              "refused": 0,
+              "tier106": 0,
+              "tier256": 0,
+              "tier512": 0,
+              "unreported": 0
+            },
+            "delta": [
+              6,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              6,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "loops": 3,
+            "points": 2,
+            "primary": {
+              "attempt106": 0,
+              "attempt256": 0,
+              "attempt512": 0,
+              "direct": 6,
+              "method_choice": 0,
+              "refused": 0,
+              "tier106": 0,
+              "tier256": 0,
+              "tier512": 0,
+              "unreported": 0
+            },
+            "schema": 1,
+            "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+            "sequence": 2,
+            "status_after": 0,
+            "status_before": 0
+          },
+          "rows": [
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            }
+          ],
+          "seconds": 6.492e-05,
+          "seconds_per_point": 1.082e-05,
+          "status_counts": {
+            "219": 2
+          },
+          "timed_status_counts": {
+            "219": 6
+          }
+        },
+        "status_sha256": "4ce55c252d3a642d4bdda40326e983383787bbfb356b8c52c72e796949702749",
+        "values_sha256": "03b156df304183b557e87247cee23042a257d33c97a36b4b1fc370aee115f5dc"
+      }
+    ],
+    "legacy": [
+      {
+        "loops": 2,
+        "observation": {
+          "answer_dimensions": {
+            "allocated": 2,
+            "born_orders": 2,
+            "loop_orders": 1
+          },
+          "backend_precision_counts": {
+            "9:DP": 4
+          },
+          "cold_seconds": 0.047945536,
+          "native_dp_only": true,
+          "rows": [
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            }
+          ],
+          "seconds": 0.00012946,
+          "seconds_per_point": 3.2365e-05,
+          "status_counts": {
+            "219": 2
+          },
+          "timed_status_counts": {
+            "219": 4
+          }
+        },
+        "status_sha256": "23bfb6bafe9b4002323ee410f0d39dbde69a18975b79dd4499ac50031ba7c6bc",
+        "values_sha256": "03b156df304183b557e87247cee23042a257d33c97a36b4b1fc370aee115f5dc"
+      },
+      {
+        "loops": 3,
+        "observation": {
+          "answer_dimensions": {
+            "allocated": 2,
+            "born_orders": 2,
+            "loop_orders": 1
+          },
+          "backend_precision_counts": {
+            "9:DP": 6
+          },
+          "cold_seconds": 0.047945536,
+          "native_dp_only": true,
+          "rows": [
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                1.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 0,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                2.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 1,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 1e-10,
+              "actual_backend": 9,
+              "coefficients": [
+                3.0,
+                4.0,
+                4.0,
+                0.0
+              ],
+              "order": 2,
+              "point": 2,
+              "precision": "DP",
+              "status": 219
+            }
+          ],
+          "seconds": 7.7001e-05,
+          "seconds_per_point": 1.28335e-05,
+          "status_counts": {
+            "219": 2
+          },
+          "timed_status_counts": {
+            "219": 6
+          }
+        },
+        "status_sha256": "4ce55c252d3a642d4bdda40326e983383787bbfb356b8c52c72e796949702749",
+        "values_sha256": "03b156df304183b557e87247cee23042a257d33c97a36b4b1fc370aee115f5dc"
+      }
+    ]
+  },
+  "performance_qualified": false,
+  "real_primary_check_tensor_calls": 52,
+  "scope": "Toy renderer/getter integration; no SM or performance qualification",
+  "sources": {
+    "current": {
+      "driver_sha256": "cd0a3e88bbb41c22df86e94b37f6a2efdf05bc4b8b8ddc2be7caea366ce97090",
+      "stub_sha256": "71a9efb77a1eb9e60cfd1c4dca94830fc682b06d77c61ab985304259630ece1f",
+      "warmup_sha256": "de6939b40479a8a80a89e76bc6f566f2beadfa5908bd0a9d3c5ab22fc56dd2b2"
+    },
+    "legacy": {
+      "driver_sha256": "d10e3f0734e136a65166928aaac7b3029f32e08c2e36a45fac28b8ee606ae77f",
+      "stub_sha256": "71a9efb77a1eb9e60cfd1c4dca94830fc682b06d77c61ab985304259630ece1f",
+      "warmup_sha256": "de6939b40479a8a80a89e76bc6f566f2beadfa5908bd0a9d3c5ab22fc56dd2b2"
+    }
+  },
+  "status": "passed",
+  "test50_zero_skips": true
+}

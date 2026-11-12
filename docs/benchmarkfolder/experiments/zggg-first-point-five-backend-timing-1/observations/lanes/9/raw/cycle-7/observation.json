@@ -1,0 +1,218 @@
+{
+  "answer_dimensions": {
+    "allocated": 1,
+    "born_orders": 1,
+    "loop_orders": 1
+  },
+  "backend_precision_counts": {
+    "9:DP": 1
+  },
+  "cold_seconds": 14.119382102,
+  "native_dp_only": false,
+  "precision_usage": {
+    "accepted_backend_precision_counts": {
+      "9:DP": 1
+    },
+    "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+    "accepted_qp_transport": false,
+    "attempt_count_scope": "reported counts",
+    "bridge_native_dp_only": false,
+    "fallback_backend_observed": false,
+    "higher_precision_attempt_counts": {
+      "check": {
+        "106": 26,
+        "256": 10,
+        "512": 0
+      },
+      "primary": {
+        "106": 36,
+        "256": 6,
+        "512": 0
+      }
+    },
+    "higher_precision_success_counts": {
+      "check": {
+        "106": 26,
+        "256": 10,
+        "512": 0
+      },
+      "primary": {
+        "106": 34,
+        "256": 6,
+        "512": 0
+      }
+    },
+    "highest_observed_internal_bits": 256,
+    "internal_higher_precision_attempted": true,
+    "internal_higher_precision_success_observed": true,
+    "native_dp_only": false,
+    "precision_classification": "internal higher-precision attempted",
+    "requested_first_backend": 9,
+    "route_counter_delta": [
+      1064,
+      56,
+      34,
+      6,
+      0,
+      0,
+      0,
+      36,
+      6,
+      0,
+      1074,
+      50,
+      26,
+      10,
+      0,
+      0,
+      0,
+      26,
+      10,
+      0
+    ],
+    "route_evidence_status": "higher-precision-observed",
+    "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+    "tirust_qp_numerator_enabled": null,
+    "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+    "tirust_qp_transport_observed": false,
+    "use_qp_integrand_for_tirust": null
+  },
+  "route_statistics": {
+    "after": [
+      10640,
+      560,
+      340,
+      60,
+      0,
+      0,
+      0,
+      360,
+      60,
+      0,
+      10740,
+      500,
+      260,
+      100,
+      0,
+      0,
+      0,
+      260,
+      100,
+      0
+    ],
+    "available": true,
+    "before": [
+      9576,
+      504,
+      306,
+      54,
+      0,
+      0,
+      0,
+      324,
+      54,
+      0,
+      9666,
+      450,
+      234,
+      90,
+      0,
+      0,
+      0,
+      234,
+      90,
+      0
+    ],
+    "check": {
+      "attempt106": 26,
+      "attempt256": 10,
+      "attempt512": 0,
+      "direct": 1074,
+      "method_choice": 50,
+      "refused": 0,
+      "tier106": 26,
+      "tier256": 10,
+      "tier512": 0,
+      "unreported": 0
+    },
+    "delta": [
+      1064,
+      56,
+      34,
+      6,
+      0,
+      0,
+      0,
+      36,
+      6,
+      0,
+      1074,
+      50,
+      26,
+      10,
+      0,
+      0,
+      0,
+      26,
+      10,
+      0
+    ],
+    "loops": 1,
+    "points": 1,
+    "primary": {
+      "attempt106": 36,
+      "attempt256": 6,
+      "attempt512": 0,
+      "direct": 1064,
+      "method_choice": 56,
+      "refused": 0,
+      "tier106": 34,
+      "tier256": 6,
+      "tier512": 0,
+      "unreported": 0
+    },
+    "schema": 1,
+    "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+    "sequence": 8,
+    "status_after": 0,
+    "status_before": 0
+  },
+  "rows": [
+    {
+      "accuracy": 7.607457318371973e-11,
+      "actual_backend": 9,
+      "coefficients": [
+        1.064140201337546e-08,
+        -5.754113231356987e-09,
+        -8.04123611386854e-09,
+        -2.3315663508576073e-09
+      ],
+      "order": 0,
+      "point": 1,
+      "precision": "DP",
+      "status": 219
+    },
+    {
+      "accuracy": 7.607457318371973e-11,
+      "actual_backend": 9,
+      "coefficients": [
+        1.064140201337546e-08,
+        -5.754113231356987e-09,
+        -8.04123611386854e-09,
+        -2.3315663508576073e-09
+      ],
+      "order": 1,
+      "point": 1,
+      "precision": "DP",
+      "status": 219
+    }
+  ],
+  "seconds": 5.711758673,
+  "seconds_per_point": 5.711758673,
+  "status_counts": {
+    "219": 1
+  },
+  "timed_status_counts": {
+    "219": 1
+  }
+}

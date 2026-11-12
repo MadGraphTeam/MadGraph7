@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-2/mg/bin/madgraph",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-2/runs/n1-9-1/commands.mg5"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-2/outputs/n1-9-1",
+  "identity": {
+    "parent_pid": 2581070,
+    "pid": 2582185,
+    "process_group": 2582185,
+    "session": 2582185,
+    "start_time_ticks": 254772530,
+    "state": "R"
+  },
+  "pid": 2582185
+}

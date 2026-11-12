@@ -1,0 +1,18 @@
+{
+  "files": {
+    "benchmark.pdf": {
+      "bytes": 2613578,
+      "sha256": "fa83602d57a43f25bc469e8d7185ba54b3236031eb861b12193a8788afd38678"
+    },
+    "build_zggg_timing_report.py": {
+      "bytes": 16077,
+      "sha256": "990b0506ae96c00ab9ac76211334d49dcd968399c2ebd2a2145f789e4268c672"
+    },
+    "report-build.json": {
+      "bytes": 187425,
+      "sha256": "7caeda73a75936563218c236499085d014ab01202436b3a0dabcc599e0766158"
+    }
+  },
+  "page_count": 45,
+  "schema": "madloop-initialization-profile-historical45-archive-v1"
+}

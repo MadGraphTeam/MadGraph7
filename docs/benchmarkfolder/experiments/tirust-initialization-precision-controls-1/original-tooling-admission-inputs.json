@@ -1,0 +1,40 @@
+{
+  "canonical_publication_admitted": false,
+  "files": {
+    "artifact_admission": {
+      "bytes": 2813,
+      "path": ".tirust-build/tirust-initialization-report-proposal-3/final-artifact-admission.json",
+      "sha256": "45f8c3b2d0efc845267b35a39258ec176cdb227f0525345e41348196cd113a0d"
+    },
+    "local_todo": {
+      "bytes": 7459,
+      "path": "docs/benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md",
+      "sha256": "a908151eca149a1ed3714767d08aacd36f5955c187f2022832c621817ed36246"
+    },
+    "manifest": {
+      "bytes": 399939,
+      "path": "docs/benchmarkfolder/campaigns/tirust-native-tiers-1/manifest.json",
+      "sha256": "1ed7ff89800de0a1ec361c15db3795adb2e4173bd52d404fd36f2efb0d62b0dc"
+    },
+    "root_tooling_log": {
+      "bytes": 149,
+      "path": ".tirust-build/native-tiers-benchmark-tooling-tests-1.log",
+      "sha256": "c969e3e72343d2879f369291b39c50e0f7634e71a634adf43e64e81f3bc00b8b"
+    },
+    "source_review": {
+      "bytes": 17349,
+      "path": ".tirust-build/tirust-route-statistics-benchmark-independent-source-review-1/receipt.json",
+      "sha256": "8ced302cfe43699a370bb5a773c2912a8b1e9fa567cd2936fc51e1025f2b00c9"
+    },
+    "toy_native": {
+      "bytes": 24592,
+      "path": ".tirust-build/tirust-route-statistics-benchmark-native-qualification-1/result.json",
+      "sha256": "5ae3312fac594fc4477be2e5c4b0aa8775da4f00b3fef1a8ad94f532b1eec85c"
+    }
+  },
+  "fresh_performance_selectors": null,
+  "native_source_commit": "8b74cdbb3e106f2859514bb4ca95d9fe5d70b370",
+  "rendering_authorized": false,
+  "schema": "bounded-route-aware-tooling-admission-inputs-v1",
+  "source_commit": "77eb57b82d4858ff302fa9870778e01cc86d7326"
+}

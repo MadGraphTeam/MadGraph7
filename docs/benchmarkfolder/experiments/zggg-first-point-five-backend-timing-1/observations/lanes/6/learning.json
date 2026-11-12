@@ -1,0 +1,62 @@
+{
+  "answer_dimensions": {
+    "allocated": 1,
+    "born_orders": 1,
+    "loop_orders": 1
+  },
+  "backend_precision_counts": {
+    "6:DP": 1
+  },
+  "cold_seconds": 6.627494554,
+  "measurement_phase": "steady-warmup",
+  "native_dp_only": true,
+  "performance_eligible": false,
+  "raw_outputs": {
+    "dimensions.dat": "           1           1           1\n",
+    "warmup.dat": "# call point order status Born finite single double accuracy\n           0           1           0         216  1.06414020133754608E-008 -5.75411323131021502E-009 -8.04123611384905138E-009 -2.33156635085612089E-009  1.16196992090911190E-011\n           0           1           1         216  1.06414020133754608E-008 -5.75411323131021502E-009 -8.04123611384905138E-009 -2.33156635085612089E-009  1.16196992090911190E-011\n           1           1           0         216  1.06414020133754608E-008 -5.75411323131021502E-009 -8.04123611384905138E-009 -2.33156635085612089E-009  1.16196992090911190E-011\n           1           1           1         216  1.06414020133754608E-008 -5.75411323131021502E-009 -8.04123611384905138E-009 -2.33156635085612089E-009  1.16196992090911190E-011\n"
+  },
+  "rows": [
+    {
+      "accuracy": 1.1619699209091119e-11,
+      "actual_backend": 6,
+      "coefficients": [
+        1.064140201337546e-08,
+        -5.754113231310215e-09,
+        -8.041236113849051e-09,
+        -2.331566350856121e-09
+      ],
+      "order": 0,
+      "point": 1,
+      "precision": "DP",
+      "status": 216
+    },
+    {
+      "accuracy": 1.1619699209091119e-11,
+      "actual_backend": 6,
+      "coefficients": [
+        1.064140201337546e-08,
+        -5.754113231310215e-09,
+        -8.041236113849051e-09,
+        -2.331566350856121e-09
+      ],
+      "order": 1,
+      "point": 1,
+      "precision": "DP",
+      "status": 216
+    }
+  ],
+  "seconds": null,
+  "seconds_per_point": null,
+  "status_counts": {
+    "216": 1
+  },
+  "timed_status_counts": null,
+  "warmup_call_point_order": [
+    {
+      "call": 1,
+      "point": 1
+    }
+  ],
+  "warmup_first_call": 1,
+  "warmup_last_call": 1
+}

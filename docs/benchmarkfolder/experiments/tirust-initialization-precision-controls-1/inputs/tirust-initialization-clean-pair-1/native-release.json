@@ -1,0 +1,35 @@
+{
+  "status": "closed-pair",
+  "global_numerical_mutex_free_at_check": true,
+  "owned_survivors": [],
+  "shared_and_sources_unchanged": true,
+  "no_preload_shim_or_counter_queries": true,
+  "STOP_BYE_closed": {
+    "old": true,
+    "candidate": true
+  },
+  "actual_Fortran_READY_SYSTEM_CLOCK_seconds": {
+    "old": 255.24129478,
+    "candidate": 15.345797304
+  },
+  "status_counts": {
+    "old": {
+      "323": 1
+    },
+    "candidate": {
+      "219": 1
+    }
+  },
+  "actual_live_tirust": {
+    "old": {
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-oem-signed-prefix-1/HEPTools/tirust/lib/libmadloop_tirust.so": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0"
+    },
+    "candidate": {
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/install/lib/libmadloop_tirust.so": "470d46df9c8fcb76dc5448a04187dfc23a757481b3d4ef0384e13bd6e7e9e709"
+    }
+  },
+  "result_sha256": "cb71c4c2a11023ad71727972c9d1c62e0a7896792e25d7ae6f8e2343882c5ea8",
+  "terminal_sha256": "3fcfe3446bc05b4eb95fa010b4012886e7c4ebc4d316a74e0e4e930e8a884c8f",
+  "performance_acceptance": false,
+  "scope": "single descriptive initialization pair; bootstrap+onewarmup ononefrozenpoint"
+}

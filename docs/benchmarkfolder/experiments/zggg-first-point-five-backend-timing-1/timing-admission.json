@@ -1,0 +1,11 @@
+{
+  "build_closed_zero_survivors": true,
+  "metadata_agent_release": "registration/source/model copy closed, no active child or further expensive I/O",
+  "metadata_manifest": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/tirust-native-tiers-1/manifest.json",
+  "metadata_manifest_sha256": "1ed7ff89800de0a1ec361c15db3795adb2e4173bd52d404fd36f2efb0d62b0dc",
+  "native_parity_sha256": "5ae3312fac594fc4477be2e5c4b0aa8775da4f00b3fef1a8ad94f532b1eec85c",
+  "no_other_performance_jobs_authorized_until_close": true,
+  "performance_acceptance": false,
+  "scope": "seven balanced cycles, one diagnosed first frozen physical point",
+  "tooling_head": "77eb57b82d4858ff302fa9870778e01cc86d7326"
+}

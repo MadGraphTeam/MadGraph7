@@ -1,0 +1,67 @@
+{
+  "canonical_heptools_prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools",
+  "canonical_library_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+  "configuration_file": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt",
+  "configuration_key": "tirust",
+  "configuration_sha256_after": "6887875be860758464e7341cfa9207001e73233738fec70af0f274fcaeae70d0",
+  "configuration_sha256_before": "e6f70b661e4aa170deecfc7ff5367677d8a98e69b11163b66422baa58a99ec91",
+  "current_tirust": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib",
+  "installed_payloads_unchanged": true,
+  "new_build_stages": false,
+  "numerical_work_requested": false,
+  "only_semantic_change": "tirust",
+  "owned_survivors": [],
+  "performance_eligible": false,
+  "previous_tirust": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-oem-signed-prefix-1/HEPTools/tirust/lib",
+  "rebuild_requested": false,
+  "receipts": {
+    "activation": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/config-activation-1/result.json",
+      "sha256": "c4cb689d8316b25502d328e25d5d75608d605c82a97a3866123b70fa1466e06e"
+    },
+    "activation_terminal": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/execution/activate-config/terminal.json",
+      "sha256": "082bca95b093d5e2d6cb1a7183ff2f4edbbefea6ea1721f2d73982e3245620fa"
+    },
+    "cli_log": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/config-activation-1/cli.log",
+      "sha256": "315fe7327e93f90a2591a23f6987844ff83b6db657f4a872b84a4156efb9d3c5"
+    },
+    "commands": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/config-activation-1/activate.mg7",
+      "sha256": "f4bd88dbfc1b8fbf083e8bd5dc7eca94b69a3ecc2cf8dfa2279f622c0e62670a"
+    },
+    "compiled": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/compiled.json",
+      "sha256": "31f9d79b34e9ed7974807c87a53dcbc993e76c69841a96501617c17e106fa806"
+    },
+    "config_after": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/config-activation-1/after-mg7_configuration.txt",
+      "sha256": "6887875be860758464e7341cfa9207001e73233738fec70af0f274fcaeae70d0"
+    },
+    "config_before": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/config-activation-1/before-mg7_configuration.txt",
+      "sha256": "e6f70b661e4aa170deecfc7ff5367677d8a98e69b11163b66422baa58a99ec91"
+    },
+    "delivery": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/delivery-receipt.json",
+      "sha256": "88f6b75392dcb9cb5e03df6487d0ade2802c919d37e9aac6e8b16e54f2673b64"
+    },
+    "live_abi": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/live-abi.json",
+      "sha256": "a26bb012be2685ab8b3e2eef69477bb84541d3924b55f4eca352a52b865fd2d4"
+    },
+    "published": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/published.json",
+      "sha256": "0bf70892bb438c2ea2c06601b7d19c8938e67ed6e4dc8379b0c9720cac158c0e"
+    },
+    "qualified": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/qualified.json",
+      "sha256": "198830a7292e9cf5c16f10dabfc5427fe735b471939a439a1a4fb2047fbf53ed"
+    }
+  },
+  "reuse_without_update": true,
+  "sdk_or_compiler_jobs_remaining": false,
+  "shared_library_sha256": "d427667a0f2f55d0bd96778c1259ffcf52e3925341890b81c38f5f94e1eb7052",
+  "status": "final-installation-selected-by-actual-mg-cli"
+}

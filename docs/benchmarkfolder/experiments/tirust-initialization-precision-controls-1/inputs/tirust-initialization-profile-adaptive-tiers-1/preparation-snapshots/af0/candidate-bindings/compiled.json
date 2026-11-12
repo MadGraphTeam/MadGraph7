@@ -1,0 +1,31 @@
+{
+  "artifacts": {
+    "Cargo.lock": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+    "Cargo.toml": "275270a2480c3b90947e9bc6907eb8a954bf28b469a1700999bde958a8347eb7",
+    "include/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+    "include/tirust.h": "9b716dbc46f5844b1865290000d732b8d5dbf718f2de9e1952b101923e0e314c",
+    "lib/libmadloop_tirust.so": "470d46df9c8fcb76dc5448a04187dfc23a757481b3d4ef0384e13bd6e7e9e709",
+    "lib/libtirust.a": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+    "lib/mtirust.mod": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+    "lib/tirust-NOTICES.txt": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+    "lib/tirust-config.json": "b468e028ca5e9a1c67fa7c80c697c1460f5b59a66b21a9997f815799e3e9da01",
+    "lib/tirust-dependency-notices.tar.gz": "bc3415ed26bdbc792d81ca057e4d16d269d4d45d42c42d46bac73255cea90347",
+    "lib/tirust-dependency-provenance.json": "99ec6f26c895d004914f49ca657696d384d8a161a7323884229be7638312c4b1",
+    "lib/tirust-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/tirust-native-libs.txt": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+  },
+  "candidate_source_sha256": "607e7f58842b50a07df7bbdbcbd00ee399f6baad0b670745b45cbf807de7ff07",
+  "configuration_saved": false,
+  "elapsed_seconds": 471.16454432625324,
+  "header_sha256": "9b716dbc46f5844b1865290000d732b8d5dbf718f2de9e1952b101923e0e314c",
+  "immutable_core_sources_reused": true,
+  "installed": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/install",
+  "library_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/install/lib",
+  "partial_rescue": false,
+  "precision_tiers": true,
+  "published": false,
+  "sdk_smoke_executed": false,
+  "source_prepared_sha256": "677c1dc1a1ab2dca692b3a0ef2ca2e53830c71ca4b8e22a97099465fdff23a58",
+  "status": "compiled-not-qualified",
+  "upstream_revision": "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1"
+}

@@ -1,0 +1,44 @@
+{
+  "argv": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/build_candidate.py",
+    "publish"
+  ],
+  "cap_seconds": 90.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1462293,
+        "pid": 1462319,
+        "process_group": 1462319,
+        "session": 1462319,
+        "start_time_ticks": 255411314,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_helper_sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+  "cleanup_reserve_seconds": 60,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "dependency_caches_reused": true,
+  "elapsed_seconds": 1.7333097830414772,
+  "log_sha256": "7dc1f57383e095ec072349532240bad9b0e58f73f81fa081428b629d2fd8e771",
+  "outer_numerical_mutex": false,
+  "ownership_helper_sha256": "51ca38f0621c3d57a15b8ac08b7c37be1e6023843af9a1fca1b48dd4242a2b97",
+  "performance_eligible": false,
+  "personal_license_removed": true,
+  "phase": "publish",
+  "phase_receipt_sha256": "0bf70892bb438c2ea2c06601b7d19c8938e67ed6e4dc8379b0c9720cac158c0e",
+  "qualification_mutex_owner": "build_candidate.py",
+  "returncode": 0,
+  "runner_sha256": "f981529c18a296ce6daff6778996aec707d74022381b5912daa45e641fdbe6f6",
+  "source_snapshot": {
+    "build-prepared.json": "df63a671162a70056dbde81af6fb466c839f7ec8d0a77a5dd2909a643199ff71",
+    "build_candidate.py": "9f1d04871137025f740497734a8cd8cc3d86d8eccadf0a00528baba8de8126cc"
+  },
+  "status": "passed"
+}

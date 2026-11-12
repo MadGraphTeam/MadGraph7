@@ -1,0 +1,99 @@
+{
+  "status": "prepared-only-no-native-SDK-math",
+  "paths": {
+    "summarize.py": {
+      "sha256": "8648278079735c6f18c0cda499117aec66690ff791418da3a67a06908e0b359d",
+      "bytes": 5031
+    },
+    "interposition-symbols.txt": {
+      "sha256": "64c66698e1266fa8feb5777e68ead2cdd1814ddcba44326405605b2597b218f0",
+      "bytes": 914
+    },
+    "genuine-QP-branch-preservation.json": {
+      "sha256": "f6177ef3b9a4ea12484537f41f8aade6739dddf73e860225e2ac2c51c5a240cd",
+      "bytes": 509
+    },
+    "candidate-binding-index.json": {
+      "sha256": "e1abd52834a2c4c73325e607652a1ecdba7c1991ac43af481dba7a6a019e1f8d",
+      "bytes": 430
+    },
+    "pure-replay-test.json": {
+      "sha256": "a4f6b6fb45560a76935b29bc9e7ae7d794ce32634890d804786e2da88441758d",
+      "bytes": 76
+    },
+    "old-profiles-preservation-before.json": {
+      "sha256": "aefeafcdbb0f62572a905c0d7506cc95113e70641048ee75f7acbad0a63ef004",
+      "bytes": 24144
+    },
+    "first-point.dat": {
+      "sha256": "8880598b2d448930eedda40d9797fd137a5845c5289345d1e31cbcd22ff10c3b",
+      "bytes": 587
+    },
+    "libtirust_phase_profile.so": {
+      "sha256": "01730174ebe9ead3dfca8181e19cc1cda6b6ab7edfd2fa9ce233cf9c6620a1d4",
+      "bytes": 21152
+    },
+    "README.md": {
+      "sha256": "ac85ae5ef913c54ce85d8ee3e0a3912655329c9d954b13694f7867386e558df3",
+      "bytes": 4544
+    },
+    "route-synthetic-checks.json": {
+      "sha256": "84834e1fdc5309eee192cdd8a21889f84da681e091ce89745f98861a4677b9bc",
+      "bytes": 279
+    },
+    "routes.py": {
+      "sha256": "cbd4758cc34f84501b48b9082bcf2af7fb835b7e60e540b52e8a896abd8b8eaa",
+      "bytes": 2954
+    },
+    "profile.py": {
+      "sha256": "276435fe80a62bd67730c663315e2c32f4649572f09386d08617b88961eff84a",
+      "bytes": 13328
+    },
+    "run-profile.py": {
+      "sha256": "165d0fb6f0f8a324ccf7250dafa66daf0bff4d5c749b865ec7452fc6b96a95ec",
+      "bytes": 3668
+    },
+    "trace.c": {
+      "sha256": "d8c354184f5db6387eb65d399650bb831903e31851ea562a66db03024a128042",
+      "bytes": 10256
+    },
+    "preparation.json": {
+      "sha256": "38aebae11559ad177df9b5e07e77aa5852ad8214faffff19d2ce313e90959e8b",
+      "bytes": 32510
+    },
+    "compare.py": {
+      "sha256": "79254308c556256e7f184f42626c84b518b44e47a97c08307ba7be19c668c05e",
+      "bytes": 5103
+    },
+    "candidate-bindings/AUDIT.md": {
+      "sha256": "2d33c44cb554cced875ffe6a9a60750f519347fb3c5129c8c31a5f33b37a21d0",
+      "bytes": 2482
+    },
+    "candidate-bindings/sealed.json": {
+      "sha256": "1a0615c1a640392e001859f225640a85ffc05d79193cac113ea3a29247e2c84b",
+      "bytes": 875
+    },
+    "candidate-bindings/tirust.h": {
+      "sha256": "9b716dbc46f5844b1865290000d732b8d5dbf718f2de9e1952b101923e0e314c",
+      "bytes": 6385
+    },
+    "candidate-bindings/compiled.json": {
+      "sha256": "716a5132775cad37926b2d40cc03de276232ce6c54a1e99029b13043020693c7",
+      "bytes": 2178
+    },
+    "candidate-bindings/COUNTER_LIMITS.md": {
+      "sha256": "71f23c7409f4dea92d7069b106d70ae3a1347fe17a5d42ea5cd764c27eced33f",
+      "bytes": 839
+    }
+  },
+  "original_O0_executable_sha256": "ffb951914a087327ae05ed63e90fa9ecfa3603137a254cca2781fc431791ffa3",
+  "candidate_dso_sha256": "470d46df9c8fcb76dc5448a04187dfc23a757481b3d4ef0384e13bd6e7e9e709",
+  "candidate_source_sha256": "607e7f58842b50a07df7bbdbcbd00ee399f6baad0b670745b45cbf807de7ff07",
+  "purpose": "functional-precision-usage",
+  "scientific_timing_claim": false,
+  "performance_eligible": false,
+  "root_GO_required": true,
+  "overlap_requires_root_record_schema": "madloop-native-functional-overlap-v1",
+  "native_command": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3 -B .tirust-build/tirust-initialization-profile-adaptive-tiers-1/run-profile.py --run-label functional-1 --purpose functional-precision-usage",
+  "compile_and_pure_validation_passed": true
+}

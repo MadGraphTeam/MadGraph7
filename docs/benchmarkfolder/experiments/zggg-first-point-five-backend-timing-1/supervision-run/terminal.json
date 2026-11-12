@@ -1,0 +1,69 @@
+{
+  "cap_seconds": 600.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2474440,
+        "pid": 2474538,
+        "process_group": 2474538,
+        "session": 2474538,
+        "start_time_ticks": 255562303,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2474538,
+        "pid": 2482662,
+        "process_group": 2482662,
+        "session": 2482662,
+        "start_time_ticks": 255563037,
+        "state": "D"
+      },
+      {
+        "parent_pid": 2474538,
+        "pid": 2492792,
+        "process_group": 2492792,
+        "session": 2492792,
+        "start_time_ticks": 255564186,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2474538,
+        "pid": 2499052,
+        "process_group": 2499052,
+        "session": 2499052,
+        "start_time_ticks": 255565252,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2474538,
+        "pid": 2506995,
+        "process_group": 2506995,
+        "session": 2506995,
+        "start_time_ticks": 255566426,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2474538,
+        "pid": 2514774,
+        "process_group": 2514774,
+        "session": 2514774,
+        "start_time_ticks": 255567491,
+        "state": "Z"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60,
+  "controller_sha256": "15170a5ada7e35d25f0507afc8f4ff0d76a43f86471a370a16ea3d8d1bf6ab98",
+  "cpu_reserved": false,
+  "elapsed_seconds": 230.25633086217567,
+  "log_sha256": "38fed58f93b010607a4b770f0dd97526b85c412320fd8fa2283a30b4a73ced30",
+  "performance_acceptance": false,
+  "physics_regression_pass": true,
+  "returncode": 0,
+  "scope": "one explicitly diagnosed point; no process-average/main-campaign acceptance",
+  "stage": "run",
+  "status": "observations-collected"
+}

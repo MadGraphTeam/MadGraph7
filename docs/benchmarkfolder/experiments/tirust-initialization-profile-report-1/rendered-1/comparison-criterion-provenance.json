@@ -1,0 +1,12 @@
+{
+  "function": "compare_rows",
+  "pure_function_identity": {
+    "bytes": 2432,
+    "sha256": "336de8400f2cf744e5780ca71925229216a150a4886a0417a9b3822a270c687b"
+  },
+  "source": "tools/tirust_benchmark.py",
+  "source_identity": {
+    "bytes": 96661,
+    "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370"
+  }
+}

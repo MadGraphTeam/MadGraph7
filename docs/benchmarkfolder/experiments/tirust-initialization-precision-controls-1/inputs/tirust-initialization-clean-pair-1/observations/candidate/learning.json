@@ -1,0 +1,62 @@
+{
+  "cold_seconds": 15.345797304,
+  "seconds": null,
+  "seconds_per_point": null,
+  "rows": [
+    {
+      "point": 1,
+      "order": 0,
+      "status": 219,
+      "coefficients": [
+        1.064140201337546e-08,
+        -5.754113231356987e-09,
+        -8.04123611386854e-09,
+        -2.3315663508576073e-09
+      ],
+      "accuracy": 7.607457318371973e-11,
+      "actual_backend": 9,
+      "precision": "DP"
+    },
+    {
+      "point": 1,
+      "order": 1,
+      "status": 219,
+      "coefficients": [
+        1.064140201337546e-08,
+        -5.754113231356987e-09,
+        -8.04123611386854e-09,
+        -2.3315663508576073e-09
+      ],
+      "accuracy": 7.607457318371973e-11,
+      "actual_backend": 9,
+      "precision": "DP"
+    }
+  ],
+  "status_counts": {
+    "219": 1
+  },
+  "timed_status_counts": null,
+  "backend_precision_counts": {
+    "9:DP": 1
+  },
+  "native_dp_only": true,
+  "answer_dimensions": {
+    "allocated": 1,
+    "loop_orders": 1,
+    "born_orders": 1
+  },
+  "measurement_phase": "steady-warmup",
+  "performance_eligible": false,
+  "warmup_first_call": 1,
+  "warmup_last_call": 1,
+  "warmup_call_point_order": [
+    {
+      "call": 1,
+      "point": 1
+    }
+  ],
+  "raw_outputs": {
+    "warmup.dat": "# call point order status Born finite single double accuracy\n           0           1           0         219  1.06414020133754608E-008 -5.75411323135698712E-009 -8.04123611386853976E-009 -2.33156635085760733E-009  7.60745731837197338E-011\n           0           1           1         219  1.06414020133754608E-008 -5.75411323135698712E-009 -8.04123611386853976E-009 -2.33156635085760733E-009  7.60745731837197338E-011\n           1           1           0         219  1.06414020133754608E-008 -5.75411323135698712E-009 -8.04123611386853976E-009 -2.33156635085760733E-009  7.60745731837197338E-011\n           1           1           1         219  1.06414020133754608E-008 -5.75411323135698712E-009 -8.04123611386853976E-009 -2.33156635085760733E-009  7.60745731837197338E-011\n",
+    "dimensions.dat": "           1           1           1\n"
+  }
+}

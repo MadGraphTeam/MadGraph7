@@ -1,0 +1,43 @@
+{
+  "append_proposal_admitted": true,
+  "candidate_qualified": true,
+  "canonical_publication_admitted": false,
+  "closed": true,
+  "new_native_physics_evaluations": 0,
+  "packets": [
+    {
+      "index_name": "index.json",
+      "index_sha256": "3f3325ea08f48846158a0b7e35cb60de05958c5f0fb733b3e1af52d087f773cb",
+      "path": "experiments/tirust-initialization-precision-controls-1"
+    },
+    {
+      "index_name": "index.json",
+      "index_sha256": "a10a5a26640074ea1408651e749cd711e4b7849ee454d7dffdd4d493cbf51ede",
+      "path": "experiments/zggg-first-point-five-backend-timing-1"
+    },
+    {
+      "index_name": "index.json",
+      "index_sha256": "9067e856f0076e64cd99659f46ee3b5f970e8779efcad6e2fcde236a159147aa",
+      "path": "experiments/madgraph-cli-profile-final-1"
+    },
+    {
+      "index_name": "index.json",
+      "index_sha256": "61ef3a2a1441a2e78ea87233d7d4a24ad6e4953e5a1fb71191a2962c0e8a4c39",
+      "path": "experiments/madgraph-cli-profile-old-control-1"
+    },
+    {
+      "index_name": "index.json",
+      "index_sha256": "e401cf5d4efb7708c277172eaa3be9f29bcadf54c5b3b484e7311109cf9a26cb",
+      "path": "experiments/zggg-five-backend-timing-1"
+    }
+  ],
+  "performance_acceptance": false,
+  "production_artifact_qualified": true,
+  "production_source_promotion": false,
+  "schema": "madloop-initialization-profile-report-selection-v1",
+  "source_binding": {
+    "bytes": 2216,
+    "sha256": "65f52e1ff0f726734da5009131f6c85f578bd727542bc67927963fcd9006cf39"
+  },
+  "style_sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+}

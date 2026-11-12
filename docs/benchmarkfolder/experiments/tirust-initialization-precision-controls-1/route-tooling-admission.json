@@ -1,0 +1,96 @@
+{
+  "bounded_metadata_bytes": 452301,
+  "bounded_metadata_files": 6,
+  "campaign": "tirust-native-tiers-1",
+  "canonical_publication_admitted": false,
+  "final_packet_admitted": false,
+  "fresh_local_numerical_lanes_pending": 66,
+  "fresh_local_runtime_gates_pending": 8,
+  "fresh_performance_records_admitted": false,
+  "full_SM_amplitude_calls_in_toy": 0,
+  "goal_complete": false,
+  "historical_performance_relabelled": false,
+  "input_receipts": {
+    "artifact_admission": {
+      "bytes": 2813,
+      "path": ".tirust-build/tirust-initialization-report-proposal-3/final-artifact-admission.json",
+      "sha256": "45f8c3b2d0efc845267b35a39258ec176cdb227f0525345e41348196cd113a0d"
+    },
+    "local_todo": {
+      "bytes": 7459,
+      "path": "docs/benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md",
+      "sha256": "a908151eca149a1ed3714767d08aacd36f5955c187f2022832c621817ed36246"
+    },
+    "manifest": {
+      "bytes": 399939,
+      "path": "docs/benchmarkfolder/campaigns/tirust-native-tiers-1/manifest.json",
+      "sha256": "1ed7ff89800de0a1ec361c15db3795adb2e4173bd52d404fd36f2efb0d62b0dc"
+    },
+    "root_tooling_log": {
+      "bytes": 149,
+      "path": ".tirust-build/native-tiers-benchmark-tooling-tests-1.log",
+      "sha256": "c969e3e72343d2879f369291b39c50e0f7634e71a634adf43e64e81f3bc00b8b"
+    },
+    "source_review": {
+      "bytes": 17349,
+      "path": ".tirust-build/tirust-route-statistics-benchmark-independent-source-review-1/receipt.json",
+      "sha256": "8ced302cfe43699a370bb5a773c2912a8b1e9fa567cd2936fc51e1025f2b00c9"
+    },
+    "toy_native": {
+      "bytes": 24592,
+      "path": ".tirust-build/tirust-route-statistics-benchmark-native-qualification-1/result.json",
+      "sha256": "5ae3312fac594fc4477be2e5c4b0aa8775da4f00b3fef1a8ad94f532b1eec85c"
+    }
+  },
+  "large_binary_hashes_recomputed": false,
+  "manifest": {
+    "bytes": 399939,
+    "path": "docs/benchmarkfolder/campaigns/tirust-native-tiers-1/manifest.json",
+    "sha256": "1ed7ff89800de0a1ec361c15db3795adb2e4173bd52d404fd36f2efb0d62b0dc"
+  },
+  "native_release_tests": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 16
+  },
+  "native_source_commit": "8b74cdbb3e106f2859514bb4ca95d9fe5d70b370",
+  "native_toy_qualification_passed": true,
+  "native_toy_scope": "Toy renderer/getter integration; no SM or performance qualification",
+  "native_toy_tensor_calls": 52,
+  "new_native_physics_evaluations": 0,
+  "render_or_large_replay_performed": false,
+  "root_integration_tests": {
+    "log": {
+      "bytes": 166,
+      "sha256": "c72441cea5e839e49f49652a9a4a34b5bcbe12db317517cefca7e52d82fc9e4d"
+    },
+    "passed": 67,
+    "skips": 0
+  },
+  "schema": "madloop-route-aware-tooling-admission-v1",
+  "shared_library_sha256": "d427667a0f2f55d0bd96778c1259ffcf52e3925341890b81c38f5f94e1eb7052",
+  "source_commit": "77eb57b82d4858ff302fa9870778e01cc86d7326",
+  "source_review_clear": true,
+  "tooling_tests": {
+    "duplicate_log_counted_again": false,
+    "passed": 50,
+    "skips": 0
+  },
+  "toy_performance_qualified": false,
+  "toy_route_observations": [
+    {
+      "all_other_deltas": 0,
+      "check_direct": 4,
+      "loops": 2,
+      "primary_direct": 4,
+      "whole_amplitude_native_dp_only": null
+    },
+    {
+      "all_other_deltas": 0,
+      "check_direct": 6,
+      "loops": 3,
+      "primary_direct": 6,
+      "whole_amplitude_native_dp_only": null
+    }
+  ]
+}

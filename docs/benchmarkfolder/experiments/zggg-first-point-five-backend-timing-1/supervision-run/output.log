@@ -1,0 +1,46 @@
+INITIALIZE backend=1
+READY backend=1 seconds=7.022260655
+INITIALIZE backend=6
+READY backend=6 seconds=6.627494554
+INITIALIZE backend=7
+READY backend=7 seconds=7.497253222
+INITIALIZE backend=8
+READY backend=8 seconds=6.775192222
+INITIALIZE backend=9
+READY backend=9 seconds=14.119382102
+CYCLE 1 backend=1 ms=3339.338756
+CYCLE 1 backend=6 ms=3190.226519
+CYCLE 1 backend=7 ms=3564.1814369999997
+CYCLE 1 backend=8 ms=3236.940087
+CYCLE 1 backend=9 ms=5001.018148
+CYCLE 2 backend=7 ms=3530.190941
+CYCLE 2 backend=1 ms=3416.300453
+CYCLE 2 backend=8 ms=3199.000034
+CYCLE 2 backend=9 ms=4985.4731790000005
+CYCLE 2 backend=6 ms=3278.8809250000004
+CYCLE 3 backend=6 ms=3512.122871
+CYCLE 3 backend=8 ms=3526.731314
+CYCLE 3 backend=1 ms=3695.587035
+CYCLE 3 backend=7 ms=3791.862736
+CYCLE 3 backend=9 ms=5329.162236
+CYCLE 4 backend=9 ms=5426.21683
+CYCLE 4 backend=7 ms=3837.50632
+CYCLE 4 backend=1 ms=3652.5152
+CYCLE 4 backend=8 ms=3522.651824
+CYCLE 4 backend=6 ms=3575.994132
+CYCLE 5 backend=7 ms=3929.358581
+CYCLE 5 backend=1 ms=3752.761617
+CYCLE 5 backend=9 ms=5619.103091999999
+CYCLE 5 backend=6 ms=3585.430421
+CYCLE 5 backend=8 ms=3574.195243
+CYCLE 6 backend=8 ms=3609.412283
+CYCLE 6 backend=9 ms=5606.40566
+CYCLE 6 backend=6 ms=3660.2545
+CYCLE 6 backend=1 ms=3795.835929
+CYCLE 6 backend=7 ms=4218.313923000001
+CYCLE 7 backend=6 ms=3662.983251
+CYCLE 7 backend=9 ms=5711.758673
+CYCLE 7 backend=8 ms=3638.9238069999997
+CYCLE 7 backend=7 ms=3964.735058
+CYCLE 7 backend=1 ms=3742.270138
+CLOSED one diagnosed point; observations only, no process-average acceptance

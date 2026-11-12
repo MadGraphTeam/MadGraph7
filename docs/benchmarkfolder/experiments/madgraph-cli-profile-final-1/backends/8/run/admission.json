@@ -1,0 +1,36 @@
+{
+  "backend": 8,
+  "cap_seconds": 3600.0,
+  "case": "n1",
+  "cleanup_reserve_seconds": 60,
+  "cli_root": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-3/mg",
+  "command_sha256": "6e10cb39cd3e8649d45b34a2c9079dfface1824c8a36606d13edc09145ed1cbf",
+  "controller_sha256": "56079c2ad778b6f836b82a145a92b95cb0e179448d3979c7273b089bcff488ed",
+  "cpu": 12,
+  "cpu_reservation": false,
+  "host_load_before": [
+    306.9599609375,
+    308.89453125,
+    307.4443359375
+  ],
+  "output_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-3/outputs/n1-8-1",
+  "performance_acceptance": false,
+  "precision_scope": "stock DP-interface timing with local tensor-tier policy; timed native routes and per-evaluation statuses unavailable; external stability analysis separate",
+  "process_checks_sha256": "7c0c1ebd802943b6e913bf2152a4801e1c9253273ac07a24734e326799cddf88",
+  "route_statistics": {
+    "installed_capability": true,
+    "missing_counts_are_not_zero": true,
+    "stock_driver_emits_counts": false,
+    "timed_counts": null
+  },
+  "run_label": "1",
+  "source_manifest_sha256": "ca2b5aac404851be97226d87d7dcb4cc36bfc33b80e285d91f2bd4ae96ababf9",
+  "source_mg_revision": "77eb57b82d4858ff302fa9870778e01cc86d7326",
+  "status": "running",
+  "timing_clocks": {
+    "other_stages": "Python time.time subprocess wall durations",
+    "unpolarized_full": "ProcessTimer monotonic waiter completion, RSS sampling does not define end time"
+  },
+  "tirust_dso_sha256": "d427667a0f2f55d0bd96778c1259ffcf52e3925341890b81c38f5f94e1eb7052",
+  "tirust_prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust"
+}

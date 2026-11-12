@@ -1,0 +1,19 @@
+{
+  "full_mp_and_exact_qp_cache": {
+    "sha256": "8331316b8a6f9eca09671569c42fa04d4ee63d004a888c7706f618b93ac797f4",
+    "unchanged": true
+  },
+  "genuine_qp_c_abi": {
+    "sha256": "94228c5511987c9cbdd7457fa40c57e07759381fcef6cb8b4b4206ee8dea1338",
+    "unchanged": true
+  },
+  "pole_only_paths": {
+    "sha256": "a1f67fcad90fdb299955d1d7f03885523bd1067a88b8cd65cdac6db8c15e8245",
+    "unchanged": true
+  },
+  "qp_parser_transport_and_packing": {
+    "sha256": "d55f03cefc940246910f95114e903a280b447b951035c7f1a952d550d90983e2",
+    "unchanged": true
+  },
+  "status": "pure-source-comparison-passed-no-native"
+}

@@ -1,0 +1,28 @@
+{
+  "backend": 8,
+  "backend_label": "NinjaRS",
+  "boot_seconds": 0.014976739883422852,
+  "initialization_seconds": 0.05350303649902344,
+  "metadata_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/madgraph-cli-profile-2/outputs/n1-8-1/SAVEDTMP_CHECK_uux_z/SavedRunInfos/profile_timing_metadata.json",
+  "metadata_sha256": "c89bbb8eb65c19862934d9d1bf1efd351b5695ccf1bf9a713f6e14beda566db5",
+  "per_evaluation_statuses_available": false,
+  "performance_acceptance": false,
+  "polarized_full_ms": 0.026217646435122376,
+  "polarized_skip_ms": 0.02448658724209585,
+  "precision_scope": "stock fixed-DP timing; no per-evaluation statuses; external stability analysis separate",
+  "process": "u u~ > z [virt=QCD]",
+  "profile_log_sha256": "6976d82b3175808686ccf9391ec29c1a012405ddeefe78db24dc724232a46f6d",
+  "schema": "madgraph-stock-profile-result-v1",
+  "source_mg_revision": "cafb35d7987436661c3346e39c724d329846a1f2",
+  "stage_points": {
+    "boot": 2,
+    "polarized_full": 8972,
+    "polarized_skip": 8972,
+    "unpolarized_full": 4486,
+    "unpolarized_skip": 4486
+  },
+  "tirust_dso_sha256": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0",
+  "unpolarized_full_minus_skip_estimate_ms": 0.01903548604188836,
+  "unpolarized_full_ms": 0.09409157867363613,
+  "unpolarized_skip_ms": 0.07505609263174777
+}

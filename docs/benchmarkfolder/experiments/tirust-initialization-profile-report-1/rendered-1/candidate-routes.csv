@@ -1,0 +1,21 @@
+ABI_index,context,counter,kind,count,input_bits,arithmetic_bits,scope
+0,primary,Direct,final_accepted,2128,53,53,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+1,primary,MethodChoice,final_accepted,112,53,53,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+2,primary,Tier106_DP_input,final_accepted,68,53,106,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+3,primary,Tier256_DP_input,final_accepted,12,53,256,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+4,primary,Tier512_DP_input,final_accepted,0,53,512,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+5,primary,Refused,final_refused,0,53,,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+6,primary,unreported_reduction_error,unreported_error,0,53,,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+7,primary,attempted106,attempt,72,53,106,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+8,primary,attempted256,attempt,12,53,256,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+9,primary,attempted512,attempt,0,53,512,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+10,check,Direct,final_accepted,2148,53,53,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+11,check,MethodChoice,final_accepted,100,53,53,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+12,check,Tier106_DP_input,final_accepted,52,53,106,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+13,check,Tier256_DP_input,final_accepted,20,53,256,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+14,check,Tier512_DP_input,final_accepted,0,53,512,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+15,check,Refused,final_refused,0,53,,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+16,check,unreported_reduction_error,unreported_error,0,53,,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+17,check,attempted106,attempt,52,53,106,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+18,check,attempted256,attempt,20,53,256,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset
+19,check,attempted512,attempt,0,53,512,Context-lifetime completed full-DP bridge; excludes public pre-validation errors and Fortran cache hits; clear does not reset

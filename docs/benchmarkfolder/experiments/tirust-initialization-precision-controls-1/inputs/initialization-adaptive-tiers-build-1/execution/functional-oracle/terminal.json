@@ -1,0 +1,123 @@
+{
+  "actions": [
+    {
+      "argv": [
+        "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+        "-c",
+        "383",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/target/release/madloop-tirust-fixture-oracle"
+      ],
+      "cleanup": {
+        "events": [],
+        "observed_owned_processes": [
+          {
+            "parent_pid": 3979127,
+            "pid": 3979380,
+            "process_group": 3979380,
+            "session": 3979380,
+            "start_time_ticks": 255054037,
+            "state": "R"
+          }
+        ],
+        "scope": "Only observed descendants with matching process-start/session identities",
+        "survivors": []
+      },
+      "log_sha256": "02dbe60d85a8e165594697715db0bf9aa2d57ea8039925a89ec69fe7d10e382d",
+      "name": "oracle",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+        "-c",
+        "383",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/fixture-comparison/tensor_check.py",
+        "capture"
+      ],
+      "cleanup": {
+        "events": [],
+        "observed_owned_processes": [
+          {
+            "parent_pid": 3979127,
+            "pid": 3979512,
+            "process_group": 3979512,
+            "session": 3979512,
+            "start_time_ticks": 255054094,
+            "state": "R"
+          }
+        ],
+        "scope": "Only observed descendants with matching process-start/session identities",
+        "survivors": []
+      },
+      "log_sha256": "88f710f6e873e2916c3bc48de957d6c126d8a4af832524b8643361546afe928f",
+      "name": "candidate-fixtures",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+        "-c",
+        "383",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/fixture-comparison/tensor_check.py",
+        "compare",
+        "--oracle",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/execution/functional-oracle/oracle.log",
+        "--candidate",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/execution/functional-oracle/candidate-fixtures.log",
+        "--output",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/initialization-adaptive-tiers-build-1/execution/functional-oracle/comparison.json"
+      ],
+      "cleanup": {
+        "events": [],
+        "observed_owned_processes": [
+          {
+            "parent_pid": 3979127,
+            "pid": 3979803,
+            "process_group": 3979803,
+            "session": 3979803,
+            "start_time_ticks": 255054275,
+            "state": "R"
+          }
+        ],
+        "scope": "Only observed descendants with matching process-start/session identities",
+        "survivors": []
+      },
+      "log_sha256": "86ac8bc0ae9dd75fe1a886ef972ef960d98b938e6d443c6ab760d1965576aa0a",
+      "name": "comparison",
+      "returncode": 0
+    }
+  ],
+  "all_pass_1e8": true,
+  "all_pass_3e6": true,
+  "binary_sha256": "ba622db59e07c471cc1bdd07248502de59173f4cf123944388b7c1743e61cddb",
+  "cap_seconds": 1800.0,
+  "cleanup_reserve_seconds": 60,
+  "comparison_sha256": "7967d6e6b5b7d7f612b6a992d09659555d1b3a0e017d9ff9629e2e3d1c368410",
+  "cpu_reserved": false,
+  "elapsed_seconds": 4.761481173336506,
+  "fixtures": 8,
+  "functional_overlap_with_m1": true,
+  "independent_physics_oracle": false,
+  "main_global_mutex_untouched": true,
+  "native_mutex": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-functional-qualification.lock",
+  "nonexclusive_cpu": 383,
+  "performance_comparisons": false,
+  "performance_eligible": false,
+  "phase": "functional-oracle",
+  "runner_sha256": "3684e1c68cfd31e2d6c11f53d6d54eec17da3763e493fba15d96a88d19fd8399",
+  "same_engine_precision_reference": true,
+  "smoke_sha256": null,
+  "source_snapshot": {
+    "comparison_source_index_sha256": "add74feb990c79050b20114abce43c8fca910363e7ba7630ea6485215863b0da",
+    "compiled_receipt_sha256": "716a5132775cad37926b2d40cc03de276232ce6c54a1e99029b13043020693c7",
+    "dso_sha256": "470d46df9c8fcb76dc5448a04187dfc23a757481b3d4ef0384e13bd6e7e9e709",
+    "helper_sha256": "bd419c43c90e45a48b7d722a98f906bd17a80439874eff3df06f1d6c14a24bcc",
+    "preparation_sha256": "d7dc424a09692618e571ae2b55780b0403eb70e300f6d5f083df592b0ad00009",
+    "source_sha256": "607e7f58842b50a07df7bbdbcbd00ee399f6baad0b670745b45cbf807de7ff07"
+  },
+  "status": "passed"
+}

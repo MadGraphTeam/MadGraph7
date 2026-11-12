@@ -1,0 +1,108 @@
+{
+  "cap_seconds": 300.0,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2268195,
+        "pid": 2268342,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255543602,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2268342,
+        "pid": 2275273,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544372,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2275273,
+        "pid": 2275353,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544385,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2275273,
+        "pid": 2275302,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544376,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2275302,
+        "pid": 2275312,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544377,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2275273,
+        "pid": 2275421,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544396,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2275421,
+        "pid": 2275455,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544398,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2275455,
+        "pid": 2275510,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544398,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2275510,
+        "pid": 2275560,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544401,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2268342,
+        "pid": 2280108,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544950,
+        "state": "D"
+      },
+      {
+        "parent_pid": 2280108,
+        "pid": 2280110,
+        "process_group": 2268342,
+        "session": 2268342,
+        "start_time_ticks": 255544950,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_reserve_seconds": 60,
+  "controller_sha256": "15170a5ada7e35d25f0507afc8f4ff0d76a43f86471a370a16ea3d8d1bf6ab98",
+  "cpu_reserved": false,
+  "elapsed_seconds": 15.305362390819937,
+  "log_sha256": "31d3c0bbea322bbebc57d82e09903b622f73f8aa6be2c86c670668d3f367d9c2",
+  "performance_acceptance": false,
+  "returncode": 0,
+  "scope": "one explicitly diagnosed point; no process-average/main-campaign acceptance",
+  "stage": "build",
+  "status": "build-only-complete"
+}

@@ -1,6 +1,57 @@
 # Current acceptance status — 2026-11-12
 
-This status selects evidence for production revision
+The current implementation is
+`77eb57b82d4858ff302fa9870778e01cc86d7326`, with native-precision integration
+milestone `8b74cdbb3e106f2859514bb4ca95d9fe5d70b370`. Its matching registration is
+[`tirust-native-tiers-1`](campaigns/tirust-native-tiers-1/manifest.json), manifest
+SHA256 `1ed7ff89800de0a1ec361c15db3795adb2e4173bd52d404fd36f2efb0d62b0dc`.
+Its exporter inventory is
+`46fd7762300360621518310a92a4d0ee51c7e80bec5da5e64d0888dd131c9bfc`
+and numerical identity is
+`bc16a37d599bcb0f02c17228bdc7ca6f70ecd00880a6bb8276744fae4d8223ca`.
+
+**All 66 fresh numerical lanes and eight main runtime gates are pending.**
+[The current local handoff](LOCAL_FINAL_VALIDATION_TODO.md) supplies installation,
+build, numerical, timing and report commands. The fixed performance baseline
+remains `9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f`; the integration goal remains
+incomplete. Earlier ordinary passes and shared-host pilots do not qualify this
+registration or meet the per-process upper-95%-bound requirement.
+
+The qualified final native artifact is DSO
+`d427667a0f2f55d0bd96778c1259ffcf52e3925341890b81c38f5f94e1eb7052`.
+Its release tests and root integration checks qualify their recorded scopes,
+separately from full-process acceptance. Backend 9 stays explicitly selected.
+Accepted DP transport (`219`) may use local 106-bit DD or 256/512-bit tensor
+arithmetic on 53-bit inputs with a DP numerator; it is not a native-DP cohort
+label. Genuine Fortran QP retains 113-bit inputs and 256-bit evaluation. Route
+counters are batch observations and exclude Fortran coefficient-cache hits;
+per-point native-DP/rescued-cohort timing still needs the adapter described in
+the current local handoff.
+
+Review remains [draft TIRust PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/437)
+into `madloop_ninjars`, stacked on [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315)
+into `main`.
+
+The [47-page published report](benchmark.pdf),
+[selected ledger](report-build.json) and
+[matching owner](build_initialization_profile_report.py) now preserve the exact 45-page
+predecessor and append two separately bound pages. The
+[final-source diagnosed-point pilot and corrected stock CLI](experiments/tirust-initialization-profile-report-1/rendered-1/README.md)
+show TIRust slower than NinjaRS: matched-cycle median ratio 1.5533 at the selected
+Zggg point and unpaired single-stock-run ratio 1.6051 for QCD Z. All 45 retained
+first-point comparisons pass 3e-6; the finite 1e-8 misses for 6/7/8/9 remain. TIRust’s
+seven first-point calls use DP-input dispatch with observed local 106/256 tensor
+rescues, not a native-DP-only cohort. Stock per-timed-point status/route counts
+are unavailable, and reused TIRust initialization is null. The prototype 470
+255.241→15.346s quiet initialization result remains a separate one-pair observation.
+It does not establish warmed-runtime acceptance or become final d427 timing.
+
+## Historical ordinary selection and report
+
+The following evidence retains its original identities and limitations. It is
+preserved for comparison, without transferring qualification to revision `77eb57b82d48`.
+
+The preserved ordinary selection belongs to revision
 `0fcd2cd873d61d134837e1d9e87afb13a47824fd`, registered as
 [`entry-latch-cache-guard-1`](campaigns/entry-latch-cache-guard-1/manifest.json).
 Its exporter inventory is
@@ -12,7 +63,7 @@ Review: [draft TIRust PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/43
 into `madloop_ninjars`, stacked on [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315) into `main`.
 The integration goal is incomplete.
 
-The current signed source has a [fresh local timing handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+The preceding signed source has a [separate local timing handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
 Its source and installation are frozen separately; all 66 new numerical lanes
 and eight main runtime gates await local execution. The older handoffs and
 results below retain their recorded source bindings.
@@ -25,16 +76,16 @@ its validated signed predecessor pin. Numerical acceptance evidence below
 remains bound to production revision `0fcd2cd873d6`; signing does not
 transfer that evidence to the new source or close the outstanding physics and
 local timing gates. The original 44-page PDF, ledger and owner are archived
-byte-identically; the canonical 45-page PDF appends the separately bound
+byte-identically; the historical 45-page PDF appends the separately bound
 original signed-source Zggg timing pilot, including its TIRust initialization
 timeout. This does not transfer earlier acceptance evidence.
 
-| Evidence | Current result and scope |
+| Historical evidence | Recorded result and scope |
 |---|---|
 | [Ordinary process matrix](campaigns/entry-latch-cache-guard-1/QUALIFICATION_PROGRESS.md) | Eleven CLI-generated processes, six lanes and 100 saved points per lane. All 66 lanes pass `3e-6`; 54 also pass the separate `1e-8` target. The remaining target misses and independent-reference limitations are retained. |
 | [Frozen ordinary selection](campaigns/entry-latch-cache-guard-1/report-supplements/progress-3/selection.json) | Selects the closed checkpoints for this production source, including both four-particle processes, interruption history and source-specific evidence. It does not import predecessor results as new measurements. |
 | [Subprocess/event cache lifecycle](experiments/subprocess-cache-lifecycle-successor-qualification-1/README.md) | Closed for real-SM `N≤3`, rank≤2 native-DP amplitudes and separate DP/QP tensor-key diagnostics. It covers prefix isolation, entry-latch reset, invalidation, independent checks and context recreation. Physical-QP rescues, EW, loop-induced, rank-six physical and poles-only amplitudes remain outside this proof. |
-| [Published benchmark](benchmark.pdf) | The current 45-page PDF preserves all 44 preceding pages and adds the original QCD Zggg timing page. Its [ledger](report-build.json) binds PDF SHA256 `fa83602d57a43f25bc469e8d7185ba54b3236031eb861b12193a8788afd38678`. All historical timing, analytic-repair and EW qualification pages remain preserved. |
+| [Archived 45-page benchmark](history/report-before-initialization-profile-1/benchmark.pdf) | This historical PDF preserves all 44 preceding pages and adds the original QCD Zggg timing page. Its [archived ledger](history/report-before-initialization-profile-1/report-build.json) binds PDF SHA256 `fa83602d57a43f25bc469e8d7185ba54b3236031eb861b12193a8788afd38678`. All historical timing, analytic-repair and EW qualification pages remain preserved. |
 | [Original signed-source Zggg pilot](experiments/zggg-five-backend-timing-report-1/rendered-1/README.md) | Actual QCD `u u~ > z g g g` (2→4), first ten of 100 frozen points, ten cycles and 40 timed batches. Four warmed native-DP rows pass `3e-6`; reducers 6/7/8 miss the separate `1e-8` finite-term target at points 1, 2, 4 and 5. TIRust 9 retains its original 600 s READY timeout with no warmed timing; partial 1 DP + 3 QP warmup is separate. Actual batches span 33.6448–41.9097 s. Descriptive intervals do not close precise local acceptance. |
 | [Five-reducer timing appendix](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md) | Twenty descriptive full-amplitude timing lanes cover four SM processes, including a fresh QCD `2→4` process. All twenty pass their retained `3e-6` and `1e-8` numerical gates. Shared-host timings do not satisfy precise performance acceptance. |
 | [Stability comparisons](stability_appendix_c/current-source-qcd3-raw-delivery-2/README.md) | Current-source QCD Zgg comparisons supplement the preserved Appendix-C-style plots. Internal consistency estimates, unavailable diagnostics and independent numerical error retain distinct scopes. |
@@ -66,8 +117,8 @@ a new source identity and fresh validation, rather than reusing this source's
 66 ordinary passes. Native-DP and rescued-QP timing cohorts also remain
 unqualified.
 
-Final precise timings remain
-[Hua-Sheng's local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md):
+The preceding registration's precise timings remain
+[its recorded local TODO](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md):
 a fresh supported installation, all 66 local numerical lanes, eight main
 TIRust-first versus baseline runtime gates and separate existing-backend
 regression checks. The upper 95% paired runtime-ratio bound must be ≤1.05 for
@@ -82,5 +133,5 @@ selection. Their references to DSO `095e`, candidate `c91cb85f` and pending
 successor physics describe those earlier snapshots. Frozen checkpoint documents
 may likewise describe the report page count at their creation. The current
 PDF and its reproduction commands are selected by the [current report ledger](report-build.json)
-and [matching report instructions](experiments/zggg-five-backend-timing-report-1/rendered-1/README.md).
+and [matching report instructions](experiments/tirust-initialization-profile-report-1/rendered-1/README.md).
 No historical failure or unmeasured result is converted into a pass here.

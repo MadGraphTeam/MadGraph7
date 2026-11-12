@@ -1,0 +1,1662 @@
+{
+  "cycle": 7,
+  "observations": {
+    "1": {
+      "dispatch_scope": "Historical parser fields describe MadLoop input/dispatch precision, not local tensor arithmetic",
+      "loops": 1,
+      "observation": {
+        "answer_dimensions": {
+          "allocated": 1,
+          "born_orders": 1,
+          "loop_orders": 1
+        },
+        "backend_precision_counts": {
+          "1:DP": 1
+        },
+        "cold_seconds": 7.022260655,
+        "native_dp_only": null,
+        "precision_usage": {
+          "accepted_backend_precision_counts": {
+            "1:DP": 1
+          },
+          "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+          "accepted_qp_transport": false,
+          "attempt_count_scope": "reported counts",
+          "bridge_native_dp_only": null,
+          "fallback_backend_observed": false,
+          "higher_precision_attempt_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "higher_precision_success_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "highest_observed_internal_bits": null,
+          "internal_higher_precision_attempted": null,
+          "internal_higher_precision_success_observed": false,
+          "native_dp_only": null,
+          "precision_classification": "internal arithmetic unqualified",
+          "requested_first_backend": 1,
+          "route_counter_delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "route_evidence_status": "no-bridge-computations",
+          "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "tirust_qp_numerator_enabled": null,
+          "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+          "tirust_qp_transport_observed": false,
+          "use_qp_integrand_for_tirust": null
+        },
+        "route_statistics": {
+          "after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "available": true,
+          "before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "check": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "loops": 1,
+          "points": 1,
+          "primary": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "schema": 1,
+          "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "sequence": 8,
+          "status_after": 0,
+          "status_before": 0
+        },
+        "rows": [
+          {
+            "accuracy": 7.986067330116183e-09,
+            "actual_backend": 1,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.754113028001076e-09,
+              -8.041236113849343e-09,
+              -2.3315663508561225e-09
+            ],
+            "order": 0,
+            "point": 1,
+            "precision": "DP",
+            "status": 211
+          },
+          {
+            "accuracy": 7.986067330116183e-09,
+            "actual_backend": 1,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.754113028001076e-09,
+              -8.041236113849343e-09,
+              -2.3315663508561225e-09
+            ],
+            "order": 1,
+            "point": 1,
+            "precision": "DP",
+            "status": 211
+          }
+        ],
+        "seconds": 3.742270138,
+        "seconds_per_point": 3.742270138,
+        "status_counts": {
+          "211": 1
+        },
+        "timed_status_counts": {
+          "211": 1
+        }
+      },
+      "position": 5,
+      "routes": {
+        "after": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "attempt_counts_lower_bounds": false,
+        "before": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "blocks": {
+          "independent-check": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          },
+          "primary": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          }
+        },
+        "counter_clock_policy": "getter before T0 and after T1; writes outside clock",
+        "delta": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fortran_coefficient_cache_hits_outside_scope": true,
+        "header": [
+          1,
+          8,
+          1,
+          1,
+          0,
+          0
+        ],
+        "precision_scope": "DP-input local tensor arithmetic; genuine QP is separately identified by amplitude status",
+        "schema": "madloop-tirust-timed-route-delta-v1"
+      }
+    },
+    "6": {
+      "dispatch_scope": "Historical parser fields describe MadLoop input/dispatch precision, not local tensor arithmetic",
+      "loops": 1,
+      "observation": {
+        "answer_dimensions": {
+          "allocated": 1,
+          "born_orders": 1,
+          "loop_orders": 1
+        },
+        "backend_precision_counts": {
+          "6:DP": 1
+        },
+        "cold_seconds": 6.627494554,
+        "native_dp_only": null,
+        "precision_usage": {
+          "accepted_backend_precision_counts": {
+            "6:DP": 1
+          },
+          "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+          "accepted_qp_transport": false,
+          "attempt_count_scope": "reported counts",
+          "bridge_native_dp_only": null,
+          "fallback_backend_observed": false,
+          "higher_precision_attempt_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "higher_precision_success_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "highest_observed_internal_bits": null,
+          "internal_higher_precision_attempted": null,
+          "internal_higher_precision_success_observed": false,
+          "native_dp_only": null,
+          "precision_classification": "internal arithmetic unqualified",
+          "requested_first_backend": 6,
+          "route_counter_delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "route_evidence_status": "no-bridge-computations",
+          "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "tirust_qp_numerator_enabled": null,
+          "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+          "tirust_qp_transport_observed": false,
+          "use_qp_integrand_for_tirust": null
+        },
+        "route_statistics": {
+          "after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "available": true,
+          "before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "check": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "loops": 1,
+          "points": 1,
+          "primary": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "schema": 1,
+          "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "sequence": 8,
+          "status_after": 0,
+          "status_before": 0
+        },
+        "rows": [
+          {
+            "accuracy": 1.1619699209091119e-11,
+            "actual_backend": 6,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.754113231310215e-09,
+              -8.041236113849051e-09,
+              -2.331566350856121e-09
+            ],
+            "order": 0,
+            "point": 1,
+            "precision": "DP",
+            "status": 216
+          },
+          {
+            "accuracy": 1.1619699209091119e-11,
+            "actual_backend": 6,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.754113231310215e-09,
+              -8.041236113849051e-09,
+              -2.331566350856121e-09
+            ],
+            "order": 1,
+            "point": 1,
+            "precision": "DP",
+            "status": 216
+          }
+        ],
+        "seconds": 3.662983251,
+        "seconds_per_point": 3.662983251,
+        "status_counts": {
+          "216": 1
+        },
+        "timed_status_counts": {
+          "216": 1
+        }
+      },
+      "position": 1,
+      "routes": {
+        "after": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "attempt_counts_lower_bounds": false,
+        "before": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "blocks": {
+          "independent-check": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          },
+          "primary": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          }
+        },
+        "counter_clock_policy": "getter before T0 and after T1; writes outside clock",
+        "delta": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fortran_coefficient_cache_hits_outside_scope": true,
+        "header": [
+          1,
+          8,
+          1,
+          1,
+          0,
+          0
+        ],
+        "precision_scope": "DP-input local tensor arithmetic; genuine QP is separately identified by amplitude status",
+        "schema": "madloop-tirust-timed-route-delta-v1"
+      }
+    },
+    "7": {
+      "dispatch_scope": "Historical parser fields describe MadLoop input/dispatch precision, not local tensor arithmetic",
+      "loops": 1,
+      "observation": {
+        "answer_dimensions": {
+          "allocated": 1,
+          "born_orders": 1,
+          "loop_orders": 1
+        },
+        "backend_precision_counts": {
+          "7:DP": 1
+        },
+        "cold_seconds": 7.497253222,
+        "native_dp_only": null,
+        "precision_usage": {
+          "accepted_backend_precision_counts": {
+            "7:DP": 1
+          },
+          "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+          "accepted_qp_transport": false,
+          "attempt_count_scope": "reported counts",
+          "bridge_native_dp_only": null,
+          "fallback_backend_observed": false,
+          "higher_precision_attempt_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "higher_precision_success_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "highest_observed_internal_bits": null,
+          "internal_higher_precision_attempted": null,
+          "internal_higher_precision_success_observed": false,
+          "native_dp_only": null,
+          "precision_classification": "internal arithmetic unqualified",
+          "requested_first_backend": 7,
+          "route_counter_delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "route_evidence_status": "no-bridge-computations",
+          "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "tirust_qp_numerator_enabled": null,
+          "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+          "tirust_qp_transport_observed": false,
+          "use_qp_integrand_for_tirust": null
+        },
+        "route_statistics": {
+          "after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "available": true,
+          "before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "check": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "loops": 1,
+          "points": 1,
+          "primary": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "schema": 1,
+          "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "sequence": 8,
+          "status_after": 0,
+          "status_before": 0
+        },
+        "rows": [
+          {
+            "accuracy": 5.662251950184628e-11,
+            "actual_backend": 7,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.75411323107961e-09,
+              -8.04123611385276e-09,
+              -2.33156635090142e-09
+            ],
+            "order": 0,
+            "point": 1,
+            "precision": "DP",
+            "status": 217
+          },
+          {
+            "accuracy": 5.662251950184628e-11,
+            "actual_backend": 7,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.75411323107961e-09,
+              -8.04123611385276e-09,
+              -2.33156635090142e-09
+            ],
+            "order": 1,
+            "point": 1,
+            "precision": "DP",
+            "status": 217
+          }
+        ],
+        "seconds": 3.964735058,
+        "seconds_per_point": 3.964735058,
+        "status_counts": {
+          "217": 1
+        },
+        "timed_status_counts": {
+          "217": 1
+        }
+      },
+      "position": 4,
+      "routes": {
+        "after": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "attempt_counts_lower_bounds": false,
+        "before": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "blocks": {
+          "independent-check": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          },
+          "primary": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          }
+        },
+        "counter_clock_policy": "getter before T0 and after T1; writes outside clock",
+        "delta": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fortran_coefficient_cache_hits_outside_scope": true,
+        "header": [
+          1,
+          8,
+          1,
+          1,
+          0,
+          0
+        ],
+        "precision_scope": "DP-input local tensor arithmetic; genuine QP is separately identified by amplitude status",
+        "schema": "madloop-tirust-timed-route-delta-v1"
+      }
+    },
+    "8": {
+      "dispatch_scope": "Historical parser fields describe MadLoop input/dispatch precision, not local tensor arithmetic",
+      "loops": 1,
+      "observation": {
+        "answer_dimensions": {
+          "allocated": 1,
+          "born_orders": 1,
+          "loop_orders": 1
+        },
+        "backend_precision_counts": {
+          "8:DP": 1
+        },
+        "cold_seconds": 6.775192222,
+        "native_dp_only": null,
+        "precision_usage": {
+          "accepted_backend_precision_counts": {
+            "8:DP": 1
+          },
+          "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+          "accepted_qp_transport": false,
+          "attempt_count_scope": "reported counts",
+          "bridge_native_dp_only": null,
+          "fallback_backend_observed": false,
+          "higher_precision_attempt_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "higher_precision_success_counts": {
+            "check": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            },
+            "primary": {
+              "106": 0,
+              "256": 0,
+              "512": 0
+            }
+          },
+          "highest_observed_internal_bits": null,
+          "internal_higher_precision_attempted": null,
+          "internal_higher_precision_success_observed": false,
+          "native_dp_only": null,
+          "precision_classification": "internal arithmetic unqualified",
+          "requested_first_backend": 8,
+          "route_counter_delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "route_evidence_status": "no-bridge-computations",
+          "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "tirust_qp_numerator_enabled": null,
+          "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+          "tirust_qp_transport_observed": false,
+          "use_qp_integrand_for_tirust": null
+        },
+        "route_statistics": {
+          "after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "available": true,
+          "before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "check": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "delta": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "loops": 1,
+          "points": 1,
+          "primary": {
+            "attempt106": 0,
+            "attempt256": 0,
+            "attempt512": 0,
+            "direct": 0,
+            "method_choice": 0,
+            "refused": 0,
+            "tier106": 0,
+            "tier256": 0,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "schema": 1,
+          "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "sequence": 8,
+          "status_after": 0,
+          "status_before": 0
+        },
+        "rows": [
+          {
+            "accuracy": 1.6190040883942394e-12,
+            "actual_backend": 8,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.7541132312434334e-09,
+              -8.041236113849058e-09,
+              -2.331566350856125e-09
+            ],
+            "order": 0,
+            "point": 1,
+            "precision": "DP",
+            "status": 218
+          },
+          {
+            "accuracy": 1.6190040883942394e-12,
+            "actual_backend": 8,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.7541132312434334e-09,
+              -8.041236113849058e-09,
+              -2.331566350856125e-09
+            ],
+            "order": 1,
+            "point": 1,
+            "precision": "DP",
+            "status": 218
+          }
+        ],
+        "seconds": 3.638923807,
+        "seconds_per_point": 3.638923807,
+        "status_counts": {
+          "218": 1
+        },
+        "timed_status_counts": {
+          "218": 1
+        }
+      },
+      "position": 3,
+      "routes": {
+        "after": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "attempt_counts_lower_bounds": false,
+        "before": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "blocks": {
+          "independent-check": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          },
+          "primary": {
+            "Direct": 0,
+            "MethodChoice": 0,
+            "Refused": 0,
+            "Tier106": 0,
+            "Tier256": 0,
+            "Tier512": 0,
+            "attempted106": 0,
+            "attempted256": 0,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          }
+        },
+        "counter_clock_policy": "getter before T0 and after T1; writes outside clock",
+        "delta": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fortran_coefficient_cache_hits_outside_scope": true,
+        "header": [
+          1,
+          8,
+          1,
+          1,
+          0,
+          0
+        ],
+        "precision_scope": "DP-input local tensor arithmetic; genuine QP is separately identified by amplitude status",
+        "schema": "madloop-tirust-timed-route-delta-v1"
+      }
+    },
+    "9": {
+      "dispatch_scope": "Historical parser fields describe MadLoop input/dispatch precision, not local tensor arithmetic",
+      "loops": 1,
+      "observation": {
+        "answer_dimensions": {
+          "allocated": 1,
+          "born_orders": 1,
+          "loop_orders": 1
+        },
+        "backend_precision_counts": {
+          "9:DP": 1
+        },
+        "cold_seconds": 14.119382102,
+        "native_dp_only": false,
+        "precision_usage": {
+          "accepted_backend_precision_counts": {
+            "9:DP": 1
+          },
+          "accepted_precision_scope": "MadLoop input/output transport; not highest internal arithmetic",
+          "accepted_qp_transport": false,
+          "attempt_count_scope": "reported counts",
+          "bridge_native_dp_only": false,
+          "fallback_backend_observed": false,
+          "higher_precision_attempt_counts": {
+            "check": {
+              "106": 26,
+              "256": 10,
+              "512": 0
+            },
+            "primary": {
+              "106": 36,
+              "256": 6,
+              "512": 0
+            }
+          },
+          "higher_precision_success_counts": {
+            "check": {
+              "106": 26,
+              "256": 10,
+              "512": 0
+            },
+            "primary": {
+              "106": 34,
+              "256": 6,
+              "512": 0
+            }
+          },
+          "highest_observed_internal_bits": 256,
+          "internal_higher_precision_attempted": true,
+          "internal_higher_precision_success_observed": true,
+          "native_dp_only": false,
+          "precision_classification": "internal higher-precision attempted",
+          "requested_first_backend": 9,
+          "route_counter_delta": [
+            1064,
+            56,
+            34,
+            6,
+            0,
+            0,
+            0,
+            36,
+            6,
+            0,
+            1074,
+            50,
+            26,
+            10,
+            0,
+            0,
+            0,
+            26,
+            10,
+            0
+          ],
+          "route_evidence_status": "higher-precision-observed",
+          "route_scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "tirust_qp_numerator_enabled": null,
+          "tirust_qp_numerator_scope": "unknown; accepted transport alone does not establish numerator precision",
+          "tirust_qp_transport_observed": false,
+          "use_qp_integrand_for_tirust": null
+        },
+        "route_statistics": {
+          "after": [
+            10640,
+            560,
+            340,
+            60,
+            0,
+            0,
+            0,
+            360,
+            60,
+            0,
+            10740,
+            500,
+            260,
+            100,
+            0,
+            0,
+            0,
+            260,
+            100,
+            0
+          ],
+          "available": true,
+          "before": [
+            9576,
+            504,
+            306,
+            54,
+            0,
+            0,
+            0,
+            324,
+            54,
+            0,
+            9666,
+            450,
+            234,
+            90,
+            0,
+            0,
+            0,
+            234,
+            90,
+            0
+          ],
+          "check": {
+            "attempt106": 26,
+            "attempt256": 10,
+            "attempt512": 0,
+            "direct": 1074,
+            "method_choice": 50,
+            "refused": 0,
+            "tier106": 26,
+            "tier256": 10,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "delta": [
+            1064,
+            56,
+            34,
+            6,
+            0,
+            0,
+            0,
+            36,
+            6,
+            0,
+            1074,
+            50,
+            26,
+            10,
+            0,
+            0,
+            0,
+            26,
+            10,
+            0
+          ],
+          "loops": 1,
+          "points": 1,
+          "primary": {
+            "attempt106": 36,
+            "attempt256": 6,
+            "attempt512": 0,
+            "direct": 1064,
+            "method_choice": 56,
+            "refused": 0,
+            "tier106": 34,
+            "tier256": 6,
+            "tier512": 0,
+            "unreported": 0
+          },
+          "schema": 1,
+          "scope": "bridge computations only; Fortran coefficient-cache hits are not observed",
+          "sequence": 8,
+          "status_after": 0,
+          "status_before": 0
+        },
+        "rows": [
+          {
+            "accuracy": 7.607457318371973e-11,
+            "actual_backend": 9,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.754113231356987e-09,
+              -8.04123611386854e-09,
+              -2.3315663508576073e-09
+            ],
+            "order": 0,
+            "point": 1,
+            "precision": "DP",
+            "status": 219
+          },
+          {
+            "accuracy": 7.607457318371973e-11,
+            "actual_backend": 9,
+            "coefficients": [
+              1.064140201337546e-08,
+              -5.754113231356987e-09,
+              -8.04123611386854e-09,
+              -2.3315663508576073e-09
+            ],
+            "order": 1,
+            "point": 1,
+            "precision": "DP",
+            "status": 219
+          }
+        ],
+        "seconds": 5.711758673,
+        "seconds_per_point": 5.711758673,
+        "status_counts": {
+          "219": 1
+        },
+        "timed_status_counts": {
+          "219": 1
+        }
+      },
+      "position": 2,
+      "routes": {
+        "after": [
+          10640,
+          560,
+          340,
+          60,
+          0,
+          0,
+          0,
+          360,
+          60,
+          0,
+          10740,
+          500,
+          260,
+          100,
+          0,
+          0,
+          0,
+          260,
+          100,
+          0
+        ],
+        "attempt_counts_lower_bounds": false,
+        "before": [
+          9576,
+          504,
+          306,
+          54,
+          0,
+          0,
+          0,
+          324,
+          54,
+          0,
+          9666,
+          450,
+          234,
+          90,
+          0,
+          0,
+          0,
+          234,
+          90,
+          0
+        ],
+        "blocks": {
+          "independent-check": {
+            "Direct": 1074,
+            "MethodChoice": 50,
+            "Refused": 0,
+            "Tier106": 26,
+            "Tier256": 10,
+            "Tier512": 0,
+            "attempted106": 26,
+            "attempted256": 10,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          },
+          "primary": {
+            "Direct": 1064,
+            "MethodChoice": 56,
+            "Refused": 0,
+            "Tier106": 34,
+            "Tier256": 6,
+            "Tier512": 0,
+            "attempted106": 36,
+            "attempted256": 6,
+            "attempted512": 0,
+            "unreported/reduction-error": 0
+          }
+        },
+        "counter_clock_policy": "getter before T0 and after T1; writes outside clock",
+        "delta": [
+          1064,
+          56,
+          34,
+          6,
+          0,
+          0,
+          0,
+          36,
+          6,
+          0,
+          1074,
+          50,
+          26,
+          10,
+          0,
+          0,
+          0,
+          26,
+          10,
+          0
+        ],
+        "fortran_coefficient_cache_hits_outside_scope": true,
+        "header": [
+          1,
+          8,
+          1,
+          1,
+          0,
+          0
+        ],
+        "precision_scope": "DP-input local tensor arithmetic; genuine QP is separately identified by amplitude status",
+        "schema": "madloop-tirust-timed-route-delta-v1"
+      }
+    }
+  },
+  "order": [
+    6,
+    9,
+    8,
+    7,
+    1
+  ]
+}

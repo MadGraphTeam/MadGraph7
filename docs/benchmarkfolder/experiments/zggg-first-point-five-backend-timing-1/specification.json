@@ -1,0 +1,171 @@
+{
+  "case": {
+    "id": "qcd_n4_uux_zggg",
+    "model": "loop_sm",
+    "nfinal": 4,
+    "process": "u u~ > z g g g [virt=QCD]",
+    "role": "additional-timing-control"
+  },
+  "counter_clock_policy": "before T0 and after T1; writes outside timed interval; no math/loop changes",
+  "cpu": 12,
+  "cpu_reserved": false,
+  "cycles": [
+    {
+      "cycle": 1,
+      "order": [
+        1,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "cycle": 2,
+      "order": [
+        7,
+        1,
+        8,
+        9,
+        6
+      ]
+    },
+    {
+      "cycle": 3,
+      "order": [
+        6,
+        8,
+        1,
+        7,
+        9
+      ]
+    },
+    {
+      "cycle": 4,
+      "order": [
+        9,
+        7,
+        1,
+        8,
+        6
+      ]
+    },
+    {
+      "cycle": 5,
+      "order": [
+        7,
+        1,
+        9,
+        6,
+        8
+      ]
+    },
+    {
+      "cycle": 6,
+      "order": [
+        8,
+        9,
+        6,
+        1,
+        7
+      ]
+    },
+    {
+      "cycle": 7,
+      "order": [
+        6,
+        9,
+        8,
+        7,
+        1
+      ]
+    }
+  ],
+  "diagnosis_fixture": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-initialization-clean-pair-1/first-point.dat",
+  "driver_sha256": "7e66a87c8bdef6d702ba9c3046b8513fc6decbbe4cdf57ef83f7dcecb34b4f73",
+  "historical_status_scope": "H2/U9 identifies DP-input dispatch; internal tiers are not genuine binary128-input QP and are not native-DP-only",
+  "membership_one_based": [
+    1
+  ],
+  "minimum_batch_seconds": 1.1,
+  "no_compiler_or_native_executed": true,
+  "ordinary_target_tolerance": 1e-08,
+  "original100_sha256": "c993f33ce4b7a6a62e7e19dc9ab9a27c96856893d198f6e99ebd8a6fe01fcbca",
+  "original10_sha256": "3a944e783ec133dc522b8d65d16f2b5412c5a6cccdc9fb94c624500b61fe5033",
+  "original_driver_sha256": "84472aa2af7a1a0596cc17f364e025bbdf88e17c0c23747da49d20d7826fe417",
+  "original_mg_revision": "cd0145922977fcfdc4e3cb3183ddc974c31a7897",
+  "original_packet_index_sha256": "e401cf5d4efb7708c277172eaa3be9f29bcadf54c5b3b484e7311109cf9a26cb",
+  "pairwise_precedence_counts": {
+    "1:6": 4,
+    "1:7": 3,
+    "1:8": 4,
+    "1:9": 4,
+    "6:7": 4,
+    "6:8": 4,
+    "6:9": 3,
+    "7:8": 4,
+    "7:9": 4,
+    "8:9": 4
+  },
+  "performance_acceptance": false,
+  "point_sha256": "8880598b2d448930eedda40d9797fd137a5845c5289345d1e31cbcd22ff10c3b",
+  "points": 1,
+  "position_counts": {
+    "1": [
+      1,
+      2,
+      2,
+      1,
+      1
+    ],
+    "6": [
+      2,
+      1,
+      1,
+      1,
+      2
+    ],
+    "7": [
+      2,
+      1,
+      1,
+      2,
+      1
+    ],
+    "8": [
+      1,
+      1,
+      2,
+      2,
+      1
+    ],
+    "9": [
+      1,
+      2,
+      1,
+      1,
+      2
+    ]
+  },
+  "relative_tolerance": 3e-06,
+  "route_blocks": [
+    "primary",
+    "independent-check"
+  ],
+  "route_names": [
+    "Direct",
+    "MethodChoice",
+    "Tier106",
+    "Tier256",
+    "Tier512",
+    "Refused",
+    "unreported/reduction-error",
+    "attempted106",
+    "attempted256",
+    "attempted512"
+  ],
+  "route_scope": "cumulative full-DP bridge execution final routes and actual tier attempts; Fortran coefficient-cache hits are outside these counters; unreported bucket makes attempt counts lower bounds",
+  "schema": "madloop-zggg-diagnosed-first-point-five-backend-v1",
+  "scope": "one explicitly selected diagnosed physical fixture; no process-average or main-campaign performance claim",
+  "status": "prepared-file-only-awaiting-final-prefix-and-GO"
+}

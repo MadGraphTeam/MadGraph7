@@ -1,0 +1,22 @@
+{
+  "status": "ready",
+  "returncode": 0,
+  "survivors": [],
+  "shared_unchanged": true,
+  "baseline_profile_unchanged": true,
+  "frontend_control_preserved_unexecuted": true,
+  "mutex_free": true,
+  "initialization": {
+    "points": 1,
+    "ndim": 1,
+    "nso": 1,
+    "nborn": 1,
+    "cold_seconds": 257.446547913
+  },
+  "error": null,
+  "actual_mapped_tirust": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-oem-signed-prefix-1/HEPTools/tirust/lib/libmadloop_tirust.so": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0"
+  },
+  "result_sha256": "50ac9b19564dca6a3550264f14108bf5152aa8ca282448c46780a9f1dfe11ea7",
+  "terminal_sha256": "fa882d30e969a0eafd5d96b9e0817ffea0e844da939ae1b51685d6eae12a533a"
+}

@@ -1,0 +1,112 @@
+{
+  "status": "prepared-not-executed",
+  "scope": "Full MODEL+DHELAS+process O2 control; original polynomial O3; exactS85ee/shim/point/cards/stabilitypolicy",
+  "paths": {
+    "interposition-symbols.txt": {
+      "sha256": "64c66698e1266fa8feb5777e68ead2cdd1814ddcba44326405605b2597b218f0",
+      "bytes": 914
+    },
+    "profile.py": {
+      "sha256": "a65457ace52058ffc40cf032cf42e8976c7b05704aec0ae900841d36e088d0d7",
+      "bytes": 10897
+    },
+    "first-point.dat": {
+      "sha256": "8880598b2d448930eedda40d9797fd137a5845c5289345d1e31cbcd22ff10c3b",
+      "bytes": 587
+    },
+    "trace.c": {
+      "sha256": "251b51a52997162cd9f67f74d0d6ee5c780f67045ebfe450884e1534c1af67ca",
+      "bytes": 8523
+    },
+    "compare.py": {
+      "sha256": "74d3ce4f7478df6080ee70b25baf2b5516c276659faa53bbe7ab41af953fa340",
+      "bytes": 5185
+    },
+    "preparation.json": {
+      "sha256": "5e3a772705e7b957c37f37578a8984c95d610214b515ca7a15fa000e87db929e",
+      "bytes": 13856
+    },
+    "run-profile.py": {
+      "sha256": "c6c2efb603032d4d7d807e16ee35d7f01b9e9f0197ac6f351cd4bc9a407980db",
+      "bytes": 3170
+    },
+    "pure-replay-test.json": {
+      "sha256": "a4f6b6fb45560a76935b29bc9e7ae7d794ce32634890d804786e2da88441758d",
+      "bytes": 76
+    },
+    "build-binding-index.json": {
+      "sha256": "83164a3c8576d3c206b6ed844686fa66f04d1e0b3e9b2f5035b37984b3ef8a3b",
+      "bytes": 1075
+    },
+    "summarize.py": {
+      "sha256": "8648278079735c6f18c0cda499117aec66690ff791418da3a67a06908e0b359d",
+      "bytes": 5031
+    },
+    "README.md": {
+      "sha256": "de1272ac9b148e30f5b7ab52f21f6b720b329bfee5b0fb92382eb842483e5e53",
+      "bytes": 696
+    },
+    "libtirust_phase_profile.so": {
+      "sha256": "1bcd9e3c765d52bb37d15eb06022870c95e0aad020363b4c8031b78a491f8eec",
+      "bytes": 21016
+    },
+    "baseline2-preservation-before.json": {
+      "sha256": "133fb2a6c3d99fac1a86bf1a53abba79a5e9c57c09976a361fbf83b59093a478",
+      "bytes": 6315
+    },
+    "build-bindings/relink-full-O2.terminal.json": {
+      "sha256": "7a47fa9af6a5afe3b822bffc476ed9743f21aa6075e414b1576e647567ba59b6",
+      "bytes": 2427
+    },
+    "build-bindings/closure.json": {
+      "sha256": "e5ae42a417663a9825b64168466764c43148b3ffc0aef443abe81cd1d9f485ef",
+      "bytes": 2234
+    },
+    "build-bindings/link-inputs-after.json": {
+      "sha256": "c3028ef705b99a9d3af95313c7129d22f20209b5099aa803468a675eff529bf8",
+      "bytes": 4087
+    },
+    "build-bindings/frontend-control-before.json": {
+      "sha256": "1bf26d9eb7978930de3ca4416d5120616a815e07ffe27f07ca31d6141e305951",
+      "bytes": 65946
+    },
+    "build-bindings/cards-before.json": {
+      "sha256": "7af34a04fed1a1be534b7856d27d3164b6778508b6f01df6116ad4fff0bc1511",
+      "bytes": 1064
+    },
+    "build-bindings/compile-MODEL-O2.terminal.json": {
+      "sha256": "32506e182557346a268dfea236ece7b576f7e01b601b2b28278d147977881895",
+      "bytes": 3979
+    },
+    "build-bindings/dependency-inputs.json": {
+      "sha256": "2ff17b3d9b5fd037afb4931102796151f6b51ee667926fd2fdff5b50279f2777",
+      "bytes": 4989
+    },
+    "build-bindings/shared-before.json": {
+      "sha256": "bc30b7e45ad0463a7214c25979dcf1aa5280e2c17afe2937219b555561e2b1eb",
+      "bytes": 5450
+    },
+    "build-bindings/frontend-artifacts-before.json": {
+      "sha256": "352d02309c7adca3b260b2ad4772e61a4d6c2375ea8e93c84769514295438ebe",
+      "bytes": 17089
+    },
+    "build-bindings/generated-sources.json": {
+      "sha256": "84e684d904ad007f5e601b6690884688b31c505f3d10118e953d2c057513fcd8",
+      "bytes": 24583
+    },
+    "build-bindings/effective-compiler-flags.json": {
+      "sha256": "780ed71480f59b8c32152a18d6f1f9f004ee5e0d113667805d450f45f9e9e9cd",
+      "bytes": 175341
+    }
+  },
+  "per_file_recipe_counts": {
+    "DHELAS": 125,
+    "MODEL": 16,
+    "process": 36
+  },
+  "baseline_source_index_sha256": "039c8be7c04e5c843b76faed88066adf4eb370518e0876d0225a3e3e020cf3b5",
+  "preserved_unexecuted_frontend_profile_index_sha256": "a3fff51ad06f9dcc5ddbd8ca727c2b3c8b64bb62171fb69a060538e06adb8c78",
+  "native_command": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3 -B .tirust-build/tirust-initialization-profile-full-o2-1/run-profile.py --run-label o2-1",
+  "post_run_comparison_command": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3 -B .tirust-build/tirust-initialization-profile-full-o2-1/compare.py --label o2-1",
+  "no_numerical_execution": true
+}
