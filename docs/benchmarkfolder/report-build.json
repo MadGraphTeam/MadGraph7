@@ -1,17 +1,17 @@
 {
   "PDF": {
-    "bytes": 2436028,
-    "sha256": "4f087a337a8cf736d8d21509486727f7c6f55b3467dd1535d4190f96be73a18f"
+    "bytes": 2494079,
+    "sha256": "90dcbd6635803d0ec1168cc37887f6cb0ad213ec1adef3ce692a845dfca3ff5e"
   },
   "arguments": {
-    "archive": "history/report-before-additional-qualifications-1",
-    "archive_index_sha256": "2a2116c2e51382861551196070eb59b2805f0c0b6147d578acbb9174b4640539",
-    "report": "experiments/additional-implementation-qualifications-report-1/rendered-1",
-    "report_index_sha256": "a751189bd0145455be58f1cd00b2ae3aa554157f32c37a4271bcad7e406f379e"
+    "archive": "history/report-before-analytic-repair-qualification-1",
+    "archive_index_sha256": "194dba97ccb3646af36e8273aa8e2d794b8c4709ea3b180d5bbbac6da56725ac",
+    "report": "experiments/fortran-analytic-repair-report-1/rendered-1",
+    "report_index_sha256": "0915f46197aa0797e9de995b30684e96257226d9fc0d5d86be90040593936517"
   },
   "builder": {
-    "bytes": 13393,
-    "sha256": "0ed3e3465facd71de8e1f8a63109fcdd73b37229dd9e2ac5b1247ad73274b594"
+    "bytes": 14423,
+    "sha256": "c7c18ba17e0320f6ced825acf40036d61f0a9844df264068369a864128b56152"
   },
   "commands": [
     {
@@ -62,639 +62,13 @@
     {
       "argv": [
         "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfunite",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/additional-implementation-qualifications-report-1/rendered-1/qualification-supplement.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-analytic-repair-report-1/rendered-1/analytic-repair-supplement.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
       ],
       "returncode": 0,
       "stderr": "",
       "stdout": ""
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo",
-        "-box",
-        "-f",
-        "1",
-        "-l",
-        "41",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "Custom Metadata: no\nMetadata Stream: no\nTagged:          no\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           41\nEncrypted:       no\nPage    1 size:  595.276 x 841.89 pts (A4)\nPage    1 rot:   0\nPage    2 size:  595.276 x 841.89 pts (A4)\nPage    2 rot:   0\nPage    3 size:  595.276 x 841.89 pts (A4)\nPage    3 rot:   0\nPage    4 size:  595.276 x 841.89 pts (A4)\nPage    4 rot:   0\nPage    5 size:  595.276 x 841.89 pts (A4)\nPage    5 rot:   0\nPage    6 size:  595.276 x 841.89 pts (A4)\nPage    6 rot:   0\nPage    7 size:  595.276 x 841.89 pts (A4)\nPage    7 rot:   0\nPage    8 size:  595.276 x 841.89 pts (A4)\nPage    8 rot:   0\nPage    9 size:  595.276 x 841.89 pts (A4)\nPage    9 rot:   0\nPage   10 size:  595.276 x 841.89 pts (A4)\nPage   10 rot:   0\nPage   11 size:  595.276 x 841.89 pts (A4)\nPage   11 rot:   0\nPage   12 size:  595.276 x 841.89 pts (A4)\nPage   12 rot:   0\nPage   13 size:  595.276 x 841.89 pts (A4)\nPage   13 rot:   0\nPage   14 size:  595.276 x 841.89 pts (A4)\nPage   14 rot:   0\nPage   15 size:  595.276 x 841.89 pts (A4)\nPage   15 rot:   0\nPage   16 size:  595.276 x 841.89 pts (A4)\nPage   16 rot:   0\nPage   17 size:  595.276 x 841.89 pts (A4)\nPage   17 rot:   0\nPage   18 size:  595.276 x 841.89 pts (A4)\nPage   18 rot:   0\nPage   19 size:  595.276 x 841.89 pts (A4)\nPage   19 rot:   0\nPage   20 size:  595.276 x 841.89 pts (A4)\nPage   20 rot:   0\nPage   21 size:  595.276 x 841.89 pts (A4)\nPage   21 rot:   0\nPage   22 size:  595.276 x 841.89 pts (A4)\nPage   22 rot:   0\nPage   23 size:  595.276 x 841.89 pts (A4)\nPage   23 rot:   0\nPage   24 size:  595.276 x 841.89 pts (A4)\nPage   24 rot:   0\nPage   25 size:  595.276 x 841.89 pts (A4)\nPage   25 rot:   0\nPage   26 size:  595.276 x 841.89 pts (A4)\nPage   26 rot:   0\nPage   27 size:  595.276 x 841.89 pts (A4)\nPage   27 rot:   0\nPage   28 size:  595.276 x 841.89 pts (A4)\nPage   28 rot:   0\nPage   29 size:  595.276 x 841.89 pts (A4)\nPage   29 rot:   0\nPage   30 size:  595.276 x 841.89 pts (A4)\nPage   30 rot:   0\nPage   31 size:  595.276 x 841.89 pts (A4)\nPage   31 rot:   0\nPage   32 size:  595.276 x 841.89 pts (A4)\nPage   32 rot:   0\nPage   33 size:  595.276 x 841.89 pts (A4)\nPage   33 rot:   0\nPage   34 size:  595.276 x 841.89 pts (A4)\nPage   34 rot:   0\nPage   35 size:  595.276 x 841.89 pts (A4)\nPage   35 rot:   0\nPage   36 size:  595.276 x 841.89 pts (A4)\nPage   36 rot:   0\nPage   37 size:  595.276 x 841.89 pts (A4)\nPage   37 rot:   0\nPage   38 size:  595.276 x 841.89 pts (A4)\nPage   38 rot:   0\nPage   39 size:  595.276 x 841.89 pts (A4)\nPage   39 rot:   0\nPage   40 size:  595.276 x 841.89 pts (A4)\nPage   40 rot:   0\nPage   41 size:  595.276 x 841.89 pts (A4)\nPage   41 rot:   0\nPage    1 MediaBox:      0.00     0.00   595.28   841.89\nPage    1 CropBox:       0.00     0.00   595.28   841.89\nPage    1 BleedBox:      0.00     0.00   595.28   841.89\nPage    1 TrimBox:       0.00     0.00   595.28   841.89\nPage    1 ArtBox:        0.00     0.00   595.28   841.89\nPage    2 MediaBox:      0.00     0.00   595.28   841.89\nPage    2 CropBox:       0.00     0.00   595.28   841.89\nPage    2 BleedBox:      0.00     0.00   595.28   841.89\nPage    2 TrimBox:       0.00     0.00   595.28   841.89\nPage    2 ArtBox:        0.00     0.00   595.28   841.89\nPage    3 MediaBox:      0.00     0.00   595.28   841.89\nPage    3 CropBox:       0.00     0.00   595.28   841.89\nPage    3 BleedBox:      0.00     0.00   595.28   841.89\nPage    3 TrimBox:       0.00     0.00   595.28   841.89\nPage    3 ArtBox:        0.00     0.00   595.28   841.89\nPage    4 MediaBox:      0.00     0.00   595.28   841.89\nPage    4 CropBox:       0.00     0.00   595.28   841.89\nPage    4 BleedBox:      0.00     0.00   595.28   841.89\nPage    4 TrimBox:       0.00     0.00   595.28   841.89\nPage    4 ArtBox:        0.00     0.00   595.28   841.89\nPage    5 MediaBox:      0.00     0.00   595.28   841.89\nPage    5 CropBox:       0.00     0.00   595.28   841.89\nPage    5 BleedBox:      0.00     0.00   595.28   841.89\nPage    5 TrimBox:       0.00     0.00   595.28   841.89\nPage    5 ArtBox:        0.00     0.00   595.28   841.89\nPage    6 MediaBox:      0.00     0.00   595.28   841.89\nPage    6 CropBox:       0.00     0.00   595.28   841.89\nPage    6 BleedBox:      0.00     0.00   595.28   841.89\nPage    6 TrimBox:       0.00     0.00   595.28   841.89\nPage    6 ArtBox:        0.00     0.00   595.28   841.89\nPage    7 MediaBox:      0.00     0.00   595.28   841.89\nPage    7 CropBox:       0.00     0.00   595.28   841.89\nPage    7 BleedBox:      0.00     0.00   595.28   841.89\nPage    7 TrimBox:       0.00     0.00   595.28   841.89\nPage    7 ArtBox:        0.00     0.00   595.28   841.89\nPage    8 MediaBox:      0.00     0.00   595.28   841.89\nPage    8 CropBox:       0.00     0.00   595.28   841.89\nPage    8 BleedBox:      0.00     0.00   595.28   841.89\nPage    8 TrimBox:       0.00     0.00   595.28   841.89\nPage    8 ArtBox:        0.00     0.00   595.28   841.89\nPage    9 MediaBox:      0.00     0.00   595.28   841.89\nPage    9 CropBox:       0.00     0.00   595.28   841.89\nPage    9 BleedBox:      0.00     0.00   595.28   841.89\nPage    9 TrimBox:       0.00     0.00   595.28   841.89\nPage    9 ArtBox:        0.00     0.00   595.28   841.89\nPage   10 MediaBox:      0.00     0.00   595.28   841.89\nPage   10 CropBox:       0.00     0.00   595.28   841.89\nPage   10 BleedBox:      0.00     0.00   595.28   841.89\nPage   10 TrimBox:       0.00     0.00   595.28   841.89\nPage   10 ArtBox:        0.00     0.00   595.28   841.89\nPage   11 MediaBox:      0.00     0.00   595.28   841.89\nPage   11 CropBox:       0.00     0.00   595.28   841.89\nPage   11 BleedBox:      0.00     0.00   595.28   841.89\nPage   11 TrimBox:       0.00     0.00   595.28   841.89\nPage   11 ArtBox:        0.00     0.00   595.28   841.89\nPage   12 MediaBox:      0.00     0.00   595.28   841.89\nPage   12 CropBox:       0.00     0.00   595.28   841.89\nPage   12 BleedBox:      0.00     0.00   595.28   841.89\nPage   12 TrimBox:       0.00     0.00   595.28   841.89\nPage   12 ArtBox:        0.00     0.00   595.28   841.89\nPage   13 MediaBox:      0.00     0.00   595.28   841.89\nPage   13 CropBox:       0.00     0.00   595.28   841.89\nPage   13 BleedBox:      0.00     0.00   595.28   841.89\nPage   13 TrimBox:       0.00     0.00   595.28   841.89\nPage   13 ArtBox:        0.00     0.00   595.28   841.89\nPage   14 MediaBox:      0.00     0.00   595.28   841.89\nPage   14 CropBox:       0.00     0.00   595.28   841.89\nPage   14 BleedBox:      0.00     0.00   595.28   841.89\nPage   14 TrimBox:       0.00     0.00   595.28   841.89\nPage   14 ArtBox:        0.00     0.00   595.28   841.89\nPage   15 MediaBox:      0.00     0.00   595.28   841.89\nPage   15 CropBox:       0.00     0.00   595.28   841.89\nPage   15 BleedBox:      0.00     0.00   595.28   841.89\nPage   15 TrimBox:       0.00     0.00   595.28   841.89\nPage   15 ArtBox:        0.00     0.00   595.28   841.89\nPage   16 MediaBox:      0.00     0.00   595.28   841.89\nPage   16 CropBox:       0.00     0.00   595.28   841.89\nPage   16 BleedBox:      0.00     0.00   595.28   841.89\nPage   16 TrimBox:       0.00     0.00   595.28   841.89\nPage   16 ArtBox:        0.00     0.00   595.28   841.89\nPage   17 MediaBox:      0.00     0.00   595.28   841.89\nPage   17 CropBox:       0.00     0.00   595.28   841.89\nPage   17 BleedBox:      0.00     0.00   595.28   841.89\nPage   17 TrimBox:       0.00     0.00   595.28   841.89\nPage   17 ArtBox:        0.00     0.00   595.28   841.89\nPage   18 MediaBox:      0.00     0.00   595.28   841.89\nPage   18 CropBox:       0.00     0.00   595.28   841.89\nPage   18 BleedBox:      0.00     0.00   595.28   841.89\nPage   18 TrimBox:       0.00     0.00   595.28   841.89\nPage   18 ArtBox:        0.00     0.00   595.28   841.89\nPage   19 MediaBox:      0.00     0.00   595.28   841.89\nPage   19 CropBox:       0.00     0.00   595.28   841.89\nPage   19 BleedBox:      0.00     0.00   595.28   841.89\nPage   19 TrimBox:       0.00     0.00   595.28   841.89\nPage   19 ArtBox:        0.00     0.00   595.28   841.89\nPage   20 MediaBox:      0.00     0.00   595.28   841.89\nPage   20 CropBox:       0.00     0.00   595.28   841.89\nPage   20 BleedBox:      0.00     0.00   595.28   841.89\nPage   20 TrimBox:       0.00     0.00   595.28   841.89\nPage   20 ArtBox:        0.00     0.00   595.28   841.89\nPage   21 MediaBox:      0.00     0.00   595.28   841.89\nPage   21 CropBox:       0.00     0.00   595.28   841.89\nPage   21 BleedBox:      0.00     0.00   595.28   841.89\nPage   21 TrimBox:       0.00     0.00   595.28   841.89\nPage   21 ArtBox:        0.00     0.00   595.28   841.89\nPage   22 MediaBox:      0.00     0.00   595.28   841.89\nPage   22 CropBox:       0.00     0.00   595.28   841.89\nPage   22 BleedBox:      0.00     0.00   595.28   841.89\nPage   22 TrimBox:       0.00     0.00   595.28   841.89\nPage   22 ArtBox:        0.00     0.00   595.28   841.89\nPage   23 MediaBox:      0.00     0.00   595.28   841.89\nPage   23 CropBox:       0.00     0.00   595.28   841.89\nPage   23 BleedBox:      0.00     0.00   595.28   841.89\nPage   23 TrimBox:       0.00     0.00   595.28   841.89\nPage   23 ArtBox:        0.00     0.00   595.28   841.89\nPage   24 MediaBox:      0.00     0.00   595.28   841.89\nPage   24 CropBox:       0.00     0.00   595.28   841.89\nPage   24 BleedBox:      0.00     0.00   595.28   841.89\nPage   24 TrimBox:       0.00     0.00   595.28   841.89\nPage   24 ArtBox:        0.00     0.00   595.28   841.89\nPage   25 MediaBox:      0.00     0.00   595.28   841.89\nPage   25 CropBox:       0.00     0.00   595.28   841.89\nPage   25 BleedBox:      0.00     0.00   595.28   841.89\nPage   25 TrimBox:       0.00     0.00   595.28   841.89\nPage   25 ArtBox:        0.00     0.00   595.28   841.89\nPage   26 MediaBox:      0.00     0.00   595.28   841.89\nPage   26 CropBox:       0.00     0.00   595.28   841.89\nPage   26 BleedBox:      0.00     0.00   595.28   841.89\nPage   26 TrimBox:       0.00     0.00   595.28   841.89\nPage   26 ArtBox:        0.00     0.00   595.28   841.89\nPage   27 MediaBox:      0.00     0.00   595.28   841.89\nPage   27 CropBox:       0.00     0.00   595.28   841.89\nPage   27 BleedBox:      0.00     0.00   595.28   841.89\nPage   27 TrimBox:       0.00     0.00   595.28   841.89\nPage   27 ArtBox:        0.00     0.00   595.28   841.89\nPage   28 MediaBox:      0.00     0.00   595.28   841.89\nPage   28 CropBox:       0.00     0.00   595.28   841.89\nPage   28 BleedBox:      0.00     0.00   595.28   841.89\nPage   28 TrimBox:       0.00     0.00   595.28   841.89\nPage   28 ArtBox:        0.00     0.00   595.28   841.89\nPage   29 MediaBox:      0.00     0.00   595.28   841.89\nPage   29 CropBox:       0.00     0.00   595.28   841.89\nPage   29 BleedBox:      0.00     0.00   595.28   841.89\nPage   29 TrimBox:       0.00     0.00   595.28   841.89\nPage   29 ArtBox:        0.00     0.00   595.28   841.89\nPage   30 MediaBox:      0.00     0.00   595.28   841.89\nPage   30 CropBox:       0.00     0.00   595.28   841.89\nPage   30 BleedBox:      0.00     0.00   595.28   841.89\nPage   30 TrimBox:       0.00     0.00   595.28   841.89\nPage   30 ArtBox:        0.00     0.00   595.28   841.89\nPage   31 MediaBox:      0.00     0.00   595.28   841.89\nPage   31 CropBox:       0.00     0.00   595.28   841.89\nPage   31 BleedBox:      0.00     0.00   595.28   841.89\nPage   31 TrimBox:       0.00     0.00   595.28   841.89\nPage   31 ArtBox:        0.00     0.00   595.28   841.89\nPage   32 MediaBox:      0.00     0.00   595.28   841.89\nPage   32 CropBox:       0.00     0.00   595.28   841.89\nPage   32 BleedBox:      0.00     0.00   595.28   841.89\nPage   32 TrimBox:       0.00     0.00   595.28   841.89\nPage   32 ArtBox:        0.00     0.00   595.28   841.89\nPage   33 MediaBox:      0.00     0.00   595.28   841.89\nPage   33 CropBox:       0.00     0.00   595.28   841.89\nPage   33 BleedBox:      0.00     0.00   595.28   841.89\nPage   33 TrimBox:       0.00     0.00   595.28   841.89\nPage   33 ArtBox:        0.00     0.00   595.28   841.89\nPage   34 MediaBox:      0.00     0.00   595.28   841.89\nPage   34 CropBox:       0.00     0.00   595.28   841.89\nPage   34 BleedBox:      0.00     0.00   595.28   841.89\nPage   34 TrimBox:       0.00     0.00   595.28   841.89\nPage   34 ArtBox:        0.00     0.00   595.28   841.89\nPage   35 MediaBox:      0.00     0.00   595.28   841.89\nPage   35 CropBox:       0.00     0.00   595.28   841.89\nPage   35 BleedBox:      0.00     0.00   595.28   841.89\nPage   35 TrimBox:       0.00     0.00   595.28   841.89\nPage   35 ArtBox:        0.00     0.00   595.28   841.89\nPage   36 MediaBox:      0.00     0.00   595.28   841.89\nPage   36 CropBox:       0.00     0.00   595.28   841.89\nPage   36 BleedBox:      0.00     0.00   595.28   841.89\nPage   36 TrimBox:       0.00     0.00   595.28   841.89\nPage   36 ArtBox:        0.00     0.00   595.28   841.89\nPage   37 MediaBox:      0.00     0.00   595.28   841.89\nPage   37 CropBox:       0.00     0.00   595.28   841.89\nPage   37 BleedBox:      0.00     0.00   595.28   841.89\nPage   37 TrimBox:       0.00     0.00   595.28   841.89\nPage   37 ArtBox:        0.00     0.00   595.28   841.89\nPage   38 MediaBox:      0.00     0.00   595.28   841.89\nPage   38 CropBox:       0.00     0.00   595.28   841.89\nPage   38 BleedBox:      0.00     0.00   595.28   841.89\nPage   38 TrimBox:       0.00     0.00   595.28   841.89\nPage   38 ArtBox:        0.00     0.00   595.28   841.89\nPage   39 MediaBox:      0.00     0.00   595.28   841.89\nPage   39 CropBox:       0.00     0.00   595.28   841.89\nPage   39 BleedBox:      0.00     0.00   595.28   841.89\nPage   39 TrimBox:       0.00     0.00   595.28   841.89\nPage   39 ArtBox:        0.00     0.00   595.28   841.89\nPage   40 MediaBox:      0.00     0.00   595.28   841.89\nPage   40 CropBox:       0.00     0.00   595.28   841.89\nPage   40 BleedBox:      0.00     0.00   595.28   841.89\nPage   40 TrimBox:       0.00     0.00   595.28   841.89\nPage   40 ArtBox:        0.00     0.00   595.28   841.89\nPage   41 MediaBox:      0.00     0.00   595.28   841.89\nPage   41 CropBox:       0.00     0.00   595.28   841.89\nPage   41 BleedBox:      0.00     0.00   595.28   841.89\nPage   41 TrimBox:       0.00     0.00   595.28   841.89\nPage   41 ArtBox:        0.00     0.00   595.28   841.89\nFile size:       2400873 bytes\nOptimized:       no\nPDF version:     1.7\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext",
-        "-layout",
-        "-enc",
-        "UTF-8",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/base41.txt"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": ""
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm",
-        "-r",
-        "144",
-        "-png",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/base41"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": ""
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "1",
-        "-l",
-        "1",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "2",
-        "-l",
-        "2",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "3",
-        "-l",
-        "3",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "4",
-        "-l",
-        "4",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "5",
-        "-l",
-        "5",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "6",
-        "-l",
-        "6",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "7",
-        "-l",
-        "7",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "8",
-        "-l",
-        "8",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "9",
-        "-l",
-        "9",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "10",
-        "-l",
-        "10",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "11",
-        "-l",
-        "11",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "12",
-        "-l",
-        "12",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "13",
-        "-l",
-        "13",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "14",
-        "-l",
-        "14",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "15",
-        "-l",
-        "15",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "16",
-        "-l",
-        "16",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "17",
-        "-l",
-        "17",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "18",
-        "-l",
-        "18",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "19",
-        "-l",
-        "19",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "20",
-        "-l",
-        "20",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "21",
-        "-l",
-        "21",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "22",
-        "-l",
-        "22",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "23",
-        "-l",
-        "23",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "24",
-        "-l",
-        "24",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "25",
-        "-l",
-        "25",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "26",
-        "-l",
-        "26",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "27",
-        "-l",
-        "27",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "28",
-        "-l",
-        "28",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "29",
-        "-l",
-        "29",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "30",
-        "-l",
-        "30",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "31",
-        "-l",
-        "31",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "32",
-        "-l",
-        "32",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUPQKYJ+DejaVuSansMono-Bold           CID TrueType      Identity-H       yes yes yes   2172  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "33",
-        "-l",
-        "33",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "34",
-        "-l",
-        "34",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUPQKYJ+DejaVuSansMono-Bold           CID TrueType      Identity-H       yes yes yes   2172  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "35",
-        "-l",
-        "35",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUPQKYJ+DejaVuSansMono-Bold           CID TrueType      Identity-H       yes yes yes   2172  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nBMQQDV+DejaVuSans                    Type 3            Custom           yes yes no    2211  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "36",
-        "-l",
-        "36",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nQQHHNE+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2569  0\nSQJSNV+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2572  0\nASPQGF+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2575  0\nJYJCNP+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2578  0\nNRUTHN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2581  0\nJRDHBC+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2584  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "37",
-        "-l",
-        "37",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nSQJSNV+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2572  0\nQQHHNE+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2569  0\nASPQGF+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2575  0\nJYJCNP+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2578  0\nNRUTHN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2581  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "38",
-        "-l",
-        "38",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nSQJSNV+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2572  0\nQQHHNE+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2569  0\nASPQGF+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2575  0\nJRDHBC+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2584  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "39",
-        "-l",
-        "39",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nFKKUBX+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2707  0\nLPPGVL+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2710  0\nIWSOXN+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2713  0\nQLHWNN+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2716  0\nCUHUDT+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2719  0\nUWIOWC+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2722  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "40",
-        "-l",
-        "40",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nBJOFBZ+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2969  0\nTDVMHC+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2972  0\nJQYPRL+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2975  0\nZILQNS+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2978  0\nYMCFGJ+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2981  0\nAGHTAY+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2984  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "41",
-        "-l",
-        "41",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-additional-qualifications-1/benchmark.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nTDVMHC+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2972  0\nBJOFBZ+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2969  0\nAGHTAY+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2984  0\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo",
-        "-box",
-        "-f",
-        "1",
-        "-l",
-        "1",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/additional-implementation-qualifications-report-1/rendered-1/qualification-supplement.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "Syntax Error: Suspects object is wrong type (boolean)\n",
-      "stdout": "Title:           MadLoop with TIRust \u2014 numerical validation and benchmarks\nAuthor:          MadLoop\u2013TIRust development\nCreator:         Typst 0.15.1\nCustom Metadata: no\nMetadata Stream: yes\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           1\nEncrypted:       no\nPage    1 size:  595.276 x 841.89 pts (A4)\nPage    1 rot:   0\nPage    1 MediaBox:      0.00     0.00   595.28   841.89\nPage    1 CropBox:       0.00     0.00   595.28   841.89\nPage    1 BleedBox:      0.00     0.00   595.28   841.89\nPage    1 TrimBox:       0.00     0.00   595.28   841.89\nPage    1 ArtBox:        0.00     0.00   595.28   841.89\nFile size:       39242 bytes\nOptimized:       no\nPDF version:     1.7\n"
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext",
-        "-layout",
-        "-enc",
-        "UTF-8",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/additional-implementation-qualifications-report-1/rendered-1/qualification-supplement.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/qualifications.txt"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": ""
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm",
-        "-r",
-        "144",
-        "-png",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/additional-implementation-qualifications-report-1/rendered-1/qualification-supplement.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/qualifications"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": ""
-    },
-    {
-      "argv": [
-        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
-        "-f",
-        "1",
-        "-l",
-        "1",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/additional-implementation-qualifications-report-1/rendered-1/qualification-supplement.pdf"
-      ],
-      "returncode": 0,
-      "stderr": "",
-      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nRUIWXV+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes     37  0\nKCQXVH+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes     40  0\nGPFFXM+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes     43  0\nTPBCYM+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes     46  0\n"
     },
     {
       "argv": [
@@ -704,7 +78,7 @@
         "1",
         "-l",
         "42",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -716,8 +90,8 @@
         "-layout",
         "-enc",
         "UTF-8",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.txt"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/base42.txt"
       ],
       "returncode": 0,
       "stderr": "",
@@ -729,8 +103,8 @@
         "-r",
         "144",
         "-png",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/base42"
       ],
       "returncode": 0,
       "stderr": "",
@@ -743,7 +117,7 @@
         "1",
         "-l",
         "1",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -756,7 +130,7 @@
         "2",
         "-l",
         "2",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -769,7 +143,7 @@
         "3",
         "-l",
         "3",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -782,7 +156,7 @@
         "4",
         "-l",
         "4",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -795,7 +169,7 @@
         "5",
         "-l",
         "5",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -808,7 +182,7 @@
         "6",
         "-l",
         "6",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -821,7 +195,7 @@
         "7",
         "-l",
         "7",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -834,7 +208,7 @@
         "8",
         "-l",
         "8",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -847,7 +221,7 @@
         "9",
         "-l",
         "9",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -860,7 +234,7 @@
         "10",
         "-l",
         "10",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -873,7 +247,7 @@
         "11",
         "-l",
         "11",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -886,7 +260,7 @@
         "12",
         "-l",
         "12",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -899,7 +273,7 @@
         "13",
         "-l",
         "13",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -912,7 +286,7 @@
         "14",
         "-l",
         "14",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -925,7 +299,7 @@
         "15",
         "-l",
         "15",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -938,7 +312,7 @@
         "16",
         "-l",
         "16",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -951,7 +325,7 @@
         "17",
         "-l",
         "17",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -964,7 +338,7 @@
         "18",
         "-l",
         "18",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -977,7 +351,7 @@
         "19",
         "-l",
         "19",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -990,7 +364,7 @@
         "20",
         "-l",
         "20",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1003,7 +377,7 @@
         "21",
         "-l",
         "21",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1016,7 +390,7 @@
         "22",
         "-l",
         "22",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1029,7 +403,7 @@
         "23",
         "-l",
         "23",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1042,7 +416,7 @@
         "24",
         "-l",
         "24",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1055,7 +429,7 @@
         "25",
         "-l",
         "25",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1068,7 +442,7 @@
         "26",
         "-l",
         "26",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1081,7 +455,7 @@
         "27",
         "-l",
         "27",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1094,7 +468,7 @@
         "28",
         "-l",
         "28",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1107,7 +481,7 @@
         "29",
         "-l",
         "29",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1120,7 +494,7 @@
         "30",
         "-l",
         "30",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1133,7 +507,7 @@
         "31",
         "-l",
         "31",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1146,7 +520,7 @@
         "32",
         "-l",
         "32",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1159,7 +533,7 @@
         "33",
         "-l",
         "33",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1172,7 +546,7 @@
         "34",
         "-l",
         "34",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1185,7 +559,7 @@
         "35",
         "-l",
         "35",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1198,7 +572,7 @@
         "36",
         "-l",
         "36",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1211,7 +585,7 @@
         "37",
         "-l",
         "37",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1224,7 +598,7 @@
         "38",
         "-l",
         "38",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1237,7 +611,7 @@
         "39",
         "-l",
         "39",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1250,7 +624,7 @@
         "40",
         "-l",
         "40",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1263,7 +637,7 @@
         "41",
         "-l",
         "41",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
@@ -1276,20 +650,672 @@
         "42",
         "-l",
         "42",
-        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.qualification-report-0whg4don/combined.pdf"
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-analytic-repair-qualification-1/benchmark.pdf"
       ],
       "returncode": 0,
       "stderr": "",
       "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nRUIWXV+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   3051  0\nKCQXVH+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   3054  0\nGPFFXM+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   3057  0\nTPBCYM+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   3060  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo",
+        "-box",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-analytic-repair-report-1/rendered-1/analytic-repair-supplement.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "Syntax Error: Suspects object is wrong type (boolean)\n",
+      "stdout": "Title:           MadLoop with TIRust \u2014 numerical validation and benchmarks\nAuthor:          MadLoop\u2013TIRust development\nCreator:         Typst 0.15.1\nCustom Metadata: no\nMetadata Stream: yes\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           1\nEncrypted:       no\nPage    1 size:  595.276 x 841.89 pts (A4)\nPage    1 rot:   0\nPage    1 MediaBox:      0.00     0.00   595.28   841.89\nPage    1 CropBox:       0.00     0.00   595.28   841.89\nPage    1 BleedBox:      0.00     0.00   595.28   841.89\nPage    1 TrimBox:       0.00     0.00   595.28   841.89\nPage    1 ArtBox:        0.00     0.00   595.28   841.89\nFile size:       72992 bytes\nOptimized:       no\nPDF version:     1.7\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext",
+        "-layout",
+        "-enc",
+        "UTF-8",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-analytic-repair-report-1/rendered-1/analytic-repair-supplement.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/analytic-repair.txt"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm",
+        "-r",
+        "144",
+        "-png",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-analytic-repair-report-1/rendered-1/analytic-repair-supplement.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/analytic-repair"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/fortran-analytic-repair-report-1/rendered-1/analytic-repair-supplement.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nWCJBLU+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes     94  0\nNIRCOH+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes     97  0\nAZCUUK+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes    100  0\nEICHZC+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes    103  0\nZXHZFN+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes    106  0\nJVRSVN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes    109  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo",
+        "-box",
+        "-f",
+        "1",
+        "-l",
+        "43",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "Custom Metadata: no\nMetadata Stream: no\nTagged:          no\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           43\nEncrypted:       no\nPage    1 size:  595.276 x 841.89 pts (A4)\nPage    1 rot:   0\nPage    2 size:  595.276 x 841.89 pts (A4)\nPage    2 rot:   0\nPage    3 size:  595.276 x 841.89 pts (A4)\nPage    3 rot:   0\nPage    4 size:  595.276 x 841.89 pts (A4)\nPage    4 rot:   0\nPage    5 size:  595.276 x 841.89 pts (A4)\nPage    5 rot:   0\nPage    6 size:  595.276 x 841.89 pts (A4)\nPage    6 rot:   0\nPage    7 size:  595.276 x 841.89 pts (A4)\nPage    7 rot:   0\nPage    8 size:  595.276 x 841.89 pts (A4)\nPage    8 rot:   0\nPage    9 size:  595.276 x 841.89 pts (A4)\nPage    9 rot:   0\nPage   10 size:  595.276 x 841.89 pts (A4)\nPage   10 rot:   0\nPage   11 size:  595.276 x 841.89 pts (A4)\nPage   11 rot:   0\nPage   12 size:  595.276 x 841.89 pts (A4)\nPage   12 rot:   0\nPage   13 size:  595.276 x 841.89 pts (A4)\nPage   13 rot:   0\nPage   14 size:  595.276 x 841.89 pts (A4)\nPage   14 rot:   0\nPage   15 size:  595.276 x 841.89 pts (A4)\nPage   15 rot:   0\nPage   16 size:  595.276 x 841.89 pts (A4)\nPage   16 rot:   0\nPage   17 size:  595.276 x 841.89 pts (A4)\nPage   17 rot:   0\nPage   18 size:  595.276 x 841.89 pts (A4)\nPage   18 rot:   0\nPage   19 size:  595.276 x 841.89 pts (A4)\nPage   19 rot:   0\nPage   20 size:  595.276 x 841.89 pts (A4)\nPage   20 rot:   0\nPage   21 size:  595.276 x 841.89 pts (A4)\nPage   21 rot:   0\nPage   22 size:  595.276 x 841.89 pts (A4)\nPage   22 rot:   0\nPage   23 size:  595.276 x 841.89 pts (A4)\nPage   23 rot:   0\nPage   24 size:  595.276 x 841.89 pts (A4)\nPage   24 rot:   0\nPage   25 size:  595.276 x 841.89 pts (A4)\nPage   25 rot:   0\nPage   26 size:  595.276 x 841.89 pts (A4)\nPage   26 rot:   0\nPage   27 size:  595.276 x 841.89 pts (A4)\nPage   27 rot:   0\nPage   28 size:  595.276 x 841.89 pts (A4)\nPage   28 rot:   0\nPage   29 size:  595.276 x 841.89 pts (A4)\nPage   29 rot:   0\nPage   30 size:  595.276 x 841.89 pts (A4)\nPage   30 rot:   0\nPage   31 size:  595.276 x 841.89 pts (A4)\nPage   31 rot:   0\nPage   32 size:  595.276 x 841.89 pts (A4)\nPage   32 rot:   0\nPage   33 size:  595.276 x 841.89 pts (A4)\nPage   33 rot:   0\nPage   34 size:  595.276 x 841.89 pts (A4)\nPage   34 rot:   0\nPage   35 size:  595.276 x 841.89 pts (A4)\nPage   35 rot:   0\nPage   36 size:  595.276 x 841.89 pts (A4)\nPage   36 rot:   0\nPage   37 size:  595.276 x 841.89 pts (A4)\nPage   37 rot:   0\nPage   38 size:  595.276 x 841.89 pts (A4)\nPage   38 rot:   0\nPage   39 size:  595.276 x 841.89 pts (A4)\nPage   39 rot:   0\nPage   40 size:  595.276 x 841.89 pts (A4)\nPage   40 rot:   0\nPage   41 size:  595.276 x 841.89 pts (A4)\nPage   41 rot:   0\nPage   42 size:  595.276 x 841.89 pts (A4)\nPage   42 rot:   0\nPage   43 size:  595.276 x 841.89 pts (A4)\nPage   43 rot:   0\nPage    1 MediaBox:      0.00     0.00   595.28   841.89\nPage    1 CropBox:       0.00     0.00   595.28   841.89\nPage    1 BleedBox:      0.00     0.00   595.28   841.89\nPage    1 TrimBox:       0.00     0.00   595.28   841.89\nPage    1 ArtBox:        0.00     0.00   595.28   841.89\nPage    2 MediaBox:      0.00     0.00   595.28   841.89\nPage    2 CropBox:       0.00     0.00   595.28   841.89\nPage    2 BleedBox:      0.00     0.00   595.28   841.89\nPage    2 TrimBox:       0.00     0.00   595.28   841.89\nPage    2 ArtBox:        0.00     0.00   595.28   841.89\nPage    3 MediaBox:      0.00     0.00   595.28   841.89\nPage    3 CropBox:       0.00     0.00   595.28   841.89\nPage    3 BleedBox:      0.00     0.00   595.28   841.89\nPage    3 TrimBox:       0.00     0.00   595.28   841.89\nPage    3 ArtBox:        0.00     0.00   595.28   841.89\nPage    4 MediaBox:      0.00     0.00   595.28   841.89\nPage    4 CropBox:       0.00     0.00   595.28   841.89\nPage    4 BleedBox:      0.00     0.00   595.28   841.89\nPage    4 TrimBox:       0.00     0.00   595.28   841.89\nPage    4 ArtBox:        0.00     0.00   595.28   841.89\nPage    5 MediaBox:      0.00     0.00   595.28   841.89\nPage    5 CropBox:       0.00     0.00   595.28   841.89\nPage    5 BleedBox:      0.00     0.00   595.28   841.89\nPage    5 TrimBox:       0.00     0.00   595.28   841.89\nPage    5 ArtBox:        0.00     0.00   595.28   841.89\nPage    6 MediaBox:      0.00     0.00   595.28   841.89\nPage    6 CropBox:       0.00     0.00   595.28   841.89\nPage    6 BleedBox:      0.00     0.00   595.28   841.89\nPage    6 TrimBox:       0.00     0.00   595.28   841.89\nPage    6 ArtBox:        0.00     0.00   595.28   841.89\nPage    7 MediaBox:      0.00     0.00   595.28   841.89\nPage    7 CropBox:       0.00     0.00   595.28   841.89\nPage    7 BleedBox:      0.00     0.00   595.28   841.89\nPage    7 TrimBox:       0.00     0.00   595.28   841.89\nPage    7 ArtBox:        0.00     0.00   595.28   841.89\nPage    8 MediaBox:      0.00     0.00   595.28   841.89\nPage    8 CropBox:       0.00     0.00   595.28   841.89\nPage    8 BleedBox:      0.00     0.00   595.28   841.89\nPage    8 TrimBox:       0.00     0.00   595.28   841.89\nPage    8 ArtBox:        0.00     0.00   595.28   841.89\nPage    9 MediaBox:      0.00     0.00   595.28   841.89\nPage    9 CropBox:       0.00     0.00   595.28   841.89\nPage    9 BleedBox:      0.00     0.00   595.28   841.89\nPage    9 TrimBox:       0.00     0.00   595.28   841.89\nPage    9 ArtBox:        0.00     0.00   595.28   841.89\nPage   10 MediaBox:      0.00     0.00   595.28   841.89\nPage   10 CropBox:       0.00     0.00   595.28   841.89\nPage   10 BleedBox:      0.00     0.00   595.28   841.89\nPage   10 TrimBox:       0.00     0.00   595.28   841.89\nPage   10 ArtBox:        0.00     0.00   595.28   841.89\nPage   11 MediaBox:      0.00     0.00   595.28   841.89\nPage   11 CropBox:       0.00     0.00   595.28   841.89\nPage   11 BleedBox:      0.00     0.00   595.28   841.89\nPage   11 TrimBox:       0.00     0.00   595.28   841.89\nPage   11 ArtBox:        0.00     0.00   595.28   841.89\nPage   12 MediaBox:      0.00     0.00   595.28   841.89\nPage   12 CropBox:       0.00     0.00   595.28   841.89\nPage   12 BleedBox:      0.00     0.00   595.28   841.89\nPage   12 TrimBox:       0.00     0.00   595.28   841.89\nPage   12 ArtBox:        0.00     0.00   595.28   841.89\nPage   13 MediaBox:      0.00     0.00   595.28   841.89\nPage   13 CropBox:       0.00     0.00   595.28   841.89\nPage   13 BleedBox:      0.00     0.00   595.28   841.89\nPage   13 TrimBox:       0.00     0.00   595.28   841.89\nPage   13 ArtBox:        0.00     0.00   595.28   841.89\nPage   14 MediaBox:      0.00     0.00   595.28   841.89\nPage   14 CropBox:       0.00     0.00   595.28   841.89\nPage   14 BleedBox:      0.00     0.00   595.28   841.89\nPage   14 TrimBox:       0.00     0.00   595.28   841.89\nPage   14 ArtBox:        0.00     0.00   595.28   841.89\nPage   15 MediaBox:      0.00     0.00   595.28   841.89\nPage   15 CropBox:       0.00     0.00   595.28   841.89\nPage   15 BleedBox:      0.00     0.00   595.28   841.89\nPage   15 TrimBox:       0.00     0.00   595.28   841.89\nPage   15 ArtBox:        0.00     0.00   595.28   841.89\nPage   16 MediaBox:      0.00     0.00   595.28   841.89\nPage   16 CropBox:       0.00     0.00   595.28   841.89\nPage   16 BleedBox:      0.00     0.00   595.28   841.89\nPage   16 TrimBox:       0.00     0.00   595.28   841.89\nPage   16 ArtBox:        0.00     0.00   595.28   841.89\nPage   17 MediaBox:      0.00     0.00   595.28   841.89\nPage   17 CropBox:       0.00     0.00   595.28   841.89\nPage   17 BleedBox:      0.00     0.00   595.28   841.89\nPage   17 TrimBox:       0.00     0.00   595.28   841.89\nPage   17 ArtBox:        0.00     0.00   595.28   841.89\nPage   18 MediaBox:      0.00     0.00   595.28   841.89\nPage   18 CropBox:       0.00     0.00   595.28   841.89\nPage   18 BleedBox:      0.00     0.00   595.28   841.89\nPage   18 TrimBox:       0.00     0.00   595.28   841.89\nPage   18 ArtBox:        0.00     0.00   595.28   841.89\nPage   19 MediaBox:      0.00     0.00   595.28   841.89\nPage   19 CropBox:       0.00     0.00   595.28   841.89\nPage   19 BleedBox:      0.00     0.00   595.28   841.89\nPage   19 TrimBox:       0.00     0.00   595.28   841.89\nPage   19 ArtBox:        0.00     0.00   595.28   841.89\nPage   20 MediaBox:      0.00     0.00   595.28   841.89\nPage   20 CropBox:       0.00     0.00   595.28   841.89\nPage   20 BleedBox:      0.00     0.00   595.28   841.89\nPage   20 TrimBox:       0.00     0.00   595.28   841.89\nPage   20 ArtBox:        0.00     0.00   595.28   841.89\nPage   21 MediaBox:      0.00     0.00   595.28   841.89\nPage   21 CropBox:       0.00     0.00   595.28   841.89\nPage   21 BleedBox:      0.00     0.00   595.28   841.89\nPage   21 TrimBox:       0.00     0.00   595.28   841.89\nPage   21 ArtBox:        0.00     0.00   595.28   841.89\nPage   22 MediaBox:      0.00     0.00   595.28   841.89\nPage   22 CropBox:       0.00     0.00   595.28   841.89\nPage   22 BleedBox:      0.00     0.00   595.28   841.89\nPage   22 TrimBox:       0.00     0.00   595.28   841.89\nPage   22 ArtBox:        0.00     0.00   595.28   841.89\nPage   23 MediaBox:      0.00     0.00   595.28   841.89\nPage   23 CropBox:       0.00     0.00   595.28   841.89\nPage   23 BleedBox:      0.00     0.00   595.28   841.89\nPage   23 TrimBox:       0.00     0.00   595.28   841.89\nPage   23 ArtBox:        0.00     0.00   595.28   841.89\nPage   24 MediaBox:      0.00     0.00   595.28   841.89\nPage   24 CropBox:       0.00     0.00   595.28   841.89\nPage   24 BleedBox:      0.00     0.00   595.28   841.89\nPage   24 TrimBox:       0.00     0.00   595.28   841.89\nPage   24 ArtBox:        0.00     0.00   595.28   841.89\nPage   25 MediaBox:      0.00     0.00   595.28   841.89\nPage   25 CropBox:       0.00     0.00   595.28   841.89\nPage   25 BleedBox:      0.00     0.00   595.28   841.89\nPage   25 TrimBox:       0.00     0.00   595.28   841.89\nPage   25 ArtBox:        0.00     0.00   595.28   841.89\nPage   26 MediaBox:      0.00     0.00   595.28   841.89\nPage   26 CropBox:       0.00     0.00   595.28   841.89\nPage   26 BleedBox:      0.00     0.00   595.28   841.89\nPage   26 TrimBox:       0.00     0.00   595.28   841.89\nPage   26 ArtBox:        0.00     0.00   595.28   841.89\nPage   27 MediaBox:      0.00     0.00   595.28   841.89\nPage   27 CropBox:       0.00     0.00   595.28   841.89\nPage   27 BleedBox:      0.00     0.00   595.28   841.89\nPage   27 TrimBox:       0.00     0.00   595.28   841.89\nPage   27 ArtBox:        0.00     0.00   595.28   841.89\nPage   28 MediaBox:      0.00     0.00   595.28   841.89\nPage   28 CropBox:       0.00     0.00   595.28   841.89\nPage   28 BleedBox:      0.00     0.00   595.28   841.89\nPage   28 TrimBox:       0.00     0.00   595.28   841.89\nPage   28 ArtBox:        0.00     0.00   595.28   841.89\nPage   29 MediaBox:      0.00     0.00   595.28   841.89\nPage   29 CropBox:       0.00     0.00   595.28   841.89\nPage   29 BleedBox:      0.00     0.00   595.28   841.89\nPage   29 TrimBox:       0.00     0.00   595.28   841.89\nPage   29 ArtBox:        0.00     0.00   595.28   841.89\nPage   30 MediaBox:      0.00     0.00   595.28   841.89\nPage   30 CropBox:       0.00     0.00   595.28   841.89\nPage   30 BleedBox:      0.00     0.00   595.28   841.89\nPage   30 TrimBox:       0.00     0.00   595.28   841.89\nPage   30 ArtBox:        0.00     0.00   595.28   841.89\nPage   31 MediaBox:      0.00     0.00   595.28   841.89\nPage   31 CropBox:       0.00     0.00   595.28   841.89\nPage   31 BleedBox:      0.00     0.00   595.28   841.89\nPage   31 TrimBox:       0.00     0.00   595.28   841.89\nPage   31 ArtBox:        0.00     0.00   595.28   841.89\nPage   32 MediaBox:      0.00     0.00   595.28   841.89\nPage   32 CropBox:       0.00     0.00   595.28   841.89\nPage   32 BleedBox:      0.00     0.00   595.28   841.89\nPage   32 TrimBox:       0.00     0.00   595.28   841.89\nPage   32 ArtBox:        0.00     0.00   595.28   841.89\nPage   33 MediaBox:      0.00     0.00   595.28   841.89\nPage   33 CropBox:       0.00     0.00   595.28   841.89\nPage   33 BleedBox:      0.00     0.00   595.28   841.89\nPage   33 TrimBox:       0.00     0.00   595.28   841.89\nPage   33 ArtBox:        0.00     0.00   595.28   841.89\nPage   34 MediaBox:      0.00     0.00   595.28   841.89\nPage   34 CropBox:       0.00     0.00   595.28   841.89\nPage   34 BleedBox:      0.00     0.00   595.28   841.89\nPage   34 TrimBox:       0.00     0.00   595.28   841.89\nPage   34 ArtBox:        0.00     0.00   595.28   841.89\nPage   35 MediaBox:      0.00     0.00   595.28   841.89\nPage   35 CropBox:       0.00     0.00   595.28   841.89\nPage   35 BleedBox:      0.00     0.00   595.28   841.89\nPage   35 TrimBox:       0.00     0.00   595.28   841.89\nPage   35 ArtBox:        0.00     0.00   595.28   841.89\nPage   36 MediaBox:      0.00     0.00   595.28   841.89\nPage   36 CropBox:       0.00     0.00   595.28   841.89\nPage   36 BleedBox:      0.00     0.00   595.28   841.89\nPage   36 TrimBox:       0.00     0.00   595.28   841.89\nPage   36 ArtBox:        0.00     0.00   595.28   841.89\nPage   37 MediaBox:      0.00     0.00   595.28   841.89\nPage   37 CropBox:       0.00     0.00   595.28   841.89\nPage   37 BleedBox:      0.00     0.00   595.28   841.89\nPage   37 TrimBox:       0.00     0.00   595.28   841.89\nPage   37 ArtBox:        0.00     0.00   595.28   841.89\nPage   38 MediaBox:      0.00     0.00   595.28   841.89\nPage   38 CropBox:       0.00     0.00   595.28   841.89\nPage   38 BleedBox:      0.00     0.00   595.28   841.89\nPage   38 TrimBox:       0.00     0.00   595.28   841.89\nPage   38 ArtBox:        0.00     0.00   595.28   841.89\nPage   39 MediaBox:      0.00     0.00   595.28   841.89\nPage   39 CropBox:       0.00     0.00   595.28   841.89\nPage   39 BleedBox:      0.00     0.00   595.28   841.89\nPage   39 TrimBox:       0.00     0.00   595.28   841.89\nPage   39 ArtBox:        0.00     0.00   595.28   841.89\nPage   40 MediaBox:      0.00     0.00   595.28   841.89\nPage   40 CropBox:       0.00     0.00   595.28   841.89\nPage   40 BleedBox:      0.00     0.00   595.28   841.89\nPage   40 TrimBox:       0.00     0.00   595.28   841.89\nPage   40 ArtBox:        0.00     0.00   595.28   841.89\nPage   41 MediaBox:      0.00     0.00   595.28   841.89\nPage   41 CropBox:       0.00     0.00   595.28   841.89\nPage   41 BleedBox:      0.00     0.00   595.28   841.89\nPage   41 TrimBox:       0.00     0.00   595.28   841.89\nPage   41 ArtBox:        0.00     0.00   595.28   841.89\nPage   42 MediaBox:      0.00     0.00   595.28   841.89\nPage   42 CropBox:       0.00     0.00   595.28   841.89\nPage   42 BleedBox:      0.00     0.00   595.28   841.89\nPage   42 TrimBox:       0.00     0.00   595.28   841.89\nPage   42 ArtBox:        0.00     0.00   595.28   841.89\nPage   43 MediaBox:      0.00     0.00   595.28   841.89\nPage   43 CropBox:       0.00     0.00   595.28   841.89\nPage   43 BleedBox:      0.00     0.00   595.28   841.89\nPage   43 TrimBox:       0.00     0.00   595.28   841.89\nPage   43 ArtBox:        0.00     0.00   595.28   841.89\nFile size:       2494079 bytes\nOptimized:       no\nPDF version:     1.7\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext",
+        "-layout",
+        "-enc",
+        "UTF-8",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.txt"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm",
+        "-r",
+        "144",
+        "-png",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "2",
+        "-l",
+        "2",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "3",
+        "-l",
+        "3",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "4",
+        "-l",
+        "4",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "5",
+        "-l",
+        "5",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "6",
+        "-l",
+        "6",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "7",
+        "-l",
+        "7",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "8",
+        "-l",
+        "8",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "9",
+        "-l",
+        "9",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "10",
+        "-l",
+        "10",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "11",
+        "-l",
+        "11",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "12",
+        "-l",
+        "12",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "13",
+        "-l",
+        "13",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "14",
+        "-l",
+        "14",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "15",
+        "-l",
+        "15",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "16",
+        "-l",
+        "16",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "17",
+        "-l",
+        "17",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "18",
+        "-l",
+        "18",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "19",
+        "-l",
+        "19",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "20",
+        "-l",
+        "20",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "21",
+        "-l",
+        "21",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "22",
+        "-l",
+        "22",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "23",
+        "-l",
+        "23",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "24",
+        "-l",
+        "24",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "25",
+        "-l",
+        "25",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "26",
+        "-l",
+        "26",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "27",
+        "-l",
+        "27",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "28",
+        "-l",
+        "28",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "29",
+        "-l",
+        "29",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "30",
+        "-l",
+        "30",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "31",
+        "-l",
+        "31",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nOFQHRT+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2166  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "32",
+        "-l",
+        "32",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUPQKYJ+DejaVuSansMono-Bold           CID TrueType      Identity-H       yes yes yes   2172  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "33",
+        "-l",
+        "33",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "34",
+        "-l",
+        "34",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUPQKYJ+DejaVuSansMono-Bold           CID TrueType      Identity-H       yes yes yes   2172  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "35",
+        "-l",
+        "35",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nZDTWKJ+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2157  0\nURHLSW+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2160  0\nRRLYEN+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2154  0\nUPQKYJ+DejaVuSansMono-Bold           CID TrueType      Identity-H       yes yes yes   2172  0\nUJYNHW+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2163  0\nTLAZEL+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2169  0\nBMQQDV+DejaVuSans                    Type 3            Custom           yes yes no    2211  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "36",
+        "-l",
+        "36",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nQQHHNE+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2569  0\nSQJSNV+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2572  0\nASPQGF+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2575  0\nJYJCNP+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2578  0\nNRUTHN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2581  0\nJRDHBC+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2584  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "37",
+        "-l",
+        "37",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nSQJSNV+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2572  0\nQQHHNE+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2569  0\nASPQGF+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2575  0\nJYJCNP+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2578  0\nNRUTHN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2581  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "38",
+        "-l",
+        "38",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nSQJSNV+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2572  0\nQQHHNE+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2569  0\nASPQGF+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2575  0\nJRDHBC+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2584  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "39",
+        "-l",
+        "39",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nFKKUBX+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2707  0\nLPPGVL+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2710  0\nIWSOXN+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2713  0\nQLHWNN+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2716  0\nCUHUDT+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2719  0\nUWIOWC+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2722  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "40",
+        "-l",
+        "40",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nBJOFBZ+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2969  0\nTDVMHC+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2972  0\nJQYPRL+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   2975  0\nZILQNS+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   2978  0\nYMCFGJ+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   2981  0\nAGHTAY+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2984  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "41",
+        "-l",
+        "41",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nTDVMHC+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   2972  0\nBJOFBZ+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   2969  0\nAGHTAY+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   2984  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "42",
+        "-l",
+        "42",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nRUIWXV+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   3051  0\nKCQXVH+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   3054  0\nGPFFXM+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   3057  0\nTPBCYM+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   3060  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "-f",
+        "43",
+        "-l",
+        "43",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/.analytic-repair-report-rafkesee/combined.pdf"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nWCJBLU+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes   3174  0\nNIRCOH+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes   3177  0\nAZCUUK+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes   3180  0\nEICHZC+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes   3183  0\nZXHZFN+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes   3186  0\nJVRSVN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes   3189  0\n"
     }
   ],
   "new_native_physics_evaluations": 0,
   "page_proof": {
     "PDF": {
-      "bytes": 2436028,
-      "sha256": "4f087a337a8cf736d8d21509486727f7c6f55b3467dd1535d4190f96be73a18f"
+      "bytes": 2494079,
+      "sha256": "90dcbd6635803d0ec1168cc37887f6cb0ad213ec1adef3ce692a845dfca3ff5e"
     },
-    "base_pages": 41,
+    "base_pages": 42,
     "dpi": 144,
     "pages": [
       {
@@ -2288,6 +2314,31 @@
           1684
         ],
         "text_sha256": "ea7fbfe57baa7dfee90e4ff7e5087e9273cb4a1e95d542384537d2036be999d6"
+      },
+      {
+        "RGB_sha256": "f672fd1548aa4596ba34aa2e7bf5160d8638b80f1868e66c7614df64fb232643",
+        "fonts": [
+          "AZCUUK+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes",
+          "EICHZC+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes",
+          "JVRSVN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes",
+          "NIRCOH+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes",
+          "WCJBLU+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes",
+          "ZXHZFN+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes"
+        ],
+        "geometry": {
+          "ArtBox": "0.00 0.00 595.28 841.89",
+          "BleedBox": "0.00 0.00 595.28 841.89",
+          "CropBox": "0.00 0.00 595.28 841.89",
+          "MediaBox": "0.00 0.00 595.28 841.89",
+          "TrimBox": "0.00 0.00 595.28 841.89",
+          "rot": "0",
+          "size": "595.276 x 841.89 pts (A4)"
+        },
+        "pixel_size": [
+          1191,
+          1684
+        ],
+        "text_sha256": "ee386673c4acf2dfc01a4a889b300d0ca45fd3fd4e00a9f8e86afb7d26a194bf"
       }
     ],
     "prefix_preserved": true,
@@ -2301,13 +2352,13 @@
       "pdftotext": "pdftotext version 25.10.0\nCopyright 2005-2025 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC",
       "pdfunite": "pdfunite version 25.10.0\nCopyright 2005-2025 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC"
     },
-    "total_pages": 42
+    "total_pages": 43
   },
-  "page_proof_sha256": "19a509cf102f89f3fdaebc46f5d4400e18614a105f53ca0ce61f192d4c91bddd",
+  "page_proof_sha256": "558f837312cd392e85b8be6c91b57b4d6d2eaed8bb4d1d11ea54e39874633cf8",
   "performance_acceptance": false,
   "production_source_promotion": false,
   "publication": "Individually atomic renames under exclusive lock, ledger last with exception rollback; not crash-atomic across two paths.",
-  "schema": "madloop-tirust-qualification-composite-report-v1",
+  "schema": "madloop-tirust-analytic-repair-composite-report-v1",
   "selected_inputs": {
     "archive": {
       "document_helper_owner": {
@@ -2316,36 +2367,44 @@
       },
       "files": {
         "benchmark.pdf": {
-          "bytes": 2400873,
-          "sha256": "1afc4fa5806628ccec7b3754622a35a607f32e2c93b15bf4708e357ccf0afac1"
+          "bytes": 2436028,
+          "sha256": "4f087a337a8cf736d8d21509486727f7c6f55b3467dd1535d4190f96be73a18f"
         },
-        "build_timing_report.py": {
-          "bytes": 10594,
-          "sha256": "5874cf625946bded03155e6568b34f56bccaa7178bcc56b21d728be9a4130274"
+        "build_qualification_report.py": {
+          "bytes": 13393,
+          "sha256": "0ed3e3465facd71de8e1f8a63109fcdd73b37229dd9e2ac5b1247ad73274b594"
         },
         "report-build.json": {
-          "bytes": 170221,
-          "sha256": "7e15e537c380eb98796421964dc727d3040411fda2b578cb9abdc7fdd3cc2829"
+          "bytes": 176347,
+          "sha256": "9a070d34713d90fe474e8887bdea0c2c461a60d4eb452904f1c9682a9a2806b1"
         }
       },
       "index": {
-        "bytes": 591,
-        "sha256": "2a2116c2e51382861551196070eb59b2805f0c0b6147d578acbb9174b4640539"
+        "bytes": 711,
+        "sha256": "194dba97ccb3646af36e8273aa8e2d794b8c4709ea3b180d5bbbac6da56725ac"
       }
     },
     "render": {
       "PDF": {
-        "bytes": 39242,
-        "sha256": "9ee7824d799990a6de251b9f67b3d2c706eb60faff29cab8352de35d749ec406"
+        "bytes": 72992,
+        "sha256": "0ec1c8eadf790946ec83671e789f24c6a7654530ff4bc4500c5cc50d5004a110"
       },
       "inputs": {
-        "qualification-selection.json": {
-          "bytes": 1843,
-          "sha256": "5424696843ef654d9d3109b74bb00333d9c958b0bd043e449900bbd9e10aaafe"
+        "analytic-repair-data.json": {
+          "bytes": 18235,
+          "sha256": "7430cf4fe19acc349db7b047e4ee0f6595c20c177c63f2b51608df3e65ff58bc"
         },
-        "qualifications.typ": {
-          "bytes": 4959,
-          "sha256": "81dfe31ed1bb596de6ae67a38f7e25cd8778b2e2b2ae23075431fc4bbe694df3"
+        "analytic-repair-selection.json": {
+          "bytes": 954,
+          "sha256": "aae69f073290055a6fc9fbf3351aa5736537f4cbbf92ccadc7d9b13a08f624dc"
+        },
+        "analytic-repair.typ": {
+          "bytes": 4602,
+          "sha256": "68c888bcfbd2d29d48a1ac30f464f3c48d997dad4688f4d862b9722d1d19a1ec"
+        },
+        "derive_timing.py": {
+          "bytes": 10543,
+          "sha256": "ef56a3306f19b700d3c44bad6ea2b1ef814ec6cf91c93bae483afea9b64e3b9e"
         },
         "style-provenance.json": {
           "bytes": 732,
@@ -2358,44 +2417,20 @@
       },
       "page_count": 1,
       "receipt": {
-        "bytes": 11214,
-        "sha256": "323e7ffe4ad2dd84a9d5f144a7bb56e05c2f5b2e50193b8f1afaab6d7b181740"
+        "bytes": 12110,
+        "sha256": "67eb29630342b2f4c0fe0a7ce823cc4adf478ce7140a3c7e6246fe150d61a0d3"
       }
     },
     "report_index": {
-      "bytes": 1436,
-      "sha256": "a751189bd0145455be58f1cd00b2ae3aa554157f32c37a4271bcad7e406f379e"
+      "bytes": 2201,
+      "sha256": "0915f46197aa0797e9de995b30684e96257226d9fc0d5d86be90040593936517"
     },
     "scientific_packets": [
       {
         "index_name": "index.json",
-        "index_sha256": "893c51f75dedbb6bbb1a70f78bed84b00d97b958ac678c194dc28cbb3aaa6b0b",
-        "label": "QP-mass six stages",
-        "path": "experiments/fortran-qp-mass-current-qualification-1"
-      },
-      {
-        "index_name": "index.json",
-        "index_sha256": "c5d0025ca581a466535db6d8196e1599f245bc4b45777c20c0d601781773751a",
-        "label": "Fresh actual CLI",
-        "path": "experiments/fortran-qp-mass-fresh-cli-qualification-1"
-      },
-      {
-        "index_name": "evidence-index.json",
-        "index_sha256": "46feb7af61d5beb22506ca0e10d53eaa1c266553a564bb696f1cb438423e7aac",
-        "label": "Fortran repair profile",
-        "path": "experiments/fortran-host-repair-profile-qualification-1"
-      },
-      {
-        "index_name": "index.json",
-        "index_sha256": "cfe72f6dce655b5dcec780133a21f8fc082b3a888d03df2a971a361696735500",
-        "label": "Integer equality",
-        "path": "experiments/generic-equality-postcondition-qualification-1"
-      },
-      {
-        "index_name": "index.json",
-        "index_sha256": "e5636951de58c04d5a3c984b10dddcee6613a560a08753eb02e68e2c6ffa7d61",
-        "label": "Snapshot transport",
-        "path": "experiments/generic-owned-snapshot-qualification-1"
+        "index_sha256": "f8bc6ce06201665abc0da7d79bcb55697a215d99f2258e9ba623453ebc33e6e9",
+        "label": "Analytic Fortran repair qualification",
+        "path": "experiments/fortran-analytic-repair-qualification-1"
       }
     ]
   }

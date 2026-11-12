@@ -9,11 +9,12 @@ targets `main`.
 
 **Current status.** Production registration `0fcd2cd873d6` has eleven closed
 ordinary cases: all 66 lanes pass `3e-6`, while 54 pass the separate `1e-8`
-target. The [42-page benchmark PDF](benchmark.pdf) preserves all preceding 41
+target. The [43-page benchmark PDF](benchmark.pdf) preserves all preceding 42
 pages, including [two pages of actual shared-host timings](experiments/current-source-five-backend-timing-report-1/rendered-1/README.md)
 for four SM processes and all five reducers, including a fresh QCD 2→4
-four-lepton process. It adds [one page of implementation qualifications](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md),
-with Typst source and complete report reproduction commands. The experimental
+four-lepton process and the [implementation qualifications](experiments/additional-implementation-qualifications-report-1/rendered-1/README.md).
+It adds [one page on the analytic Fortran repair](experiments/fortran-analytic-repair-report-1/rendered-1/README.md),
+with colored paired timings, Typst source and complete report reproduction commands. The experimental
 patches remain unapplied. All twenty timing lanes pass the retained `3e-6` and
 ordinary `1e-8` numerical gates; these descriptive timings are separate from
 local performance acceptance. The reusable

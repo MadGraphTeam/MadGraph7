@@ -1,0 +1,23 @@
+{
+  "data": {
+    "path": "analytic-repair-data.json",
+    "sha256": "7430cf4fe19acc349db7b047e4ee0f6595c20c177c63f2b51608df3e65ff58bc"
+  },
+  "kind": "documentary one-process Fortran timing supplement",
+  "new_native_physics_evaluations": 0,
+  "packets": [
+    {
+      "index_name": "index.json",
+      "index_sha256": "f8bc6ce06201665abc0da7d79bcb55697a215d99f2258e9ba623453ebc33e6e9",
+      "label": "Analytic Fortran repair qualification",
+      "path": "experiments/fortran-analytic-repair-qualification-1"
+    }
+  ],
+  "performance_acceptance": false,
+  "production_revision": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "production_source_promotion": false,
+  "schema": "madloop-tirust-analytic-repair-report-selection-v1",
+  "source_promoted": false,
+  "style_sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e",
+  "timing_independent_review_sha256": "9e10f47d4599235efef6fb7908c5a710282a9ffbb89cbe53793e0e2cfa780306"
+}

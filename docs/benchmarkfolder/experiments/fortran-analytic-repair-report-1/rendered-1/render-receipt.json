@@ -1,0 +1,167 @@
+{
+  "PDF": {
+    "bytes": 72992,
+    "sha256": "0ec1c8eadf790946ec83671e789f24c6a7654530ff4bc4500c5cc50d5004a110"
+  },
+  "canonical_PDF_preserved": {
+    "bytes": 2436028,
+    "sha256": "4f087a337a8cf736d8d21509486727f7c6f55b3467dd1535d4190f96be73a18f"
+  },
+  "canonical_publication": false,
+  "closed": true,
+  "color_delta": "Explicit per-cell preserved ratio-fill(raw C/O) and preserved fast-green/slow-red numeric ink; no value transformation",
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "--version"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.010616145096719265,
+      "returncode": 0,
+      "started_monotonic": 2499097.611244742,
+      "stderr": "",
+      "stdout": "typst 0.15.1 (9dfd3a08)\n"
+    },
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "compile",
+        ".tirust-build/fortran-analytic-repair-report-2/analytic-repair.typ",
+        ".tirust-build/fortran-analytic-repair-report-2/analytic-repair-supplement.pdf",
+        "--creation-timestamp",
+        "1794441600",
+        "--font-path",
+        "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+        "--font-path",
+        "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.10098474705591798,
+      "returncode": 0,
+      "started_monotonic": 2499097.62244032,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-analytic-repair-report-2/analytic-repair-supplement.pdf"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.031143401749432087,
+      "returncode": 0,
+      "started_monotonic": 2499097.723758898,
+      "stderr": "Syntax Error: Suspects object is wrong type (boolean)\n",
+      "stdout": "Title:           MadLoop with TIRust \u2014 numerical validation and benchmarks\nAuthor:          MadLoop\u2013TIRust development\nCreator:         Typst 0.15.1\nCustom Metadata: no\nMetadata Stream: yes\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           1\nEncrypted:       no\nPage size:       595.276 x 841.89 pts (A4)\nPage rot:        0\nFile size:       72992 bytes\nOptimized:       no\nPDF version:     1.7\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext",
+        "-layout",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-analytic-repair-report-2/analytic-repair-supplement.pdf",
+        "-"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.022864507045596838,
+      "returncode": 0,
+      "started_monotonic": 2499097.755503933,
+      "stderr": "",
+      "stdout": "Analytic Fortran phase-space repair\n  One-process shared-host study; patch remains unapplied. Original 0fcd2cd873d6 control versus a same-flag Fortran candidate.\n  Hua-Sheng\u2019s precise local performance acceptance remains pending.\n\n\nThe 2\u21921 process \ud835\udc62\ud835\udc62 \u2192 \ud835\udc4d with QCD corrections uses loop_sm and explicitly selected TIRust backend 9. The ordinary\nsample contains 100 saved longitudinal boosts and retains independent MadLoop stability checks. Its measured tensor\ntopology has three propagators and rank two. Only the Fortran repair unit is replaced; all compiler flags and other\nnumerical objects remain unchanged.\n\n Complete warmed amplitude                                         Median \u00b5s/point             Unscaled MAD \u00b5s/             Accepted 219 calls\n                                                                                                          point\n\n Original control                                                             95.3571                        0.5529                        89,600\n\n Unapplied Fortran candidate                                                  90.1986                        1.5712                        89,600\n\nEach arm has seven batches of 128 full 100-point traversals (12,800 calls per batch), on nonexclusive CPU 12. MAD is the median absolute deviation of\nbatch time per point; it is unscaled, without conversion to a standard error.\n\nSeven matched-history pairs\n               Pair                  1                 2                 3                 4                  5                 6                 7\n         Original s           1.1922             1.2200            1.2312            1.2206            1.2276             1.2117            1.2243\n       Candidate s            1.1578             1.1199            1.1817            1.1487            1.1344             1.1545            1.1831\n                C/O           0.9711             0.9180            0.9598            0.9411            0.9241             0.9528            0.9663\n\nOrder is original\u2192candidate for odd pairs and candidate\u2192original for even pairs. Every actual batch duration is retained in the machine-readable data.\n\n\n  Median paired C/O: 0.9528. Ratio of the two arm medians: 0.9459, a different statistic. All 14 batches span 1.119886\u20131.231193 s. All\n  179,200 timed statuses are accepted DP code 219.\n\n\nNumerical scope and limits\nTwo standalone mains complete 544 outer DP/QP repair-wrapper invocations across 136 fixtures per precision and arm.\nDP outputs match bit for bit; 94 QP fixture results differ in 233 component words while satisfying the frozen physical-\nresidual limits. Refused-input outputs, diagnostics and observed IEEE states preserve the original behavior. These tests\ndo not instrument actual fast-branch coverage.\nFresh learning and final 100-point amplitude runs retain exact coefficient, accuracy and public-status words on all 100\nphysical points. Each arm returns 200 rows (overall plus the sole split order), containing 800 coefficient and 200 accuracy\nfields. The 14 timing batches retain only their final 100-point numerical outputs; their status histograms cover every\ntimed call. The physical model\u2019s MP mass remains its existing binary64-to-binary128 lift.\nThis is a descriptive comparison against the current control, separate from the starting-revision default-chain and eight-\nprocess acceptance campaign. Broader process/model qualification and an independent finite-answer oracle remain\nopen. Recorded IEEE states establish observational parity, without a trap-freedom claim. The source patch remains\nunapplied; these results do not promote a backend or establish formal local runtime acceptance.\nReproduction and full-precision values: README.md, derive_timing.py and analytic-repair-data.json. Evidence index f8bc6ce06201\u2026\ntiming review 9e10f47d4599\u2026. Typography and timing palette follow the preserved pyAmpliCol source, revision 7266c1600f6e\u2026.\n\n\n\n\n                                                                        1/1\n\f"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-analytic-repair-report-2/analytic-repair-supplement.pdf"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.013020566198974848,
+      "returncode": 0,
+      "started_monotonic": 2499097.778792671,
+      "stderr": "",
+      "stdout": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nWCJBLU+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes     94  0\nNIRCOH+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes     97  0\nAZCUUK+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes    100  0\nEICHZC+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes    103  0\nZXHZFN+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes    106  0\nJVRSVN+DejaVuSans                    CID TrueType      Identity-H       yes yes yes    109  0\n"
+    },
+    {
+      "argv": [
+        "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm",
+        "-r",
+        "144",
+        "-png",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-analytic-repair-report-2/analytic-repair-supplement.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-analytic-repair-report-2/preview"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "elapsed_seconds": 0.4219350158236921,
+      "returncode": 0,
+      "started_monotonic": 2499097.792175988,
+      "stderr": "",
+      "stdout": ""
+    }
+  ],
+  "creation_timestamp": 1794441600,
+  "font_paths": [
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+  ],
+  "inputs": {
+    "analytic-repair-data.json": {
+      "bytes": 18235,
+      "sha256": "7430cf4fe19acc349db7b047e4ee0f6595c20c177c63f2b51608df3e65ff58bc"
+    },
+    "analytic-repair-selection.json": {
+      "bytes": 954,
+      "sha256": "aae69f073290055a6fc9fbf3351aa5736537f4cbbf92ccadc7d9b13a08f624dc"
+    },
+    "analytic-repair.typ": {
+      "bytes": 4602,
+      "sha256": "68c888bcfbd2d29d48a1ac30f464f3c48d997dad4688f4d862b9722d1d19a1ec"
+    },
+    "derive_timing.py": {
+      "bytes": 10543,
+      "sha256": "ef56a3306f19b700d3c44bad6ea2b1ef814ec6cf91c93bae483afea9b64e3b9e"
+    },
+    "style-provenance.json": {
+      "bytes": 732,
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "page_count": 1,
+  "performance_acceptance": false,
+  "predecessor_PDF_sha256": "15ed4322c2bf2b2d2ce3ed6336cabdeea66bfc2b317d01fbe529661cc7fb1b5a",
+  "predecessor_render_package_index_sha256": "1f44c1a0d19f83313a00dda89e93a32cbeb808b2f01e867a876f0144f67f7d55",
+  "production_source_promotion": false,
+  "schema": "madloop-tirust-analytic-repair-tail-render-v1",
+  "source_promoted": false,
+  "text_layout_and_numbers_equal_to_predecessor": true,
+  "tool_identities": {
+    "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst": {
+      "bytes": 50003320,
+      "sha256": "0853d8127e24e822d1650f7fa1baf9bfa31bb68ecc2dcf481bd4a5d54aa30e34"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdffonts": {
+      "bytes": 26592,
+      "sha256": "a287b3ee30e5096b7b41241dffbc6e7a09e7a6d0a4c976c8a4a088ee5af6bf77"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdfinfo": {
+      "bytes": 89440,
+      "sha256": "5635b694c8d69109ed276f3e904dc89843d28b78c634092aa35ba44412ecd576"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftoppm": {
+      "bytes": 51704,
+      "sha256": "24f132d9e81eb7ced02f2dd567bc89abcf6a89c573bd57a26cf51949a2e22be5"
+    },
+    "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin/pdftotext": {
+      "bytes": 69304,
+      "sha256": "5306835f5f3f2e3f8e769e10c22fd03787ad03e748d45d92023aa0a285ad7a7f"
+    }
+  },
+  "tool_paths": {
+    "poppler": "/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin",
+    "typst": "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst"
+  }
+}
