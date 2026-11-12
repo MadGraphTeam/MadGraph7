@@ -149,9 +149,10 @@ value_N(..) is not in a parameter map`, so nothing was stored and no value was
 wrong; such requests now store.
 
 **Command-line output: tables only, progress everywhere, Ctrl-C safe.**
-Every command prints its tables and short status lines only;
-`--fields-description-help` adds a plain-words description of every table
-and column. The CLI shows no logger-format lines by default (`--log-level`
+Every command prints its tables and short status lines only (the table
+titles keep what changes the numbers' meaning: leading colour, finite only,
+UV or IR poles); `--fields-description-help` adds a plain-words description
+of every table and column. The CLI shows no logger-format lines by default (`--log-level`
 defaults to `warning`; a few short notice lines say what is being done) and
 `--progress log` writes plain lines. `check`, `evaluate`, `profile` and
 `self-test` show their progress like `generate`, and Ctrl-C ends any command

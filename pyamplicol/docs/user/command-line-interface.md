@@ -1043,12 +1043,16 @@ legends, footnotes or logger-format lines. A few short notice lines
 (`process`, `model`, `output`, `widths`, `check`) say what is being done;
 they are printed above the progress display, which they never tear.
 `--fields-description-help` adds, after the tables, a short heading per table
-and one line per column (the command runs as usual). Every command shows its
+and one line per column (the command runs as usual). What changes the meaning
+of the numbers stays in the table titles: for example `Born-loop
+interference, leading colour`, `..., finite only`, `..., UV poles of the bare
+loop amplitude` or `..., IR poles of the renormalised virtual`. Every command shows its
 progress (a live display on a terminal, plain lines with `--progress log`)
 and handles Ctrl-C: no traceback, worker processes stopped, exit code 130;
 `profile` and `evaluate` print the tables of what was measured or
-evaluated so far with a one-line notice (for `evaluate` in `--json` as
-`interrupted`, `requested_points` and `measured_points`), `check` the tests
+evaluated so far with a one-line notice (for a one-loop `evaluate` in
+`--json` as `interrupted`, `requested_points` and `measured_points`; a tree
+evaluation's JSON stays a list and the notice goes to stderr), `check` the tests
 completed (the rest marked "not run"), `self-test` the checks run so far, and
 an interrupted `generate` writes nothing (an artifact is published only when
 complete).
