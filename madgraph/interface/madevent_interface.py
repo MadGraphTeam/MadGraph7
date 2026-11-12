@@ -7909,16 +7909,15 @@ class MadLoopInitializer(object):
                 ptimer.execute()
                 #poll as often as possible; otherwise the subprocess might 
                 # "sneak" in some extra memory usage while you aren't looking
-                # Accuracy of .2 seconds is enough for the timing.
+                # Wake when the child exits, independently of RSS sampling.
                 while ptimer.poll():
-                    time.sleep(.2)
+                    ptimer.wait(.2)
             finally:
                 #make sure that we don't leave the process dangling.
                 ptimer.close()
             # Notice that ptimer.max_vms_memory is also available if needed.
             ram_usage = ptimer.max_rss_memory
-            # Unfortunately the running time is less precise than with the
-            # above version
+            # The waiter records completion independently of RSS sampling.
             run_time = (ptimer.t1 - ptimer.t0)
             retcode = ptimer.p.returncode
 

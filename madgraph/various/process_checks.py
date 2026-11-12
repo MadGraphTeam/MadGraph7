@@ -1588,6 +1588,10 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         
         res_timings['n_contrib_hel']=n_contrib_hel
         res_timings['n_tot_hel']=len(helicities)
+        if explicit_poles:
+            # Keep numeric count fields compatible; their kind is configured,
+            # and the selected helicity has no learned contribution evidence.
+            res_timings['timing_helicity_selection']='configured-unverified'
         physical_tuple = None
         if configurations and 0 < contributing_hel <= len(configurations):
             physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
@@ -1595,6 +1599,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             'filter_policy': ('all-helicities-explicit-poles' if explicit_poles else
                               'learned-helicity-filter'),
             'learned_filter_used': not explicit_poles,
+            'count_kind': ('configured' if explicit_poles else 'contributing'),
+            'polarized_contribution_verified': not explicit_poles,
             'one_based_index': contributing_hel,
             'physical_tuple': physical_tuple,
             'helicity_configurations': timing_file(helicity_path, True),
@@ -3333,7 +3339,13 @@ def output_timings(process, timings):
                                   %(coef_time,int(round(100.0*coef_time/total)))
         res_str += "|= Loop evaluation time...... %.3gms (%d%%)\n"\
                                   %(loop_time,int(round(100.0*loop_time/total)))
-    res_str += "\n= One helicity time / PSpoint ========== %.3gms\n"\
+    configured_helicity = timings.get('timing_helicity_selection') == 'configured-unverified'
+    if configured_helicity:
+        res_str += "\n= Configured helicity time / PSpoint === %.3gms\n"\
+                                    %(timings['run_polarized_total']*1000.0)
+        res_str += "|= Contribution unknown; the selected result may be zero.\n"
+    else:
+        res_str += "\n= One helicity time / PSpoint ========== %.3gms\n"\
                                     %(timings['run_polarized_total']*1000.0)
     if loop_optimized_output:
         coef_time=timings['run_polarized_coefs']*1000.0
@@ -3345,7 +3357,11 @@ def output_timings(process, timings):
         res_str += "|= Loop evaluation time...... %.3gms (%d%%)\n"\
                                   %(loop_time,int(round(100.0*loop_time/total)))
     res_str += "\n= Miscellaneous ========================\n"
-    res_str += "|= Number of hel. computed... %s/%s\n"\
+    if configured_helicity:
+        res_str += "|= Configured helicities..... %s/%s (contribution unknown)\n"\
+                %(f(timings['n_contrib_hel'],'%d'),f(timings['n_tot_hel'],'%d'))
+    else:
+        res_str += "|= Number of hel. computed... %s/%s\n"\
                 %(f(timings['n_contrib_hel'],'%d'),f(timings['n_tot_hel'],'%d'))
     res_str += "|= Number of loop diagrams... %s\n"%f(timings['n_loops'],'%d')
     if loop_optimized_output:

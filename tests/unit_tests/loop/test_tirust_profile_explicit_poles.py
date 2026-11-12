@@ -151,6 +151,54 @@ class ProfileExplicitPoles(unittest.TestCase):
                         self.assertTrue(effective['tirustcomputefinite'])
                         self.assertTrue(effective['useqpintegrandfortirust'])
 
+    def render_timings(self, result, *, optimized=True):
+        tree = ast.parse(SOURCE.read_text())
+        function = copy.deepcopy(next(n for n in tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == 'output_timings'))
+        namespace = dict(process_checks.__dict__)
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(SOURCE), 'exec'), namespace)
+        values = dict(result, loop_optimized_output=optimized, reduction_tool=9,
+            Diagrams_generation=0., HelasDiagrams_generation=0., n_loops=1,
+            n_loop_groups=1, n_loop_wfs=1, loop_wfs_ranks=[1])
+        return namespace['output_timings'](load_helper().Process(), values)
+
+    def test_explicit_profile_labels_configured_helicity_as_unverified(self):
+        helper = load_helper()
+        for optimized in (True, False):
+            with self.subTest(optimized=optimized):
+                result, _, _ = helper.exercise('labels-explicit-%s'%optimized, SOURCE,
+                    tool=9, optimized=optimized, real_card=True, pole_mode=0,
+                    helicity_filter_file=False, base_root=self.work)
+                metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
+                selected = metadata['selected_timing_helicity']
+                self.assertEqual(selected['count_kind'], 'configured')
+                self.assertFalse(selected['polarized_contribution_verified'])
+                self.assertEqual(result['timing_helicity_selection'], 'configured-unverified')
+                self.assertIsInstance(result['n_contrib_hel'], int)
+                self.assertEqual(result['n_contrib_hel'], 3)
+                self.assertIsInstance(selected['contributing_count'], int)
+                text = self.render_timings(result, optimized=optimized)
+                self.assertIn('Helicity sum time / PSpoint', text)
+                self.assertIn('Configured helicity time / PSpoint', text)
+                self.assertIn('Contribution unknown; the selected result may be zero.', text)
+                self.assertIn('Configured helicities..... 3/3 (contribution unknown)', text)
+                self.assertNotIn('Number of hel. computed', text)
+
+    def test_legacy_profile_helicity_labels_remain_filter_based(self):
+        helper = load_helper()
+        result, _, _ = helper.exercise('labels-legacy', SOURCE,
+            tool=9, real_card=True, base_root=self.work)
+        metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
+        selected = metadata['selected_timing_helicity']
+        self.assertEqual(selected['count_kind'], 'contributing')
+        self.assertTrue(selected['polarized_contribution_verified'])
+        self.assertNotIn('timing_helicity_selection', result)
+        text = self.render_timings(result)
+        self.assertIn('One helicity time / PSpoint', text)
+        self.assertIn('Number of hel. computed... 1/3', text)
+        self.assertNotIn('Configured helicity', text)
+        self.assertNotIn('Contribution unknown', text)
+
     def test_stale_filter_is_preserved_as_evidence_but_not_used(self):
         helper = load_helper()
         result, _, _ = helper.exercise('stale', SOURCE, tool=9,

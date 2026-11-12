@@ -183,7 +183,7 @@ class StabilityFilesystem(unittest.TestCase):
         (self.directory / 'check').write_text('old check')
         (self.directory / 'check_sa.o').write_text('old object')
         library = self.root / 'library'; library.mkdir()
-        name = 'ninja' if backend == 6 else 'ninjars'
+        name = {6:'ninja',8:'ninjars',9:'tirust'}[backend]
         (library / ('lib' + name + '.a')).write_text('not a native archive')
         self.timer.tir_dir = {name + '_dir': str(library)}
         self.timer.output_path = str(output)
@@ -215,7 +215,7 @@ class StabilityFilesystem(unittest.TestCase):
         self.assertIn(banner.MadLoopParam._ID_reduction_tool_map[self.backend], text)
         self.assertEqual((output / 'profile_optimized_P0uux_z.log').read_text(), text)
         stable = (output / 'stability_optimized_P0uux_z.log').read_text()
-        self.assertIn('reduction=' + ('NINJA' if self.backend == 6 else 'NINJARS'), stable)
+        self.assertIn('reduction=' + {6:'NINJA',8:'NINJARS',9:'TIRUST'}[self.backend], stable)
         return stable
 
     def exercise(self, backend=8, layout='modern', default_output=False, zero=None,
@@ -271,6 +271,12 @@ class StabilityFilesystem(unittest.TestCase):
 
     def test_modern_private_ninjars_full_checker_pickle_cache_and_profile(self):
         self.exercise(backend=8, cache=True)
+
+    def test_modern_private_tirust_full_checker_qp_pickle_cache_and_profile(self):
+        self.exercise(backend=9, cache=True)
+
+    def test_legacy_flat_alias_tirust_full_checker_qp_and_report(self):
+        self.exercise(backend=9, layout='legacy')
 
     def test_legacy_flat_alias_ninja_full_checker_and_report(self):
         self.exercise(backend=6, layout='legacy')
