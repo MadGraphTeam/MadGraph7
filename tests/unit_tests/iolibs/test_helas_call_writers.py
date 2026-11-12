@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from madgraph import core
 
 import copy
+import re
 import os
 
 import aloha
@@ -1411,6 +1412,206 @@ class CombineNameHashTest(unittest.TestCase):
         written = combine_name('FFVV1010', others, 3, [])
         call = combine_name('FFVV1010', others, 3, [], unknown_tag=True)
         self.assertEqual(call % {'tags': '', 'propa': ''}, written)
+
+
+class FDPropagatorComplexMassTest(unittest.TestCase):
+    """The FD gauge propagator projects the off-shell wavefunction with the
+    5-momentum q = (q^mu, -i m): js2 contracts it with +i m, the value of
+    -q(4). The routines used to write the conjugate of q(4), which is the same
+    for a real mass and is not analytic in a complex one, so FD and unitary
+    disagreed in the complex-mass scheme (2e-5 for b b > h b b QCD=0 with the
+    width of the external h set to zero, see docs/auto-fd-gauge.md). Outside
+    the complex-mass scheme the routines are written as before."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+
+    def routine(self, language, complex_mass):
+        """the FD gauge Z propagator routine FFV2_3 as *language* writes it"""
+        import aloha.create_aloha as create_aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        aloha.complex_mass, aloha.unitary_gauge = complex_mass, 3
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(
+                self.model, explicit_combine=True)
+            aloha_model.add_Lorentz_object(self.model.get('lorentz'))
+            aloha_model.compute_subset([(('FFV2',), [], 3)])
+            text = dict(aloha_model)[('FFV2', 3)].write(
+                output_dir=None, mode='no_include', language=language)
+        finally:
+            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+        return text if isinstance(text, str) else '\n'.join(text)
+
+    def test_fortran(self):
+        text = self.routine('Fortran', complex_mass=True)
+        self.assertIn('FDQ(4) = -CI*M3', text)
+        self.assertIn('+FDQ(4)*V3%W(5))/FDNQ', text)
+        self.assertNotIn('CONJG', text)
+        # real mass: unchanged (the conjugate is the same number there)
+        self.assertIn('-DCONJG(FDQ(4))*V3%W(5))/FDNQ',
+                      self.routine('Fortran', complex_mass=False))
+
+    def test_madmatrix(self):
+        from madmatrix import model_handling
+        text = self.routine(model_handling.MadMatrixALOHAWriter, complex_mass=True)
+        # M3 is a cxtype: -i*M3 = ( Im M3, -Re M3 )
+        self.assertIn('cxmake( M3.imag() + fptype_sv{ 0 }, -M3.real() + fptype_sv{ 0 } )',
+                      text)
+        self.assertIn('+ FDQ[4] * wV3[4] ) / FDNQ', text)
+        self.assertNotIn('cxconj', text)
+        text = self.routine(model_handling.MadMatrixALOHAWriter, complex_mass=False)
+        self.assertIn('cxmake( fptype_sv{ 0 }, -M3 + fptype_sv{ 0 } )', text)
+        self.assertIn('- cxconj( FDQ[4] ) * wV3[4] ) / FDNQ', text)
+
+    def test_python_template(self):
+        """wavefunctions.multiply_propagator_factor (the Python routines and
+        `check`) is analytic in the mass: with m complex it is the continuation
+        of the real-mass projection, not a function of conj(m)."""
+        import aloha.template_files.wavefunctions as wavefunctions
+        win = wavefunctions.WaveFunction(size=7)
+        win.momenta = [500., 120., -80., 300.]
+        win[2:7] = [0.3 + 0.1j, -0.2j, 0.7, 0.1 - 0.4j, 0.25 + 0.5j]
+
+        def project(m):
+            return list(wavefunctions.multiply_propagator_factor(win, m)[2:7])
+
+        # an analytic function of m: the derivative along the real and the
+        # imaginary axis agree (Cauchy-Riemann), d/d(Im m) = i d/d(Re m)
+        m, h = 80.4 - 1.0j, 1e-4
+        along_re = [(a - b) / (2 * h) for a, b in zip(project(m + h), project(m - h))]
+        along_im = [(a - b) / (2 * h) for a, b in zip(project(m + 1j * h), project(m - 1j * h))]
+        for d_re, d_im in zip(along_re, along_im):
+            self.assertAlmostEqual(abs(d_im - 1j * d_re), 0., delta=1e-6 * (1 + abs(d_re)))
+
+
+class ComplexMassCustomPropagatorTest(unittest.TestCase):
+    """Complex-mass scheme: the mass argument is complex and carries the width,
+    and there is no width argument. Every writer used to refuse any custom
+    propagator denominator there, including the axial gauge (P.PBar) P^2 of a
+    massless vector (check gauge). Now a propagator is written as it is unless
+    its numerator or denominator uses the width, which is still refused."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+
+    def routine(self, request, language, gauge):
+        import aloha.create_aloha as create_aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        aloha.complex_mass, aloha.unitary_gauge = True, gauge
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(
+                self.model, explicit_combine=True)
+            aloha_model.add_Lorentz_object(self.model.get('lorentz'))
+            aloha_model.compute_subset([request])
+            name = (request[0][0] + ''.join(request[1]), request[2])
+            text = dict(aloha_model)[name].write(
+                output_dir=None, mode='no_include', language=language)
+        finally:
+            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+        return text if isinstance(text, str) else '\n'.join(text)
+
+    def languages(self):
+        from madmatrix import model_handling
+        return ['Fortran', 'CPP', 'Python', model_handling.MadMatrixALOHAWriter]
+
+    def test_axial_gauge_denominator_is_written(self):
+        """the photon propagator of the axial gauge, (P.PBar) P^2: two TMPs"""
+        for language in self.languages():
+            text = self.routine((('FFV1',), ['P0'], 3), language, 2)
+            self.assertRegex(text, r'denom = .*TMP\d+ ?\* ?d?TMP\d+', str(language))
+
+    def test_width_in_the_propagator_is_refused(self):
+        """1W, (-g + q q / (M^2 - i M W)): the width is in the numerator and in
+        the denominator"""
+        for language in self.languages():
+            with self.assertRaisesRegex(Exception, 'uses the width', msg=str(language)):
+                self.routine((('FFV2',), ['P1W'], 3), language, True)
+
+    def test_dollar_propagator(self):
+        """The $ exclusion (P1D) keeps the width inside its FCT definitions,
+        (M -+ BWCUTOFF*W)**2, which the numerator and denominator checks do
+        not see. In the complex-mass scheme the routine used to lose both W
+        and BWCUTOFF from its arguments, although every call site passes
+        BWCUTOFF: an uninitialised W3 (and the arguments shifted by one) in
+        Fortran, no compilation in C++. Now BWCUTOFF stays an argument and
+        the window uses the real pole mass and the width of the complex mass,
+        M**2 = MR**2 - i MR W, which reproduce the fixed-width window."""
+        from madmatrix import model_handling
+        from aloha.aloha_writers import ALOHAWriterForFortranQP
+        expected = {
+            'Fortran': ['FFV2P1D_3(F1, F2, COUP, M3, BWCUTOFF,V3)',
+                        'MR3 = SQRT(REAL(M3**2))', 'W3 = -AIMAG(M3**2)/MR3',
+                        'FCT0 = ((MR3-W3*BWCUTOFF))**(2d0)'],
+            # quadruple precision (MadLoop, aMC@NLO): the generic REAL/AIMAG
+            # keep the kind of the complex*32 M3 -- DIMAG does not compile
+            # there and DBLE would truncate the pole mass to double
+            ALOHAWriterForFortranQP: ['complex*32 M3', 'real*16 MR3',
+                        'MR3 = SQRT(REAL(M3**2))', 'W3 = -AIMAG(M3**2)/MR3',
+                        'FCT0 = ((MR3-W3*BWCUTOFF))**(2q0)'],
+            'CPP': ['std::complex<double> M3, double BWCUTOFF,ALOHAOBJ',
+                    'MR3 = sqrt(real(M3*M3));', 'W3 = -imag(M3*M3)/MR3;',
+                    'FCT0 = pow((MR3-W3*BWCUTOFF),2.);'],
+            model_handling.MadMatrixALOHAWriter: [
+                    'const fptype & BWCUTOFF',
+                    'const fptype MR3 = sqrt( ( M3 * M3 ).real() );',
+                    'const fptype W3 = -( M3 * M3 ).imag() / MR3;',
+                    'FCT0 = cxpow( ( MR3 - W3 * BWCUTOFF ), two );']}
+        for language, lines in expected.items():
+            text = self.routine((('FFV2',), ['P1D'], 3), language, True)
+            for line in lines:
+                self.assertIn(line, text, str(language))
+            # the FCTs use the real pole mass, never the complex M3
+            fcts = [l for l in text.splitlines() if re.search(r'FCT[01] =', l)]
+            self.assertEqual(len(fcts), 2, str(language))
+            for fct in fcts:
+                self.assertNotRegex(fct, r'\bM3\b', str(language))
+
+    def test_madmatrix_doubleexpansion_propagator(self):
+        """MADMATRIX_DOUBLEEXPANSION (FPTYPE=e) writes P^2 - m^2 itself, in
+        double-word arithmetic. With the complex mass, m^2 = M*M carries the
+        width: P^2 - m^2 = ( P^2 - Re(m^2) ) + i ( -Im(m^2) ), the same
+        number as the fixed-width ( P^2 - M^2 ) + i M W, since
+        m^2 = M^2 - i M W. (FPTYPE=e does not build everywhere, so the text
+        is what can be checked here.)"""
+        from madmatrix import model_handling
+        saved = model_handling.arith_doubleexpansion
+        model_handling.arith_doubleexpansion = True
+        try:
+            text = self.routine((('FFV2',), [], 3),
+                                model_handling.MadMatrixALOHAWriter, 1)
+        finally:
+            model_handling.arith_doubleexpansion = saved
+        block = text.split('#ifdef MADARITH_DOUBLEEXPANSION', 1)[1].split('#endif', 1)[0]
+        for line in ['const cxtype M2c3 = M3 * M3;',
+                     'M2d3 = static_cast<MG_ARITHM::Double<fptype_amp>>(M2c3.real());',
+                     '( P3d[3] * P3d[3] ) - M2d3 );',
+                     'const fptype_amp_sv iMW = -M2c3.imag();',
+                     'const cxtype_amp_sv denden = cxmake( PmM2, iMW );']:
+            self.assertIn(line, block)
+        # M is complex: no real-mass cast, and no width argument
+        self.assertNotIn('static_cast<MG_ARITHM::Double<fptype_amp>>(M3)', block)
+        self.assertNotRegex(text, r'\bW3\b')
+        # and the default build keeps the complex-mass madmatrix::denom
+        self.assertIn('madmatrix::denom( Ccoeff, COUP, dP3, M3 );', text)
+
+    def test_width_in_the_numerator_only_is_refused(self):
+        """the numerator is checked too, not only a custom denominator"""
+        from aloha.aloha_writers import WriteALOHA
+
+        class Stub(object):
+            outgoing = 3
+            tag = ['P1X']
+            class routine(object):
+                denominator = None
+                expr = '( TMP0 * M3 * W3 )'
+        with self.assertRaisesRegex(Exception, 'uses the width'):
+            WriteALOHA.check_complex_mass_propagator(Stub())
+        Stub.routine.expr = '( TMP0 * M3 * OM3 )'
+        WriteALOHA.check_complex_mass_propagator(Stub())    # no width: fine
 
 
 class TestZeroWidthPdgs(unittest.TestCase):

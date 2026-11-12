@@ -9,6 +9,7 @@ import sys
 
 import glob
 import math
+import contextlib
 import re
 
 # AV - create a plugin-specific logger
@@ -24,6 +25,10 @@ from madgraph.iolibs import jamp_optimiser
 
 import aloha
 from aloha import aloha_writers
+
+# name suffix of the cIPD slot that holds the imaginary part of a complex
+# parameter (the complex masses of the complex-mass scheme)
+IMAG_SLOT = '__imag'
 
 # FD gauge check — if set on second output
 class _FdGaugeFlag:
@@ -343,7 +348,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             else:
                 continue # AV no need to declare the variable
             if fullname.startswith('OM') :
-                codedict[fullname] = 'fptype_amp %s' % fullname # multiple of scalars 
+                # 1/M^2, complex in the complex-mass scheme
+                codedict[fullname] = '%s %s' % ('cxtype_amp' if aloha.complex_mass else 'fptype_amp',
+                                                fullname) # multiple of scalars 
             else:
                 codedict[fullname] = '%s %s' % (self.type2def[type+'_v'], fullname) # AV vectorize, add to codedict
             ###print(fullname, codedict[fullname]) # FOR DEBUGGING
@@ -401,8 +408,14 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             if self.declaration.is_used( 'OM%s' % (i+1) ):
                 declname = 'OM%s' % (i+1)
                 if self.nodeclare: declname = 'const ' + self.declaration.codedict[declname]
-                out.write('    {3} = ( M{0} != {1} ? {2} / ( M{0} * M{0} ) : {1} );\n'.format( # AV use ternary in OM3
-                    i+1, '0.', '1.', declname)) # AV force scalar "1." instead of vector "one", add declaration
+                if aloha.complex_mass:
+                    # M is a cxtype, which has no comparison with a double
+                    out.write('    {1} = ( M{0}.real() != 0. || M{0}.imag() != 0. ? '
+                              'static_cast<cxtype_amp>( cxtype( 1. ) / ( M{0} * M{0} ) ) : cxtype_amp( 0. ) );\n'.format(
+                                  i+1, declname))
+                else:
+                    out.write('    {3} = ( M{0} != {1} ? {2} / ( M{0} * M{0} ) : {1} );\n'.format( # AV use ternary in OM3
+                        i+1, '0.', '1.', declname)) # AV force scalar "1." instead of vector "one", add declaration
             if i+1 == self.outgoing:
                 out_type = type
                 out_size = self.type_to_size[type]
@@ -451,10 +464,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         out = StringIO()
         wf = '%s%s' % (self.particles[self.outgoing-1], self.outgoing)
         # the 5th component is -i * m: built from broadcast reals, since a
-        # scalar complex has no conversion to the vector type (cxtype_sv)
-        out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
+        # scalar complex has no conversion to the vector type (cxtype_sv).
+        # In the complex-mass scheme m is complex: -i * m = ( Im m, -Re m ).
+        if aloha.complex_mass:
+            fdq4 = 'cxmake( M%(i)s.imag() + fptype_sv{ 0 }, -M%(i)s.real() + fptype_sv{ 0 } )'
+        else:
+            fdq4 = 'cxmake( fptype_sv{ 0 }, -M%(i)s + fptype_sv{ 0 } )'
+        out.write('    cxtype_sv FDQ[5] = { %s, %s };\n' %
                   (', '.join('cxmake( fpamp_of_mom( -%s.pvec[%d] ), 0. )' % (wf, i) for i in range(4)),
-                   self.outgoing))
+                   fdq4 % {'i': self.outgoing}))
         if self.fd_polarization() is not None:
             # a polarised line at rest (|q| below 1e-10 q0, rounding): pin the
             # axis of the helicities to +z, lane by lane, as the unitary-gauge
@@ -485,8 +503,12 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
         out.write('    const cxtype_sv FDJS1 = ( %s ) / FDNQ;\n' %
                   ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
-        out.write('    const cxtype_sv FDJS2 = ( %s - cxconj( FDQ[4] ) * %s[4] ) / FDNQ;\n' %
-                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)), w))
+        # FDQ[4] = -i*m enters as +i*m = -FDQ[4]. For a real mass that is also
+        # cxconj( FDQ[4] ), the form kept outside the complex-mass scheme; for
+        # a complex mass the conjugate is wrong (not analytic in m).
+        out.write('    const cxtype_sv FDJS2 = ( %s %s * %s[4] ) / FDNQ;\n' %
+                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)),
+                   '+ FDQ[4]' if aloha.complex_mass else '- cxconj( FDQ[4] )', w))
         for i in range(size):
             out.write('    %(w)s[%(i)d] = %(w)s[%(i)d] - FDQ[%(i)d] * FDJS1 - FDN[%(i)d] * FDJS2;\n'
                       % {'w': w, 'i': i})
@@ -890,6 +912,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # FCTn are numbered in creation order and a later one can use an
         # earlier one (the $ propagator's theta function takes FCT0/FCT1), so
         # define them in that order -- the dict order puts FCT0 last there.
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            # complex-mass scheme: the real pole mass and the width of the $
+            # window, from the complex mass (complex_mass_fct_width)
+            out.write('    const fptype %(mr)s = sqrt( ( M%(i)d * M%(i)d ).real() );\n'
+                      '    const fptype %(w)s = -( M%(i)d * M%(i)d ).imag() / %(mr)s;\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
         for name in sorted(self.routine.fct, key=lambda n: (len(n), n)):
             fct, objs = self.routine.fct[name]
             # OM the FCTn variable needs to be defined, not only assigned (and
@@ -902,9 +931,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 self.declaration.add(('complex', name))
             args = [self.write_obj(obj) for obj in objs]
             try:
-                out.write(format % ','.join(args)) # single-argument formats
+                text = format % ','.join(args) # single-argument formats
             except TypeError:
-                out.write(format % tuple(args)) # e.g. 'pow', which takes two
+                text = format % tuple(args) # e.g. 'pow', which takes two
+            out.write(self.fct_with_pole_mass(text, cms_names))
         numerator = self.routine.expr
         if self.coup_name:
             # one term of an assembled routine: its own coupling among COUP1, ...
@@ -984,56 +1014,58 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
                 coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
                 propagator = lambda mass: 'madmatrix::denom( %sdP%s, %s )' % (coup_args, self.outgoing, mass)
-                if not aloha.complex_mass:
-                    # This affects 'denom = COUP' in HelAmps_sm.cc
-                    if self.routine.denominator:
-                        # the P1N routines of the amplitude split carry the
-                        # identity propagator, as the integer 1
-                        if str(self.routine.denominator) == '1':
-                            out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
-                        else:
-                            # written by write_obj, as every other expression:
-                            # str() prints a complex coefficient as a Python
-                            # literal ('(-0+1j)'), which does not compile
-                            mydict['denom'] = self.denominator_in_denom_precision(
-                                                   self.write_obj(self.routine.denominator))
-                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
+                def write_doubleexpansion():
+                    # MADARITH_DOUBLEEXPANSION (FPTYPE=e): P^2 - Re(m^2) in
+                    # double-word arithmetic, the width as the imaginary part.
+                    # With a complex mass (complex-mass scheme) m^2 = M*M is
+                    # complex and carries the width: P^2 - m^2 =
+                    # ( P^2 - Re(m^2) ) - i Im(m^2).
+                    out.write('#endif\n')
+                    out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
+                    wtype = self.particles[self.outgoing - 1]
+                    coeff_vertex = ('%(pre_coup)s%(coup)s%(post_coup)s' % mydict).replace('fptype_denom', 'fptype_amp')
+                    fmt = {'i': self.outgoing, 'w': wtype, 's': denomsuffix}
+                    out.write('    const MG_ARITHM::Double<fptype_amp> P{i}d{s}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[3]) }};\n'.format(**fmt))
+                    if aloha.complex_mass:
+                        out.write('    const cxtype M2c{i}{s} = M{i} * M{i};\n'.format(**fmt))
+                        out.write('    const MG_ARITHM::Double<fptype_amp> M2d{i}{s} = static_cast<MG_ARITHM::Double<fptype_amp>>(M2c{i}{s}.real());\n'.format(**fmt))
+                        m2 = 'M2d{i}{s}'.format(**fmt)
+                        width = '-M2c{i}{s}.imag()'.format(**fmt)
                     else:
-                        if arith_doubleexpansion:
-                            out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s, W%(i)s' % mydict)))
-                        if arith_doubleexpansion:
-                            out.write('#endif\n')
-                            out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
-                            wtype = self.particles[self.outgoing - 1]
-                            coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                            coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
-                            out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
-                            out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const fptype_amp_sv iMW{1} = M{0} * W{0};\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const cxtype_amp_sv denden%s = cxmake( PmM2%s, iMW%s );\n' % (denomsuffix, denomsuffix, denomsuffix))
-                            out.write('    const cxtype_amp_sv %s = %s / denden%s;\n' % (denomname, coeff_vertex, denomsuffix))
-                            out.write('#endif\n')
+                        out.write('    const MG_ARITHM::Double<fptype_amp> Md{i}{s} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{i});\n'.format(**fmt))
+                        m2 = '( Md{i}{s} * Md{i}{s} )'.format(**fmt)
+                        width = 'M{i} * W{i}'.format(**fmt)
+                    out.write('    const fptype_amp_sv PmM2{s} = static_cast<fptype_amp_sv>(( P{i}d{s}[0] * P{i}d{s}[0] ) - ( P{i}d{s}[1] * P{i}d{s}[1] ) - ( P{i}d{s}[2] * P{i}d{s}[2] ) - ( P{i}d{s}[3] * P{i}d{s}[3] ) - {m2} );\n'.format(m2=m2, **fmt))
+                    out.write('    const fptype_amp_sv iMW{s} = {width};\n'.format(width=width, **fmt))
+                    out.write('    const cxtype_amp_sv denden{s} = cxmake( PmM2{s}, iMW{s} );\n'.format(**fmt))
+                    out.write('    const cxtype_amp_sv %s = %s / denden%s;\n' % (denomname, coeff_vertex, denomsuffix))
+                    out.write('#endif\n')
+
+                # a propagator is the same with a complex mass, as long as it
+                # does not use the width
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                # This affects 'denom = COUP' in HelAmps_sm.cc
+                if self.routine.denominator:
+                    # the P1N routines of the amplitude split carry the
+                    # identity propagator, as the integer 1
+                    if str(self.routine.denominator) == '1':
+                        out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
+                    else:
+                        # written by write_obj, as every other expression:
+                        # str() prints a complex coefficient as a Python
+                        # literal ('(-0+1j)'), which does not compile
+                        mydict['denom'] = self.denominator_in_denom_precision(
+                                               self.write_obj(self.routine.denominator))
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                 else:
-                    if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')
-                    # This affects 'denom = COUP' in HelAmps_sm.cc
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                    # Complex mass: M carries the width.
-                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s' % mydict)))
+                    # complex-mass scheme: M is complex and carries the width
+                    mass = 'M%(i)s' % mydict if aloha.complex_mass else 'M%(i)s, W%(i)s' % mydict
+                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator(mass)))
                     if arith_doubleexpansion:
-                        out.write('#endif\n')
-                        out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
-                        wtype = self.particles[self.outgoing - 1]
-                        coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                        coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
-                        out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
-                        out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
-                        out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
-                        out.write('    const cxtype_amp_sv %s = %s / PmM2%s;\n' % (denomname, coeff_vertex, denomsuffix))
-                        out.write('#endif\n')
+                        write_doubleexpansion()
                 ###self.declaration.add(('complex','denom')) # AV moved earlier (or simply removed)
                 if aloha.loop_mode: ptype = 'list_complex'
                 else: ptype = 'list_double'
@@ -1824,7 +1856,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 if not foundG:
                     # Comment out the default UFO assignment of mdl_sqrt__aS (from aS) and of G (from mdl_sqrt__aS), but keep them for reference
                     # (WARNING! This Python CODEGEN code essentially assumes that this refers precisely and only to mdl_sqrt__aS and G)
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', '//const fptype_sv') )
+                    # (complex-mass scheme: both are complex there, cxsmpl<double>)
+                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', '//const fptype_sv')
+                                                      .replace('constexpr cxsmpl<double>', '//const fptype_sv') )
                 ###elif pdep.name == 'mdl_G__exp__2' : # added for UFO mg5amcnlo#89 (complex in susy, should be double as in heft/smeft), now fixed
                 ###    # Hardcode a custom assignment (valid for both SUSY and SMEFT) instead of replacing double or complex by fptype in 'line'
                 ###    dcoupsetdpar.append('        const fptype_sv ' + pdep.name + ' = G * G;' )
@@ -1841,7 +1875,10 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                         if ' ' + gpar + ' ' in line and not gpar in gparamcoded:
                             gparamcoded.add(gpar)
                             dcoupsetdpar.append('        const fptype_sv ' + gpar + ' = ' + gparameters[gpar] + ';' )
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv') )
+                    # a complex one (any parameter of the complex-mass scheme
+                    # computed with cmath, G**2 included) is a cxtype_sv
+                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv')
+                                                      .replace('constexpr cxsmpl<double>', 'const cxtype_sv') )
                 if pdep.name == 'G':
                     foundG = True
                     dcoupsetdpar.append('        // *** NB Compute all dependent parameters, including aS, in terms of G rather than in terms of aS ***')
@@ -1857,7 +1894,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # Special handling in EFT for fptype=float using SIMD
             dcoupoutfptypev2 = [ '      fptype_v %sr_v;\n      fptype_v %si_v;'%(name,name) for name in self.coups_dep ]
             replace_dict['dcoupoutfptypev2'] = ( '\n' if len(self.coups_dep) > 0 else '' ) + '\n'.join( dcoupoutfptypev2 )
-            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype')
+            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype').replace('cxtype_sv','cxtype')
             dcoupsetdcoup2 = [ '    ' + line.replace('constexpr cxsmpl<double> ','const cxtype ').replace('mdl_complexi', 'cI') for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') if line != '' ]
             dcoupsetdcoup2 += [ '        %sr_v[i] = cxreal( %s );\n        %si_v[i] = cximag( %s );'%(name,name,name,name) for name in self.coups_dep ]
             replace_dict['dcoupsetdcoup2'] = '  ' + '\n'.join( dcoupsetdcoup2 )
@@ -1971,8 +2008,11 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             os.makedirs(os.path.join(self.dir_path, self.include_dir))
         if not os.path.isdir(os.path.join(self.dir_path, self.cc_file_dir)):
             os.makedirs(os.path.join(self.dir_path, self.cc_file_dir))
+        # helamps_suffix: the header of the other gauge of an output whose
+        # processes are in two gauges (HelAmps_sm_fd.h, see below)
+        suffix = getattr(self, 'helamps_suffix', '')
         model_h_file = os.path.join(self.dir_path, self.include_dir,
-                                    'HelAmps_%s.h' % self.model_name)
+                                    'HelAmps_%s%s.h' % (self.model_name, suffix))
         model_cc_file = os.path.join(self.dir_path, self.cc_file_dir,
                                      'HelAmps_%s.%s' % (self.model_name, self.cc_ext))
         replace_dict = {}
@@ -2027,6 +2067,17 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 '#include "mgOnGpuConfig.h"',
                 '#include "mgOnGpuConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
             )
+        if suffix:
+            # its own include guard, and its own namespace inside madmatrix:
+            # the routines and ALOHAOBJ differ from those of the session
+            # gauge under the same names, and both end up in one process
+            name = 'HelAmps_%s' % self.model_name
+            file_h = file_h.replace('%s_H' % name, '%s%s_H' % (name, suffix))
+            file_h = file_h.replace('namespace madmatrix\n{',
+                'namespace madmatrix\n{\ninline namespace gauge%s\n{' % suffix, 1)
+            head, sep, tail = file_h.rpartition('} // end namespace')
+            file_h = head + '} // end inline namespace gauge%s\n' % suffix + \
+                     sep + tail
         writers.CPPWriter(model_h_file).writelines(file_h, formatting=False)
         logger.info('Created file %s in directory %s' \
                     % (os.path.split(model_h_file)[-1], os.path.split(model_h_file)[0] ) )
@@ -2206,7 +2257,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             replace_dict['cipcassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
             replace_dict['cipchrdassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
 
-        if len(params) > 0:
+        if any(p.endswith(IMAG_SLOT) for p in params):
+            # complex-mass scheme: a complex mass fills two slots of the real
+            # cIPD (see format_coupling), which a table of pointers to double
+            # members cannot express
+            def slot(param, prefix):
+                if param.endswith(IMAG_SLOT):
+                    return '(fptype)%s%s.imag()' % (prefix, param[:-len(IMAG_SLOT)])
+                if param + IMAG_SLOT in params:
+                    return '(fptype)%s%s.real()' % (prefix, param)
+                return '(fptype)%s%s' % (prefix, param)
+            replace_dict['cipdassign'] = 'const fptype tIPD[nIPD] = { %s };\n    setIndependentParams( tIPD );' \
+                                         % ', '.join(slot(p, 'm_pars->') for p in params)
+            replace_dict['cipdhrdassign'] = 'const fptype tIPD[nIPD] = { %s };\n    setIndependentParams( tIPD );' \
+                                         % ', '.join(slot(p, 'Parameters::') for p in params)
+        elif len(params) > 0:
             replace_dict['cipdassign'] = ('static constexpr double Parameters::* const cIPD_members[nIPD] = {\n'
                                            '      &Parameters::' + ',\n      &Parameters::'.join(params) + '\n'
                                            '    };\n'
@@ -3171,6 +3236,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write(template % replace_dict)
         ff.close()
 
+    def helamps_header(self):
+        """HelAmps_<model>.h, or HelAmps_<model>_fd.h for the FD processes of
+        an output whose processes are in two gauges."""
+
+        gauge = self.matrix_elements[0].get('processes')[0].get_gauge()
+        return 'HelAmps_%s%s.h' % (self.model_name,
+                                   '_' + gauge.lower() if gauge else '')
+
     # AV - overload the export_cpp.OneProcessExporterCPP method (add debug printout and truncate last \n)
     # [*NB export_cpp.UFOModelConverterGPU.write_process_h_file is not called!*]
     def write_process_h_file(self, writer):
@@ -3178,9 +3251,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.write_process_h_file')
         replace_dict = super().write_process_h_file(False)
         try:
-            replace_dict['helamps_h'] = open(pjoin(self.path, os.pardir, os.pardir,'src','HelAmps_%s.h' % self.model_name)).read()
+            replace_dict['helamps_h'] = open(pjoin(self.path, os.pardir, os.pardir,'src',self.helamps_header())).read()
         except FileNotFoundError:
-            replace_dict['helamps_h'] = "\n#include \"../../src/HelAmps_%s.h\"" % self.model_name
+            replace_dict['helamps_h'] = "\n#include \"../../src/%s\"" % self.helamps_header()
 
         replace_dict['process_file_name'] = self.name.upper()
 
@@ -3196,7 +3269,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Write the class member definition (.cc) file for the process described by matrix_element"""
         replace_dict = super().write_process_cc_file(False)
         ###replace_dict['hel_amps_def'] = '\n#include \"../../src/HelAmps_%s.cu\"' % self.model_name
-        replace_dict['hel_amps_h'] = '#include \"HelAmps_%s.h\"' % self.model_name # AV
+        replace_dict['hel_amps_h'] = '#include \"%s\"' % self.helamps_header() # AV
         if writer:
             file = self.read_template_file(self.process_template_cc) % replace_dict
             # Write the file
@@ -3468,6 +3541,25 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         super().__init__(*args,**opts)
 
 
+    @contextlib.contextmanager
+    def gauge_cache(self, gauge, model):
+        """helas_call_writers.HelasCallWriter.gauge_cache, with the flavored
+        couplings of that model known, and the ordered coupling list (which
+        format_coupling leaves on the model it writes with) handed back to
+        the session model for its Parameters."""
+
+        session = self['model']
+        for interaction in model.get('interactions'):
+            for coupling in interaction['couplings'].values():
+                if isinstance(coupling, base_objects.FLV_Coupling):
+                    self.flv_couplings_map[coupling.name] = coupling
+        with super().gauge_cache(gauge, model):
+            yield self
+        if hasattr(model, 'cudacpp_wanted_ordered_couplings'):
+            session.cudacpp_wanted_ordered_couplings = \
+                                        model.cudacpp_wanted_ordered_couplings
+            del model.cudacpp_wanted_ordered_couplings
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting of CPPProcess.cc)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
@@ -3557,7 +3649,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     for k in self.couporderindep:
                         self.couporderindep[k] += 1
                 newcoup = True
-            if name == 'cIPD':
+            if name == 'cIPD' and param.type == 'complex':
+                # complex-mass scheme: the mass CMASS_* of a propagator is
+                # complex; cIPD is real, so it takes two slots (real, imaginary)
+                imag = coup + IMAG_SLOT
+                if imag not in alias:
+                    alias[imag] = len(alias)
+                call = call.replace('m_pars->%s%s' % (sign, coup),
+                                    '%scxmake( %s[%s], %s[%s] )' % (sign, name, alias[coup],
+                                                                   name, alias[imag]))
+            elif name == 'cIPD':
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     '%s%s[%s]' % (sign, name, alias[coup]))                        
             elif model.is_running_coupling(coup):

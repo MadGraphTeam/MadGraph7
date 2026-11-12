@@ -150,7 +150,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_complex_mass_SA_merged test_import_model_v4_requires_debug test_standalone_cpp_fd_output_consistency test_ufo_aloha_merged -pA -t0 -l INFO
+            ./tests/test_manager.py test_complex_mass_SA_merged test_import_model_v4_requires_debug test_standalone_cpp_fd_output_consistency test_standalone_fortran_two_gauges test_standalone_cpp_two_gauges test_ufo_aloha_merged -pA -t0 -l INFO
 
       # ---- acceptancetest_dy3j_mlm ----
       # DY+3j with MLM matching (CI coverage audit)

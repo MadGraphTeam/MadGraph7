@@ -537,7 +537,8 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols, interference]
+                           process.get('id'), pols, interference,
+                           process.get_gauge()]
             if (criteria=="madweight"):
               proc_class = [ [(abs(p.get('pdg_code'))==5, abs(p.get('pdg_code'))==11, 
                            abs(p.get('pdg_code'))==13, abs(p.get('pdg_code'))==15) for p in \
@@ -552,7 +553,8 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols, interference]
+                           process.get('id'), pols, interference,
+                           process.get_gauge()]
 
             try:
                 amplitude_classes[iamp] = proc_classes.index(proc_class)

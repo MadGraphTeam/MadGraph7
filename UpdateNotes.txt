@@ -37,6 +37,29 @@ ANNOUNCEMENT:
        table.
 
 0.3.0 (XX/XX/XX):
+   OM: the FD gauge (Feynman-diagram gauge, arXiv:2203.10440, 2405.01256) is now chosen
+       automatically for each process line whose diagrams have a W/Z propagator ending on a
+       vertex that is not a conserved current (HVV, VVV, VVVV, or a massive fermion such as t-b):
+       VBF/VBS, u u > h j j j j, p p > w+ w-, t t~ with leptonic W decays switch; Drell-Yan,
+       u d~ > e+ ve g, p p > z z and pure QCD do not. In the unitary gauge the diagrams of such a
+       process grow with the energy and digits are lost in their sum, in the FD gauge the
+       cancellation happens diagram by diagram. When every line needs it the whole output is in
+       the FD gauge ('set gauge FD' in the proc_card), otherwise only those lines are
+       ('--gauge=FD' on them). 'set gauge X' always wins, 'set gauge default' hands the choice
+       back, 'set auto_gauge False' turns it off. Never for loop processes, spin above one,
+       bound states, [amplicol] processes, polarised legs, propagator polarisations, or models
+       without (checked) goldstone bosons. The FD-gauge citation is triggered, the mg7 output
+       records the gauge in its proc_characteristics. Costs 6-27% per phase-space point, with
+       an unweighting efficiency equal or better.
+   OM: new process option 'generate|add process ... --gauge=FD|unitary': the outputs madevent,
+       standalone_fortran, standalone and mg7 hold subprocesses in both gauges (Fortran:
+       Source/DHELAS_FD, C++: src/HelAmps_<model>_fd.h), the other formats refuse it. MadSpin
+       and the reweighting read such a proc_card in one gauge (the reweighting: FD when every
+       process can be, else unitary). Not available after 'add model' or 'customize_model'.
+   OM: FD gauge in the complex-mass scheme: the goldstone part of the propagator used the
+       conjugate mass. Outputs in one gauge are otherwise unchanged. The multiparticles of the
+       user survive the reload of the model behind 'set gauge'. While an 'output
+       --postpone_model' waits for its model, the gauge of the processes written in it is kept.
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point

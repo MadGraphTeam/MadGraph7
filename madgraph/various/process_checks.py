@@ -445,6 +445,28 @@ if __name__ == '__main__':
     #===============================================================================
     # Helper function get_momenta
     #===============================================================================
+    def get_external_masses(self, process, special_mass=None):
+        """The (real) masses of the external legs of process, in the order of
+        their leg numbers; a merged multiplet takes its first flavour's. A leg
+        with id 0 is the special resonance of the CMS check, whose mass is
+        special_mass."""
+
+        mass = []
+        for l in sorted(process.get('legs'), key=lambda l: l.get('number')):
+            pdg = l.get('id')
+            if pdg != 0 and pdg:
+                if pdg in self.full_model.merged_particles:
+                    pdg =  self.full_model.merged_particles[pdg][0] 
+                mass_string = self.full_model.get_particle(pdg).get('mass')        
+                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
+            else:
+                if isinstance(special_mass, float):
+                    mass.append(special_mass)
+                else:
+                    raise Exception("A 'special_mass' option must be specified"+\
+                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
+        return mass
+
     def get_momenta(self, process, options=None, special_mass=None):
         """Get a point in phase space for the external states in the given
         process, with the CM energy given. The incoming particles are
@@ -500,21 +522,7 @@ if __name__ == '__main__':
         nfinal = len(sorted_legs) - nincoming
 
         # Find masses of particles
-        mass = []
-        for l in sorted_legs:
-            pdg = l.get('id')
-            if pdg != 0 and pdg:
-                if pdg in self.full_model.merged_particles:
-                    pdg =  self.full_model.merged_particles[pdg][0] 
-                mass_string = self.full_model.get_particle(pdg).get('mass')        
-                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
-            else:
-                if isinstance(special_mass, float):
-                    mass.append(special_mass)
-                else:
-                    raise Exception("A 'special_mass' option must be specified"+\
-                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
-        #mass = [math.sqrt(m.real) for m in mass]
+        mass = self.get_external_masses(process, special_mass)
 
 
 
@@ -4064,6 +4072,22 @@ def _seeded_rambo_rng(ij=1802, kl=9373):
         rambo.random_nb = old_random_nb
 
 
+def _check_sa_energy(proc, evaluator_obj, energy):
+    """The centre-of-mass energy the standalone 'check' drivers actually use.
+
+    For a 2 -> n process, the Fortran, C++ and madmatrix drivers raise an
+    energy at or below twice the sum of the external masses to that value
+    (t t~ > w+ w- asked at 1 TeV runs at 1013.676 GeV). check_language passes
+    this energy explicitly to every backend, Python included (get_momenta has
+    its own, different, threshold rule), so that none of them adjusts it.
+    """
+    if len([l for l in proc.get('legs') if not l.get('state')]) != 2:
+        return energy
+    # |m|, as the Fortran pmass.inc (a model may carry a negative mass)
+    return max(energy, 2. * sum(abs(m) for m in
+                                evaluator_obj.get_external_masses(proc)))
+
+
 def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
     """Generate Python momenta with the same RAMBO RNG seed as check_sa.
 
@@ -4351,8 +4375,6 @@ def check_language(process_definition, param_card=None, options=None,
     # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
     sa_mg7_output_cache = {}
 
-    energy_str = str(energy)
-
     for proc in proc_list:
         try:
             amplitude = diagram_generation.Amplitude(proc)
@@ -4377,6 +4399,19 @@ def check_language(process_definition, param_card=None, options=None,
 
         sa_key = tuple(leg.get('id') for leg in proc.get('legs'))
 
+        # One energy for every backend, decided here: each driver (and
+        # get_momenta) has its own rule for an energy too close to threshold,
+        # and passing the one they would all reach keeps them on one point.
+        proc_energy = energy
+        if evaluator is not None:
+            try:
+                proc_energy = _check_sa_energy(proc, evaluator, energy)
+            except Exception as err:
+                logger.warning('Language check: could not work out the energy of %s '
+                               '(%s); the backends may compare different points.'
+                               % (proc.nice_string(), err))
+        energy_str = repr(proc_energy)
+
         # ── Fortran SA ───────────────────────────────────────────────────────
         out_f_text = None
         if has_fortran:
@@ -4387,6 +4422,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_f = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                              'mp': False, 'v5_model': True,
+                             'complex_mass': aloha.complex_mass,
                              'output_options': {'noeps': 'True'}}
                     exporter_f = export_v4.ProcessExporterFortranSA(sa_dir_f, opt_f)
                     fmodel = helas_call_writers.FortranUFOHelasCallWriter(model)
@@ -4434,6 +4470,7 @@ def check_language(process_definition, param_card=None, options=None,
                     opt_cpp = {'sa_symmetry': False,
                                'export_format': 'standalone_cpp',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler}
                     exporter_cpp = export_cpp.ProcessExporterCPP(sa_dir_cpp,
                                                                   opt_cpp)
@@ -4483,6 +4520,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_mg7 = {'export_format': 'standalone',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler,
                                'output_options': {}}
                     exporter_mg7 = madmatrix_output.\
@@ -4537,7 +4575,7 @@ def check_language(process_definition, param_card=None, options=None,
 
         # Build the Python phase-space point using the same RAMBO RNG seed as
         # check_sa (Fortran/C++), so all backends compare on the same point.
-        sa_momenta = _get_seeded_python_momenta(proc, evaluator, energy)
+        sa_momenta = _get_seeded_python_momenta(proc, evaluator, proc_energy)
         if not sa_momenta:
             # Fallback to parsing the point printed by SA when seeded generation
             # is unavailable.

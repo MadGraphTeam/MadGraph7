@@ -328,6 +328,16 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
         return super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
 
+    def write_aloha_library(self, model, wanted_lorentz, gauge='', **opts):
+        """The HELAS header of the other gauge of an output whose processes
+        are in two gauges, src/HelAmps_<model>_fd.h (called under its
+        aloha.gauge_scope; the parameters are those of the session model)."""
+
+        builder = self.create_model_class(model, pjoin(self.dir_path, 'src'),
+                                          wanted_lorentz, [])
+        builder.helamps_suffix = '_' + gauge.lower()
+        builder.write_aloha_routines()
+
     # AV (default from OM's tutorial) - add a debug printout
     def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[], **opts):
         # **opts: an option meant for one exporter (npwave, for the dual HELAS

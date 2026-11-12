@@ -2264,8 +2264,10 @@ c     local variable
       nq = n(0)*dble(q(0))-n(1)*dble(q(1))-n(2)*dble(q(2))-n(3)*dble(q(3))
       
       js1 = (n(0)*w0(0)-n(1)*w0(1)-n(2)*w0(2)-n(3)*w0(3)) / nq
+c     q(4) = -i*m enters as +i*m, not as its conjugate: the two only agree
+c     for a real mass, and the complex-mass scheme needs the analytic form
       js2 = (q(0)*w0(0)-q(1)*w0(1)-q(2)*w0(2)-q(3)*w0(3) 
-     &     - dconjg(q(4))*w0(4)) / nq
+     &     + q(4)*w0(4)) / nq
 
       w1(0:4) = w0(0:4)-q(0:4)*js1-n(0:4)*js2
 

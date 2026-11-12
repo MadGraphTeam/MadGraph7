@@ -76,7 +76,44 @@ class WriteALOHA:
     type_to_size = {'S':3, 'T':18, 'V':6, 'F':6,'R':18}
 
 
-            
+    def complex_mass_fct_width(self):
+        """Complex-mass scheme: the FCT definitions of the $ window (P1D),
+        (M -+ BWCUTOFF*W)**2, need the real pole mass and the width, which the
+        routine no longer receives: M<i> is complex. Both follow from it
+        exactly, M<i>**2 = MR**2 - i MR W. Returns the names (MR<i>, W<i>) to
+        define, and the FCTs then use MR<i> for M<i>; None when there is
+        nothing to do (any other scheme, or no width in the FCTs)."""
+
+        if not (aloha.complex_mass and self.offshell and self.routine.fct):
+            return None
+        width = re.compile(r'\bW%d\b' % self.outgoing)
+        if not any(width.search(' '.join(str(o) for o in objs))
+                   for _, objs in self.routine.fct.values()):
+            return None
+        return 'MR%d' % self.outgoing, 'W%d' % self.outgoing
+
+    def fct_with_pole_mass(self, text, names):
+        """the FCT definition text with the real pole mass for M<i>"""
+        if not names:
+            return text
+        return re.sub(r'\bM%d\b' % self.outgoing, names[0], text)
+
+    def check_complex_mass_propagator(self):
+        """Complex-mass scheme: the mass argument M<i> is complex and carries
+        the width, and the routine has no width argument. A propagator is
+        written as it is as long as neither its numerator nor its (custom)
+        denominator uses the width -- the axial gauge propagator of a massless
+        vector, (P.PBar) P^2, used by `check gauge` and `output --axial_gauge`,
+        is fine. One that does (the polarised propagators, a UFO propagator
+        with Width in it) would need the width split out of the mass again."""
+
+        width = re.compile(r'\bW%d\b' % self.outgoing)
+        if width.search(str(self.routine.denominator)) or \
+                                            width.search(str(self.routine.expr)):
+            raise Exception('The propagator of this routine (tag %s) uses the '
+                            'width of the particle, which is not supported in the '
+                            'complex mass scheme' % ','.join(self.tag))
+
     def __init__(self, abstract_routine, dirpath, options=None):
         if (aloha.loop_mode or aloha.dual_mode):
             self.momentum_size = 4
@@ -307,6 +344,11 @@ class WriteALOHA:
             elif aloha.complex_mass:
                 call_arg.append(('complex','M%s' % self.outgoing))              
                 self.declaration.add(('complex','M%s' % self.outgoing))
+                # the $ window needs the cutoff in the complex-mass scheme too
+                # (every call site passes it); the width comes from M
+                if 'P1D' in self.tag:
+                    call_arg.append(('double','BWCUTOFF'))              
+                    self.declaration.add(('double','BWCUTOFF'))
             else:
                 call_arg.append(('double','M%s' % self.outgoing))              
                 self.declaration.add(('double','M%s' % self.outgoing))                
@@ -1034,6 +1076,14 @@ class ALOHAWriterForFortran(WriteALOHA):
             
         keys = list(self.routine.fct.keys())        
         keys.sort(key=misc.cmp_to_key(sort_fct))
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            # the generic REAL/AIMAG keep the kind of M (complex*32 in the
+            # quadruple-precision routines, where DIMAG does not compile and
+            # DBLE truncates to double)
+            out.write(' %(mr)s = SQRT(REAL(M%(i)d**2))\n %(w)s = -AIMAG(M%(i)d**2)/%(mr)s\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
+            self.declaration.add(('double', cms_names[0]))
         for name in keys:
             fct, objs = self.routine.fct[name]
             format = ' %s = %s\n' % (name, self.get_fct_format(fct))
@@ -1042,7 +1092,7 @@ class ALOHAWriterForFortran(WriteALOHA):
             except TypeError:
                 text = format % tuple([self.write_obj(obj) for obj in objs])
             finally:
-                out.write(text)
+                out.write(self.fct_with_pole_mass(text, cms_names))
         
 
         numerator = self.routine.expr
@@ -1083,20 +1133,17 @@ class ALOHAWriterForFortran(WriteALOHA):
                     
             if not is_loop:
                 coeff = 'denom*'    
-                if not aloha.complex_mass:
-                    if self.routine.denominator:
-                        if 'P1N' not in self.tag:
-                            out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
-                                'denom':self.write_obj(self.routine.denominator)}) 
-                    else:
-                        out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s * (M%(i)s -CI* W%(i)s))\n' % \
-                                  {'i': self.outgoing, 'COUP': coup_name})
-                else:
-                    if self.routine.denominator:
-                        if 'P1N' not in self.tag:
-                            raise Exception('modify denominator are not compatible with complex mass scheme', self.tag)                
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                if self.routine.denominator:
                     if 'P1N' not in self.tag:
-                        out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s**2)\n' % \
+                        out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
+                            'denom':self.write_obj(self.routine.denominator)}) 
+                elif not aloha.complex_mass:
+                    out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s * (M%(i)s -CI* W%(i)s))\n' % \
+                              {'i': self.outgoing, 'COUP': coup_name})
+                elif 'P1N' not in self.tag:
+                    out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s**2)\n' % \
                       {'i': self.outgoing, 'COUP': coup_name})
                 if 'P1N' not in self.tag:
                     self.declaration.add(('complex','denom'))
@@ -1232,12 +1279,17 @@ class ALOHAWriterForFortran(WriteALOHA):
         # number of Lorentz components of the outgoing wavefunction: in FD
         # gauge a vector and its Goldstone share the same 5 slots
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
-        # js1 and js2 contract the wavefunction with n and q (the 5th component
-        # of q carries the mass, hence the conjugation)
+        # js1 and js2 contract the wavefunction with n and q. The 5th component
+        # of q is -i*m and enters js2 as +i*m = -FDQ(4). With a real mass that
+        # is also DCONJG(FDQ(4)), the form written outside the complex-mass
+        # scheme (the generated code stays as it was). With a complex mass the
+        # conjugate would be +i*conj(m), which is not analytic in m and breaks
+        # the gauge cancellations of the complex-mass scheme.
         out.write('    FDJS1 = (%s)/FDNQ\n' % '-'.join(
             ['FDN(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]))
-        out.write('    FDJS2 = (%s-DCONJG(FDQ(4))*%s%%W(5))/FDNQ\n' % (
+        out.write('    FDJS2 = (%s%s*%s%%W(5))/FDNQ\n' % (
             '-'.join(['FDQ(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]),
+            '+FDQ(4)' if aloha.complex_mass else '-DCONJG(FDQ(4))',
             outname))
         for i in range(size):
             out.write('    %(o)s%%W(%(k)d) = %(o)s%%W(%(k)d)-FDQ(%(i)d)*FDJS1'
@@ -2369,10 +2421,16 @@ class ALOHAWriterForCPP(WriteALOHA):
             
         keys = list(self.routine.fct.keys())        
         keys.sort(key=misc.cmp_to_key(sort_fct))
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            out.write(' %(mr)s = sqrt(real(M%(i)d*M%(i)d));\n %(w)s = -imag(M%(i)d*M%(i)d)/%(mr)s;\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
+            self.declaration.add(('double', cms_names[0]))
         for name in keys:
             fct, objs = self.routine.fct[name]
             format = ' %s = %s;\n' % (name, self.get_fct_format(fct))
-            out.write(format % ','.join([self.write_obj(obj) for obj in objs]))
+            out.write(self.fct_with_pole_mass(
+                format % ','.join([self.write_obj(obj) for obj in objs]), cms_names))
             
         
 
@@ -2418,22 +2476,20 @@ class ALOHAWriterForCPP(WriteALOHA):
                     mydict['post_coup'] = ''
                 mydict['coup'] = coup_name
                 mydict['i'] = self.outgoing
-                if not aloha.complex_mass:
-                    if self.routine.denominator:
-                        if self.routine.denominator == "1":
-                            out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s;\n' % \
-                                  mydict) 
-                        else:
-                            mydict['denom'] = self.write_obj(self.routine.denominator)
-                            out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(denom)s);\n' % \
-                                  mydict) 
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                if self.routine.denominator:
+                    if self.routine.denominator == "1":
+                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s;\n' % \
+                              mydict) 
                     else:
-                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/((P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3]) - M%(i)s * (M%(i)s -cI* W%(i)s));\n' % \
-                                  mydict)
+                        mydict['denom'] = self.write_obj(self.routine.denominator)
+                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(denom)s);\n' % \
+                              mydict) 
+                elif not aloha.complex_mass:
+                    out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/((P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3]) - M%(i)s * (M%(i)s -cI* W%(i)s));\n' % \
+                              mydict)
                 else:
-                    if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')                
-
                     out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/((P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3]) - (M%(i)s*M%(i)s));\n' % \
                               mydict)
 
@@ -2956,17 +3012,15 @@ class ALOHAWriterForPython(WriteALOHA):
 
             if not 'L' in self.tag:
                 coeff = 'denom'
-                if not aloha.complex_mass:
-                    if self.routine.denominator:
-                        out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
-                                'denom':self.write_obj(self.routine.denominator)}) 
-                    else:
-                        out.write('    denom = %(coup)s/(P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2 - M%(i)s * (M%(i)s -1j* W%(i)s))\n' % 
-                          {'i': self.outgoing,'coup':coup_name})
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                if self.routine.denominator:
+                    out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
+                            'denom':self.write_obj(self.routine.denominator)}) 
+                elif not aloha.complex_mass:
+                    out.write('    denom = %(coup)s/(P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2 - M%(i)s * (M%(i)s -1j* W%(i)s))\n' % 
+                      {'i': self.outgoing,'coup':coup_name})
                 else:
-                    if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')                
-                    
                     out.write('    denom = %(coup)s/(P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2 - M%(i)s**2)\n' % 
                           {'i': self.outgoing,'coup':coup_name})                    
             else:

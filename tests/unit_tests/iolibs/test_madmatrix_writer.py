@@ -265,6 +265,12 @@ class TestPropagatorDenominators(unittest.TestCase):
                       routines['FFV2_4_3'])
         for name in ('FFV2_3', 'FFV2_4_3'):
             self.assertNotIn('W3', routines[name], name)
+        # 1/M^2 of the unitary propagator is complex too (a cxtype has no
+        # comparison with a double, and does not fit in a fptype_amp)
+        self.assertIn('const cxtype_amp OM3 = ( M3.real() != 0. || M3.imag() != 0. ? '
+                      'static_cast<cxtype_amp>( cxtype( 1. ) / ( M3 * M3 ) ) : cxtype_amp( 0. ) );',
+                      body)
+        self.assertNotIn('fptype_amp OM3', body)
 
     def test_axial_gauge_custom_denominator(self):
         """In axial gauge a massless vector has the custom denominator

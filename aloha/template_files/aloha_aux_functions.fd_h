@@ -32,7 +32,9 @@ struct ALOHAOBJ2D{
 };
 //ALOHAOBJ2D::ALOHAOBJ2D() {}
 void define_gauge_dir(const std::complex<double> q[5], double n[5]);
-void multiply_propagator_factor(const ALOHAOBJ &win, double m, ALOHAOBJ &wout);
+// m is complex in the complex-mass scheme
+void multiply_propagator_factor(const ALOHAOBJ &win, std::complex<double> m,
+                                ALOHAOBJ &wout);
 void fd_polarized_propagator(ALOHAOBJ &w, double m, double width, int ipol);
 
 #endif

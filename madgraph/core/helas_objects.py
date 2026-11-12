@@ -122,6 +122,7 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         
         return [amplitude.get('has_mirror_process'),
                 process.get('id'),
+                process.get_gauge(),
                 process.get('is_decay_chain'),
                 identical_particle_factor,
                 dc,
@@ -4192,6 +4193,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                self['has_mirror_process'] != other['has_mirror_process'] or \
                self['processes'] and \
                self['processes'][0]['id'] != other['processes'][0]['id'] or \
+               self['processes'][0].get_gauge() != \
+                                    other['processes'][0].get_gauge() or \
                self['processes'][0]['is_decay_chain'] or \
                other['processes'][0]['is_decay_chain'] or \
                self['identical_particle_factor'] != \
