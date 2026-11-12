@@ -46,6 +46,7 @@ fn matrix(rotation: &Rotation) -> Vec<Vec<String>> {
 /// rows of exact rational texts (`Fraction` reads them).
 #[pyfunction]
 fn stability_default_rotation(index: u64) -> PyResult<Vec<Vec<String>>> {
+    let _unlock = pyamplicol::unlock();
     Ok(matrix(&stability::default_rotation(index).map_err(error)?))
 }
 
@@ -53,6 +54,7 @@ fn stability_default_rotation(index: u64) -> PyResult<Vec<Vec<String>>> {
 /// rows of exact rational texts.
 #[pyfunction]
 fn stability_rotation(specification: &str) -> PyResult<Vec<Vec<String>>> {
+    let _unlock = pyamplicol::unlock();
     Ok(matrix(&Rotation::parse(specification).map_err(error)?))
 }
 
@@ -75,6 +77,7 @@ fn stability_born_interfered(
     cross: Option<PyPoint>,
     cross_reason: Option<String>,
 ) -> PyResult<PyEstimate> {
+    let _unlock = pyamplicol::unlock();
     let (sectors, width, average) = shape;
     let shape = LaneShape {
         sectors,
@@ -172,6 +175,7 @@ fn stability_loop_induced(
     cross: Option<PyInduced>,
     cross_reason: Option<String>,
 ) -> PyResult<PyEstimate> {
+    let _unlock = pyamplicol::unlock();
     let (size, width, gram, rows, sectors, average) = shape;
     let shape = InducedShape {
         size,

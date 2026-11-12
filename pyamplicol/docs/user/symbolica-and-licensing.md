@@ -110,9 +110,14 @@ handle concurrently because its parameter and warning state is handle-local.
 
 The package key licenses the Python `symbolica` module. The native extension
 (and the native loop SDK) contains its own Rust copy of Symbolica. pyAmpliCol
-registers the same package key with that copy too, and the native operations
-that need Symbolica state (decoding saved evaluators of loop processes,
-double-double and arbitrary-precision loop evaluation) run under it. Without the key, that copy would run restricted: the
+registers the same package key with that copy too, and every native call runs
+under it: each entry point of the native extension (the bindings of the tree
+runtime and of the loop module, loop generation included) and of the native
+SDKs holds the key on its calling thread, and pyAmpliCol's native worker pools
+hold it on their workers. Generation, check, evaluation and profiling without a
+personal licence therefore show no restricted-mode banner and never abort
+because another unlicensed Symbolica process of the user holds the restricted
+thread. Without the key, that copy would run restricted: the
 first Symbolica operation of a process takes the user's single restricted
 thread, and any other process of the same user that needs one then aborts
 with "Cannot start another restricted Symbolica thread while this user's

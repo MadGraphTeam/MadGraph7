@@ -436,6 +436,9 @@ pub fn kernel_term_readings(
     jobs: &[KernelTermsJob],
     threads: Option<usize>,
 ) -> RusticolResult<Vec<KernelTermsResult>> {
+    // The kernels parse Symbolica atoms on this thread (the workers hold the
+    // key from their start handler).
+    let _guard = crate::licence::unlock();
     let kernels = jobs
         .iter()
         .map(Kernel::new)
@@ -447,7 +450,6 @@ pub fn kernel_term_readings(
         .collect();
     let read = |&(k, text): &(usize, &str)| output_terms(&kernels[k], text);
     let outputs: Vec<Result<Vec<TermReading>, String>> = if tasks.len() <= 1 {
-        let _guard = crate::licence::unlock();
         tasks.iter().map(read).collect::<RusticolResult<_>>()?
     } else {
         pool(threads)?.install(|| tasks.par_iter().map(read).collect::<RusticolResult<_>>())?

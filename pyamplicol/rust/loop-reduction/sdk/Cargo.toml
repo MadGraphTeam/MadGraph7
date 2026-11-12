@@ -25,6 +25,8 @@ name = "client"
 required-features = ["c-abi-examples"]
 
 [dependencies]
+# pyAmpliCol's Symbolica library key: every ABI call holds it (`ffi::guard`).
+pyamplicol = { path = "../../crates/pyamplicol" }
 rusticol-loop-reduction = { path = "..", default-features = false }
 rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
 serde = { version = "1", features = ["derive"] }

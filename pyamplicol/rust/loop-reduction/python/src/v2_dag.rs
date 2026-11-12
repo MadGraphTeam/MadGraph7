@@ -120,17 +120,20 @@ struct V2Program {
 impl V2Program {
     /// Value components (the runtime schema's `value_component_count`).
     fn value_count(&self) -> u64 {
+        let _unlock = pyamplicol::unlock();
         self.program.value_count
     }
 
     /// The momentum slots' masks, in slot order.
     fn momentum_masks(&self) -> Vec<u64> {
+        let _unlock = pyamplicol::unlock();
         self.program.momentum_masks.clone()
     }
 
     /// Per current its value slot's start (little-endian `u64`) and variant
     /// (`u8`: 0 source, 1 unpropagated, 2 propagated).
     fn slots<'py>(&self, py: Python<'py>) -> (Bound<'py, PyBytes>, Bound<'py, PyBytes>) {
+        let _unlock = pyamplicol::unlock();
         let starts: Vec<u8> = self
             .program
             .starts
@@ -153,6 +156,7 @@ impl V2Program {
     /// The kernels in first use: `("kernels", vertex key, interaction)` or
     /// `("propagators", (pdg, chirality, dimension), current)`.
     fn kernels(&self) -> Vec<(&'static str, Vec<i64>, u32)> {
+        let _unlock = pyamplicol::unlock();
         self.program
             .kernels
             .iter()
@@ -165,6 +169,7 @@ impl V2Program {
 
     /// The distinct colour weights `(re, im)`, in first use.
     fn weights(&self) -> Vec<(f64, f64)> {
+        let _unlock = pyamplicol::unlock();
         self.program
             .weights
             .iter()
@@ -174,11 +179,13 @@ impl V2Program {
 
     /// One interaction per distinct (vertex, coupling), in first occurrence.
     fn signatures(&self) -> Vec<u32> {
+        let _unlock = pyamplicol::unlock();
         self.program.signatures.clone()
     }
 
     /// The distinct particle ids of the currents, sorted.
     fn particles(&self) -> Vec<i64> {
+        let _unlock = pyamplicol::unlock();
         self.program.particles.clone()
     }
 
@@ -190,6 +197,7 @@ impl V2Program {
         py: Python<'py>,
         texts: Vec<(Bound<'py, PyString>, Bound<'py, PyString>)>,
     ) -> PyResult<Bound<'py, PyList>> {
+        let _unlock = pyamplicol::unlock();
         if texts.len() != self.program.weights.len() {
             return Err(PyValueError::new_err("one text pair per colour weight"));
         }
@@ -257,6 +265,7 @@ impl V2Dag {
     /// Build the loop-request DAG of `dag_input.dag_input`'s JSON tables.
     #[staticmethod]
     fn build(py: Python<'_>, input: &str) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let input = input.to_owned();
         py.detach(|| {
             let input = DagInput::from_json(&input)?;
@@ -269,6 +278,7 @@ impl V2Dag {
     /// Read a columnar container (`dag_input.encode_dag` or `columns()`).
     #[staticmethod]
     fn from_columns(py: Python<'_>, data: &[u8]) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| ColumnarDag::from_bytes(data))
             .map(|dag| Self { dag })
             .map_err(dag_error)
@@ -276,6 +286,7 @@ impl V2Dag {
 
     /// `(currents, interactions, sources)`.
     fn counts(&self) -> (usize, usize, usize) {
+        let _unlock = pyamplicol::unlock();
         (
             self.dag.current_count(),
             self.dag.interaction_count(),
@@ -285,12 +296,14 @@ impl V2Dag {
 
     /// The columnar container (decoded by `dag_input._decode`).
     fn columns<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        let _unlock = pyamplicol::unlock();
         let bytes = py.detach(|| self.dag.to_bytes());
         PyBytes::new(py, &bytes)
     }
 
     /// Streaming SHA-256 of the DAG's flat records (S1′/S1″ DAG part).
     fn digest(&self, py: Python<'_>) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.dag.digest()).map_err(dag_error)
     }
 
@@ -298,6 +311,7 @@ impl V2Dag {
     /// and the distinct helicity assignments their rows index (Python
     /// builds each assignment once).
     fn blocks(&self, py: Python<'_>, tables: &str) -> PyResult<(Vec<PyBlock>, Vec<Assignment>)> {
+        let _unlock = pyamplicol::unlock();
         let tables = tables.to_owned();
         let raw = py
             .detach(|| {
@@ -364,6 +378,7 @@ impl V2Dag {
         tables: &str,
         restricted: bool,
     ) -> PyResult<(EquivalenceRecords, Self)> {
+        let _unlock = pyamplicol::unlock();
         let tables = tables.to_owned();
         py.detach(|| {
             let tables = ReuseTables::from_json(&tables)?;
@@ -398,6 +413,7 @@ impl V2Dag {
         fundamental: u64,
         rest: u64,
     ) -> Vec<i64> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| {
             self.dag
                 .u1_leaking(&kinds, &generator_kinds, &adjoint, fundamental, rest)
@@ -408,17 +424,20 @@ impl V2Dag {
     /// currents (`ColumnarDag::propagated_species`; the current scans of
     /// `blocks.ward_breaking_fields` and `artifact.coloured_widths`).
     fn propagated_species(&self, py: Python<'_>, full_mask: u64) -> Vec<(i64, bool)> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.dag.propagated_species(full_mask))
     }
 
     /// Distinct `(particle id, chirality)` of the currents, sorted.
     fn current_species(&self) -> Vec<(i64, i8)> {
+        let _unlock = pyamplicol::unlock();
         self.dag.current_species()
     }
 
     /// The interaction program for `dag_input.program_input`'s JSON
     /// (`ColumnarDag::program`).
     fn program(&self, py: Python<'_>, input: &str) -> PyResult<V2Program> {
+        let _unlock = pyamplicol::unlock();
         let input = input.to_owned();
         py.detach(|| {
             let input = ProgramInput::from_json(&input)?;
@@ -432,6 +451,7 @@ impl V2Dag {
 
     /// The source currents, in `sources` order (see [`SourceRow`]).
     fn source_rows(&self) -> Vec<SourceRow> {
+        let _unlock = pyamplicol::unlock();
         let t = &self.dag.tables;
         self.dag
             .sources
@@ -464,6 +484,7 @@ impl V2Dag {
 
     /// `(vertex kind, vertex particles, coupling)` of the interactions `ids`.
     fn interaction_rows(&self, ids: Vec<u32>) -> PyResult<Vec<InteractionRow>> {
+        let _unlock = pyamplicol::unlock();
         ids.into_iter()
             .map(|id| {
                 let k = id as usize;
@@ -504,6 +525,7 @@ mod tree_binary {
         py: Python<'py>,
         sections: Vec<(String, u8, Bound<'py, PyBytes>)>,
     ) -> Bound<'py, PyBytes> {
+        let _unlock = pyamplicol::unlock();
         let parts: Vec<(&str, u8, &[u8])> = sections
             .iter()
             .map(|(name, encoding, payload)| (name.as_str(), *encoding, payload.as_bytes()))
@@ -515,6 +537,7 @@ mod tree_binary {
     /// The `(name, encoding)` of every section of a binary tree program.
     #[pyfunction]
     pub(super) fn tree_program_index(container: &[u8]) -> PyResult<Vec<(String, u8)>> {
+        let _unlock = pyamplicol::unlock();
         Ok(binary::read_container(container)
             .map_err(failed)?
             .into_iter()
@@ -529,6 +552,7 @@ mod tree_binary {
         container: &[u8],
         name: &str,
     ) -> PyResult<Option<Bound<'py, PyBytes>>> {
+        let _unlock = pyamplicol::unlock();
         Ok(binary::read_container(container)
             .map_err(failed)?
             .into_iter()
@@ -542,6 +566,7 @@ mod tree_binary {
         py: Python<'py>,
         json: &[u8],
     ) -> PyResult<Bound<'py, PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         let out = py
             .detach(|| StepColumns::from_json(json).map(|c| c.encode()))
             .map_err(failed)?;
@@ -551,6 +576,7 @@ mod tree_binary {
     /// A step section as the oracle's JSON steps.
     #[pyfunction]
     pub(super) fn tree_steps_json(py: Python<'_>, section: &[u8]) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| StepColumns::decode(section).map(|c| c.json()))
             .map_err(failed)
     }
@@ -558,6 +584,7 @@ mod tree_binary {
     /// `(rows, accumulators, outputs)` of a step section.
     #[pyfunction]
     pub(super) fn tree_steps_counts(section: &[u8]) -> PyResult<(u64, u64, u64)> {
+        let _unlock = pyamplicol::unlock();
         let c = StepColumns::decode(section).map_err(failed)?;
         Ok((
             c.rows.iter().sum(),
@@ -578,6 +605,7 @@ mod tree_binary {
         kernels: usize,
         propagators: usize,
     ) -> PyResult<Option<(Bound<'py, PyBytes>, Vec<usize>, Vec<usize>)>> {
+        let _unlock = pyamplicol::unlock();
         let mut marks = live.to_vec();
         // One copy of the section at a time beside the pruned columns: the
         // decoded steps go before the encoding, the pruned columns before
@@ -603,12 +631,14 @@ mod tree_binary {
     pub(super) fn tree_cells_list(
         section: &[u8],
     ) -> PyResult<Vec<(usize, usize, i32, String, String)>> {
+        let _unlock = pyamplicol::unlock();
         Ok(CellTable::decode(section).map_err(failed)?.list())
     }
 
     /// `(basis, tensors, distinct cells)` of a cell section.
     #[pyfunction]
     pub(super) fn tree_cells_counts(section: &[u8]) -> PyResult<(usize, usize, usize)> {
+        let _unlock = pyamplicol::unlock();
         let c = CellTable::decode(section).map_err(failed)?;
         Ok((c.basis, c.tensors, c.values.len()))
     }
@@ -624,6 +654,7 @@ mod tree_binary {
         ket: Vec<(usize, usize, i32)>,
         depth: Option<i32>,
     ) -> PyResult<Vec<bool>> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| CellTable::decode(section)?.live_ket(&born, &entries, &ket, depth))
             .map_err(failed)
     }
@@ -641,6 +672,7 @@ impl V2Program {
         py: Python<'py>,
         texts: Vec<(String, String)>,
     ) -> PyResult<Bound<'py, PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         if texts.len() != self.program.weights.len() {
             return Err(PyValueError::new_err("one text pair per colour weight"));
         }
@@ -693,12 +725,14 @@ mod tree_terms {
     impl TreeTermBuilder {
         #[new]
         fn new() -> Self {
+            let _unlock = pyamplicol::unlock();
             Self::default()
         }
 
         /// Append one closure-term record (``record``'s dict: kernel,
         /// layout, blocks, masks, sign, contributions).
         fn append(&mut self, record: &Bound<'_, PyAny>) -> PyResult<()> {
+            let _unlock = pyamplicol::unlock();
             let field = |name: &str| record.get_item(name);
             let contributions: Vec<(usize, usize, usize)> = field("contributions")?
                 .try_iter()?
@@ -723,11 +757,13 @@ mod tree_terms {
         }
 
         fn __len__(&self) -> usize {
+            let _unlock = pyamplicol::unlock();
             self.0.len()
         }
 
         /// The term section of the appended terms (the builder emptied).
         fn section<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyBytes> {
+            let _unlock = pyamplicol::unlock();
             let terms = std::mem::take(&mut self.0);
             let out = py.detach(|| terms.finish().encode());
             PyBytes::new(py, &out)
@@ -742,6 +778,7 @@ mod tree_terms {
         section: &[u8],
         live: Vec<bool>,
     ) -> PyResult<Bound<'py, PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         let out = py
             .detach(|| {
                 TermColumns::decode(section)?
@@ -761,6 +798,7 @@ mod tree_terms {
         widths: Vec<Vec<usize>>,
         blocks: usize,
     ) -> PyResult<Vec<usize>> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| TermColumns::decode(section)?.block_widths(&widths, blocks))
             .map_err(failed)
     }
@@ -771,6 +809,7 @@ mod tree_terms {
         py: Python<'py>,
         json: &[u8],
     ) -> PyResult<Bound<'py, PyBytes>> {
+        let _unlock = pyamplicol::unlock();
         let out = py
             .detach(|| TermColumns::from_json(json).map(|c| c.encode()))
             .map_err(failed)?;
@@ -780,6 +819,7 @@ mod tree_terms {
     /// A term section as the oracle's JSON closure terms.
     #[pyfunction]
     pub(super) fn tree_terms_json(py: Python<'_>, section: &[u8]) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| TermColumns::decode(section).map(|c| c.json()))
             .map_err(failed)
     }
@@ -787,6 +827,7 @@ mod tree_terms {
     /// The number of terms of a term section.
     #[pyfunction]
     pub(super) fn tree_terms_count(section: &[u8]) -> PyResult<usize> {
+        let _unlock = pyamplicol::unlock();
         Ok(TermColumns::decode(section).map_err(failed)?.len())
     }
 }

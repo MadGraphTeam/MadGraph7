@@ -1385,6 +1385,7 @@ fn stored_tree_program_section<'py>(
     payload: &[u8],
     section: &str,
 ) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
+    let _unlock = pyamplicol::unlock();
     let found = py
         .detach(|| rusticol_core::loop_artifact::inflate_loop_v2_section(member, payload, section))
         .map_err(error)?;
@@ -1420,6 +1421,7 @@ impl V2Executor {
         fourier: Option<String>,
         overlay: Option<String>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
         }
@@ -1528,6 +1530,7 @@ impl V2Executor {
         trees: bool,
         fourier: bool,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
         }
@@ -1626,6 +1629,7 @@ impl V2Executor {
         unchecked: Option<bool>,
         verified_last_resort: Option<bool>,
     ) -> PyResult<Vec<(usize, usize)>> {
+        let _unlock = pyamplicol::unlock();
         let reduction = Reduction::parse(reduction).map_err(error)?;
         let unchecked =
             unchecked.unwrap_or(rusticol_loop_reduction::reduction_policy::DEFAULT_UNCHECKED);
@@ -1728,6 +1732,7 @@ impl V2Executor {
     /// `(block_rows, born, amplitudes, born_squared, counterterms)`, see
     /// `TreeInputs` (counterterms with poles).
     fn tree_inputs(&mut self, inputs: &Bound<'_, PyDict>) -> PyResult<ExportedTreeInputs> {
+        let _unlock = pyamplicol::unlock();
         let bits = self.bits()?;
         let executor = &self.executor;
         let trees = self
@@ -1762,6 +1767,7 @@ impl V2Executor {
         rows: Option<Vec<bool>>,
         basis: Option<Vec<bool>>,
     ) -> PyResult<ExportedColumns> {
+        let _unlock = pyamplicol::unlock();
         let bits = self.bits()?;
         let executor = &self.executor;
         let trees = self
@@ -1803,6 +1809,7 @@ impl V2Executor {
     /// and per leg (the on-shell invariants, DESIGN §11.1), exact fractions,
     /// and the plan masses' imaginary parts (empty: every plan mass real).
     fn bound_masses(&self, inputs: &Bound<'_, PyDict>) -> PyResult<BoundMasses> {
+        let _unlock = pyamplicol::unlock();
         let trees = self
             .trees
             .as_ref()
@@ -1889,6 +1896,7 @@ impl V2Executor {
         inputs: &Bound<'_, PyDict>,
         contraction: &str,
     ) -> PyResult<Vec<Vec<Values>>> {
+        let _unlock = pyamplicol::unlock();
         let contraction = match contraction {
             "auto" => Contraction::Auto,
             "direct" => Contraction::Direct,
@@ -1936,6 +1944,7 @@ impl V2Executor {
         inputs: &Bound<'_, PyDict>,
         schedule: &str,
     ) -> PyResult<ExportedNumerators> {
+        let _unlock = pyamplicol::unlock();
         let schedule = match schedule {
             "B" => Schedule::B,
             "F" => Schedule::F,
@@ -2030,6 +2039,7 @@ impl V2Executor {
         reduction: &str,
         unchecked: bool,
     ) -> PyResult<Evaluation> {
+        let _unlock = pyamplicol::unlock();
         let reduction = Reduction::parse(reduction).map_err(error)?;
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -2187,6 +2197,7 @@ impl V2Executor {
 #[pyfunction]
 #[pyo3(signature = (path, process=None))]
 fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
+    let _unlock = pyamplicol::unlock();
     use rusticol_core::loop_artifact::{loop_v2_capability, open_loop_v2_artifact};
 
     let loaded = py
@@ -2264,6 +2275,7 @@ fn compile_v2_plane<'py>(
     compress: bool,
     real_points: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, usize, usize)> {
+    let _unlock = pyamplicol::unlock();
     let real_points = real_points.unwrap_or_default();
     let checked = py
         .detach(|| {
@@ -2305,6 +2317,7 @@ fn compile_v2_plane<'py>(
 /// this process (crate `pyamplicol`).
 #[pyfunction]
 fn native_library_key_active() -> bool {
+    let _unlock = pyamplicol::unlock();
     pyamplicol::is_active()
 }
 
@@ -2343,6 +2356,7 @@ fn evaluate_v2_artifact(
     reduction: Option<&str>,
     unchecked: bool,
 ) -> PyResult<Vec<V2ArtifactPoint>> {
+    let _unlock = pyamplicol::unlock();
     use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime};
     let reduction = reduction
         .map(rusticol_loop_reduction::runtime::Reduction::parse)
@@ -2416,6 +2430,7 @@ fn square_amplitudes(
     sectors: Vec<Vec<(usize, usize)>>,
     average: f64,
 ) -> PyResult<Vec<Vec<f64>>> {
+    let _unlock = pyamplicol::unlock();
     let complex = |values: &[[f64; 2]]| {
         values
             .iter()
@@ -2538,6 +2553,7 @@ impl PySelectionTemplate {
         Vec<Option<Vec<bool>>>,
         Vec<usize>,
     )> {
+        let _unlock = pyamplicol::unlock();
         let rows: Option<std::collections::BTreeSet<usize>> = rows.map(|r| r.into_iter().collect());
         let basis: Option<std::collections::BTreeSet<usize>> =
             basis.map(|b| b.into_iter().collect());
@@ -2569,6 +2585,7 @@ fn selection_template(
     plan: &str,
     companion_plan: Option<&str>,
 ) -> PyResult<PySelectionTemplate> {
+    let _unlock = pyamplicol::unlock();
     let records = resolved_records(
         record,
         overlay,
@@ -2606,6 +2623,7 @@ fn resolved_subset(
     Vec<(String, Option<Vec<usize>>, Option<Vec<usize>>)>,
     Vec<(usize, String, usize, usize)>,
 )> {
+    let _unlock = pyamplicol::unlock();
     let records = resolved_records(
         record,
         overlay,

@@ -31,7 +31,11 @@ fn bad(message: impl ToString) -> Error {
     Error(STATUS_INVALID_ARGUMENT, message.to_string())
 }
 thread_local! { static LAST_ERROR: RefCell<CString> = RefCell::new(CString::new("").unwrap()); }
+/// Runs one ABI call: under pyAmpliCol's Symbolica library key on the
+/// calling thread (an unlicensed caller never takes the user's restricted
+/// Symbolica permit), with panics and errors turned into status codes.
 fn guard(f: impl FnOnce() -> Result<()>) -> c_int {
+    let _unlock = pyamplicol::unlock();
     let error = match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(())) => return STATUS_OK,
         Ok(Err(e)) => e,

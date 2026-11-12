@@ -822,9 +822,10 @@ def test_six_leg_four_gluon_counterterms_from_recursion_equal_sites(
 # Symbolica key without a thread-wide license and waited for the GIL (design
 # §6.1 "Spenso's threads"); a personal key in the environment, or an earlier
 # Symbolica call outside the package, hides that. (No Symbolica call may run
-# outside the package here: without a key it would take the user's one
-# restricted Symbolica thread, which the native loop module's own Symbolica
-# then cannot start.) The script reports the package's Spenso policy.
+# outside the package here: without a key it would run in Symbolica's
+# restricted mode and take the user's one restricted Symbolica thread; the
+# native loop module's own Symbolica holds the package key at every entry
+# point.) The script reports the package's Spenso policy.
 _SIX_GLUON_SCRIPT = """
 import json, sys
 from pyamplicol import licensing
@@ -864,9 +865,9 @@ def test_six_gluon_generation_completes_without_a_personal_key(
     O6 at the CT level at the first point of the three-provider reference,
     and the R2 component of both routes against MadLoop's (an independent
     oracle of the four-gluon R2 at six legs). About an hour. The native loop
-    module's own Symbolica runs restricted without a key, on the user's one
-    restricted Symbolica thread: no other unlicensed Symbolica process of
-    the user may run at the same time."""
+    module's own Symbolica runs under the package key too (every native
+    entry point holds it), so other unlicensed Symbolica processes of the
+    user may run at the same time."""
 
     import ast
     import json

@@ -199,7 +199,11 @@ fn set_last_error(message: impl AsRef<str>) {
     LAST_ERROR.with(|slot| *slot.borrow_mut() = sanitize_c_string(message));
 }
 
+/// Runs one ABI call under pyAmpliCol's Symbolica library key on the calling
+/// thread (an unlicensed caller never takes the user's restricted Symbolica
+/// permit), with panics and errors turned into status codes.
 fn guard(operation: impl FnOnce() -> AbiResult<()>) -> c_int {
+    let _unlock = pyamplicol::unlock();
     finish_guard(catch_unwind(AssertUnwindSafe(operation)))
 }
 

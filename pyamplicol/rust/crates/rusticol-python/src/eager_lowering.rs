@@ -478,6 +478,7 @@ pub(crate) fn _lower_eager_runtime_v1(
     lowering_input: &Bound<'_, PyAny>,
     destination: PathBuf,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let borrowed = parse_input(lowering_input)?;
     let owned = borrowed.into_core_input().map_err(python_error)?;
     let input_digest = borrowed.digest.clone();

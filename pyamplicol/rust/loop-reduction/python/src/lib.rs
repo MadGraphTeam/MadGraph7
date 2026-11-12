@@ -44,6 +44,7 @@ impl CoefficientEvaluator {
     #[new]
     #[pyo3(signature = (state, arithmetic="double", precision=None))]
     fn new(state: &[u8], arithmetic: &str, precision: Option<u32>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         runtime::CoefficientEvaluator::new(state, arithmetic, precision)
             .map(Self)
             .map_err(error)
@@ -58,10 +59,12 @@ impl CoefficientEvaluator {
         values: Vec<DecimalComplex>,
         rows: usize,
     ) -> PyResult<Vec<DecimalComplex>> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.evaluate_decimal(values, rows))
             .map_err(error)
     }
     fn evaluate_batch(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.evaluate_batch(&input.0))
             .map(NativeBatch)
             .map_err(error)
@@ -72,6 +75,7 @@ impl CoefficientEvaluator {
         values: Vec<[f64; 2]>,
         rows: usize,
     ) -> PyResult<Vec<[f64; 2]>> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.evaluate_f64(values, rows))
             .map_err(error)
     }
@@ -86,6 +90,7 @@ fn canonical_saved_evaluator<'py>(
     py: Python<'py>,
     saved: Bound<'py, PyBytes>,
 ) -> PyResult<Bound<'py, PyBytes>> {
+    let _unlock = pyamplicol::unlock();
     let bytes = saved.as_bytes();
     match py
         .detach(|| rusticol_core::__private::canonical_saved_evaluator(bytes))
@@ -100,6 +105,7 @@ fn canonical_saved_evaluator<'py>(
 /// backend (the default cargo feature `tir`; `rusticol_loop_reduction::tir`).
 #[pyfunction]
 fn tirust_available() -> bool {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::tir::available()
 }
 
@@ -109,6 +115,7 @@ fn tirust_available() -> bool {
 /// reads (`runtime::backend_carriers`).
 #[pyfunction]
 fn reduction_backends() -> String {
+    let _unlock = pyamplicol::unlock();
     let record: serde_json::Map<String, serde_json::Value> =
         rusticol_loop_reduction::runtime::backend_carriers()
             .into_iter()
@@ -124,6 +131,7 @@ fn reduction_backends() -> String {
 #[pyfunction]
 #[pyo3(signature = (bits=53))]
 fn tirust_capabilities(bits: u32) -> Option<String> {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::tir::capabilities(bits).map(|(propagators, rank)| {
         serde_json::json!({"max_propagators": propagators, "max_rank": rank}).to_string()
     })
@@ -135,6 +143,7 @@ fn tirust_capabilities(bits: u32) -> Option<String> {
 /// {key: {"serves", "backends", "auto"}}}`, which `loops.v2.reduction` reads.
 #[pyfunction]
 fn reduction_policy() -> String {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::reduction_policy::policy_json().to_string()
 }
 
@@ -160,6 +169,7 @@ fn reduction_resolve(
     backends: BTreeSet<String>,
     auto: Option<BTreeSet<String>>,
 ) -> (&'static str, String, String, String, Option<String>) {
+    let _unlock = pyamplicol::unlock();
     use rusticol_loop_reduction::reduction_policy::{Refusal, Route, resolve};
     let route = Route {
         serves,
@@ -197,6 +207,7 @@ fn reduction_auto_default(
     contribution: &str,
     admitted: Option<BTreeSet<String>>,
 ) -> Option<&'static str> {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::reduction_policy::auto_default(contribution, admitted.as_ref())
 }
 
@@ -206,6 +217,7 @@ fn reduction_auto_default(
 /// TIRust.
 #[pyfunction]
 fn tir_acceptance(target: f64) -> PyResult<Option<f64>> {
+    let _unlock = pyamplicol::unlock();
     let target = v2::reduction_target(Some(target))?;
     #[cfg(feature = "tir")]
     {
@@ -237,6 +249,7 @@ fn reduction_text(
     estimate: f64,
     target: f64,
 ) -> PyResult<String> {
+    let _unlock = pyamplicol::unlock();
     use rusticol_loop_reduction::reduction_policy as policy;
     match kind {
         "served" => Ok(policy::fallback_served(a, b, text)),
@@ -258,6 +271,7 @@ fn reduction_text(
 /// lit-fallback-guard).
 #[pyfunction]
 fn reduction_fallback_accepted(estimate: f64, target: f64) -> bool {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::reduction_policy::fallback_accepted(estimate, target)
 }
 
@@ -269,6 +283,7 @@ fn reduction_fallback_accepted(estimate: f64, target: f64) -> bool {
 /// output o, `roundoff` the carrier's unit roundoff.
 #[pyfunction]
 fn reduction_fallback_estimate(outputs: Vec<Vec<(f64, f64, f64)>>, roundoff: f64) -> f64 {
+    let _unlock = pyamplicol::unlock();
     use rusticol_loop_reduction::reduction_policy::{GuardSector, fallback_estimate};
     let outputs: Vec<Vec<GuardSector>> = outputs
         .into_iter()
@@ -291,6 +306,7 @@ fn reduction_fallback_estimate(outputs: Vec<Vec<(f64, f64, f64)>>, roundoff: f64
 /// lit-fallback-guard, USER 2026-11-09 ~11:53).
 #[pyfunction]
 fn reduction_fallback_guarded(carrier: &str) -> bool {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::reduction_policy::fallback_guarded(carrier)
 }
 

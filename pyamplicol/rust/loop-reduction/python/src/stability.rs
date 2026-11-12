@@ -15,6 +15,7 @@ impl NativeBatch {
         arithmetic: &str,
         precision: Option<u32>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.convert_arithmetic(arithmetic, precision))
             .map(Self)
             .map_err(error)
@@ -27,6 +28,7 @@ impl NativeBatch {
         row_ids: Vec<u64>,
         batches: Vec<PyRef<'_, NativeBatch>>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         // Release Python references before native work; Batch clones share storage.
         let batches: Vec<_> = batches.iter().map(|batch| batch.0.clone()).collect();
         py.detach(|| Batch::merge_rows(row_ids, &batches.iter().collect::<Vec<_>>()))

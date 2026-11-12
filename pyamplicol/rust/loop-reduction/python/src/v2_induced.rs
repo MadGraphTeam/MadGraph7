@@ -45,6 +45,7 @@ fn induced_form(
     matrix: Vec<Vec<(String, String)>>,
     hermitian: bool,
 ) -> PyResult<(Vec<Vec<Pair>>, Option<Vec<Vec<Pair>>>)> {
+    let _unlock = pyamplicol::unlock();
     let size = matrix.len();
     let (h, k) = outputs::binary64_form(&exact_cells(&matrix)?, size, hermitian).map_err(error)?;
     let rows = |cells: Vec<C<f64>>| -> Vec<Vec<Pair>> {
@@ -62,6 +63,7 @@ fn induced_form(
 /// in binary64 (`induced_observables.Forms` of an `("anchor", t)` metric).
 #[pyfunction]
 fn induced_anchor_form(gram: Vec<Vec<(String, String)>>, t: usize) -> PyResult<Vec<Vec<Pair>>> {
+    let _unlock = pyamplicol::unlock();
     let size = gram.len();
     let cells = outputs::binary64_anchor_form(&exact_cells(&gram)?, size, t).map_err(error)?;
     Ok(cells
@@ -83,6 +85,7 @@ fn induced_spin_coefficients(
     vector: Vec<(String, String)>,
     working_digits: u32,
 ) -> PyResult<Vec<(i32, f64, f64)>> {
+    let _unlock = pyamplicol::unlock();
     let sources: Vec<serde_json::Value> =
         serde_json::from_str(sources).map_err(|e| PyValueError::new_err(e.to_string()))?;
     if momentum.len() != 4 || vector.len() != 4 {
@@ -118,6 +121,7 @@ fn induced_spin_amplitudes(
     width: usize,
     size: usize,
 ) -> PyResult<Vec<(Key, Vec<Vec<Pair>>)>> {
+    let _unlock = pyamplicol::unlock();
     let mut amplitudes: Vectors<f64> = Vectors::default();
     for ((order, row), vector) in vectors {
         if vector.len() != size || vector.iter().any(|cell| cell.len() != width) {
