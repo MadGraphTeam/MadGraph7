@@ -5,6 +5,16 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
+       vanish, which the recycled matrix element is built for, are now measured again at
+       the param_card a run is launched with (after the launch question, and at each point
+       of a scan), and at the cards of a MadtRex parameter reweighting. They were only
+       measured at generation, at the output's default card: a coupling set to zero at
+       launch was still evaluated, and an amplitude that vanishes at the default card but
+       not at the launch card was silently dropped. The probe build is kept in .hrprobe,
+       so that a new card costs a run of it (milliseconds); a card at which the filter
+       comes out the same rewrites and recompiles nothing, and a build for another filter
+       than the output's has its own library name (lib..._P*_hr<hash>_*.so).
    OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).
    OM: madevent/MadSpin: polarised beams with a mirror process gave beam 1's polarisation
        to the particle of beam 2 (#394).
@@ -107,6 +117,28 @@ ANNOUNCEMENT:
        vanishes, including equal-scale and flat-table limits.
    RF: Use the current emitter mass for the PYTHIA6Q starting-scale bound,
        avoiding stale kinematic invariants after a change of FKS sector.
+   OM: output --axial_gauge=True (madevent, standalone_fortran, standalone, mg7) now also
+       chooses the spin axis of the massive final-state fermions when at least two of the
+       massless vectors they couple to share a reference: their spin is quantised along that
+       reference momentum instead of along their own momentum (new HELAS
+       routines IXXXXXR/OXXXXXR). More helicity configurations and amplitudes then vanish and
+       are removed by the helicity filtering and the helicity recycling: g g > t t~ g g has 60
+       helicity configurations instead of 64 and 7868 non vanishing (helicity, amplitude)
+       pairs instead of 8784 (9376 without the option). The matrix element summed over the
+       helicities is unchanged, but the two spin states of such a fermion are not helicity
+       states: its helicity is written as 9 (unknown) in the event file, and the madmatrix
+       density binding refuses a density matrix for it. Nothing changes for g g > t t~ or
+       e+ e- > t t~ g g (no reference shared by two vectors), for a process with a single
+       massless vector or none, for a polarised process, for an
+       initial-state fermion, with --density, or with the new --fermion_reference=False,
+       which keeps the references of the vectors only.
+       The gluons of a process with an initial-state quark now all share the momentum of
+       that quark rather than of the initial gluon (u g > u g g: 132 non vanishing pairs
+       instead of 168).
+       check gauge and check brs compare these external wavefunctions (reference momenta of
+       the massless vectors and spin axis of the massive fermions) with the standard ones
+       as well, in a new column Reference (tree level; new Python routines vxxxxxr, ixxxxxr
+       and oxxxxxr).
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

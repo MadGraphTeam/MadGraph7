@@ -337,6 +337,16 @@ class ProbeEnvironmentTest(unittest.TestCase):
 class ClassicOptionsTest(unittest.TestCase):
     """The classic option names come from reweight_interface."""
 
+    def test_sudakov_xi_selects_classic_and_is_applied(self):
+        from madgraph.interface.reweight_interface import ReweightInterface
+        decision = select("change sudakov_xi 1 1.5 3.0\n" + LAUNCH)
+        self.assertEqual(decision.backend, 'classic')
+        cmd = ReweightInterface.__new__(ReweightInterface)
+        cmd.exitted = True
+        cmd.sudakov_xi_scan = None
+        cmd.do_change('sudakov_xi 1 1.5 3.0')
+        self.assertEqual(cmd.sudakov_xi_scan, [1.0, 1.5, 3.0])
+
     def test_every_classic_option_is_classified(self):
         from madgraph.interface.reweight_interface import (REWEIGHT_CHANGE_OPTIONS,
                                                            DENSITY_CHANGE_OPTIONS)

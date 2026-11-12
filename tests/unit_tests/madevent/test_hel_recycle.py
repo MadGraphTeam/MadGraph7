@@ -84,6 +84,43 @@ class TestDoMultiline(unittest.TestCase):
             self.assertWrapIsValid(line)
 
 
+class TestFortranDialectExternals(unittest.TestCase):
+    """The external wavefunctions with a reference momentum (--axial_gauge):
+    VXXXXXR, a massless vector in the axial gauge of the reference, and
+    IXXXXXR / OXXXXXR, a massive fermion whose spin is quantised along it.
+    The reference is appended after the arguments the recycler reads, and is
+    the same for every helicity row."""
+
+    VECTOR = '      CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'
+    FERMION = '      CALL OXXXXXR(P(0,3),MDL_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))'
+    ANTIFERMION = '      CALL IXXXXXR(P(0,4),MDL_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))'
+
+    def setUp(self):
+        self.dialect = hel_recycle.Dialect()
+
+    def test_they_are_external_wavefunctions(self):
+        for line, name in ((self.VECTOR, 'VXXXXXR'), (self.FERMION, 'OXXXXXR'),
+                           (self.ANTIFERMION, 'IXXXXXR')):
+            self.assertEqual(self.dialect.called_function(line).upper(), name)
+            self.assertIn(name, self.dialect.external_routines)
+
+    def test_the_leg_is_the_one_of_the_momentum_not_of_the_reference(self):
+        for line, leg in ((self.VECTOR, 5), (self.FERMION, 3),
+                          (self.ANTIFERMION, 4)):
+            args = self.dialect.arguments(line)
+            self.assertEqual(self.dialect.external_leg(args), leg)
+            self.assertEqual(self.dialect.external_helicity_leg(args), leg)
+            self.assertEqual(self.dialect.output_name(args), 'W(%d)' % leg)
+
+    def test_fixing_the_helicity_keeps_the_reference(self):
+        args = self.dialect.arguments(self.FERMION)
+        fixed = self.dialect.set_external_helicity(list(args), -1)
+        self.assertEqual(fixed[2].strip(), '-1')
+        self.assertEqual([a.replace(' ', '') for a in fixed[:2] + fixed[3:]],
+                         ['P(0,3)', 'MDL_MT', '+1', 'FLAVOR(3)', 'P(0,1)',
+                          'W(3)'])
+
+
 class TestCppDialect(unittest.TestCase):
     """Reading and re-writing the C++ the madmatrix backend emits.
 
@@ -156,6 +193,26 @@ class TestCppDialect(unittest.TestCase):
         self.assertEqual(self.dialect.external_leg(args), 3)
         self.assertEqual(self.dialect.external_helicity_leg(args), 3)
         self.assertEqual(self.dialect.output_name(args), 'aloha_obj[2]')
+
+    def test_a_spin_reference_external_ends_with_its_reference(self):
+        """ixxxxxr / oxxxxxr, a massive fermion whose spin axis is fixed by a
+        reference leg, are externals like vxxxxxr: the leg they build is the
+        argument after the output slot, their helicity the one of that leg"""
+
+        for name in ('ixxxxxr', 'oxxxxxr'):
+            line = ('      %s<M_ACCESS, W_ACCESS>( momenta, cIPD[0],'
+                    ' cHel[ihel][3], -1, cFlavors[iflavor][3], aloha_obj[3],'
+                    ' 3, 0 );' % name)
+            args = self.dialect.arguments(line)
+            self.assertEqual(self.dialect.called_function(line), name)
+            self.assertIn(name.upper(), self.dialect.external_routines)
+            self.assertEqual(self.dialect.external_leg(args), 4)
+            self.assertEqual(self.dialect.external_helicity_leg(args), 4)
+            self.assertEqual(self.dialect.output_name(args), 'aloha_obj[3]')
+            fixed = self.dialect.set_external_helicity(list(args), 1)
+            self.assertEqual(fixed[2], '( fptype_amp_sv{} + 1 )')
+            # the reference leg is untouched: the same for every helicity
+            self.assertEqual(fixed[-1], '0')
 
     def test_a_scalar_has_no_helicity_to_fix(self):
         """Unlike fortran, where the slot exists and is overwritten anyway"""
@@ -1146,7 +1203,8 @@ class TestHelRecyclingWarmupDispatch(unittest.TestCase):
         path = os.path.join(output_dir, 'SubProcesses', 'P1_gg_ggg')
         os.makedirs(path)
         class Registered(object):
-            pass
+            def write_hr_recipe(self):
+                return {'helicities': []}
         registered = Registered()
         registered.path = path
         self.warmups.append(registered)
@@ -1167,27 +1225,38 @@ class TestHelRecyclingWarmupDispatch(unittest.TestCase):
         from unittest import mock
         import subprocess
         import madgraph.iolibs.export_cpp as export_cpp
+        from madmatrix import hel_recycling_filter as hrf
         exporter = self.exporter(self.output.ProcessExporterMadMatrix, 'mg7')
         own = self.pdir(exporter.dir_path)
         foreign = self.pdir(os.path.join(self.tmp, 'other'))
+        os.makedirs(os.path.join(exporter.dir_path, 'Cards'))
+        open(os.path.join(exporter.dir_path, 'Cards', 'param_card.dat'), 'w').close()
         calls = []
         def run(cmd, cwd=None, **opts):
             calls.append((cmd, cwd, sorted(os.listdir(cwd))))
             return subprocess.CompletedProcess(cmd, 1, stdout=b'')
         with mock.patch.object(export_cpp.ProcessExporterMG7, 'finalize'), \
-             mock.patch.object(self.output.subprocess, 'run', side_effect=run):
+             mock.patch.object(hrf.subprocess, 'run', side_effect=run):
             exporter.finalize()
         self.assertEqual(self.warmups, [])
-        self.assertEqual(set(cwd for _cmd, cwd, _ls in calls), set([own]))
-        # the probe build ran on the lent standalone driver ...
+        probe = os.path.join(os.path.realpath(exporter.dir_path), hrf.PROBE_TREE,
+                             'SubProcesses', 'P1_gg_ggg')
+        self.assertEqual(set(cwd for _cmd, cwd, _ls in calls), set([probe]))
+        # the probe build ran in the probe tree, on the lent standalone driver
         build, _cwd, listing = calls[0]
         self.assertEqual(build[:3], ['make', '-f', 'hrprobe.mk'])
         self.assertIn('HRPROBE=1', build)
         for name in ['check_sa.cc', 'hrprobe.mk', 'madmatrix.mk', 'timer.h']:
             self.assertIn(name, listing)
-        # ... which is taken back with the probe build
-        self.assertEqual(calls[-1][0][-1], 'cleanall')
-        self.assertEqual(os.listdir(own), [])
+        # which the output keeps for the launch
+        self.assertEqual(sorted(os.listdir(os.path.join(exporter.dir_path, 'SubProcesses',
+                                                        hrf.PROBE_SOURCES))),
+                         ['check_sa.cc', 'hrprobe.mk', 'nvtx.h', 'timer.h', 'timermap.h'])
+        # nothing was lent to, or built in, the P* directory itself: it only
+        # records that it is the plain code (the probe failed)
+        self.assertEqual(os.listdir(own), [hrf.STATE])
+        self.assertEqual(hrf.read_state(own)['recycled'], False)
+        self.assertEqual(hrf.read_state(own)['output'], {'recycled': False})
         self.assertEqual(os.listdir(foreign), [])
 
     def test_a_new_output_drops_what_an_earlier_one_left(self):
@@ -1195,6 +1264,232 @@ class TestHelRecyclingWarmupDispatch(unittest.TestCase):
         self.output.ProcessExporterMadMatrix(os.path.join(self.tmp, 'new'),
                                              {'output_options': {}})
         self.assertEqual(self.warmups, [])
+
+
+class TestHelRecyclingFilter(unittest.TestCase):
+    """madmatrix/hel_recycling_filter.py: the filter of a recycled build
+    measured again at the parameters a run is launched at -- what is
+    measured, when, and when the build is rewritten (the probe is mocked
+    here; test_madmatrix_hel_recycling_launch_parameters builds it)."""
+
+    def setUp(self):
+        from madmatrix import hel_recycling_filter
+        self.hrf = hel_recycling_filter
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_combine_keeps_what_holds_at_every_card(self):
+        combine = self.hrf.combine
+        # one card: as measured
+        self.assertEqual(combine([([1, 2], [(1, 3), (2, 3)])]), ([1, 2], [[1, 3], [2, 3]]))
+        # the good helicities of any card; an amplitude dropped only where it
+        # vanishes at every card that has its helicity
+        self.assertEqual(combine([([1, 2], [(1, 3), (2, 3), (2, 4)]),
+                                  ([1, 2, 5], [(1, 3), (5, 3)])]),
+                         ([1, 2, 5], [[1, 3], [5, 3]]))
+        # a helicity that is not good at a card does not keep its amplitudes
+        # alive there: that card never evaluates it
+        self.assertEqual(combine([([1], [(1, 3)]), ([2], [(2, 3)])]),
+                         ([1, 2], [[1, 3], [2, 3]]))
+
+    def test_the_output_build_has_no_tag(self):
+        state = {'recycled': True, 'good_hels': [1, 2], 'zero_perhel': [[1, 3]]}
+        state['output'] = self.hrf.signature(state)
+        self.assertEqual(self.hrf.tag_of(state), '')
+        other = dict(state, zero_perhel=[[1, 3], [2, 3]])
+        tag = self.hrf.tag_of(other)
+        self.assertRegex(tag, r'^_hr[0-9a-f]{8}$')
+        self.assertEqual(self.hrf.tag_of(dict(other)), tag)       # a name per filter
+        plain = {'recycled': False, 'output': state['output']}
+        self.assertNotIn(self.hrf.tag_of(plain), ('', tag))
+
+    def test_library_names(self):
+        me_path = 'lib/libmadmatrix_sm_P1_bbx_ttx_{device}_{fptype}.so'
+        tagged = self.hrf.tagged_me_path(me_path, '_hr0123abcd')
+        self.assertEqual(tagged, 'lib/libmadmatrix_sm_P1_bbx_ttx_hr0123abcd_{device}_{fptype}.so')
+        self.assertEqual(self.hrf.tagged_me_path(tagged, '_hrffffffff'),
+                         'lib/libmadmatrix_sm_P1_bbx_ttx_hrffffffff_{device}_{fptype}.so')
+        self.assertEqual(self.hrf.tagged_me_path(tagged, ''), me_path)
+        # a LIBTAG (MadtRex's regenerated directories) comes first
+        self.assertEqual(self.hrf.tagged_me_path(
+            'lib/libmadmatrix_rw1_sm_P1_x_{device}_{fptype}.so', '_hr0123abcd'),
+            'lib/libmadmatrix_rw1_sm_P1_x_hr0123abcd_{device}_{fptype}.so')
+
+    def test_card_digest_is_the_values(self):
+        card = os.path.join(self.tmp, 'a.dat')
+        with open(card, 'w') as fsock:
+            fsock.write('BLOCK MASS # masses\n    6 1.730000e+02 # MT\n'
+                        'BLOCK YUKAWA\n    5 4.700000e+00 # ymb\n')
+        other = os.path.join(self.tmp, 'b.dat')
+        with open(other, 'w') as fsock:
+            fsock.write('# another comment\nBlock yukawa\n 5 4.7\nBlock mass\n 6 173.\n')
+        changed = os.path.join(self.tmp, 'c.dat')
+        with open(changed, 'w') as fsock:
+            fsock.write('Block yukawa\n 5 0.\nBlock mass\n 6 173.\n')
+        self.assertEqual(self.hrf.card_digest(card), self.hrf.card_digest(other))
+        self.assertNotEqual(self.hrf.card_digest(card), self.hrf.card_digest(changed))
+
+    def output(self):
+        """An output with one recycled P* directory, built at card 'a'."""
+        root = os.path.join(self.tmp, 'out')
+        pdir = os.path.join(root, 'SubProcesses', 'P1_x')
+        os.makedirs(pdir)
+        os.makedirs(os.path.join(root, 'SubProcesses', self.hrf.PROBE_SOURCES))
+        open(os.path.join(root, 'SubProcesses', self.hrf.PROBE_SOURCES,
+                          self.hrf.PROBE_MAKEFILE), 'w').close()
+        with open(os.path.join(pdir, self.hrf.RECIPE), 'w') as fsock:
+            fsock.write('{"helicities": [[1], [2]]}')
+        for name in self.hrf.GENERATED:
+            open(os.path.join(pdir, name), 'w').close()
+        os.makedirs(os.path.join(pdir, 'build.simd_128_d'))
+        self.cards = {}
+        for name, value in (('a', 1), ('b', 2), ('c', 3)):
+            self.cards[name] = os.path.join(self.tmp, name + '.dat')
+            with open(self.cards[name], 'w') as fsock:
+                fsock.write('Block mass\n 6 %d\n' % value)
+        state = {'cards': self.hrf.cards_key([self.cards['a']]), 'recycled': True,
+                 'good_hels': [1, 2], 'zero_perhel': [[1, 3]]}
+        state['output'] = self.hrf.signature(state)
+        self.hrf.write_state(pdir, state)
+        with open(os.path.join(root, 'SubProcesses', 'subprocesses.json'), 'w') as fsock:
+            fsock.write('[{"path": "SubProcesses/P1_x", '
+                        '"me_path": "lib/libmadmatrix_sm_P1_x_{device}_{fptype}.so"}]')
+        return root, pdir
+
+    def update(self, root, cards, measured):
+        """update() with the probe answering `measured`; (result, number of
+        probe measurements, rewrites)."""
+        from unittest import mock
+        written = []
+        def write_build(pdir, recipe, good, zeros):
+            written.append((good, zeros))
+            return None if good is None else len(good)
+        with mock.patch.object(self.hrf.ProbeTree, 'measure',
+                               return_value=measured) as measure, \
+             mock.patch.object(self.hrf, 'write_build', side_effect=write_build):
+            result = self.hrf.update(
+                root, cards, ['SubProcesses/P1_x'],
+                subprocesses_json=os.path.join(root, 'SubProcesses', 'subprocesses.json'))
+        return result, measure.call_count, written
+
+    def me_path(self, root):
+        import json
+        with open(os.path.join(root, 'SubProcesses', 'subprocesses.json')) as fsock:
+            return json.load(fsock)[0]['me_path']
+
+    def test_the_same_cards_measure_nothing(self):
+        root, pdir = self.output()
+        self.assertEqual(self.update(root, [self.cards['a']], None), ({}, 0, []))
+        self.assertTrue(os.path.isdir(os.path.join(pdir, 'build.simd_128_d')))
+
+    def test_the_same_filter_rewrites_nothing(self):
+        root, pdir = self.output()
+        result, measured, written = self.update(root, [self.cards['b']],
+                                                ([1, 2], [[1, 3]]))
+        self.assertEqual((result, measured, written), ({}, 1, []))
+        # the objects are still right, and the cards are recorded
+        self.assertTrue(os.path.isdir(os.path.join(pdir, 'build.simd_128_d')))
+        self.assertEqual(self.update(root, [self.cards['b']], None), ({}, 0, []))
+
+    def test_another_filter_has_its_own_library(self):
+        root, pdir = self.output()
+        result, measured, written = self.update(root, [self.cards['b']],
+                                                ([1, 2], [[1, 3], [2, 3]]))
+        self.assertEqual(written, [([1, 2], [[1, 3], [2, 3]])])
+        tag = self.hrf.tag_of(self.hrf.read_state(pdir))
+        self.assertRegex(tag, r'^_hr[0-9a-f]{8}$')
+        self.assertEqual(result, {'SubProcesses/P1_x':
+                                  'lib/libmadmatrix_sm_P1_x%s_{device}_{fptype}.so' % tag})
+        self.assertEqual(self.me_path(root), result['SubProcesses/P1_x'])
+        with open(os.path.join(pdir, self.hrf.TAG_MK)) as fsock:
+            self.assertIn('HRTAG = %s' % tag, fsock.read())
+        # the objects of the other filter must not be linked into this library
+        self.assertFalse(os.path.isdir(os.path.join(pdir, 'build.simd_128_d')))
+        # and back to the output's own filter: its own name again
+        result, _, written = self.update(root, [self.cards['c']], ([1, 2], [[1, 3]]))
+        self.assertEqual(written, [([1, 2], [[1, 3]])])
+        self.assertEqual(self.me_path(root), 'lib/libmadmatrix_sm_P1_x_{device}_{fptype}.so')
+        self.assertFalse(os.path.exists(os.path.join(pdir, self.hrf.TAG_MK)))
+
+    def test_unmeasurable_parameters_build_the_plain_code(self):
+        root, pdir = self.output()
+        result, measured, written = self.update(root, None, None)
+        self.assertEqual((measured, written), (0, [(None, None)]))
+        self.assertEqual(self.hrf.read_state(pdir)['recycled'], False)
+        self.assertIn('SubProcesses/P1_x', result)
+        # a failed measurement too
+        root2 = os.path.join(self.tmp, 'out')
+        from unittest import mock
+        self.hrf.write_state(pdir, dict(self.hrf.read_state(pdir), cards=['x']))
+        with mock.patch.object(self.hrf.ProbeTree, 'measure',
+                               side_effect=RuntimeError('no build')), \
+             mock.patch.object(self.hrf, 'write_build', return_value=None) as write:
+            self.hrf.update(root2, [self.cards['b']], ['SubProcesses/P1_x'])
+        write.assert_called_once()
+        self.assertIsNone(write.call_args[0][2])
+
+    def test_launch_param_cards(self):
+        # what mg7/madtrex.py hands update() for a MadtRex reweighting. Not
+        # through that module: it imports madspace, which must not be imported
+        # before the mg7 bootstrap has installed it (later tests need it)
+        class Launch(object):
+            def __init__(self, sets):
+                self.sets = sets
+        base = os.path.join(self.tmp, 'param_card.dat')
+        with open(base, 'w') as fsock:
+            fsock.write('Block mass\n 6 1.73e2 # MT\nBlock yukawa\n 5 4.7 # ymb\n'
+                        'DECAY 6 1.5 # WT\n')
+        launches = [Launch([('yukawa', '5', '0.0')]),
+                    Launch([('MASS', '6', '175'), ('DECAY', '6', '1.4')])]
+        paths = self.hrf.launch_param_cards(base, launches, self.tmp)
+        from madgraph.models.check_param_card import ParamCard
+        first, second = (ParamCard(path) for path in paths)
+        self.assertEqual(first['yukawa'].get((5,)).value, 0.0)
+        self.assertEqual(first['mass'].get((6,)).value, 173.0)
+        self.assertEqual(second['mass'].get((6,)).value, 175.0)
+        self.assertEqual(second['decay'].get((6,)).value, 1.4)
+        # not a param_card value: no card for it
+        self.assertIsNone(self.hrf.launch_param_cards(
+            base, [Launch([('yukawa', '5', 'auto')])], self.tmp))
+
+    def test_recipe_hands_the_flavour_tables_to_the_dialect(self):
+        # a build rewritten at launch is written from the recipe read back
+        # from its JSON file: the P1N flavour tables (hr_recipe's dialect) must
+        # reach the recycler's dialect from there, their (k1, k2) pairs lists
+        import json
+        from unittest import mock
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        tables = {'flvCOUPs[0]': [(0, 1), (1, 0)], 'flvCOUPs[1]': [(0, 1), (0, 2)],
+                  'flvCOUPs_dep[0]': None}
+        recipe = json.loads(json.dumps({
+            'version': 1, 'calls': [], 'helicities': [[1, 1], [1, -1]],
+            'post': None, 'gauge': 'U', 'tables': {}, 'max_stmts': 0,
+            'chunk': None, 'dialect': {'p1n_flavour_tables': tables}}))
+        seen = []
+
+        class Stop(Exception):
+            pass
+
+        class Recycler(object):
+            def __init__(self, *args, **opts):
+                seen.append(opts['dialect'])
+
+            def set_input(self, path):
+                raise Stop()
+
+        with mock.patch.object(hel_recycle, 'HelicityRecycler', Recycler):
+            with self.assertRaises(Stop):
+                OneProcessExporterMadMatrix.write_recycled_recipe(
+                    self.tmp, recipe, [1, 2], [])
+        dialect, = seen
+        self.assertEqual(dialect.p1n_flavour_tables,
+                         {'flvCOUPs[0]': [[0, 1], [1, 0]],
+                          'flvCOUPs[1]': [[0, 1], [0, 2]], 'flvCOUPs_dep[0]': None})
+        # and the dialect reads them as it reads the exporter's tuples
+        self.assertTrue(dialect.p1n_follows_flavour(['flvCOUPs[0]', 'COUPs[3]']))
+        self.assertFalse(dialect.p1n_follows_flavour(['flvCOUPs[1]']))
+        self.assertFalse(dialect.p1n_follows_flavour(['flvCOUPs_dep[0]']))
+        self.assertTrue(dialect.p1n_follows_flavour(['COUPs[3]']))
 
 
 class TestGoodHelIds(unittest.TestCase):
