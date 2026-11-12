@@ -842,8 +842,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
-        logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
-        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (off by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes.")
+        logger.info("      --hel_recycling=False: [madevent|standalone|mg7] forbids helicity recycling optimization (the plain matrix element)")
+        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
         logger.info("      --hel_recycling_chunk=<n>: [standalone|mg7] statements per function when the recycled block is cut up (default 200, 0 keeps it in one piece).")
         logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
         logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
@@ -11769,20 +11769,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """
         args = ['eMELA'] + args
         self.check_set(args)
-        
+
         try:
             p = subprocess.Popen([args[1], '--version'], stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
             output, error = p.communicate()
-            output = output.decode()
-            res = 0
+            output = output.decode(errors='ignore').strip()
+            res = p.returncode
         except Exception:
-            res = 1
+            output, res = '', 1
 
-        if res != 0 or error:
+        # Judge eMELA-config by its exit code and the version it prints, not by
+        # stderr: it is a bash script built on egrep, which grep >= 3.8 (e.g.
+        # AlmaLinux 10, Fedora) flags on stderr as obsolescent. Rejecting any
+        # stderr output dropped a valid eMELA there.
+        if res != 0 or not output:
             if args[1] != 'None':
                 logger.info('%s does not seem to correspond to a valid eMELA-config ' % args[1] + \
-                'executable.\n Please set the \'fastjet\'' + \
+                'executable.\n Please set the \'eMELA\'' + \
                 'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).' +
                     '\n MadGraph7> set eMELA /PATH/TO/eMELA-config\n')
             self.options[args[0]] = None
@@ -12811,6 +12815,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         line_options = dict( (arg[2:].split('=')  if "=" in arg else (arg[2:], True))
                              for arg in args if arg.startswith('--'))
 #        line_options = dict(arg[2:].split('=') for arg in args if arg.startswith('--') and '=' not in arg)
+        # helicity recycling is on by default for the madmatrix outputs: 'auto'
+        # recycles like True but stays quiet where a directory cannot be
+        # recycled. A cuda/hip build of the output is the plain matrix element
+        # anyway (backend/gpu/SigmaKin.cc), so nothing is lost on a GPU.
+        # --hel_recycling=False (or the spin>3 / --me_exporter rules above)
+        # keeps the plain one.
+        if self._export_format in ('standalone', 'mg7', 'mg7_v5') and \
+                                            'hel_recycling' not in line_options:
+            line_options['hel_recycling'] = 'auto'
         main_file_name = ""
         try:
             main_file_name = args[args.index('-name') + 1]
@@ -13474,14 +13487,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
             # the P1N (amplitude split) routines: madevent's helicity recycling,
-            # and the C++ one of a madmatrix output asked for --hel_recycling
+            # and the C++ one of a madmatrix output (--hel_recycling, on by
+            # default: 'auto')
             exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
                                                        'output_options') or {}
             cpp_recycling = hasattr(getattr(self._curr_exporter,
                                             'oneprocessclass', None),
                                     'write_recycled') and \
                 str(exporter_opts.get('hel_recycling', False)).lower() in \
-                                                       ('true', '1', 'yes')
+                                               ('true', '1', 'yes', 'auto')
             if (self._export_format == 'madevent' or cpp_recycling) and \
                 not 'no_helrecycling' in flaglist and \
                 not (self._curr_amps and isinstance(

@@ -18,6 +18,16 @@ ANNOUNCEMENT:
        (also by ALOHA itself).
    OM: madmatrix: a custom propagator denominator with a width term (the polarised
        propagators) was written as a Python complex literal and did not compile.
+   OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
+       vanish, which the recycled matrix element is built for, are now measured again at
+       the param_card a run is launched with (after the launch question, and at each point
+       of a scan), and at the cards of a MadtRex parameter reweighting. They were only
+       measured at generation, at the output's default card: a coupling set to zero at
+       launch was still evaluated, and an amplitude that vanishes at the default card but
+       not at the launch card was silently dropped. The probe build is kept in .hrprobe,
+       so that a new card costs a run of it (milliseconds); a card at which the filter
+       comes out the same rewrites and recompiles nothing, and a build for another filter
+       than the output's has its own library name (lib..._P*_hr<hash>_*.so).
    OM: reweighting applies the beam polarisation of the run_card (polbeam1/2) (#394).
    OM: madevent/MadSpin: polarised beams with a mirror process gave beam 1's polarisation
        to the particle of beam 2 (#394).
