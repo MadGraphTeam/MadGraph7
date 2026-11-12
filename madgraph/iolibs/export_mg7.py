@@ -5,6 +5,7 @@ from collections import defaultdict
 
 from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 from madgraph.iolibs import export_cpp
+from madgraph.iolibs import helas_call_writers
 from madgraph.iolibs.group_subprocs import IdentifyConfigTag
 from madgraph.core.diagram_generation import DiagramTag
 
@@ -406,6 +407,17 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 self.active_color_map.append(active_colors)
                 i += 1
 
+    def get_unknown_helicity_legs(self):
+        """The (0-based) external legs whose state is not a helicity state:
+        the massive fermions whose spin is quantised along a reference
+        momentum (--axial_gauge, helas_call_writers.get_axial_gauge_refs).
+        Their helicity is written as 9 in the LHE (mg7.common.lhe_helicities)."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None)
+        refs = helas_call_writers.get_output_axial_gauge_refs(
+                                               self.matrix_element, options)
+        return [leg - 1 for leg in helas_call_writers.get_spin_reference_legs(
+                                                  self.matrix_element, refs)]
+
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
         if self.color_basis:
@@ -512,6 +524,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "pdg_color_types": pdg_color_types,
                 "diagram_count": len(self.diagrams),
                 "helicities": list(self.matrix_element.get_helicity_matrix()),
+                "unknown_helicity": self.get_unknown_helicity_legs(),
                 "interference": interference,
             },
             self.diagram_tags,

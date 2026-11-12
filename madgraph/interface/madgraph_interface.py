@@ -1014,7 +1014,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
         logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
         logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
-        logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
+        logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external leg, and quantise the spin of the massive final-state fermions along the reference shared by at least two of the massless vectors they couple to, instead of along their own momentum, so that whole diagrams and helicity configurations vanish (default:False). The two spin states of such a fermion are not helicity states: its helicity is written as 9 (unknown) in the event file.")
+        logger.info("      --fermion_reference=False: with --axial_gauge=True, keep the massive fermions in the helicity basis (default:True; always False for a polarised process and with --density).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
         logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran(default:False)|standalone_rw/msP/msF(default:True)] set the t-channel widths to zero as madevent (see option zerowidth_tchannel)")
@@ -1042,7 +1043,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Check that processes are gauge invariant by ")
         logger.info("   comparing Feynman and unitary gauges. For tree-level")
         logger.info("   processes the axial gauge (and, if the model has a Feynman")
-        logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well.")
+        logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well,")
+        logger.info("   and so are the external wavefunctions of output")
+        logger.info("   --axial_gauge=True (column Reference): the massless vectors")
+        logger.info("   in the axial gauge of a reference momentum, the massive")
+        logger.info("   fermions quantised along it.")
         logger.info("   A decay chain is accepted here only, e.g.")
         logger.info("   'check gauge t > w+{0} b, w+ > ta+ vt': it is compared in")
         logger.info("   the unitary, axial and FD gauges (not Feynman, where the")
@@ -1053,7 +1058,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("o brs:",'$MG:color:GREEN')
         logger.info("   Check that the Ward identities are satisfied if the ")
         logger.info("   process has at least one massless gauge boson as an")
-        logger.info("   external particle.")
+        logger.info("   external particle. For tree-level processes, the matrix")
+        logger.info("   element with the reference momenta of output")
+        logger.info("   --axial_gauge=True is compared as well (column Reference).")
         logger.info("o lorentz_invariance:",'$MG:color:GREEN')
         logger.info("   Check that the amplitude is lorentz invariant by")
         logger.info("   comparing the amplitiude in different frames")
@@ -3663,7 +3670,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False', '--hel_recycling=True', '--hel_recycling_chunk=', '--hel_recycling_max=', '--hel_recycling_jamp=', '--hel_recycling_tables=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=', '--axial_gauge=True']):
+                                                 '--mask=False', '--prefix=', '--axial_gauge=True', '--fermion_reference=False']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -6752,6 +6759,14 @@ This implies that with decay chains:
                     nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
                     if nb_part_feyn == nb_part_unit:
                         logger_check.error('No Goldstone present for this check!!')
+                # tree level: the external wavefunctions of output
+                # --axial_gauge=True (reference momenta), in the unitary
+                # gauge; not for a decay chain, compared on its own path
+                if myprocdef.get('perturbation_couplings') == [] and \
+                                                        not decay_chain:
+                    myprocdef_ref = myprocdef_unit
+                else:
+                    myprocdef_ref = None
                 gauge_result_no_brs = process_checks.check_unitary_feynman(
                                                     myprocdef_unit, myprocdef_feyn,
                                                     myprocdef_axial,
@@ -6762,7 +6777,8 @@ This implies that with decay chains:
                                                     tir=TIR_dir,
                                                     reuse = options['reuse'],
                                                     output_path = output_path,
-                                                    cmd = self)
+                                                    cmd = self,
+                                                    processes_reference = myprocdef_ref)
             finally:
                 # restore previous settings
                 self.do_set('gauge %s' % gauge, log=False)
@@ -6972,6 +6988,11 @@ This implies that with decay chains:
             if any('value_fd' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('FD')
             text += 'Gauge results (switching between %s gauge):\n' % '/'.join(gauge_labels)
+            if any('value_ref' in res for res in gauge_result_no_brs[1:]):
+                # not a gauge of the propagators: the external wavefunctions
+                text += 'Reference: unitary gauge with the reference momenta of ' \
+                        'output --axial_gauge=True (external vectors and spin ' \
+                        'axis of the massive fermions)\n'
             text += process_checks.output_unitary_feynman(gauge_result_no_brs) + '\n'
         if cms_results:
             text += 'Complex mass scheme results (varying width in the off-shell regions):\n'

@@ -1248,8 +1248,9 @@ amp[11]= VVV1_0(w[2],w[1],w[9],GC_4)"""
 # AxialGaugeReferenceTest
 #===============================================================================
 class AxialGaugeReferenceTest(unittest.TestCase):
-    """--axial_gauge: the reference leg of every massless external vector,
-    and the vxxxxxr calls written with it"""
+    """--axial_gauge: the reference leg of every massless external vector
+    and of every massive external fermion, and the vxxxxxr, ixxxxxr and
+    oxxxxxr calls written with it"""
 
     cmd = None
 
@@ -1354,6 +1355,286 @@ class AxialGaugeReferenceTest(unittest.TestCase):
         self.assertTrue(lines[1].startswith('vxxxxx<'), lines[1])
         self.assertTrue(lines[2].startswith('vxxxxxr<'), lines[2])
         self.assertTrue(lines[2].endswith('aloha_obj[4], 4, 0 );'), lines[2])
+
+    def test_reference_massive_fermions(self):
+        """g g > t t~ g: the top quarks are quantised along the reference of
+        the gluons (the first beam gluon); the gluons keep their references"""
+
+        me = self.matrix_element('g g > t t~ g')
+        refs = helas_call_writers.get_axial_gauge_refs(me)
+        self.assertEqual(refs, {1: 2, 2: 1, 3: 1, 4: 1, 5: 1})
+        self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
+                         [3, 4])
+        # without them: the references of the vectors alone, as for massless
+        # quarks
+        refs = helas_call_writers.get_axial_gauge_refs(me,
+                                                       massive_fermions=False)
+        self.assertEqual(refs, {1: 2, 2: 1, 5: 1})
+        self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
+                         [])
+
+    def test_reference_massive_fermions_massless_quark(self):
+        """u u~ > t t~ g g: the reference of the gluons is a massless quark,
+        which the top quarks share. An initial quark comes before an initial
+        gluon, so that every gluon shares it (u g > t t~ u g, g u > t t~ u g)"""
+
+        cases = (('u u~ > t t~ g g', {5: 1, 6: 1, 3: 1, 4: 1}),
+                 ('u g > t t~ u g', {2: 1, 6: 1, 3: 1, 4: 1}),
+                 ('g u > t t~ u g', {1: 2, 6: 2, 3: 2, 4: 2}),
+                 ('u g > u g g', {2: 1, 4: 1, 5: 1}))
+        for process, expected in cases:
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             expected, process)
+
+    def test_reference_massive_fermions_single_vector(self):
+        """With a single massless vector no reference is shared by two of
+        them, and the spin axis does not pay for the costlier wavefunctions
+        (u u~ > t t~ g: 1.20 against 1.19 us): the top quarks keep the
+        helicity basis"""
+
+        for process, expected in (('u u~ > t t~ g', {5: 1}),
+                                  ('u g > t t~ u', {2: 1})):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             expected, process)
+
+    def test_reference_massive_fermions_single_gluon(self):
+        """e+ e- > t t~ g: no massless coloured leg but the gluon, which
+        keeps the beam reference it has without the top quarks (never the
+        momentum of a top quark: another gauge, which a fixed top width
+        breaks), and the top quarks keep the helicity basis. With two gluons
+        they reference each other: no reference is shared by two vectors,
+        and the top quarks keep the helicity basis as well (no further
+        vanishing amplitude, measured)"""
+
+        me = self.matrix_element('e+ e- > t t~ g')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me), {5: 1})
+        me = self.matrix_element('e+ e- > t t~ g g')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {5: 6, 6: 5})
+
+    def test_reference_massive_fermions_photon(self):
+        """a a > t t~ g and g g > t t~ a: the vectors keep the references
+        they have without the top quarks, which follow the gluons first"""
+
+        for process in ('a a > t t~ g', 'g g > t t~ a'):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             {1: 2, 2: 1, 5: 1, 3: 1, 4: 1}, process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me,
+                       massive_fermions=False), {1: 2, 2: 1, 5: 1}, process)
+
+    def test_two_vectors_to_two_massive_fermions(self):
+        """g g > t t~ and a a > t t~ keep the helicity basis, which has its
+        own vanishing helicity configurations there (and as many as any
+        other spin axis): the two beam vectors reference each other"""
+
+        for process in ('g g > t t~', 'a a > t t~'):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             {1: 2, 2: 1})
+
+    def test_reference_massive_fermions_no_vector(self):
+        """u u~ > t t~, e+ e- > t t~, u u~ > ta+ ta-: no vector to gauge,
+        and the fermions keep the helicity basis as well"""
+
+        for process in ('u u~ > t t~', 'e+ e- > t t~', 'u u~ > ta+ ta-'):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me), {},
+                             process)
+
+    def test_no_spin_reference_for_a_helicity_that_matters(self):
+        """The two states of IXXXXXR/OXXXXXR are not helicity states. A
+        polarised process keeps the helicity basis for all its fermions, and
+        so does an initial-state fermion (beam polarisation)"""
+
+        me = self.matrix_element('g g > t t~{L}')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {1: 2, 2: 1})
+        me = self.matrix_element('g g > t t~ z{0}')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {1: 2, 2: 1})
+        # t g > t g g: only the final-state top quark
+        me = self.matrix_element('t g > t g g')
+        refs = helas_call_writers.get_axial_gauge_refs(me)
+        self.assertEqual(refs, {2: 4, 4: 2, 5: 2, 3: 2})
+        self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
+                         [3])
+
+    def test_fortran_ixxxxxr_call(self):
+        """the reference momentum is passed after the flavor; a massless
+        fermion, which shares the cached call template, keeps IXXXXX"""
+
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.FortranUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:6],
+            ['CALL IXXXXX(P(0,1),ZERO,NHEL(1),+1, FLAVOR(1),W(1))',
+             'CALL OXXXXX(P(0,2),ZERO,NHEL(2),-1, FLAVOR(2),W(2))',
+             'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
+             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))',
+             'CALL VXXXXXR(P(0,6),ZERO,NHEL(6),+1,P(0,1),W(6))'])
+        # the gluons keep the references they have without the top quarks
+        me = self.matrix_element('g g > t t~ g')
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:5],
+            ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
+             'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
+             'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
+             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
+        # and nothing changes without the references of the fermions
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me,
+                                                       massive_fermions=False)
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:5],
+            ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
+             'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
+             'CALL OXXXXX(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),W(3))',
+             'CALL IXXXXX(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
+
+    def test_fortran_v4_writer_reference_calls(self):
+        """the old-style Fortran writer writes the same calls: R appended to
+        the routine, the reference momentum before the output, and the plain
+        call for a leg without a reference (the cached call template is
+        shared by the massless and the massive quarks)"""
+
+        me = self.matrix_element('u u~ > t t~ g g')
+        externals = sorted([wf for wf in me.get_all_wavefunctions()
+                            if not wf.get('mothers')],
+                           key=lambda wf: wf.get('number_external'))
+        writer = helas_call_writers.FortranHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        self.assertEqual([writer.get_wavefunction_call(wf) for wf in externals],
+            ['CALL IXXXXX(P(0,1),ZERO,NHEL(1),+1, FLAVOR(1),W(1))',
+             'CALL OXXXXX(P(0,2),ZERO,NHEL(2),-1, FLAVOR(2),W(2))',
+             'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
+             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))',
+             'CALL VXXXXXR(P(0,6),ZERO,NHEL(6),+1,P(0,1),W(6))'])
+        writer = helas_call_writers.FortranHelasCallWriter(self.model)
+        self.assertEqual([writer.get_wavefunction_call(wf) for wf in externals][2:],
+            ['CALL OXXXXX(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),W(3))',
+             'CALL IXXXXX(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),W(4))',
+             'CALL VXXXXX(P(0,5),ZERO,NHEL(5),+1,W(5))',
+             'CALL VXXXXX(P(0,6),ZERO,NHEL(6),+1,W(6))'])
+
+    def test_python_reference_calls(self):
+        """the Python writer of check gauge / brs: the reference leg after
+        nsv / nsf when axial_gauge is set (references computed per matrix
+        element), the momentum-replaced BRS leg left as it is"""
+
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.PythonUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:6],
+            ['w[0] = ixxxxx(p[0],ZERO,hel[0],+1, flavor[0] if flavor is not None else -1)',
+             'w[1] = oxxxxx(p[1],ZERO,hel[1],-1, flavor[1] if flavor is not None else -1)',
+             'w[2] = oxxxxxr(p[2],mdl_MT,hel[2],+1, flavor[2] if flavor is not None else -1,p[0])',
+             'w[3] = ixxxxxr(p[3],mdl_MT,hel[3],-1, flavor[3] if flavor is not None else -1,p[0])',
+             'w[4] = vxxxxxr(p[4],ZERO,hel[4],+1,p[0])',
+             'w[5] = vxxxxxr(p[5],ZERO,hel[5],+1,p[0])'])
+        calls = writer.get_matrix_element_calls(me, gauge_check=True)
+        self.assertEqual(calls[0], 'w[4] = vxxxxx(p[4],ZERO, 4,+1)')
+        self.assertIn('w[5] = vxxxxxr(p[5],ZERO,hel[5],+1,p[0])', calls)
+        # (the BRS call consumed the replaced leg of me: a new one)
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.PythonUFOHelasCallWriter(self.model)
+        self.assertNotIn('xxxxxr(', ' '.join(writer.get_matrix_element_calls(me)))
+
+    def test_madmatrix_ixxxxxr_call(self):
+        """madmatrix: the 0-based particle number of the reference comes
+        last, after the one of the leg"""
+
+        from madmatrix import model_handling
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = model_handling.MadMatrixUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        externals = sorted([wf for wf in me.get_all_wavefunctions()
+                            if not wf.get('mothers')],
+                           key=lambda wf: wf.get('number_external'))
+        lines = [writer.get_external(wf, wf).strip() for wf in externals]
+        self.assertEqual(lines[0],
+            'ixxxxx<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[0], +1, '
+            'cFlavors[iflavor][0], aloha_obj[0], 0 );')
+        self.assertEqual(lines[2],
+            'oxxxxxr<M_ACCESS, W_ACCESS>( momenta, cIPD[0], hel_sv[2], +1, '
+            'cFlavors[iflavor][2], aloha_obj[2], 2, 0 );')
+        self.assertEqual(lines[3],
+            'ixxxxxr<M_ACCESS, W_ACCESS>( momenta, cIPD[0], hel_sv[3], -1, '
+            'cFlavors[iflavor][3], aloha_obj[3], 3, 0 );')
+        self.assertEqual(lines[4],
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[4], +1, '
+            'cFlavors[iflavor][4], aloha_obj[4], 4, 0 );')
+
+    def test_output_options(self):
+        """--axial_gauge=True gives the references of the vectors and of the
+        massive fermions; --fermion_reference=False and --density keep the
+        fermions in the helicity basis"""
+
+        me = self.matrix_element('g g > t t~ g')
+        refs = helas_call_writers.get_output_axial_gauge_refs
+        both = {1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+        vectors = {1: 2, 2: 1, 5: 1}
+        self.assertEqual(refs(me, None), {})
+        self.assertEqual(refs(me, {}), {})
+        self.assertEqual(refs(me, {'fermion_reference': 'True'}), {})
+        self.assertEqual(refs(me, {'axial_gauge': 'True'}), both)
+        self.assertEqual(refs(me, {'axial_gauge': True,
+                                   'fermion_reference': 'True'}), both)
+        self.assertEqual(refs(me, {'axial_gauge': 'True',
+                                   'fermion_reference': 'False'}), vectors)
+        self.assertEqual(refs(me, {'axial_gauge': 'True',
+                                   'fermion_reference': False}), vectors)
+        self.assertEqual(refs(me, {'axial_gauge': 'True', 'density': '3'}),
+                         vectors)
+        self.assertEqual(refs(me, {'axial_gauge': 'False'}), {})
+
+    def test_unknown_helicity_in_the_event_file(self):
+        """The state of a fermion with a spin reference is not a helicity
+        state: madevent (get_helicities) and mg7 (the "unknown_helicity"
+        legs of the subprocess) report it as 9 in the event file"""
+
+        import types
+        import madgraph.iolibs.export_v4 as export_v4
+        import madgraph.iolibs.export_mg7 as export_mg7
+
+        class Exporter(object):
+            get_unknown_helicity_lines = \
+                     export_v4.ProcessExporterFortran.get_unknown_helicity_lines
+
+        me = self.matrix_element('g g > t t~ g')
+        cases = [({'axial_gauge': 'True'}, [3, 4]),
+                 ({'axial_gauge': 'True', 'fermion_reference': 'False'}, []),
+                 ({'axial_gauge': 'True', 'density': '3'}, []),
+                 ({}, [])]
+        for options, legs in cases:
+            exporter = Exporter()
+            exporter.cmd_options = options
+            exporter.opt = {'axial_gauge': 'axial_gauge' in options,
+                            'output_options': options}
+            self.assertEqual(exporter.get_unknown_helicity_lines(me),
+                             ['   nhel(%d) = 9' % leg for leg in legs])
+            mg7 = types.SimpleNamespace(matrix_element=me,
+                 helas_call_writer=types.SimpleNamespace(cmd_options=options))
+            self.assertEqual(
+                export_mg7.OneProcessExporterMG7.get_unknown_helicity_legs(mg7),
+                [leg - 1 for leg in legs])
+        # no massive fermion with a reference: nothing to hide
+        me = self.matrix_element('g g > g g g')
+        exporter = Exporter()
+        exporter.cmd_options = {'axial_gauge': 'True'}
+        exporter.opt = {'axial_gauge': True}
+        self.assertEqual(exporter.get_unknown_helicity_lines(me), [])
 
     def test_axial_gauge_requested(self):
         """the output option, and its refusal in the FD gauge (no vxxxxxr in
