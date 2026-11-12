@@ -92,8 +92,13 @@ C      Check before
 C     consulting the cache so an unsupported ID can never reuse old
 C      coefficients.
       SELECT CASE(MLREDUCTIONLIB(I_LIB))
-      CASE(2,3,4,7)
+      CASE(3,4,7)
         CONTINUE
+      CASE(2)
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another'
+     $   //' supported backend.'
+        STOP 1
       CASE DEFAULT
         IF(MLREDUCTIONLIB(I_LIB).EQ.8) THEN
           WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in'
@@ -199,9 +204,10 @@ C     NUMBER OF INDEPENDENT LOOPCOEFS FOR RANK=RANK
       ENDDO
       SELECT CASE(MLREDUCTIONLIB(I_LIB))
       CASE(2)
-C       PJFry++
-        WRITE(*,*) 'ERROR:: PJFRY++ is not interfaced.'
-        STOP
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another'
+     $   //' supported backend.'
+        STOP 1
       CASE(3)
 C       IREGI
         WRITE(*,*) 'ERROR:: IREGI is not interfaced.'

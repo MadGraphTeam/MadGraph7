@@ -3628,9 +3628,9 @@ class TestMadLoopParam(unittest.TestCase):
         #1. create the object without argument
         param1 = MadLoopParam()
 
-        to_test = {"MLReductionLib": {'correct': ['1|2', ' 1|2 '],
+        to_test = {"MLReductionLib": {'correct': ['1|6', ' 1|6 '],
                                       'wrong':[1/2, 0.3, True],
-                                      'target': ['1|2', '1|2']},
+                                      'target': ['1|6', '1|6']},
                    "IREGIMODE": {'correct' : [1.0, 2, 3, -1, '1.0', '2', '-3', '-3.0'],
                                  'wrong' : ['1.5', '-1.5', 1.5, -3.4, True, 'starwars'],
                                  'target': [1,2,3,-1,1,2,-3,-3]

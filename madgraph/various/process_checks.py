@@ -1321,6 +1321,10 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         """ Output the matrix_element in argument and give detail information
         about the timing for its output and running"""
 
+        if 2 in MLOptions.get('MLReductionLib', []):
+            raise MadGraph5Error('PJFry (reduction ID 2) is retired; '
+                                 'use 8 for NinjaRS or 6 for Ninja.')
+
         # If True, then force three PS points only and skip the test on
         # unpolarized PS point 
         make_it_quick=False
@@ -1683,6 +1687,10 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         reused from a previous run and the content of infos.
         """
         
+        if 2 in MLOptions.get('MLReductionLib', []):
+            raise MadGraph5Error('PJFry (reduction ID 2) is retired; '
+                                 'use 8 for NinjaRS or 6 for Ninja.')
+
         if not options:
             reusing = False
             nPoints = 100
@@ -1785,8 +1793,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             tools=misc.make_unique(tools) # remove the duplication ones
             
         # not self-contained tir libraries
-        tool_var={'pjfry':2,'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8}
-        for tool in ['pjfry','golem','samurai','ninja','collier','ninjars']:
+        tool_var={'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8}
+        for tool in ['golem','samurai','ninja','collier','ninjars']:
             tool_dir='%s_dir'%tool
             if not tool_dir in self.tir_dir:
                 if tool == 'ninjars' and tool_var[tool] in tools:
@@ -2435,6 +2443,10 @@ def check_profile(process_definition, param_card = None,cuttools="",tir={},
     """For a single loop process, check both its timings and then its stability
     in one go without regenerating it."""
 
+    if 2 in MLOptions.get('MLReductionLib', []):
+        raise MadGraph5Error('PJFry (reduction ID 2) is retired; '
+                             'use 8 for NinjaRS or 6 for Ninja.')
+
     if 'reuse' not in options:
         keep_folder=False
     else:
@@ -2501,6 +2513,10 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
     """For a single loop process, give a detailed summary of the generation and
     execution timing."""
 
+    if 2 in MLOptions.get('MLReductionLib', []):
+        raise MadGraph5Error('PJFry (reduction ID 2) is retired; '
+                             'use 8 for NinjaRS or 6 for Ninja.')
+
     if "reuse" in options:
         reuse=options['reuse']
     else:
@@ -2543,8 +2559,6 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
                 MLoptions["MLReductionLib"].extend([1])
             if "iregi_dir" in tir:
                 MLoptions["MLReductionLib"].extend([3])
-            if "pjfry_dir" in tir:
-                MLoptions["MLReductionLib"].extend([2])
             if "golem_dir" in tir:
                 MLoptions["MLReductionLib"].extend([4])
             if "samurai_dir" in tir:
@@ -2575,6 +2589,10 @@ def check_timing(process_definition, param_card= None, cuttools="",tir={},
                                                                 MLOptions = {}):                 
     """For a single loop process, give a detailed summary of the generation and
     execution timing."""
+
+    if 2 in MLOptions.get('MLReductionLib', []):
+        raise MadGraph5Error('PJFry (reduction ID 2) is retired; '
+                             'use 8 for NinjaRS or 6 for Ninja.')
 
     if 'reuse' not in options:
         keep_folder = False

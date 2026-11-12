@@ -8,7 +8,7 @@
 ! Default :: 6|7|1
 !     The tensor integral reduction library.The current choices are:
 !     1 | CutTools
-!     2 | PJFry++
+!     2 | retired (PJFry++; selecting this ID is an error)
 !     3 | IREGI
 !     4 | Golem95
 !     5 | Samurai
@@ -16,8 +16,8 @@
 !     7 | COLLIER
 !     8 | NinjaRS (oneloopmaster scalar integrals)
 !     One can use the combinations to reduce integral,e.g.
-!     1|2|3 means first use CutTools, if it is not stable, use PJFry++, 
-!     if it is still unstable, use IREGI. If it failed, use QP of CutTools.
+!     8|6|1 means first use NinjaRS, then Ninja, then CutTools if needed.
+!     Available quadruple-precision rescue methods follow the same order.
 !     Notice that any reduction tool not available on the system will be automatically
 !     skipped. 
 

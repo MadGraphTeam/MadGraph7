@@ -5556,6 +5556,9 @@ This implies that with decay chains:
                                        " must be an integer, not %s."%option[1])
             elif option[0]=='--reduction':
                 MLoptions['MLReductionLib']=[int(ir) for ir in option[1].split('|')]
+                if 2 in MLoptions['MLReductionLib']:
+                    raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                          'use 8 for NinjaRS or 6 for Ninja.')
             elif option[0]=='--timing_provenance':
                 if len(option) != 2 or option[1].lower() not in ('true', 'false'):
                     raise self.InvalidCmd("The value of 'timing_provenance' must be True or False.")
@@ -5931,10 +5934,9 @@ This implies that with decay chains:
                     MLoptions["MLReductionLib"].remove(3)
 
 
-        if "MLReductionLib" in MLoptions:
-            if 2 in MLoptions["MLReductionLib"]:
-                logger_check.warning('PJFRY not supported anymore; it will be skipped.')                    
-                MLoptions["MLReductionLib"].remove(2)
+        if 2 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                  'use 8 for NinjaRS or 6 for Ninja.')
                     
         if 'golem' in self.options and isinstance(self.options['golem'],str):
             TIR_dir['golem_dir']=self.options['golem']

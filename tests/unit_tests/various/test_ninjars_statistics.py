@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from xml.dom.minidom import parseString
 
-from madgraph import MG5DIR
+from madgraph import MG5DIR, MadGraph5Error
 from madgraph.iolibs.file_writers import FortranWriter
 from madgraph.madevent.sum_html import RunStatistics, decode_madloop_backend_usage
 from madgraph.interface.amcatnlo_run_interface import aMCatNLOCmd
@@ -73,8 +73,7 @@ class TestNinjaRSStatistics(unittest.TestCase):
                 'Ninja_QP_usage', 'PJFry_usage', 'NinjaRS_DP_usage',
                 'NinjaRS_QP_usage')), expected)
 
-    def test_nlo_logs_old_and_mixed(self):
-        log = """Satistics from MadLoop:
+    legacy_log = """Satistics from MadLoop:
  Total points tried: 18
  Stability unknown: 0
  Stable PS point: 18
@@ -88,6 +87,9 @@ class TestNinjaRSStatistics(unittest.TestCase):
  #Unit 2 = 7
  #Unit 8 = 11
 """
+
+    def test_nlo_logs_old_and_mixed(self):
+        log = self.legacy_log
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "log.txt"
             for extra, expected in [
@@ -104,19 +106,83 @@ class TestNinjaRSStatistics(unittest.TestCase):
                     self.assertRegex(report, r"PJFry\+\+\s+2(?:\n|$)")
                     self.assertRegex(report, r"Ninja \(quadruple precision\)\s+2(?:\n|$)")
 
+    def test_format_two_xml_uses_unit_two_without_alias_subtraction(self):
+        xml = self.xml('<return_code_version>2</return_code_version>'
+                       '<ninjars_dp_usage>9</ninjars_dp_usage>'
+                       '<ninjars_qp_usage>5</ninjars_qp_usage>')
+        xml.getElementsByTagName('u_return_code')[0].firstChild.data = '0,0,14,0,0,0,0,0,11,0'
+        stats = RunStatistics()
+        stats.load_statistics(xml)
+        self.assertEqual(stats['PJFry_usage'], 0)
+        self.assertEqual(stats['Ninja_QP_usage'], 11)
+        self.assertEqual(stats['NinjaRS_DP_usage'], 9)
+        self.assertEqual(stats['NinjaRS_QP_usage'], 5)
+        old = RunStatistics()
+        old.load_statistics(self.xml())
+        stats.aggregate_statistics(old)
+        self.assertEqual(stats['PJFry_usage'], 7)
+        self.assertEqual(stats['Ninja_QP_usage'], 22)
+
+    def test_initialization_precision_counts_remain_distinct(self):
+        old = RunStatistics()
+        new = RunStatistics()
+        for stats, extra in [(old, ''), (new,
+                '<return_code_version>2</return_code_version>'
+                '<ninjars_dp_usage>3</ninjars_dp_usage>'
+                '<ninjars_qp_usage>4</ninjars_qp_usage>')]:
+            xml = self.xml(extra)
+            xml.getElementsByTagName('t_return_code')[0].firstChild.data = '0,5,7,12,15'
+            stats.load_statistics(xml)
+            self.assertEqual(stats['DP_init_usage'], 12)
+            self.assertEqual(stats['QP_init_usage'], 15)
+        new.aggregate_statistics(old)
+        self.assertEqual(new['DP_init_usage'], 24)
+        self.assertEqual(new['QP_init_usage'], 30)
+
+    def test_unknown_format_and_inconsistent_new_counters_are_rejected(self):
+        units = [0, 0, 14, 0, 0, 0, 0, 0, 11, 0]
+        for version, dp, qp in [(3, 9, 5), (2, 9, 4), (2, -1, 15)]:
+            with self.subTest(version=version, dp=dp, qp=qp):
+                with self.assertRaises(MadGraph5Error):
+                    decode_madloop_backend_usage(units, dp, qp, version)
+        self.assertEqual(units[2], 14)
+
+    def test_mixed_version_logs_are_decoded_before_aggregation(self):
+        old = self.legacy_log + '#NinjaRS DP = 9\n#NinjaRS QP = 5\n'
+        new = self.legacy_log.replace('#Unit 2 = 7', '#Unit 2 = 14')
+        new += '#ReturnCodeVersion = 2\n#NinjaRS DP = 9\n#NinjaRS QP = 5\n'
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / name for name in ('old.log', 'new.log')]
+            for path, content in zip(paths, (old, new)):
+                path.write_text(content)
+            _, report = aMCatNLOCmd.compile_advanced_stats(
+                SimpleNamespace(me_dir=directory), list(map(str, paths)), [], '')
+            for label, count in [('PJFry++', 2), ('Ninja (quadruple precision)', 13),
+                                 ('NinjaRS (double precision)', 18),
+                                 ('NinjaRS (quadruple precision)', 10)]:
+                self.assertRegex(report, re.escape(label) + r'\s+' + str(count) + r'(?:\n|$)')
+            for version in ('8', '-2', 'invalid'):
+                paths[1].write_text(new.replace('#ReturnCodeVersion = 2',
+                                               '#ReturnCodeVersion = ' + version))
+                with self.subTest(version=version):
+                    with self.assertRaises(MadGraph5Error):
+                        aMCatNLOCmd.compile_advanced_stats(
+                            SimpleNamespace(me_dir=directory), [str(paths[1])], [], '')
+
 
 @unittest.skipUnless(shutil.which('gfortran'), 'gfortran is required')
 class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
     """Run actual Fortran tally/writer blocks through both Python readers."""
 
-    # Every legacy units bucket plus ordinary and initialization NinjaRS calls.
-    # Unequal counts expose alias swaps and accidental double counting.
-    samples = [(100, 1), (211, 2), (212, 3), (213, 4), (214, 5),
+    # Current unit 2 is only NinjaRS. Include synthetic H/T combinations to
+    # ensure the counters use T, independently of the controller's current H
+    # choices: 312 denotes DP precision, whereas 222 denotes QP use.
+    samples = [(100, 1), (211, 2), (213, 4), (214, 5),
                (215, 6), (216, 7), (217, 8), (328, 9), (329, 10),
-               (218, 11), (238, 12), (322, 13), (342, 14)]
-    expected = {'CutTools_DP': 2, 'PJFry': 3, 'IREGI': 4, 'Golem': 5,
+               (212, 11), (232, 12), (312, 13), (322, 14), (342, 15), (222, 16)]
+    expected = {'CutTools_DP': 2, 'PJFry': 0, 'IREGI': 4, 'Golem': 5,
                 'Samurai': 6, 'Ninja': 7, 'COLLIER': 8, 'Ninja_QP': 9,
-                'CutTools_QP': 10, 'NinjaRS_DP': 23, 'NinjaRS_QP': 27}
+                'CutTools_QP': 10, 'NinjaRS_DP': 36, 'NinjaRS_QP': 45}
 
     def run_producer(self, work, tally, writer):
         codes = [code for code, count in self.samples for _ in range(count)]
@@ -227,15 +293,23 @@ class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
                         SimpleNamespace(me_dir=directory), [str(path)], [], '')
                     for label, count in [
                             ('Not identified (CTModeRun != -1)', 1),
-                            ('CutTools (double precision)', 2), ('PJFry++', 3),
+                            ('CutTools (double precision)', 2),
                             ('IREGI', 4), ('Golem95', 5), ('Samurai', 6),
                             ('Ninja (double precision)', 7), ('COLLIER', 8),
                             ('Ninja (quadruple precision)', 9),
                             ('CutTools (quadruple precision)', 10),
-                            ('NinjaRS (double precision)', 23),
-                            ('NinjaRS (quadruple precision)', 27)]:
+                            ('NinjaRS (double precision)', 36),
+                            ('NinjaRS (quadruple precision)', 45)]:
                         self.assertRegex(report, re.escape(label) +
                                          r'\s+' + str(count) + r'(?:\n|$)')
+                    self.assertNotIn('PJFry++', report)
+                    old_path = work / 'historical.log'
+                    old_path.write_text(TestNinjaRSStatistics.legacy_log)
+                    _, mixed = aMCatNLOCmd.compile_advanced_stats(
+                        SimpleNamespace(me_dir=directory),
+                        [str(path), str(old_path)], [], '')
+                    self.assertRegex(mixed, r'PJFry\+\+\s+7(?:\n|$)')
+                    self.assertRegex(mixed, r'Ninja \(quadruple precision\)\s+20(?:\n|$)')
 
 
 if __name__ == "__main__":

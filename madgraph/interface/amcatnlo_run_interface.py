@@ -3590,15 +3590,31 @@ RESTART = %(mint_mode)s
         RetUnit_finder =re.compile(
                            r"#Unit\s*(?P<unit>\d+)\s*=\s*(?P<n_occurences>\d+)")
         ninjars_finder = re.compile(r"#NinjaRS\s+(DP|QP)\s*=\s*(\d+)")
-        ninjars_usage = {'DP': 0, 'QP': 0}
+        version_finder = re.compile(r"#ReturnCodeVersion\s*=\s*(\S+)")
+        backend_usage = {}
     #Unit
     
         for gv_log in log_GV_files:
             channel_name = '/'.join(gv_log.split('/')[-5:-1])
             with open(gv_log, 'r') as stream:
                 log = stream.read()
+            ninjars_usage = {'DP': 0, 'QP': 0}
             for precision, count in ninjars_finder.findall(log):
                 ninjars_usage[precision] += int(count)
+            try:
+                versions = {int(value) for value in version_finder.findall(log)}
+            except ValueError:
+                raise MadGraph5Error('Invalid MadLoop return-code format in %s.' % gv_log)
+            if len(versions) > 1:
+                raise MadGraph5Error('Mixed MadLoop return-code formats in %s.' % gv_log)
+            version = next(iter(versions)) if versions else 1
+            unit_counts = [0] * 10
+            for match in RetUnit_finder.finditer(log):
+                unit_counts[int(match.group('unit'))] += int(match.group('n_occurences'))
+            for backend, count in sum_html.decode_madloop_backend_usage(
+                    unit_counts, ninjars_usage['DP'], ninjars_usage['QP'],
+                    version).items():
+                backend_usage[backend] = backend_usage.get(backend, 0) + count
             UPS_stats = re.search(UPS_stat_finder,log)
             for retunit_stats in re.finditer(RetUnit_finder, log):
                 if channel_name not in list(stats['UPS'].keys()):
@@ -3636,10 +3652,6 @@ RESTART = %(mint_mode)s
             nTotini = sum([chan[7] for chan in stats['UPS'].values()],0)
             nTot100 = sum([chan[8] for chan in stats['UPS'].values()],0)
             nTot10  = sum([chan[9] for chan in stats['UPS'].values()],0)
-            nTot1  = [sum([chan[10][i] for chan in stats['UPS'].values()],0) \
-                                                             for i in range(10)]
-            backend_usage = sum_html.decode_madloop_backend_usage(
-                nTot1, ninjars_usage['DP'], ninjars_usage['QP'])
             UPSfracs = [(chan[0] , 0.0 if chan[1][0]==0 else \
               safe_float(chan[1][4]*100)/chan[1][0]) for chan in stats['UPS'].items()]
             maxUPS = max(UPSfracs, key = lambda w: w[1])

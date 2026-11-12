@@ -482,6 +482,7 @@ c-----
       
       write(outUnit,*) '<run_statistics> '
       write(outUnit,33) '<u_return_code>',U_RETURN_CODES,'</u_return_code>'
+      write(outUnit,'(A)') '<return_code_version>2</return_code_version>'
       write(outUnit,'(A,I0,A)') '<ninjars_dp_usage>',NINJARS_DP_USAGE,
      &     '</ninjars_dp_usage>'
       write(outUnit,'(A,I0,A)') '<ninjars_qp_usage>',NINJARS_QP_USAGE,

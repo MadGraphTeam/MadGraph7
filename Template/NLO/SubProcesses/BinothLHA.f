@@ -497,10 +497,11 @@ c Update the statistics using the MadLoop return code (ret_code)
          n10=n10+1              ! no known ret_code (10)
       endif
       n1(mod(ret_code,10))=n1(mod(ret_code,10))+1 ! unit ret code distribution
-      if (ret_code/100.eq.2.and.mod(ret_code,10).eq.8)
-     $     NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
-      if (ret_code/100.eq.3.and.mod(ret_code,10).eq.2)
-     $     NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
+c Unit 2 is NinjaRS; classify precision with T, not the stability digit H.
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.1.or.
+     $     mod(ret_code,100)/10.eq.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.2.or.
+     $     mod(ret_code,100)/10.eq.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
 
 c Write out the unstable, non-rescued phase-space points (MadLoop return
 c code is in the four hundreds) or the ones that are found by the pole

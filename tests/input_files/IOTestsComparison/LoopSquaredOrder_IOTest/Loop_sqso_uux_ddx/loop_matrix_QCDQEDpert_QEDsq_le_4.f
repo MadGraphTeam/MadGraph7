@@ -120,9 +120,8 @@ C     These are constants related to the split orders
       INTEGER NSQUAREDSOP1
       PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only
-C      CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja, COLLIER and
-C      NinjaRS
+C     CutTools, IREGI, Golem95, Samurai, Ninja, COLLIER and NinjaRS
+C      are supported.
       INTEGER NLOOPLIB
       PARAMETER (NLOOPLIB=8)
 C     CutTools, Ninja and NinjaRS can provide QP when installed with
@@ -3113,7 +3112,9 @@ C      the result
 C     Returns -1 if no stab test could be performed.
 C     RET_CODE			 integer :: Return code. See below for details
 C     
-C     Return code conventions: RET_CODE = H*100 + T*10 + U
+C     Return-code format 2: RET_CODE = H*100 + T*10 + U
+C     PJFry is retired. NinjaRS uses U=2 in both precisions.
+C     Record ML_GET_RETURN_CODE_VERSION() alongside saved return codes.
 C     
 C     H == 1
 C     Stability unknown.
@@ -3141,8 +3142,8 @@ C     Not stable.
 C     U == 1
 C     Stable with CutTools in double precision.
 C     U == 2
-C     Stable with PJFry++ (H=2), or NinjaRS in quadruple precision
-C      (H=3).
+C     Stable with NinjaRS. T records whether quadruple precision was
+C      used.
 C     U == 3
 C     Stable with IREGI.
 C     U == 4
@@ -3151,9 +3152,10 @@ C     U == 5
 C     Stable with Samurai
 C     U == 6
 C     Stable with Ninja in double precision
+C     U == 7
+C     Stable with COLLIER.
 C     U == 8
-C     Stable with Ninja in quadruple precision (H=3), or NinjaRS in
-C      double precision (H=2).
+C     Stable with Ninja in quadruple precision.
 C     U == 9
 C     Stable with CutTools in quadruple precision.         
 C     

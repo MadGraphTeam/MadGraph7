@@ -238,6 +238,7 @@ c
               write(*,*) "#Unit ",j," = ",n1(j)
            endif
          enddo
+         write(*,*) '#ReturnCodeVersion = 2'
          write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
          write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
       endif

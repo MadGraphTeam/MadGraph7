@@ -178,7 +178,9 @@
                 IF(MLReductionLib_char.EQ.'1 ')THEN
                    MLRed=1
                 ELSEIF(MLReductionLib_char.EQ.'2 ')THEN
-                   MLRed=2
+                   WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+                   WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+                   STOP 1
                 ELSEIF(MLReductionLib_char.EQ.'3 ')THEN
                    MLRed=3
                 ELSEIF(MLReductionLib_char.EQ.'4 ')THEN
@@ -430,6 +432,16 @@ C     combined poles after a UV-only or IR-only reduction fails.
         WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
         STOP 1
       ENDIF
+C     Also validate direct runtime changes to the reduction list, before
+C     initialization can discard an unavailable backend or reuse a cache.
+      DO I=1,9
+        IF(MLReductionLib(I).EQ.0) EXIT
+        IF(MLReductionLib(I).EQ.2) THEN
+          WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+          WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+          STOP 1
+        ENDIF
+      ENDDO
       IF(LoopPoleMode.LE.0) RETURN
       DO I=1,9
         IF(MLReductionLib(I).EQ.0) EXIT

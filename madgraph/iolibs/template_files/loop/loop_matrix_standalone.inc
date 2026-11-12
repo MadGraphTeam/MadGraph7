@@ -400,6 +400,15 @@ C For now only CutTools is interfaced in the default mode. Samurai could follow.
 	STOP 1
   ENDIF
 ENDIF
+C Reject a retired selection also after global initialization.
+DO I=1,SIZE(MLReductionLib)
+  IF(MLReductionLib(I).EQ.0) EXIT
+  IF(MLReductionLib(I).EQ.2) THEN
+    WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+    WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+    STOP 1
+  ENDIF
+ENDDO
 C The non-optimized output uses CutTools regardless of the requested chain.
 IF(LoopPoleMode.GT.0) THEN
   WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires optimized MadLoop output with NinjaRS or COLLIER.'
