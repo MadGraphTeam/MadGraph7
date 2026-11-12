@@ -37,8 +37,10 @@ c   same leg only if it is massive), the multichannel factor at both
 c   configurations with amp2 of the Born diagrams it takes, and, where
 c   bornsoftvirtual evaluated the virtual (a contribution of type 14),
 c   the finite part of MadLoop it got (amp_split_finite_ML, at the Born
-c   and the Ellis-Sexton scale, with the coupling of the n-body part),
-c   the virtual fraction of the channel and that scale.
+c   and the Ellis-Sexton scale of the n-body part, with its coupling),
+c   the virtual fraction of the channel and qes2 as sigint leaves it,
+c   the Ellis-Sexton scale of its last kinematics (that of the virtual
+c   is in scales2 of the n-body weight lines).
 c The environment variable MADFKS_INTEGRAND_DUMP sets the number of
 c points it writes (none without it), to fks_integrand_dump.txt in the
 c channel directory.

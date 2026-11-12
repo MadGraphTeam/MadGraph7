@@ -60,10 +60,12 @@ them into madspace/tests/test_data/fks_integrand/<name>.json:
         configuration of the n-body part, links[]: m, n (legs of the real
         process), g, value, orders of sborn_sf for the pairs sbornsoft
         takes, channel there, virtual where bornsoftvirtual evaluated it:
-        qes2 (the Ellis-Sexton scale squared), fraction (virtual_fraction
-        of the channel), orders (the finite part of MadLoop per
-        split-order position at the Born, summed over helicities, with the
-        coupling of the n-body contributions))
+        qes2 (the Ellis-Sexton scale squared as sigint leaves it, that of
+        its last kinematics, the virtual is at that of the n-body part,
+        scales2 of its weight lines), fraction (virtual_fraction of the
+        channel), orders (the finite part of MadLoop per split-order
+        position at the Born, summed over helicities, with the coupling of
+        the n-body contributions))
     orders[] (per channel): position, qcd_pos, qed_pos, orders of the
     split-order positions (amp_split_pos_to_orders)
 

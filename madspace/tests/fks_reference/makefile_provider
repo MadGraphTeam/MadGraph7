@@ -1,0 +1,12 @@
+# The Fortran test provider of madspace (fks_provider.f) in a P*
+# directory of an aMC@NLO output, linked as check_poles. The libraries
+# of the output must be built, as a fixed-order run leaves them:
+#     make -f makefile_provider fks_provider
+include makefile
+
+PROVIDER = $(RUN) fks_provider.o BinothLHA.o write_event.o handling_lhe_events.o
+
+fks_provider.o: $(RUN) BinothLHA.o
+
+fks_provider: $(PROVIDER) $(libmadloop) makefile $(LIBS)
+	$(FC) -o fks_provider $(PROVIDER) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
