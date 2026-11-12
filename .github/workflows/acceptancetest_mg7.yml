@@ -305,14 +305,26 @@ jobs:
       # helicity per event (check_sa --hel-index), at the scalar and a SIMD backend;
       # in the unitary gauge (g g > t t~ g) and in FD (t t~ > w+ w- z);
       # several recycled subprocess libraries in one process give the |M|^2
-      # each gives alone (they share the per-thread scratch area); and at
-      # every flavour index of a merged-flavour process through umami
-      # (MSSM_SLHA2 p p > go go j: check_sa only evaluates flavour 0)
+      # each gives alone (they share the per-thread scratch area); at every
+      # flavour index of a merged-flavour process through umami (MSSM_SLHA2
+      # p p > go go j: check_sa only evaluates flavour 0); and a build
+      # measured again at other parameters than the output's (the launch card)
+      # gives the plain |M|^2 there (b b~ > t t~ QCD=0 at ymb = 0)
       - name: "acceptancetest_mg7_hel_recycling: madmatrix --hel_recycling vs plain"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries test_madmatrix_hel_recycling_every_flavour -pA -t0 -l INFO
+            ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries test_madmatrix_hel_recycling_every_flavour test_madmatrix_hel_recycling_launch_parameters -pA -t0 -l INFO
+
+      # --hel_recycling through the mg7 launch: a param_card scan (ymb = 0, 4.7,
+      # 0) whose points need different recycled builds gives the plain cross
+      # section at each, in one process (each build has a library name of its own)
+      - name: "acceptancetest_mg7_hel_recycling_scan: recycled builds per scan point"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_mg7_hel_recycling_param_scan -pA -t0 -l INFO
 
       # ---- acceptancetest_mg7_madspin_mixed_flavor ----
       # mg7 + MadSpin density-summary check driven through the madevent-style
