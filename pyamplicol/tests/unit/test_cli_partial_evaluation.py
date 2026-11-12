@@ -123,20 +123,63 @@ def _run(monkeypatch, total: int, clock: _Clock, **kwargs):
 def test_chunks_cover_every_point_once_with_progress(monkeypatch):
     result, calls, events = _run(monkeypatch, 1000, _Clock())
     assert result == tuple(m * 10 for m in range(1000))
-    # One point, eight to measure the cost per point, then calls of
-    # (fixed / CHUNK_OVERHEAD - fixed) / per_point = 210 points, and the
-    # rest in one call once it fits in one and a half such calls.
-    assert calls == [1, 8, 210, 210, 210, 210, 151]
+    # One point, eight measured warm, calls growing at most fourfold up to
+    # (fixed / overhead - fixed) / per_point = 210 points, and the rest in
+    # one call once it fits in one and a half such calls.
+    assert calls == [1, 8, 32, 128, 210, 210, 210, 201]
     updates = [e.completed for e in events if isinstance(e, ProgressUpdate)]
-    assert updates == [1, 9, 219, 429, 639, 849, 1000]
+    assert updates == [1, 9, 41, 169, 379, 589, 799, 1000]
 
 
-def test_a_short_evaluation_takes_three_calls(monkeypatch):
-    # The fixed cost of the two extra calls stays a small share.
-    _, calls, _ = _run(monkeypatch, 300, _Clock())
-    assert calls == [1, 8, 291]
+def test_a_short_evaluation_takes_few_calls(monkeypatch):
+    # The fixed cost of the extra calls stays a small share.
+    _, calls, _ = _run(monkeypatch, 20, _Clock())
+    assert calls == [1, 8, 11]
     _, calls, _ = _run(monkeypatch, 1, _Clock())
     assert calls == [1]
+
+
+def test_a_cold_first_call_never_sends_the_rest_in_one_call(monkeypatch):
+    # The first call can pay a first-call cost and be slower than the second
+    # call with more points (u u~ > d d~: 0.21 s for 1 point, 0.11 s for 8).
+    # The cold first call is left out of the cost fit: a falling slope
+    # would otherwise read as no cost per point.
+    assert pe._next_size([(1, 0.30), (8, 0.20)], 19991) == 32
+    assert pe._next_size([(1, 0.21), (8, 0.11)], 2991) == 32
+    # A flat warm fit (8 and 32 points equally fast) bounds the next call
+    # by the growth factor, never the 19960 points left.
+    assert pe._next_size([(1, 0.3), (8, 0.11), (32, 0.11)], 19960) == 128
+
+    clock = _Clock(fixed=0.09, per_point=0.0027)
+    monkeypatch.setattr(pe, "time", clock)
+    calls: list[int] = []
+    operation = _operation(calls, clock)
+
+    def cold(momenta, **kwargs):
+        if not calls:
+            clock.now += 0.2
+        return operation(momenta, **kwargs)
+
+    result = pe.evaluate_in_chunks(
+        NullProgressSink(),
+        cold,
+        list(range(20000)),
+        {"mu_r2": list(range(20000))},
+        {"scale": 7},
+    )
+    assert result == tuple(m * 10 for m in range(20000))
+    assert calls[:5] == [1, 6, 24, 96, 384]
+    # No call longer than one and a half target times after the first two.
+    longest = max(0.09 + 0.0027 * n for n in calls[2:])
+    assert longest <= 1.5 * max(2.0, 0.09 / 0.03) + 0.1
+    # The fixed cost of the extra calls stays a few per cent.
+    assert len(calls) * 0.09 <= 0.05 * (0.09 + 0.0027 * 20000)
+
+
+def test_the_chunk_policy_is_overridable(monkeypatch):
+    policy = pe.ChunkPolicy(seconds=0.5, overhead=0.5, probe_points=2, growth=2.0)
+    assert pe._next_size([(1, 0.1)], 100, policy) == 2
+    assert pe._next_size([(1, 0.1), (2, 0.2)], 100, policy) == 4
 
 
 def test_slow_points_go_one_per_call_after_the_second_call(monkeypatch):

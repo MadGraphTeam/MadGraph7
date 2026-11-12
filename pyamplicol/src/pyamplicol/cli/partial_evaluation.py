@@ -25,61 +25,91 @@ from pyamplicol.reporting.progress import (
     ProgressUpdate,
 )
 
-#: The shortest wall time a later runtime call aims at: the refresh
-#: granularity of the progress display and the usual wait between a Ctrl-C
-#: and the stop.
-CHUNK_SECONDS = 2.0
+@dataclass(frozen=True, slots=True)
+class ChunkPolicy:
+    """How ``evaluate`` sizes its successive calls on a live display.
 
-#: The largest share of the evaluation time spent on the fixed cost of the
-#: extra calls. A runtime call has a fixed cost (about 0.13 s on
-#: u u~ > t t~ g g) on top of its cost per point, so a call aims at no less
-#: than ``fixed / CHUNK_OVERHEAD`` seconds and the rest of the points goes
-#: in one call when it would take no more than one and a half such calls.
-CHUNK_OVERHEAD = 0.03
+    These are display tuning values, not physics: every point is evaluated
+    independently of the call it is in, so they change only how often the
+    bar moves, how soon a Ctrl-C is honoured and the small extra time of the
+    calls' fixed cost, never a value. Pass another policy to
+    :func:`evaluate_in_chunks` to override them.
+    """
 
-#: The most points of the second call, which measures the cost per point
-#: next to the first call's single point.
-_SECOND_CALL_POINTS = 8
-
-
-def _cost_model(calls: Sequence[tuple[int, float]]) -> tuple[float, float]:
-    """``(fixed, per_point)`` seconds of one call fitted by least squares to
-    the measured ``(points, seconds)`` calls, both non-negative; the fixed
-    cost is at most the cheapest call."""
-
-    cheapest = min(seconds for _, seconds in calls)
-    sizes = {points for points, _ in calls}
-    if len(sizes) < 2:
-        points, seconds = calls[-1]
-        return 0.0, seconds / points
-    n = len(calls)
-    mean_x = sum(points for points, _ in calls) / n
-    mean_y = sum(seconds for _, seconds in calls) / n
-    sxx = sum((points - mean_x) ** 2 for points, _ in calls)
-    sxy = sum((points - mean_x) * (seconds - mean_y) for points, seconds in calls)
-    per_point = max(sxy / sxx, 0.0)
-    fixed = min(max(mean_y - per_point * mean_x, 0.0), cheapest)
-    if per_point == 0.0:
-        per_point = max(cheapest - fixed, 1e-9)
-    return fixed, per_point
+    #: The shortest wall time a later call aims at: the refresh granularity
+    #: of the progress display and the usual wait between a Ctrl-C and the
+    #: stop.
+    seconds: float = 2.0
+    #: The largest share of the evaluation time spent on the fixed cost of
+    #: the extra calls. A runtime call has a fixed cost (about 0.1 s on
+    #: u u~ > t t~ g g) on top of its cost per point, so a call aims at no
+    #: less than ``fixed / overhead`` seconds.
+    overhead: float = 0.03
+    #: The most points of the second call, the first one measured warm.
+    probe_points: int = 8
+    #: The most a call grows over the largest call measured so far, in
+    #: points; it also never aims beyond one and a half target times by the
+    #: measured cost of that call, so one mis-measured call cannot make the
+    #: next one swallow the evaluation.
+    growth: float = 4.0
 
 
-def _next_size(calls: Sequence[tuple[int, float]], remaining: int) -> int:
-    """The points of the next call: one point first, a few more to measure
-    the cost per point, then calls of at least ``CHUNK_SECONDS`` and at
-    least ``fixed / CHUNK_OVERHEAD`` each."""
+DEFAULT_CHUNK_POLICY = ChunkPolicy()
 
+
+def _cost_model(warm: Sequence[tuple[int, float]]) -> tuple[float, float]:
+    """``(fixed, per_point)`` seconds of one call from the warm calls
+    ``(points, seconds)`` (every call but the first, which carries the
+    first-call cost). The least-squares line when it rises; otherwise no
+    fixed cost and the best measured average per point, an upper bound of
+    the cost per point."""
+
+    average = min(seconds / points for points, seconds in warm)
+    if len({points for points, _ in warm}) >= 2:
+        n = len(warm)
+        mean_x = sum(points for points, _ in warm) / n
+        mean_y = sum(seconds for _, seconds in warm) / n
+        sxx = sum((points - mean_x) ** 2 for points, _ in warm)
+        sxy = sum((points - mean_x) * (seconds - mean_y) for points, seconds in warm)
+        slope = sxy / sxx
+        if slope > 0.0:
+            cheapest = min(seconds for _, seconds in warm)
+            fixed = min(max(mean_y - slope * mean_x, 0.0), cheapest)
+            return fixed, slope
+    return 0.0, average
+
+
+def _next_size(
+    calls: Sequence[tuple[int, float]],
+    remaining: int,
+    policy: ChunkPolicy = DEFAULT_CHUNK_POLICY,
+) -> int:
+    """The points of the next call: one point first, a few more measured
+    warm, then calls of about ``max(seconds, fixed / overhead)`` each,
+    growing at most by ``growth`` and by the measured cost of the largest
+    call; the rest goes in one call once it fits in one and a half such
+    calls within that bound."""
+
+    if remaining <= 0:
+        return 0
     if not calls:
         return 1
     if len(calls) == 1:
         seconds = calls[0][1]
-        wanted = int(CHUNK_SECONDS / seconds) if seconds > 0 else remaining
-        return min(remaining, max(2, min(_SECOND_CALL_POINTS, wanted)))
-    fixed, per_point = _cost_model(calls)
-    target = max(CHUNK_SECONDS, fixed / CHUNK_OVERHEAD)
-    if fixed + per_point * remaining <= 1.5 * target:
+        wanted = int(policy.seconds / seconds) if seconds > 0 else policy.probe_points
+        return min(remaining, max(2, min(policy.probe_points, wanted)))
+    warm = calls[1:]
+    fixed, per_point = _cost_model(warm)
+    target = max(policy.seconds, fixed / policy.overhead)
+    largest_points, largest_seconds = max(warm)
+    factor = policy.growth
+    if largest_seconds > 0:
+        factor = min(factor, 1.5 * target / largest_seconds)
+    cap = max(1, int(largest_points * max(1.0, factor)))
+    if remaining <= cap and fixed + per_point * remaining <= 1.5 * target:
         return remaining
-    return min(remaining, max(1, int((target - fixed) / per_point)))
+    wanted = max(1, int((target - fixed) / per_point))
+    return min(remaining, cap, wanted)
 
 
 # The per-point fields of a VirtualEvaluation (concatenated) and the fields
@@ -193,9 +223,10 @@ def evaluate_in_chunks(
     momenta: Sequence[Any],
     per_point: dict[str, Sequence[Any]],
     options: dict[str, Any],
+    policy: ChunkPolicy = DEFAULT_CHUNK_POLICY,
 ) -> Any:
     """``operation(momenta, **per_point, **options)`` over all points, in
-    successive calls reported to ``progress``; on Ctrl-C the
+    successive calls sized by ``policy`` and reported to ``progress``; on Ctrl-C the
     :class:`PartialEvaluation` of the calls completed (a Ctrl-C before the
     first one completes propagates). A call that raises is repeated as one
     call over all points, so the error is the one-call error."""
@@ -220,7 +251,7 @@ def evaluate_in_chunks(
     try:
         try:
             while done < total or not parts:
-                stop = min(done + _next_size(calls, total - done), total)
+                stop = min(done + _next_size(calls, total - done, policy), total)
                 began = time.perf_counter()
                 try:
                     part = operation(
