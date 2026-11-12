@@ -4,7 +4,7 @@ ANNOUNCEMENT:
    The 2.9.X LONG TERM STABLE version is now at end of life for bug fixing/support since December 2025.
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
-0.3.0 (XX/XX/XX):
+0.4.0 (XX/XX/XX):
    OM: polarised propagators of a massive vector (w+{0}, w+{T}, w+{A}, w+{S}, ... on a
        particle decayed further) in the FD gauge: {0}, {T}, {+}, {-}, {A}, {S}, {0S} are the
        pieces of the five-component FD propagator (the FD longitudinal vector of the
@@ -18,6 +18,8 @@ ANNOUNCEMENT:
        (also by ALOHA itself).
    OM: madmatrix: a custom propagator denominator with a width term (the polarised
        propagators) was written as a Python complex literal and did not compile.
+
+0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point
