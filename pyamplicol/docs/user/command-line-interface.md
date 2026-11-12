@@ -1048,17 +1048,28 @@ of the numbers stays in the table titles: for example `Born-loop
 interference, leading colour`, `..., finite only`, `..., UV poles of the bare
 loop amplitude` or `..., IR poles of the renormalised virtual`. Every command shows its
 progress (a live display on a terminal, plain lines with `--progress log`)
-and handles Ctrl-C: no traceback, worker processes stopped, exit code 130;
-`profile` and `evaluate` print the tables of what was measured or
-evaluated so far with a one-line notice (`evaluate` does so with the live
-progress display on a terminal, where it evaluates in successive calls at a
-few per cent of extra time; otherwise it is one call, as in the Python API,
-and Ctrl-C ends it without a result; for a one-loop `evaluate` in
-`--json` as `interrupted`, `requested_points` and `measured_points`; a tree
-evaluation's JSON stays a list and the notice goes to stderr), `check` the tests
-completed (the rest marked "not run"), `self-test` the checks run so far, and
-an interrupted `generate` writes nothing (an artifact is published only when
-complete).
+and handles Ctrl-C: no traceback, worker processes stopped, exit code 130.
+After a Ctrl-C:
+
+- `profile` prints the tables of what was measured so far, with a one-line
+  notice of how many of the requested points were measured. When the
+  backends measured different numbers of points, the stability tables
+  compare the points that every backend measured.
+- `evaluate` prints the tables of the points evaluated so far, with the same
+  kind of notice, when it runs with the live progress display on a terminal.
+  There it evaluates its points in successive calls, at a few per cent of
+  extra time. Without a live display, for example with `--progress log`,
+  `--progress off` or redirected output, it makes one call, as the Python
+  API does, and a Ctrl-C ends it without a result.
+- In `--json` mode, a one-loop `evaluate` records the interruption as the
+  fields `interrupted`, `requested_points` and `measured_points`. A
+  tree-level `evaluate` keeps its JSON list and prints the notice on stderr.
+  `profile` sets `interrupted`, and its `stability_setup` gives
+  `requested`, `measured_points` and `evaluated_per_backend`.
+- `check` reports the tests completed and marks the others "not run", and
+  `self-test` reports the checks run so far.
+- An interrupted `generate` writes nothing: an artifact is published only
+  when it is complete.
 
 JSON mode keeps stdout machine-readable; progress and diagnostics use stderr.
 This makes pipelines predictable:
