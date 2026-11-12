@@ -27,6 +27,8 @@ shared-arithmetic = ["dep:gmp-mpfr-sys", "gmp-mpfr-sys/use-system-libs"]
 
 [dependencies]
 gmp-mpfr-sys = { workspace = true, optional = true }
+# pyAmpliCol's Symbolica library key: every ABI call holds it (`guard`).
+pyamplicol = { path = "../pyamplicol" }
 rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-compiled", "f64-symjit"] }
 rusticol-loop-sdk = { path = "../../loop-reduction/sdk", default-features = false }
 serde_json.workspace = true
