@@ -737,10 +737,12 @@ class _StabilityProgress:
         self.workers = workers
         self.done = {(b, p): 0 for b in backends for p in _PRECISIONS}
         self.seconds = {key: 0.0 for key in self.done}
-        # Per backend and precision the seconds of its first returned task
-        # (one point, with the worker's first-call costs) and the points and
-        # seconds of its later tasks (the cost per point once warm).
-        self.first: dict[tuple[str, str], float] = {}
+        # Per backend and precision the seconds of its two probes (point 0;
+        # points 1 and 2), started together, and the points and seconds of
+        # its later tasks.
+        self.probes: dict[tuple[str, str], dict[int, float]] = {
+            key: {} for key in self.done
+        }
         self.later = {key: [0, 0.0] for key in self.done}
         self.begin = time.perf_counter()
         # When the first task came back: the workers were computing by then.
@@ -757,15 +759,24 @@ class _StabilityProgress:
                 )
             )
 
-    def add(self, backend: str, precision: str, count: int, seconds: float) -> None:
+    def add(
+        self,
+        backend: str,
+        precision: str,
+        count: int,
+        seconds: float,
+        first: int | None = None,
+    ) -> None:
+        """A finished task of ``count`` points from point ``first``."""
+
         if self.first_return is None:
             self.first_return = time.perf_counter()
         key = (backend, precision)
-        if key in self.first:
+        if first in (0, 1) and count == first + 1:
+            self.probes[key][count] = seconds
+        else:
             self.later[key][0] += count
             self.later[key][1] += seconds
-        else:
-            self.first[key] = seconds / max(count, 1)
         self.done[key] += count
         self.seconds[key] += seconds
         self.emit()
@@ -778,30 +789,56 @@ class _StabilityProgress:
         self.emit()
 
     def _rate(self, key: tuple[str, str]) -> float:
-        """The cost per point of a stream that returned: its later tasks'
-        once there are some, else its first point."""
+        """The cost per point of a stream that returned: from its later
+        tasks once there are some; else the difference of its two probes
+        (one point more, the same first-call cost); else its one probe."""
 
         points, seconds = self.later[key]
-        return seconds / points if points else self.first[key]
+        if points:
+            return seconds / points
+        probes = self.probes[key]
+        if 1 in probes and 2 in probes and probes[2] > probes[1]:
+            return probes[2] - probes[1]
+        size, spent = max(probes.items())
+        return spent / size
 
     def eta(self) -> float | None:
-        known = {key: self._rate(key) for key in self.first if self.done[key]}
+        known = {
+            key: self._rate(key)
+            for key in self.done
+            if self.probes[key] or self.later[key][0]
+        }
         if not known:
             return None
         fallback = statistics.mean(known.values())
         if not all(self.done.values()) and self.first_return is not None:
-            # A stream whose first point is still running costs at least
-            # that point's running time per point, less the first-call
-            # cost seen on the streams that returned (their first point
-            # over their warm cost per point).
-            started = self.first_return - min(self.first.values())
-            warm_up = max(self.first[key] - rate for key, rate in known.items())
+            # A stream whose probes are still running costs at least their
+            # running time per point, less the first-call cost seen on the
+            # streams that returned (a probe over its points' warm cost).
+            shortest = (
+                min(
+                    spent
+                    for probes in self.probes.values()
+                    for spent in probes.values()
+                )
+                if any(self.probes.values())
+                else 0.0
+            )
+            started = self.first_return - shortest
+            warm_up = max(
+                (
+                    spent - size * known[key]
+                    for key, probes in self.probes.items()
+                    if key in known
+                    for size, spent in probes.items()
+                ),
+                default=0.0,
+            )
             pending = time.perf_counter() - started - max(warm_up, 0.0)
             fallback = max(fallback, pending)
         remaining = 0.0
         for key, done in self.done.items():
-            cost = known.get(key, fallback)
-            remaining += (self.points - done) * cost
+            remaining += (self.points - done) * known.get(key, fallback)
         return remaining / max(self.workers, 1)
 
     def emit(self) -> None:
@@ -896,12 +933,14 @@ def _stability(
     count = len(points)
     workers = max(1, min(bench.n_core, usable_cores()))
     chunk = _chunk_size(count, workers, bench.batch_size)
-    # The first point alone: every backend and precision returns its cost
-    # per point early (the time estimate); then batches of ``chunk``.
-    chunks = [[0]] if count else []
+    # Two probes first, point 0 alone and points 1-2, started together on
+    # every backend and precision: their difference is the cost per point
+    # without the worker's first-call cost (the time estimate, early);
+    # then batches of ``chunk``.
+    chunks = [[0], [1, 2]] if count >= 3 else [[0]] if count else []
     chunks += [
         list(range(start, min(start + chunk, count)))
-        for start in range(1, count, chunk)
+        for start in range(3 if count >= 3 else 1, count, chunk)
     ]
     # Interleaved: every backend and precision is sampled from the start,
     # so the time estimate covers the slowest early.
@@ -925,7 +964,7 @@ def _stability(
         for record in records:
             store[backend][record[0]] = record
         seconds[backend] += wall
-        tracker.add(backend, precision, len(records), wall)
+        tracker.add(backend, precision, len(records), wall, records[0][0])
 
     def refuse(backend: str, error: Exception) -> None:
         if backend not in refused:

@@ -399,26 +399,30 @@ def test_failure_causes_group_by_masked_first_message():
 
 
 def test_stability_estimate_grows_while_a_stream_has_no_point(monkeypatch):
-    """A backend and precision without a returned point costs at least the
-    time its first point has been running (the tasks started when the first
-    one returned, less its seconds), so the estimate rises while a slow
-    stream's first point is pending; the first-call cost seen on the other
-    streams is taken off, and a stream's later tasks give its warm cost."""
+    """Each backend and precision starts with two probes, point 0 and points
+    1-2, together: their difference is the cost per point without the
+    worker's first-call cost. A stream without a returned point costs at
+    least the time its probe has been running, less the first-call cost seen
+    on the other streams, so the estimate rises while a slow stream's first
+    point is pending; later tasks give a stream's cost per point."""
 
     import pyamplicol.loop_profile as lp
 
     clock = [100.0]
     monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
     tracker = lp._StabilityProgress(None, ("ninjars",), 11, 2)
-    tracker.add("ninjars", "binary64", 1, 1.0)
-    # Only the mean of the known costs: 1 s per point, 21 points left.
+    # binary64: 0.8 s first-call cost + 0.2 s per point.
+    tracker.add("ninjars", "binary64", 1, 1.0, 0)
+    # Only the one probe: 1 s per point at most; 21 points left.
     assert tracker.eta() == pytest.approx((10 * 1.0 + 11 * 1.0) / 2)
+    tracker.add("ninjars", "binary64", 2, 1.2, 1)
+    # The probes' difference: 0.2 s per point. The double-double probe has
+    # run since 99 s (1 s, less the 0.8 s first-call cost: 0.2 s).
+    assert tracker.eta() == pytest.approx((8 * 0.2 + 11 * 0.2) / 2)
     clock[0] = 160.0
-    # The double-double point has run for 61 s (since 99 s) at least.
-    assert tracker.eta() == pytest.approx((10 * 1.0 + 11 * 61.0) / 2)
-    tracker.add("ninjars", "binary64", 5, 1.0)
-    # binary64 warm: 0.2 s per point; its first point's 0.8 s extra is the
-    # first-call cost, off the pending double-double point.
-    assert tracker.eta() == pytest.approx((5 * 0.2 + 11 * (61.0 - 0.8)) / 2)
-    tracker.add("ninjars", "double-double", 1, 70.0)
-    assert tracker.eta() == pytest.approx((5 * 0.2 + 10 * 70.0) / 2)
+    assert tracker.eta() == pytest.approx((8 * 0.2 + 11 * (61.0 - 0.8)) / 2)
+    tracker.add("ninjars", "double-double", 1, 70.0, 0)
+    assert tracker.eta() == pytest.approx((8 * 0.2 + 10 * 70.0) / 2)
+    tracker.add("ninjars", "binary64", 4, 1.0, 3)
+    # Later tasks: 0.25 s per point.
+    assert tracker.eta() == pytest.approx((4 * 0.25 + 10 * 70.0) / 2)
