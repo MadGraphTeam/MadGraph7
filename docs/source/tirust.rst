@@ -76,6 +76,36 @@ support an explicit UV/IR selection. For example, ``9|8|7`` can be used with
 ``LoopPoleMode=1``. Selecting no poles while also disabling finite evaluation
 is an invalid request.
 
+Profiling
+---------
+
+After installing both libraries, run one ``check profile`` command for each
+timed backend::
+
+    import model loop_sm
+    check profile -reuse 10 u u~ > z [virt=QCD] --reduction=8 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+    check profile -reuse 10 u u~ > z [virt=QCD] --reduction=9 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+
+A reduction list times only its first backend; the separate stability analysis
+can compare its members. The integer ``10`` selects the stability sample,
+not the timing count. Compare full helicity-sum times. ``FULL−SKIP`` is an
+estimated reduction time from separate full and numerator-only runs.
+Explicit pole mode 0 includes UV/IR and all helicities; the configured single
+helicity is unverified and may contribute zero. Reused-export initialization
+may be unavailable rather than zero.
+
+Stock timing uses fixed-DP MadLoop mode. TIRust may internally retry DP-input
+tensors at 106-bit DD, 256 or 512 bits, so accepted 219 is a transport code, not
+proof of native-DP-only arithmetic. Genuine QP-input transport 323 remains
+separate from recomputing a QP numerator, which also requires the effective
+``UseQPIntegrandForTIRust`` card. The stock driver does not emit optional route
+counters; its timed internal routes remain unknown. Bridge counters also do
+not cover coefficients reused by Fortran caches.
+
+``docs/benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md`` gives the exact current
+paired full-amplitude acceptance workflow with natural stability/rescue.
+Its measurements and initialization remain separate from stock profiling.
+
 Poles-only diagnostics
 ----------------------
 

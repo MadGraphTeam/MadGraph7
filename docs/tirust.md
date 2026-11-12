@@ -76,6 +76,40 @@ across helicities and split orders. Full and partial results and DP/QP stores
 remain separate. Independent stability checks bypass cached numerical results.
 Numerical failures propagate to MadLoop's existing rescue logic.
 
+## Profile a backend
+
+After installing the comparison backends, use MadGraph's `check profile`
+command. Run one command per timed backend; a reduction list times only its
+first backend, while the stability analysis can compare the list.
+
+```text
+import model loop_sm
+check profile -reuse 10 u u~ > z [virt=QCD] --reduction=8 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+check profile -reuse 10 u u~ > z [virt=QCD] --reduction=9 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+```
+
+Here `10` controls the separate stability sample, not the number of timing
+points. Read the full helicity-sum time for a full-amplitude comparison.
+`FULL−SKIP` estimates reduction time by subtracting a separate numerator-only
+run; it is not a directly timed reducer call. Explicit pole mode `0` includes
+both UV and IR poles and evaluates all helicities. The configured single
+helicity may have a zero contribution and is labeled unverified. Reusing an
+export may leave initialization time unavailable; it does not mean zero cost.
+
+The stock profiler uses fixed-DP MadLoop timing mode and a separate stability
+probe. TIRust can still retry individual DP-input tensors internally at
+106-bit DD, 256 or 512 bits. Accepted code `219` describes DP transport, not
+entirely native-DP arithmetic. Genuine QP-input rescue remains distinct and
+uses code `323`; a QP numerator also requires the effective
+`UseQPIntegrandForTIRust` setting. Optional bridge route counters do not observe
+Fortran coefficient-cache hits. The stock profile driver does not emit those
+counters, so its timed internal routes remain unknown.
+
+Use the [current local validation checklist](benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md)
+for paired warmed measurements with natural stability/rescue behavior and the
+precise per-process acceptance gates. The [benchmark report](benchmarkfolder/benchmark.pdf)
+keeps those measurements separate from stock profile timings.
+
 ## Partial pole diagnostics
 
 The partial evaluator skips finite scalar kernels and tensor arithmetic while
