@@ -6534,6 +6534,17 @@ c
       
 
 
+      subroutine reset_folded_virtual
+c A complete folded point owns its virtual cache, including when its
+c first radiation trial has no soft endpoint and skips bornsoftvirtual.
+      implicit none
+      logical virtual_fold_ready
+      common /c_folded_virtual/ virtual_fold_ready
+      virtual_fold_ready=.false.
+      return
+      end
+
+
       subroutine bornsoftvirtual(p,bsv_wgt,virt_wgt,born_wgt)
       use fks_phase_space_data, only: sqrtshat,shat,p_born
       use extra_weights
@@ -6612,6 +6623,8 @@ c timing statistics
 c For the MINT folding
       integer fold,ifold_counter
       common /cfl/fold,ifold_counter
+      logical virtual_fold_ready,first_virtual_evaluation
+      common /c_folded_virtual/ virtual_fold_ready
       double precision virt_wgt_save
       save virt_wgt_save
 
@@ -6669,6 +6682,13 @@ c Surrogate/Born ratios fixed for all folds of this point.
       double precision ave_ratio(0:amp_split_size)
 
       include "pmass.inc"
+
+c The first radiation trial need not have a soft endpoint. Initialize
+c the virtual on the first fold that actually reaches this routine,
+c after the driver has reset the complete point, not by its fold index.
+c Fixed-order callers retain their ordinary fold-zero initialization.
+      if (fold.eq.0) call reset_folded_virtual
+      first_virtual_evaluation=.not.virtual_fold_ready
       
       if (firsttime) then
 C check if any real emission need cahrge/color links
@@ -6833,9 +6853,10 @@ C end of the external particle loop
 c     If doing MC over helicities, must sum over the two
 c     helicity contributions for the Q-terms of collinear limit.
  547  continue
-      collect_surrogate=VirtTrickSurrogate.ge.1.and.fold.eq.0
+      collect_surrogate=VirtTrickSurrogate.ge.1.and.
+     $     first_virtual_evaluation
      $     .and.born_spread_phase.ne.1.and.born_spread_phase.ne.2
-      if (fold.eq.0) call vs_clear_links
+      if (first_virtual_evaluation) call vs_clear_links
 c Separate virtual events need only the colour links from this loop.
       if (abrv.eq.'virt'.and.(.not.collect_surrogate.or.
      $     .not.need_color_links_used)) goto 548
@@ -6933,9 +6954,9 @@ c per-order grid/polynomial and clear any current-point fit state.
       use_surrogate=use_surrogate.and.
      $     vs_single_born_order(amp_split_born_for_virt,born_wgt)
 
-c Choose the fitted surrogate at the first fold, retaining the grid or
+c Choose the fitted surrogate at the first supported fold, retaining the grid or
 c polynomial when the channel's fit has not been selected.
-      if (fold.eq.0) then
+      if (first_virtual_evaluation) then
          vs_ratio_set=.false.
          if (use_surrogate) then
             call vs_features(p_born,born_wgt,QES2,VirtTrickSurrogate)
@@ -6950,7 +6971,7 @@ c polynomial when the channel's fit has not been selected.
          ave_ratio=average_virtual(0:amp_split_size,ichan)
       endif
 
-      if (fold.eq.0) then
+      if (first_virtual_evaluation) then
          vs_vcomp=.false.
          vs_born=born_wgt
          vs_fvirt=virtual_fraction(ichan)
@@ -7001,7 +7022,8 @@ c even when different amplitude orders cancel in the summed residual.
          virt_wgt_save=virt_wgt
          amp_split_virt_save(1:amp_split_size)=
      $        amp_split_virt(1:amp_split_size)
-      elseif(fold.eq.1) then
+         virtual_fold_ready=.true.
+      else
          virt_wgt=virt_wgt_save
          amp_split_virt(1:amp_split_size)=
      $        amp_split_virt_save(1:amp_split_size)

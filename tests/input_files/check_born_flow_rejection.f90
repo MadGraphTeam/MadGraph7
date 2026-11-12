@@ -24,6 +24,7 @@ program check_born_flow_rejection
   ! the run-card defaults; individual cases override these settings.
   MCExplicitKLSum=.true.
   FKSExplicitSum=.false.
+  no_event_projection=trim(mode).eq.'no_projection'
   nan=ieee_value(0d0,ieee_quiet_nan)
   inf=ieee_value(0d0,ieee_positive_inf)
   leading=[.true.,.true.,.false.]
@@ -133,6 +134,7 @@ program check_born_flow_rejection
     abrv='all'
     x=0.5d0
     FKSExplicitSum=.true.
+    if(trim(mode).eq.'massive_sampled')FKSExplicitSum=.false.
     MCExplicitKLSum=.false.
     outer_no_endpoint=.true.
     born_cuts=trim(mode).ne.'massive_uncut'
@@ -184,7 +186,7 @@ program check_born_flow_rejection
     else
       values(2)=nan
       select case(trim(mode))
-      case('outer')
+      case('outer','no_projection')
       case('born')
         abrv='born'
       case('virtual')
