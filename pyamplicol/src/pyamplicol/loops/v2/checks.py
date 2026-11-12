@@ -81,7 +81,9 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -427,6 +429,9 @@ class CheckReport:
     # Known, benign dependency log events of the check, returned instead of
     # printed (``ResultWarning``; m-lit ux-besteffort).
     warnings: tuple[Any, ...] = ()
+    # Ctrl-C stopped the check: the tests not run are marked "not run" (the
+    # exit code is not 0; the CLI exits with 130).
+    interrupted: bool = False
 
     def __post_init__(self) -> None:
         statuses = {process.status for process in self.processes}
@@ -441,6 +446,64 @@ class CheckReport:
     @property
     def passed(self) -> bool:
         return self.exit_code == EXIT_PASSED
+
+
+# ------------------------------------------------- progress and Ctrl-C
+
+# The current check's status callback (``reporting``) and process name.
+_STATUS: ContextVar[Callable[[str], None] | None] = ContextVar(
+    "pyamplicol_check_status", default=None
+)
+_PROCESS: ContextVar[str | None] = ContextVar("pyamplicol_check_process", default=None)
+
+
+@contextmanager
+def reporting(callback: Callable[[str], None] | None) -> Iterator[None]:
+    """Report every test a check starts (``status``) to ``callback(text)``
+    within the block (``api.services.check``'s progress)."""
+
+    token = _STATUS.set(callback)
+    try:
+        yield
+    finally:
+        _STATUS.reset(token)
+
+
+def status(text: str) -> None:
+    """The test the check starts now (the previous one is finished),
+    prefixed with the process being checked."""
+
+    callback = _STATUS.get()
+    if callback is not None:
+        process = _PROCESS.get()
+        callback(f"{process}: {text}" if process else text)
+
+
+class CheckInterrupted(KeyboardInterrupt):
+    """Ctrl-C during a check: ``partial`` holds what was checked (rows of
+    one process, or the ``ProcessCheck`` list of the processes started),
+    the tests not run marked as such."""
+
+    def __init__(self, partial: Any) -> None:
+        super().__init__()
+        self.partial = partial
+
+
+def interrupted_row() -> CheckRow:
+    """The row marking the tests a Ctrl-C left unrun."""
+
+    return CheckRow(
+        "interrupted",
+        "the remaining tests",
+        None,
+        None,
+        NOT_RUN,
+        reason="Ctrl-C: not run",
+    )
+
+
+def _point_text(index: int, points: Sequence[Any]) -> str:
+    return f"point {index + 1}/{len(points)}"
 
 
 # ------------------------------------------------------------- the checks
@@ -730,6 +793,7 @@ def born_interfered_rows(
     carriers: Sequence[Any],
     rung: Rung | None = None,
     kinematics: Any = None,
+    out: list[CheckRow] | None = None,
 ) -> list[CheckRow]:
     """The pole and Ward rows of a Born-interfered probe slice (module
     docstring) at the lifted ``points`` ((point, mu_R^2) pairs), in
@@ -743,7 +807,9 @@ def born_interfered_rows(
     target_accuracy = float(stability.RESCUE_TARGET)
     legs = ward.gauge_legs(target)
     excluded = ward_applicability(target) if legs else None
-    rows: list[CheckRow] = []
+    # ``out``: the caller's list, which keeps the rows of an interrupted
+    # check.
+    rows: list[CheckRow] = [] if out is None else out
     for index, (point, scale) in enumerate(points):
         # Poles against Catani's operator.
         decided: dict[Any, CheckRow] = {}
@@ -756,6 +822,10 @@ def born_interfered_rows(
             if evaluated and not pending:
                 break
             double = _carrier_name(carrier) == "double"
+            status(
+                f"{_point_text(index, points)}: poles against Catani's operator "
+                f"({_carrier_name(carrier)})"
+            )
             at, improved = _improved(executor, point, scale, carrier, kinematics)
             try:
                 result = _evaluate(
@@ -821,6 +891,7 @@ def born_interfered_rows(
         )
         # Ward identities on every gluon and photon leg.
         if legs and excluded is None:
+            status(f"{_point_text(index, points)}: Ward identities, {_legs(legs)}")
             rows.extend(
                 _born_ward_rows(
                     executor, point, scale, legs, carriers, index, rung, kinematics
@@ -1195,6 +1266,7 @@ def induced_rows(
     *,
     memo: Any = None,
     kinematics: Any = None,
+    out: list[CheckRow] | None = None,
 ) -> list[CheckRow]:
     """The finiteness, Ward and Goldstone rows of a loop-induced probe slice
     (``induced.point_probes``, ``induced.goldstone_point``) at the lifted
@@ -1232,8 +1304,12 @@ def induced_rows(
             target, compiled, request, native, memo=memo
         )
     executors: dict[Any, Any] = {}
-    rows: list[CheckRow] = []
+    rows: list[CheckRow] = [] if out is None else out
     for index, (point, scale) in enumerate(points):
+        status(
+            f"{_point_text(index, points)}: finiteness"
+            + (f" and Ward probes, {_legs(probed)}" if probed else "")
+        )
         try:
             floors, _record = induced.probe_floors(executor, point, scale)
         except induced.ProbePointRefused as error:
@@ -1262,6 +1338,7 @@ def induced_rows(
         for entry, result in zip(entries, decided, strict=True):
             rows.append(_probe_row(entry, result, index))
         if sides:
+            status(f"{_point_text(index, points)}: Goldstone-equivalence probes")
             results, gentries, _phases, _times = induced.goldstone_point(
                 target, sides, point, scale, carriers, floors, executors
             )
@@ -1385,48 +1462,57 @@ def check_request(
     from .induced import (
         PROBE_REDUCTION,
         _complex_mass,
-        _point_scale,
-        probe_point,
         probe_request_of,
     )
     from .reduction import running
     from .ward import ward_slice
 
     start = time.perf_counter()
-    with running(PROBE_REDUCTION):
-        probe, zeroed = probe_request_of(compiled, request)
-        target = ward_slice(compiled, probe, native, memo=memo)
-        lifted = 2 * max(carrier.working_digits for carrier in carriers)
-        initial = sum(1 for leg in target.blocks.process.legs if leg.is_initial)
-        points = []
-        for momentum in momenta:
-            point, _distance = probe_point(target, momentum, lifted)
-            points.append((point, _point_scale(point, initial)))
-        relifted: dict[tuple[int, int], tuple[Any, Any]] = {}
-
-        def lift(index: int, carrier: Any) -> tuple[Any, Any]:
-            needed = 2 * carrier.working_digits
-            if needed <= lifted:
-                return points[index]
-            if (index, needed) not in relifted:
-                point, _distance = probe_point(target, momenta[index], needed)
-                relifted[(index, needed)] = (point, _point_scale(point, initial))
-            return relifted[(index, needed)]
-
-        rung = Rung(lift, digits) if arbitrary else None
-        if request.contribution == "loop-induced":
-            rows = induced_rows(
-                target,
+    token = _PROCESS.set(process)
+    rows: list[CheckRow] = []
+    zeroed: Any = ()
+    target: Any = None
+    try:
+        with running(PROBE_REDUCTION):
+            status("regenerating the probe slice in memory")
+            probe, zeroed = probe_request_of(compiled, request)
+            target = ward_slice(compiled, probe, native, memo=memo)
+            status(f"lifting {len(momenta)} point(s) to exact conservation")
+            _check_points(
                 compiled,
-                probe,
+                request,
                 native,
-                points,
+                momenta,
                 carriers,
-                memo=memo,
-                kinematics=kinematics,
+                memo,
+                kinematics,
+                arbitrary,
+                digits,
+                probe,
+                target,
+                rows,
             )
-        else:
-            rows = born_interfered_rows(target, points, carriers, rung, kinematics)
+    except KeyboardInterrupt as error:
+        if isinstance(error, CheckInterrupted):
+            raise
+        raise CheckInterrupted(
+            ProcessCheck(
+                process,
+                expression,
+                request.contribution,
+                "-"
+                if target is None
+                else "complex-mass"
+                if not zeroed and _complex_mass(target)
+                else "zero",
+                tuple(zeroed),
+                PROBE_REDUCTION,
+                (*rows, interrupted_row()),
+                round(time.perf_counter() - start, 3),
+            )
+        ) from None
+    finally:
+        _PROCESS.reset(token)
     return ProcessCheck(
         process,
         expression,
@@ -1437,6 +1523,61 @@ def check_request(
         tuple(rows),
         round(time.perf_counter() - start, 3),
     )
+
+
+def _check_points(
+    compiled: Any,
+    request: Any,
+    native: Any,
+    momenta: Sequence[Sequence[Sequence[float]]],
+    carriers: Sequence[Any],
+    memo: Any,
+    kinematics: Any,
+    arbitrary: bool,
+    digits: int | None,
+    probe: Any,
+    target: Any,
+    rows: list[CheckRow],
+) -> None:
+    """``check_request``'s rows of the probe slice ``target`` at
+    ``momenta``, appended to ``rows`` as they are judged."""
+
+    from .induced import _point_scale, probe_point
+
+    lifted = 2 * max(carrier.working_digits for carrier in carriers)
+    initial = sum(1 for leg in target.blocks.process.legs if leg.is_initial)
+    points = []
+    for momentum in momenta:
+        point, _distance = probe_point(target, momentum, lifted)
+        points.append((point, _point_scale(point, initial)))
+    relifted: dict[tuple[int, int], tuple[Any, Any]] = {}
+
+    def lift(index: int, carrier: Any) -> tuple[Any, Any]:
+        needed = 2 * carrier.working_digits
+        if needed <= lifted:
+            return points[index]
+        if (index, needed) not in relifted:
+            point, _distance = probe_point(target, momenta[index], needed)
+            relifted[(index, needed)] = (point, _point_scale(point, initial))
+        return relifted[(index, needed)]
+
+    rung = Rung(lift, digits) if arbitrary else None
+    if request.contribution == "loop-induced":
+        induced_rows(
+            target,
+            compiled,
+            probe,
+            native,
+            points,
+            carriers,
+            memo=memo,
+            kinematics=kinematics,
+            out=rows,
+        )
+    else:
+        born_interfered_rows(
+            target, points, carriers, rung, kinematics, out=rows
+        )
 
 
 __all__ = [
@@ -1456,6 +1597,7 @@ __all__ = [
     "PASSED",
     "UNDECIDED",
     "VERDICTS",
+    "CheckInterrupted",
     "CheckReport",
     "CheckRow",
     "Part",
@@ -1467,7 +1609,10 @@ __all__ = [
     "catani_dd_comparison",
     "check_request",
     "induced_rows",
+    "interrupted_row",
+    "reporting",
     "rung_digits",
+    "status",
     "undecided",
     "ward_applicability",
 ]

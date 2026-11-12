@@ -2052,7 +2052,12 @@ def check_loop_requests(
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.preparation_cache import PreparationMemo, store_for
     from pyamplicol.loops.v2.blocks import born_dag_scope
-    from pyamplicol.loops.v2.checks import check_request
+    from pyamplicol.loops.v2.checks import (
+        CheckInterrupted,
+        ProcessCheck,
+        check_request,
+        interrupted_row,
+    )
     from pyamplicol.loops.v2.induced import probe_carriers
 
     _raise_blocked(backend, processes)
@@ -2083,7 +2088,8 @@ def check_loop_requests(
         del _dags
         native = load_loop_native()
         compiled = context.resolved.compiled
-        for entry, request in zip(context.expanded, requests, strict=True):
+        pairs = list(zip(context.expanded, requests, strict=True))
+        for position, (entry, request) in enumerate(pairs):
             name = entry.request.name
             momenta = _validation_momenta(
                 context,
@@ -2093,21 +2099,40 @@ def check_loop_requests(
                 unavailable=f"check momenta unavailable for {name}",
                 sqrt_s=sqrt_s,
             )
-            checked.append(
-                check_request(
-                    name,
-                    entry.request.expression,
-                    compiled,
-                    request,
-                    native,
-                    momenta,
-                    carriers,
-                    memo=memo,
-                    kinematics=kinematics,
-                    arbitrary=precision is None,
-                    digits=arbitrary_digits,
+            try:
+                checked.append(
+                    check_request(
+                        name,
+                        entry.request.expression,
+                        compiled,
+                        request,
+                        native,
+                        momenta,
+                        carriers,
+                        memo=memo,
+                        kinematics=kinematics,
+                        arbitrary=precision is None,
+                        digits=arbitrary_digits,
+                    )
                 )
-            )
+            except CheckInterrupted as error:
+                # Ctrl-C: the processes checked, the interrupted one's rows
+                # so far, the others not run.
+                checked.append(error.partial)
+                checked.extend(
+                    ProcessCheck(
+                        rest.request.name,
+                        rest.request.expression,
+                        later.contribution,
+                        "-",
+                        (),
+                        "-",
+                        (interrupted_row(),),
+                        0.0,
+                    )
+                    for rest, later in pairs[position + 1 :]
+                )
+                raise CheckInterrupted(checked) from None
     return checked
 
 
