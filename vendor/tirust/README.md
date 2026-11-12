@@ -12,6 +12,24 @@ runtime separate from an existing NinjaRS static installation. `make exports`
 checks that the shared library exposes only its prefixed C API. Applications
 must link both libraries and supply a runtime search path for the shared library.
 
+## Symbolica OEM activation
+
+The signed TIRust revision activates its private Symbolica library key for the
+Rust crate `iregi_rust` at the library's symbolic construction and evaluation
+boundaries. Calls to its oneloopmaster dependencies made within those operations
+share the scoped authorization. Worker operations establish their own guards;
+the key does not globally license unrelated Symbolica use in the embedding
+application or a separate NinjaRS installation. No personal
+`SYMBOLICA_LICENSE` is required for these covered TIRust operations.
+
+For an existing MadGraph installation, run `install tirust --update` to build
+and select the signed dependency. Omitting `--update` reuses an already valid
+installation, which may predate the OEM activation. Installation still copies
+sources to an isolated stage and smoke-tests the resulting DP/QP and poles-only
+interface before transactional publication. Its source, lock and artifact
+provenance identify the actual build; historical unsigned benchmark artifacts
+remain unchanged and do not qualify the new source automatically.
+
 ## Numerical contract
 
 The qualified first version accepts one through six propagators and cumulative

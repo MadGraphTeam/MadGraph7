@@ -1,16 +1,17 @@
 {
+  "patch_sha256": "ccf070ba40a39f79151a7212bb9590043011143d67082c7c7c497137d919c5c0",
   "schema_version": 1,
-  "upstream_revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
-  "patch_sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5",
   "source_sha256": {
     "Cargo.toml": "61f96d48cb50d2535bcdbfec0d5b57a2a5417506d32341a566166d77675fc100",
     "crates/iregi-rust/Cargo.toml": "808ff0490e21a1c57a87c95da116dc1f3d506cfb2a1ba2b4cfee0853cd0abc3a",
-    "crates/iregi-rust/src/lib.rs": "38d4d1cdb7f3e96586ceb7b248fbcceb9849847a8bf7f5e2c6c4e56e61ec75ea",
-    "crates/iregi-rust/src/direct.rs": "02c834e314833392b7fe9eaafa6cb106e1273bfdccd5b4c9105ddf76dd82b61b",
-    "crates/iregi-rust/src/direct/numeric.rs": "fd19a4fb94276388bad58bbdb967e4db410513c74fea306acf5f22874c66d111",
-    "crates/iregi-rust/src/direct/exec.rs": "4053f5d3a24002829328f75bac5aae3d26f04764f841a8edbaaa0ef938836c81",
+    "crates/iregi-rust/src/direct.rs": "93aa930a76e43d36aac3e036ae4e2e24deb41328c703a7c02d4e36c973742a71",
+    "crates/iregi-rust/src/direct/exec.rs": "bc0bb6c7d477a0d228b4c7b5d42951bcb7df312f50c93fadcf2e51838275ad9a",
     "crates/iregi-rust/src/direct/exec/gram.rs": "4af6ca30e8cd0a077b9b1217d2b256b3430c86c2a75c91a9cd5afbfd3e42e9a7",
+    "crates/iregi-rust/src/direct/numeric.rs": "fd19a4fb94276388bad58bbdb967e4db410513c74fea306acf5f22874c66d111",
     "crates/iregi-rust/src/direct/poles.rs": null,
+    "crates/iregi-rust/src/lib.rs": "105bec21cd3a4242bad057e19c2ff85f4c440d710f284a81c5444c382145066c",
+    "crates/iregi-rust/src/license.rs": "6717a4497428f4964abdf973417ce4cbfa512f25f11dd1d1be0ec496cd181c40",
     "crates/iregi-rust/tests/pole_only.rs": null
-  }
+  },
+  "upstream_revision": "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1"
 }

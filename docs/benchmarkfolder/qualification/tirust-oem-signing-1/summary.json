@@ -1,0 +1,721 @@
+{
+  "bridge_validation": {
+    "failed": 0,
+    "installed_fortran_smoke_requires_poles": "passed",
+    "python_integration_tests": 63,
+    "python_subtests": 66,
+    "release_tests": 11,
+    "symbol_export_audit": "passed"
+  },
+  "historical_44_page_report_unchanged": true,
+  "input_files": {
+    "madgraph/various/tirust_install.py": {
+      "after": "bbb945e47ff87f67d6e413cfc8dbaa4fba39757d43ad590153ff3e1a7b5bcb57",
+      "before": "4397d9f60e146354154cde942c20e01a086cf25797e41ddea6ac5054a563663e"
+    },
+    "vendor/tirust/Cargo.lock": {
+      "after": "9ad1e0aaafbb7555bff3a9478854be5e917a456b9254eddf34947bb072b3e376",
+      "before": "1d16ded1641f906d8bd1576b03c141e49abc9c020257f08702227d8ce867daa8"
+    },
+    "vendor/tirust/Cargo.toml": {
+      "after": "275270a2480c3b90947e9bc6907eb8a954bf28b469a1700999bde958a8347eb7",
+      "before": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+    },
+    "vendor/tirust/README.md": {
+      "after": "089badf42b962cf91d021ea21cf1c86e58efd594c948220a1c5e9f11ca1add15",
+      "before": "90681f242de90a6fe4c1dff081fee9856f81682b2c826d3fd999e48bafcc11de"
+    },
+    "vendor/tirust/patches/0001-direct-poles-only.patch": {
+      "after": "ccf070ba40a39f79151a7212bb9590043011143d67082c7c7c497137d919c5c0",
+      "before": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5"
+    },
+    "vendor/tirust/patches/manifest.json": {
+      "after": "d2e69ffcb6675255ac31a0f0e63234c45ecfd3743a269a80d151a63f5bc7f9cc",
+      "before": "f9344679b2d7081d03b34aefc112a64837e868d58527fd944951f5345ef27167"
+    }
+  },
+  "local_timing_todo": "Create a fresh signed-source campaign and matching handoff; the frozen predecessor handoff and historical results cannot qualify this source.",
+  "new_dso_sha256": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0",
+  "new_full_campaign_acceptance": false,
+  "numerical_upstream_base": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+  "oem_module_sha256": "6717a4497428f4964abdf973417ce4cbfa512f25f11dd1d1be0ec496cd181c40",
+  "performance_acceptance": false,
+  "physical_scope": "One saved point per process; reused frozen CLI-generated Fortran executables, verified exact new DSO in ldd and live process maps; separate native children for each requested chain; caches disabled; COLLIER UV and IR poles explicitly enabled. Not same-process switching of every reducer.",
+  "physical_smoke": [
+    {
+      "case": "qcd_n1_uux_z",
+      "compilation_sha256": "ea9b859904753094c3caea700618384bc35887bf0084b9d7e6798569683fa958",
+      "frozen_cli_executable_sha256": "e2df04037b411dde0d5481997b6c26adabc73b1c629fe07dd099fa513d7a13cb",
+      "generation_sha256": "a4c5e9f175ce86b89855a46aa263658a6288b41e14063170e72af3c9f68036af",
+      "lanes": [
+        {
+          "backend_precision_counts": {
+            "1:DP": 1
+          },
+          "maximum_relative_error": 0.0,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            1
+          ],
+          "rows": [
+            {
+              "accuracy": 1.8404861723779316e-15,
+              "actual_backend": 1,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262759,
+                -8.324577356963768,
+                -5.5497182379758465
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 211
+            },
+            {
+              "accuracy": 1.8404861723779316e-15,
+              "actual_backend": 1,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262759,
+                -8.324577356963768,
+                -5.5497182379758465
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 211
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "6:DP": 1
+          },
+          "maximum_relative_error": 1.0272137090446789e-15,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            6
+          ],
+          "rows": [
+            {
+              "accuracy": 0.0,
+              "actual_backend": 6,
+              "coefficients": [
+                110.81538588507335,
+                5.1878888212627645,
+                -8.324577356963767,
+                -5.5497182379758465
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 216
+            },
+            {
+              "accuracy": 0.0,
+              "actual_backend": 6,
+              "coefficients": [
+                110.81538588507335,
+                5.1878888212627645,
+                -8.324577356963767,
+                -5.5497182379758465
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 216
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "7:DP": 1
+          },
+          "maximum_relative_error": 1.2803221808595027e-15,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            7
+          ],
+          "rows": [
+            {
+              "accuracy": 5.214710821737443e-14,
+              "actual_backend": 7,
+              "coefficients": [
+                110.81538588507335,
+                5.18788882126276,
+                -8.324577356963772,
+                -5.549718237975854
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 217
+            },
+            {
+              "accuracy": 5.214710821737443e-14,
+              "actual_backend": 7,
+              "coefficients": [
+                110.81538588507335,
+                5.18788882126276,
+                -8.324577356963772,
+                -5.549718237975854
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 217
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "8:DP": 1
+          },
+          "maximum_relative_error": 8.560114242038992e-16,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            8
+          ],
+          "rows": [
+            {
+              "accuracy": 0.0,
+              "actual_backend": 8,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262764,
+                -8.324577356963767,
+                -5.549718237975846
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 218
+            },
+            {
+              "accuracy": 0.0,
+              "actual_backend": 8,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262764,
+                -8.324577356963767,
+                -5.549718237975846
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 218
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "9:DP": 1
+          },
+          "maximum_relative_error": 8.560114242038992e-16,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            9
+          ],
+          "rows": [
+            {
+              "accuracy": 0.0,
+              "actual_backend": 9,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262764,
+                -8.324577356963768,
+                -5.549718237975847
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 0.0,
+              "actual_backend": 9,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262764,
+                -8.324577356963768,
+                -5.549718237975847
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "9:DP": 1
+          },
+          "maximum_relative_error": 8.560114242038992e-16,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            9,
+            8,
+            7,
+            6,
+            1
+          ],
+          "rows": [
+            {
+              "accuracy": 0.0,
+              "actual_backend": 9,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262764,
+                -8.324577356963768,
+                -5.549718237975847
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            },
+            {
+              "accuracy": 0.0,
+              "actual_backend": 9,
+              "coefficients": [
+                110.81538588507335,
+                5.187888821262764,
+                -8.324577356963768,
+                -5.549718237975847
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 219
+            }
+          ]
+        }
+      ],
+      "new_dso_sha256": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0",
+      "nexternal": 3,
+      "point": {
+        "id": "ordinary-0000",
+        "incoming_masses": [
+          0.0,
+          0.0
+        ],
+        "kind": "ordinary",
+        "masses": [
+          91.188
+        ],
+        "momenta": [
+          [
+            45.594,
+            0.0,
+            0.0,
+            45.594
+          ],
+          [
+            45.594,
+            0.0,
+            0.0,
+            -45.594
+          ],
+          [
+            91.188,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "rapidity": 0.0,
+        "sqrt_s": 91.188
+      },
+      "saved_point_file_sha256": "2ed64c5cba477ce0e7ed3a7bbd642521061b251573ed20957f8e3bc396fa5b35",
+      "source_receipt_sha256": "616d0a369ff43ecd7dfa5f9e8e4eb9b414bc6fd0193e81c2c138a2d24112608d"
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "compilation_sha256": "3fd8e4ee070272aaef1013f1ebf74943be6fe55bb1f6b79fcef4cbbda29d0c3d",
+      "frozen_cli_executable_sha256": "3039183a969c3b98369ec76b8cc3923f4cd725f82b1607c6e01b0442272f2a24",
+      "generation_sha256": "fca5bd109801cd2bfe1211274e70b56300ad2ee603dca679309ed98769c5a591",
+      "lanes": [
+        {
+          "backend_precision_counts": {
+            "1:DP": 1
+          },
+          "maximum_relative_error": 0.0,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            1
+          ],
+          "rows": [
+            {
+              "accuracy": 6.918436734056425e-09,
+              "actual_backend": 1,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555913931135e-10,
+                -4.298629261682276e-10,
+                -1.1132103401559575e-10
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 211
+            },
+            {
+              "accuracy": 6.918436734056425e-09,
+              "actual_backend": 1,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555913931135e-10,
+                -4.298629261682276e-10,
+                -1.1132103401559575e-10
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 211
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "6:DP": 1
+          },
+          "maximum_relative_error": 4.462364025437972e-10,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            6
+          ],
+          "rows": [
+            {
+              "accuracy": 2.577004544482547e-12,
+              "actual_backend": 6,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.8385559122182316e-10,
+                -4.2986292616931725e-10,
+                -1.1132103401559614e-10
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 216
+            },
+            {
+              "accuracy": 2.577004544482547e-12,
+              "actual_backend": 6,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.8385559122182316e-10,
+                -4.2986292616931725e-10,
+                -1.1132103401559614e-10
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 216
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "7:DP": 1
+          },
+          "maximum_relative_error": 4.3148633422770963e-10,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            7
+          ],
+          "rows": [
+            {
+              "accuracy": 1.4925877866500816e-11,
+              "actual_backend": 7,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.8385559122748506e-10,
+                -4.298629261691781e-10,
+                -1.113210340156104e-10
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 217
+            },
+            {
+              "accuracy": 1.4925877866500816e-11,
+              "actual_backend": 7,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.8385559122748506e-10,
+                -4.298629261691781e-10,
+                -1.113210340156104e-10
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 217
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "8:DP": 1
+          },
+          "maximum_relative_error": 4.3038893787244533e-10,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            8
+          ],
+          "rows": [
+            {
+              "accuracy": 8.761228625164274e-12,
+              "actual_backend": 8,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555912279063e-10,
+                -4.2986292616933664e-10,
+                -1.1132103401559619e-10
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 218
+            },
+            {
+              "accuracy": 8.761228625164274e-12,
+              "actual_backend": 8,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555912279063e-10,
+                -4.2986292616933664e-10,
+                -1.1132103401559619e-10
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 218
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "9:QP": 1
+          },
+          "maximum_relative_error": 4.345280130798561e-10,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            9
+          ],
+          "rows": [
+            {
+              "accuracy": 0.0,
+              "actual_backend": 9,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555912263175e-10,
+                -4.298629261693596e-10,
+                -1.1132103401559578e-10
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "QP",
+              "status": 323
+            },
+            {
+              "accuracy": 0.0,
+              "actual_backend": 9,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555912263175e-10,
+                -4.298629261693596e-10,
+                -1.1132103401559578e-10
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "QP",
+              "status": 323
+            }
+          ]
+        },
+        {
+          "backend_precision_counts": {
+            "8:DP": 1
+          },
+          "maximum_relative_error": 4.3038893787244533e-10,
+          "ordinary_target_passed": true,
+          "regression_passed": true,
+          "requested_chain": [
+            9,
+            8,
+            7,
+            6,
+            1
+          ],
+          "rows": [
+            {
+              "accuracy": 8.761228625164274e-12,
+              "actual_backend": 8,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555912279063e-10,
+                -4.2986292616933664e-10,
+                -1.1132103401559619e-10
+              ],
+              "order": 0,
+              "point": 1,
+              "precision": "DP",
+              "status": 218
+            },
+            {
+              "accuracy": 8.761228625164274e-12,
+              "actual_backend": 8,
+              "coefficients": [
+                6.839478669884262e-10,
+                -3.838555912279063e-10,
+                -4.2986292616933664e-10,
+                -1.1132103401559619e-10
+              ],
+              "order": 1,
+              "point": 1,
+              "precision": "DP",
+              "status": 218
+            }
+          ]
+        }
+      ],
+      "new_dso_sha256": "85ee0cdf860e5ad4c7a5c26163802673de22404690a10c7c53fb73ebe1ff5bb0",
+      "nexternal": 6,
+      "point": {
+        "id": "ordinary-0000",
+        "incoming_masses": [
+          0.0,
+          0.0
+        ],
+        "kind": "ordinary",
+        "masses": [
+          91.188,
+          91.188,
+          0.0,
+          0.0
+        ],
+        "momenta": [
+          [
+            500.0,
+            0.0,
+            0.0,
+            500.0
+          ],
+          [
+            500.0,
+            0.0,
+            0.0,
+            -500.0
+          ],
+          [
+            242.82071232744946,
+            -199.41185718904197,
+            -18.968310180152248,
+            -102.57563751952326
+          ],
+          [
+            278.72002482562493,
+            -91.03439176586598,
+            -244.89578665258213,
+            -33.29255307765956
+          ],
+          [
+            423.3310951788811,
+            325.5640704339593,
+            224.29315813803984,
+            151.35993987937226
+          ],
+          [
+            55.12816766804433,
+            -35.11782147905134,
+            39.57093869469452,
+            -15.491749282189422
+          ]
+        ],
+        "sqrt_s": 1000.0
+      },
+      "saved_point_file_sha256": "d2f5bd557aff1eb2eea56237447d46c91271bd0b5c063cbd8eb6060167cd0f8e",
+      "source_receipt_sha256": "d098af3101352deff1aca578601b3e31caf499b4bc6f8d40e30fb5be5b2b5853"
+    }
+  ],
+  "reproduction_commands": [
+    "From a TIRust clone at the recorded revision: cargo +1.97.1 test -p iregi-rust --test oem_library -- --test-threads=1",
+    "From a TIRust clone at the recorded revision: cargo +1.97.1 test -p iregi-rust -p iregi-masters -- --test-threads=1",
+    "From a TIRust clone at the recorded revision: cargo +1.97.1 test -- --test-threads=1",
+    "From MadGraph: ./bin/madgraph, then install tirust --update",
+    "From MadGraph: python3 -B -m pytest -q tests/unit_tests/various/test_tirust_install.py tests/unit_tests/various/test_rust_dependency_notices.py tests/unit_tests/various/test_ninjars_integration_boundaries.py tests/unit_tests/various/test_ninjars_statistics.py tests/unit_tests/loop/test_tirust_fortran.py tests/unit_tests/loop/test_tirust_transport_cache.py"
+  ],
+  "retained_setup_failures": [
+    "Initial upstream standalone test lock directory was 0755; SDK diagnostic and corrected0700 full-suite successes retained.",
+    "Initial flat smoke-helper layout stopped before amplitudes because /ident_card.dat was absent; normal Cards/SubProcesses/resources layout passed."
+  ],
+  "schema": "madloop-tirust-oem-qualification-v1",
+  "source_validation": {
+    "core_and_masters": {
+      "failed": 0,
+      "ignored": 31,
+      "passed": 661
+    },
+    "default_workspace": {
+      "failed": 0,
+      "ignored": 31,
+      "passed": 707
+    },
+    "examples_compiled_in_both_graphs": 45,
+    "numerical_body_preservation": {
+      "files": 23,
+      "matches_base_after_removal": true,
+      "scoped_guards": 160
+    }
+  },
+  "stages": {
+    "activate-config": {
+      "output_log_sha256": "8b2054e207e0e25f417866d11a2ea01b12588b5442c946cf3d8a2dd5ab0ee992",
+      "personal_license_removed": true,
+      "status": "passed",
+      "terminal_sha256": "2ed9151701189ae1da2545c2942ae5139338618b4d18d646d92f5eb68752a352"
+    },
+    "install": {
+      "output_log_sha256": "79b0b9be83e51760d8788d1349cb6aa52083c8c26efde11f24d5833f78de1f76",
+      "personal_license_removed": true,
+      "status": "passed",
+      "terminal_sha256": "b1bd9c8c8b22a84366897c4741d49d7dd5f55eff81ccd212ee3b0dcb2261eb7b"
+    },
+    "integration-tests": {
+      "output_log_sha256": "7256191d72b0c02474c805c21801c0fcf941d3617349fc8cbca8f208801ae695",
+      "personal_license_removed": true,
+      "status": "passed",
+      "terminal_sha256": "ae30197673080954c97b1d7afa6e5c52a39d4e513668e20087f33184cb833445"
+    },
+    "qcd-n1-2": {
+      "output_log_sha256": "cf4f233a3c38ebd5eaaddbb1925eb427b46542d5dd5b8d90d66512639df92d84",
+      "personal_license_removed": true,
+      "status": "passed",
+      "terminal_sha256": "39f791a92806f0c58179f6bc3fb3cc46c41e515a1db81fcd6d21f853c45a74b3"
+    },
+    "qcd-n4": {
+      "output_log_sha256": "b530913b85b0d55b432f0a27a0d7d1ac55856bca08431e173ea339f43f800a54",
+      "personal_license_removed": true,
+      "status": "passed",
+      "terminal_sha256": "f61f8f6527535eaeb5a8bafa2a5b747d816ea7a030addf5d954a4683ae8e5115"
+    }
+  },
+  "upstream_main_merge": "54263c08a1400612eebbd3a0018bf38e26fca9c5",
+  "upstream_main_validation": "pending separate full suites; no S result transfers to the numerical merge",
+  "upstream_revision": "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1"
+}

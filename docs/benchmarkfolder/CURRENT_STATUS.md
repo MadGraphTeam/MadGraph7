@@ -12,6 +12,14 @@ Review: [draft TIRust PR #437](https://github.com/MadGraphTeam/MadGraph7/pull/43
 into `madloop_ninjars`, stacked on [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315) into `main`.
 The integration goal is incomplete.
 
+The [OEM signing successor](OEM_SIGNING.md) updates the current installation
+pin to signed TIRust `10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1`. Its scoped activation and fresh
+bridge qualification are recorded separately. Numerical acceptance evidence
+below remains bound to production revision `0fcd2cd873d6`; signing does not
+transfer that evidence to the new source or close the outstanding physics and
+local timing gates. The canonical 44-page PDF and its frozen inputs are
+unchanged.
+
 | Evidence | Current result and scope |
 |---|---|
 | [Ordinary process matrix](campaigns/entry-latch-cache-guard-1/QUALIFICATION_PROGRESS.md) | Eleven CLI-generated processes, six lanes and 100 saved points per lane. All 66 lanes pass `3e-6`; 54 also pass the separate `1e-8` target. The remaining target misses and independent-reference limitations are retained. |
