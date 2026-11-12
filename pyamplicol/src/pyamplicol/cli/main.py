@@ -96,6 +96,7 @@ def write_result(
     format: str,
     stream: TextIO,
     color: bool = False,
+    fields_help: bool = False,
 ) -> None:
     if value is None:
         return
@@ -111,6 +112,10 @@ def write_result(
                 "machine-readable output"
             )
         stream.write(f"{rendered}\n")
+        if fields_help:
+            from pyamplicol.reporting.descriptions import field_descriptions
+
+            stream.write(f"\n{field_descriptions(value)}\n")
     else:
         raise ValueError(f"unsupported output format {format!r}")
     stream.flush()
@@ -154,6 +159,8 @@ def run_cli(
                     arguments.extend(("--set", override))
                 if invocation.output_format == "json":
                     arguments.append("--json")
+                if invocation.fields_help:
+                    arguments.append("--fields-description-help")
                 arguments.extend(("--color", invocation.output_color))
                 invocation = parse_cli(arguments)
                 assert not isinstance(
@@ -166,6 +173,7 @@ def run_cli(
                     format=invocation.output_format,
                     stream=output_stream,
                     color=_color_enabled(invocation.output_color, output_stream),
+                    fields_help=invocation.fields_help,
                 )
                 if invocation.kind in {"doctor", "self-test"}:
                     return 0 if bool(getattr(result, "ok", False)) else 1
@@ -232,6 +240,7 @@ def run_cli(
             format=config.output.format,
             stream=output_stream,
             color=color,
+            fields_help=invocation.fields_help,
         )
         if bool(getattr(result, "interrupted", False)):
             return 130

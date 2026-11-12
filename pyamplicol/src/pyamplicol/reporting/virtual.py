@@ -10,7 +10,6 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualScalar,
 )
-from pyamplicol.config import PoleSelection
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.models.base import CouplingOrders
 
@@ -95,8 +94,7 @@ def _stability_table(result: Any, prettytable: Any, color: bool = False) -> Any:
     table = palette.table(
         prettytable,
         ("point", *axes, "relative", "finite", "single pole", "double pole", "checks"),
-        "Stability estimates (relative; requested checks only; green within "
-        f"the target {target:g}, red above)",
+        f"Stability estimates (relative, target {target:g})",
         color=color,
     )
     for point, estimate in enumerate(result.stability):
@@ -415,43 +413,6 @@ def virtual_evaluation_summary(
                 item.detail,
             )
         )
-    header = (
-        palette.paint("Virtual coefficients", palette.TITLE, color=color, bold=True)
-        + ": Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon); "
-        "epsilon powers ("
-        + palette.paint("0", palette.FINITE, color=color)
-        + ", "
-        + palette.paint("-1", palette.SINGLE_POLE, color=color)
-        + ", "
-        + palette.paint("-2", palette.DOUBLE_POLE, color=color)
-        + "); "
-        f"colour accuracy={result.color_accuracy.upper()}.\n"
-        f"R2 requested={result.r2.requested.value}; "
-        f"effective={result.r2.effective.value}; "
-        f"{result.r2.reason}"
-    )
-    if result.correlated:
-        header += (
-            "\nDirected colour correlations retain complex Born "
-            "and Laurent coefficients."
-        )
-    if result.color_accuracy == "lc" and resolved:
-        header += (
-            "\nBorn anchors are signed, potentially overcomplete components; "
-            "they are not sampling probabilities."
-        )
-    if result.poles is PoleSelection.NONE:
-        header += "\nFinite-only evaluation: the poles were not computed."
-    elif result.poles is PoleSelection.UV:
-        header += (
-            "\nPoles: the ultraviolet poles of the bare loop amplitude; both "
-            "origins' parts per component, counterterms included, follow."
-        )
-    elif result.poles is PoleSelection.IR:
-        header += (
-            "\nPoles: the infrared poles of the renormalised virtual (the "
-            "double pole is infrared); both origins' parts per component follow."
-        )
     # A loop-induced result has no Born: its Born table would stay empty.
     tables = [virtual, pairs, status]
     if not loop_induced:
@@ -462,7 +423,9 @@ def virtual_evaluation_summary(
     stability = _stability_table(result, prettytable, color)
     if stability is not None:
         tables.append(stability)
-    out = "\n\n".join((header, *(str(table.get_string()) for table in tables)))
+    # Tables only: the normalisation, R2 and pole notes are in
+    # --fields-description-help (``reporting.descriptions``).
+    out = "\n\n".join(str(table.get_string()) for table in tables)
     return out + warnings_line(result, color)
 
 

@@ -81,6 +81,7 @@ class UtilityInvocation:
     overrides: tuple[str, ...] = ()
     local_amplicol: Path | None = None
     local_madgraph: Path | None = None
+    fields_help: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +113,15 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
         choices=("auto", "always", "never"),
         default="auto",
         help="detect a terminal, force ANSI color, or disable color",
+    )
+    parser.add_argument(
+        "--fields-description-help",
+        dest="fields_help",
+        action="store_true",
+        help=(
+            "after the tables, describe each table and its columns in plain "
+            "words (the command runs as usual)"
+        ),
     )
 
 
@@ -210,6 +220,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
                 "config-template",
                 output_format=namespace.output_format,
                 output_color=namespace.output_color,
+                fields_help=namespace.fields_help,
                 path=namespace.output,
                 force=bool(namespace.force),
             )
@@ -217,6 +228,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             "config-resolve",
             output_format=namespace.output_format,
             output_color=namespace.output_color,
+            fields_help=namespace.fields_help,
             path=namespace.card,
             overrides=tuple(namespace.overrides),
         )
@@ -226,12 +238,14 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
                 "examples-list",
                 output_format=namespace.output_format,
                 output_color=namespace.output_color,
+                fields_help=namespace.fields_help,
             )
         if namespace.examples_command == "copy":
             return UtilityInvocation(
                 "examples-copy",
                 output_format=namespace.output_format,
                 output_color=namespace.output_color,
+                fields_help=namespace.fields_help,
                 path=namespace.destination,
                 force=bool(namespace.force),
             )
@@ -239,6 +253,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             "examples-run",
             output_format=namespace.output_format,
             output_color=namespace.output_color,
+            fields_help=namespace.fields_help,
             name=namespace.name,
             overrides=tuple(namespace.overrides),
         )
@@ -247,6 +262,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             "profiling-campaign-copy",
             output_format=namespace.output_format,
             output_color=namespace.output_color,
+            fields_help=namespace.fields_help,
             path=namespace.destination,
             force=bool(namespace.force),
             local_amplicol=namespace.local_amplicol,
@@ -256,6 +272,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
         namespace.utility,
         output_format=namespace.output_format,
         output_color=namespace.output_color,
+        fields_help=namespace.fields_help,
     )
 
 
