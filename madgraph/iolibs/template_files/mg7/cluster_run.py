@@ -440,12 +440,18 @@ class ClusterRun:
             info = combine_cluster.combine_runs(job_dirs, self.run_path)
         except combine_cluster.CombineError as error:
             raise ClusterRunError(f"combining the events failed: {error}") from error
-        if not self.section["keep_job_files"]:
-            for job_dir in job_dirs:
-                for path in glob.glob(os.path.join(job_dir, "events*")) \
-                        + glob.glob(os.path.join(job_dir, "weights*")):
-                    os.remove(path)
         return info
+
+    def clean_deploy_data(self) -> None:
+        """Drop the events of the generation jobs once the run is done: a rerun
+        of an interrupted combine stage still needs them."""
+        if self.section["keep_job_files"]:
+            return
+        for job in self.state["deploy_jobs"]:
+            job_dir = self.job_dir("deploy", job["index"])
+            for path in glob.glob(os.path.join(job_dir, "events*")) \
+                    + glob.glob(os.path.join(job_dir, "weights*")):
+                os.remove(path)
 
     # ------------------------------------------------------------------
     def execute(self) -> None:
@@ -474,6 +480,7 @@ class ClusterRun:
         info = self.combine()
         launch.run_lhe_postprocessing(self.process)
         self.set_stage("done")
+        self.clean_deploy_data()
         process = info["process"]
         logger.info(
             "cluster run done: %d events, cross section %.6g +- %.2g pb, in %s",

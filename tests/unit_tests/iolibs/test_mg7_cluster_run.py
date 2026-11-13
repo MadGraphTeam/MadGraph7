@@ -203,6 +203,28 @@ class TestCleanTrainingData(unittest.TestCase):
 
 
 @unittest.skipIf(cluster_run is None, 'madspace not available')
+class TestCleanDeployData(unittest.TestCase):
+
+    def test_events_dropped_logs_and_info_kept(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for keep, expected in ((True, ['done', 'events.lhe.gz', 'info.json', 'log',
+                                       'weights.npy']),
+                               (False, ['done', 'info.json', 'log'])):
+            run = cluster_run.ClusterRun(types.SimpleNamespace(
+                run_card=card(cluster__keep_job_files=keep)), {})
+            run.cluster_path = os.path.join(tmp.name, str(keep))
+            run.state = {'deploy_jobs': [{'index': 0}]}
+            job_dir = run.job_dir('deploy', 0)
+            os.makedirs(job_dir)
+            for name in ('log', 'info.json', 'done', 'events.lhe.gz', 'weights.npy'):
+                with open(os.path.join(job_dir, name), 'w') as f:
+                    f.write('x')
+            run.clean_deploy_data()
+            self.assertEqual(sorted(os.listdir(job_dir)), expected)
+
+
+@unittest.skipIf(cluster_run is None, 'madspace not available')
 class TestPassOverrides(unittest.TestCase):
 
     def setUp(self):
