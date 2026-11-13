@@ -2755,6 +2755,27 @@ class FLV_Coupling(PhysicsObject):
             'only one or two merged flavor legs are handled.'
             % (len(nonzero), repr(key)))
 
+    def get_shared_partner_slot(self):
+        """(k1, [k2, ...]) for a flavor index k1 of the first fermion (F1)
+        that several keys pair with different partners, None when there is
+        none.
+
+        The tables every backend fills from get_partner_indices hold ONE
+        partner (PARTNER(k1) = k2) and ONE value (VAL(k1)) per k1, and the
+        routines read them in that one orientation. Such a coupling -- one
+        unmerged fermion coupled to several flavors of a merged one sitting
+        second (one squark mixing into several merged quarks), or a merged
+        flavor with two merged partners -- loses all its keys but the last:
+        those vertices vanish, or take the last key's value, with no error."""
+        partners = {}
+        for key in self['flavors']:
+            k1, k2 = self.get_partner_indices(key)
+            partners.setdefault(k1, set()).add(k2)
+        for k1 in sorted(partners):
+            if len(partners[k1]) > 1:
+                return k1, sorted(partners[k1])
+        return None
+
     def __str__(self):
 
         max_flav = max([max([i for i in k]) for k in  self['flavors']])

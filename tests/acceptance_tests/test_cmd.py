@@ -2614,7 +2614,10 @@ print(json.dumps(out))
         9 flavours only), and must agree with those of a fresh generation
         (made again from the amplitudes as generated: after an output the
         session's amplitudes only have the diagrams that output kept, 183 of
-        the 294 of q q > w+ w- q q).
+        the 294 of q q > w+ w- q q). So must a --mask=False output of a
+        process added after a masked output (`add process` keeps the
+        session's amplitudes and drops its matrix elements: q q > w+ w- q q
+        was made from its 183 diagrams, 3 of its 6 flavours wrong).
         """
         import glob
         devnull = open(os.devnull, 'w')
@@ -2622,6 +2625,8 @@ print(json.dumps(out))
         dirs = {'fortran': root + '_fortran',
                 'fortran_nomask': root + '_fortran_nomask',
                 'fortran_fresh': root + '_fortran_fresh',
+                'fortran_first': root + '_fortran_first',
+                'fortran_added': root + '_fortran_added',
                 'plain': root + '_plain',
                 'recycled': root + '_recycled'}
         for path in dirs.values():
@@ -2643,6 +2648,11 @@ print(json.dumps(out))
         self.do('output standalone %s -f --mask=False' % dirs['recycled'])
         generate()
         self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_fresh'])
+        # a process added after a masked output of the first
+        self.do('generate q q > w+ w- q q QCD=0')
+        self.do('output standalone_fortran %s -f' % dirs['fortran_first'])
+        self.do('add process q qx > w+ w- q qx QCD=0')
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_added'])
 
         entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
                               r'([-+\d.eEdD]+)', re.M)
@@ -2691,6 +2701,9 @@ print(json.dumps(out))
         _, nomask = values(dirs['fortran_nomask'], True)
         self.assertEqual(sorted(nomask), sorted(fresh))
         assert_close(nomask, fresh, 'fortran --mask=False after a masked output')
+        _, added = values(dirs['fortran_added'], True)
+        self.assertEqual(sorted(added), sorted(fresh))
+        assert_close(added, fresh, 'fortran --mask=False after add process')
         # the flavours of the masked output, and with --mask=False every
         # ordering of the two merged final-state quarks of q q > w+ w- q q,
         # all non-zero

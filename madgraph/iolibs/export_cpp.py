@@ -70,6 +70,25 @@ def make_model_cpp(dir_path):
 # UFOModelConverterCPP
 #===============================================================================
 
+def assert_flv_table_representable(coupl):
+    """Raise InvalidCmd when the flavor table of coupl cannot hold its keys
+    (FLV_Coupling.get_shared_partner_slot): its vertices would vanish, or
+    take another key's coupling, for all of them but one, with no error. For
+    the fixed couplings (write_flv_couplings) and the running ones
+    (cDPF_* of ProcessTables.h) alike."""
+    shared = coupl.get_shared_partner_slot()
+    if shared is None:
+        return
+    k1, k2s = shared
+    raise InvalidCmd(
+        "merged-flavor C++ output (mg7/standalone) cannot write the flavor "
+        "coupling %s: flavor %d of its first fermion couples to flavors %s of "
+        "the second, and its flavor table holds one partner and one value per "
+        "flavor of the first fermion. Generate the flavors of this vertex as "
+        "separate processes (explicit particles instead of the merged one)."
+        % (coupl.name, k1, ', '.join(str(k) for k in k2s)))
+
+
 class UFOModelConverterCPP(object):
     """ A converter of the UFO-MG5 Model to the C++ format """
 
@@ -475,15 +494,21 @@ class UFOModelConverterCPP(object):
         couplings. Single-merged-leg vertices (one merged fermion + an unmerged
         partner, e.g. the electroweak MSSM squark-quark-neutralino vertices) are
         serialized like the Fortran side (the unmerged partner is given flavor
-        index 1) and gated by the merged leg (see get_coupling_def). Dependent
+        index 1, on the side of the vertex it sits on, see
+        FLV_Coupling.get_partner_indices), and the routines read every table
+        in that one F1 -> F2 orientation (see get_coupling_def). Dependent
         flavored couplings (e.g. the SUSY-QCD MSSM gluino-squark-quark vertices)
         are gathered event-by-event into cDPF_* / flvCOUPs_dep (Step 3).
 
         Not yet supported (raises):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
+            The Fortran 'madevent'/'standalone_fortran' output supports it.
+          * a coupling whose table cannot hold its keys (several keys with
+            the same flavor of the first fermion, see
+            FLV_Coupling.get_shared_partner_slot). The Fortran tables have
+            the same limit.
 
-        The Fortran 'madevent'/'standalone_fortran' output supports the remaining cases.
         See docs/mg7_merged_flavor_mssm_design.md.
         """
         for coupl in params:
@@ -498,6 +523,7 @@ class UFOModelConverterCPP(object):
                     "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
+            assert_flv_table_representable(coupl)
 
     def write_flv_couplings(self, params):
         """Write out the lines of independent parameters"""

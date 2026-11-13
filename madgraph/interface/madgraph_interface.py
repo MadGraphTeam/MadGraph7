@@ -13158,31 +13158,42 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # duplicate diagrams then keep a valid flavor and are not trimmed, while
         # genuinely unphysical diagrams (no flavor at all) are still removed.
         enumerate_all = not getattr(self._curr_exporter, 'use_flavor_mask', True)
-        # The matrix elements of an earlier output of the same processes are
-        # kept, and they were made (trimmed, their flavors listed) for the
-        # --mask of that output: `output standalone_fortran A` then `output
-        # standalone B --mask=False` wrote B from the representative flavors
-        # and diagrams only. Make them again when the mode differs, from the
-        # amplitudes they were made from: after an output self._curr_amps are
-        # their base amplitudes (see the end of export), which only have the
-        # diagrams kept for that mode, and the orderings --mask=False adds
-        # need the others (q q > w+ w- q q QCD=0, q = u d: 183 diagrams of
-        # 294, 3 of 6 flavours wrong). Matrix elements made elsewhere (no
-        # source_amps) are kept as they are.
-        cached = self._curr_matrix_elements
-        if cached.get_matrix_elements() and \
-                getattr(cached, 'enumerate_all_flavors', False) != enumerate_all \
-                and getattr(cached, 'source_amps', None) is not None:
-            self._curr_amps = cached.source_amps
-            self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        # An output replaces self._curr_amps by the base amplitudes of its
+        # matrix elements (end of export), which only have the diagrams that
+        # output kept: with merged flavors, those its --mask trimmed are gone,
+        # and the other --mask needs them (the orderings --mask=False adds:
+        # q q > w+ w- q q QCD=0, q = u d, 183 diagrams of 294 and 3 of its 6
+        # flavors wrong). self._trimmed_amps keeps, for an output that
+        # trimmed, [those base amplitudes, the amplitudes they were made
+        # from, the --mask of its matrix elements]. Matrix elements kept from
+        # an output with the other --mask are made again (`output
+        # standalone_fortran A` then `output standalone B --mask=False` used
+        # to write B from A's flavors and diagrams), and whenever they are
+        # made, from the amplitudes as generated (the base amplitudes of that
+        # output may sit in self._curr_amps with processes added since).
+        trimmed = getattr(self, '_trimmed_amps', None)
+        if trimmed is not None:
+            base_amps, generated_amps, trimmed_all = trimmed
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    trimmed_all != enumerate_all:
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+            if not self._curr_matrix_elements.get_matrix_elements() and base_amps:
+                base_ids = set(id(amp) for amp in base_amps)
+                kept = [amp for amp in self._curr_amps if id(amp) not in base_ids]
+                if len(kept) + len(base_amps) == len(self._curr_amps):
+                    self._curr_amps = diagram_generation.AmplitudeList(
+                                                    list(generated_amps) + kept)
         helas_objects.HelasMatrixElement.enumerate_all_flavors = enumerate_all
 
-        source_amps = self._curr_amps
         made = not self._curr_matrix_elements.get_matrix_elements()
+        generated_amps = self._curr_amps
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
         if made:
-            self._curr_matrix_elements.enumerate_all_flavors = enumerate_all
-            self._curr_matrix_elements.source_amps = source_amps
+            self._trimmed_amps = None
+            if any(getattr(me, '_flavor_allow_trimming', False) for me in
+                   self._curr_matrix_elements.get_matrix_elements()):
+                # the base amplitudes are known at the end of export
+                self._trimmed_amps = [None, generated_amps, enumerate_all]
 
         calls = 0
 
@@ -13359,6 +13370,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self._curr_amps = diagram_generation.AmplitudeList(\
                [me.get('base_amplitude') for me in \
                 matrix_elements])
+        # what they stand for, when they lost diagrams (see the --mask above)
+        if getattr(self, '_trimmed_amps', None) is not None:
+            self._trimmed_amps[0] = list(self._curr_amps)
 
     def finalize(self, nojpeg, online = False, flaglist=[]):
         """Make the html output, write proc_card_mg5.dat and create
