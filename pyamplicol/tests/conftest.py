@@ -417,19 +417,68 @@ def _library_key_accepted() -> bool:
 
 
 # MadGraph7: the one-loop reference and benchmark tooling (the code under
-# tools/loop_reference and tools/loop_benchmark; their JSON data is kept) and
-# the test modules built on it stay in the upstream pyAmpliCol repository
-# (.github/scripts/import_pyamplicol.sh); a test that imports one of them at
-# run time skips with that reason.
-_UPSTREAM_ONLY_MODULES = ("tools.loop_reference", "tools.loop_benchmark")
+# tools/loop_reference and tools/loop_benchmark; their JSON data is kept),
+# tools/loop_v2_ward.py, and the upstream test modules built on that tooling
+# stay in the upstream pyAmpliCol repository
+# (.github/scripts/import_pyamplicol.sh). A test that imports one of exactly
+# these modules at run time skips with that reason; any other missing module
+# is an error. The helpers restored under tools/loop_reference (listed in
+# import_pyamplicol.sh) are not upstream-only: a failure to import them is an
+# error too.
+_UPSTREAM_ONLY_PACKAGES = ("tools.loop_reference", "tools.loop_benchmark")
+_RESTORED_HELPERS = frozenset(
+    {
+        "tools.loop_reference.exact_points",
+        "tools.loop_reference.feynkit_loop_graphs",
+        "tools.loop_reference.legacy_capture",
+        "tools.loop_reference.levi_civita_aloha",
+        "tools.loop_reference.model_compatibility",
+        "tools.loop_reference.njet",
+        "tools.loop_reference.njet.njet_fixture",
+        "tools.loop_reference.ufo_source_oracle",
+    }
+)
+_UPSTREAM_ONLY_TOOLS = frozenset({"tools.loop_v2_ward"})
+_UPSTREAM_ONLY_TESTS = frozenset(
+    {
+        "loop_mqcd_tiers",
+        "test_loop_benchmark",
+        "test_loop_reference_mqcd",
+        "test_loop_reference_msm",
+        "test_loop_v2_2to6",
+        "test_loop_v2_companion",
+        "test_loop_v2_corr_recola",
+        "test_loop_v2_dec_checks",
+        "test_loop_v2_dec_default",
+        "test_loop_v2_dec_manifest",
+        "test_loop_v2_dec_nightly",
+        "test_loop_v2_li_campaign",
+        "test_loop_v2_li_manifest",
+        "test_loop_v2_master_census",
+        "test_loop_v2_mqcd_default",
+        "test_loop_v2_mqcd_manifest",
+        "test_loop_v2_mqcd_nightly",
+        *(f"test_loop_v2_mqcd_nightly_{index}" for index in range(2, 8)),
+        "test_loop_v2_msm_default",
+        "test_loop_v2_msm_manifest",
+        "test_loop_v2_msm_nightly",
+        *(f"test_loop_v2_msm_nightly_{index}" for index in range(2, 24)),
+        "test_loop_v2_msm_smokes",
+        *(f"test_loop_v2_msm_smokes_{index}" for index in range(2, 5)),
+    }
+)
 
 
 def _upstream_only_module(error: BaseException) -> str | None:
     name = getattr(error, "name", None) or ""
-    if name.startswith(_UPSTREAM_ONLY_MODULES):
+    if name in _UPSTREAM_ONLY_TOOLS:
         return name
-    stem = name.rpartition(".")[2]
-    if stem.startswith("test_") and not any(TESTS.rglob(f"{stem}.py")):
+    if (
+        name.startswith(tuple(f"{package}." for package in _UPSTREAM_ONLY_PACKAGES))
+        and name not in _RESTORED_HELPERS
+    ):
+        return name
+    if name.rpartition(".")[2] in _UPSTREAM_ONLY_TESTS:
         return name
     return None
 
