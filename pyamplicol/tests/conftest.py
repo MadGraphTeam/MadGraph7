@@ -233,13 +233,6 @@ def loop_sm_colour_model(loop_sm_ufo, tmp_path_factory):
 
     import importlib.util
 
-    # MadGraph7: the example uses tools/loop_reference/model_compatibility.py
-    # (see _UPSTREAM_ONLY_MODULES), which stays in the upstream repository.
-    if not (TESTS.parent / "tools/loop_reference/model_compatibility.py").is_file():
-        pytest.skip(
-            "needs tools.loop_reference.model_compatibility, kept in the upstream "
-            "pyAmpliCol repository"
-        )
     script = TESTS.parent / "examples/loop/source_colour/prepare_model.py"
     spec = importlib.util.spec_from_file_location("_loop_colour_example", script)
     module = importlib.util.module_from_spec(spec)

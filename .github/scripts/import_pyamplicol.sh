@@ -29,6 +29,21 @@ UPSTREAM_SHA=$(git rev-parse HEAD)
 # tests read as fixtures) and the one-loop performance reports stay upstream.
 # These paths appear only after the first import, so the commits imported
 # earlier keep their SHAs.
+#
+# Restored by hand after the import (MadGraph7 commit "restore the core
+# one-loop engine tests"): the filter above drops these helpers, which the
+# one-loop engine tests under tests/unit import. They are byte-identical
+# copies from upstream; on a re-sync, refresh them from the imported upstream
+# commit (git show <upstream-sha>:<path>) and check whether the tests need
+# further helpers. The filter itself is left as is, so the imported SHAs stay
+# reproducible.
+#   tools/loop_reference/exact_points.py
+#   tools/loop_reference/feynkit_loop_graphs.py
+#   tools/loop_reference/legacy_capture.py
+#   tools/loop_reference/levi_civita_aloha.py
+#   tools/loop_reference/model_compatibility.py
+#   tools/loop_reference/njet/njet_fixture.py
+#   tools/loop_reference/ufo_source_oracle.py
 $FILTER_REPO --force \
     --path-glob '*.pyamplicol-model' --invert-paths \
     --path-glob '*.pdf' --invert-paths \
