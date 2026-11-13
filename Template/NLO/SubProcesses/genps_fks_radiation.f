@@ -1048,6 +1048,12 @@ c These endpoints cannot pass the cuts below the supplied lower bound.
       endif
 
       z=1d0-xi_i_fks
+c The validated ordinary endpoint is xi <= 1-xbar. Subtracting the
+c rounded xi from one can put z a few ulps below xbar, sending a valid
+c boundary point beyond Bjorken x=1. Enforce this known inequality only
+c for that endpoint; separately retained dressed-lepton bounds differ.
+      if(xiimax.eq.1d0-xbjrk_born(j_fks))
+     $     z=max(z,xbjrk_born(j_fks))
       sqrtz=sqrt(z)
       sqrtborn=sqrt(shat_born)
       tau=tau_born/z
@@ -1059,7 +1065,7 @@ c These endpoints cannot pass the cuts below the supplied lower bound.
 c Work in the underlying Born CM (the common tilde frame), so that
 c the usual single Born-to-lab boost also applies to the real event.
       call prepare_isr_recoil_boost(xi_i_fks,y_ij_fks,phi_i_fks,
-     &     recoil_boost)
+     &     recoil_boost,z)
       do i=3,nexternal
          if(i.ne.i_fks)call apply_isr_recoil_boost(xp(0,i),xp(0,i),
      &        recoil_boost,idir,.false.)

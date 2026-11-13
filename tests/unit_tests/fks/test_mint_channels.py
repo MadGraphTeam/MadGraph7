@@ -43,6 +43,9 @@ class TestMintChannels(unittest.TestCase):
         return [line.split()[1:] for line in result.stdout.splitlines()
                 if line.startswith(' CHECK ')]
 
+    def test_zero_virtual_envelope_bootstraps_from_finite_positive_sample(self):
+        self.run_case('virtual_envelope')
+
     def test_rms_allocation_and_unbiased_channel_compensation(self):
         probability, integral = self.run_case('rms')
         probability = list(map(float, probability))
@@ -126,6 +129,7 @@ logical :: seed_only=.false.
 end module
 
 program check_mint
+use, intrinsic :: ieee_arithmetic, only: ieee_value,ieee_quiet_nan
 use mint_module
 use integrand_state
 implicit none
@@ -147,6 +151,32 @@ imode=0
 nit=2
 double_events=.false.
 select case(mode)
+case('virtual_envelope')
+ ndim=4
+ ichan=1
+ n_ord_virt=0
+ ncell=1
+ ymax=1d0
+ ymax_virt=0d0
+ virtual_fraction(1)=0.25d0
+ f=0d0;f(1)=1d0;f(5)=4d0
+ call add_point_to_bounding_envelope
+ if(ymax_virt(1).ne.1d0)error stop 'zero virtual envelope did not bootstrap'
+ f(5)=12d0
+ call add_point_to_bounding_envelope
+ if(ymax_virt(1).ne.2d0)error stop 'positive virtual envelope growth changed'
+ f(5)=0.5d0
+ call add_point_to_bounding_envelope
+ if(ymax_virt(1).ne.2d0)error stop 'positive virtual envelope decreased'
+ ymax_virt=0d0;f(5)=0d0
+ call add_point_to_bounding_envelope
+ if(ymax_virt(1).ne.0d0)error stop 'empty virtual envelope changed'
+ f(5)=-1d0
+ call add_point_to_bounding_envelope
+ if(ymax_virt(1).ne.0d0)error stop 'negative virtual sample bootstrapped'
+ f(5)=ieee_value(0d0,ieee_quiet_nan)
+ call add_point_to_bounding_envelope
+ if(ymax_virt(1).ne.0d0)error stop 'nonfinite virtual sample bootstrapped'
 case('rms')
  nchans=3
  ! The tiny channel has mean 1e-9 and RMS 1e-8: about 100% error

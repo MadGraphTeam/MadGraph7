@@ -90,6 +90,11 @@ subroutine check_isr_mapping(mode)
   max_replay=0d0
   max_inverse=0d0
 
+  if(mode.eq.'isr_bjorken_boundary')then
+    call check_bjorken_boundary()
+    return
+  endif
+
   if(mode.eq.'isr_lower_bound')then
     call check_soft_lower_bound()
     return
@@ -333,6 +338,62 @@ subroutine check_isr_mapping(mode)
   enddo
   write(*,*) 'ISR recoil and inverse maximum relative errors',max_replay,max_inverse
 contains
+  subroutine check_bjorken_boundary()
+    ! Korobov clustering reaches exact and adjacent xi endpoints. These
+    ! Born fractions make 1-(1-xbar) round below xbar in binary64.
+    real(8),parameter :: endpoints(5)=[3d-5,0.00051927089450435379d0, &
+         1.4986315881618521d-6,0.035932381424984616d0,0.9d0]
+    real(8) :: coordinates(4),residual(0:3),scale,mass_shell
+    integer :: which_end,which_x,which_y,slot
+    coordinates=[1d0,nearest(1d0,-1d0),1d0-1d-8,1d0-1d-6]
+    do native=0,1
+      native_mapping=native.eq.1
+      do side=1,2
+        jfks=side
+        do which_end=1,size(endpoints)
+          bx=.2d0
+          bx(side)=endpoints(which_end)
+          call set_born()
+          do which_x=1,size(coordinates)
+            do which_y=1,3
+              x=0d0
+              x(1:3)=[coordinates(which_x),0.25d0*which_y,0.31d0]
+              do slot=-2,2
+                ! Test the event and all four soft/collinear projections.
+                kind=slot
+                if(slot.eq.-2)kind=-100
+                call generate_slot(kind)
+                if(.not.pass.or.tmp_jac.le.0d0.or..not.all(ieee_is_finite(p))) &
+                     error stop 'valid ISR endpoint was rejected'
+                if(any(tmp_xb.gt.1d0).or.any(tmp_xb.le.0d0)) &
+                     error stop 'roundoff sent ISR endpoint outside Bjorken support'
+                residual=sum(p(:,1:2),dim=2)-sum(p(:,3:nexternal),dim=2)
+                scale=maxval(abs(p))
+                if(maxval(abs(residual))/scale.gt.2d-12)then
+                  print *, 'endpoint conservation',native,side,which_end,which_x,kind, &
+                       maxval(abs(residual))/scale
+                  error stop 'ISR endpoint conservation'
+                endif
+                do k=3,nexternal
+                  mass_shell=(p(0,k)-p(3,k))*(p(0,k)+p(3,k))-sum(p(1:2,k)**2)
+                  if(abs(mass_shell-pmass(k)**2)/max(1d0,p(0,k)**2).gt.5d-12) &
+                       error stop 'ISR endpoint mass shell'
+                enddo
+              enddo
+            enddo
+          enddo
+          ! A genuinely invalid emission still fails before the endpoint
+          ! roundoff correction. No physical support is silently enlarged.
+          softtest=.true.
+          xi_fix=1d0-bx(side)+1d-5
+          call generate_slot(-100)
+          if(pass.or.tmp_jac.ge.0d0)error stop 'physical ISR endpoint violation accepted'
+          softtest=.false.
+        enddo
+      enddo
+    enddo
+  end subroutine check_bjorken_boundary
+
   subroutine check_soft_lower_bound()
     double precision,parameter :: ratios(4)=[.99d0,1d0,1d0+5d-13,1.01d0]
     integer :: mapping,threshold,slot

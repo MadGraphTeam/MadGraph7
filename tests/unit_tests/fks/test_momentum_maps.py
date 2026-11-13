@@ -180,6 +180,9 @@ class TestMomentumMaps(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("PASS " + name, result.stdout)
 
+    def test_shifted_folds_can_first_reach_a_soft_endpoint_on_a_later_fold(self):
+        self.check_map("delayed_soft_endpoint")
+
     def test_native_projection_and_shared_state(self):
         self.check_map("native_projection")
 
@@ -194,6 +197,9 @@ class TestMomentumMaps(unittest.TestCase):
 
     def test_single_top_native_massless_recoil(self):
         self.check_map("singletop_recoil")
+
+    def test_isr_endpoint_roundoff_keeps_bjorken_fractions_physical(self):
+        self.check_map("isr_bjorken_boundary")
 
     def test_initial_state_recoil_and_endpoints(self):
         self.check_map("isr")

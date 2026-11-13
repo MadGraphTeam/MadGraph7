@@ -5,7 +5,7 @@ module flow_fixture
   integer :: draws=0,born_calls=0,fail_native_fold=0
   integer :: nlo_calls=0,s_only_calls=0,native_calls=0
   logical :: real_point_active=.false.,born_cuts=.true.
-  logical :: outer_no_endpoint=.false.
+  logical :: outer_no_endpoint=.false.,no_event_projection=.false.
   logical :: fail_kinematics=.false.
   integer :: fail_weight_fold=0,fail_weight_stage=0
   double precision :: bad_weight=0d0
@@ -27,7 +27,7 @@ end module
 
 module fks_phase_space
   use fks_phase_space_data
-  use flow_fixture, only: outer_no_endpoint
+  use flow_fixture, only: outer_no_endpoint,no_event_projection
   implicit none
   type born_fixture
     logical :: valid=.false.,event_projection=.true.
@@ -45,6 +45,7 @@ contains
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
     point=fks_phase_space_point()
+    point%born%event_projection=.not.no_event_projection
     p_born=1d0
     p1_cnt=1d0
     p1_cnt(:,i_fks,0)=0d0

@@ -34,7 +34,8 @@ program check_momentum_maps
   colltest=.false.
   if (mode.eq.'isr'.or.mode.eq.'isr_fks'.or. &
        mode.eq.'isr_symmetric'.or.mode.eq.'isr_automatic'.or.mode.eq.'isr_symmetric_fks'.or. &
-       mode.eq.'isr_symmetric_bounds'.or.mode.eq.'isr_lower_bound') then
+       mode.eq.'isr_symmetric_bounds'.or.mode.eq.'isr_lower_bound'.or. &
+       mode.eq.'isr_bjorken_boundary') then
      call check_isr_mapping(trim(mode))
      write(*,*) 'PASS ',trim(mode)
      stop
@@ -42,6 +43,11 @@ program check_momentum_maps
   if (mode.eq.'native_projection') then
      call check_native_projection()
      write(*,*) 'PASS native_projection'
+     stop
+  endif
+  if (mode.eq.'delayed_soft_endpoint') then
+     call check_delayed_soft_endpoint()
+     write(*,*) 'PASS delayed_soft_endpoint'
      stop
   endif
   if (mode.eq.'massive_boundary') then
@@ -1042,6 +1048,40 @@ contains
       enddo
     enddo
   end subroutine check_massive_boundary
+
+  subroutine check_delayed_soft_endpoint()
+    ! A randomly shifted two-point rule may visit the massive second
+    ! solution before the first solution. Its first virtual evaluation
+    ! therefore occurs on a later fold at the same sampled Born point.
+    use fks_phase_space_data, only: nocntevents,jac_cnt,xiimax_ev,xinorm_ev
+    double precision :: pmass(5),mb(4),rad(3),first_boundary
+    common/to_mass/pmass
+    integer :: i_fks,j_fks
+    common/fks_indices/i_fks,j_fks
+    native_mapping=.false.
+    sqrtshat=1000d0
+    shat=sqrtshat**2
+    mass=173d0
+    mrec=300d0
+    energy=(shat+mass**2-mrec**2)/(2d0*sqrtshat)
+    momentum=sqrt(energy**2-mass**2)
+    born(:,1)=[sqrtshat/2d0,0d0,0d0,sqrtshat/2d0]
+    born(:,2)=[sqrtshat/2d0,0d0,0d0,-sqrtshat/2d0]
+    born(:,3)=[energy,0.3d0*momentum,0.4d0*momentum,sqrt(0.75d0)*momentum]
+    born(:,4)=born(:,1)+born(:,2)-born(:,3)
+    mb=[0d0,0d0,mass,mrec]
+    pmass=[mb,0d0]
+    i_fks=5
+    j_fks=3
+    rad=[0.999d0,0.999d0,0.137d0]
+    call generate_massive_born_point(rad,born,mb)
+    first_boundary=xiimax_ev/xinorm_ev
+    if(.not.nocntevents.or.any(jac_cnt(0:2).gt.0d0))error stop 'first fold has a soft endpoint'
+    rad(1:2)=modulo(rad(1:2)+0.5d0,1d0)
+    call generate_massive_born_point(rad,born,mb)
+    if(nocntevents.or.jac_cnt(0).le.0d0)error stop 'later fold lacks a soft endpoint'
+    write(*,*)'First/later massive branch boundaries:',first_boundary,xiimax_ev/xinorm_ev
+  end subroutine check_delayed_soft_endpoint
 
   subroutine check_massive_born_measure()
     ! Integrate the actual endpoint measure over both massive branches.

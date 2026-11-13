@@ -767,6 +767,7 @@ c "npNLO".
             born_wgt_mint(0:amp_split_size)=0d0
             virtual_over_born=0d0
             call vs_begin_point
+            call reset_folded_virtual
             born_flow_picked=0
          endif
          MCcntcalled=0
@@ -812,6 +813,11 @@ c 1/proc_map(0,0)*vol1)
          jac=jac/(proc_map(0,0)*vol1)
          call generate_born_contribution(nndim,iconfig,jac,x_local,
      $        phase_space)
+         if (product(ifold(1:ndim)).gt.1.and.
+     $        .not.phase_space%born%event_projection)then
+            write(*,*) 'Folding requires event projection'
+            stop 1
+         endif
          p=phase_space%p
          p_lab=phase_space%p_lab
          p_cms=phase_space%p_cms
@@ -878,12 +884,13 @@ c 1/proc_map(0,0)*vol1)
             call sborn_frame(p_born,wgt1)
             call get_born_flow(born_flow_picked,born_flow_factor)
             if(born_flow_picked.eq.0)goto 900
-! A second massive solution has no soft endpoint, but another sector
-! in an explicit FKS sum can have one at the same Born point. Check
+! A second massive solution has no soft endpoint, but another fold or
+! sector can have one at the same Born point. Check
 ! the physical Born cuts before marking its shared flow negative.
 ! Born/virtual weights still require the reference sector's endpoint.
             born_cuts_for_flow=.false.
-            if(FKSExplicitSum.and.p1_cnt(0,1,0).lt.0d0)then
+            if(p1_cnt(0,1,0).lt.0d0.and.
+     $           phase_space%born%event_projection)then
                p_born_flow(:,1:i_fks-1)=p_born(:,1:i_fks-1)
                p_born_flow(:,i_fks)=0d0
                p_born_flow(:,i_fks+1:nexternal)=
@@ -940,6 +947,11 @@ c the active Born. Starting scales still belong to the shared sample.
             jacPS=1d0/vol1
             call generate_real_phase_space(nndim,iconfig,jacPS,
      $           x_local,phase_space)
+            if (product(ifold(1:ndim)).gt.1.and.
+     $           .not.phase_space%born%event_projection)then
+               write(*,*) 'Folding requires event projection'
+               stop 1
+            endif
             p=phase_space%p
             p_lab=phase_space%p_lab
             p_cms=phase_space%p_cms
