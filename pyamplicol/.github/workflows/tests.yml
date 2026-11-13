@@ -47,6 +47,7 @@ jobs:
         if: matrix.python-version == '3.11'
         run: >-
           python -m pytest
+          tests/unit/test_ci_fetch_loop_reference_ufos.py
           tests/unit/test_ci_memory_watchdog.py
           tests/unit/test_ci_pytest_files.py
           tests/unit/test_conftest_licence_switch.py
@@ -363,10 +364,8 @@ jobs:
       PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       SYMBOLICA_HIDE_BANNER: "1"
-      # The three patched loop UFOs are the shipped model assets.
-      PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_sm
-      PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
-      PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+      # The loop UFO reference copies: the step "Build the loop UFO
+      # reference copies" sets PYAMPLICOL_*_UFO_*REFERENCE.
     steps:
       - name: Skip without the licence
         if: needs.licence.outputs.licensed != 'true'
@@ -416,15 +415,27 @@ jobs:
           python dependencies/install_dependencies.py --dependencies-only
           .venv/bin/python tools/developer/build_loop_native.py stage "$RUNNER_TEMP/loop-native"
           .venv/bin/python -m pip install "mpmath==1.3.0"
-      # Deselected (37 of 3053 ids at aca98b2d1), each listed below in order.
-      # 28 need external inputs this job does not fetch: the sgluon NLO and
-      # HC NLO UFO downloads, the MadGraph source (MG5_aMC v3.7.0 runs) and
-      # the unpatched UFOmodeldb 6ca4b120 copies, all public and pinnable (a
-      # hash-checked fetch step would restore them), the saved PACBIN
-      # controls (workspace only), and the patched UFOmodeldb reference
-      # copies the 2 ew_public_models ids compare the shipped QCD+QED UFOs
-      # with (the TeX-name escape repair makes the shipped files differ from
-      # them; this job's EW references are the shipped copies). 9 fail under PyPI symbolica 3.0.3 and pass
+      - name: Cache the loop UFO reference downloads
+        if: needs.licence.outputs.licensed == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ runner.temp }}/loop-reference-downloads
+          key: loop-reference-${{ hashFiles('tools/ci/fetch_loop_reference_ufos.py') }}
+      - name: Build the loop UFO reference copies
+        if: needs.licence.outputs.licensed == 'true'
+        # Independent of the shipped copies: UFOmodeldb 6ca4b120 (unpatched
+        # and with the issue-1 model patch; G_mu's Python-3 conversion) and
+        # MG5_aMC 3.7.0's loop_sm, pinned by commit and sha256.
+        run: >-
+          python tools/ci/fetch_loop_reference_ufos.py "$RUNNER_TEMP/loop-reference"
+          --downloads "$RUNNER_TEMP/loop-reference-downloads"
+          --github-env "$GITHUB_ENV"
+      # Deselected (19 of 3053 ids at ce855c052), each listed below in order.
+      # 10 need external inputs this job does not fetch: the sgluon NLO and
+      # HC NLO UFO downloads and the MadGraph source (MG5_aMC v3.7.0 runs),
+      # all public and pinnable, and the saved PACBIN controls (workspace
+      # only); the UFOmodeldb copies (patched and unpatched) and loop_sm come
+      # from the reference step above. 9 fail under PyPI symbolica 3.0.3 and pass
       # with the Community build dfe6bd97 (symbolica-dev/symbolica#163): the
       # 6 sdk_extras ids differ at ~1e-30 relative, and the 3 stored-process
       # ids are an identity check (the same call gives other bits in a fresh
@@ -450,16 +461,9 @@ jobs:
           --deselect "tests/unit/test_loop_model_cms.py::test_parameters_and_couplings_equal_mg5_complex_mass_model["
           --deselect tests/unit/test_loop_model_cms.py::test_tree_model_view_equals_mg5_complex_mass_model
           --deselect tests/unit/test_loop_v2_artifact.py::test_legacy_loop_artifacts_are_refused_with_the_reason
-          --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_feynman_gauge_trees_equal_unitary_gauge["
-          --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_slavnov_taylor_identities["
-          --deselect "tests/unit/test_loop_v2_ew_public_models.py::test_shipped_qcd_qed_model_is_the_reference_and_selected_by_name["
           --deselect tests/unit/test_loop_v2_hc.py::test_tree_heft_merges_with_x0_equal_the_madloop_borns
           --deselect tests/unit/test_loop_v2_hc.py::test_hc05_five_point_gluon_r2_is_lowered_and_equals_madloop
           --deselect tests/unit/test_loop_v2_hc.py::test_a_five_point_r2_colour_without_a_vocabulary_form_is_refused_typed
-          --deselect tests/unit/test_loop_v2_msm_manifest.py::test_r2_rule_finds_madloop_omissions_structurally
-          --deselect "tests/unit/test_loop_v2_ufodb_models.py::test_shipped_model_is_patched_ufodb_and_older_copies_share_its_profile["
-          --deselect "tests/unit/test_loop_v2_ufodb_models.py::test_the_issue_1_patch_changes_what_it_says["
-          --deselect tests/unit/test_loop_v2_ufodb_models.py::test_gmu_charge_counterterm_has_its_b_mass_term
           --deselect "tests/unit/test_loop_v2_sdk_extras.py::test_sdk_extras_equal_the_python_api["
           --deselect tests/unit/test_loop_v2_sdk_extras.py::test_sdk_split_poles_in_extended_precision_equal_the_python_api
           --deselect tests/unit/test_loop_v2_sdk_extras.py::test_sdk_leading_colour_resolved_rows_equal_the_python_api
@@ -539,10 +543,8 @@ jobs:
       PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       SYMBOLICA_HIDE_BANNER: "1"
-      # The three patched loop UFOs are the shipped model assets.
-      PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_sm
-      PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
-      PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+      # The loop UFO reference copies: the step "Build the loop UFO
+      # reference copies" sets PYAMPLICOL_*_UFO_*REFERENCE.
     steps:
       - name: Require the licence gate and the loop native runtime
         env:
@@ -603,6 +605,21 @@ jobs:
           python dependencies/install_dependencies.py --dependencies-only
           .venv/bin/python tools/developer/build_loop_native.py stage "$RUNNER_TEMP/loop-native"
           .venv/bin/python -m pip install "mpmath==1.3.0"
+      - name: Cache the loop UFO reference downloads
+        if: needs.licence.outputs.licensed == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ runner.temp }}/loop-reference-downloads
+          key: loop-reference-${{ hashFiles('tools/ci/fetch_loop_reference_ufos.py') }}
+      - name: Build the loop UFO reference copies
+        if: needs.licence.outputs.licensed == 'true'
+        # Independent of the shipped copies: UFOmodeldb 6ca4b120 (unpatched
+        # and with the issue-1 model patch; G_mu's Python-3 conversion) and
+        # MG5_aMC 3.7.0's loop_sm, pinned by commit and sha256.
+        run: >-
+          python tools/ci/fetch_loop_reference_ufos.py "$RUNNER_TEMP/loop-reference"
+          --downloads "$RUNNER_TEMP/loop-reference-downloads"
+          --github-env "$GITHUB_ENV"
       - name: Run the loop-induced default tier (12 GiB RSS limit)
         if: needs.licence.outputs.licensed == 'true'
         env:
