@@ -12,11 +12,23 @@ from types import SimpleNamespace
 spec = importlib.util.spec_from_file_location("private_route_statistics", Path(__file__).resolve().parents[3] / "tools/tirust_benchmark_worker.py")
 routes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(routes)
-sys.modules["tirust_benchmark_worker"] = routes
 ROOT = Path(__file__).resolve().parents[3]
 b_spec = importlib.util.spec_from_file_location("private_benchmark", ROOT / "tools/tirust_benchmark.py")
 bench = importlib.util.module_from_spec(b_spec)
-b_spec.loader.exec_module(bench)
+# Bind the private worker copy only while loading the private benchmark copy, so
+# other test modules in the same process keep importing the real worker module.
+# Later lazy imports inside the benchmark copy resolve the same source from tools/.
+if str(ROOT / "tools") not in sys.path:
+    sys.path.insert(0, str(ROOT / "tools"))
+_shared_worker = sys.modules.get("tirust_benchmark_worker")
+sys.modules["tirust_benchmark_worker"] = routes
+try:
+    b_spec.loader.exec_module(bench)
+finally:
+    if _shared_worker is None:
+        del sys.modules["tirust_benchmark_worker"]
+    else:
+        sys.modules["tirust_benchmark_worker"] = _shared_worker
 
 
 def text(delta=None, before=None, statuses=(0, 0), sequence=2):
@@ -399,13 +411,13 @@ class DriverAndRetentionTests(unittest.TestCase):
             bench.retain_observation(directory, target)
             self.assertEqual((target / routes.ROUTE_STATISTICS_OUTPUT).read_text(), self.route())
 
-    def test_fresh_tirust_cohort_refuses_before_any_preparation_or_execution(self):
-        source = ast.parse((ROOT / "tools/tirust_benchmark_cohorts.py").read_text())
-        function = next(n for n in source.body if isinstance(n, ast.FunctionDef) and n.name == "run")
-        namespace = {}
-        exec(compile(ast.Module(body=[function], type_ignores=[]), "<cohort-guard>", "exec"), namespace)
-        with self.assertRaisesRegex(ValueError, "per-call route adapter"):
-            namespace["run"](SimpleNamespace(backend=9))
+    def test_tirust_cohorts_use_per_call_route_provenance(self):
+        # Backend 9 cohorts are classified from per-call bridge route deltas
+        # (see test_tirust_benchmark_cohorts.TestCompiledTIRustRouteCohorts),
+        # not from return code 219 or batch counters.
+        text = (ROOT / "tools/tirust_benchmark_cohorts.py").read_text()
+        self.assertNotIn("requires a qualified per-call route adapter", text)
+        self.assertIn("routes=args.backend == 9", text)
 
     def test_current_aggregation_ignores_legacy_native_alias_and_checks_qp_card(self):
         legacy = {"backend_precision_counts": {"9:DP": 1}, "native_dp_only": True}

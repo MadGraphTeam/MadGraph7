@@ -29,6 +29,11 @@ from tirust_benchmark_worker import Worker, parse_outputs, validate_status
 ROOT = bench.ROOT
 TEMPLATE = ROOT / "tools/tirust_benchmark_cohorts.f"
 COHORTS = ("dp", "compensated_dp", "qp", "failed")
+# TIRust status 219 is DP transport only. Per-call bridge route deltas split it
+# into binary64-only reductions, double-double tier rescues and MPFR tier rescues.
+TIRUST_COHORTS = ("dp_native", "dp_dd", "dp_mpfr", "qp", "failed")
+ROUTE_SCHEMA = 1
+ROUTE_FILES = ("classification-routes.dat", "cohort-routes.dat")
 SCOPE = ("Diagnostic full-amplitude timing with per-call trace/finite-check overhead; "
          "not an acceptance measurement. DP denotes binary64 reduction arithmetic "
          "with internal method selection included, not absence of every internal retry. "
@@ -37,9 +42,98 @@ SCOPE = ("Diagnostic full-amplitude timing with per-call trace/finite-check over
          "cohort call, but a false flag is not an independent accuracy proof. "
          "Shared-host load is recorded; concurrent jobs can affect these timings.")
 EXTRA = ("cohort-calls.dat", "classification-calls.dat", "classification-values.dat",
-         "classification-timing.dat", "cohort-selection.dat", "warmup-flags.dat")
+         "classification-timing.dat", "cohort-selection.dat", "warmup-flags.dat", *ROUTE_FILES)
 PROTOCOLS = ("tirust_benchmark_cohorts.py", "tirust_benchmark_cohorts.f",
              "tirust_benchmark.py", "tirust_benchmark_worker.py", "tirust_benchmark_compiler.py")
+
+
+def cohorts_for(backend):
+    return TIRUST_COHORTS if backend == 9 else COHORTS
+
+
+def route_hooks(prefix, enabled):
+    """Fixed-form code for the C@COHORT_ROUTE_*@ anchors of the driver template.
+
+    Each snapshot pair brackets exactly one amplitude call. The deltas cover
+    bridge executions; MadLoop clears TIRust numerical caches and its Fortran
+    coefficient cache at every new phase-space point, so a point's deltas
+    include every reduction its amplitude reused.
+    """
+    if not enabled:
+        return {}
+    getter = f"      CALL {prefix}GET_TIRUST_DP_ROUTE_STATISTICS("
+    return {
+        "DECLARATIONS": ("      INTEGER*8 COHORT_RB(20),COHORT_RA(20)\n"
+                         "      INTEGER COHORT_RSB,COHORT_RSA\n"
+                         "      INTEGER*8, ALLOCATABLE :: ROUTEDATA(:,:)"),
+        "BEFORE": getter + "COHORT_RB,COHORT_RSB)",
+        "AFTER": getter + "COHORT_RA,COHORT_RSA)",
+        "CLASS_OPEN": "      OPEN(79,FILE='classification-routes.dat',STATUS='REPLACE')",
+        "CLASS_WRITE": (getter + "COHORT_RA,COHORT_RSA)\n"
+                        "      WRITE(79,'(3I12,20I20)') K,COHORT_RSB,COHORT_RSA,\n"
+                        "     $ COHORT_RA-COHORT_RB"),
+        "CLASS_CLOSE": "      CLOSE(79)",
+        "ALLOCATE": "      ALLOCATE(ROUTEDATA(22,NLOOPS*NSELECT))",
+        "TIMED_STORE": ("      ROUTEDATA(1,NCALL)=COHORT_RSB\n"
+                        "      ROUTEDATA(2,NCALL)=COHORT_RSA\n"
+                        "      ROUTEDATA(3:22,NCALL)=COHORT_RA-COHORT_RB"),
+        "TIMED_WRITE": ("      OPEN(73,FILE='cohort-routes.dat',STATUS='REPLACE')\n"
+                        "      DO I=1,NCALL\n"
+                        "         WRITE(73,'(4I12,20I20)') CALLDATA(1:2,I),\n"
+                        "     $        ROUTEDATA(1:2,I),ROUTEDATA(3:22,I)\n"
+                        "      ENDDO\n"
+                        "      CLOSE(73)"),
+        "DEALLOCATE": "      DEALLOCATE(ROUTEDATA)",
+    }
+
+
+def read_routes(path, keys):
+    """Per-call route rows: key fields, two snapshot statuses, twenty deltas."""
+    width = len(keys[0]) if keys else 0
+    rows = []
+    for line in Path(path).read_text().splitlines():
+        values = list(map(int, line.split()))
+        if len(values) != width + 22:
+            raise ValueError("Malformed per-call route evidence")
+        delta = values[width + 2:]
+        if any(x < 0 for x in delta):
+            raise ValueError("Route counters decreased within one amplitude call")
+        rows.append({"key": tuple(values[:width]), "status_before": values[width],
+                     "status_after": values[width + 1], "delta": delta})
+    if [row["key"] for row in rows] != [tuple(k) for k in keys]:
+        raise ValueError("Missing, reordered or substituted per-call route evidence")
+    return rows
+
+
+def route_category(category, route):
+    """Refine a TIRust 'dp' call by its bridge routes; other categories are kept.
+
+    A refusal, unreported reduction error, unavailable snapshot or a call with
+    no bridge reduction at all cannot certify the arithmetic: it is 'failed'.
+    """
+    if category != "dp":
+        return category
+    delta = route["delta"]
+    if route["status_before"] or route["status_after"]:
+        return "failed"
+    blocks = (delta[:10], delta[10:])
+    if any(block[5] or block[6] for block in blocks):
+        return "failed"
+    if any(block[3] or block[4] for block in blocks):
+        return "dp_mpfr"
+    if any(block[2] for block in blocks):
+        return "dp_dd"
+    if any(block[0] or block[1] for block in blocks):
+        return "dp_native"
+    return "failed"
+
+
+def apply_routes(calls, routes):
+    for call, route in zip(calls, routes):
+        call["route_status"] = [route["status_before"], route["status_after"]]
+        call["route_delta"] = route["delta"]
+        call["category"] = route_category(call["category"], route)
+    return calls
 
 
 def exclusive_json(path, value):
@@ -174,13 +268,19 @@ def classification(directory, backend, count, parent_sha, flags_required=True):
             raise ValueError("Classification values and per-call status disagree")
         if call["finite_and_checked"] and (None in row["coefficients"] or row["accuracy"] is None or row["accuracy"] < 0):
             raise ValueError("Classification finite flag contradicts numerical values")
-    indices = {name: [r["point"] for r in calls if r["category"] == name] for name in COHORTS}
+    if backend == 9:
+        routes = read_routes(Path(directory) / "classification-routes.dat", [(p,) for p in range(1, count + 1)])
+        apply_routes(calls, routes)
+    indices = {name: [r["point"] for r in calls if r["category"] == name] for name in cohorts_for(backend)}
     for group in indices.values():
         validate_indices(group, count)
     result = {"parent_points_sha256": parent_sha, "backend": backend, "calls": calls, "rows": values,
             "indices": indices, "frozen_before_calibration": True,
             "classification_calls_sha256": bench.digest(Path(directory) / "classification-calls.dat"),
             "classification_values_sha256": bench.digest(Path(directory) / "classification-values.dat")}
+    if backend == 9:
+        result["route_schema"] = ROUTE_SCHEMA
+        result["classification_routes_sha256"] = bench.digest(Path(directory) / "classification-routes.dat")
     if flags_required:
         flags_path = Path(directory) / "warmup-flags.dat"
         flags = [list(map(int, line.split())) for line in flags_path.read_text().splitlines()]
@@ -203,6 +303,16 @@ def classification(directory, backend, count, parent_sha, flags_required=True):
 def read_observation(directory, backend, indices, loops, expected, flags_required=True):
     """Retain migrations/failures rather than reclassifying a timed subset."""
     calls = read_calls(Path(directory) / "cohort-calls.dat", backend, indices, loops, flags_required)
+    route_error = None
+    if backend == 9:
+        try:
+            routes = read_routes(Path(directory) / "cohort-routes.dat",
+                                 [(r["iteration"], r["point"]) for r in calls])
+        except (OSError, ValueError) as error:
+            # Keep the failed raw evidence; unobserved routes cannot certify DP.
+            route_error = {"type": type(error).__name__, "message": str(error)}
+            routes = [{"status_before": -1, "status_after": -1, "delta": [0] * 20} for _ in calls]
+        apply_routes(calls, routes)
     migrations = [row for row in calls if row["category"] != expected]
     numerical_error = None
     try:
@@ -219,13 +329,16 @@ def read_observation(directory, backend, indices, loops, expected, flags_require
             row["point"] = indices[row["point"] - 1]
             if row["status"] != final[row["point"]]["status"]:
                 raise ValueError("Final numerical rows disagree with per-call trace")
-    return {"observation": observed, "calls": calls, "migrations": migrations,
-            "numerical_error": numerical_error,
-            "pure_cohort": not migrations and observed is not None,
-            "requested_category": expected, "indices": indices, "loops": loops}
+    result = {"observation": observed, "calls": calls, "migrations": migrations,
+              "numerical_error": numerical_error,
+              "pure_cohort": not migrations and observed is not None,
+              "requested_category": expected, "indices": indices, "loops": loops}
+    if backend == 9:
+        result["route_error"] = route_error
+    return result
 
 
-def render(template, parameters, numerical_source):
+def render(template, parameters, numerical_source, routes=False):
     prefix = parameters["prefix"]
     active = "\n".join(line for line in numerical_source.splitlines()
                        if not line or line[0] not in "Cc*!" )
@@ -244,6 +357,11 @@ def render(template, parameters, numerical_source):
         text = text.replace("@FPE_COMMON@",
             f"      COMMON/{prefix}FPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,\n"
             "     $ FPE_IN_QP_REDUCTION")
+    for name, code in route_hooks(prefix, routes).items():
+        anchor = f"C@COHORT_ROUTE_{name}@"
+        if anchor not in text:
+            raise ValueError(f"Cohort template lacks route anchor {anchor}")
+        text = text.replace(anchor, code)
     return bench.render_worker(text, parameters)
 
 
@@ -291,7 +409,13 @@ def mutable_paths_are_local(output):
         raise ValueError("Mutable numerical card escapes diagnostic directory")
 
 
-def build_clone(original, output, report, env):
+def build_clone(original, output, report, env, routes=False, template=None, renderer=None):
+    """Copy an export, render a diagnostic driver into check_sa.f and relink only it.
+
+    ``template``/``renderer`` select another driver (default: the cohort driver).
+    """
+    template = TEMPLATE if template is None else Path(template)
+    renderer = render if renderer is None else renderer
     compilation = json.loads((original / "compilation.json").read_text())
     generation = json.loads((original / "generation.json").read_text())
     require_generation_binding(generation, compilation)
@@ -329,8 +453,8 @@ def build_clone(original, output, report, env):
     original_sources = bench.generated_sources(output)
     shutil.copy2(directory / "check_sa.f", report / "original-check_sa.f")
     shutil.copy2(directory / "loop_matrix.f", report / "original-loop_matrix.f")
-    driver = render(TEMPLATE.read_text(), compilation["worker_render_parameters"],
-                    (directory / "loop_matrix.f").read_text())
+    driver = renderer(template.read_text(), compilation["worker_render_parameters"],
+                      (directory / "loop_matrix.f").read_text(), routes)
     (directory / "check_sa.f").write_text(driver)
     (report / "check_sa.f").write_text(driver)
     local_env = dict(env, PWD=str(directory))
@@ -354,7 +478,7 @@ def build_clone(original, output, report, env):
               "diagnostic_directory": str(output), "sources": sources,
               "numerical_objects_before": objects, "numerical_objects_after": after_objects,
               "link_inputs_before": dependencies, "link_inputs_after": bench.dependency_inputs(directory),
-              "effective_compiler_flags": after_flags, "template_sha256": bench.digest(TEMPLATE),
+              "effective_compiler_flags": after_flags, "template_sha256": bench.digest(template),
               "driver_sha256": bench.digest(report / "check_sa.f"), "driver_key": driver_key,
               "executable_sha256": bench.digest(directory / "check")}
     exclusive_json(report / "compilation.json", record)
@@ -376,6 +500,7 @@ def measure(worker, report, backend, indices, loops, expected, reference):
     (report / "cohort-selection.dat").write_text(selection)
     (worker.directory / "cohort-selection.dat").write_text(selection)
     (worker.directory / "cohort-calls.dat").unlink(missing_ok=True)
+    (worker.directory / "cohort-routes.dat").unlink(missing_ok=True)
     exclusive_json(report / "request.json", {"backend": backend, "indices": indices,
                    "loops": loops, "category": expected, "utc": bench.utc_now(),
                    "host_before": bench.host_load_snapshot()})
@@ -383,7 +508,7 @@ def measure(worker, report, backend, indices, loops, expected, reference):
         worker.run(loops)
     finally:
         capture(worker.directory, report, ("timing.dat", "values.dat", "timed_status.dat",
-                                           "dimensions.dat", "cohort-calls.dat"))
+                                           "dimensions.dat", "cohort-calls.dat", "cohort-routes.dat"))
     result = read_observation(report, backend, indices, loops, expected)
     result["host_after"] = bench.host_load_snapshot()
     if result["observation"] is not None:
@@ -402,10 +527,8 @@ def measure(worker, report, backend, indices, loops, expected, reference):
 
 
 def run(args):
-    if args.backend == 9:
-        raise ValueError("TIRust precision-cohort timing requires a qualified per-call route adapter; "
-                         "return code 219 and batch counters cannot classify native-DP points")
     bench.campaign_guard("cohort-before")
+    cohorts = cohorts_for(args.backend)
     config = bench.load_config()
     case = next(case for case in config["cases"] if case["id"] == args.case)
     original = bench.output_dir(args.source, case)
@@ -416,6 +539,7 @@ def run(args):
     specification = {**bench.campaign_fields(), "scope": SCOPE, "performance_acceptance_eligible": False, "trace_schema": 2,
                      "case": case, "source": args.source, "backend": args.backend,
                      "repetitions": args.repetitions, "target_seconds": args.target_seconds,
+                     "route_schema": ROUTE_SCHEMA if args.backend == 9 else None,
                      "cpu": args.cpu, "created_utc": bench.utc_now(), "config": config,
                      "machine": bench.machine_identity(args.cpu),
                      "protocols": {name: bench.digest(ROOT / "tools" / name) for name in protocols}}
@@ -433,7 +557,7 @@ def run(args):
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 print("Acquired numerical-tests lock", flush=True)
             output = workspace / "outputs" / args.source / case["id"]
-            directory, compilation = build_clone(original, output, report, env)
+            directory, compilation = build_clone(original, output, report, env, routes=args.backend == 9)
             settings = configure_clone(workspace, args.source, case, [args.backend], config)
             bench.validate_worker_modes(settings)
             points = bench.REPORT / "points" / (case["id"] + ".dat")
@@ -471,14 +595,15 @@ def run(args):
                 stack.enter_context(worker)
             finally:
                 capture(directory, report / "initialization", ("warmup.dat", "warmup-flags.dat", "dimensions.dat",
-                        "classification-calls.dat", "classification-values.dat", "classification-timing.dat"))
+                        "classification-calls.dat", "classification-values.dat", "classification-timing.dat",
+                        "classification-routes.dat"))
             frozen = classification(report / "initialization", args.backend, 100, metadata["sha256"])
             exclusive_json(report / "cohorts.json", frozen)
             results = {name: {"status": "empty", "indices": frozen["indices"][name]}
-                       for name in COHORTS if not frozen["indices"][name]}
+                       for name in cohorts if not frozen["indices"][name]}
             results["failed"] = {"status": "not_timed", "indices": frozen["indices"]["failed"]}
             loops = {}
-            for name in COHORTS[:-1]:
+            for name in cohorts[:-1]:
                 indices = frozen["indices"][name]
                 if not indices:
                     continue
@@ -557,7 +682,8 @@ def validate_report(report):
     original_loop = str(Path(driver_key).with_name("loop_matrix.f"))
     expected_driver = render((report / "tirust_benchmark_cohorts.f").read_text(),
                              original["worker_render_parameters"],
-                             (report / "original-loop_matrix.f").read_text())
+                             (report / "original-loop_matrix.f").read_text(),
+                             spec.get("route_schema") == ROUTE_SCHEMA and spec["backend"] == 9)
     sources = dict(original["sources"], **{driver_key: compiled["driver_sha256"]})
     if (not original.get("numerical_build_from_sources")
             or bench.digest(report / "original-check_sa.f") != original["sources"][driver_key]
@@ -602,7 +728,7 @@ def validate_report(report):
     if schedule["repetitions"] != spec["repetitions"] or spec["repetitions"] < 7:
         raise ValueError("Cohort repetition count changed")
     verified = {}
-    for name in COHORTS:
+    for name in cohorts_for(spec["backend"]):
         indices = manifest["indices"][name]
         if results["cohorts"][name]["indices"] != indices:
             raise ValueError("Cohort membership changed after freezing")

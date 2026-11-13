@@ -1,0 +1,29 @@
+{
+  "campaign_binding": {
+    "id": "tirust-9a781998-1",
+    "manifest_sha256": "bb8b530e57a6fad1dd7f6255213c3274d01ef6aeafbf7c288f9a6a176bec33b6"
+  },
+  "case": {
+    "id": "mixed_uux_ga",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "nfinal": 2,
+    "process": "u u~ > g a [virt=QCD QED]",
+    "role": "control"
+  },
+  "command_sha256": "e394ea0616eb20e988b807599fbdb975fe6f84241f5ce27d3b22393bb421bcf9",
+  "created_utc": "2026-11-13T16:40:35.446041+00:00",
+  "default_chain": "8|6|7|1",
+  "export_environment": {
+    "PYTHONHASHSEED": "0"
+  },
+  "export_environment_binding_version": 1,
+  "parameter_card_sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+  "seconds": 25.546059905085713,
+  "source": "baseline",
+  "source_identity": {
+    "archive_sha256": "c21b0acdd14916a97d2b5c6fbd9b569468ea37f34d8f02e4b3d405675e19853b",
+    "dirty": false,
+    "files_sha256": "274a9ab19bb0bd3a382eeac5680c6aad4bd761093e9c6c8a66078eb3c0002558",
+    "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+  }
+}

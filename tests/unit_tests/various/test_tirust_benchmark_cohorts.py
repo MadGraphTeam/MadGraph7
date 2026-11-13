@@ -364,5 +364,170 @@ class TestCompiledCohorts(unittest.TestCase):
                 self.assertEqual([r["category"] for r in result["migrations"]], ["failed", "failed"])
 
 
+# TIRust stub: point 1 binary64 only, point 2 double-double, point 3 MPFR, point 4
+# refused in DP and rescued by genuine QP. Cumulative route counters as in the bridge.
+STUB9 = """
+module stub_routes
+ integer*8, save :: counters(20)=0
+end module
+subroutine SETPARA(card)
+ character(*) card
+ real*8 mu_r
+ common /scale/ mu_r
+ mu_r=2d0
+end subroutine
+subroutine UPDATE_AS_PARAM()
+end subroutine
+subroutine STUB_GET_ANSWER_DIMENSION(n)
+ integer n
+ n=1
+end subroutine
+subroutine STUB_GET_NSQSO_LOOP(n)
+ integer n
+ n=1
+end subroutine
+subroutine STUB_FORCE_STABILITY_CHECK(force)
+ logical force
+ if (.not.force) stop 91
+end subroutine
+subroutine STUB_GET_TIRUST_DP_ROUTE_STATISTICS(values,status)
+ use stub_routes
+ integer*8 values(20)
+ integer status
+ values=counters
+ status=0
+end subroutine
+subroutine STUB_SLOOPMATRIX_THRES(p,ans,threshold,acc,code)
+ use stub_routes
+ real*8 p(0:3,3),ans(0:3,0:1),threshold,acc(0:1)
+ integer code,point
+ integer NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+ common /STUB_NRS_RETRY_STATS/ NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+ logical FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+ common /STUB_FPE_IN_REDUCTION/ FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+ character*32 setting
+ integer,save::calls=0
+ calls=calls+1
+ point=nint(p(0,3))
+ NRS_RETRY_COUNT=0
+ NRS_RETRY_PASS=0
+ NRS_RETRY_FAIL=0
+ NRS_RETRY_HARD_SKIP=0
+ FPE_IN_DP_REDUCTION=.false.
+ FPE_IN_QP_REDUCTION=.false.
+ ans=1d0
+ acc=1d-12
+ code=219
+ counters(11)=counters(11)+1
+ select case(point)
+ case(1)
+  counters(1)=counters(1)+2
+  call get_environment_variable('COHORT_STUB_TIER',setting)
+  if(len_trim(setting).gt.0.and.calls.gt.8)then
+   counters(3)=counters(3)+1
+   counters(8)=counters(8)+1
+  endif
+ case(2)
+  counters(2)=counters(2)+1
+  counters(3)=counters(3)+1
+  counters(8)=counters(8)+1
+ case(3)
+  counters(1)=counters(1)+1
+  counters(4)=counters(4)+1
+  counters(9)=counters(9)+1
+ case default
+  counters(6)=counters(6)+1
+  counters(9)=counters(9)+1
+  code=323
+ end select
+ if(calls.eq.1)code=139
+end subroutine
+subroutine STUB_EXIT_MADLOOP()
+end subroutine
+"""
+
+
+@unittest.skipUnless(shutil.which("gfortran"), "GNU Fortran required")
+class TestCompiledTIRustRouteCohorts(unittest.TestCase):
+    def build(self, directory):
+        params = {"prefix": "STUB_", "nexternal": 3, "nborn": 1}
+        (directory / "driver.f").write_text(cohort.render(cohort.TEMPLATE.read_text(), params, STUB9, routes=True))
+        (directory / "coupl.inc").write_text("      REAL*8 MU_R\n      COMMON /SCALE/ MU_R\n")
+        (directory / "pmass.inc").write_text("      PMASS=(/0D0,0D0,2D0/)\n")
+        (directory / "stub.f90").write_text(STUB9)
+        subprocess.run([shutil.which("gfortran"), "-fcheck=all", "-o", "check", "stub.f90", "driver.f"],
+                       cwd=directory, check=True, capture_output=True)
+        points = directory / "points.dat"
+        points.write_text("4\n" + "".join(f"1 0 0 1\n1 0 0 -1\n{i} 0 0 0\n" for i in (1, 2, 3, 4)))
+        return points
+
+    def test_routes_split_tirust_dp_and_detect_tier_migration(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            points = self.build(directory)
+            with cohort.Worker([directory / "check", points], directory, directory / "worker.log", timeout=5) as worker:
+                frozen = cohort.classification(directory, 9, 4, "parent-sha")
+                self.assertEqual(frozen["indices"], {"dp_native": [1], "dp_dd": [2], "dp_mpfr": [3],
+                                                     "qp": [4], "failed": []})
+                self.assertEqual(frozen["route_schema"], 1)
+                self.assertEqual(frozen["calls"][1]["route_delta"][:10], [0, 1, 1, 0, 0, 0, 0, 1, 0, 0])
+                self.assertEqual(frozen["calls"][1]["route_delta"][10], 1)
+                result = cohort.measure(worker, directory / "native", 9, [1], 3, "dp_native", frozen["rows"])
+                self.assertTrue(result["pure_cohort"])
+                self.assertEqual(result["category_counts"], {"dp_native": 3})
+                self.assertEqual(len((directory / "native/cohort-routes.dat").read_text().splitlines()), 3)
+            env = dict(os.environ, COHORT_STUB_TIER="1")
+            with cohort.Worker([directory / "check", points], directory, directory / "tier.log", timeout=5, env=env) as worker:
+                frozen = cohort.classification(directory, 9, 4, "parent-sha")
+                self.assertEqual(frozen["indices"]["dp_native"], [1])
+                result = cohort.measure(worker, directory / "tiered", 9, [1], 2, "dp_native", frozen["rows"])
+                self.assertFalse(result["pure_cohort"])
+                self.assertEqual([r["category"] for r in result["migrations"]], ["dp_dd", "dp_dd"])
+
+    def test_untouched_anchors_are_fixed_form_comments(self):
+        text = cohort.render(cohort.TEMPLATE.read_text(), {"prefix": "STUB_", "nexternal": 3, "nborn": 1}, STUB9)
+        self.assertIn("C@COHORT_ROUTE_BEFORE@", text)
+        self.assertNotIn("GET_TIRUST_DP_ROUTE_STATISTICS", text)
+        with self.assertRaisesRegex(ValueError, "route anchor"):
+            cohort.render("@RETRY_COMMON@\n@FPE_COMMON@\n", {"prefix": "STUB_", "nexternal": 3, "nborn": 1},
+                          STUB9, routes=True)
+
+
+class TestRouteCategories(unittest.TestCase):
+    def route(self, primary=(), check=(), statuses=(0, 0)):
+        delta = [0] * 20
+        for index in primary:
+            delta[index] += 1
+        for index in check:
+            delta[10 + index] += 1
+        return {"status_before": statuses[0], "status_after": statuses[1], "delta": delta}
+
+    def test_highest_successful_tier_decides_and_ambiguity_fails(self):
+        for route, expected in ((self.route([0], [1]), "dp_native"),
+                                (self.route([0], [2, 7]), "dp_dd"),
+                                (self.route([2, 7], [3, 8]), "dp_mpfr"),
+                                (self.route([0, 4, 9]), "dp_mpfr"),
+                                (self.route([0, 5]), "failed"),
+                                (self.route([0], [6]), "failed"),
+                                (self.route(), "failed"),
+                                (self.route([0], statuses=(0, 3)), "failed")):
+            with self.subTest(delta=route["delta"]):
+                self.assertEqual(cohort.route_category("dp", route), expected)
+        self.assertEqual(cohort.route_category("qp", self.route([5])), "qp")
+        self.assertEqual(cohort.cohorts_for(9)[-1], "failed")
+        self.assertEqual(cohort.cohorts_for(8), cohort.COHORTS)
+
+    def test_route_rows_must_match_calls(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "routes.dat"
+            path.write_text("1 0 0 " + " ".join(["1"] + ["0"] * 19) + "\n")
+            self.assertEqual(cohort.read_routes(path, [(1,)])[0]["delta"][0], 1)
+            with self.assertRaises(ValueError):
+                cohort.read_routes(path, [(2,)])
+            path.write_text("1 0 0 " + " ".join(["-1"] + ["0"] * 19) + "\n")
+            with self.assertRaises(ValueError):
+                cohort.read_routes(path, [(1,)])
+
+
 if __name__ == "__main__":
     unittest.main()

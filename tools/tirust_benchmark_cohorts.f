@@ -25,6 +25,7 @@ C     Usage: check --masses, or check points.dat protocol.fifo.
 @RETRY_COMMON@
       LOGICAL FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
 @FPE_COMMON@
+C@COHORT_ROUTE_DECLARATIONS@
       INTEGER CLASSCALLS(10)
       REAL*8 CLASS_SECONDS,ESTIMATE
       LOGICAL BENCHMARK_WARM_STATUS
@@ -138,6 +139,7 @@ C     Classify every original point outside the timed cohort interval.
       OPEN(6,FILE='/dev/null',STATUS='OLD')
       OPEN(76,FILE='classification-calls.dat',STATUS='REPLACE')
       OPEN(77,FILE='classification-values.dat',STATUS='REPLACE')
+C@COHORT_ROUTE_CLASS_OPEN@
       CALL SYSTEM_CLOCK(T0)
       DO K=1,NPOINTS
          P=POINTS(:,:,K)
@@ -147,7 +149,9 @@ C     Classify every original point outside the timed cohort interval.
          ANS=0D0
          ACC=-1D0
 @RETRY_RESET@
+C@COHORT_ROUTE_BEFORE@
          CALL @PREFIX@SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+C@COHORT_ROUTE_CLASS_WRITE@
          VALID=0
          IF(ALL(IEEE_IS_FINITE(ANS)).AND.
      $      ALL(IEEE_IS_FINITE(ACC)).AND.ALL(ACC.GE.0D0)) VALID=1
@@ -167,6 +171,7 @@ C     Classify every original point outside the timed cohort interval.
       CLASS_SECONDS=DBLE(T1-T0)/DBLE(RATE)
       CLOSE(76)
       CLOSE(77)
+C@COHORT_ROUTE_CLASS_CLOSE@
       OPEN(76,FILE='classification-timing.dat',STATUS='REPLACE')
       WRITE(76,'(ES26.17E3)') CLASS_SECONDS
       CLOSE(76)
@@ -190,6 +195,7 @@ C     Python freezes and retains this selection before sending RUN.
       IF(IOS.NE.0.OR.NSELECT.LE.0.OR.NSELECT.GT.NPOINTS) GOTO 800
       IF(NLOOPS.GT.10000000/NSELECT) GOTO 800
       ALLOCATE(SELECTED(NSELECT),CALLDATA(10,NLOOPS*NSELECT))
+C@COHORT_ROUTE_ALLOCATE@
       DO IK=1,NSELECT
          READ(76,*,IOSTAT=IOS) SELECTED(IK)
          IF(IOS.NE.0) GOTO 800
@@ -212,11 +218,14 @@ C     Python freezes and retains this selection before sending RUN.
             ANS=0D0
             ACC=-1D0
 @RETRY_RESET@
+C@COHORT_ROUTE_BEFORE@
             CALL @PREFIX@SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+C@COHORT_ROUTE_AFTER@
             VALID=0
             IF(ALL(IEEE_IS_FINITE(ANS)).AND.
      $         ALL(IEEE_IS_FINITE(ACC)).AND.ALL(ACC.GE.0D0)) VALID=1
             NCALL=NCALL+1
+C@COHORT_ROUTE_TIMED_STORE@
 C           Counters reset on each amplitude entry. Buffer absolute counts.
 C           No file I/O is added inside the diagnostic timing interval.
             CALLDATA(:,NCALL)=(/L,K,CODE,NRS_RETRY_COUNT,
@@ -243,6 +252,7 @@ C           No file I/O is added inside the diagnostic timing interval.
          WRITE(73,'(10I12)') CALLDATA(:,I)
       ENDDO
       CLOSE(73)
+C@COHORT_ROUTE_TIMED_WRITE@
       OPEN(73,FILE='values.dat',STATUS='REPLACE')
       DO IK=1,NSELECT
          K=SELECTED(IK)
@@ -265,6 +275,7 @@ C              Born-only columns have no per-order loop accuracy.
       ENDDO
       CLOSE(73)
       DEALLOCATE(SELECTED,CALLDATA)
+C@COHORT_ROUTE_DEALLOCATE@
       WRITE(74,'(A,2I12)') 'DONE ',SEQUENCE,NLOOPS
       FLUSH(74)
       GOTO 100
