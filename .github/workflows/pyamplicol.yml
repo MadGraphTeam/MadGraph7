@@ -108,9 +108,13 @@ jobs:
           tests/unit/test_config_models.py
           tests/unit/test_config_resolution.py
           -q
-      - name: Check the CI memory watchdog
+      - name: Check the CI tools
         if: matrix.python-version == '3.11'
-        run: python -m pytest tests/unit/test_ci_memory_watchdog.py -q
+        run: >-
+          python -m pytest
+          tests/unit/test_ci_fetch_loop_reference_ufos.py
+          tests/unit/test_ci_memory_watchdog.py
+          -q
 
   source-contracts:
     name: Python 3.11 source and release contracts
@@ -287,6 +291,8 @@ jobs:
             tests/unit/test_recurrence_numerical_current_warmup.py \
             tests/unit/test_recurrence_exact_contracted_color.py \
             tests/unit/test_recurrence_direct_intrinsics.py \
+            tests/unit/test_recurrence_export.py \
+            tests/unit/test_run_cargo.py \
             tests/unit/test_config_models.py \
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \
@@ -320,6 +326,12 @@ jobs:
           -q
       - name: Run focused generation and runtime integration (30 GiB RSS limit)
         # The restricted child must run first with an uninitialized parent.
+        # The recurrence export tests keep their generated d d~ > z g
+        # artifacts (both LC layouts, and one with packed payloads) for the
+        # Rust parity test below, which interprets their exports and compares
+        # them with RustiCol bit for bit.
+        env:
+          PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS: ${{ runner.temp }}/recurrence-export
         run: |
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
             .venv/bin/python -m pytest tests/integration/test_spenso_restricted_mode.py -q
@@ -336,6 +348,8 @@ jobs:
             tests/integration/test_adjoint_fft_runtime.py \
             tests/integration/test_generalized_adjoint_fft_runtime.py \
             tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings \
+            tests/integration/test_recurrence_generation_runtime.py::test_lc_recurrence_export_is_resolved_complete_and_static \
+            tests/integration/test_recurrence_export_packed.py \
             -q
       # One-loop support: a light subset of the loop tests (no nightly or
       # provider-campaign tier) and a generate/evaluate smoke of a virtual
@@ -447,6 +461,8 @@ jobs:
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-check
       - name: Test Rust workspace (30 GiB RSS limit)
+        env:
+          RUSTICOL_RECURRENCE_ARTIFACT: ${{ runner.temp }}/recurrence-export/topology-replay:${{ runner.temp }}/recurrence-export/all-flow-union:${{ runner.temp }}/recurrence-export/packed
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-test
