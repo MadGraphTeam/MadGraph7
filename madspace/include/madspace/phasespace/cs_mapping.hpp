@@ -45,6 +45,15 @@ namespace madspace {
  * process does. The last three random numbers are those of the emission,
  * each squared in its variable towards the soft and collinear limits.
  *
+ * A cutoff @f$c@f$ raises the lower end of both variables to @f$c@f$,
+ * @f$y@f$ and @f$z_i@f$, @f$1 - x@f$ and @f$z@f$, and @f$v_i@f$ and
+ * @f$1 - x - v_i@f$ (so @f$1 - x \ge 2 c@f$), the two products of the emitted
+ * parton with the emitter and the spectator over their normalizations, so
+ * that the mapping does not sample the soft and collinear limits of the
+ * dipole below it, the technical cut of a real emission whose matrix element
+ * loses its precision there. An empty range has a weight of zero, as the
+ * inverse has below the cutoff.
+ *
  * Cuts belong to the real emission and the subtraction terms, not to the
  * Born, so the Born mapping must have none, except a floor on
  * @f$\sqrt{\hat s}@f$ when emitter and spectator are in the final state. An
@@ -95,11 +104,14 @@ public:
     ///                   Born has the emitter ij there (one before it if it
     ///                   comes after i), with the mass of j.
     /// @param spectator  Position of the spectator k in the real process.
+    /// @param cutoff     Lower end of the two variables of the dipole, in
+    ///                   [0, 1).
     CSMapping(
         const PhaseSpaceMapping& born,
         std::size_t emitted,
         std::size_t emitter,
-        std::size_t spectator
+        std::size_t spectator,
+        double cutoff = 0.
     );
     /// Number of continuous random inputs: those of the Born mapping and 3.
     std::size_t random_dim() const { return _born.random_dim() + 3; }
@@ -115,6 +127,8 @@ public:
     std::size_t spectator() const { return _spectator; }
     /// The family of the dipole.
     Family family() const { return _family; }
+    /// The lower end of the two variables of the dipole.
+    double cutoff() const { return _cutoff; }
     /// The Born mapping.
     const PhaseSpaceMapping& born() const { return _born; }
     /// The masses of the real emission (those of the Born mapping, zero for
@@ -164,6 +178,7 @@ private:
     std::size_t _incoming;
     std::vector<double> _born_masses;
     std::vector<double> _real_masses;
+    double _cutoff;
 };
 
 /**

@@ -2108,11 +2108,17 @@ PYBIND11_MODULE(_madspace_py, m) {
     );
     cs_mapping
         .def(
-            py::init<const PhaseSpaceMapping&, std::size_t, std::size_t, std::size_t>(),
+            py::init<
+                const PhaseSpaceMapping&,
+                std::size_t,
+                std::size_t,
+                std::size_t,
+                double>(),
             py::arg("born"),
             py::arg("emitted"),
             py::arg("emitter"),
             py::arg("spectator"),
+            py::arg("cutoff") = 0.,
             pydoc::doc("CSMapping::CSMapping")
         )
         .def("random_dim", &CSMapping::random_dim, pydoc::doc("CSMapping::random_dim"))
@@ -2125,6 +2131,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("emitter", &CSMapping::emitter, pydoc::doc("CSMapping::emitter"))
         .def("spectator", &CSMapping::spectator, pydoc::doc("CSMapping::spectator"))
         .def("family", &CSMapping::family, pydoc::doc("CSMapping::family"))
+        .def("cutoff", &CSMapping::cutoff, pydoc::doc("CSMapping::cutoff"))
         .def("born", &CSMapping::born, pydoc::doc("CSMapping::born"))
         .def(
             "real_masses", &CSMapping::real_masses, pydoc::doc("CSMapping::real_masses")

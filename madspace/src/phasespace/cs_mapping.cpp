@@ -109,7 +109,8 @@ CSMapping::CSMapping(
     const PhaseSpaceMapping& born,
     std::size_t emitted,
     std::size_t emitter,
-    std::size_t spectator
+    std::size_t spectator,
+    double cutoff
 ) :
     Mapping(
         "CSMapping", cs_input_types(born), cs_output_types(born), born.condition_types()
@@ -121,7 +122,11 @@ CSMapping::CSMapping(
     _family(family_of(born, emitted, emitter, spectator)),
     _incoming(incoming_count(born)),
     _born_masses(born.external_masses()),
-    _real_masses(masses_of_real(born, emitted)) {
+    _real_masses(masses_of_real(born, emitted)),
+    _cutoff(cutoff) {
+    if (!(cutoff >= 0. && cutoff < 1.)) {
+        throw std::invalid_argument("CSMapping: the cutoff has to be in [0, 1)");
+    }
     // the masses of emitter and spectator, the same in every permutation of
     // the Born mapping, and massless incoming partons
     for (auto real : {emitter, spectator}) {
@@ -167,7 +172,14 @@ Mapping::Result CSMapping::build_forward_impl(
     if (_family == final_final) {
         auto j = born_position(_emitter), k = born_position(_spectator);
         auto [p_i, p_j, p_k, y, z, det_cs] = fb.cs_final_final_radiate(
-            r_1, r_2, r_phi, p.at(j), p.at(k), _born_masses.at(j), _born_masses.at(k)
+            r_1,
+            r_2,
+            r_phi,
+            p.at(j),
+            p.at(k),
+            _born_masses.at(j),
+            _born_masses.at(k),
+            _cutoff
         );
         real.at(_emitted) = p_i;
         real.at(_emitter) = p_j;
@@ -179,7 +191,7 @@ Mapping::Result CSMapping::build_forward_impl(
         auto f_real = initial_emitter ? _spectator : _emitter;
         auto f = born_position(f_real);
         auto [p_a, p_i, p_f, x_cs, z, det_cs] = fb.cs_initial_final_radiate(
-            r_1, r_2, r_phi, p.at(a), p.at(f), x.at(a), _born_masses.at(f)
+            r_1, r_2, r_phi, p.at(a), p.at(f), x.at(a), _born_masses.at(f), _cutoff
         );
         real.at(a) = p_a;
         real.at(_emitted) = p_i;
@@ -190,7 +202,7 @@ Mapping::Result CSMapping::build_forward_impl(
         auto a = _emitter, b = _spectator;
         auto finals = fb.stack(ValueVec(p.begin() + _incoming, p.end()));
         auto [p_a, p_i, p_out, x_cs, v, det_cs] = fb.cs_initial_initial_radiate(
-            r_1, r_2, r_phi, p.at(a), p.at(b), finals, x.at(a)
+            r_1, r_2, r_phi, p.at(a), p.at(b), finals, x.at(a), _cutoff
         );
         real = fb.unstack(p_out);
         real.insert(real.begin(), {p.at(0), p.at(1)});
@@ -235,7 +247,8 @@ NamedVector<Value> CSMapping::build_projection(
             p.at(_emitter),
             p.at(_spectator),
             _born_masses.at(j),
-            _born_masses.at(k)
+            _born_masses.at(k),
+            _cutoff
         );
         born.at(j) = p_ij;
         born.at(k) = p_k;
@@ -253,7 +266,7 @@ NamedVector<Value> CSMapping::build_projection(
         auto f_real = initial_emitter ? _spectator : _emitter;
         auto f = born_position(f_real);
         auto [p_a, p_f, r_1, r_2, r_phi, x_cs, z, det] = fb.cs_initial_final_project(
-            p.at(a), p_i, p.at(f_real), x.at(a), _born_masses.at(f)
+            p.at(a), p_i, p.at(f_real), x.at(a), _born_masses.at(f), _cutoff
         );
         born.at(a) = p_a;
         born.at(f) = p_f;
@@ -271,7 +284,7 @@ NamedVector<Value> CSMapping::build_projection(
         ValueVec finals(born.begin() + _incoming, born.end());
         auto [p_a, p_out, r_1, r_2, r_phi, x_cs, v, det] =
             fb.cs_initial_initial_project(
-                p.at(a), p.at(b), p_i, fb.stack(finals), x.at(a)
+                p.at(a), p.at(b), p_i, fb.stack(finals), x.at(a), _cutoff
             );
         auto finals_born = fb.unstack(p_out);
         std::copy(finals_born.begin(), finals_born.end(), born.begin() + _incoming);

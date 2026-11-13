@@ -199,6 +199,7 @@ KERNELSPEC void kernel_cs_final_final_radiate(
     FIn<T, 1> p_k,
     FIn<T, 0> m_j,
     FIn<T, 0> m_k,
+    FIn<T, 0> cutoff,
     FOut<T, 1> p_i,
     FOut<T, 1> p_j,
     FOut<T, 1> p_k_out,
@@ -206,7 +207,7 @@ KERNELSPEC void kernel_cs_final_final_radiate(
     FOut<T, 0> z,
     FOut<T, 0> det
 ) {
-    FVal<T> ry = r_y, rz = r_z, rphi = r_phi, mj = m_j, mk = m_k;
+    FVal<T> ry = r_y, rz = r_z, rphi = r_phi, mj = m_j, mk = m_k, c = cutoff;
     auto pij = load_mom<T>(p_ij);
     auto pk = load_mom<T>(p_k);
     FourMom<T> q;
@@ -217,12 +218,15 @@ KERNELSPEC void kernel_cs_final_final_radiate(
     auto q2 = mj * mj + mk * mk + two_born;
     auto mk2 = mk * mk;
 
-    // y from its range at fixed Q, then z from its range at that y
+    // y from its range at fixed Q, then z from its range at that y, both
+    // from the cutoff up (an empty range has det = 0)
     auto y_max = cs_final_final_ranges<T>(q2, two_born, mj, mk, FVal<T>(0.)).first;
-    auto yv = y_max * ry * ry;
+    auto y_span = max(y_max - c, 0.);
+    auto yv = c + y_span * ry * ry;
     auto ranges = cs_final_final_ranges<T>(q2, two_born, mj, mk, yv);
-    auto z_min = ranges.second, z_max = ranges.third;
-    auto zv = z_min + (z_max - z_min) * rz * rz;
+    auto z_low = max(ranges.second, c), z_max = ranges.third;
+    auto z_span = max(z_max - z_low, 0.);
+    auto zv = z_low + z_span * rz * rz;
 
     // the spectator, rescaled in the frame of Q (CDST eq. 5.8 inverted), with
     // 2 (p_i + p_j).p_k = two_k
@@ -259,7 +263,7 @@ KERNELSPEC void kernel_cs_final_final_radiate(
     store_mom<T>(p_k_out, pk_out);
     y = yv;
     z = zv;
-    det = ranges.fourth * (1. - yv) * 2. * y_max * ry * 2. * (z_max - z_min) * rz;
+    det = ranges.fourth * (1. - yv) * 2. * y_span * ry * 2. * z_span * rz;
 }
 
 template <typename T>
@@ -269,6 +273,7 @@ KERNELSPEC void kernel_cs_final_final_project(
     FIn<T, 1> p_k,
     FIn<T, 0> m_j,
     FIn<T, 0> m_k,
+    FIn<T, 0> cutoff,
     FOut<T, 1> p_ij,
     FOut<T, 1> p_k_out,
     FOut<T, 0> r_y,
@@ -278,7 +283,7 @@ KERNELSPEC void kernel_cs_final_final_project(
     FOut<T, 0> z,
     FOut<T, 0> det
 ) {
-    FVal<T> mj = m_j, mk = m_k;
+    FVal<T> mj = m_j, mk = m_k, c = cutoff;
     auto pi = load_mom<T>(p_i);
     auto pj = load_mom<T>(p_j);
     auto pk = load_mom<T>(p_k);
@@ -314,9 +319,11 @@ KERNELSPEC void kernel_cs_final_final_project(
     }
 
     auto ranges = cs_final_final_ranges<T>(q2, two_born, mj, mk, yv);
-    auto y_max = ranges.first, z_min = ranges.second, z_max = ranges.third;
-    auto ry = sqrt(max(yv / max(y_max, EPS2), 0.));
-    auto rz = sqrt(max((zv - z_min) / max(z_max - z_min, EPS2), 0.));
+    auto y_span = ranges.first - c;
+    auto z_low = max(ranges.second, c);
+    auto z_span = ranges.third - z_low;
+    auto ry = sqrt(max((yv - c) / max(y_span, EPS2), 0.));
+    auto rz = sqrt(max((zv - z_low) / max(z_span, EPS2), 0.));
     auto frame = cs_frame<T>(pij, mj, pk_out, mk, 0.5 * two_born);
     store_mom<T>(p_ij, pij);
     store_mom<T>(p_k_out, pk_out);
@@ -325,20 +332,24 @@ KERNELSPEC void kernel_cs_final_final_project(
     r_phi = cs_azimuth<T>(pi, frame);
     y = yv;
     z = zv;
-    det = 1. /
-        max(ranges.fourth * (1. - yv) * 2. * y_max * ry * 2. * (z_max - z_min) * rz,
-            EPS2);
+    // none below the cutoff, where the map does not reach
+    det = where(
+        (yv < c) | (zv < c),
+        FVal<T>(0.),
+        1. / max(ranges.fourth * (1. - yv) * 2. * y_span * ry * 2. * z_span * rz, EPS2)
+    );
 }
 
 // the factor of the initial-final phase space (CS eqs. 5.48, 5.72 and CDST eqs.
 // 5.48, 5.79): 2 p_f.p_a / (16 pi^2) dx dz dphi / (2 pi) for the incoming
 // momentum p_a of the real emission, times 1 / x from its momentum fraction,
-// times the Jacobian of r_x and r_z
+// times the Jacobian of r_x and r_z over the ranges x_span of 1 - x and
+// z_span of z
 template <typename T>
 KERNELSPEC FVal<T> cs_initial_final_det(
-    FVal<T> fa, FVal<T> x, FVal<T> x_min, FVal<T> r_x, FVal<T> z_max, FVal<T> r_z
+    FVal<T> fa, FVal<T> x, FVal<T> x_span, FVal<T> r_x, FVal<T> z_span, FVal<T> r_z
 ) {
-    return 2. * fa / (16. * PI * PI) * 2. * (1. - x_min) * r_x * 2. * z_max * r_z / x;
+    return 2. * fa / (16. * PI * PI) * 2. * x_span * r_x * 2. * z_span * r_z / x;
 }
 
 // The emission with an incoming parton a in the Sudakov decomposition
@@ -356,6 +367,7 @@ KERNELSPEC void kernel_cs_initial_final_radiate(
     FIn<T, 1> p_f,
     FIn<T, 0> x_min,
     FIn<T, 0> m_f,
+    FIn<T, 0> cutoff,
     FOut<T, 1> p_a_out,
     FOut<T, 1> p_i,
     FOut<T, 1> p_f_out,
@@ -363,12 +375,13 @@ KERNELSPEC void kernel_cs_initial_final_radiate(
     FOut<T, 0> z,
     FOut<T, 0> det
 ) {
-    FVal<T> rx = r_x, rz = r_z, rphi = r_phi, xmin = x_min, mf = m_f;
+    FVal<T> rx = r_x, rz = r_z, rphi = r_phi, xmin = x_min, mf = m_f, c = cutoff;
     auto pa = load_mom<T>(p_a);
     auto pf = load_mom<T>(p_f);
     auto s = where(pa[3] >= 0., FVal<T>(1.), FVal<T>(-1.));
-    // x from x_min (the momentum fraction of a in the Born) to 1
-    auto omx = (1. - xmin) * rx * rx;
+    // x from x_min (the momentum fraction of a in the Born) to 1 - cutoff
+    auto x_span = max(1. - xmin - c, 0.);
+    auto omx = c + x_span * rx * rx;
     auto xv = 1. - omx;
     FourMom<T> pa_out;
     for (int k = 0; k < 4; ++k) {
@@ -377,11 +390,12 @@ KERNELSPEC void kernel_cs_initial_final_radiate(
     auto a_along = pa_out[0] + s * pa_out[3];
     auto u = cs_beam_components<T>(pf, mf, s);
     auto fa = 0.5 * a_along * u.second;
-    // z = p_i.p_a / (p_i + p_f).p_a from 0 to its largest value at this x,
-    // where k_perp vanishes
+    // z = p_i.p_a / (p_i + p_f).p_a from the cutoff to its largest value at
+    // this x, where k_perp vanishes
     auto mu2 = mf * mf / max(2. * fa, EPS2);
     auto z_max = omx / max(omx + mu2, EPS2);
-    auto zv = z_max * rz * rz;
+    auto z_span = max(z_max - c, 0.);
+    auto zv = c + z_span * rz * rz;
     auto beta = omx * (1. - zv) - zv * mf * mf / max(fa, EPS2);
     auto kt = sqrt(max(2. * zv * (1. - zv) * omx * fa - zv * zv * mf * mf, 0.));
     // the azimuth from the x axis, about the direction of a
@@ -409,7 +423,7 @@ KERNELSPEC void kernel_cs_initial_final_radiate(
     store_mom<T>(p_f_out, pf_out);
     x = xv;
     z = zv;
-    det = cs_initial_final_det<T>(fa, xv, xmin, rx, z_max, rz);
+    det = cs_initial_final_det<T>(fa, xv, x_span, rx, z_span, rz);
 }
 
 template <typename T>
@@ -419,6 +433,7 @@ KERNELSPEC void kernel_cs_initial_final_project(
     FIn<T, 1> p_f,
     FIn<T, 0> x_real,
     FIn<T, 0> m_f,
+    FIn<T, 0> cutoff,
     FOut<T, 1> p_a_out,
     FOut<T, 1> p_f_out,
     FOut<T, 0> r_x,
@@ -428,7 +443,7 @@ KERNELSPEC void kernel_cs_initial_final_project(
     FOut<T, 0> z,
     FOut<T, 0> det
 ) {
-    FVal<T> xr = x_real, mf = m_f;
+    FVal<T> xr = x_real, mf = m_f, c = cutoff;
     auto pa = load_mom<T>(p_a);
     auto pi = load_mom<T>(p_i);
     auto pf = load_mom<T>(p_f);
@@ -459,8 +474,9 @@ KERNELSPEC void kernel_cs_initial_final_project(
     auto xmin = xv * xr;
     auto mu2 = mf * mf / max(2. * fa, EPS2);
     auto z_max = omx / max(omx + mu2, EPS2);
-    auto rx = sqrt(max(omx / max(1. - xmin, EPS2), 0.));
-    auto rz = sqrt(max(zv / max(z_max, EPS2), 0.));
+    auto x_span = 1. - xmin - c, z_span = z_max - c;
+    auto rx = sqrt(max((omx - c) / max(x_span, EPS2), 0.));
+    auto rz = sqrt(max((zv - c) / max(z_span, EPS2), 0.));
     // k_perp = p_i - z (p_i + p_f) transverse to the beam
     auto k1 = (1. - zv) * pi[1] - zv * pf[1];
     auto k2 = (1. - zv) * pi[2] - zv * pf[2];
@@ -472,7 +488,12 @@ KERNELSPEC void kernel_cs_initial_final_project(
     r_phi = where(rphi < 0., rphi + 1., rphi);
     x = xv;
     z = zv;
-    det = 1. / max(cs_initial_final_det<T>(fa, xv, xmin, rx, z_max, rz), EPS2);
+    // none below the cutoff, where the map does not reach
+    det = where(
+        (omx < c) | (zv < c),
+        FVal<T>(0.),
+        1. / max(cs_initial_final_det<T>(fa, xv, x_span, rx, z_span, rz), EPS2)
+    );
 }
 
 // Lambda(K, K~) k of CS eq. 5.143, the Lorentz transformation that takes K to
@@ -495,11 +516,12 @@ KERNELSPEC FourMom<T> cs_lorentz(FourMom<T> k, FourMom<T> kk, FourMom<T> kt) {
 // the factor of the initial-initial phase space (CS eq. 5.151): 2 p_a.p_b /
 // (16 pi^2) dx dv dphi / (2 pi) for the incoming momenta of the real emission,
 // times 1 / x from the momentum fraction of a, times the Jacobian of r_x, r_v
+// over the ranges x_span of 1 - x and v_span of v
 template <typename T>
-KERNELSPEC FVal<T>
-cs_initial_initial_det(FVal<T> s, FVal<T> x, FVal<T> x_min, FVal<T> r_x, FVal<T> r_v) {
-    auto omx = 1. - x;
-    return s / (16. * PI * PI) * 2. * (1. - x_min) * r_x * 2. * omx * r_v / x;
+KERNELSPEC FVal<T> cs_initial_initial_det(
+    FVal<T> s, FVal<T> x, FVal<T> x_span, FVal<T> r_x, FVal<T> v_span, FVal<T> r_v
+) {
+    return s / (16. * PI * PI) * 2. * x_span * r_x * 2. * v_span * r_v / x;
 }
 
 template <typename T>
@@ -511,6 +533,7 @@ KERNELSPEC void kernel_cs_initial_initial_radiate(
     FIn<T, 1> p_b,
     FIn<T, 2> p,
     FIn<T, 0> x_min,
+    FIn<T, 0> cutoff,
     FOut<T, 1> p_a_out,
     FOut<T, 1> p_i,
     FOut<T, 2> p_out,
@@ -518,17 +541,20 @@ KERNELSPEC void kernel_cs_initial_initial_radiate(
     FOut<T, 0> v,
     FOut<T, 0> det
 ) {
-    FVal<T> rx = r_x, rv = r_v, rphi = r_phi, xmin = x_min;
+    FVal<T> rx = r_x, rv = r_v, rphi = r_phi, xmin = x_min, c = cutoff;
     auto pa = load_mom<T>(p_a);
     auto pb = load_mom<T>(p_b);
-    auto omx = (1. - xmin) * rx * rx;
+    // v = p_a.p_i / p_a.p_b and 1 - x - v = p_b.p_i / p_a.p_b from the cutoff
+    // up, so 1 - x from twice the cutoff
+    auto x_span = max(1. - xmin - 2. * c, 0.);
+    auto omx = 2. * c + x_span * rx * rx;
     auto xv = 1. - omx;
     FourMom<T> pa_out;
     for (int k = 0; k < 4; ++k) {
         pa_out[k] = pa[k] / xv;
     }
-    // v = p_a.p_i / p_a.p_b from 0 to 1 - x
-    auto vv = omx * rv * rv;
+    auto v_span = max(omx - 2. * c, 0.);
+    auto vv = c + v_span * rv * rv;
     auto pab = cs_lc_dot<T>(pa_out, 0., pb);
     auto s = 2. * pab;
     // i in the frame of p_a + p_b: energy (1 - x) sqrt(s) / 2, 1 - cos of its
@@ -550,7 +576,7 @@ KERNELSPEC void kernel_cs_initial_initial_radiate(
     store_mom<T>(p_i, pi);
     x = xv;
     v = vv;
-    det = cs_initial_initial_det<T>(s, xv, xmin, rx, rv);
+    det = cs_initial_initial_det<T>(s, xv, x_span, rx, v_span, rv);
 }
 
 template <typename T>
@@ -560,6 +586,7 @@ KERNELSPEC void kernel_cs_initial_initial_project(
     FIn<T, 1> p_i,
     FIn<T, 2> p,
     FIn<T, 0> x_real,
+    FIn<T, 0> cutoff,
     FOut<T, 1> p_a_out,
     FOut<T, 2> p_out,
     FOut<T, 0> r_x,
@@ -569,7 +596,7 @@ KERNELSPEC void kernel_cs_initial_initial_project(
     FOut<T, 0> v,
     FOut<T, 0> det
 ) {
-    FVal<T> xr = x_real;
+    FVal<T> xr = x_real, c = cutoff;
     auto pa = load_mom<T>(p_a);
     auto pb = load_mom<T>(p_b);
     auto pi = load_mom<T>(p_i);
@@ -589,8 +616,9 @@ KERNELSPEC void kernel_cs_initial_initial_project(
         store_mom<T>(p_out[n], cs_lorentz<T>(load_mom<T>(p[n]), k_real, k_born));
     }
     auto xmin = xv * xr;
-    auto rx = sqrt(max(omx / max(1. - xmin, EPS2), 0.));
-    auto rv = sqrt(max(vv / max(omx, EPS2), 0.));
+    auto x_span = 1. - xmin - 2. * c, v_span = omx - 2. * c;
+    auto rx = sqrt(max((omx - 2. * c) / max(x_span, EPS2), 0.));
+    auto rv = sqrt(max((vv - c) / max(v_span, EPS2), 0.));
     auto frame = cs_frame<T>(pb, 0., pa, 0., pab);
     store_mom<T>(p_a_out, pa_out);
     r_x = rx;
@@ -598,7 +626,12 @@ KERNELSPEC void kernel_cs_initial_initial_project(
     r_phi = cs_azimuth<T>(pi, frame);
     x = xv;
     v = vv;
-    det = 1. / max(cs_initial_initial_det<T>(2. * pab, xv, xmin, rx, rv), EPS2);
+    // none below the cutoff, where the map does not reach
+    det = where(
+        (vv < c) | (omx - vv < c),
+        FVal<T>(0.),
+        1. / max(cs_initial_initial_det<T>(2. * pab, xv, x_span, rx, v_span, rv), EPS2)
+    );
 }
 
 // Catani-Seymour dipoles (arXiv:hep-ph/9605323, Sec. 5 and 10; masses:

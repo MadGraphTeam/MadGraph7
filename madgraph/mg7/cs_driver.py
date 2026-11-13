@@ -35,11 +35,20 @@ Born of its own subprocess, the spin correlation in the factorized form
 azimuthal part of an FKS configuration whose mother is the emitter. The
 real emission has the cuts and scales of the real process, each dipole those
 of its Born, and both the densities at the momentum fractions of the real
-emission. An event where two partons i and j of one of its dipoles have
-2 p_i . p_j below technical_cut times s_hat has neither the real emission
-nor the dipoles, since the real emission of the Fortran in double precision
-loses digits as 1 / xi^2 towards the soft limit (a relative error of 1e-3 at
-an energy fraction xi = 5e-7 of the soft gluon in g g > t t~ g).
+emission.
+
+The technical cut is the cutoff of the CSMapping of every channel: a channel
+covers only the events where both variables of its dipole (y and z_i, 1 - x
+and z, v and 1 - x - v) are at or above technical_cut, and its events are
+never cut afterwards, as the FKS configurations of MadFKS cover xi and 1 - y
+from 1e-6 up (genps_fks.f). The real emission minus the dipoles then has the
+cut sum_c w_c Theta_c of the channel weights w_c and of the regions Theta_c
+of the channels, zero where i is soft below the cut and of the order of the
+cut where it is collinear, since there the weights of the other channels
+vanish with the invariant. It keeps the real emission of the Fortran in
+double precision away from the soft limit, towards which it loses digits as
+1 / xi^2 (by 1e-4 to 1e-3 at an energy fraction xi = 5e-7 of the soft gluon
+of g g > t t~ g, depending on the angle).
 
 Not covered yet: decays, PDF schemes other than MSbar, user scales and the
 photon cuts.
@@ -79,6 +88,27 @@ STREAMS = ("nbody", "real")
 def minkowski(a, b):
     """The Minkowski product of the four-vectors a and b (..., 4)."""
     return a[..., 0] * b[..., 0] - (a[..., 1:] * b[..., 1:]).sum(-1)
+
+
+def dipole_variables(momenta, entry):
+    """The two variables of the CSMapping of a dipole (an entry of the cs
+    block) at real emissions (batch, n + 1, 4): y and z_i (ff), 1 - x and z
+    (fi, if), v and 1 - x - v (ii), the lower ends of which its cutoff
+    raises."""
+    i, j, k = entry["i"], entry["j"], entry["k"]
+
+    def product(a, b):
+        return minkowski(momenta[:, a], momenta[:, b])
+
+    if entry["family"] == "ff":
+        pipj, pipk, pjpk = product(i, j), product(i, k), product(j, k)
+        return pipj / (pipj + pipk + pjpk), pipk / (pipk + pjpk)
+    if entry["family"] in ("fi", "if"):
+        a, f = (k, j) if entry["family"] == "fi" else (j, k)
+        pipa, pfpa, pipf = product(i, a), product(f, a), product(i, f)
+        return pipf / (pipa + pfpa), pipa / (pipa + pfpa)
+    pipa, pipb, papb = product(i, j), product(i, k), product(j, k)
+    return pipa / papb, pipb / papb
 
 
 def spin_configuration(provider, leg):
@@ -521,7 +551,9 @@ class CSRealIntegrand:
                 born_mapping = ms.PhaseSpaceMapping(
                     topology, self.energy, leptonic=leptonic
                 )
-                mapping = ms.CSMapping(born_mapping, d["i"], d["j"], d["k"])
+                mapping = ms.CSMapping(
+                    born_mapping, d["i"], d["j"], d["k"], cutoff=technical_cut
+                )
                 if b == 0:
                     mappings.append(mapping)
                 self.channels.append((len(self.dipoles), b))
@@ -532,7 +564,6 @@ class CSRealIntegrand:
             self.dipoles.append(dipole)
             kernels.append(d["kernel"])
             symmetry.append(d["symmetry"])
-        self.pairs = np.array([(d.entry["i"], d.entry["j"]) for d in self.dipoles])
         self.subtraction = Runtime(
             ms.CSDipoles(
                 mappings,
@@ -574,6 +605,16 @@ class CSRealIntegrand:
         c1, c2 = self.densities[0].column, self.densities[1].column
         return sum(f1[:, c1[a]] * f2[:, c2[b]] for a, b, *_ in self.flavors)
 
+    def covered(self, index, momenta):
+        """Whether real emissions are in the region of the channel index, both
+        variables of its dipole at or above the technical cut."""
+        keep = np.ones(len(momenta), dtype=bool)
+        dipole = self.dipoles[self.channels[index][0]]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for variable in dipole_variables(momenta, dipole.entry):
+                keep &= variable >= self.technical_cut
+        return keep
+
     def dipole_value(self, dipole, cm, k_t, color_weight, spin_weight, born):
         """-D / g_s^2 per Born order of a dipole (points, b) at its Born in
         the partonic center-of-mass frame cm, with k_t in the same frame,
@@ -604,14 +645,16 @@ class CSRealIntegrand:
         momenta, x1, x2, det = [np.array(np.from_dlpack(t)) for t in out]
         x1 = np.broadcast_to(x1, count).copy()
         x2 = np.broadcast_to(x2, count).copy()
-        return self.weights(index, momenta, x1, x2, det)
+        return self.weights(index, momenta, x1, x2, det, covered=det != 0)
 
-    def weights(self, index, momenta, x1, x2, det):
+    def weights(self, index, momenta, x1, x2, det, covered=None):
         """The weights of the channel index at real emissions (batch, n + 1, 4)
         in the lab frame, with their momentum fractions and the Jacobian det
         of their mapping, and the parts of the histograms: the real emission
         and its weight, the Borns of the dipoles in the order of their matrix
-        elements and their weights."""
+        elements and their weights. covered says which events are in the
+        region of the channel (all those of its mapping), from the variables
+        of its dipole (covered) if None."""
         count = len(momenta)
         m_channel, b_channel = self.channels[index]
         valid = (det != 0) & np.isfinite(det)
@@ -620,11 +663,9 @@ class CSRealIntegrand:
         incoming = momenta[:, 0] + momenta[:, 1]
         s_hat = minkowski(incoming, incoming)
         valid &= s_hat > 0
-        # the technical cut on the pairs i, j of the dipoles
-        pairs = 2 * np.abs(
-            minkowski(momenta[:, self.pairs[:, 0]], momenta[:, self.pairs[:, 1]])
-        )
-        keep = valid & (pairs >= self.technical_cut * s_hat[:, None]).all(1)
+        if covered is None:
+            covered = self.covered(index, momenta)
+        keep = valid & covered
         projected = self.subtraction(momenta, x1, x2)
         ungated = self.ungated(momenta, x1, x2)["color_weight"]
         rho = np.abs(ungated)

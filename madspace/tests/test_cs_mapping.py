@@ -6,9 +6,9 @@ Catani and Seymour (hep-ph/9605323) and of Catani, Dittmaier, Seymour and
 Trocsanyi (hep-ph/0201036), written out here with numpy. The tests cover the
 four families of dipoles with massless and massive emitters and spectators:
 the round trip through the mapping and its inverse, the incoming momenta of
-the real emission, its soft limit, the mirror of the beams, and that every
+the real emission, its soft limit, the mirror of the beams, that every
 dipole covers the phase space of the real process once, momentum fractions
-included.
+included, and the cutoff on the two variables of the dipole.
 """
 
 import math
@@ -278,6 +278,80 @@ def test_soft_limit(masses, leptonic, beam_rapidity, emitted, emitter, spectator
     np.testing.assert_allclose(x1, x1_born, rtol=1e-14)
     np.testing.assert_allclose(x2, x2_born, rtol=1e-14)
     np.testing.assert_array_equal(det, 0.0)
+
+
+def dipole_variables(momenta, masses, i, j, k):
+    """The two variables of the dipole V_ij,k at real emissions, y and z_i
+    (final-final), 1 - x and z (one incoming), v and 1 - x - v
+    (initial-initial), from the products of the momenta."""
+    p = momenta
+    if j >= 2 and k >= 2:
+        pipj = lc_dot(p[:, j], masses[j], p[:, i])
+        pipk = lc_dot(p[:, k], masses[k], p[:, i])
+        pjpk = dot(p[:, j], p[:, k])
+        return pipj / (pipj + pipk + pjpk), pipk / (pipk + pjpk)
+    if (j < 2) != (k < 2):
+        a, f = (j, k) if j < 2 else (k, j)
+        pipa = lc_dot(p[:, i], 0.0, p[:, a])
+        pfpa = lc_dot(p[:, f], masses[f], p[:, a])
+        pipf = lc_dot(p[:, f], masses[f], p[:, i])
+        return pipf / (pipa + pfpa), pipa / (pipa + pfpa)
+    pipa = lc_dot(p[:, i], 0.0, p[:, j])
+    pipb = lc_dot(p[:, i], 0.0, p[:, k])
+    papb = lc_dot(p[:, j], 0.0, p[:, k])
+    return pipa / papb, pipb / papb
+
+
+CUTOFF = 0.02
+
+
+@pytest.mark.parametrize(
+    "masses,leptonic,beam_rapidity,emitted,emitter,spectator", LAYOUTS, ids=IDS
+)
+def test_cutoff(masses, leptonic, beam_rapidity, emitted, emitter, spectator):
+    """With a cutoff both variables of the dipole stay above it, also at
+    random numbers of zero, the map and its inverse agree, the inverse gives
+    zero below the cutoff, and the dipole covers the phase space of the real
+    process where both variables are above it, the region of the mapping
+    without a cutoff there."""
+    batch = 200000
+    seed = 70 + emitted + 2 * emitter + 3 * spectator
+    born = born_mapping(masses, leptonic, beam_rapidity)
+    mapping = ms.CSMapping(born, emitted, emitter, spectator, cutoff=CUTOFF)
+    plain = ms.CSMapping(born, emitted, emitter, spectator)
+    assert mapping.cutoff() == CUTOFF and plain.cutoff() == 0.0
+    m = real_masses(masses, emitted)
+    # the floors and the round trip at the 2000 points of test_round_trip,
+    # the random numbers of the emission to 1e-10 (1e-12 there) since
+    # var - cutoff loses the digits of cutoff / (var - cutoff)
+    zeros = 200
+    r = random_numbers(mapping, 2000, seed=seed, low=0.02, high=0.98)
+    r[:zeros, -3:-1] = 0.0
+    momenta, x1, x2, det = forward(mapping, r)
+    first, second = dipole_variables(momenta, m, emitted, emitter, spectator)
+    np.testing.assert_array_equal(det[:zeros], 0.0)
+    assert (np.minimum(first, second) >= CUTOFF * (1 - 1e-9)).all()
+    # the round trip as in test_round_trip, away from r = 0 and from the
+    # empty ranges of a Born fraction above 1 - cutoff (det = 0)
+    trip = det > 0
+    trip[:zeros] = False
+    assert trip[zeros:].mean() > 0.9
+    r_inv, det_inv = inverse(mapping, momenta[trip], x1[trip], x2[trip])
+    np.testing.assert_allclose(r_inv[:, -3:], r[trip, -3:], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(det[trip] * det_inv, 1.0, rtol=1e-9)
+
+    # the phase space of the mapping without the cutoff, at random numbers of
+    # the emission over the full range
+    r = random_numbers(mapping, batch, seed=seed + 1)
+    *_, det = forward(mapping, r)
+    r_plain = random_numbers(plain, batch, seed=seed + 2)
+    momenta, x1, x2, det_plain = forward(plain, r_plain)
+    first, second = dipole_variables(momenta, m, emitted, emitter, spectator)
+    below = np.minimum(first, second) < CUTOFF
+    assert 0 < below.mean() < 0.9
+    _, det_inv = inverse(mapping, momenta[below], x1[below], x2[below])
+    np.testing.assert_array_equal(det_inv, 0.0)
+    assert_same_mean(det, np.where(below, 0.0, det_plain))
 
 
 def assert_same_mean(weight, weight_ref):

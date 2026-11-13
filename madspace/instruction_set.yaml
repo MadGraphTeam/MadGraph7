@@ -4353,10 +4353,10 @@ cs_final_final_radiate:
   inputs:
     - name: r_y
       type: [float]
-      desc: "random number for y, y = y_max r_y^2"
+      desc: "random number for y, y = c + (y_max - c) r_y^2 with c the cutoff"
     - name: r_z
       type: [float]
-      desc: "random number for z, z = z_min + (z_max - z_min) r_z^2"
+      desc: "random number for z, z = z_low + (z_max - z_low) r_z^2 with z_low = max(z_min, c)"
     - name: r_phi
       type: [float]
       desc: "random number for the azimuth of i"
@@ -4372,6 +4372,9 @@ cs_final_final_radiate:
     - name: m_k
       type: [float]
       desc: "mass of the spectator"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of y and z, above which the map stays (det = 0 where their range is empty)"
   outputs:
     - name: p_i
       type: [float, 4]
@@ -4410,6 +4413,9 @@ cs_final_final_project:
     - name: m_k
       type: [float]
       desc: "mass of the spectator"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of y and z of the forward map, det = 0 below it"
   outputs:
     - name: p_ij
       type: [float, 4]
@@ -4441,10 +4447,10 @@ cs_initial_final_radiate:
   inputs:
     - name: r_x
       type: [float]
-      desc: "random number for x, 1 - x = (1 - x_min) r_x^2"
+      desc: "random number for x, 1 - x = c + (1 - x_min - c) r_x^2 with c the cutoff"
     - name: r_z
       type: [float]
-      desc: "random number for z, z = z_max r_z^2"
+      desc: "random number for z, z = c + (z_max - c) r_z^2"
     - name: r_phi
       type: [float]
       desc: "random number for the azimuth of i"
@@ -4460,6 +4466,9 @@ cs_initial_final_radiate:
     - name: m_f
       type: [float]
       desc: "mass of the final-state parton"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of 1 - x and z, above which the map stays (det = 0 where their range is empty)"
   outputs:
     - name: p_a_out
       type: [float, 4]
@@ -4498,6 +4507,9 @@ cs_initial_final_project:
     - name: m_f
       type: [float]
       desc: "mass of the final-state parton"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of 1 - x and z of the forward map, det = 0 below it"
   outputs:
     - name: p_a_out
       type: [float, 4]
@@ -4529,10 +4541,10 @@ cs_initial_initial_radiate:
   inputs:
     - name: r_x
       type: [float]
-      desc: "random number for x, 1 - x = (1 - x_min) r_x^2"
+      desc: "random number for x, 1 - x = 2 c + (1 - x_min - 2 c) r_x^2 with c the cutoff"
     - name: r_v
       type: [float]
-      desc: "random number for v, v = (1 - x) r_v^2"
+      desc: "random number for v, v = c + (1 - x - 2 c) r_v^2"
     - name: r_phi
       type: [float]
       desc: "random number for the azimuth of i"
@@ -4548,6 +4560,9 @@ cs_initial_initial_radiate:
     - name: x_min
       type: [float]
       desc: "smallest x, the momentum fraction of the Born emitter in its beam"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of v and 1 - x - v, above which the map stays (det = 0 where their range is empty)"
   outputs:
     - name: p_a_out
       type: [float, 4]
@@ -4586,6 +4601,9 @@ cs_initial_initial_project:
     - name: x_real
       type: [float]
       desc: "momentum fraction of the emitter in its beam"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of v and 1 - x - v of the forward map, det = 0 below it"
   outputs:
     - name: p_a_out
       type: [float, 4]

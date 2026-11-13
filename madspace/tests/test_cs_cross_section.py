@@ -27,7 +27,7 @@ import tempfile
 
 import numpy as np
 import pytest
-from madgraph.mg7.cs_driver import STREAMS, CSRun, minkowski
+from madgraph.mg7.cs_driver import STREAMS, CSRun, dipole_variables
 from madgraph.mg7.fks_provider import boost_z, partonic_rapidity
 from madgraph.mg7.nlo_driver import Runtime
 
@@ -315,27 +315,49 @@ def test_real_limits(real_stream):
 
 @needs_outputs
 def test_technical_cut(real_stream):
-    """An event with 2 p_i . p_j below the technical cut times s_hat for a
-    pair of its dipoles has neither the real emission nor the dipoles: the
-    soft gluons of 1e-6 GeV of the reference, where the real of the Fortran
-    is off, and none of the events away from the limits."""
+    """The technical cut is the region of each channel, both variables of its
+    dipole at or above it, the cutoff of its CSMapping. An event outside it
+    has neither the real emission nor the dipoles in that channel, the soft
+    gluons of 1e-6 GeV of the reference, where the real of the Fortran is
+    off, are outside every channel and the events away from the limits
+    inside all. The events of the mapping of a channel are in its region and
+    none is cut, also at random numbers of the emission piled towards
+    zero."""
     data = dipole_reference("pp_ttx")
     run = real_stream(1e-6)
     points = [p for p in data["points"] if p["real"] == 0]
     integrand = real_integrand(run, data["reals"][0]["pdgs"])
-    out = reference_weights(integrand, points)
     momenta = np.array([p["momenta"] for p in points])
-    pairs = integrand.pairs
-    invariants = 2 * np.abs(
-        minkowski(momenta[:, pairs[:, 0]], momenta[:, pairs[:, 1]])
-    ).min(1)
-    s_hat = minkowski(momenta[:, 0] + momenta[:, 1], momenta[:, 0] + momenta[:, 1])
-    cut = invariants < 1e-6 * s_hat
+    x1 = np.array([p["x1"] for p in points])
+    x2 = np.array([p["x2"] for p in points])
     soft = np.array(
         [p["ray"]["limit"] == "soft" and p["ray"]["lam"] == 1e-4 for p in points]
     )
     none = np.array([p["ray"]["limit"] == "none" for p in points])
-    assert cut[soft].all() and not cut[none].any()
-    assert (out["real_weight"][cut] == 0).all()
-    assert (out["dipole_weights"][cut] == 0).all()
-    assert (out["real_weight"][none] != 0).all()
+    rng = np.random.default_rng(11)
+    for index in range(integrand.channel_count):
+        dipole = integrand.dipoles[integrand.channels[index][0]]
+        smallest = np.minimum(*dipole_variables(momenta, dipole.entry))
+        covered = integrand.covered(index, momenta)
+        np.testing.assert_array_equal(covered, smallest >= 1e-6)
+        assert not covered[soft].any() and covered[none].all()
+        out = integrand.weights(index, momenta, x1, x2, np.ones(len(points)))
+        assert (out["real_weight"][~covered] == 0).all()
+        assert (out["dipole_weights"][~covered] == 0).all()
+        assert (out["real_weight"][none] != 0).all()
+
+        x = rng.random((2000, integrand.channel_dimension(index)))
+        x[:, -3:-1] **= 4
+        mapped = [
+            np.array(np.from_dlpack(t)) for t in integrand.forward[index].call([x])
+        ]
+        momenta_mapped, x1_mapped, x2_mapped, det = mapped
+        inside = det > 0
+        assert inside.mean() > 0.9
+        smallest = np.minimum(*dipole_variables(momenta_mapped, dipole.entry))
+        # products in the lab frame, with the digits of p_i.p_a for i close to
+        # the beam (test_cs_mapping checks the cutoff to 1e-9 with products
+        # from the mass shells)
+        assert (smallest[inside] >= 1e-6 * (1 - 1e-6)).all()
+        out = integrand.evaluate(index, x, None, None, None, None)
+        assert (out["real_weight"][inside] != 0).all(), index
