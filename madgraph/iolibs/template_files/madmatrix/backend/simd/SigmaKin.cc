@@ -1460,6 +1460,8 @@ namespace madmatrix
 #endif
           }
           const int ievt = ievt00 + ieppV;
+          allselcol[ievt] = 0; // no color when the allowed jamp2 sum vanishes
+          if( targetamp[ncolor_flow - 1] <= 0 ) continue;
           for( int icolC = 0; icolC < ncolor_flow; icolC++ )
           {
             if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )

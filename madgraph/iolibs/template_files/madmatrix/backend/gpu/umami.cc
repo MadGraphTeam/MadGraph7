@@ -124,6 +124,7 @@ namespace
     unsigned int* flavor_indices,
     int* helicity_given,
     unsigned int* diagram_given,
+    int* invalid_diagram,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -145,7 +146,8 @@ namespace
     if( diagram_in )
     {
       const int diagram = diagram_in[i_in + offset];
-      // Keep invalid indices out of the color table; copy_outputs flags them.
+      // Report a batch error on the host before evaluating or writing outputs.
+      if( diagram != -1 && !selectable_diagram( diagram ) ) atomicExch( invalid_diagram, 1 );
       diagram_given[i_event] = ( selectable_diagram( diagram ) ? diagram + 1 : 0 );
     }
     if( helicity_in )
@@ -171,7 +173,6 @@ namespace
     int* color_out,
     int* helicity_out,
     const int* helicity_in,
-    const int* diagram_in,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -190,18 +191,6 @@ namespace
       }
     }
 
-    if( diagram_in && diagram_in[i_event + offset] != -1 &&
-        !selectable_diagram( diagram_in[i_event + offset] ) )
-    {
-      if( m2_out ) m2_out[i_event + offset] = 0;
-      if( amp2_out )
-        for( int d = 0; d < ProcessData::ndiagrams; ++d )
-          amp2_out[d * stride + i_event + offset] = 0;
-      if( helicity_out ) helicity_out[i_event + offset] = -1;
-      if( diagram_out ) diagram_out[i_event + offset] = -1;
-      if( color_out ) color_out[i_event + offset] = -1;
-      return;
-    }
     if( m2_out ) m2_out[i_event + offset] = matrix_elements[i_event];
     if( amp2_out )
     {
@@ -619,11 +608,11 @@ extern "C"
     fptype *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
     fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
-    int *helicity_index, *color_index, *helicity_given;
+    int *helicity_index, *color_index, *helicity_given, *invalid_diagram;
     unsigned int *flavor_indices, *diagram_index, *diagram_given;
 
     std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 18> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 19> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -634,6 +623,7 @@ extern "C"
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
         {reinterpret_cast<void**>(&diagram_given), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&invalid_diagram), sizeof( int )},
         // The color flow is picked among ncolor_flow structures, which is more than
         // ncolor when the color sum runs on the DDM basis
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
@@ -649,9 +639,9 @@ extern "C"
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
-    constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
+    constexpr std::size_t ALIGNMENT = std::max( { sizeof( double ), sizeof( fptype ), sizeof( fptype_momenta ), sizeof( int ) } );
     for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
+        std::size_t aligned_size = (size + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
         total_size += aligned_size;
     }
     uint8_t* buffer;
@@ -659,11 +649,12 @@ extern "C"
     gpuMallocAsync( &buffer, total_size, gpu_stream );
     std::size_t buf_offset = 0;
     for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + 7) / 8 * 8;
+        std::size_t aligned_size = (size + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
         *ptr = buffer + buf_offset;
         buf_offset += aligned_size;
     }
 
+    if( diagram_in ) gpuMemsetAsync( invalid_diagram, 0, sizeof( int ), gpu_stream );
     copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       momenta_in,
       random_helicity_in,
@@ -681,9 +672,21 @@ extern "C"
       flavor_indices,
       helicity_given,
       diagram_given,
+      invalid_diagram,
       count,
       stride,
       offset );
+    if( diagram_in )
+    {
+      int invalid = 0;
+      gpuStreamSynchronize( gpu_stream );
+      gpuMemcpy( &invalid, invalid_diagram, sizeof( int ), gpuMemcpyDeviceToHost );
+      if( invalid )
+      {
+        gpuFreeAsync( buffer, gpu_stream );
+        return UMAMI_ERROR;
+      }
+    }
     computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( instance->deviceParams.arg( params ), g_s, couplings );
     checkGpu( gpuPeekAtLastError() );
 
@@ -746,7 +749,6 @@ extern "C"
       color_out,
       helicity_out,
       helicity_in,
-      diagram_in,
       count,
       stride,
       offset );

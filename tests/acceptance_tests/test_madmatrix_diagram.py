@@ -42,7 +42,7 @@ def check_library(library, card, color_data, flavor_count, backend, tolerance):
                                if flag == 'true'}
     assert len(masks) > 1
 
-    def evaluate(flavors, diagrams=None, random_diagram=0.01, invalid=False):
+    def evaluate(flavors, diagrams=None, random_diagram=0.01, invalid=False, alpha_s=None):
         n, offset = len(flavors), 2
         stride = n + 5
         mom = (ct.c_double * (16 * stride))()
@@ -58,6 +58,9 @@ def check_library(library, card, color_data, flavor_count, backend, tolerance):
         rnddiag = (ct.c_double * stride)(*([random_diagram] * stride))
         rndcol = (ct.c_double * stride)(*[(i + 0.5) / stride for i in range(stride)])
         inputs, in_keys = [mom, flav, rndcol, rnddiag], [0, 2, 3, 5]
+        if alpha_s is not None:
+            inputs.append((ct.c_double * stride)(*([alpha_s] * stride)))
+            in_keys.append(1)
         if diagrams is not None:
             given = (ct.c_int * stride)(*([-1] * offset + diagrams + [-1] * 3))
             inputs.append(given)
@@ -83,15 +86,16 @@ def check_library(library, card, color_data, flavor_count, backend, tolerance):
                 (ct.c_void_p * len(inputs))(*pointers[:len(inputs)]),
                 ct.c_size_t(4), (ct.c_int * 4)(0, 1, 2, 4),
                 (ct.c_void_p * 4)(*pointers[len(inputs):]))
-            if invalid and not gpu:
-                assert status == 1, status  # UMAMI_ERROR, before any output is written
-                return
-            assert status == 0, status
+            assert status == (1 if invalid else 0), status
             if gpu:
                 assert runtime[gpu + 'DeviceSynchronize']() == 0
                 for pointer, host in zip(pointers[len(inputs):], outputs):
                     assert runtime[gpu + 'Memcpy'](ct.c_void_p(ct.addressof(host)), ct.c_void_p(pointer),
                                                    ct.c_size_t(ct.sizeof(host)), 2) == 0
+            if invalid:
+                assert all(value == -99 for output in outputs for value in output), \
+                    'invalid diagram must fail the whole batch without writing outputs'
+                return
             for output in outputs:
                 assert output[0] == output[1] == output[stride - 1] == -99
             return [[output[i + offset] for i in range(n)] for output in outputs[:1]] + [
@@ -132,10 +136,10 @@ def check_library(library, card, color_data, flavor_count, backend, tolerance):
         # A later call without the input must resume sampling, with no retained override.
         equivalent(evaluate(flavors), reference)
         for diagram in [-2, ndiagrams.value] + sorted(set(range(ndiagrams.value)) - masks.keys()):
-            result = evaluate([0], [diagram], invalid=True)
-            if gpu:
-                assert result[0] == [0.] and result[1] == [[0.] * ndiagrams.value]
-                assert result[2] == result[3] == [-1]
+            evaluate([0, 0], [chosen[1], diagram], invalid=True)
+        equivalent(evaluate(flavors), reference)  # the handle survives a rejected batch
+        zero = evaluate(flavors, [chosen[1]] * len(flavors), alpha_s=0.)
+        assert zero[0] == [0.] * len(flavors) and zero[2] == [-1] * len(flavors), (zero[0], zero[2])
         print('%s: 19 strided events, %s flavors; diagrams, colors and unchanged |M|^2/amp2 passed'
               % (backend, flavor_count))
     finally:
@@ -149,7 +153,8 @@ class MadMatrixDiagramTest(unittest.TestCase):
 
     def test_madmatrix_diagram(self):
         self.check_processes([('scalar', 'd', 1e-12), ('simd_128', 'd', 1e-12),
-                           ('simd_128', 'm', 1e-6)])
+                             ('simd_128', 'm', 1e-6), ('scalar', 'f', 1e-5),
+                             ('simd_128', 'f', 1e-5)])
 
     def test_madmatrix_diagram_gpu(self):
         # A CUDA host can also have hipcc installed without a HIP device (and
@@ -160,7 +165,7 @@ class MadMatrixDiagramTest(unittest.TestCase):
         builds = [(backend, fptype, tolerance)
                   for backend, compiler in [('cuda', 'nvcc'), ('hip', 'hipcc')]
                   if (selected is None or selected == backend) and misc.which(compiler)
-                  for fptype, tolerance in [('d', 1e-12), ('m', 1e-6)]]
+                  for fptype, tolerance in [('d', 1e-12), ('m', 1e-6), ('f', 1e-5)]]
         if not builds:
             self.skipTest('neither nvcc nor hipcc available')
         self.check_processes(builds)

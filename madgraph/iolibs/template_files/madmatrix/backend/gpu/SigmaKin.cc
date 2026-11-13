@@ -704,6 +704,7 @@ namespace madmatrix
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
+      if( targetamp[ncolor_flow - 1] <= 0 ) return;
       for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
         if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
