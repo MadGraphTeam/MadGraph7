@@ -552,6 +552,7 @@
 <li class="toctree-l2"><a class="reference internal" href="GeneratorBatchJob.html">GeneratorBatchJob</a></li>
 <li class="toctree-l2"><a class="reference internal" href="GeneratorConfig.html">GeneratorConfig</a></li>
 <li class="toctree-l2"><a class="reference internal" href="GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="GzipCompressor.html">GzipCompressor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Histogram.html">Histogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LHECompleter.html">LHECompleter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LHEEvent.html">LHEEvent</a></li>
@@ -826,6 +827,19 @@
 <dd><p>One Adam optimizer update step; see <a class="reference internal" href="AdamOptimizer.html#classmadspace_1_1AdamOptimizer"><span class="std std-ref">AdamOptimizer</span></a>. </p>
 </dd></dl>
 
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace6Device15gzip_compressorEi">
+<span id="_CPPv3NK8madspace6Device15gzip_compressorEi"></span><span id="_CPPv2NK8madspace6Device15gzip_compressorEi"></span><span id="madspace::Device::gzip_compressor__iC"></span><span class="target" id="classmadspace_1_1Device_1a193b7b0fe6ed4b87862c292f1dc959d4"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">unique_ptr</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="GzipCompressor.html#_CPPv4N8madspace14GzipCompressorE" title="madspace::GzipCompressor"><span class="n"><span class="pre">GzipCompressor</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">gzip_compressor</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">int</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace6Device15gzip_compressorEi" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Gzip compressor running on this device with the given algorithm (see default_gzip_algorithm), or null if this build has none. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace6Device13supports_gzipEv">
+<span id="_CPPv3NK8madspace6Device13supports_gzipEv"></span><span id="_CPPv2NK8madspace6Device13supports_gzipEv"></span><span id="madspace::Device::supports_gzipC"></span><span class="target" id="classmadspace_1_1Device_1acafc21e258ca17b88f32bd0d3c2d667a"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">supports_gzip</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace6Device13supports_gzipEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Whether <a class="reference internal" href="#classmadspace_1_1Device_1a193b7b0fe6ed4b87862c292f1dc959d4"><span class="std std-ref">gzip_compressor</span></a> returns a compressor. </p>
+<p>False, with a logged warning, if creating one fails. </p>
+</dd></dl>
+
 </div>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-attributes">Public Static Attributes</p>
@@ -913,6 +927,8 @@
 <li><a class="reference internal" href="#_CPPv4NK8madspace6Device12device_indexEv"><code class="docutils literal notranslate"><span class="pre">device_index()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace6Device8activateEv"><code class="docutils literal notranslate"><span class="pre">activate()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace6Device9adam_stepERK6TensorR6TensorR6TensorR6Tensordddddd"><code class="docutils literal notranslate"><span class="pre">adam_step()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace6Device15gzip_compressorEi"><code class="docutils literal notranslate"><span class="pre">gzip_compressor()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace6Device13supports_gzipEv"><code class="docutils literal notranslate"><span class="pre">supports_gzip()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace6Device20stream_ordered_allocE"><code class="docutils literal notranslate"><span class="pre">stream_ordered_alloc</span></code></a></li>
 </ul>
 </li>

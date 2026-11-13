@@ -552,6 +552,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorConfig.html">GeneratorConfig</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/GzipCompressor.html">GzipCompressor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Histogram.html">Histogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/LHECompleter.html">LHECompleter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/LHEEvent.html">LHEEvent</a></li>
@@ -724,6 +725,13 @@
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>Compute backend a Tensor’s storage lives on.</p>
 <p>One instance per physical device (CPU, or a specific CUDA or HIP GPU); obtained through <code class="docutils literal notranslate"><span class="pre">cpu_device()</span></code>, <code class="docutils literal notranslate"><span class="pre">cuda_device()</span></code> or <code class="docutils literal notranslate"><span class="pre">hip_device()</span></code> rather than constructed directly. Every device-dependent tensor operation (allocation, copy, the elementary kernels used to train the network globals) is dispatched through this interface.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.Device.supports_gzip">
+<span class="sig-name descname"><span class="pre">supports_gzip</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.Device" title="madspace._madspace_py.Device"><span class="pre">madspace._madspace_py.Device</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.Device.supports_gzip" title="Link to this definition">¶</a></dt>
+<dd><p>Whether gzip_compressor returns a compressor.</p>
+<p>False, with a logged warning, if creating one fails.</p>
+</dd></dl>
+
 </dd></dl>
 
 </section>
@@ -784,7 +792,10 @@
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Device</a><ul>
-<li><a class="reference internal" href="#madspace.Device"><code class="docutils literal notranslate"><span class="pre">Device</span></code></a></li>
+<li><a class="reference internal" href="#madspace.Device"><code class="docutils literal notranslate"><span class="pre">Device</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.Device.supports_gzip"><code class="docutils literal notranslate"><span class="pre">Device.supports_gzip()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>

@@ -550,6 +550,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GeneratorConfig.html">GeneratorConfig</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GzipCompressor.html">GzipCompressor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Histogram.html">Histogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHECompleter.html">LHECompleter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHEEvent.html">LHEEvent</a></li>
@@ -1030,7 +1031,11 @@
         <li><a href="madspace/python/Logger.html#madspace.Logger.clear_log_handler">clear_log_handler() (madspace.Logger static method)</a>
 </li>
         <li><a href="madspace/python/EventStream.html#madspace.EventStream.close">close() (madspace.EventStream method)</a>
+
+        <ul>
+          <li><a href="madspace/python/LHEFileWriter.html#madspace.LHEFileWriter.close">(madspace.LHEFileWriter method)</a>
 </li>
+        </ul></li>
         <li><a href="madspace/python/LHEParticle.html#madspace.LHEParticle.cluster_scale">cluster_scale (madspace.LHEParticle property)</a>
 </li>
         <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.cluster_state_machine">cluster_state_machine (madspace.MLMClustering property)</a>
@@ -2537,11 +2542,15 @@
 </li>
         <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device14free_on_streamEPvPv">madspace::Device::free_on_stream (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device15gzip_compressorEi">madspace::Device::gzip_compressor (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device6memcpyEPvPvNSt6size_tE">madspace::Device::memcpy (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device13order_streamsEPvPv">madspace::Device::order_streams (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Device.html#_CPPv4N8madspace6Device20stream_ordered_allocE">madspace::Device::stream_ordered_alloc (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device13supports_gzipEv">madspace::Device::supports_gzip (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device12sync_barrierEv">madspace::Device::sync_barrier (C++ function)</a>
 </li>
@@ -2763,7 +2772,7 @@
 </li>
         <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator22combine_to_compact_npyERKNSt6stringEP21SystematicsCalculatorP15EventHistograms">madspace::EventGenerator::combine_to_compact_npy (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator14combine_to_lheERKNSt6stringER12LHECompleterRK7LHEMetaP21SystematicsCalculatorP15EventHistograms">madspace::EventGenerator::combine_to_lhe (C++ function)</a>
+        <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator14combine_to_lheERKNSt6stringER12LHECompleterRK7LHEMetaP21SystematicsCalculatorP15EventHistograms9DevicePtri">madspace::EventGenerator::combine_to_lhe (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator18combine_to_lhe_npyERKNSt6stringER12LHECompleterP21SystematicsCalculatorP15EventHistograms">madspace::EventGenerator::combine_to_lhe_npy (C++ function)</a>
 </li>
@@ -3169,6 +3178,12 @@
 </li>
         <li><a href="madspace/cpp/GradientClipper.html#_CPPv4N8madspace15GradientClipper15GradientClipperE8DataType">madspace::GradientClipper::GradientClipper (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/GzipCompressor.html#_CPPv4N8madspace14GzipCompressorE">madspace::GzipCompressor (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/GzipCompressor.html#_CPPv4N8madspace14GzipCompressor8compressENSt11string_viewERNSt6stringE">madspace::GzipCompressor::compress (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/GzipCompressor.html#_CPPv4N8madspace14GzipCompressorD0Ev">madspace::GzipCompressor::~GzipCompressor (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/hip_device.html#_CPPv4N8madspace10hip_deviceENSt6size_tE">madspace::hip_device (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Histogram.html#_CPPv4N8madspace9HistogramE">madspace::Histogram (C++ struct)</a>
@@ -3383,7 +3398,11 @@
 </li>
         <li><a href="madspace/cpp/LHEFileWriter.html#_CPPv4N8madspace13LHEFileWriterE">madspace::LHEFileWriter (C++ class)</a>
 </li>
-        <li><a href="madspace/cpp/LHEFileWriter.html#_CPPv4N8madspace13LHEFileWriter13LHEFileWriterERKNSt6stringERK7LHEMeta">madspace::LHEFileWriter::LHEFileWriter (C++ function)</a>
+        <li><a href="madspace/cpp/LHEFileWriter.html#_CPPv4N8madspace13LHEFileWriter5closeEv">madspace::LHEFileWriter::close (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/LHEFileWriter.html#_CPPv4N8madspace13LHEFileWriter13LHEFileWriterERK13LHEFileWriter">madspace::LHEFileWriter::LHEFileWriter (C++ function)</a>, <a href="madspace/cpp/LHEFileWriter.html#_CPPv4N8madspace13LHEFileWriter13LHEFileWriterERKNSt6stringERK7LHEMeta9DevicePtri">[1]</a>
+</li>
+        <li><a href="madspace/cpp/LHEFileWriter.html#_CPPv4N8madspace13LHEFileWriteraSERK13LHEFileWriter">madspace::LHEFileWriter::operator= (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/LHEFileWriter.html#_CPPv4N8madspace13LHEFileWriter5writeERK8LHEEvent">madspace::LHEFileWriter::write (C++ function)</a>
 </li>
@@ -3569,14 +3588,14 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config15buffer_capacityE">madspace::MadnisTraining::Config::buffer_capacity (C++ member)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config19buffer_skip_batchesE">madspace::MadnisTraining::Config::buffer_skip_batches (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config27buffer_unweighting_quantileE">madspace::MadnisTraining::Config::buffer_unweighting_quantile (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config23buffered_steps_fractionE">madspace::MadnisTraining::Config::buffered_steps_fraction (C++ member)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config25channel_dropping_intervalE">madspace::MadnisTraining::Config::channel_dropping_interval (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config26channel_dropping_thresholdE">madspace::MadnisTraining::Config::channel_dropping_threshold (C++ member)</a>
@@ -6082,6 +6101,8 @@
         <li><a href="madspace/python/supported_simd_modes.html#madspace.supported_simd_modes">supported_simd_modes() (in module madspace)</a>
 </li>
         <li><a href="madspace/python/MatrixElementApi.html#madspace.MatrixElementApi.supports_get_parameter">supports_get_parameter() (madspace.MatrixElementApi method)</a>
+</li>
+        <li><a href="madspace/python/Device.html#madspace.Device.supports_gzip">supports_gzip() (madspace.Device method)</a>
 </li>
         <li><a href="madspace/python/MatrixElementApi.html#madspace.MatrixElementApi.supports_set_parameter">supports_set_parameter() (madspace.MatrixElementApi method)</a>
 </li>

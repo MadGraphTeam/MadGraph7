@@ -1,0 +1,6 @@
+GzipCompressor
+==============
+
+.. doxygenclass:: madspace::GzipCompressor
+   :members:
+   :undoc-members:

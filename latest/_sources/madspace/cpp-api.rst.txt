@@ -147,6 +147,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/GeneratorBatchJob
    cpp/GeneratorConfig
    cpp/GeneratorStatus
+   cpp/GzipCompressor
    cpp/Histogram
    cpp/LHECompleter
    cpp/LHEEvent
