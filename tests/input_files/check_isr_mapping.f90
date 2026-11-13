@@ -228,6 +228,10 @@ subroutine check_isr_mapping(mode)
             ! the omitted xi and xi-range factors when assembling weights.
             expected_jac=2d0*pi*8d0*x(1)*x(2)/(2d0*(4d0*pi)**3*(2d0*pi)**2*z)
             if(native.eq.0)expected_jac=expected_jac*(1d0-1d-6)*(1d0-5d-7)
+            ! Fixed order samples log(1-xi) uniformly in u=xi_hat at x=1:
+            ! xi_hat=(1-xbar**u)/(1-xbar), u=1d-6+(1-1d-6)*x(1)**2.
+            if(native.eq.0.and..not.symmetric_map)expected_jac=expected_jac* &
+                 log_xi_weight(1d-6+(1d0-1d-6)*x(1)**2,bx(side))
             if(abs(jac/expected_jac-1d0).gt.2d-12)error stop 'ISR factorized measure'
             call boost_n1_to_lab(p,plab,-yb)
             jinv=1d0
@@ -454,6 +458,13 @@ contains
       endif
     enddo
     bound=real((lower+upper)/2.0_quad,8)
+  end function
+
+  double precision function log_xi_weight(u,xbar) result(weight)
+    ! d xi_hat/d u for 1-xi=xbar**u, xi_hat=xi/(1-xbar), written in
+    ! closed form rather than through the production routine.
+    double precision,intent(in) :: u,xbar
+    weight=-log(xbar)*xbar**u/(1d0-xbar)
   end function
 
   subroutine symmetric_reference(born,xi,y,phi,side,out)
