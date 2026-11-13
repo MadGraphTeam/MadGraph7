@@ -10,13 +10,127 @@
 # distribution.
 #
 ################################################################################
-"""Unit tests for the madmatrix ALOHA writer (madmatrix/model_handling.py)."""
+"""Unit tests for madmatrix writers and process metadata."""
 
 from __future__ import absolute_import
 
 import re
+import os
+import tempfile
 
 import tests.unit_tests as unittest
+
+
+class TestMadMatrixProcessData(unittest.TestCase):
+    """Each P* directory has one ME, possibly shared by a mirror process."""
+
+    @staticmethod
+    def exporters():
+        from madgraph.iolibs import export_mg7
+        from madmatrix import model_handling
+        return (export_mg7.OneProcessExporterMG7,
+                model_handling.OneProcessExporterMadMatrix,
+                model_handling.OneProcessExporterMadMatrixStandalone)
+
+    @staticmethod
+    def matrix_element(model, ids=(81, 21, 81, 21)):
+        from madgraph.core import base_objects, diagram_generation, helas_objects
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': pdg, 'state': i > 1})
+            for i, pdg in enumerate(ids)])
+        amplitude = diagram_generation.Amplitude(
+            base_objects.Process({'legs': legs, 'model': model}))
+        return helas_objects.HelasMatrixElement(amplitude)
+
+    def test_rejects_multiple_matrix_elements(self):
+        """Reject real grouped MEs before CPP can renumber their HELAS objects."""
+        from madgraph import MadGraph5Error
+        from madgraph.core import helas_objects
+        from madgraph.models import import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        elements = helas_objects.HelasMatrixElementList([
+            self.matrix_element(model),
+            self.matrix_element(model, (21, 21, 6, -6))])
+        objects = [obj for me in elements
+                   for obj in me.get_all_wavefunctions() + me.get_all_amplitudes()]
+        numbers = [obj.get('number') for obj in objects]
+        multi = helas_objects.HelasMultiProcess({'matrix_elements': elements})
+        for exporter in self.exporters():
+            for grouped in (elements, multi):
+                with self.subTest(exporter=exporter.__name__,
+                                  grouped=type(grouped).__name__):
+                    with self.assertRaisesRegex(
+                            MadGraph5Error,
+                            'exactly one HelasMatrixElement.*separate directories'):
+                        exporter(grouped,
+                            model_handling.MadMatrixUFOHelasCallWriter(model))
+                    self.assertEqual([obj.get('number') for obj in objects], numbers)
+
+    def test_rejects_empty_matrix_element_containers(self):
+        from madgraph import MadGraph5Error
+        from madgraph.core import helas_objects
+
+        for exporter in self.exporters():
+            for empty in (helas_objects.HelasMatrixElementList(),
+                          helas_objects.HelasMultiProcess()):
+                with self.subTest(exporter=exporter.__name__,
+                                  container=type(empty).__name__):
+                    with self.assertRaisesRegex(MadGraph5Error,
+                                                'exactly one HelasMatrixElement'):
+                        exporter(empty, None)
+
+    def test_accepts_single_matrix_element_containers(self):
+        """Singleton containers retain the same ME and its mirror metadata."""
+        from madgraph.core import helas_objects
+        from madgraph.models import import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        for exporter in self.exporters():
+            for mirror in (False, True):
+                for container in ('direct', 'list', 'multi'):
+                    with self.subTest(exporter=exporter.__name__,
+                                      mirror=mirror, container=container):
+                        me = self.matrix_element(model)
+                        me.set('has_mirror_process', mirror)
+                        argument = me
+                        if container != 'direct':
+                            argument = helas_objects.HelasMatrixElementList([me])
+                        if container == 'multi':
+                            argument = helas_objects.HelasMultiProcess(
+                                {'matrix_elements': argument})
+                        process = exporter(argument,
+                            model_handling.MadMatrixUFOHelasCallWriter(model))
+                        self.assertIs(process.matrix_element, me)
+                        self.assertEqual(len(process.matrix_elements), 1)
+                        self.assertIs(process.matrix_elements[0], me)
+                        self.assertEqual(process.nprocesses, 2 if mirror else 1)
+
+    def test_processdata_single_denominator(self):
+        """Mirroring doubles nproc, but both processes use the same denominator."""
+        from madgraph.models import import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        for exporter in (model_handling.OneProcessExporterMadMatrix,
+                         model_handling.OneProcessExporterMadMatrixStandalone):
+            for mirror in (False, True):
+                with self.subTest(exporter=exporter.__name__, mirror=mirror):
+                    # q g > q g also exercises merged flavors within one ME.
+                    me = self.matrix_element(model)
+                    me.set('has_mirror_process', mirror)
+                    process = exporter(me,
+                        model_handling.MadMatrixUFOHelasCallWriter(model))
+                    with tempfile.TemporaryDirectory(prefix='madmatrix-process-') as tmp:
+                        process.path = tmp
+                        process.generate_process_files()
+                        with open(os.path.join(tmp, 'ProcessData.h')) as stream:
+                            data = stream.read()
+                    self.assertIn('constexpr int nproc = %d;' % (2 if mirror else 1), data)
+                    self.assertIn('constexpr int helcolDenominators[1] = { %d };'
+                                  % me.get_denominator_factor(), data)
 
 
 class TestMomentaInDenomPrecision(unittest.TestCase):
@@ -265,6 +379,12 @@ class TestPropagatorDenominators(unittest.TestCase):
                       routines['FFV2_4_3'])
         for name in ('FFV2_3', 'FFV2_4_3'):
             self.assertNotIn('W3', routines[name], name)
+        # 1/M^2 of the unitary propagator is complex too (a cxtype has no
+        # comparison with a double, and does not fit in a fptype_amp)
+        self.assertIn('const cxtype_amp OM3 = ( M3.real() != 0. || M3.imag() != 0. ? '
+                      'static_cast<cxtype_amp>( cxtype( 1. ) / ( M3 * M3 ) ) : cxtype_amp( 0. ) );',
+                      body)
+        self.assertNotIn('fptype_amp OM3', body)
 
     def test_axial_gauge_custom_denominator(self):
         """In axial gauge a massless vector has the custom denominator
@@ -279,7 +399,87 @@ class TestPropagatorDenominators(unittest.TestCase):
             found = re.search(
                 r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
                 r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
-                r' / \( \((dTMP\d+) \* (dTMP\d+)\) \) \);', body)
+                r' / \( (dTMP\d+) \* (dTMP\d+) \) \);', body)
             self.assertTrue(found, name)
             for tmp in found.groups():
                 self.assertIn('const fptype_denom_sv %s = ' % tmp, body, name)
+
+    def test_polarised_propagator_denominator(self):
+        """The polarised propagators of a massive vector ('w+{0}', 'w+{T}',
+        'w+{A}', ...: the P1L, P1T, P1A, ... forms of aloha/create_aloha.py)
+        carry a custom denominator with the pole q^2 - M^2 + i M Gamma. It is
+        written by write_obj like every other expression (cI, one), not by
+        str(), which printed the Python literal '(-0+1j)' and did not
+        compile; with the mass and the width in it, it is not moved to
+        denominator precision."""
+        routines = self.routines([(('FFV2',), ['P1L'], 3),
+                                  (('FFV2',), ['P1T'], 3),
+                                  (('FFV2',), ['P1A'], 3)])
+        for name in ('FFV2P1L_3', 'FFV2P1T_3', 'FFV2P1A_3'):
+            body = routines[name]
+            self.assertNotIn('1j', body, name)
+            self.assertNotIn('madmatrix::denom', body, name)
+            found = re.search(
+                r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
+                r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
+                r' / \( (.*) \) \);', body)
+            self.assertTrue(found, name)
+            denominator = found.group(1)
+            for piece in ('cI', 'M3', 'W3'):
+                self.assertIn(piece, denominator, name)
+            self.assertNotIn('dTMP', denominator, name)
+
+    def test_fd_polarised_propagator(self):
+        """FD gauge: a polarised propagator ('w+{0}' decayed further) is the
+        ordinary FD routine -- massless-type numerator, standard pole -- whose
+        final FD projector is replaced by the projection on the requested
+        piece (aloha_writers.FD_POLARIZED_PROPAGATORS), for the vector routine
+        and for its Goldstone companion alike. The unpolarised routine keeps
+        the full projector."""
+        routines = self.routines([(('FFV2',), [], 3),
+                                  (('FFV2',), ['P1L'], 3), (('FFS3',), ['P1L'], 3),
+                                  (('FFV2',), ['P1T'], 3), (('FFV2',), ['P1TR'], 3),
+                                  (('FFV2',), ['P1TL'], 3), (('FFV2',), ['P1A'], 3),
+                                  (('FFV2',), ['P1S'], 3), (('FFV2',), ['P1LS'], 3)],
+                                 gauge=3)
+        self.assertIn('FDJS1', routines['FFV2_3'])
+        expected = {'FFV2P1L_3': ['wV3[4] = FDI * FDC;'],
+                    'FFS3P1L_3': ['wS3[4] = FDI * FDC;'],
+                    'FFV2P1T_3': ['wV3[1] = FDT1;'],
+                    'FFV2P1TR_3': ['wV3[1] = ( FDT1 + FDI * FDX1 )'],
+                    'FFV2P1TL_3': ['wV3[1] = ( FDT1 - FDI * FDX1 )'],
+                    'FFV2P1A_3': ['const fptype_sv FDA = ', '* FDA ) * FDNW'],
+                    'FFV2P1S_3': ['const cxtype_sv FDS = ', '-M3 * W3'],
+                    'FFV2P1LS_3': ['* FDC + ( FDN[0] * FDNW ) * FDS',
+                                   'wV3[4] = FDI * FDC;']}
+        for name, pieces in expected.items():
+            body = routines[name]
+            # the ordinary FD wavefunction: standard pole, full gauge direction
+            self.assertIn('madmatrix::denom(', body, name)
+            self.assertIn('define_gauge_dir( FDQ, FDN );', body, name)
+            self.assertNotIn('FDJS', body, name)
+            self.assertNotIn('EPS', body, name)
+            for piece in pieces:
+                self.assertIn(piece, body, name)
+            # a line at rest gets its helicity axis pinned to +z, lane by lane,
+            # before the gauge direction is built
+            pin = body.index('FDQ[3] = cxmake( fpternary(')
+            self.assertLess(pin, body.index('define_gauge_dir( FDQ, FDN );'), name)
+            self.assertIn('FDQ[0].real() * 0 + 1e-15f', body, name)
+        # only the temporaries a piece reads are written
+        for name in ('FFV2P1T_3', 'FFV2P1TR_3', 'FFV2P1TL_3'):
+            self.assertNotIn('FDNW', routines[name], name)
+        for name in ('FFV2P1T_3', 'FFV2P1A_3', 'FFV2P1S_3'):
+            self.assertNotIn('FDI', routines[name], name)
+        # the unpolarised routine keeps its axis as it is
+        self.assertNotIn('fpternary', routines['FFV2_3'])
+
+    def test_fd_unitary_only_propagator_refused(self):
+        """{G}, {H}, {Q}, {W} are pieces of the unitary-gauge numerator: in the
+        FD gauge ALOHA refuses them rather than projecting the unitary
+        numerator on the FD gauge (what it did before, the Fortran standalone
+        then crashing), whatever path the routine is asked from."""
+        import aloha
+        for tag in ('P1G', 'P1H', 'P1Q', 'P1W'):
+            self.assertRaises(aloha.ALOHAERROR,
+                              lambda: self.routines([(('FFV2',), [tag], 3)], gauge=3))

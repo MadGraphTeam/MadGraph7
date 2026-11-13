@@ -157,7 +157,9 @@ See :doc:`gridpacks` for details.
 ``leptonic`` (``false``)
     Treat the beams as leptons: no PDFs are used and the partonic energy equals the
     collision energy. This is set automatically for lepton-collider processes, together
-    with 500 GeV beams and no jet cuts.
+    with 500 GeV beams; the jet cuts stay, as in madevent. Without a PDF,
+    :math:`\alpha_s` is the 2-loop running of the :math:`\alpha_s(m_Z)` of the param card,
+    as madevent does, and ``pdf1``/``pdf2`` are not used (nor downloaded).
 
 ``pdf1`` (``"NNPDF40_lo_as_01180"``), ``pdf2`` (``"NNPDF40_lo_as_01180"``)
     Name of the LHAPDF set of each beam. ``set beam.pdf X`` sets both. MG7 tries to

@@ -429,6 +429,110 @@ class MadspaceProcessTest(unittest.TestCase):
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
+class LeptonicAlphaSTest(unittest.TestCase):
+    """Leptonic beams have no PDF: alpha_s is the 2-loop running of the
+    param card's alpha_s(m_Z), as madevent with lpp1 = lpp2 = 0, and not the
+    alpha_s of the (unused) [beam] pdf1 set."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='test_leptonic_alphas')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def process(self, alpha_s_mz=0.118):
+        from madgraph.mg7 import launch as mg7_launch
+        process = object.__new__(mg7_launch.MadgraphProcess)
+        process.param_card = mock.Mock()
+        process.param_card.get_value = lambda block, code: alpha_s_mz
+        process.run_path = self.tmp
+        return process
+
+    @staticmethod
+    def read(path):
+        info = {}
+        with open(path) as stream:
+            for line in stream:
+                if ':' in line and not line.startswith('SetDesc'):
+                    key, value = line.split(':', 1)
+                    info[key.strip()] = [float(x) for x in
+                                         value.strip().strip('[]').split(',')]
+        return info['AlphaS_Qs'], info['AlphaS_Vals']
+
+    def beam(self, **changes):
+        beam = {'ebeam1': 250.0, 'ebeam2': 250.0, 'leptonic': True,
+                'pdf1': 'NNPDF23_lo_as_0130_qed',
+                'pdf2': 'NNPDF23_lo_as_0130_qed',
+                'dynamical_scale_choice': 'half_transverse_mass',
+                'fixed_ren_scale': False, 'fixed_fact_scale': True,
+                'ren_scale': 91.188, 'fact_scale1': 91.188,
+                'fact_scale2': 91.188, 'scale_factor': 1.0}
+        beam.update(changes)
+        return beam
+
+    def init_beam(self, process, beam):
+        process.run_card = {'beam': beam}
+        process.is_decay = False
+        process.custom_functions = {}
+        process.contexts = []
+        # leptonic beams must not even look for the PDF set
+        process.ensure_pdf_set = mock.Mock(
+            side_effect=AssertionError('PDF set resolved for leptonic beams'))
+        process.init_beam()
+
+    def test_leptonic_beams_take_alpha_s_from_the_param_card(self):
+        process = self.process(alpha_s_mz=0.1185)
+        self.init_beam(process, self.beam())
+        self.assertIsNone(process.pdf_grid)
+        self.assertIsNone(process.pdf_dir)
+        self.assertEqual(os.path.dirname(process.fixed_alphas_info), self.tmp)
+        runner = Alphas_Runner(0.1185, 2, cmass=1.42, bmass=4.7)
+        qs, values = self.read(process.fixed_alphas_info)
+        for q, value in zip(qs, values):
+            self.assertAlmostEqual(value, runner(q), places=10)
+
+    def test_a_fixed_scale_is_a_node(self):
+        process = self.process()
+        self.init_beam(process, self.beam(fixed_ren_scale=True, ren_scale=137.0))
+        qs, values = self.read(process.fixed_alphas_info)
+        self.assertIn(137.0, qs)
+        runner = Alphas_Runner(0.118, 2, cmass=1.42, bmass=4.7)
+        self.assertAlmostEqual(values[qs.index(137.0)], runner(137.0), places=10)
+
+    def test_the_thresholds_split_the_grid(self):
+        """a doubled node at the c and b masses, where the running has a kink,
+        and every subgrid keeps two intervals at least"""
+        path = self.process().write_fixed_alphas_info(
+            scales=[], nodes_per_decade=50, split_thresholds=True)
+        qs, values = self.read(path)
+        self.assertEqual(qs, sorted(qs))
+        doubled = [q1 for q1, q2 in zip(qs, qs[1:]) if q1 == q2]
+        self.assertEqual(doubled, [1.42, 4.7])
+        edges = [0] + [i + 1 for i, (q1, q2) in enumerate(zip(qs, qs[1:]))
+                       if q1 == q2] + [len(qs)]
+        self.assertTrue(all(hi - lo >= 3 for lo, hi in zip(edges, edges[1:])))
+        # a coarse grid cannot fit a subgrid below 1.42 GeV: no split there
+        qs, _ = self.read(self.process().write_fixed_alphas_info(
+            scales=[], nodes_per_decade=4, split_thresholds=True))
+        self.assertEqual([q1 for q1, q2 in zip(qs, qs[1:]) if q1 == q2], [4.7])
+
+    def test_the_interpolation_is_the_running(self):
+        import madspace as ms
+        import numpy   # with madspace, so not needed at collection
+        path = self.process().write_fixed_alphas_info(
+            scales=[], nodes_per_decade=50, split_thresholds=True)
+        grid = ms.AlphaSGrid(path)
+        prefix = 'test_leptonic_alphas'
+        grid.initialize_globals(ms.default_context(), prefix)
+        alpha_s = ms.RunningCoupling(grid, prefix)
+        runner = Alphas_Runner(0.118, 2, cmass=1.42, bmass=4.7)
+        scales = [2.0 * 1.05 ** i for i in range(220)]   # 2 GeV to 90 TeV
+        for q, value in zip(scales, numpy.asarray(alpha_s(numpy.array(scales)))):
+            self.assertAlmostEqual(float(value) / runner(q), 1.0, delta=2e-5)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
 class DecayAlphaSTest(unittest.TestCase):
     """The alpha_s of a decay is the 2-loop running of madevent, at the mass of
     the decaying particle."""

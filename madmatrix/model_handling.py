@@ -9,6 +9,7 @@ import sys
 
 import glob
 import math
+import contextlib
 import re
 
 # AV - create a plugin-specific logger
@@ -24,6 +25,10 @@ from madgraph.iolibs import jamp_optimiser
 
 import aloha
 from aloha import aloha_writers
+
+# name suffix of the cIPD slot that holds the imaginary part of a complex
+# parameter (the complex masses of the complex-mass scheme)
+IMAG_SLOT = '__imag'
 
 # FD gauge check — if set on second output
 class _FdGaugeFlag:
@@ -343,7 +348,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             else:
                 continue # AV no need to declare the variable
             if fullname.startswith('OM') :
-                codedict[fullname] = 'fptype_amp %s' % fullname # multiple of scalars 
+                # 1/M^2, complex in the complex-mass scheme
+                codedict[fullname] = '%s %s' % ('cxtype_amp' if aloha.complex_mass else 'fptype_amp',
+                                                fullname) # multiple of scalars 
             else:
                 codedict[fullname] = '%s %s' % (self.type2def[type+'_v'], fullname) # AV vectorize, add to codedict
             ###print(fullname, codedict[fullname]) # FOR DEBUGGING
@@ -401,8 +408,14 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             if self.declaration.is_used( 'OM%s' % (i+1) ):
                 declname = 'OM%s' % (i+1)
                 if self.nodeclare: declname = 'const ' + self.declaration.codedict[declname]
-                out.write('    {3} = ( M{0} != {1} ? {2} / ( M{0} * M{0} ) : {1} );\n'.format( # AV use ternary in OM3
-                    i+1, '0.', '1.', declname)) # AV force scalar "1." instead of vector "one", add declaration
+                if aloha.complex_mass:
+                    # M is a cxtype, which has no comparison with a double
+                    out.write('    {1} = ( M{0}.real() != 0. || M{0}.imag() != 0. ? '
+                              'static_cast<cxtype_amp>( cxtype( 1. ) / ( M{0} * M{0} ) ) : cxtype_amp( 0. ) );\n'.format(
+                                  i+1, declname))
+                else:
+                    out.write('    {3} = ( M{0} != {1} ? {2} / ( M{0} * M{0} ) : {1} );\n'.format( # AV use ternary in OM3
+                        i+1, '0.', '1.', declname)) # AV force scalar "1." instead of vector "one", add declaration
             if i+1 == self.outgoing:
                 out_type = type
                 out_size = self.type_to_size[type]
@@ -451,10 +464,25 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         out = StringIO()
         wf = '%s%s' % (self.particles[self.outgoing-1], self.outgoing)
         # the 5th component is -i * m: built from broadcast reals, since a
-        # scalar complex has no conversion to the vector type (cxtype_sv)
-        out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
+        # scalar complex has no conversion to the vector type (cxtype_sv).
+        # In the complex-mass scheme m is complex: -i * m = ( Im m, -Re m ).
+        if aloha.complex_mass:
+            fdq4 = 'cxmake( M%(i)s.imag() + fptype_sv{ 0 }, -M%(i)s.real() + fptype_sv{ 0 } )'
+        else:
+            fdq4 = 'cxmake( fptype_sv{ 0 }, -M%(i)s + fptype_sv{ 0 } )'
+        out.write('    cxtype_sv FDQ[5] = { %s, %s };\n' %
                   (', '.join('cxmake( fpamp_of_mom( -%s.pvec[%d] ), 0. )' % (wf, i) for i in range(4)),
-                   self.outgoing))
+                   fdq4 % {'i': self.outgoing}))
+        if self.fd_polarization() is not None:
+            # a polarised line at rest (|q| below 1e-10 q0, rounding): pin the
+            # axis of the helicities to +z, lane by lane, as the unitary-gauge
+            # polarised routines and the FD library (fd_polarized_propagator)
+            # do. The 'f' literals and the 0* keep the type of FDQ's parts in
+            # every precision and backend.
+            for i, pinned in ((1, '1e-30f'), (2, '0.f'), (3, '1e-15f')):
+                out.write('    FDQ[%(i)d] = cxmake( fpternary( FDQ[%(i)d].real() * FDQ[%(i)d].real() * 1e20f'
+                          ' < FDQ[0].real() * FDQ[0].real(), FDQ[0].real() * 0 + %(v)s,'
+                          ' FDQ[%(i)d].real() ), FDQ[%(i)d].imag() );\n' % {'i': i, 'v': pinned})
         out.write('    fptype_sv FDN[5];\n')
         out.write('    define_gauge_dir( FDQ, FDN );\n')
         out.write('    const fptype_sv FDNQ = %s;\n' %
@@ -468,14 +496,85 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         out = StringIO()
         w = self.outname
+        pol = self.fd_polarization()
+        if pol is not None:
+            out.write(self.get_fd_polarized_propagator_txt(pol))
+            return out.getvalue()
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
         out.write('    const cxtype_sv FDJS1 = ( %s ) / FDNQ;\n' %
                   ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
-        out.write('    const cxtype_sv FDJS2 = ( %s - cxconj( FDQ[4] ) * %s[4] ) / FDNQ;\n' %
-                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)), w))
+        # FDQ[4] = -i*m enters as +i*m = -FDQ[4]. For a real mass that is also
+        # cxconj( FDQ[4] ), the form kept outside the complex-mass scheme; for
+        # a complex mass the conjugate is wrong (not analytic in m).
+        out.write('    const cxtype_sv FDJS2 = ( %s %s * %s[4] ) / FDNQ;\n' %
+                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)),
+                   '+ FDQ[4]' if aloha.complex_mass else '- cxconj( FDQ[4] )', w))
         for i in range(size):
             out.write('    %(w)s[%(i)d] = %(w)s[%(i)d] - FDQ[%(i)d] * FDJS1 - FDN[%(i)d] * FDJS2;\n'
                       % {'w': w, 'i': i})
+        return out.getvalue()
+
+    def get_fd_polarized_propagator_txt(self, pol):
+        """FD gauge, polarised propagator: the wavefunction built with the
+        ordinary FD numerator is projected on one piece of it instead of the
+        full projector (aloha_writers.FD_POLARIZED_PROPAGATORS, and
+        fd_polarized_propagator in aloha_functions_fd.f for the formulas):
+        eps0 (eps0*.w) for {0}, the transverse components (and their helicity
+        projections) for {T}/{+}/{-}, -(q^2-M^2) n (n.w)/(n.q)^2 for {A},
+        the same with q^2-M^2+iM*Gamma for {S}. The unit vector along the
+        momentum is -n (n = (+-1, -q/|q|)). Only the temporaries a piece reads
+        are written."""
+
+        out = StringIO()
+        w = self.outname
+        m = 'M%s' % self.outgoing
+        width = 'W%s' % self.outgoing
+        if pol in (0, 2, 3, 6):
+            out.write('    const cxtype_sv FDI = cxmake( fptype_sv{ 0 }, fptype_sv{ 0 } + 1. );\n')
+        if pol in (1, 2, 3):
+            out.write('    const cxtype_sv FDNV = %s;\n' % ' + '.join(
+                'FDN[%d] * %s[%d]' % (i, w, i) for i in (1, 2, 3)))
+            for i in (1, 2, 3):
+                out.write('    const cxtype_sv FDT%d = %s[%d] - FDN[%d] * FDNV;\n'
+                          % (i, w, i, i))
+            if pol != 1:
+                # (n x w), n being minus the unit vector along the momentum
+                for i, j, k in ((1, 2, 3), (2, 3, 1), (3, 1, 2)):
+                    out.write('    const cxtype_sv FDX%d = FDN[%d] * %s[%d] - FDN[%d] * %s[%d];\n'
+                              % (i, j, w, k, k, w, j))
+            out.write('    %s[0] = cxzero_sv();\n' % w)
+            for i in (1, 2, 3):
+                if pol == 1:
+                    out.write('    %s[%d] = FDT%d;\n' % (w, i, i))
+                else:
+                    # helicity +1: (T - i qh x w)/2 = (T + i n x w)/2
+                    out.write('    %s[%d] = ( FDT%d %s FDI * FDX%d ) * ( fptype_sv{ 0 } + 0.5 );\n'
+                              % (w, i, i, '+' if pol == 2 else '-', i))
+            out.write('    %s[4] = cxzero_sv();\n' % w)
+            return out.getvalue()
+        # {0}, {A}, {S}, {0S}: all read n.w
+        out.write('    const cxtype_sv FDNW = %s;\n' % ' - '.join(
+            'FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
+        if pol in (4, 5, 6):
+            out.write('    const fptype_sv FDQ2 = %s;\n' % ' - '.join(
+                'FDQ[%d].real() * FDQ[%d].real()' % (i, i) for i in range(4)))
+        terms = []
+        if pol in (0, 6):
+            out.write('    const cxtype_sv FDC = FDNW * ( %s / FDNQ ) - FDI * %s[4];\n' % (m, w))
+            terms.append('( FDN[%%(i)d] * ( -%s / FDNQ ) ) * FDC' % m)
+        if pol == 4:
+            out.write('    const fptype_sv FDA = ( %s * %s - FDQ2 ) / ( FDNQ * FDNQ );\n' % (m, m))
+            terms.append('( FDN[%(i)d] * FDA ) * FDNW')
+        if pol in (5, 6):
+            out.write('    const cxtype_sv FDS = cxmake( ( %s * %s - FDQ2 ) / ( FDNQ * FDNQ ), '
+                      '-%s * %s / ( FDNQ * FDNQ ) );\n' % (m, m, m, width))
+            terms.append('( FDN[%(i)d] * FDNW ) * FDS')
+        for i in range(4):
+            out.write('    %s[%d] = %s;\n' % (w, i, ' + '.join(t % {'i': i} for t in terms)))
+        if pol in (0, 6):
+            out.write('    %s[4] = FDI * FDC;\n' % w)
+        else:
+            out.write('    %s[4] = cxzero_sv();\n' % w)
         return out.getvalue()
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting, add delayed declaration with initialisation)
@@ -560,13 +659,6 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
             out.write('    const int & flv_index1 = F1.flv_index;\n')
             out.write('    const int & flv_index2 = F2.flv_index;\n')
-            if nb_coupling >1:
-                for i in range(1,nb_coupling+1):
-                    out.write('    int zero_coup%i = 0;\n' % i)
-                out.write('    if(flv_index1 != flv_index2 || flv_index1 == -1) {\n')
-                out.write('      %s\n' % fail)
-                out.write('      return;\n')
-                out.write('    }\n')
             out.write('    if(flv_index1 == -1 || flv_index2 == -1) {\n')
             out.write('      %s\n' % fail)
             out.write('      return;\n')
@@ -587,11 +679,23 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      return;\n')
                 out.write('    }\n')
             else:
+                # Several merged couplings summed in one routine (e.g. the
+                # FD-gauge vector+Goldstone FFV2_FFS3M_3 of a W+ -> l+ vl line).
+                # Each coupling has its own partner table, so resolve the
+                # flavour slot of each one as in the single-coupling case
+                # above: a diagonal check (flv_index1 == flv_index2) zeroes an
+                # off-diagonal vertex such as an unmerged vt (flavour 0) and a
+                # merged tau (flavour 2), and a coupling whose table has no
+                # entry for this pair (the Goldstone coupling of a massless
+                # lepton) contributes zero while the other ones are kept.
                 for i in range(1,nb_coupling+1):
-                    out.write('    if(MCOUP%i.partner1[flv_index1] != flv_index2 || MCOUP%i.partner2[flv_index1] != flv_index2) {\n' %(i,i))
-                    out.write('      zero_coup%i = 1;\n' % i)
-                    out.write('      COUP%i = cxzero_sv();\n' % i)
-                    out.write('    }\n')
+                    out.write('    int flv_sel%i = -1;\n' % i)
+                    out.write('    if(MCOUP%i.partner1[flv_index1] == flv_index2) flv_sel%i = flv_index1;\n' % (i,i))
+                    out.write('    else if(MCOUP%i.partner1[flv_index2] == flv_index1) flv_sel%i = flv_index2;\n' % (i,i))
+                out.write('    if(%s) {\n' % ' && '.join('flv_sel%i == -1' % i for i in range(1,nb_coupling+1)))
+                out.write('      %s\n' % fail)
+                out.write('      return;\n')
+                out.write('    }\n')
             if nb_coupling ==1:
                 # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                 # so, when we need to shift within the array, we need to double the shift width to account for
@@ -605,9 +709,26 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                     # so, when we need to shift within the array, we need to double the shift width to account for
                     # both real and imaginary parts
-                    out.write('    if(zero_coup%i ==0) { COUP%i = C_ACCESS::kernelAccessConst( MCOUP%i.value + C_ACCESS::flv_stride*flv_index1 ); }\n' % (i,i,i))
+                    out.write('    if(flv_sel%i == -1) { COUP%i = cxzero_sv(); }\n' % (i,i))
+                    out.write('    else { COUP%i = C_ACCESS::kernelAccessConst( MCOUP%i.value + C_ACCESS::flv_stride*flv_sel%i ); }\n' % (i,i,i))
         else:
             incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+            # The P1N currents of --hel_recycling (the vertex with one external
+            # fermion left off, see hel_recycle.CppDialect._p1n_group) resolve
+            # the flavour of a single flavoured coupling in BOTH orientations,
+            # as the _0 / _3 routines above do: the table is filled with the
+            # merged leg as its first fermion (ProcessTables.h for a running
+            # coupling) while the call can put that leg second, e.g. the
+            # gluino-squark-quark vertex of MSSM_SLHA2, whose P1N_1 with the
+            # merged antiquark as F2 found partner2[flv] = -1 and dropped the
+            # amplitude for every flavour but the first. Orientation A (the
+            # table's first fermion is F1) uses slot flv_index1 and is tried
+            # first, as in _0; orientation B (it is F2) uses slot flv_index2.
+            # A table where both give a different partner cannot be one current:
+            # the recycler does not split those (p1n_flavour_safe). The full
+            # _1 / _2 routines keep the one orientation they always had.
+            both = nb_coupling == 1 and 'P1N' in self.tag and incoming in (1, 2)
+            slot = 'flv_sel' if both else 'flv_index1'
             if incoming %2 == 1:
                 outgoing = self.outgoing
                 out.write('    int flv_index%i = F%i.flv_index;\n' % (incoming, incoming))
@@ -616,7 +737,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if nb_coupling == 1:
+                if both:
+                    out.write('    int flv_index2 = MCOUP.partner1[flv_index1];\n')
+                    out.write('    int flv_sel = flv_index1;\n')
+                    out.write('    if(flv_index2 == -1) { flv_index2 = MCOUP.partner2[flv_index1]; flv_sel = flv_index2; }\n')
+                elif nb_coupling == 1:
                     out.write('    int flv_index2 = MCOUP.partner1[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index2 = MCOUP1.partner1[flv_index%i];\n' %(incoming))
@@ -636,7 +761,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if nb_coupling == 1:
+                if both:
+                    out.write('    int flv_index1 = MCOUP.partner2[flv_index2];\n')
+                    out.write('    int flv_sel = flv_index1;\n')
+                    out.write('    if(flv_index1 == -1) { flv_index1 = MCOUP.partner1[flv_index2]; flv_sel = flv_index2; }\n')
+                elif nb_coupling == 1:
                     out.write('    int flv_index1 = MCOUP.partner2[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
@@ -654,7 +783,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                     # so, when we need to shift within the array, we need to double the shift width to account for
                     # both real and imaginary parts
-                    out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*flv_index1 );\n' % (name, name))
+                    load = '%s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*%s );' % (name, name, slot)
+                    if nb_coupling > 1 and incoming in (1, 2):
+                        # the outgoing flavour was taken from the first coupling
+                        # with an entry; a coupling whose table pairs flv_index1
+                        # with another partner (or none) does not connect these
+                        # two flavours and contributes zero
+                        out.write('    if(M%s.partner1[flv_index1] != flv_index2) { %s = cxzero_sv(); }\n' % (name, name))
+                        out.write('    else { %s }\n' % load)
+                    else:
+                        out.write('    %s\n' % load)
         return out.getvalue()
 
     # OM - add the formats which aloha_writers.ALOHAWriterForCPP is missing.
@@ -774,6 +912,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # FCTn are numbered in creation order and a later one can use an
         # earlier one (the $ propagator's theta function takes FCT0/FCT1), so
         # define them in that order -- the dict order puts FCT0 last there.
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            # complex-mass scheme: the real pole mass and the width of the $
+            # window, from the complex mass (complex_mass_fct_width)
+            out.write('    const fptype %(mr)s = sqrt( ( M%(i)d * M%(i)d ).real() );\n'
+                      '    const fptype %(w)s = -( M%(i)d * M%(i)d ).imag() / %(mr)s;\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
         for name in sorted(self.routine.fct, key=lambda n: (len(n), n)):
             fct, objs = self.routine.fct[name]
             # OM the FCTn variable needs to be defined, not only assigned (and
@@ -786,9 +931,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 self.declaration.add(('complex', name))
             args = [self.write_obj(obj) for obj in objs]
             try:
-                out.write(format % ','.join(args)) # single-argument formats
+                text = format % ','.join(args) # single-argument formats
             except TypeError:
-                out.write(format % tuple(args)) # e.g. 'pow', which takes two
+                text = format % tuple(args) # e.g. 'pow', which takes two
+            out.write(self.fct_with_pole_mass(text, cms_names))
         numerator = self.routine.expr
         if self.coup_name:
             # one term of an assembled routine: its own coupling among COUP1, ...
@@ -868,53 +1014,58 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
                 coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
                 propagator = lambda mass: 'madmatrix::denom( %sdP%s, %s )' % (coup_args, self.outgoing, mass)
-                if not aloha.complex_mass:
-                    # This affects 'denom = COUP' in HelAmps_sm.cc
-                    if self.routine.denominator:
-                        # the P1N routines of the amplitude split carry the
-                        # identity propagator, as the integer 1
-                        if str(self.routine.denominator) == '1':
-                            out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
-                        else:
-                            mydict['denom'] = self.denominator_in_denom_precision(
-                                                   str(self.routine.denominator))
-                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
+                def write_doubleexpansion():
+                    # MADARITH_DOUBLEEXPANSION (FPTYPE=e): P^2 - Re(m^2) in
+                    # double-word arithmetic, the width as the imaginary part.
+                    # With a complex mass (complex-mass scheme) m^2 = M*M is
+                    # complex and carries the width: P^2 - m^2 =
+                    # ( P^2 - Re(m^2) ) - i Im(m^2).
+                    out.write('#endif\n')
+                    out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
+                    wtype = self.particles[self.outgoing - 1]
+                    coeff_vertex = ('%(pre_coup)s%(coup)s%(post_coup)s' % mydict).replace('fptype_denom', 'fptype_amp')
+                    fmt = {'i': self.outgoing, 'w': wtype, 's': denomsuffix}
+                    out.write('    const MG_ARITHM::Double<fptype_amp> P{i}d{s}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[3]) }};\n'.format(**fmt))
+                    if aloha.complex_mass:
+                        out.write('    const cxtype M2c{i}{s} = M{i} * M{i};\n'.format(**fmt))
+                        out.write('    const MG_ARITHM::Double<fptype_amp> M2d{i}{s} = static_cast<MG_ARITHM::Double<fptype_amp>>(M2c{i}{s}.real());\n'.format(**fmt))
+                        m2 = 'M2d{i}{s}'.format(**fmt)
+                        width = '-M2c{i}{s}.imag()'.format(**fmt)
                     else:
-                        if arith_doubleexpansion:
-                            out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s, W%(i)s' % mydict)))
-                        if arith_doubleexpansion:
-                            out.write('#endif\n')
-                            out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
-                            wtype = self.particles[self.outgoing - 1]
-                            coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                            coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
-                            out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
-                            out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const fptype_amp_sv iMW{1} = M{0} * W{0};\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const cxtype_amp_sv denden%s = cxmake( PmM2%s, iMW%s );\n' % (denomsuffix, denomsuffix, denomsuffix))
-                            out.write('    const cxtype_amp_sv %s = %s / denden%s;\n' % (denomname, coeff_vertex, denomsuffix))
-                            out.write('#endif\n')
+                        out.write('    const MG_ARITHM::Double<fptype_amp> Md{i}{s} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{i});\n'.format(**fmt))
+                        m2 = '( Md{i}{s} * Md{i}{s} )'.format(**fmt)
+                        width = 'M{i} * W{i}'.format(**fmt)
+                    out.write('    const fptype_amp_sv PmM2{s} = static_cast<fptype_amp_sv>(( P{i}d{s}[0] * P{i}d{s}[0] ) - ( P{i}d{s}[1] * P{i}d{s}[1] ) - ( P{i}d{s}[2] * P{i}d{s}[2] ) - ( P{i}d{s}[3] * P{i}d{s}[3] ) - {m2} );\n'.format(m2=m2, **fmt))
+                    out.write('    const fptype_amp_sv iMW{s} = {width};\n'.format(width=width, **fmt))
+                    out.write('    const cxtype_amp_sv denden{s} = cxmake( PmM2{s}, iMW{s} );\n'.format(**fmt))
+                    out.write('    const cxtype_amp_sv %s = %s / denden%s;\n' % (denomname, coeff_vertex, denomsuffix))
+                    out.write('#endif\n')
+
+                # a propagator is the same with a complex mass, as long as it
+                # does not use the width
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                # This affects 'denom = COUP' in HelAmps_sm.cc
+                if self.routine.denominator:
+                    # the P1N routines of the amplitude split carry the
+                    # identity propagator, as the integer 1
+                    if str(self.routine.denominator) == '1':
+                        out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
+                    else:
+                        # written by write_obj, as every other expression:
+                        # str() prints a complex coefficient as a Python
+                        # literal ('(-0+1j)'), which does not compile
+                        mydict['denom'] = self.denominator_in_denom_precision(
+                                               self.write_obj(self.routine.denominator))
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                 else:
-                    if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')
-                    # This affects 'denom = COUP' in HelAmps_sm.cc
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                    # Complex mass: M carries the width.
-                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s' % mydict)))
+                    # complex-mass scheme: M is complex and carries the width
+                    mass = 'M%(i)s' % mydict if aloha.complex_mass else 'M%(i)s, W%(i)s' % mydict
+                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator(mass)))
                     if arith_doubleexpansion:
-                        out.write('#endif\n')
-                        out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
-                        wtype = self.particles[self.outgoing - 1]
-                        coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                        coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
-                        out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
-                        out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
-                        out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
-                        out.write('    const cxtype_amp_sv %s = %s / PmM2%s;\n' % (denomname, coeff_vertex, denomsuffix))
-                        out.write('#endif\n')
+                        write_doubleexpansion()
                 ###self.declaration.add(('complex','denom')) # AV moved earlier (or simply removed)
                 if aloha.loop_mode: ptype = 'list_complex'
                 else: ptype = 'list_double'
@@ -1705,7 +1856,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 if not foundG:
                     # Comment out the default UFO assignment of mdl_sqrt__aS (from aS) and of G (from mdl_sqrt__aS), but keep them for reference
                     # (WARNING! This Python CODEGEN code essentially assumes that this refers precisely and only to mdl_sqrt__aS and G)
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', '//const fptype_sv') )
+                    # (complex-mass scheme: both are complex there, cxsmpl<double>)
+                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', '//const fptype_sv')
+                                                      .replace('constexpr cxsmpl<double>', '//const fptype_sv') )
                 ###elif pdep.name == 'mdl_G__exp__2' : # added for UFO mg5amcnlo#89 (complex in susy, should be double as in heft/smeft), now fixed
                 ###    # Hardcode a custom assignment (valid for both SUSY and SMEFT) instead of replacing double or complex by fptype in 'line'
                 ###    dcoupsetdpar.append('        const fptype_sv ' + pdep.name + ' = G * G;' )
@@ -1722,7 +1875,10 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                         if ' ' + gpar + ' ' in line and not gpar in gparamcoded:
                             gparamcoded.add(gpar)
                             dcoupsetdpar.append('        const fptype_sv ' + gpar + ' = ' + gparameters[gpar] + ';' )
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv') )
+                    # a complex one (any parameter of the complex-mass scheme
+                    # computed with cmath, G**2 included) is a cxtype_sv
+                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv')
+                                                      .replace('constexpr cxsmpl<double>', 'const cxtype_sv') )
                 if pdep.name == 'G':
                     foundG = True
                     dcoupsetdpar.append('        // *** NB Compute all dependent parameters, including aS, in terms of G rather than in terms of aS ***')
@@ -1738,7 +1894,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # Special handling in EFT for fptype=float using SIMD
             dcoupoutfptypev2 = [ '      fptype_v %sr_v;\n      fptype_v %si_v;'%(name,name) for name in self.coups_dep ]
             replace_dict['dcoupoutfptypev2'] = ( '\n' if len(self.coups_dep) > 0 else '' ) + '\n'.join( dcoupoutfptypev2 )
-            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype')
+            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype').replace('cxtype_sv','cxtype')
             dcoupsetdcoup2 = [ '    ' + line.replace('constexpr cxsmpl<double> ','const cxtype ').replace('mdl_complexi', 'cI') for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') if line != '' ]
             dcoupsetdcoup2 += [ '        %sr_v[i] = cxreal( %s );\n        %si_v[i] = cximag( %s );'%(name,name,name,name) for name in self.coups_dep ]
             replace_dict['dcoupsetdcoup2'] = '  ' + '\n'.join( dcoupsetdcoup2 )
@@ -1852,8 +2008,11 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             os.makedirs(os.path.join(self.dir_path, self.include_dir))
         if not os.path.isdir(os.path.join(self.dir_path, self.cc_file_dir)):
             os.makedirs(os.path.join(self.dir_path, self.cc_file_dir))
+        # helamps_suffix: the header of the other gauge of an output whose
+        # processes are in two gauges (HelAmps_sm_fd.h, see below)
+        suffix = getattr(self, 'helamps_suffix', '')
         model_h_file = os.path.join(self.dir_path, self.include_dir,
-                                    'HelAmps_%s.h' % self.model_name)
+                                    'HelAmps_%s%s.h' % (self.model_name, suffix))
         model_cc_file = os.path.join(self.dir_path, self.cc_file_dir,
                                      'HelAmps_%s.%s' % (self.model_name, self.cc_ext))
         replace_dict = {}
@@ -1908,6 +2067,17 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 '#include "mgOnGpuConfig.h"',
                 '#include "mgOnGpuConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
             )
+        if suffix:
+            # its own include guard, and its own namespace inside madmatrix:
+            # the routines and ALOHAOBJ differ from those of the session
+            # gauge under the same names, and both end up in one process
+            name = 'HelAmps_%s' % self.model_name
+            file_h = file_h.replace('%s_H' % name, '%s%s_H' % (name, suffix))
+            file_h = file_h.replace('namespace madmatrix\n{',
+                'namespace madmatrix\n{\ninline namespace gauge%s\n{' % suffix, 1)
+            head, sep, tail = file_h.rpartition('} // end namespace')
+            file_h = head + '} // end inline namespace gauge%s\n' % suffix + \
+                     sep + tail
         writers.CPPWriter(model_h_file).writelines(file_h, formatting=False)
         logger.info('Created file %s in directory %s' \
                     % (os.path.split(model_h_file)[-1], os.path.split(model_h_file)[0] ) )
@@ -2087,7 +2257,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             replace_dict['cipcassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
             replace_dict['cipchrdassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
 
-        if len(params) > 0:
+        if any(p.endswith(IMAG_SLOT) for p in params):
+            # complex-mass scheme: a complex mass fills two slots of the real
+            # cIPD (see format_coupling), which a table of pointers to double
+            # members cannot express
+            def slot(param, prefix):
+                if param.endswith(IMAG_SLOT):
+                    return '(fptype)%s%s.imag()' % (prefix, param[:-len(IMAG_SLOT)])
+                if param + IMAG_SLOT in params:
+                    return '(fptype)%s%s.real()' % (prefix, param)
+                return '(fptype)%s%s' % (prefix, param)
+            replace_dict['cipdassign'] = 'const fptype tIPD[nIPD] = { %s };\n    setIndependentParams( tIPD );' \
+                                         % ', '.join(slot(p, 'm_pars->') for p in params)
+            replace_dict['cipdhrdassign'] = 'const fptype tIPD[nIPD] = { %s };\n    setIndependentParams( tIPD );' \
+                                         % ', '.join(slot(p, 'Parameters::') for p in params)
+        elif len(params) > 0:
             replace_dict['cipdassign'] = ('static constexpr double Parameters::* const cIPD_members[nIPD] = {\n'
                                            '      &Parameters::' + ',\n      &Parameters::'.join(params) + '\n'
                                            '    };\n'
@@ -2291,13 +2475,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Statements per chunk for a block of `nstmt` statements (0: inline),
         from --hel_recycling_chunk if given."""
         options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
-        if 'hel_recycling_chunk' in options:
+        return self.hr_chunk_size(options.get('hel_recycling_chunk'), nstmt)
+
+    @classmethod
+    def hr_chunk_size(cls, option, nstmt):
+        """hel_recycling_chunk_size for the value of --hel_recycling_chunk
+        (None: not given)."""
+        if option is not None:
             try:
-                return int(options['hel_recycling_chunk'])
+                return int(option)
             except (TypeError, ValueError):
                 logger.warning('--hel_recycling_chunk must be an integer; '
                                'using the default')
-        return self.HR_CHUNK_STMTS if nstmt > self.HR_INLINE_MAX else 0
+        return cls.HR_CHUNK_STMTS if nstmt > cls.HR_INLINE_MAX else 0
 
     @staticmethod
     def hr_split_statements(lines, per_chunk):
@@ -2332,23 +2522,29 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         units, so that its own body stays a handful of calls -- with one call
         per chunk (10570 for g g > t t~ g g g), SigmaKin.cc alone took longer
         to build than all the chunks together."""
+        return self.hr_chunk_calls_sized(self, calls, self.hel_recycling_chunk_size)
+
+    @staticmethod
+    def hr_chunk_calls_sized(owner, calls, chunk_size):
+        """hr_chunk_calls, with chunk_size(nstmt) the statements per chunk;
+        owner (the exporter, or its class) has the HR_* settings."""
         lines = calls.rstrip('\n').split('\n')
         nstmt = sum(1 for line in lines if line.split('//')[0].strip())
-        per_chunk = self.hel_recycling_chunk_size(nstmt)
+        per_chunk = chunk_size(nstmt)
         if per_chunk <= 0 or nstmt <= per_chunk:
             return '', [], calls
         params = ',\n              '.join('[[maybe_unused]] ' + decl
-                                          for decl, _ in self.HR_CHUNK_STATE)
+                                          for decl, _ in owner.HR_CHUNK_STATE)
         # the declarations SigmaKin.cc sees leave the names out: there, cIPD &co
         # are its own tables
         types = ', '.join(re.sub(r'\b%s\b' % name, '', decl).strip()
-                          for decl, name in self.HR_CHUNK_STATE)
-        args = ', '.join(name for _, name in self.HR_CHUNK_STATE)
+                          for decl, name in owner.HR_CHUNK_STATE)
+        args = ', '.join(name for _, name in owner.HR_CHUNK_STATE)
         units, unit, unit_stmts, nchunks = [], [], 0, 0
-        for chunk in self.hr_split_statements(lines, per_chunk):
+        for chunk in owner.hr_split_statements(lines, per_chunk):
             unit.append(chunk)
             unit_stmts += sum(1 for line in chunk if line.split('//')[0].strip())
-            if unit_stmts >= self.HR_FILE_STMTS:
+            if unit_stmts >= owner.HR_FILE_STMTS:
                 units.append(unit)
                 unit, unit_stmts = [], 0
         if unit:
@@ -2360,16 +2556,16 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 # noinline: folding the chunks back into one body is what they avoid
                 defs.append('  __attribute__( ( noinline ) ) static void\n'
                             '  hr_chunk_%d( %s )\n  {\n%s%s\n  }\n'
-                            % (nchunks, params, self.HR_CHUNK_USING, '\n'.join(chunk)))
+                            % (nchunks, params, owner.HR_CHUNK_USING, '\n'.join(chunk)))
                 calls_k.append('    hr_chunk_%d( %s );' % (nchunks, args))
                 nchunks += 1
             defs.append('  %s void\n  hr_unit_%d( %s )\n  {\n%s\n  }\n'
-                        % (self.HR_CHUNK_ATTR, k, params, '\n'.join(calls_k)))
+                        % (owner.HR_CHUNK_ATTR, k, params, '\n'.join(calls_k)))
             texts.append('// --hel_recycling: recycled chunks of calculate_all_jamps, generated by\n'
                          '// madgraph/madevent/hel_recycle.py (see HelRecycling.inc)\n\n'
                          '#include "HelRecyclingChunks.h"\n\n'
                          'namespace madmatrix\n{\n%s}\n' % '\n'.join(defs))
-            decls.append('  %s void hr_unit_%d( %s );' % (self.HR_CHUNK_ATTR, k, types))
+            decls.append('  %s void hr_unit_%d( %s );' % (owner.HR_CHUNK_ATTR, k, types))
             body.append('      hr_unit_%d( %s );' % (k, args))
         logger.debug('hel_recycling: %d statements in %d chunks, %d files',
                      nstmt, nchunks, len(texts))
@@ -2377,16 +2573,25 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     @property
     def hel_recycling(self):
-        """Whether the output command asked for --hel_recycling=True (off by
-        default here; madevent's own option of the same name is separate)."""
+        """Whether the output is recycled: --hel_recycling=True, or 'auto', the
+        default `output standalone|mg7` sets when the option is not given.
+        An exporter built without the output command (check, tests) has no
+        P1N routines and stays plain; madevent's own option of the same name
+        is separate."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        return str(options.get('hel_recycling', False)).lower() \
+                                        in ('true', '1', 'yes', 'auto')
+
+    @property
+    def hel_recycling_explicit(self):
+        """Whether --hel_recycling=True was asked for on the command line
+        (rather than the 'auto' default)."""
         options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
         return str(options.get('hel_recycling', False)).lower() \
                                                 in ('true', '1', 'yes')
 
     def hel_recycling_refusal(self):
         """Why this process cannot be recycled, or None."""
-        if len(self.matrix_elements) != 1:
-            return 'more than one matrix element in the directory'
         so = export_v4.split_order_tables(self.matrix_elements[0])
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
@@ -2437,31 +2642,108 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             for amp, number in numbers:
                 amp.set('number', number)
 
+    # The recycled build is written from a recipe: what the exporter knows of
+    # the matrix element at generation (the calls in the form the recycler
+    # reads, the helicity table, the color-flow post-processing, the options).
+    # It is kept in the P* directory (HR_RECIPE), so that the good helicities
+    # and the vanishing amplitudes can be measured again, and the recycled
+    # build rewritten, at the param_card a run is launched with
+    # (madmatrix/hel_recycling_filter.py) -- long after this exporter is gone.
+    HR_RECIPE = 'HelRecyclingRecipe.json'
+
+    def hr_recipe(self):
+        """The recipe of this directory's recycled build (see HR_RECIPE)."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        post = dict(getattr(self, '_hr_jamp_post', None) or
+                    MadMatrixUFOHelasCallWriter.HR_POST_EMPTY)
+        post['lines'] = list(post['lines'])
+        return {'version': 1,
+                'calls': list(self._hr_calls),
+                'helicities': [list(hel) for hel in self.matrix_elements[0]
+                               .get_helicity_matrix(allow_reverse=True)],
+                'post': post,
+                'gauge': getattr(self, '_hr_gauge', 'U'),
+                'tables': self.hel_recycling_tables(),
+                # set on hel_recycle.CppDialect as they are
+                'dialect': {'p1n_flavour_tables': self.hr_flavour_tables()},
+                'max_stmts': self.hel_recycling_max_stmts(),
+                # --hel_recycling=True asked for: say loudly why it is declined
+                'explicit': self.hel_recycling_explicit,
+                'chunk': options.get('hel_recycling_chunk')}
+
+    def write_hr_recipe(self):
+        """Write the recipe into the P* directory; returns it."""
+        import json
+        recipe = self.hr_recipe()
+        with open(pjoin(self.path, self.HR_RECIPE), 'w') as fsock:
+            json.dump(recipe, fsock)
+        return recipe
+
+    @staticmethod
+    def flv_partner_pairs(coupl, dependent):
+        """The (k1, k2) pairs (0-based) of a flavoured coupling, k1 the flavour
+        whose slot holds the value, as its table is filled: by
+        FLV_Coupling.get_partner_indices for a fixed coupling (the model's
+        FLV_COUPLING), and with the merged leg always first for a running one
+        (cDPF_partner1/2 of ProcessTables.h, see edit_processtables)."""
+        from madgraph.core import base_objects
+        pairs = []
+        for key in coupl.flavors:
+            if dependent:
+                nonzero = [i for i in key if i != 0]
+                k1, k2 = nonzero if len(nonzero) == 2 else (nonzero[0], 1)
+            else:
+                k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
+            pairs.append((k1 - 1, k2 - 1))
+        return pairs
+
+    def hr_flavour_tables(self):
+        """{argument: (k1, k2) pairs} of every flavoured coupling of the
+        process, by the argument the vertex calls pass (flvCOUPs[i],
+        flvCOUPs_dep[i]); None for one whose table is not known. The recycler
+        does not split the amplitudes of a vertex whose table a P1N current with
+        a fermion output cannot follow (hel_recycle.CppDialect.p1n_flavour_safe)."""
+        writer = self.helas_call_writer
+        flv_map = getattr(writer, 'flv_couplings_map', {})
+        tables = {}
+        for name, order, dependent in (
+                ('flvCOUPs', getattr(writer, 'couporderflv', {}), False),
+                ('flvCOUPs_dep', getattr(writer, 'couporderflv_dep', {}), True)):
+            for coup, pos in order.items():
+                coupl = flv_map.get(coup)
+                tables['%s[%d]' % (name, pos)] = None if coupl is None else \
+                    self.flv_partner_pairs(coupl, dependent)
+        return tables
+
     def write_recycled(self, good_hels, zero_perhel):
-        """Run the recycler over the hr_orig calls for the good helicities
-        (1-based rows of cHel) and the (row, amplitude) pairs that vanish, and
-        write HelRecycling.inc and HelRecyclingCalls.inc. Returns the number of
-        rows built, or None when the recycled block is declined for its size
-        (hel_recycling_max_stmts): then nothing is written and the directory
-        keeps the plain code."""
+        """write_recycled_recipe for this exporter's directory and recipe."""
+        return self.write_recycled_recipe(self.path, self.write_hr_recipe(),
+                                          good_hels, zero_perhel)
+
+    @classmethod
+    def write_recycled_recipe(cls, path, recipe, good_hels, zero_perhel):
+        """Run the recycler over the hr_orig calls of `recipe` (see hr_recipe)
+        for the good helicities (1-based rows of cHel) and the (row, amplitude)
+        pairs that vanish, and write HelRecycling.inc and HelRecyclingCalls.inc
+        into the P* directory `path`. Returns the number of rows built, or None
+        when the recycled block is declined for its size (hel_recycling_max_stmts):
+        then nothing is written."""
         import madgraph.madevent.hel_recycle as hel_recycle
-        matrix_element = self.matrix_elements[0]
-        all_hel = [tuple(hel) for hel in
-                   matrix_element.get_helicity_matrix(allow_reverse=True)]
+        all_hel = [tuple(hel) for hel in recipe['helicities']]
         ncomb = len(all_hel)
         kept = sorted(int(hel) for hel in good_hels)
         row_of_hel = [-1] * ncomb
         for compact, full in enumerate(kept):
             row_of_hel[full - 1] = compact
-        post = getattr(self, '_hr_jamp_post', None) or \
-               MadMatrixUFOHelasCallWriter.HR_POST_EMPTY
+        post = recipe.get('post') or MadMatrixUFOHelasCallWriter.HR_POST_EMPTY
+        dropped = sorted((int(h), int(a)) for h, a in zero_perhel)
         ntmp = post['ntmp'] if post['mode'] == 'fold' else 0
         namp = post['namp'] if post['mode'] == 'rows' else 0
-        orig_path = pjoin(self.path, 'HelRecycling_orig.cc')
-        tmpl_path = pjoin(self.path, 'HelRecycling_template.cc')
-        out_path = pjoin(self.path, 'HelRecycling_out.cc')
+        orig_path = pjoin(path, 'HelRecycling_orig.cc')
+        tmpl_path = pjoin(path, 'HelRecycling_template.cc')
+        out_path = pjoin(path, 'HelRecycling_out.cc')
         with open(orig_path, 'w') as fsock:
-            fsock.write('\n'.join(self._hr_calls) + '\n')
+            fsock.write('\n'.join(recipe['calls']) + '\n')
         with open(tmpl_path, 'w') as fsock:
             fsock.write(
                 '  // --hel_recycling: generated by madgraph/madevent/hel_recycle.py\n'
@@ -2470,18 +2752,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '  constexpr int hrNtmp = %d; // shared color-flow sub-expressions of one row (fold)\n'
                 '  constexpr int hrNamp = %d; // amplitude slots of one row (rows)\n'
                 '  static constexpr int cHrRow[ncomb] = { %s }; // row of each helicity (-1: not built)\n'
+                '  // the (helicity, amplitude) pairs this build skips, as the warm-up\n'
+                '  // printed them (1-based row of cHel, MG_HR_PROBE_AMP number): checked\n'
+                '  // at run time against the parameters in use (hr_check_stale)\n'
+                '  constexpr int nHrDropped = %d;\n'
+                '  static constexpr int cHrDropped[%d][2] = { %s };\n'
                 '%s'
                 '${helicity_lines}\n%s\n${helas_calls}\n'
                 % (ntmp, namp, ', '.join(str(row) for row in row_of_hel),
+                   len(dropped), max(len(dropped), 1),
+                   ', '.join('{ %d, %d }' % pair for pair in dropped) or '{ 0, 0 }',
                    '#define MGONGPU_HR_ROWS 1 // the color flows are made row by row in hr_row\n'
                    if post['mode'] == 'rows' else '',
-                   self.HR_CALLS_MARK))
+                   cls.HR_CALLS_MARK))
         dialect = hel_recycle.CppDialect()
-        dialect.TABLES = self.hel_recycling_tables()
+        dialect.TABLES = recipe['tables']
+        # what else the exporter hands the dialect (see hr_recipe)
+        for name, value in recipe.get('dialect', {}).items():
+            setattr(dialect, name, value)
         recycler = hel_recycle.HelicityRecycler(
                         [str(hel) for hel in kept], [],
                         sorted((int(h), int(a)) for h, a in zero_perhel),
-                        gauge=getattr(self, '_hr_gauge', 'U'), dialect=dialect)
+                        gauge=recipe.get('gauge', 'U'), dialect=dialect)
         recycler.hel_filt = True
         recycler.amp_splt = True
         recycler.amp_filt = True
@@ -2494,34 +2786,36 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             with open(out_path) as fsock:
                 text = fsock.read()
         finally:
-            for path in (orig_path, tmpl_path, out_path):
+            for scratch in (orig_path, tmpl_path, out_path):
                 try:
-                    os.remove(path)
+                    os.remove(scratch)
                 except OSError:
                     pass
-        header, calls = text.split(self.HR_CALLS_MARK, 1)
-        nstmt = self.hr_count_statements(calls)
-        limit = self.hel_recycling_max_stmts()
+        header, calls = text.split(cls.HR_CALLS_MARK, 1)
+        nstmt = cls.hr_count_statements(calls)
+        limit = recipe['max_stmts']
         if limit > 0 and nstmt > limit:
-            logger.warning('hel_recycling: %s is written WITHOUT recycling: its '
+            (logger.warning if recipe.get('explicit', True) else
+             logger.info)('hel_recycling: %s is written WITHOUT recycling: its '
                 'recycled block would be %d statements (%d helicity rows), more '
                 'than --hel_recycling_max=%d. Code that size no longer runs from the '
                 'caches and is slower than the plain build (2x at 22 MB of code). '
                 'Pass --hel_recycling_max=0 to build it anyway.',
-                os.path.basename(self.path), nstmt, len(kept), limit)
+                os.path.basename(path), nstmt, len(kept), limit)
             return None
-        decls, units, calls = self.hr_chunk_calls(calls.lstrip('\n'))
-        for stale in glob.glob(pjoin(self.path, self.HR_CHUNK_FILE.replace('%d', '*'))):
+        decls, units, calls = cls.hr_chunk_calls_sized(
+            cls, calls.lstrip('\n'), lambda n: cls.hr_chunk_size(recipe.get('chunk'), n))
+        for stale in glob.glob(pjoin(path, cls.HR_CHUNK_FILE.replace('%d', '*'))):
             os.remove(stale)
         for k, unit in enumerate(units):
-            with open(pjoin(self.path, self.HR_CHUNK_FILE % k), 'w') as fsock:
+            with open(pjoin(path, cls.HR_CHUNK_FILE % k), 'w') as fsock:
                 fsock.write(unit)
-        with open(pjoin(self.path, 'HelRecycling.inc'), 'w') as fsock:
+        with open(pjoin(path, 'HelRecycling.inc'), 'w') as fsock:
             fsock.write(header + '\n' + decls)
-        with open(pjoin(self.path, 'HelRecyclingCalls.inc'), 'w') as fsock:
+        with open(pjoin(path, 'HelRecyclingCalls.inc'), 'w') as fsock:
             fsock.write(calls)
-        with open(pjoin(self.path, 'HelRecyclingJamps.inc'), 'w') as fsock:
-            fsock.write(self.hr_jamps_inc(post))
+        with open(pjoin(path, 'HelRecyclingJamps.inc'), 'w') as fsock:
+            fsock.write(cls.hr_jamps_inc(post))
         return len(kept)
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
@@ -2535,11 +2829,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
         """Write EvaluateDiagrams.inc, the diagram calls backend/<variant>/SigmaKin.cc #includes"""
         recycle = False
-        if self.single_helicities and self.hel_recycling:
+        if self.hel_recycling:
             refusal = self.hel_recycling_refusal()
             if refusal:
-                logger.warning('--hel_recycling is not supported with %s: %s is '
-                               'written without it.', refusal,
+                (logger.warning if self.hel_recycling_explicit else
+                 logger.debug)('--hel_recycling is not supported with %s: %s '
+                               'is written without it.', refusal,
                                os.path.basename(self.path))
             else:
                 recycle = True
@@ -2550,28 +2845,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 self._hr_gauge = 'FD' if aloha.unitary_gauge == 3 else 'U'
                 if self not in OneProcessExporterMadMatrix._hr_warmups:
                     OneProcessExporterMadMatrix._hr_warmups.append(self)
-        if self.single_helicities:
-            self.helas_call_writer.hr_probe = recycle
-            try:
-                helas_calls = self.helas_call_writer.get_matrix_element_calls(\
-                                                    self.matrix_elements[0],
-                                                    color_amplitudes[0],
-                                                    multi_channel_map = self.multi_channel_map
-                                                    )
-            finally:
-                self.helas_call_writer.hr_probe = False
-            assert len(self.matrix_elements) == 1 or len(self.matrix_elements) == 2 # how to handle if this is not true?
-            self.couplings2order = self.helas_call_writer.couplings2order
-            self.couporderflv = self.helas_call_writer.couporderflv
-            self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
-            self.params2order = self.helas_call_writer.params2order
-            content = []
-            content += helas_calls
-        else:
-            content = [self.get_sigmaKin_single_process(i, me) \
-                                  for i, me in enumerate(self.matrix_elements)]
+        self.helas_call_writer.hr_probe = recycle
+        try:
+            helas_calls = self.helas_call_writer.get_matrix_element_calls(\
+                                                self.matrix_elements[0],
+                                                color_amplitudes[0],
+                                                multi_channel_map = self.multi_channel_map
+                                                )
+        finally:
+            self.helas_call_writer.hr_probe = False
+        self.couplings2order = self.helas_call_writer.couplings2order
+        self.couporderflv = self.helas_call_writer.couporderflv
+        self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
+        self.params2order = self.helas_call_writer.params2order
         ff = open(pjoin(self.path, 'EvaluateDiagrams.inc'), 'w')
-        ff.write('\n'.join(content))
+        ff.write('\n'.join(helas_calls))
         ff.close()
         return ''
 
@@ -2639,10 +2927,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nampso'] = so['nampso'] if so else 1
         replace_dict['nsqampso'] = so['nsqampso'] if so else 1
         replace_dict['nwf'] = me.get_number_of_wavefunctions()
-        replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
+        replace_dict['nproc'] = 2 if me.get('has_mirror_process') else 1
         replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
-        den_factors = [str(m.get_denominator_factor()) for m in self.matrix_elements]
-        replace_dict['den_factors'] = ",".join(den_factors)
+        replace_dict['den_factor'] = me.get_denominator_factor()
         # cached by get_process_function_definitions(), which runs earlier in
         # super().generate_process_files()
         replace_dict['nipd'] = self._nipd
@@ -2939,6 +3226,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write(template % replace_dict)
         ff.close()
 
+    def helamps_header(self):
+        """HelAmps_<model>.h, or HelAmps_<model>_fd.h for the FD processes of
+        an output whose processes are in two gauges."""
+
+        gauge = self.matrix_elements[0].get('processes')[0].get_gauge()
+        return 'HelAmps_%s%s.h' % (self.model_name,
+                                   '_' + gauge.lower() if gauge else '')
+
     # AV - overload the export_cpp.OneProcessExporterCPP method (add debug printout and truncate last \n)
     # [*NB export_cpp.UFOModelConverterGPU.write_process_h_file is not called!*]
     def write_process_h_file(self, writer):
@@ -2946,9 +3241,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.write_process_h_file')
         replace_dict = super().write_process_h_file(False)
         try:
-            replace_dict['helamps_h'] = open(pjoin(self.path, os.pardir, os.pardir,'src','HelAmps_%s.h' % self.model_name)).read()
+            replace_dict['helamps_h'] = open(pjoin(self.path, os.pardir, os.pardir,'src',self.helamps_header())).read()
         except FileNotFoundError:
-            replace_dict['helamps_h'] = "\n#include \"../../src/HelAmps_%s.h\"" % self.model_name
+            replace_dict['helamps_h'] = "\n#include \"../../src/%s\"" % self.helamps_header()
 
         replace_dict['process_file_name'] = self.name.upper()
 
@@ -2964,7 +3259,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Write the class member definition (.cc) file for the process described by matrix_element"""
         replace_dict = super().write_process_cc_file(False)
         ###replace_dict['hel_amps_def'] = '\n#include \"../../src/HelAmps_%s.cu\"' % self.model_name
-        replace_dict['hel_amps_h'] = '#include \"HelAmps_%s.h\"' % self.model_name # AV
+        replace_dict['hel_amps_h'] = '#include \"%s\"' % self.helamps_header() # AV
         if writer:
             file = self.read_template_file(self.process_template_cc) % replace_dict
             # Write the file
@@ -3236,6 +3531,25 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         super().__init__(*args,**opts)
 
 
+    @contextlib.contextmanager
+    def gauge_cache(self, gauge, model):
+        """helas_call_writers.HelasCallWriter.gauge_cache, with the flavored
+        couplings of that model known, and the ordered coupling list (which
+        format_coupling leaves on the model it writes with) handed back to
+        the session model for its Parameters."""
+
+        session = self['model']
+        for interaction in model.get('interactions'):
+            for coupling in interaction['couplings'].values():
+                if isinstance(coupling, base_objects.FLV_Coupling):
+                    self.flv_couplings_map[coupling.name] = coupling
+        with super().gauge_cache(gauge, model):
+            yield self
+        if hasattr(model, 'cudacpp_wanted_ordered_couplings'):
+            session.cudacpp_wanted_ordered_couplings = \
+                                        model.cudacpp_wanted_ordered_couplings
+            del model.cudacpp_wanted_ordered_couplings
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting of CPPProcess.cc)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
@@ -3325,7 +3639,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     for k in self.couporderindep:
                         self.couporderindep[k] += 1
                 newcoup = True
-            if name == 'cIPD':
+            if name == 'cIPD' and param.type == 'complex':
+                # complex-mass scheme: the mass CMASS_* of a propagator is
+                # complex; cIPD is real, so it takes two slots (real, imaginary)
+                imag = coup + IMAG_SLOT
+                if imag not in alias:
+                    alias[imag] = len(alias)
+                call = call.replace('m_pars->%s%s' % (sign, coup),
+                                    '%scxmake( %s[%s], %s[%s] )' % (sign, name, alias[coup],
+                                                                   name, alias[imag]))
+            elif name == 'cIPD':
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     '%s%s[%s]' % (sign, name, alias[coup]))                        
             elif model.is_running_coupling(coup):
@@ -3989,12 +4312,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     def get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):
         """Return a list of strings, corresponding to the Helas calls for the matrix element"""
         # --axial_gauge: the massless external vectors are written out as
-        # vxxxxxr, in the axial gauge of the momentum of another external leg
+        # vxxxxxr, in the axial gauge of the momentum of another external leg,
+        # and the massive external fermions as ixxxxxr/oxxxxxr, with their
+        # spin quantised along the momentum of a massless leg
         # (see helas_call_writers.get_axial_gauge_refs)
         self.axial_gauge = helas_call_writers.axial_gauge_requested(
                                             getattr(self, 'cmd_options', None))
-        self.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(
-                            matrix_element) if self.axial_gauge else {}
+        self.axial_gauge_refs = helas_call_writers.get_output_axial_gauge_refs(
+                     matrix_element, getattr(self, 'cmd_options', None))
         try:
             res = self.super_get_matrix_element_calls(matrix_element, color_amplitudes, multi_channel_map)
         finally:
@@ -4047,9 +4372,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         call = call + 'x' * (6 - len(call))
         # Axial gauge: a vector leg that got a reference (a massless one, see
         # helas_call_writers.get_axial_gauge_refs) is written out as vxxxxxr,
-        # which takes the (lightlike) momentum of another external leg as its
-        # gauge reference; any other leg keeps vxxxxx
-        axial = argument.get('spin') == 3 and self.has_axial_gauge_ref(wf)
+        # which takes the momentum of another external leg as its gauge
+        # reference; any other leg keeps vxxxxx. A massive fermion that got a
+        # reference is ixxxxxr/oxxxxxr in the same way: the reference fixes
+        # the axis its spin is quantised along
+        axial = argument.get('spin') in (2, 3) and self.has_axial_gauge_ref(wf)
         if axial:
             call = call + 'r'
         # Specify namespace for Helas calls
@@ -4080,8 +4407,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             return self.format_coupling(call % \
                             (wf.get('mass'),
                                 wf.get('number_external')-1,
-                                # For boson, need initial/final here
-                                (-1) ** (wf.get('state') == 'initial'),
+                                # For boson, need initial/final here; for
+                                # fermions, particle/antiparticle
+                                (-1) ** (wf.get('state') == 'initial')
+                                if argument.is_boson() else
+                                - (-1) ** wf.get_with_flow('is_part'),
                                 wf.get('number_external')-1,
                                 wf.get('me_id')-1,
                                 wf.get('number_external')-1,

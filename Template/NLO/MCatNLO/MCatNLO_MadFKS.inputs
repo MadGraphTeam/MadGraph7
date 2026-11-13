@@ -13,6 +13,7 @@ HERWIGVER="herwig6521.o"
 PYTHIAVER="pythia6428.o"
 
 ##### LOAD THE SCRIPTS
+# PYTHIA8 is configured by MG5_aMC directly (madgraph/various/mcatnlo_shower.py)
 . Scripts/MCatNLO_MadFKS_$MCMODE.Script
 
 ##### EXECUTION
@@ -22,8 +23,6 @@ runMC
 #### CLEAN UP
 rm -f `pwd`/*.o
 rm -f `pwd`/*.so
-rm -f `pwd`/HWPPAnalyzer/*.o
-rm -f `pwd`/HWPPAnalyzer/*.so
-rm -f `pwd`/Pythia8.cc
+rm -f `pwd`/HW7Analyzer/*.o
+rm -f `pwd`/HW7Analyzer/*.so
 rm -f `pwd`/Makefile
-rm -f `pwd`/MCATNLO_PYTHIA8_*

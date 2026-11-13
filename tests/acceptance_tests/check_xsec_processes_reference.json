@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference cross-sections (pb) for systematic MG7 testing. Source of truth: #28. Reference runs used fixed scale (mu = 91.188 GeV, pinned by the test; the run_card.toml default is now dynamical HT/2), e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed (also pinned by the test, so these values stay valid if the run_card.toml default PDF changes), 1M events. decay_cuts: [phasespace] cut_decays (default false, as MadEvent's cut_decays) leaves the products of on-shell decay-chain propagators out of the cuts; its references were cross-checked against madevent at the same fixed scale with nn23lo1 and mmll / cut_decays set alike. ckkwl: madevent references (10k events, ickkw = 0, nn23lo1, mmll = 50, no jet cuts) of the CKKW-L ktdurham / ptlund generation cut.",
+  "_comment": "Reference cross-sections (pb) for systematic MG7 testing. Source of truth: #28. Reference runs used fixed scale (mu = 91.188 GeV, pinned by the test; the run_card.toml default is now dynamical HT/2), e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed (also pinned by the test, so these values stay valid if the run_card.toml default PDF changes), 1M events. decay_cuts: [phasespace] cut_decays (default false, as MadEvent's cut_decays) leaves the products of on-shell decay-chain propagators out of the cuts; its references were cross-checked against madevent at the same fixed scale with nn23lo1 and mmll / cut_decays set alike. lepton_collider: leptonic beams (no PDF) at the energy of the entry's \"beam\" (the run_card.toml default is 500 GeV per beam), with the default jet cuts of a lepton collider (pt > 20, |eta| < 5, dR > 0.4: mg7 used to drop them, which left e+ e- > j j j j divergent and aborting on a non-finite integral). Without a PDF, alpha_s is the 2-loop running of the param card alpha_s(mZ) = 0.118, as madevent (the pinned NNPDF23_lo_as_0130_qed is not used): ee_jjjj agrees with madevent (mg5 3.8.2, same cuts and fixed scale), 0.4524(13) pb. ckkwl: madevent references (10k events, ickkw = 0, nn23lo1, mmll = 50, no jet cuts) of the CKKW-L ktdurham / ptlund generation cut.",
   "defines": [],
   "sections": {
     "3jets": [
@@ -63,6 +63,9 @@
     "ckkwl": [
       {"id": "pp_eejj_ktdurham", "process": "p p > e+ e- j j", "cross": 5.591e+01, "error": 1.605e-01, "disable_jet_cuts": true, "cuts": {"lepton-sfos_pair_mass.min": 50.0}, "phasespace": {"ktdurham": 30.0}, "madnis": false},
       {"id": "pp_eejj_ptlund",   "process": "p p > e+ e- j j", "cross": 5.408e+01, "error": 1.764e-01, "disable_jet_cuts": true, "cuts": {"lepton-sfos_pair_mass.min": 50.0}, "phasespace": {"ptlund": 30.0}, "madnis": false}
+    ],
+    "lepton_collider": [
+      {"id": "ee_jjjj", "process": "e+ e- > j j j j", "cross": 4.533750e-01, "error": 1.047526e-04, "beam": {"ebeam1": 250.0, "ebeam2": 250.0}, "madnis": false}
     ]
   }
 }

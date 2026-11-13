@@ -1,0 +1,491 @@
+"""Exercise split-shower scripts, collection and cleanup with small analyses."""
+
+import gzip
+import os
+from pathlib import Path
+import shutil
+import tarfile
+import tempfile
+import unittest
+from unittest import mock
+
+from madgraph import MG5DIR
+from madgraph.interface import amcatnlo_run_interface as interface
+from madgraph.various import cluster, histograms
+from madgraph.various.shower_card import ShowerCard
+from madgraph.various import mcatnlo_shower
+
+
+class TestShowerCollection(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='mg5_shower_')
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.events = self.root / 'Events' / 'run_01'
+        self.events.mkdir(parents=True)
+        self.mcatnlo = self.root / 'MCatNLO'
+        self.mcatnlo.mkdir()
+        shutil.copy(Path(MG5DIR) / 'Template/NLO/MCatNLO/shower_template.sh', self.mcatnlo)
+        internal = self.root / 'bin' / 'internal'
+        internal.mkdir(parents=True)
+        (internal / 'histograms.py').symlink_to(Path(MG5DIR) / 'madgraph/various/histograms.py')
+        self.input = self.events / 'events.lhe'
+        self.write_events()
+
+        # The executable reads the actual split input and writes two different
+        # histogram files. Only physics compilation is replaced by a fixture;
+        # submission, shell scripts, tar handling and HwU combination are real.
+        executable = self.mcatnlo / 'analysis_fixture'
+        executable.write_text('''#!/usr/bin/env python3
+from pathlib import Path
+import re
+import sys
+
+input_card = Path('MCATNLO_HERWIG6_input')
+mode = (input_card.read_text().strip() if input_card.is_file()
+        else Path('Pythia8.cmd').read_text().splitlines()[0])
+events = re.findall(r'<event id="(\\d+)">', Path('events.lhe').read_text())
+print('Events: ' + ','.join(events), flush=True)
+if mode == 'FAIL':
+    print('Analysis failed', flush=True)
+    sys.exit(17)
+job = int(Path.cwd().name[4:]) if Path.cwd().name.startswith('run_') else 1
+if Path.cwd().name.startswith('run_'):
+    assert Path('events.lhe').is_symlink(), 'Input should be linked, not copied'
+if mode == 'HEP':
+    Path('events.lhe.hep').write_text('Showered events: ' + ','.join(events))
+elif mode == 'TOP':
+    Path('analysis.top').write_text('Histogram job %d\\n' % job)
+elif mode in ('HWU', 'FXFX'):
+    if mode == 'FXFX':
+        print('Les Houches User Process(es) 9999 | 4 4 %d | %se-9 1e-10 |' % (job, job))
+    for name, factor in [('a', 1), ('b', 10)]:
+        Path(name + '.HwU').write_text(
+            '##& xmin & xmax & central value & dy\\n\\n'
+            '<histogram> 1 "Analysis ' + name + ' |X_AXIS@LIN |Y_AXIS@LIN |TYPE@NLO"\\n'
+            ' 0 1 %s 0.1\\n<\\\\histogram>\\n' % (job * factor))
+''')
+        executable.chmod(0o755)
+        compiler = self.mcatnlo / 'MCatNLO_MadFKS.inputs'
+        compiler.write_text('#!/usr/bin/env bash\n'
+                            'cp analysis_fixture MCATNLO_HERWIG6_EXE\n'
+                            'echo "Compiler stdout"\n'
+                            'echo "Compiler stderr" >&2\n')
+        compiler.chmod(0o755)
+
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.me_dir = str(self.root)
+        self.cmd.run_name = 'run_01'
+        self.cmd.run_card = {'ickkw': 0}
+        self.cmd.shower_card = ShowerCard()
+        self.cmd.shower_card['nsplit_jobs'] = 3
+        self.cmd.shower_card['extralibs'] = ''
+        self.cmd.shower_card['analyse'] = 'analysis.o HwU.o'
+        self.cmd.options = {'lhapdf': 'lhapdf-config'}
+        self.cmd.cluster_mode = 0
+        self.cmd.cluster = cluster.MultiCore(nb_core=3)
+        self.addCleanup(self.cmd.cluster.remove)
+        self.cmd.update_status = mock.Mock()
+        self.cmd.results = mock.Mock()
+        self.cmd.do_plot = mock.Mock()
+        self.cmd.banner_to_mcatnlo = mock.Mock()
+        self.cmd.ensure_stdhep = mock.Mock()
+        self.cmd.get_matching_contract = lambda evt_file: \
+            mcatnlo_shower.MatchingContract(
+                parton_shower=self.input.read_text().split("' = parton_shower")[0]
+                .rsplit("'", 1)[1])
+        self.render = mock.patch.object(interface.common_run, 'render_HwU_plot')
+        self.render.start()
+        self.addCleanup(self.render.stop)
+
+    def write_events(self, norm='sum'):
+        banner = ('<LesHouchesEvents version="3.0">\n<header>\n<MGRunCard>\n'
+                  "12 = nevents\n'HERWIG6' = parton_shower\n'%s' = event_norm\n" % norm +
+                  '</MGRunCard>\n</header>\n<init>\n'
+                  ' 2212 2212 6500 6500 0 0 0 0 -4 1\n 1 0 1 1\n</init>\n')
+        self.original = (banner + ''.join(
+            '<event id="%d">\n1 1 -1 100 .007 .118\n'
+            '21 1 0 0 501 502 0 0 0 100 0 0 9\n</event>\n' % i
+            for i in range(12)) + '</LesHouchesEvents>\n')
+        self.input.write_text(self.original)
+
+    def run_shower(self, mode='HWU'):
+        (self.mcatnlo / 'MCATNLO_HERWIG6_input').write_text(mode)
+        self.cmd.run_mcatnlo(str(self.input), {})
+
+    def assert_clean(self, invocation=1, shower='HERWIG6'):
+        self.assertEqual(list(self.events.glob('events.lhe_[0-9]*')), [])
+        rundir = self.mcatnlo / ('RUN_%s_%d' % (shower, invocation))
+        self.assertEqual(list(rundir.glob('**/*.lhe')), [])
+        self.assertEqual(list(rundir.glob('**/*.lhe.gz')), [])
+        with gzip.open(str(self.input) + '.gz', 'rt') as stream:
+            self.assertEqual(stream.read(), self.original)
+        log = self.events / ('mcatnlo_%s_%d.log' % (shower, invocation))
+        self.assertIn('Compiler stdout', log.read_text())
+        self.assertIn('Compiler stderr', log.read_text())
+        self.assertFalse((self.root / 'mcatnlo.log').exists())
+        self.assertTrue((rundir / 'mcatnlo_run.log').is_file())
+        return rundir
+
+    def test_split_hwu_combines_each_file_and_cleans_up(self):
+        self.run_shower()
+        self.assert_clean()
+        for index, factor in enumerate((1, 10)):
+            output = self.events / ('plot_HERWIG6_1_%d.HwU' % index)
+            hwu = histograms.HwUList(str(output))
+            self.assertEqual(len(hwu), 1)
+            self.assertAlmostEqual(hwu[0].bins[0].wgts['central'], 6 * factor)
+            with tarfile.open(self.events / ('plot_HERWIG6_1_%d.tar.gz' % index)) as archive:
+                self.assertEqual(len(archive.getnames()), 3)
+        for job in range(1, 4):
+            log = self.events / ('mcatnlo_run_HERWIG6_1__%d.log' % job)
+            self.assertIn('Events: ' + ','.join(str(i) for i in range((job-1)*4, job*4)),
+                          log.read_text())
+
+    def test_numeric_split_order_and_logs_on_multicore(self):
+        self.cmd.cluster_mode = 2
+        self.cmd.shower_card['nsplit_jobs'] = 12
+        self.cmd.shower_card['analyse'] = 'analysis.o'
+        self.cmd.shower_card['combine_td'] = False
+        self.run_shower('TOP')
+        self.assert_clean()
+        for index in range(1, 13):
+            output = self.events / ('plot_HERWIG6_1_0__%d.top' % index)
+            self.assertEqual(output.read_text(), 'Histogram job %d\n' % index)
+            log = self.events / ('mcatnlo_run_HERWIG6_1__%d.log' % index)
+            self.assertEqual(log.read_text().strip(), 'Events: %d' % (index-1))
+
+    def test_cluster_scratch_staging_cleans_inputs_and_delivers_logs(self):
+        scratch = self.root / 'scratch'
+        scratch.mkdir()
+        self.cmd.cluster_mode = 2
+        self.cmd.cluster.temp_dir = str(scratch)
+        self.cmd.shower_card['analyse'] = 'analysis.o'
+        self.cmd.shower_card['combine_td'] = False
+        self.run_shower('TOP')
+        self.assert_clean()
+        self.assertEqual(list(scratch.iterdir()), [])
+
+    def test_split_pythia_logs_seeds_and_fxfx_summary(self):
+        pythia = self.root / 'pythia'
+        (pythia / 'bin').mkdir(parents=True)
+        (pythia / 'share/Pythia8/xmldoc').mkdir(parents=True)
+        (pythia / 'share/Pythia8/tunes').mkdir()
+        config = pythia / 'bin/pythia8-config'
+        config.write_text('#!/bin/sh\nexit 0\n')
+        config.chmod(0o755)
+        self.cmd.options['pythia8_path'] = str(pythia)
+        self.cmd.run_card['ickkw'] = 3  # the contract decides
+        self.input.write_text(self.input.read_text().replace('HERWIG6', 'PYTHIA8'))
+        self.original = self.input.read_text()
+        # Pythia8 is configured in Python: replace the build by the fixture.
+        def prepare(evt_file, contract, log):
+            with open(log, 'a') as stream:
+                stream.write('Compiler stdout\nCompiler stderr\n')
+            return {'exe': str(self.mcatnlo / 'analysis_fixture'),
+                    'cmd': 'FXFX\nRandom:seed = 123\n', 'locked': ''}
+        self.cmd.prepare_pythia8_shower = prepare
+        self.cmd.get_matching_contract = lambda evt_file: \
+            mcatnlo_shower.MatchingContract(parton_shower='PYTHIA8', ickkw=3)
+        with mock.patch.object(interface, 'check_pythia8_fxfx_plugin'):
+            self.cmd.run_mcatnlo(str(self.input), {})
+        rundir = self.assert_clean(shower='PYTHIA8')
+        for index in range(1, 4):
+            self.assertIn('Random:seed = %d' % (122 + index),
+                          (rundir / ('run_%d/Pythia8.cmd' % index)).read_text())
+        details = dict(call.args for call in self.cmd.results.add_detail.call_args_list)
+        self.assertAlmostEqual(details['cross_pythia'], 2.)
+        self.assertAlmostEqual(details['error_pythia'], 0.1 / 3**0.5)
+        self.assertEqual(details['nb_event_pythia'], 6)
+
+    def test_repeated_runs_keep_logs_and_remove_obsolete_splits(self):
+        (self.events / 'events.lhe_99.lhe').write_text('stale input')
+        (self.events / 'events.lhe_99.lhe.gz').write_text('stale compressed input')
+        unrelated = self.events / 'events.lhe_notes'
+        unrelated.write_text('keep this file')
+        self.cmd.shower_card['analyse'] = ''
+        self.run_shower('HEP')
+        self.assert_clean()
+        self.assertTrue(unrelated.is_file())
+        logs = {p.name: p.read_text() for p in self.events.glob('*.log')}
+        self.cmd.shower_card['nsplit_jobs'] = 1
+        self.run_shower('HEP')
+        self.assert_clean(invocation=2)
+        for name, contents in logs.items():
+            self.assertEqual((self.events / name).read_text(), contents)
+        self.assertIn('Events: 0,1,2,3,4,5,6,7,8,9,10,11',
+                      (self.events / 'mcatnlo_run_HERWIG6_2.log').read_text())
+        self.assertTrue((self.events / 'events_HERWIG6_1.hep.gz').is_file())
+
+    def test_average_normalisation_and_single_job_hwu(self):
+        self.write_events(norm='average')
+        self.run_shower()
+        hwu = histograms.HwUList(str(self.events / 'plot_HERWIG6_1_0.HwU'))
+        self.assertAlmostEqual(hwu[0].bins[0].wgts['central'], 2.)
+        self.cmd.shower_card['nsplit_jobs'] = 1
+        self.run_shower()
+        self.assert_clean(invocation=2)
+        hwu = histograms.HwUList(str(self.events / 'plot_HERWIG6_2_0.HwU'))
+        self.assertAlmostEqual(hwu[0].bins[0].wgts['central'], 1.)
+
+    def test_failed_analysis_preserves_input_and_archives_log(self):
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'status 17'):
+            self.run_shower('FAIL')
+        log = self.events / 'mcatnlo_run_HERWIG6_1__1.log'
+        self.assertIn('Analysis failed', log.read_text())
+        self.assertTrue(self.input.is_file())
+        self.assertTrue((self.events / 'events.lhe_0.lhe').is_file())
+
+    def test_batch_contract_failure_raises_when_submission_returns_normally(self):
+        self.input.write_text(self.input.read_text().replace('HERWIG6', 'PYTHIA8'))
+        self.cmd.options['pythia8_path'] = str(self.root)
+        self.cmd.shower_card['nsplit_jobs'] = 1
+        settings = mcatnlo_shower.Pythia8Settings()
+        settings.internal('main', 'Main:spareMode1', 12)
+        settings.lock('matching', 'PartonShowers:model', 1)
+        self.cmd.prepare_pythia8_shower = mock.Mock(return_value={
+            'exe': str(self.mcatnlo / 'analysis_fixture'), 'cmd': '',
+            'locked': settings.render_locked(), 'settings': settings})
+        mismatch = ('MG5_MCATNLO_CONTRACT mismatch: PartonShowers:model is 2, '
+                    'the MC@NLO subtraction requires 1')
+
+        # Batch backends can return normally after exhausting retries, even
+        # though the executable failed. Its archived log must stop the run.
+        def batch_result(jobs, args, run_type):
+            rundir = Path(next(iter(jobs)))
+            (rundir / 'mcatnlo_run.log').write_text(
+                mismatch + '\nMG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+
+        self.cmd.run_all = mock.Mock(side_effect=batch_result)
+        with self.assertRaisesRegex(interface.aMCatNLOError, mismatch):
+            self.cmd.run_mcatnlo(str(self.input), {})
+        self.assertIn(mismatch,
+                      (self.events / 'mcatnlo_run_PYTHIA8_1.log').read_text())
+        self.assertTrue(self.input.is_file())
+        self.assertNotIn(mock.call('Run complete', level='shower', update_results=True),
+                         self.cmd.update_status.call_args_list)
+
+    def test_analysis_with_no_histograms_still_archives_logs_and_cleans_up(self):
+        self.run_shower('EMPTY')
+        self.assert_clean()
+        self.assertTrue((self.events / 'mcatnlo_run_HERWIG6_1.log').is_file())
+
+
+class TestPythia8OutputSetup(unittest.TestCase):
+    def setUp(self):
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.shower_card = ShowerCard()
+        self.cmd.options = {'pythia8_path': '/pythia8'}
+        self.cmd.get_hepmc_paths = mock.Mock(return_value=['/hepmc'])
+
+    def test_analysis_needs_no_hepmc_installation(self):
+        self.cmd.shower_card['analyse'] = 'HwU.o py8an_HwU_rates.o'
+        self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (0, ''))
+        self.cmd.get_hepmc_paths.assert_not_called()
+
+    @mock.patch.object(interface.misc, 'get_pythia8_version', return_value='8.318')
+    def test_explicit_output_format_is_respected(self, version):
+        for major in (2, 3):
+            with self.subTest(major=major), mock.patch.object(
+                    interface.misc, 'get_pythia8_hepmc_flags',
+                    return_value='-lHepMC%d' % major) as flags:
+                self.cmd.shower_card['hepmc_format'] = 'hepmc%d' % major
+                self.assertEqual(self.cmd.get_pythia8_hepmc_setup(),
+                                 (major, '-lHepMC%d' % major))
+                flags.assert_called_once_with('/pythia8', major, ['/hepmc'])
+
+    @mock.patch.object(interface.misc, 'get_pythia8_version', return_value='8.318')
+    def test_auto_uses_downstream_format_requirements(self, version):
+        self.cmd.get_auto_hepmc_version = mock.Mock(return_value=2)
+        with mock.patch.object(interface.misc, 'get_pythia8_hepmc_flags',
+                               return_value='-lHepMC'):
+            self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (2, '-lHepMC'))
+
+    @mock.patch.object(interface.misc, 'get_pythia8_version', return_value='8.318')
+    def test_auto_falls_back_to_the_available_library(self, version):
+        self.cmd.get_auto_hepmc_version = mock.Mock(return_value=3)
+        with mock.patch.object(interface.misc, 'get_pythia8_hepmc_flags',
+                               side_effect=[interface.MadGraph5Error('missing'),
+                                            '-lHepMC']):
+            self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (2, '-lHepMC'))
+
+    def test_qed_shower_override_is_logged_as_a_warning(self):
+        self.cmd.shower_card['qed_shower'] = False
+        self.cmd.banner = interface.banner_mod.Banner()
+        self.cmd.banner['mgruncard'] = "1 = nevents\n'average' = event_norm\n"
+        self.cmd.banner['montecarlomasses'] = '5 4.8\n'
+        self.cmd.get_shower_pdf = mock.Mock(return_value=('internal', None, False))
+        self.cmd.get_pythia8_hepmc_setup = mock.Mock(return_value=(0, ''))
+        self.cmd.compilation_jobs = mock.Mock(return_value=1)
+        installation = mock.Mock(version='8.318', path='/pythia8')
+        contract = mcatnlo_shower.MatchingContract(
+            parton_shower='PYTHIA8', qed_matching=True)
+        with tempfile.TemporaryDirectory() as root:
+            self.cmd.me_dir = root
+            with mock.patch.object(mcatnlo_shower, 'Pythia8Installation',
+                                   return_value=installation), \
+                 mock.patch.object(mcatnlo_shower, 'build_pythia8_driver',
+                                   return_value='/fake/Pythia8.exe'), \
+                 self.assertLogs(interface.logger, level='WARNING') as output:
+                result = self.cmd.prepare_pythia8_shower('events.lhe', contract, None)
+        self.assertTrue(any('qed_shower = F is ignored' in line for line in output.output))
+        self.assertEqual(result['settings'].get('TimeShower:QEDshowerByQ').value, 'on')
+
+
+class TestPythia8LogValidation(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='mg7_shower_logs_')
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.shower_card = ShowerCard()
+        self.settings = mcatnlo_shower.Pythia8Settings()
+        self.settings.internal('main', 'Main:spareMode1', 2)
+        self.settings.lock('matching', 'PartonShowers:model', 1)
+
+    def log(self, name, content):
+        path = self.root / name
+        path.write_text(content)
+        return str(path)
+
+    def test_a_failed_split_job_stops_the_run_with_mismatch_details(self):
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        good = self.log('shower__1.log', 'MG5_MCATNLO_CONTRACT OK (1 settings verified)\n')
+        mismatch = ('MG5_MCATNLO_CONTRACT mismatch: PartonShowers:model is 2, '
+                    'the MC@NLO subtraction requires 1')
+        bad = self.log('shower__2.log', mismatch + '\n'
+                       'MG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+        with self.assertRaises(interface.aMCatNLOError) as error:
+            self.cmd.check_pythia8_logs([good, bad], self.settings)
+        self.assertIn(bad, str(error.exception))
+        self.assertIn(mismatch, str(error.exception))
+
+    def test_missing_contract_check_is_fatal_with_or_without_event_summary(self):
+        for content in ('', 'MG5_MCATNLO_SUMMARY read=2 showered=2 failed=0\n'):
+            with self.subTest(content=content):
+                log = self.log('shower.log', content)
+                with self.assertRaisesRegex(interface.aMCatNLOError,
+                                            'no MC@NLO matching check was reported'):
+                    self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_missing_job_logs_prevent_claiming_success(self):
+        for logs in ([], [str(self.root / 'missing.log')]):
+            with self.subTest(logs=logs):
+                with self.assertRaises(interface.aMCatNLOError):
+                    self.cmd.check_pythia8_logs(logs, self.settings)
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        log = self.log('shower__1.log', 'MG5_MCATNLO_CONTRACT OK (1 settings verified)\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'Expected 2 Pythia8 shower logs'):
+            self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_explicit_failure_without_mismatches_or_locked_settings_is_fatal(self):
+        self.settings.free('matching', 'PartonShowers:model', 1)
+        log = self.log('shower.log', 'MG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'MC@NLO matching check failed'):
+            self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_successful_split_summaries_are_counted_once(self):
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        content = ('MG5_MCATNLO_CONTRACT OK (1 settings verified)\n'
+                   'MG5_MCATNLO_SUMMARY read=2 showered=2 failed=0\n')
+        logs = [self.log('shower__%d.log' % i, content) for i in (1, 2)]
+        logs.append(self.log('shower.log', content * 2))
+        with self.assertLogs(interface.logger, level='INFO') as output:
+            self.cmd.check_pythia8_logs(logs, self.settings)
+        self.assertIn('(4 events showered)', output.output[-1])
+
+
+class TestShowerPDFSelection(unittest.TestCase):
+    def test_selected_index_is_used_for_generated_and_explicit_pdf_requests(self):
+        with tempfile.TemporaryDirectory(prefix='mg7_shower_pdf_') as directory:
+            root = Path(directory)
+            default = root / 'default'
+            selected = root / 'selected'
+            empty = root / 'empty'
+            for path in (default, selected, empty):
+                path.mkdir()
+            (default / 'pdfsets.index').write_text('400000 DefaultPDF 1\n')
+            (selected / 'pdfsets.index').write_text(
+                '400000 UserPDF 1\n800000 CustomPDF 1\n')
+            for path, name, members in ((default, 'DefaultPDF', 1),
+                                         (selected, 'UserPDF', 3),
+                                         (selected, 'CustomPDF', 2)):
+                (path / name).mkdir()
+                (path / name / (name + '.info')).write_text(
+                    'NumMembers: %d\n' % members)
+            config = root / 'lhapdf-config'
+            config.write_text('#!/bin/sh\necho %s\n' % default)
+            config.chmod(0o755)
+            command = object.__new__(interface.aMCatNLOCmd)
+            command.stop_for_runweb = True
+            command.options = {'lhapdf': str(config)}
+            command.shower_card = ShowerCard()
+            command.get_lhapdf_version = mock.Mock(return_value='6.5.4')
+            command.copy_lhapdf_set = mock.Mock()
+            command.get_init_dict = mock.Mock()
+            cases = ((1, 800000, 'CustomPDF', False),
+                     (-1, 800001, 'CustomPDF/1', True),
+                     (800000, 800000, 'CustomPDF', False),
+                     (-800001, 800001, 'CustomPDF/1', True),
+                     (1, 400000, 'UserPDF', False),
+                     (400001, 400001, 'UserPDF/1', False))
+            with mock.patch.dict(os.environ, {
+                    'LHAPDF_DATA_PATH': str(empty) + ':' + str(selected)}):
+                for pdfcode, lhaid, name, extrapolate in cases:
+                    with self.subTest(pdfcode=pdfcode, lhaid=lhaid):
+                        command.shower_card['pdfcode'] = pdfcode
+                        command.get_init_dict.return_value = {
+                            'pdfsup1': lhaid, 'pdfsup2': lhaid}
+                        self.assertEqual(command.get_shower_pdf('unused.lhe'),
+                                         ('lhapdf6', name, extrapolate))
+                        command.copy_lhapdf_set.assert_called_with([lhaid], str(selected))
+
+
+class TestStdHEPOnDemand(unittest.TestCase):
+    """StdHEP is compiled when a HERWIG6/PYTHIA6 shower first needs it."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='mg5_stdhep_')
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.me_dir = self.root / 'proc'
+        (self.me_dir / 'MCatNLO' / 'lib').mkdir(parents=True)
+        (self.me_dir / 'Source').mkdir()
+        # A fake StdHEP source tree (as MG5_aMC/vendor/StdHEP).
+        self.source = self.root / 'vendor' / 'StdHEP'
+        (self.source / 'mcfio').mkdir(parents=True)
+        (self.source / 'src').mkdir()
+        (self.source / 'src' / 'make_opts').write_text('FC=gfortran\n')
+        (self.source / 'makefile').write_text(
+            'all:\n\tmkdir -p lib\n\ttouch lib/libstdhep.a lib/libFmcfio.a\n')
+        for name in ['libstdhep.a', 'libFmcfio.a']:
+            (self.me_dir / 'MCatNLO' / 'lib' / name).symlink_to(
+                self.source / 'lib' / name)
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.me_dir = str(self.me_dir)
+        self.cmd.options = {'mg5_path': None}
+
+    def test_status_and_compilation(self):
+        self.assertEqual(interface.stdhep_status(str(self.me_dir)),
+                         ('source', str(self.source)))
+        (self.source / 'fail').write_text('old failure')
+        self.cmd.ensure_stdhep('HERWIG6')
+        self.assertEqual(interface.stdhep_status(str(self.me_dir))[0], 'compiled')
+        self.assertFalse((self.source / 'fail').exists())
+        # Nothing to do the second time.
+        (self.source / 'makefile').write_text('all:\n\tfalse\n')
+        self.cmd.ensure_stdhep('HERWIG6')
+
+    def test_failed_and_missing(self):
+        (self.source / 'makefile').write_text('all:\n\tfalse\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'failed to compile'):
+            self.cmd.ensure_stdhep('PYTHIA6Q')
+        import shutil
+        shutil.rmtree(self.source)
+        self.assertEqual(interface.stdhep_status(str(self.me_dir)), ('missing', None))
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'not available'):
+            self.cmd.ensure_stdhep('PYTHIA6Q')

@@ -2,14 +2,20 @@
 
 #include <array>
 #include <fstream>
+#include <future>
+#include <memory>
 #include <optional>
+#include <utility>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "madspace/driver/gzip.hpp"
 #include "madspace/driver/random.hpp"
+#include "madspace/driver/tensor.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "madspace/phasespace/topology.hpp"
 #include "madspace/util.hpp"
@@ -172,6 +178,12 @@ struct LHEEvent {
     /// Optional `<mgrwt>` block; written only if `qcd_power` is nonnegative and
     /// both beams took part.
     std::optional<LOReweightInfo> lo_info;
+    /// Optional `<beamstrahlung>` block: the momentum fraction each beam kept
+    /// after beamstrahlung. A dressed-lepton density folds beamstrahlung into
+    /// the PDF, so the initial-state momenta carry the product
+    /// `x = x_BS * x_ISR` and a shower cannot separate the two on its own;
+    /// this is what lets it degrade the beams and evolve only `x_ISR`.
+    std::optional<std::pair<double, double>> beamstrahlung;
 
     /// Append this event's LHE text to `buffer`.
     void format_to(std::string& buffer) const;
@@ -387,23 +399,49 @@ void from_json(const nlohmann::json& j, LHECompleter::PropagatorData& prop_data)
  * Streams events to an LHE file.
  *
  * Opens `file_name`, writes the `<init>` header built from `meta`, and lets
- * @ref write append one `<event>` block at a time; the destructor closes the
- * `</LesHouchesEvents>` tag.
+ * @ref write append one `<event>` block at a time; @ref close (or the
+ * destructor) closes the `</LesHouchesEvents>` tag. With a `gzip_device` the
+ * file is gzip-compressed on that device: the text is buffered and compressed
+ * in large batches, which a GPU compressor needs to be efficient. Each batch
+ * compresses in the background while the next one fills.
  */
 class LHEFileWriter {
 public:
-    /// Opens `file_name` and writes its `<init>` header from `meta`.
-    LHEFileWriter(const std::string& file_name, const LHEMeta& meta);
+    /// Opens `file_name` and writes its `<init>` header from `meta`. Throws if
+    /// `gzip_device` is given but has no gzip compressor.
+    LHEFileWriter(
+        const std::string& file_name,
+        const LHEMeta& meta,
+        DevicePtr gzip_device = nullptr,
+        int gzip_algorithm = default_gzip_algorithm
+    );
+    LHEFileWriter(const LHEFileWriter&) = delete;
+    LHEFileWriter& operator=(const LHEFileWriter&) = delete;
     /// Append `event` as one `<event>` block.
     void write(const LHEEvent& event);
     /// Append `str` to the file verbatim, unescaped.
     void write_string(const std::string& str);
-    /// Closes the file, appending the closing `</LesHouchesEvents>` tag.
+    /// Append the closing `</LesHouchesEvents>` tag, flush and close the file.
+    /// Throws if writing failed; later calls do nothing. A failed batch
+    /// compression closes the file at once, leaving it without the closing tag.
+    void close();
+    /// Calls @ref close and logs its error instead of throwing.
     ~LHEFileWriter();
 
 private:
+    static constexpr std::size_t compress_flush_bytes = 64ull << 20;
+
+    void emit(std::string_view text);
+    void start_compression();
+    void write_compressed();
+
     std::ofstream _file_stream;
-    std::string _buffer;
+    std::unique_ptr<GzipCompressor> _compressor;
+    std::string _pending;
+    std::string _in_flight;
+    std::string _compressed;
+    // Last member: its destructor waits for the batch that uses the others.
+    std::future<void> _compression;
 };
 
 } // namespace madspace
