@@ -347,6 +347,8 @@ jobs:
       # Symbolica from a test script (outside the package, so the library key
       # does not apply), which aborts without a personal licence. Tests that
       # ask symbolica.is_licensed() from test code skip for the same reason.
+      # test_native_glibc_floor.py needs a runtime staged by
+      # tools/developer/build_loop_native.py, not the wheel staged here.
       - name: Run the light one-loop tests without SYMBOLICA_LICENSE (30 GiB RSS limit)
         env:
           PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
@@ -387,7 +389,6 @@ jobs:
             tests/unit/test_loop_generation_service.py \
             tests/unit/test_loop_model.py \
             tests/unit/test_loop_upstream_import.py \
-            tests/unit/test_native_glibc_floor.py \
             tests/unit/test_loop_order_names.py \
             tests/unit/test_loop_qcd_r2_color.py \
             tests/unit/test_loop_model_import.py \
