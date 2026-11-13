@@ -1129,7 +1129,9 @@ member, and every provider colour flow. Repeat `--process` or `--color-flow`
 to select several. Colour-flow IDs are per process and `--color-flow` applies
 to every selected process, so combine it with `--process` on a multi-process
 artifact; an ID a selected process lacks is refused with that process's flow
-IDs. `--model-parameters` reads the same JSON parameter mapping
+IDs. The destination is checked before the export runs, and the file is
+written beside it and renamed into place, so a failed export leaves an
+existing file unchanged. `--model-parameters` reads the same JSON parameter mapping
 as `evaluate` and applies it before resolving the programs. The output contains
 versioned JSON and embedded symjit applications, so external runners do not
 need a Rust toolchain or the original artifact. The programs describe the

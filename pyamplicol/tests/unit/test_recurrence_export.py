@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -613,3 +614,80 @@ def test_one_loop_runtime_refuses_export_with_the_supported_scope(kind: str) -> 
         message
     )
     assert "tree-level LC recurrence artifacts" in message
+
+
+@pytest.mark.parametrize("problem", ("missing-directory", "directory", "read-only"))
+def test_cli_checks_the_destination_before_loading(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, problem: str
+) -> None:
+    def unexpected_load(*args: object, **kwargs: object) -> None:
+        pytest.fail("an unusable destination must be refused before loading")
+
+    monkeypatch.setattr(Runtime, "load", unexpected_load)
+    if problem == "missing-directory":
+        destination = tmp_path / "absent" / "capture.json"
+    elif problem == "directory":
+        destination = tmp_path / "capture.json"
+        destination.mkdir()
+    else:
+        locked = tmp_path / "locked"
+        locked.mkdir()
+        locked.chmod(0o555)
+        destination = locked / "capture.json"
+        if os.access(locked, os.W_OK):
+            locked.chmod(0o755)
+            pytest.skip("this user can write a read-only directory (root)")
+    errors = io.StringIO()
+    status = run_cli(
+        ["export-recurrence", str(tmp_path), "-o", str(destination), "--json"],
+        stdout=io.StringIO(),
+        stderr=errors,
+    )
+    if problem == "read-only":
+        destination.parent.chmod(0o755)
+    assert status == 2
+    assert "--output" in errors.getvalue()
+
+
+def test_cli_replaces_the_output_through_a_renamed_temporary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        Runtime,
+        "load",
+        lambda *args, **kwargs: SimpleNamespace(
+            export_recurrence=lambda **options: _export("p0")
+        ),
+    )
+    destination = tmp_path / "capture.json"
+    destination.write_text("previous capture\n", encoding="utf-8")
+    arguments = [
+        "export-recurrence",
+        str(tmp_path),
+        "-o",
+        str(destination),
+        "--process",
+        "p0",
+        "--json",
+    ]
+    replaced = []
+    original_replace = os.replace
+
+    def failing_replace(source: object, target: object) -> None:
+        replaced.append((Path(str(source)), Path(str(target))))
+        raise OSError("simulated rename failure")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+    errors = io.StringIO()
+    assert run_cli(arguments, stdout=io.StringIO(), stderr=errors) == 2
+    assert "simulated rename failure" in errors.getvalue()
+    assert destination.read_text(encoding="utf-8") == "previous capture\n"
+    ((temporary, target),) = replaced
+    assert target == destination and temporary.parent == tmp_path
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["capture.json"]
+
+    monkeypatch.setattr(os, "replace", original_replace)
+    assert run_cli(arguments, stdout=io.StringIO(), stderr=io.StringIO()) == 0
+    assert json.loads(destination.read_text(encoding="utf-8")) == _export("p0")
+    assert destination.stat().st_mode & 0o777 == 0o644
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["capture.json"]

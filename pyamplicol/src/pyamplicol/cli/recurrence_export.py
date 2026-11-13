@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import tempfile
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
@@ -33,6 +36,39 @@ def provider_process_ids(artifact: Path) -> tuple[str, ...]:
         for member in groups.members():
             identifiers[member.process_id] = None
     return tuple(identifiers)
+
+
+def _check_destination(output: Path) -> None:
+    """Refuse an unwritable destination before any runtime is loaded."""
+
+    if output.is_dir():
+        raise ConfigurationError(f"--output {str(output)!r} is a directory")
+    parent = output.parent
+    if not parent.is_dir():
+        raise ConfigurationError(
+            f"--output directory {str(parent)!r} does not exist or is not a directory"
+        )
+    if not os.access(parent, os.W_OK | os.X_OK):
+        raise ConfigurationError(f"--output directory {str(parent)!r} is not writable")
+
+
+def _replace_output(output: Path, content: str) -> None:
+    """Write beside the destination, then rename: readers never see a partial file."""
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.chmod(0o644)
+        os.replace(temporary, output)
+    finally:
+        with suppress(FileNotFoundError):
+            temporary.unlink()
 
 
 def _nonnegative_indent(value: str) -> int:
@@ -144,6 +180,7 @@ class RecurrenceExportInvocation:
 
         from .utilities import UtilityResult
 
+        _check_destination(self.output)
         parameters = None
         if self.model_parameters is not None:
             parameters = json.loads(self.model_parameters.read_text(encoding="utf-8"))
@@ -273,7 +310,7 @@ class RecurrenceExportInvocation:
             )
             + "\n"
         )
-        self.output.write_text(content, encoding="utf-8")
+        _replace_output(self.output, content)
         return UtilityResult("recurrence export", "complete", self.output)
 
 
