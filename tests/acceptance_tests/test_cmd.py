@@ -3457,6 +3457,177 @@ print(json.dumps(out))
                            'coupling in the recycled build: nothing was tested')
         self.assertGreater(compared, len(info['subprocesses']))
 
+    def test_madmatrix_hel_recycling_flavour_masks_vs_fortran(self):
+        """--hel_recycling must keep the flavour masks of a flavour-merged
+        subprocess: |M|^2 of every flavour, against the Fortran standalone.
+
+        In a merged subprocess an amplitude that only some flavours have is
+        guarded with their mask (if( ( 0x...ULL >> iflavor ) & 0x1ULL )), and
+        the guard is not only an optimisation: a diagram closed by a bosonic
+        vertex (VVV1_0 of a W and two fermion currents that follow the
+        partner tables) is not zero at the other flavours. The recycled build
+        left the guards out of the calls it unfolds, and with them 4 of the 6
+        flavours of q qx > w+ w- q qx QCD=0 (q = u d) were wrong: d d~ > w+
+        w- u u~ x55, u u~ > w+ w- d d~ x14, d u~ > w+ w- d u~ and u d~ > w+
+        w- u d~ x4.8 (8 of 18 for the p p > w+ w- j j QCD=0 of a MadSpace run,
+        83.7 pb against 0.934 pb). check_sa.exe 'matrix' prints every flavour
+        at one RAMBO point, as the Fortran ./check does, so the comparison is
+        flavour by flavour, for the plain build and the recycled one in every
+        --hel_recycling_jamp mode, and once cut into chunks (whose translation
+        units must see ndcoup, which the calls read as COUPs[ndcoup + i]).
+        """
+        import glob
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrmask'
+        variants = {'plain': ' --hel_recycling=False',
+                    'rows': '',
+                    'fold': ' --hel_recycling_jamp=fold',
+                    'expanded': ' --hel_recycling_jamp=expanded',
+                    'chunked': ' --hel_recycling_chunk=50'}
+        dirs = dict((name, '%s_%s' % (root, name)) for name in variants)
+        dirs['fortran'] = root + '_fortran'
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define q = u d')
+        self.do('define qx = u~ d~')
+        self.do('generate q qx > w+ w- q qx QCD=0')
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        for name, flags in variants.items():
+            self.do('output standalone %s -f%s' % (dirs[name], flags))
+
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(d for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 1, 'one subprocess expected in %s' % path)
+            proc_dir = pjoin(proc_root, found[0])
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix']
+            self.assertEqual(0, subprocess.call(build, stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'the build of %s failed' % proc_dir)
+            log = pjoin(proc_dir, 'check_flavours.log')
+            subprocess.call(run, stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                            cwd=proc_dir)
+            out = dict((tuple(int(p) for p in pdg.split()),
+                        float(me.replace('D', 'E').replace('d', 'e')))
+                       for pdg, me in entry_re.findall(open(log).read()))
+            self.assertTrue(out, 'no matrix element in %s' % log)
+            return proc_dir, out
+
+        _, fortran = values(dirs['fortran'], True)
+        # the six flavours, every one of them non-zero
+        self.assertEqual(len(fortran), 6, sorted(fortran))
+        self.assertTrue(all(me > 0 for me in fortran.values()), fortran)
+        guard = '>> iflavor ) & 0x1ULL ) {'
+
+        def text(path):
+            with open(path) as fsock:
+                return fsock.read()
+
+        for name in variants:
+            proc_dir, madmatrix = values(dirs[name], False)
+            self.assertEqual(sorted(madmatrix), sorted(fortran), name)
+            for pdg, me in sorted(fortran.items()):
+                self.assertLessEqual(abs(madmatrix[pdg] - me), 1e-10 * me,
+                                     '%s, flavour %s: madmatrix %r, fortran %r'
+                                     % (name, pdg, madmatrix[pdg], me))
+            # what was compared: the recycled code (not its recipe), with the
+            # flavour guards, and plain code that has masked amplitudes
+            recycled = glob.glob(pjoin(proc_dir, 'HelRecycling*.inc')) + \
+                glob.glob(pjoin(proc_dir, 'HelRecyclingChunks_*.cc'))
+            if name == 'plain':
+                self.assertFalse(recycled, '--hel_recycling=False still recycled')
+                self.assertIn(guard, text(pjoin(proc_dir, 'EvaluateDiagrams.inc')))
+                continue
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                            'the --hel_recycling warm-up did not produce the '
+                            'recycled build (%s)' % name)
+            self.assertIn(guard, ''.join(text(f) for f in recycled),
+                          'no flavour guard in the recycled build (%s)' % name)
+            if name == 'chunked':
+                self.assertTrue(glob.glob(pjoin(proc_dir, 'HelRecyclingChunks_*.cc')),
+                                'the recycled block was not cut into chunks')
+
+    def test_madmatrix_hel_recycling_flavour_masks_crossed(self):
+        """--hel_recycling rows mode keeps the flavour masks of the crossed
+        processes folded into a base: |M|^2 of every crossed flavour id, against
+        the plain build.
+
+        A folded crossing is evaluated under the extended flavour id
+        cross*nmaxflavor + flavour, which JampsPreamble.h reduces to the flavour
+        before anything reads a mask. hr_row, the row loop of the rows mode,
+        read the id itself: at every crossed id the guards of
+        HelRecyclingJamps.inc tested a bit beyond the masks, dropped every
+        masked amplitude, and qa qa > w+ w- qa qa QCD=0 (qa = u d u~ d~, the
+        11 crossings folded into u u > w+ w- u u) came out wrong at all 30
+        crossed ids (by up to x400), p p > t t~ j j at the same-flavour rows,
+        whose survey then failed for lack of points passing the cuts.
+        check_sa.exe 'matrix' evaluates the ids listed in crossing_demo.dat:
+        all the crossed ids are listed there.
+        """
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrxmask'
+        dirs = {'plain': root + '_plain', 'rows': root + '_rows'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define qa = u d u~ d~')
+        self.do('generate qa qa > w+ w- qa qa QCD=0 --use_crossing=True')
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f' % dirs['rows'])
+
+        me_re = re.compile(r'Matrix element\s*=\s*([-+\d.eE]+)')
+        nids = None
+        results = {}
+        for name, path in dirs.items():
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(d for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 1, 'one subprocess expected in %s' % path)
+            proc_dir = pjoin(proc_root, found[0])
+            ncross = int(re.search(r'constexpr int ncross = (\d+);',
+                                   open(pjoin(proc_dir, 'ProcessTables.h')).read()).group(1))
+            nmaxflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);',
+                                       open(pjoin(proc_dir, 'ProcessData.h')).read()).group(1))
+            self.assertGreater(ncross, 1, 'no crossing folded into %s' % proc_dir)
+            self.assertGreater(nmaxflavor, 1, 'no merged flavours in %s' % proc_dir)
+            nids = ncross * nmaxflavor
+            with open(pjoin(proc_dir, 'crossing_demo.dat'), 'w') as fsock:
+                fsock.write('\n'.join(str(i) for i in range(nmaxflavor, nids)) + '\n')
+            self.assertEqual(0, subprocess.call(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                                                stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'the build of %s failed' % proc_dir)
+            if name == 'rows':
+                self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                'the --hel_recycling warm-up did not produce the '
+                                'recycled build')
+                self.assertIn('>> iflavor ) & 0x1ULL )',
+                              open(pjoin(proc_dir, 'HelRecyclingJamps.inc')).read(),
+                              'no flavour guard in the row loop')
+            log = pjoin(proc_dir, 'check_crossed.log')
+            subprocess.call(['./check_sa.exe', 'matrix'], stdout=open(log, 'w'),
+                            stderr=subprocess.STDOUT, cwd=proc_dir)
+            results[name] = [float(me) for me in me_re.findall(open(log).read())]
+            # the base flavours, then every crossed id
+            self.assertEqual(len(results[name]), nids, '%s: %s' % (name, log))
+        self.assertTrue(all(me > 0 for me in results['plain']), results['plain'])
+        for fid, (plain, rows) in enumerate(zip(results['plain'], results['rows'])):
+            self.assertLessEqual(abs(rows - plain), 1e-10 * plain,
+                                 'flavour id %d: rows %r, plain %r' % (fid, rows, plain))
+
     def _hel_recycling_vs_plain(self, process,
                                 recycled_flag=' --hel_recycling=True'):
         """plain (--hel_recycling=False) and recycled standalone outputs of
