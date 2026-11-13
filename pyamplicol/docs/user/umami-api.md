@@ -55,13 +55,11 @@ The default build directory is the sibling
 A single provider produces **`libumami.so`** and **`umami_driver`** on both Linux
 and macOS; the `.so` suffix is retained on macOS. Rusticol is statically included
 in the provider and its symbols are hidden. The standalone driver links only
-the UMAMI library, not another copy of Rusticol. With a distribution wheel the
-provider also links GMP, MPFR and MPC dynamically, from the wheel's
-`pyamplicol/_sdk/lib/` (`libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6`,
-`libmpc-pyamplicol.so.3` on Linux; `libgmp.10.dylib`, `libmpfr.6.dylib`,
-`libmpc.3.dylib` on macOS), which `rusticol-config --libs` names by path
-with a run path to that directory; a source build links them statically
-([GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
+the UMAMI library, not another copy of Rusticol. GMP, MPFR and MPC are
+statically included as well (they are part of the Rusticol archive; see
+[GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)),
+so the provider needs no file of the pyAmpliCol installation at run time and
+can be moved with its driver to another machine.
 The Rusticol archive itself ships xz-compressed in the wheels: the Makefile's
 first `rusticol-config --library` unpacks it once into the per-user cache
 (`$PYAMPLICOL_CACHE_DIR/sdk/`, otherwise `~/.cache/pyamplicol/sdk/` on Linux

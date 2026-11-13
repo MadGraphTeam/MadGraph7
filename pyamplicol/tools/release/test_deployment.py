@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -80,6 +81,7 @@ print(json.dumps({"artifact": str(artifact), "expected": expected}, sort_keys=Tr
 
 _PATH_ISOLATION_SMOKE = r"""
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -108,6 +110,7 @@ import importlib.metadata
 import importlib.resources
 import json
 import os
+import re
 from pathlib import Path
 import re
 import shutil
@@ -263,7 +266,6 @@ roots = {item.split("/", 1)[0] for item in package_files}
 assert all(
     root == "pyamplicol"
     or root == "rusticol_config"
-    or root in {"pyamplicol.libs", "pyamplicol.dylibs"}
     or root.endswith(".dist-info")
     for root in roots
 ), sorted(roots)
@@ -284,6 +286,7 @@ _SYMBOLICA_FREE_F64_SMOKE = (
 import builtins
 import json
 import os
+import re
 import sys
 
 os.environ.pop("SYMBOLICA_LICENSE", None)
@@ -368,6 +371,7 @@ import faulthandler
 import json
 import math
 import os
+import re
 from pathlib import Path
 
 faulthandler.enable()
@@ -790,6 +794,17 @@ def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
         isinstance(item, str) for item in payload["rust_flags"]
     ):
         raise ReleaseError("rusticol-config rust flags must be strings")
+    # GMP, MPFR and MPC are in the static archive: a consumer needs no file of
+    # the installation at run time and can be moved to another host.
+    shared = [
+        item
+        for item in payload["link_flags"]
+        if "rpath" in item or re.search(r"\.(?:so(?:\.[0-9]+)*|dylib)$", item)
+    ]
+    if shared:
+        raise ReleaseError(
+            "rusticol-config links shared libraries or a run path: " + ", ".join(shared)
+        )
     return payload
 
 

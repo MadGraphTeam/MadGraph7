@@ -260,7 +260,7 @@ def test_linux_release_wheel_requests_manylinux_repair(
 
 @pytest.mark.parametrize("mode", ("candidate", "release"))
 @pytest.mark.parametrize("platform_name", ("darwin", "linux"))
-def test_distribution_wheel_links_the_shared_arithmetic_runtime(
+def test_distribution_wheel_is_repaired_and_strongly_compressed(
     monkeypatch: pytest.MonkeyPatch, mode: str, platform_name: str
 ) -> None:
     monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", mode)
@@ -278,17 +278,8 @@ def test_distribution_wheel_links_the_shared_arithmetic_runtime(
         "frontend.setting": "preserved",
     }
     assert backend.build_wheel("dist", supplied) == "pyamplicol.whl"
-    with (ROOT / "pyproject.toml").open("rb") as stream:
-        features = tomllib.load(stream)["tool"]["maturin"]["features"]
-    # Maturin's --features replaces pyproject's list: it is repeated in full
-    # (the numpy-gated bindings were missing from a release-way wheel).
-    assert "numpy" in features
-    arguments = [
-        "--features",
-        ",".join((*features, backend.arithmetic.CARGO_FEATURE)),
-        "--compression-level",
-        "9",
-    ]
+    # pyproject's Maturin features stay in force (no --features argument).
+    arguments = ["--compression-level", "9"]
     if platform_name == "linux":
         # A distribution wheel is always a repaired manylinux wheel on Linux.
         arguments = ["--compatibility", "manylinux_2_28", *arguments]
@@ -303,18 +294,6 @@ def test_distribution_wheel_links_the_shared_arithmetic_runtime(
         "distribution": True,
     }
     assert supplied["pyamplicol.distribution-wheel"] == "true"
-
-
-def test_distribution_wheel_features_refuse_an_invalid_maturin_list(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    (tmp_path / "pyproject.toml").write_text(
-        '[tool.maturin]\nfeatures = "numpy"\n', encoding="utf-8"
-    )
-    monkeypatch.setattr(backend, "ROOT", tmp_path)
-
-    with pytest.raises(RuntimeError, match="must be a list of names"):
-        backend._distribution_wheel_features()
 
 
 def test_distribution_and_host_wheel_settings_are_exclusive() -> None:
@@ -342,8 +321,8 @@ def test_bootstrap_wheel_is_never_a_distribution_wheel(
         )
 
 
-def test_shared_arithmetic_is_built_only_for_wheels() -> None:
-    with pytest.raises(RuntimeError, match="only for wheels"):
+def test_a_distribution_build_is_a_wheel_build() -> None:
+    with pytest.raises(RuntimeError, match="is a wheel build"):
         backend._from_overlay(lambda: None, with_sdk=False, distribution=True)
 
 
@@ -526,10 +505,8 @@ def test_candidate_bootstrap_wheel_strips_stale_generated_assets(
     def fake_overlay(_mode: str):
         yield overlay, target
 
-    def fake_sdk(
-        _root: Path, _target: Path, *, arithmetic=None, compress_archive=False
-    ) -> Path:
-        assert arithmetic is None and compress_archive is False
+    def fake_sdk(_root: Path, _target: Path, *, compress_archive=False) -> Path:
+        assert compress_archive is False
         staging = tmp_path / "sdk"
         staging.mkdir()
         (staging / "metadata.json").write_text(
@@ -1720,10 +1697,8 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
         assert project_release_prepared_models is True
         yield overlay, target
 
-    def fake_sdk(
-        root: Path, target_dir: Path, *, arithmetic=None, compress_archive=False
-    ) -> Path:
-        assert arithmetic is None and compress_archive is False
+    def fake_sdk(root: Path, target_dir: Path, *, compress_archive=False) -> Path:
+        assert compress_archive is False
         assert root == overlay and target_dir == target
         assert not (set(injected) - {"CC", "CXX"}) & set(os.environ)
         assert not {str(path) for path in injected_bins} & set(
@@ -2285,88 +2260,49 @@ def test_native_link_arguments_are_typed_and_allowlisted() -> None:
     ]
 
 
-def test_shipped_shared_libraries_are_split_from_system_libraries() -> None:
-    tokens = ["-lmpc", "-lmpfr", "-lgmp", "-lgcc_s", "-lgmp", "-lc"]
-    link = sdk._typed_link_arguments(
-        tokens,
-        "x86_64-unknown-linux-gnu",
-        shared_libraries=sdk.arithmetic_module.LINK_ORDER,
-    )
-    assert link["system_libraries"] == ["gcc_s", "c"]
-    assert link["shared"] == ["mpc", "mpfr", "gmp"]
-    with pytest.raises(RuntimeError, match="not allowlisted: mpc"):
-        sdk._typed_link_arguments(tokens, "x86_64-unknown-linux-gnu")
-    with pytest.raises(RuntimeError, match="does not link the shared libraries"):
-        sdk._typed_link_arguments(
-            ["-lgcc_s", "-lc"],
-            "x86_64-unknown-linux-gnu",
-            shared_libraries=sdk.arithmetic_module.LINK_ORDER,
-        )
-
-
-def test_sdk_with_the_shared_arithmetic_runtime_ships_and_links_it(
+def test_sdk_archive_contains_the_arithmetic_libraries(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """GMP, MPFR and MPC are linked into the static archive: the SDK names no
+    arithmetic library on the consumer's link line and ships none."""
+
+    with pytest.raises(RuntimeError, match="not allowlisted: gmp"):
+        sdk._typed_link_arguments(["-lgmp", "-lc"], "x86_64-unknown-linux-gnu")
     archive = tmp_path / "librusticol_capi.a"
     archive.write_bytes(b"!<arch>\n")
-    prefix = tmp_path / "prefix"
-    (prefix / "lib").mkdir(parents=True)
-    libraries = {}
-    for name, soname in (
-        ("gmp", "libgmp-pyamplicol.so.10"),
-        ("mpfr", "libmpfr-pyamplicol.so.6"),
-        ("mpc", "libmpc-pyamplicol.so.3"),
-    ):
-        libraries[name] = prefix / "lib" / soname
-        libraries[name].write_bytes(name.encode())
-    runtime = sdk.arithmetic_module.ArithmeticRuntime(prefix, libraries)
     target = "x86_64-unknown-linux-gnu"
     commands: list[list[str]] = []
-    linkage: dict[str, object] = {}
 
     def fake_run(command, **_kwargs):
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(sdk.arithmetic_module.sys, "platform", "linux")
     monkeypatch.setattr(sdk, "_host_target", lambda _root: target)
     monkeypatch.setattr(sdk, "_requested_target", lambda host: host)
     monkeypatch.setattr(sdk, "_cargo_fetch", lambda *_args: None)
     monkeypatch.setattr(sdk.subprocess, "run", fake_run)
     monkeypatch.setattr(sdk, "_cargo_messages", lambda _stdout: ())
     monkeypatch.setattr(sdk, "_static_library", lambda _messages: archive)
-    monkeypatch.setattr(
-        sdk, "_native_tokens", lambda _stderr: ["-lmpc", "-lmpfr", "-lgmp", "-lc"]
-    )
+    monkeypatch.setattr(sdk, "_native_tokens", lambda _stderr: ["-lgcc_s", "-lc"])
     monkeypatch.setattr(sdk, "_scan_archive", lambda _archive: None)
     monkeypatch.setattr(sdk, "_stripped_archive", lambda archive, *_args: archive)
     monkeypatch.setattr(sdk, "_scan_archive_symbols", lambda _archive: None)
-    monkeypatch.setattr(
-        sdk,
-        "_validate_archive_linkage",
-        lambda *_args, **kwargs: linkage.update(kwargs),
-    )
+    monkeypatch.setattr(sdk, "_validate_archive_linkage", lambda *_a, **_k: None)
     monkeypatch.setattr(sdk, "_package_version", lambda _root: "0.1.0")
 
-    staging = sdk.build_sdk(ROOT, tmp_path / "target", arithmetic=runtime)
+    staging = sdk.build_sdk(ROOT, tmp_path / "target", compress_archive=True)
 
-    features = commands[0].index("--features")
-    assert commands[0][features + 1] == sdk.arithmetic_module.CARGO_FEATURE
-    assert linkage["shared_files"] == tuple(
-        libraries[name] for name in ("mpc", "mpfr", "gmp")
-    )
+    assert "--features" not in commands[0]
     link = json.loads((staging / "link.json").read_text(encoding="utf-8"))
-    assert link["system_libraries"] == ["c"]
-    assert link["shared_libraries"] == [
-        "lib/libmpc-pyamplicol.so.3",
-        "lib/libmpfr-pyamplicol.so.6",
-        "lib/libgmp-pyamplicol.so.10",
+    assert link == {
+        "schema_version": 1,
+        "target": target,
+        "system_libraries": ["gcc_s", "c"],
+        "frameworks": [],
+    }
+    assert sorted(path.name for path in (staging / "lib").iterdir()) == [
+        "librusticol_capi.a.xz"
     ]
-    assert "shared" not in link
-    for name, relative in zip(
-        ("mpc", "mpfr", "gmp"), link["shared_libraries"], strict=True
-    ):
-        assert (staging / relative).read_bytes() == libraries[name].read_bytes()
 
 
 @pytest.mark.parametrize("compress", (False, True))
