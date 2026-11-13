@@ -157,10 +157,17 @@ class TestReweightGenerationFoldsCrossings(unittest.TestCase):
         data = {'path': self.path, 'paths': ['rw_me', 'rw_mevirt'],
                 'processes': list(processes)}
         self.obj.create_standalone_tree_directory(data)
-        line = [c for c in self.obj.mg5cmd.commands
-                if c.startswith('generate')]
-        self.assertEqual(len(line), 1)
-        line = line[0][len('generate'):]
+        # one command per definition: the generate, then its add process
+        commands = self.obj.mg5cmd.commands
+        start = [i for i, c in enumerate(commands) if c.startswith('generate')]
+        self.assertEqual(len(start), 1)
+        sequence = [commands[start[0]]]
+        for command in commands[start[0] + 1:]:
+            if not command.startswith('add process'):
+                break
+            sequence.append(command)
+        line = ';'.join(c.replace('generate', '', 1) if i == 0 else c
+                        for i, c in enumerate(sequence))
         return [p.replace('add process', '', 1).strip()
                 for p in line.split(';') if p.strip()]
 

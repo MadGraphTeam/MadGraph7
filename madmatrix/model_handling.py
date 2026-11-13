@@ -4316,11 +4316,19 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # grouped flavors (get_external_flavors_with_iden), so the per-flavor
         # masks set by compute_flavor_masks() are compressed onto those groups.
         # NB: this relies on iflavor being constant across a SIMD vector.
-        # The guards wrap a call in an if/{} that the recycler's line-per-call
-        # reader cannot unfold, and they are only an optimisation (a masked term
-        # is multiplied by a zero coupling anyway): left out of the hr_orig calls.
-        diag_group_mask, wf_group_mask = ({}, {}) if self.hr_orig \
-                                     else self._compute_group_masks(matrix_element)
+        # The masks are NOT only an optimisation: with merged particles one
+        # physical diagram can come several times in the diagram list (the
+        # same topology through couplings that do not vanish for the flavour,
+        # e.g. the W exchange of _quark _quark > Z _quark _quark QCD=0 at
+        # d c > Z u s), and the mask keeps one copy per flavour. Without them
+        # that flavour comes out twice too large. The hr_orig calls (what the
+        # recycler reads) cannot carry an if/{} around a call, so there every
+        # wavefunction is built -- a masked one only feeds masked amplitudes --
+        # and the amplitudes are masked where they are stored (_hr_orig_store,
+        # _hr_orig_amplitude).
+        diag_group_mask, wf_group_mask = self._compute_group_masks(matrix_element)
+        if self.hr_orig:
+            wf_group_mask = {}
 
         def _guard_open(group_mask):
             # Emit the opening of an `if` guard for a non-full grouped mask.
@@ -4394,7 +4402,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     mother.set('me_id', me_id)
                 if hr_mode == 'rows':
                     res.extend(self._hr_orig_store(amp_block[0], namp, hr_namp,
-                                                   amplitude))
+                                                   amplitude,
+                                                   diag_group_mask.get(id(diagram))))
                     hr_rows.extend(self._hr_row_lines(
                         namp, diagram, id_amp in diag_to_config, color,
                         jamp_captures.get(namp, []) if jamp_plan is not None else None,
@@ -4405,7 +4414,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                         amp_block[0], namp, amplitude, diagram, id_amp in diag_to_config,
                         color,
                         jamp_captures.get(namp, []) if hr_mode == 'fold'
-                                                 and jamp_plan is not None else None))
+                                                 and jamp_plan is not None else None,
+                        diag_group_mask.get(id(diagram))))
                     continue
                 if self.hr_probe:
                     amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
@@ -4516,13 +4526,18 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                                      ','.join(str(mother.get('spin'))
                                               for mother in amplitude.get('mothers')))
 
-    def _hr_orig_store(self, call, namp, nslot, amplitude):
+    def _hr_orig_store(self, call, namp, nslot, amplitude, gmask=None):
         """One amplitude in hr_orig form for the rows mode: the call, then its
         store into the row's amplitude table -- nothing else is done with it
-        until the row loop (_hr_row_lines)."""
+        until the row loop (_hr_row_lines). With a flavour mask (gmask, see
+        _compute_group_masks) a flavour outside it stores 0: the slot is read
+        by the row loop whatever the flavour."""
+        value = 'amp_sv[0]' if gmask is None else \
+            '( ( 0x%xULL >> iflavor ) & 0x1ULL ) ? amp_sv[0] : cxzero_sv<cxtype_amp_sv>()' \
+            % gmask
         return [self._hr_amp_tag(call, namp, amplitude), '//HRFOLD %d' % namp,
-                'ampAll_sv[( ${row} * nParity + iParity ) * %d + %d] = amp_sv[0];'
-                % (nslot, namp - 1), '//HRENDFOLD']
+                'ampAll_sv[( ${row} * nParity + iParity ) * %d + %d] = %s;'
+                % (nslot, namp - 1, value), '//HRENDFOLD']
 
     def _hr_row_lines(self, namp, diagram, channel, color, captures, combines):
         """What calculate_jamps does with amplitude namp, for the row loop of
@@ -4582,7 +4597,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         return ntmp, lines + list(final)
 
     def _hr_orig_amplitude(self, call, namp, amplitude, diagram, channel, color,
-                           captures=None):
+                           captures=None, gmask=None):
         """One amplitude in hr_orig form: the call, tagged with its number and
         its legs' spins (_hr_amp_tag), then a //HRFOLD block of what it adds to its helicity row's
         tables -- the multichannel numerator and the color flows -- with a
@@ -4593,6 +4608,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         shared sub-expressions (jampTmpAll_sv) and the few color flows it goes
         to directly; hr_post_lines finishes them per row."""
         out = [self._hr_amp_tag(call, namp, amplitude), '//HRFOLD %d' % namp]
+        if gmask is not None:
+            # what it adds to the row only counts for the flavours of its
+            # diagram's mask (_compute_group_masks): every table it adds to
+            # starts from zero, so a skipped term is simply left out
+            out.append('if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {' % gmask)
         slot = '( ${row} * nParity + iParity )'
         if channel:
             out += ['if( storeChannelWeights )', '{',
@@ -4610,6 +4630,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 line = self._HR_JAMP.sub(
                     r'jampAll_sv[%s * njampso + \1]' % slot, line)
                 out.append(line)
+            if gmask is not None:
+                out.append('}')
             out.append('//HRENDFOLD')
             return out
         for njamp, coeff in color[namp].items():
@@ -4623,6 +4645,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 out.append('%s -= %samp_sv[0];' % (target, scoeff[1:]))
             else:
                 out.append('%s += %samp_sv[0];' % (target, scoeff))
+        if gmask is not None:
+            out.append('}')
         out.append('//HRENDFOLD')
         return out
 

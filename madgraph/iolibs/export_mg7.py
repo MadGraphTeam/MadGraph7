@@ -477,7 +477,8 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         the massive fermions whose spin is quantised along a reference
         momentum (--axial_gauge, helas_call_writers.get_axial_gauge_refs).
         Their helicity is written as 9 in the LHE (mg7.common.lhe_helicities)."""
-        options = getattr(self.helas_call_writer, 'cmd_options', None)
+        options = getattr(getattr(self, 'helas_call_writer', None),
+                          'cmd_options', None)
         refs = helas_call_writers.get_output_axial_gauge_refs(
                                                self.matrix_element, options)
         return [leg - 1 for leg in helas_call_writers.get_spin_reference_legs(
@@ -748,11 +749,20 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         def swapped(k):
             return ((k[0][1], k[0][0]), k[1])
 
+        # the legs whose states are not helicity states (a massive fermion
+        # with a spin reference, --axial_gauge) are chosen on the base, and a
+        # crossed process is evaluated by the base's code: they are the
+        # base's, at the positions the crossing gives them
+        base_unknown = self.get_unknown_helicity_legs()
         crossed = []
         for record in records:
             name = record[0].base_string()
             xme = self.crossed_matrix_element(record)
-            xmeta = SubprocessMetadataMG7(xme, merge_same_topologies)
+            perm_map = dict(zip(record[1], record[2]))
+            xmeta = SubprocessMetadataMG7(
+                xme, merge_same_topologies,
+                unknown_helicity=sorted(perm_map[leg + 1] - 1
+                                        for leg in base_unknown))
             xinfo, xtags, xclass = xmeta.get_subprocess_info(None, None)
             cover = set()
             for flavor in xinfo['flavors']:
@@ -972,6 +982,13 @@ class SubprocessMetadataMG7(OneProcessExporterMG7):
     its own: a crossed subprocess folded into its base
     (OneProcessExporterMG7.get_crossed_subprocess_info)."""
 
-    def __init__(self, matrix_element, merge_same_topologies=True):
+    def __init__(self, matrix_element, merge_same_topologies=True,
+                 unknown_helicity=()):
         # deliberately not OneProcessExporterCPP.__init__: nothing is written
         self.init_subprocess_metadata(matrix_element, merge_same_topologies)
+        self.unknown_helicity = list(unknown_helicity)
+
+    def get_unknown_helicity_legs(self):
+        """The base's legs whose states are not helicity states, crossed
+        (prepare_crossed_subprocesses): this entry has no writer of its own."""
+        return list(self.unknown_helicity)

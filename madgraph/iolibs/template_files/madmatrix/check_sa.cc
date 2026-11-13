@@ -610,13 +610,13 @@ namespace
             const int pk = std::abs( CPPProcess::flavorPDG( (int)fid, k ) );
             double mk = 0.;
             for( int j = 0; j < CPPProcess::npar; ++j )
-              if( std::abs( CPPProcess::flavorPDG( 0, j ) ) == pk ) { mk = (double)masses[j]; break; }
+              if( std::abs( CPPProcess::flavorPDG( 0, j ) ) == pk ) { mk = massesD[j]; break; }
             xmasses[k] = mk;
           }
           double xwgt = 0.;
           classic_rambo_reset(); // draw the FIRST point for this mass permutation
           std::vector<std::vector<double>> xpoint =
-            classic_rambo_momenta( CPPProcess::npari, (double)kEnergy, xmasses, xwgt );
+            classic_rambo_momenta( CPPProcess::npari, energy, xmasses, xwgt ); // the base point's energy: same total mass
           for( int ip4 = 0; ip4 < 4; ++ip4 )
             for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
               for( unsigned int ievt = 0; ievt < nevt; ++ievt )

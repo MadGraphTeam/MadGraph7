@@ -76,7 +76,20 @@ class MG7QCDBackgroundTest(unittest.TestCase):
         self.assertEqual(info['status'], 'done', _tail(log_path))
         with open(os.path.join(run_dir, 'SubProcesses', 'subprocesses.json')) as stream:
             subprocesses = json.load(stream)
-        self.assertEqual(len(subprocesses), 32)
+        # The number of entries depends on the layout (32 with
+        # --use_crossing=False; a crossed subprocess folded into its base has
+        # an entry per crossing), what they cover does not: every physical
+        # flavour combination of p p > 2, 3, 4 jets (4 flavours), mirrors
+        # included, once and only once.
+        covered = []
+        for entry in subprocesses:
+            for flavor in entry['flavors']:
+                for option in flavor['options']:
+                    covered.append(tuple(option))
+                    if flavor.get('mirror'):
+                        covered.append((option[1], option[0]) + tuple(option[2:]))
+        self.assertEqual(len(covered), len(set(covered)))
+        self.assertEqual(len(covered), 793)
         self.assertEqual({channel['subprocess'] for channel in info['channels']},
                          set(range(len(subprocesses))))
         for channel in [info['process']] + info['channels']:
