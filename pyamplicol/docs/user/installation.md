@@ -180,8 +180,8 @@ build also needs network access for the locked Python and Cargo inputs. On
 Linux x86-64 the release build runs in the pinned manylinux 2.28 image, as
 the release workflow (`.github/workflows/release-artifacts.yml`) does: the
 source distribution first, then the wheel built from it (an audited
-`cp311-abi3` wheel at most 95,000,000 bytes, below PyPI's default 100 MB
-file limit):
+`cp311-abi3` wheel at most 237,500,000 bytes, below the 250 MB PyPI
+file limit granted to the project):
 
 ```console
 git clone https://github.com/MadGraphTeam/pyamplicol.git

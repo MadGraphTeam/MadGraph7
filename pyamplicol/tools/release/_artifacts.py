@@ -68,7 +68,7 @@ from prepare_selftest_fixture import (
     validate_portable_execution_manifest,
 )
 
-MAX_WHEEL_BYTES = 95_000_000
+MAX_WHEEL_BYTES = 237_500_000
 EXPECTED_DISTRIBUTION = "pyamplicol"
 with (ROOT / "dependencies" / "release-lock.toml").open("rb") as _release_stream:
     EXPECTED_RELEASE_VERSION = str(tomllib.load(_release_stream)["project"]["version"])
