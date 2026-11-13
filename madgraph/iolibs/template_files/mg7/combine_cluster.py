@@ -18,11 +18,15 @@ import argparse
 import gzip
 import json
 import os
+import contextlib
 import re
 import shutil
+import subprocess
 import sys
 
 import numpy as np
+
+from madgraph.various import misc
 
 # status entries that are counts of the jobs and add up
 _SUMMED = ("count", "count_after_cuts", "count_after_cuts_opt", "count_opt",
@@ -37,6 +41,9 @@ _SYST_AVERAGED = ("cross_section", "central", "uncertainty_up",
 
 EVENT_FILES = ("events.lhe.gz", "events.lhe", "events.npy")
 _ROWS_PER_CHUNK = 1 << 20
+_COPY_CHUNK = 1 << 22
+_LHE_END = b"</LesHouchesEvents>"
+_TAIL = 4096
 
 
 class CombineError(Exception):
@@ -159,7 +166,7 @@ def combine_info(infos: list) -> dict:
 
 def open_text(path: str, mode: str = "rt"):
     if path.endswith(".gz"):
-        return gzip.open(path, mode, compresslevel=6) if "w" in mode else gzip.open(path, mode)
+        return gzip.open(path, mode)
     return open(path, mode)
 
 
@@ -198,34 +205,76 @@ def init_of(path: str) -> list:
     raise CombineError(f"no <init> block in {path}")
 
 
+@contextlib.contextmanager
+def compressed_output(path: str):
+    """A binary file to write ``path`` with, compressed by the gzip tool
+    misc.configure_gzip chose (pigz: on several cores) when it ends in .gz."""
+    tool = shutil.which(misc._gzip_tool) if misc._gzip_tool else None
+    if not path.endswith(".gz") or tool is None:
+        with (gzip.open(path, "wb", compresslevel=misc.GZIP_COMPRESSLEVEL)
+              if path.endswith(".gz") else open(path, "wb")) as f:
+            yield f
+        return
+    command = [tool, "-c", "-%d" % misc.GZIP_COMPRESSLEVEL]
+    if misc._gzip_tool_supports_multithreading and misc._gzip_tool_max_cores:
+        command += ["-p", str(misc._gzip_tool_max_cores)]
+    with open(path, "wb") as out:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=out)
+        try:
+            yield process.stdin
+        except BaseException:
+            process.kill()
+            process.wait()
+            os.remove(path)
+            raise
+        process.stdin.close()
+        if process.wait() != 0:
+            os.remove(path)
+            raise CombineError(f"compressing {path} with {tool} failed")
+
+
+def copy_events(source, out) -> None:
+    """Copy the rest of an LHE file, the events, without its closing tag."""
+    carry = b""
+    while True:
+        chunk = source.read(_COPY_CHUNK)
+        if not chunk:
+            break
+        data = carry + chunk
+        # keep the tail back: the closing tag, and what follows it, may be cut
+        # by the block boundary
+        out.write(data[:-_TAIL])
+        carry = data[-_TAIL:]
+    end = carry.rfind(_LHE_END)
+    out.write(carry if end < 0 else carry[:end])
+
+
 def write_lhe(paths: list, output: str, status: dict, negative: bool) -> None:
     """Concatenate the events of the LHE files ``paths``, with the header of
-    the first and the cross section of ``status``."""
-    with open_text(output, "wt") as out:
+    the first and the cross section of ``status``. The events are copied in
+    blocks, not parsed."""
+    with compressed_output(output) as out:
         for index, path in enumerate(paths):
-            with open_text(path) as f:
-                inside_init = False
-                init = []
-                in_events = False
+            with open_text(path, "rb") as f:
+                init = None
                 for line in f:
-                    if line.startswith("</LesHouchesEvents>"):
+                    if init is not None and not line.startswith(b"</init>"):
+                        init.append(line.decode())
+                    elif line.startswith(b"<init>"):
+                        init = []
+                        if index == 0:
+                            out.write(line)
+                    elif line.startswith(b"</init>"):
+                        if index == 0:
+                            out.write("".join(patch_init(init, status, negative)).encode())
+                            out.write(line)
                         break
-                    if in_events:
-                        out.write(line)
-                    elif inside_init and not line.startswith("</init>"):
-                        init.append(line)
-                    elif line.startswith("<init>"):
-                        inside_init = True
-                        if index == 0:
-                            out.write(line)
-                    elif line.startswith("</init>"):
-                        if index == 0:
-                            out.writelines(patch_init(init, status, negative))
-                            out.write(line)
-                        in_events = True
                     elif index == 0:
                         out.write(line)
-        out.write("</LesHouchesEvents>\n")
+                else:
+                    raise CombineError(f"no <init> block in {path}")
+                copy_events(f, out)
+        out.write(_LHE_END + b"\n")
 
 
 def write_header(path: str, output: str, status: dict, negative: bool) -> None:

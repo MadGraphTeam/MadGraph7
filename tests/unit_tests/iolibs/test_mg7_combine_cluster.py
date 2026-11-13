@@ -18,6 +18,7 @@ import math
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -174,6 +175,23 @@ class TestCombineCluster(unittest.TestCase):
         # the events keep their own weights
         self.assertIn("+1.0000000000e+01", text)
         self.assertIn("+1.2000000000e+01", text)
+
+    def test_lhe_in_small_blocks_and_with_every_compressor(self):
+        jobs = self.jobs("lhe", [dict(count=2, mean=10., error=1.),
+                                 dict(count=3, mean=12., error=2.)])
+        texts = []
+        # blocks that cut the closing tag; the external tool and the gzip module
+        for index, tool in enumerate(("gzip", None)):
+            with mock.patch.object(combine, "_COPY_CHUNK", 7), \
+                    mock.patch.object(combine, "_TAIL", 24), \
+                    mock.patch.object(combine.misc, "_gzip_tool", tool):
+                combine.combine_runs(jobs, self.path("out%d" % index))
+            with gzip.open(self.path("out%d/events.lhe.gz" % index), "rt") as f:
+                texts.append(f.read())
+        self.assertEqual(texts[0], texts[1])
+        self.assertEqual(texts[0].count("<event>"), 5)
+        self.assertEqual(texts[0].count("</event>"), 5)
+        self.assertTrue(texts[0].endswith("</event>\n</LesHouchesEvents>\n"))
 
     def test_negative_weights_change_the_weight_convention(self):
         combine.combine_runs(
