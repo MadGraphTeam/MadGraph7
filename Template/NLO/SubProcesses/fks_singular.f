@@ -7261,12 +7261,12 @@ c 1+2+3+4
           Ei=p(0,n)
           Ej=p(0,m)
           xmj=pmass(m)
-          betaj=sqrt(1-xmj**2/Ej**2)
+          betaj=sqrt(max(0d0,1-xmj**2/Ej**2))
         else
           Ei=p(0,m)
           Ej=p(0,n)
           xmj=pmass(n)
-          betaj=sqrt(1-xmj**2/Ej**2)
+          betaj=sqrt(max(0d0,1-xmj**2/Ej**2))
         endif
         kikj=dot(p(0,n),p(0,m))
         rij=kikj/(2*Ei*Ej)
@@ -7287,7 +7287,7 @@ c 1+2+3+4
       elseif(pmass(m).ne.0.d0.and.pmass(n).ne.0.d0)then
         if(n.eq.m)then
           Ei=p(0,n)
-          betai=sqrt(1-pmass(n)**2/Ei**2)
+          betai=sqrt(max(0d0,1-pmass(n)**2/Ei**2))
           if(abrv.ne.'virt')then
 c 1+2+3+4
             if (betai.gt.1d-6) then
@@ -7304,8 +7304,8 @@ c 1+2+3+4
         else
           Ei=p(0,n)
           Ej=p(0,m)
-          betai=sqrt(1-pmass(n)**2/Ei**2)
-          betaj=sqrt(1-pmass(m)**2/Ej**2)
+          betai=sqrt(max(0d0,1-pmass(n)**2/Ei**2))
+          betaj=sqrt(max(0d0,1-pmass(m)**2/Ej**2))
           xmi2=pmass(n)**2
           xmj2=pmass(m)**2
           kikj=dot(p(0,n),p(0,m))

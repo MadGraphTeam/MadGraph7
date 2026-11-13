@@ -59,7 +59,7 @@ c**************************************************************************
       x=onia_dot(pk,pl)
       ek=pk(0)
       el=pl(0)
-      bl=dsqrt(1d0-ml2/el**2)
+      bl=dsqrt(max(0d0,1d0-ml2/el**2))
       if (dabs(mk2).lt.1d-10*ek**2) then
 c        massless k
          ml=dsqrt(ml2)
@@ -89,7 +89,7 @@ c     two massive momenta
       al=(1d0+v)*x/mk2
       lam=al*ek-el
       nu=(al**2*mk2-ml2)/(2d0*lam)
-      bk=dsqrt(1d0-mk2/ek**2)
+      bk=dsqrt(max(0d0,1d0-mk2/ek**2))
       ja=onia_ja(al*ek,al*ek*bk,lam,nu)
       jb=onia_ja(el,el*bl,lam,nu)
       pre=mk2/(2d0*x**2*v**3)
