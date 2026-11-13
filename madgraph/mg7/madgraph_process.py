@@ -606,6 +606,9 @@ class MadgraphProcess:
         the param card, or the artifact of an AmpliCol library. ``position`` is
         its place among the matrix elements (default: after the last one), which
         the compiled functions refer to it by."""
+        # appended by default: [surrogate] libraries take context slots that
+        # loaded_matrix_elements does not record
+        index = -1 if position is None else len(self.custom_function_paths) + position
         if position is None:
             position = len(self.loaded_matrix_elements)
         for context, backend in zip(self.contexts, self.backends):
@@ -613,7 +616,7 @@ class MadgraphProcess:
                 path_format.format(device=backend, fptype=self.fptype),
                 os.path.abspath(init_path),
                 parameters,
-                index=len(self.custom_function_paths) + position,
+                index=index,
             )
         missing = position + 1 - len(self.loaded_matrix_elements)
         self.loaded_matrix_elements.extend([None] * max(missing, 0))
@@ -685,6 +688,9 @@ class MadgraphProcess:
             raise RuntimeError("[surrogate] cannot be used with dummy_matrix_element")
         if self.run_card["gridpack"]["save_gridpack"]:
             raise RuntimeError("[surrogate] does not support gridpacks yet")
+        if self.run_card["phasespace"]["subprocess_selection"]:
+            # the selection loads the matrix elements at fixed context slots
+            raise RuntimeError("[surrogate] cannot be used with subprocess_selection")
         self.surrogate = dict(settings)
         if not self.surrogate["param_card"]:
             self.surrogate["param_card"] = self.param_card_path
