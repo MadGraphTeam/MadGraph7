@@ -316,6 +316,16 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries test_madmatrix_hel_recycling_every_flavour test_madmatrix_hel_recycling_launch_parameters -pA -t0 -l INFO
 
+      # ---- acceptancetest_mg7_helicity_choice ----
+      # the good helicities an mg7 run chooses from its cards (16 RAMBO points on
+      # a CPU build), given to every madspace thread: even a thread whose own
+      # first events are forward u u~ > e+ e- events evaluates them
+      - name: "acceptancetest_mg7_helicity_choice: helicities chosen from the cards, on every thread"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_helicity_choice_every_thread -pA -t0 -l INFO
+
       # --hel_recycling through the mg7 launch: a param_card scan (ymb = 0, 4.7,
       # 0) whose points need different recycled builds gives the plain cross
       # section at each, in one process (each build has a library name of its own)

@@ -12,9 +12,7 @@
 #include "UmamiInstance.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
-#ifdef MG_HR_PROBE
-#include "rambo.h" // RAMBO points of the --hel_recycling warm-up probe (choose_good_helicities)
-#endif
+#include "rambo.h" // the RAMBO points of choose_good_helicities
 
 #include <algorithm>
 #include <cfloat>
@@ -133,36 +131,31 @@ namespace
   // umami_get_meta(UMAMI_META_MASSES), which takes no handle
   std::vector<double> g_externalMasses;
 
-#ifdef MG_HR_PROBE
-  // The --hel_recycling warm-up probe (make HRPROBE=1: built and run at generation
-  // time, see madmatrix/hel_recycling_filter.py) bakes the helicity rows it finds
-  // into the recycled code, and a row it misses is computed without recycling at
-  // run time (hr_unbaked_row). So it chooses at initialization, on RAMBO points
-  // that cover the energies and the frames of a run, and not on the events of
-  // check_sa (one energy, the centre-of-mass frame): the matrix element is
-  // evaluated there once (the filter itself scans every flavor). Where RAMBO has no
-  // phase space (2 > 1, a decay below threshold), this does nothing and the first
-  // call chooses.
-  // An incoming quark, gluon or photon comes out of a PDF (or of the photon flux of a
-  // lepton), which sets the partonic centre-of-mass frame in motion along the beams.
-  constexpr bool has_pdf_beams()
-  {
-    if( ProcessData::npari != 2 ) return false;
-    for( int iflav = 0; iflav < ProcessData::nmaxflavor; ++iflav )
-      for( int ipar = 0; ipar < ProcessData::npari; ++ipar )
-      {
-        const int pdg = ProcessData::flavorPDGs[iflav][ipar];
-        const int apdg = pdg < 0 ? -pdg : pdg;
-        if( ( apdg >= 1 && apdg <= 6 ) || apdg == 21 || apdg == 22 ) return true;
-      }
-    return false;
-  }
-
-  void choose_good_helicities( UmamiInstance* instance )
+  // Choose the good helicities of an instance at once, on nlearn RAMBO points of a
+  // collider, rather than on the first nlearn events it is called with: of
+  // centre-of-mass energy sqrt_s, whose frame moves at `rapidity` along the beams
+  // in the lab (asymmetric beams). The points come in pairs, one in the partonic
+  // centre-of-mass frame and one in the lab frame, since the matrix element is
+  // called in either (me_frame) and the helicity of a massive leg is not boost
+  // invariant: a helicity can vanish in one frame only. With `spread`, the partonic
+  // energy varies (PDFs, ISR, beamstrahlung): a pair at each of nlearn/2 energies,
+  // from just above the threshold of the process up to sqrt_s in geometric steps,
+  // since a helicity whose |M|^2 is a power of m/sqrt(s) below the others matters
+  // near threshold only (the all-plus helicities of g g > h g in the heft model are
+  // (m_H^2/s)^4 of the rest: 1e-14 at 13 TeV, 42% at 130 GeV). With massless
+  // external legs there is no threshold, the helicities scale alike up to the
+  // internal masses, and the lowest energy is sqrt_s/100. The partonic system of a
+  // lab-frame point moves by a random rapidity of at most max_boost, or, if
+  // max_boost is negative, of at most log( sqrt_s / energy ), the most that the
+  // beams boost a system of that energy. Without `spread`, every point is at
+  // sqrt_s. A decay is at rest (sqrt_s and rapidity are not used). Returns false,
+  // and chooses nothing, where RAMBO has no phase space (2 > 1, below threshold):
+  // the first events choose then.
+  bool choose_good_helicities( UmamiInstance* instance, double sqrt_s, double rapidity, bool spread, double max_boost )
   {
     constexpr int npar = ProcessData::npar;
     constexpr int npari = ProcessData::npari;
-    constexpr std::size_t nevt = 16; // the events sigmaKin_getGoodHel looks at
+    constexpr std::size_t nevt = nlearn;
     const std::vector<fptype>& instanceMasses = instance->process.getMasses();
     std::vector<double> masses( instanceMasses.begin(), instanceMasses.end() );
     double mfinal = 0, mtotal = 0;
@@ -171,20 +164,14 @@ namespace
       mtotal += masses[ipar];
       if( ipar >= npari ) mfinal += masses[ipar];
     }
-    // rambo exits on a closed phase space: check it first
-    if( npar - npari < 2 || ( npari == 1 && !( masses[0] > mfinal ) ) ) return;
-    // The points are spread over the partonic energy: two of them (one in the
-    // centre-of-mass frame, one boosted, see below) at each of nevt/2 energies, from
-    // just above the threshold of the process up to max( 1500 GeV, twice the sum of
-    // the masses ), in geometric steps: a helicity whose |M|^2 is a power of
-    // m/sqrt(s) below the others matters near threshold only (the all-plus
-    // helicities of g g > h g in the heft model are (m_H^2/s)^4 of the rest). With
-    // massless external legs there is no threshold, the helicities scale alike up to
-    // the internal masses, and the lowest energy is 1/100 of the highest. A decay is
-    // at rest instead (one energy).
-    const double ehigh = std::max( 1500., 2 * mtotal );
     const double threshold = std::max( mtotal - mfinal, mfinal ); // incoming or outgoing masses
-    const double elow = ( npari == 1 ? ehigh : threshold > 0 ? 1.1 * threshold : ehigh / 100 );
+    // rambo exits on a closed phase space: check it first
+    if( npar - npari < 2 ) return false;
+    if( npari == 1 ? !( masses[0] > mfinal ) : !( sqrt_s > threshold ) ) return false;
+    const double ehigh = sqrt_s;
+    double elow = ehigh;
+    if( spread && npari == 2 )
+      elow = threshold > 0 ? std::min( 1.1 * threshold, 0.5 * ( threshold + ehigh ) ) : ehigh / 100;
     constexpr std::size_t nenergy = nevt / 2;
     // A private generator: the shared one (rambo::rn) makes the points of the check
     // drivers, which must not move.
@@ -202,14 +189,15 @@ namespace
       const double energy = elow * std::pow( ehigh / elow, double( ievt / 2 ) / ( nenergy - 1 ) );
       double weight = 0;
       std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
-      // RAMBO points are in the partonic centre-of-mass frame, but with PDFs the matrix
-      // element is called in frames boosted along the beams (madspace's lab frame), and
-      // the helicity of a massive leg is not boost invariant: a helicity can vanish in
-      // the centre-of-mass frame only. Every other point is therefore boosted along z,
-      // with a random rapidity in [-2, 2], so that the choice covers both frames.
-      if( has_pdf_beams() && ievt % 2 == 1 )
+      double y = 0; // the partonic centre-of-mass frame, or the lab frame:
+      if( npari == 2 && ievt % 2 == 1 )
       {
-        const double y = 4 * draw( 0 ) - 2, ch = std::cosh( y ), sh = std::sinh( y );
+        y = rapidity;
+        if( max_boost != 0 ) y += ( max_boost < 0 ? std::log( ehigh / energy ) : max_boost ) * ( 2 * draw( 0 ) - 1 );
+      }
+      if( y != 0 )
+      {
+        const double ch = std::cosh( y ), sh = std::sinh( y );
         for( std::vector<double>& q : p )
         {
           const double e = q[0], pz = q[3];
@@ -219,22 +207,54 @@ namespace
       }
       for( int ipar = 0; ipar < npar; ++ipar )
       {
-        // on shell, or rambo did not converge: leave the choice to the first call
+        // on shell, or rambo did not converge: leave the choice to the first events
         const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
-        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * energy * energy ) return;
+        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * p[ipar][0] * p[ipar][0] ) return false;
         for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
       }
     }
+    // every helicity is evaluated on these points (the filter itself scans every flavor)
+    reset_good_helicities( instance );
     std::vector<double> matrix_elements( nevt );
     const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA };
     const void* inputs[] = { momenta.data() };
     const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
     void* outputs[] = { matrix_elements.data() };
     umami_matrix_element( instance, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
-    // On these points only: sigmaKin_setGoodHel prints the rows and the vanishing
-    // amplitudes at every choice, the latter as seen so far, and the exporter takes
-    // the union of what it prints.
     instance->learned = nlearn;
+    return true;
+  }
+
+#ifdef MG_HR_PROBE
+  // The --hel_recycling warm-up probe (make HRPROBE=1: built and run at generation
+  // time, see madmatrix/hel_recycling_filter.py) bakes the helicity rows it finds
+  // into the recycled code, and a row it misses is computed without recycling at
+  // run time (hr_unbaked_row). So it chooses at initialization, on RAMBO points
+  // that cover the energies and the frames of a run, and not on the events of
+  // check_sa (one energy, the centre-of-mass frame): up to max( 1500 GeV, twice the
+  // sum of the masses ), boosted by up to 2 units of rapidity when an incoming
+  // parton comes from a PDF (or from the photon flux of a lepton). It chooses on
+  // those points only: sigmaKin_setGoodHel prints the rows and the vanishing
+  // amplitudes at every choice, the latter as seen so far, and the exporter takes
+  // the union of what it prints.
+  constexpr bool has_pdf_beams()
+  {
+    if( ProcessData::npari != 2 ) return false;
+    for( int iflav = 0; iflav < ProcessData::nmaxflavor; ++iflav )
+      for( int ipar = 0; ipar < ProcessData::npari; ++ipar )
+      {
+        const int pdg = ProcessData::flavorPDGs[iflav][ipar];
+        const int apdg = pdg < 0 ? -pdg : pdg;
+        if( ( apdg >= 1 && apdg <= 6 ) || apdg == 21 || apdg == 22 ) return true;
+      }
+    return false;
+  }
+
+  void choose_good_helicities_for_probe( UmamiInstance* instance )
+  {
+    double mtotal = 0;
+    for( fptype mass : instance->process.getMasses() ) mtotal += mass;
+    choose_good_helicities( instance, std::max( 1500., 2 * mtotal ), 0, true, has_pdf_beams() ? 2 : 0 );
   }
 #endif
 
@@ -313,7 +333,7 @@ extern "C"
     g_externalMasses.assign( masses.begin(), masses.end() );
 
 #ifdef MG_HR_PROBE
-    choose_good_helicities( instance.get() );
+    choose_good_helicities_for_probe( instance.get() );
 #endif
     *handle = instance.release();
     return UMAMI_SUCCESS;
@@ -358,7 +378,7 @@ extern "C"
     // A helicity may vanish with some parameters and not with others: choose again
     reset_good_helicities( instance );
 #ifdef MG_HR_PROBE
-    choose_good_helicities( instance );
+    choose_good_helicities_for_probe( instance );
 #endif
     return UMAMI_SUCCESS;
 #endif
@@ -690,5 +710,63 @@ extern "C"
   int madmatrix_good_helicity_count( UmamiHandle handle )
   {
     return static_cast<UmamiInstance*>( handle )->process.parameters().nGoodHel;
+  }
+
+  // A madmatrix extension, not part of UMAMI: choose the good helicities of an
+  // instance at once, on nlearn RAMBO points of a collider of centre-of-mass energy
+  // sqrt_s, whose frame moves at `rapidity` along the beams, the partonic energy and
+  // frame varying with `spread` (beams with PDFs, ISR or beamstrahlung), see
+  // choose_good_helicities. They are kept until umami_set_parameter changes a
+  // parameter. mg7 chooses so, from its cards, on a CPU build, and gives the choice
+  // to the libraries of the run (madmatrix_get_helicity_choice,
+  // madmatrix_set_helicity_choice): the same for every thread, device and run.
+  // UMAMI_ERROR where RAMBO has no phase space; the first events choose then.
+  UmamiStatus madmatrix_choose_good_helicities( UmamiHandle handle, double sqrt_s, double rapidity, int spread )
+  {
+    UmamiInstance* instance = static_cast<UmamiInstance*>( handle );
+    return choose_good_helicities( instance, sqrt_s, rapidity, spread != 0, spread != 0 ? -1. : 0. ) ? UMAMI_SUCCESS : UMAMI_ERROR;
+  }
+
+  // A madmatrix extension, not part of UMAMI: the good helicities an instance has
+  // chosen, as madmatrix_set_helicity_choice takes them: choice[0] is 1 if
+  // --hel_recycling has to use the plain code (hr_check_stale, SigmaKin.cc), else
+  // 0, then the rows of the helicity table that are kept. Returns the size of the
+  // choice, written if it is at most `capacity`, or -1 while the instance is still
+  // choosing.
+  int madmatrix_get_helicity_choice( UmamiHandle handle, int* choice, int capacity )
+  {
+    UmamiInstance* instance = static_cast<UmamiInstance*>( handle );
+    if( instance->learned < nlearn ) return -1;
+    int size = 1;
+    for( bool good : instance->good_hel ) size += good ? 1 : 0;
+    if( choice != nullptr && size <= capacity )
+    {
+      int k = 0;
+      choice[k++] = instance->process.parameters().hrStale ? 1 : 0;
+      for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
+        if( instance->good_hel[ihel] ) choice[k++] = ihel;
+    }
+    return size;
+  }
+
+  // A madmatrix extension, not part of UMAMI: give an instance the good helicities
+  // that madmatrix_get_helicity_choice wrote for an instance of this process with
+  // the same parameters, of this build or of another (backend, precision). They are
+  // kept until umami_set_parameter changes a parameter; the instance then chooses
+  // on its first events again. UMAMI_ERROR, and nothing changes, if the choice does
+  // not fit the helicities of this process.
+  UmamiStatus madmatrix_set_helicity_choice( UmamiHandle handle, const int* choice, int size )
+  {
+    UmamiInstance* instance = static_cast<UmamiInstance*>( handle );
+    if( choice == nullptr || size < 1 ) return UMAMI_ERROR;
+    for( int k = 1; k < size; ++k )
+      if( choice[k] < 0 || choice[k] >= ProcessData::ncomb ) return UMAMI_ERROR;
+    for( bool& good : instance->good_hel ) good = false;
+    for( int k = 1; k < size; ++k ) instance->good_hel[choice[k]] = true;
+    instance->learned = nlearn;
+    ProcessParameters& params = instance->process.parameters();
+    params.hrStale = choice[0] != 0;
+    sigmaKin_setGoodHel( params, instance->good_hel );
+    return UMAMI_SUCCESS;
   }
 }

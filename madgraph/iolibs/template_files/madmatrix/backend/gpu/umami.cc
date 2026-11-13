@@ -666,4 +666,48 @@ extern "C"
   {
     return static_cast<InterfaceInstance*>( handle )->process.parameters().nGoodHel;
   }
+
+  // A madmatrix extension, not part of UMAMI: the good helicities an instance has
+  // chosen, as madmatrix_set_helicity_choice takes them (see the cpu backend):
+  // choice[0], the --hel_recycling flag of the CPU builds (0 here), then the rows of
+  // the helicity table that are kept. Returns the size of the choice, written if it
+  // is at most `capacity`, or -1 while the instance is still choosing.
+  int madmatrix_get_helicity_choice( UmamiHandle handle, int* choice, int capacity )
+  {
+    InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
+    if( instance->learned < nlearn ) return -1;
+    int size = 1;
+    for( bool good : instance->good_hel ) size += good ? 1 : 0;
+    if( choice != nullptr && size <= capacity )
+    {
+      int k = 0;
+      choice[k++] = 0;
+      for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
+        if( instance->good_hel[ihel] ) choice[k++] = ihel;
+    }
+    return size;
+  }
+
+  // A madmatrix extension, not part of UMAMI: give an instance the good helicities
+  // that madmatrix_get_helicity_choice wrote for an instance of this process with
+  // the same parameters: mg7 chooses them from its cards on a CPU build
+  // (madmatrix_choose_good_helicities, which the GPU builds do not have), so that a
+  // run on a GPU evaluates the helicities of a run on a CPU. They are kept until
+  // umami_set_parameter changes a parameter. UMAMI_ERROR, and nothing changes, if
+  // the choice does not fit the helicities of this process.
+  UmamiStatus madmatrix_set_helicity_choice( UmamiHandle handle, const int* choice, int size )
+  {
+    InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
+    if( choice == nullptr || size < 1 ) return UMAMI_ERROR;
+    for( int k = 1; k < size; ++k )
+      if( choice[k] < 0 || choice[k] >= ProcessData::ncomb ) return UMAMI_ERROR;
+    DeviceGuard guard( instance->device ); // deviceParams.update copies to it
+    for( bool& good : instance->good_hel ) good = false;
+    for( int k = 1; k < size; ++k ) instance->good_hel[choice[k]] = true;
+    instance->learned = nlearn;
+    ProcessParameters& params = instance->process.parameters();
+    sigmaKin_setGoodHel( params, instance->good_hel );
+    instance->deviceParams.update( params );
+    return UMAMI_SUCCESS;
+  }
 }
