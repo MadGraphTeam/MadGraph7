@@ -96,6 +96,31 @@ class TestMadMatrixDensityDispatch(unittest.TestCase):
 
 
 @needs_numpy
+class TestMadMatrixDensitySpinReference(unittest.TestCase):
+    """The massive fermions of an output --axial_gauge=True (spin_reference
+    in madmatrix_processes.json) are not in a helicity state: no density
+    matrix may be asked for them, while summing over their states is fine."""
+
+    def subprocess(self, legs):
+        sub = density._Subprocess.__new__(density._Subprocess)
+        sub.path = 'P1_gg_ttxgg'
+        sub.spin_reference = frozenset(legs)
+        return sub
+
+    def test_open_spin_reference_leg_is_refused(self):
+        sub = self.subprocess([3, 4])
+        for pos in ([3], [4], [3, 4], [4, 5]):
+            hel = density._Helicities(pos, [1, -1] * len(pos))
+            self.assertRaises(density.MadDensityError, sub.check_open_legs, hel)
+
+    def test_other_open_legs(self):
+        hel = density._Helicities([5, 6], [1, 1, -1, -1])
+        self.subprocess([3, 4]).check_open_legs(hel)
+        # a table written before spin_reference: nothing to refuse
+        self.subprocess([]).check_open_legs(density._Helicities([3], [1, -1]))
+
+
+@needs_numpy
 class TestMadMatrixDensityFiles(unittest.TestCase):
 
     def setUp(self):

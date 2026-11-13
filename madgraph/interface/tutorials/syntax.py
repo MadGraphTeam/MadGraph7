@@ -88,12 +88,12 @@ def _exclusion_note(interface, line=None):
 
     if '$$' in (line or ''):
         what = (
-"""`$$` forbids the photon as an s-channel outright, so the diagram is dropped.
+"""`$$` forbids the Z as an s-channel outright, so the diagram is dropped.
 Fewer than you started with -- and what is left is a subset of an amplitude,
 so the gauge warning from the lesson above applies to it in full.""")
     else:
         what = (
-"""`$` kept every diagram and subtracted only the photon's on-shell
+"""`$` kept every diagram and subtracted only the Z's on-shell
 contribution. The count is the one you get with no constraint at all, because
 nothing was deleted: what changed is where the propagator may sit, not which
 diagrams exist. That is why this one is the safe operator.""")
@@ -383,11 +383,12 @@ between them is exactly the gauge question from the last lesson.
 
   $   exclude the ON-SHELL contribution of an s-channel particle. The diagram
       is KEPT and only the resonance peak is subtracted, so this one is safe
-      by construction.
+      by construction. It needs a massive particle: a massless one has no
+      peak to cut out, and `$ a` is refused.
   $$  forbid that s-channel entirely -- the diagram is dropped.
   /   forbid a particle ANYWHERE in the diagram, internal or external.
 
-`generate p p > e+ e- $ a` and `generate p p > e+ e- $$ a` are both worth
+`generate p p > e+ e- $ z` and `generate p p > e+ e- $$ z` are both worth
 typing here, in either order: the contrast between their diagram counts is the
 lesson, and neither of them ends this one.
 
@@ -408,7 +409,7 @@ Forbid the photon everywhere and see what is left:
 %(p)s %(exclusion)s
 """ % {'p': P, 'exclusion': EXCLUSION, 'counts': counts_line(interface)},
      title='excluding particles and s-channels',
-     hint="'/ a' forbids the photon everywhere; '$ a' only removes it on shell.",
+     hint="'/ a' forbids the photon everywhere; '$$ a' only drops its s-channel.",
      solution=EXCLUSION),
 
 # answers the `$` and `$$` the lesson above invites, and stays put: without it

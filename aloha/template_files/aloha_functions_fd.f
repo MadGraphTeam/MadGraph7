@@ -2264,13 +2264,93 @@ c     local variable
       nq = n(0)*dble(q(0))-n(1)*dble(q(1))-n(2)*dble(q(2))-n(3)*dble(q(3))
       
       js1 = (n(0)*w0(0)-n(1)*w0(1)-n(2)*w0(2)-n(3)*w0(3)) / nq
+c     q(4) = -i*m enters as +i*m, not as its conjugate: the two only agree
+c     for a real mass, and the complex-mass scheme needs the analytic form
       js2 = (q(0)*w0(0)-q(1)*w0(1)-q(2)*w0(2)-q(3)*w0(3) 
-     &     - dconjg(q(4))*w0(4)) / nq
+     &     + q(4)*w0(4)) / nq
 
       w1(0:4) = w0(0:4)-q(0:4)*js1-n(0:4)*js2
 
       wout % W(1:5) = w1(0:4)
       
+      end
+
+      subroutine fd_polarized_propagator(w, m, width, ipol)
+c
+c FD gauge: polarised propagator of a massive vector. w is the off-shell
+c wavefunction an ALOHA routine built with the ordinary FD numerator (the
+c vector in w%W(1:4), the Goldstone boson in w%W(5)), before the FD
+c projector. Instead of the full projector, w is projected on one piece of
+c the FD numerator
+c     N = sum_T eps eps* + eps0 eps0* + (q^2-M^2) n n/(n.q)^2
+c with eps0 = (-M n/(n.q), i) and n the FD gauge direction:
+c   ipol = 0 {0}, 1 {T}, 2 {+}, 3 {-}, 4 {A}, 5 {S}, 6 {0S}
+c (aloha_writers.FD_POLARIZED_PROPAGATORS). {S} is {A} with its factor
+c (q^2-M^2)/(q^2-M^2+i M width) replaced by 1.
+c
+      use aloha_object
+      implicit none
+      type(aloha) w
+      double precision m, width
+      integer ipol
+
+      double complex q(0:4), w0(0:4), w1(0:4), nw, c, cross(3), sca
+      double precision n(0:4), nq, q2, qh(3), qw
+      integer i
+
+      double complex ci
+      parameter (ci=(0.d0,1.d0))
+
+      q(0:3) = -w % P(:)
+c     a line at rest (|q| below 1e-10 q0, rounding): pin the axis of the
+c     helicities to +z, as the unitary-gauge polarised routines do
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(1)))) q(1) = 1d-30
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(2)))) q(2) = 0d0
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(3)))) q(3) = 1d-15
+      q(4) = -ci*m
+      call define_gauge_dir(q, n)
+      w0(0:4) = w % W(1:5)
+      w1(0:4) = (0.d0, 0.d0)
+
+      nq = n(0)*dble(q(0))-n(1)*dble(q(1))-n(2)*dble(q(2))-n(3)*dble(q(3))
+      q2 = dble(q(0))**2-dble(q(1))**2-dble(q(2))**2-dble(q(3))**2
+      nw = n(0)*w0(0)-n(1)*w0(1)-n(2)*w0(2)-n(3)*w0(3)
+c     unit vector along the momentum (n = (+-1, -qh))
+      qh(1:3) = -n(1:3)
+
+      if (ipol.ge.1.and.ipol.le.3) then
+c        transverse: the components orthogonal to qh
+         sca = qh(1)*w0(1)+qh(2)*w0(2)+qh(3)*w0(3)
+         do i = 1, 3
+            w1(i) = w0(i) - qh(i)*sca
+         enddo
+         if (ipol.ne.1) then
+            cross(1) = qh(2)*w0(3) - qh(3)*w0(2)
+            cross(2) = qh(3)*w0(1) - qh(1)*w0(3)
+            cross(3) = qh(1)*w0(2) - qh(2)*w0(1)
+c           helicity +1: (T - i qh x w)/2, -1: (T + i qh x w)/2
+            qw = -1.d0
+            if (ipol.eq.3) qw = 1.d0
+            do i = 1, 3
+               w1(i) = 0.5d0*(w1(i) + qw*ci*cross(i))
+            enddo
+         endif
+      endif
+      if (ipol.eq.0.or.ipol.eq.6) then
+c        longitudinal: eps0 (eps0*. w)
+         c = m/nq*nw - ci*w0(4)
+         w1(0:3) = w1(0:3) - m/nq*n(0:3)*c
+         w1(4) = w1(4) + ci*c
+      endif
+      if (ipol.eq.4) then
+         w1(0:3) = w1(0:3) - (q2-m*m)/nq**2*n(0:3)*nw
+      endif
+      if (ipol.eq.5.or.ipol.eq.6) then
+         w1(0:3) = w1(0:3) - (q2-m*m+ci*m*width)/nq**2*n(0:3)*nw
+      endif
+
+      w % W(1:5) = w1(0:4)
+
       end
 
       subroutine define_gauge_dir(q, n)

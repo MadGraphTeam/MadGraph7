@@ -639,6 +639,9 @@ class Switcher(object):
     def help_set2_gauge(self, *args, **opts):
         return self.cmd.help_set2_gauge(self, *args, **opts)
 
+    def help_set2_auto_gauge(self, *args, **opts):
+        return self.cmd.help_set2_auto_gauge(self, *args, **opts)
+
     def help_set2_group_subprocesses(self, *args, **opts):
         return self.cmd.help_set2_group_subprocesses(self, *args, **opts)
 

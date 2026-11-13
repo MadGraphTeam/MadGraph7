@@ -3827,6 +3827,9 @@ class Process(PhysicsObject):
         # carrying its own orders, s-channel requirements and exclusions.
         self['interference_mode'] = ''
         self['interference_process'] = None
+        # the gauge this process is generated in when an output mixes gauges
+        # ('FD', 'unitary'); '' is the gauge of the session
+        self['gauge'] = ''
 
     def filter(self, name, value):
         """Filter for valid process property values."""
@@ -3916,6 +3919,10 @@ class Process(PhysicsObject):
             import madgraph.interface.madgraph_interface as mg
             if value not in mg.MadGraphCmd._valid_nlo_modes:
                 raise self.PhysicsObjectError("%s is not a valid NLO_mode" % str(value))
+
+        if name == 'gauge':
+            if value not in ['', 'unitary', 'FD']:
+                raise self.PhysicsObjectError("%s is not a valid gauge" % str(value))
 
         if name == 'interference_mode':
             if value not in ['', 'LIxtree', 'treextree']:
@@ -4019,6 +4026,12 @@ class Process(PhysicsObject):
         a version that did not know about interference processes)."""
 
         return dict.get(self, 'interference_mode', '') or ''
+
+    def get_gauge(self, default=''):
+        """The gauge of this process in an output that mixes gauges, else
+        `default` (the gauge of the session)."""
+
+        return dict.get(self, 'gauge', '') or default
 
     def has_squared_order_selection(self):
         """Whether only some squared orders of this process are kept: an
@@ -5204,7 +5217,8 @@ class ProcessDefinition(Process):
             # the right-hand process stays the ProcessDefinition template:
             # its legs are matched to these ones at generation time
             'interference_mode': self.get_interference_mode(),
-            'interference_process': dict.get(self, 'interference_process')
+            'interference_process': dict.get(self, 'interference_process'),
+            'gauge': self.get_gauge(),
             })
             
     def get_process(self, initial_state_ids, final_state_ids):

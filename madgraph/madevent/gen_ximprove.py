@@ -428,6 +428,9 @@ class gensym(object):
                     continue # avoid optimization if only one helicity
                 
                 gauge = self.cmd.proc_characteristics['gauge']
+                for one in self.cmd.proc_characteristics['gauge_of_dirs']:
+                    if one.split('=')[0] == os.path.basename(Pdir.rstrip(os.sep)):
+                        gauge = one.split('=')[1]
                 recycler = hel_recycle.HelicityRecycler(good_hels, bad_amps, bad_amps_perhel, gauge=gauge)
                 # C-parity de-duplication: copy each dropped partner's |M|^2 from
                 # its representative (both are real fortran helicity indices).

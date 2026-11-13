@@ -240,6 +240,43 @@ class TestDoMultiline(unittest.TestCase):
             self.assertWrapIsValid(line)
 
 
+class TestFortranDialectExternals(unittest.TestCase):
+    """The external wavefunctions with a reference momentum (--axial_gauge):
+    VXXXXXR, a massless vector in the axial gauge of the reference, and
+    IXXXXXR / OXXXXXR, a massive fermion whose spin is quantised along it.
+    The reference is appended after the arguments the recycler reads, and is
+    the same for every helicity row."""
+
+    VECTOR = '      CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'
+    FERMION = '      CALL OXXXXXR(P(0,3),MDL_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))'
+    ANTIFERMION = '      CALL IXXXXXR(P(0,4),MDL_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))'
+
+    def setUp(self):
+        self.dialect = hel_recycle.Dialect()
+
+    def test_they_are_external_wavefunctions(self):
+        for line, name in ((self.VECTOR, 'VXXXXXR'), (self.FERMION, 'OXXXXXR'),
+                           (self.ANTIFERMION, 'IXXXXXR')):
+            self.assertEqual(self.dialect.called_function(line).upper(), name)
+            self.assertIn(name, self.dialect.external_routines)
+
+    def test_the_leg_is_the_one_of_the_momentum_not_of_the_reference(self):
+        for line, leg in ((self.VECTOR, 5), (self.FERMION, 3),
+                          (self.ANTIFERMION, 4)):
+            args = self.dialect.arguments(line)
+            self.assertEqual(self.dialect.external_leg(args), leg)
+            self.assertEqual(self.dialect.external_helicity_leg(args), leg)
+            self.assertEqual(self.dialect.output_name(args), 'W(%d)' % leg)
+
+    def test_fixing_the_helicity_keeps_the_reference(self):
+        args = self.dialect.arguments(self.FERMION)
+        fixed = self.dialect.set_external_helicity(list(args), -1)
+        self.assertEqual(fixed[2].strip(), '-1')
+        self.assertEqual([a.replace(' ', '') for a in fixed[:2] + fixed[3:]],
+                         ['P(0,3)', 'MDL_MT', '+1', 'FLAVOR(3)', 'P(0,1)',
+                          'W(3)'])
+
+
 class TestCppDialect(unittest.TestCase):
     """Reading and re-writing the C++ the madmatrix backend emits.
 
@@ -312,6 +349,26 @@ class TestCppDialect(unittest.TestCase):
         self.assertEqual(self.dialect.external_leg(args), 3)
         self.assertEqual(self.dialect.external_helicity_leg(args), 3)
         self.assertEqual(self.dialect.output_name(args), 'aloha_obj[2]')
+
+    def test_a_spin_reference_external_ends_with_its_reference(self):
+        """ixxxxxr / oxxxxxr, a massive fermion whose spin axis is fixed by a
+        reference leg, are externals like vxxxxxr: the leg they build is the
+        argument after the output slot, their helicity the one of that leg"""
+
+        for name in ('ixxxxxr', 'oxxxxxr'):
+            line = ('      %s<M_ACCESS, W_ACCESS>( momenta, cIPD[0],'
+                    ' cHel[ihel][3], -1, cFlavors[iflavor][3], aloha_obj[3],'
+                    ' 3, 0 );' % name)
+            args = self.dialect.arguments(line)
+            self.assertEqual(self.dialect.called_function(line), name)
+            self.assertIn(name.upper(), self.dialect.external_routines)
+            self.assertEqual(self.dialect.external_leg(args), 4)
+            self.assertEqual(self.dialect.external_helicity_leg(args), 4)
+            self.assertEqual(self.dialect.output_name(args), 'aloha_obj[3]')
+            fixed = self.dialect.set_external_helicity(list(args), 1)
+            self.assertEqual(fixed[2], '( fptype_amp_sv{} + 1 )')
+            # the reference leg is untouched: the same for every helicity
+            self.assertEqual(fixed[-1], '0')
 
     def test_a_scalar_has_no_helicity_to_fix(self):
         """Unlike fortran, where the slot exists and is overwritten anyway"""

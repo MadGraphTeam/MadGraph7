@@ -22,3 +22,35 @@ aloha_prefix = 'mdl_'
 
 
 class ALOHAERROR(Exception): pass
+
+
+# the value of unitary_gauge for each gauge name of 'set gauge'
+GAUGE_VALUES = {'unitary': True, 'Feynman': False, 'axial': 2, 'FD': 3}
+
+
+class gauge_scope(object):
+    """`with gauge_scope('FD'):` sets unitary_gauge for the block and restores
+    it after, cleaning the ALOHA kernel whenever the value changes: the steps
+    of an output that mixes gauges run each matrix element in its own."""
+
+    def __init__(self, gauge):
+        # '' or None: the gauge of the session, nothing to change
+        self.value = GAUGE_VALUES[gauge] if gauge in GAUGE_VALUES else gauge
+
+    def __enter__(self):
+        global unitary_gauge
+        self.old = unitary_gauge
+        self.active = self.value not in ('', None) and self.value != self.old
+        if self.active:
+            from aloha import aloha_lib
+            aloha_lib.KERNEL.clean()
+            unitary_gauge = self.value
+        return self
+
+    def __exit__(self, *args):
+        global unitary_gauge
+        if self.active:
+            from aloha import aloha_lib
+            aloha_lib.KERNEL.clean()
+            unitary_gauge = self.old
+        return False

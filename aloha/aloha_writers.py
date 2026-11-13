@@ -25,6 +25,47 @@ import itertools
 KERNEL = aloha_lib.KERNEL
 pjoin = os.path.join
 
+# FD gauge: the polarised propagators of a massive vector. In that gauge the
+# propagator numerator of the five-component field (vector + Goldstone boson)
+#     N = -g5 + (q n + n q*)/(n.q),  q = (q^mu, -iM),  n = (sign q0, -q/|q|, 0)
+# splits exactly, on or off shell, into
+#     N = sum_{T} eps eps* + eps0 eps0* + (q^2 - M^2) n n/(n.q)^2
+# with eps0 = (-M n/(n.q), i) the FD longitudinal polarisation vector (the one
+# of the external vfdxxxx), the transverse vectors being the unitary-gauge ones
+# (no fifth component). The routine builds the ordinary FD wavefunction and the
+# full FD projector is replaced by the projection on one of these pieces. The
+# value is the code passed to the projection routine of each language
+# (fd_polarized_propagator in aloha_functions_fd.f, aloha_aux_functions.fd_cc,
+# wavefunctions.py; inlined for madmatrix). {S} is {A} with its factor
+# (q^2-M^2)/(q^2-M^2+iM*Gamma) replaced by 1, as in the unitary gauge.
+FD_POLARIZED_PROPAGATORS = {'1L': 0,    # {0}  eps0 eps0*
+                            '1T': 1,    # {T}  transverse
+                            '1TR': 2,   # {+}  helicity +1
+                            '1TL': 3,   # {-}  helicity -1
+                            '1A': 4,    # {A}  (q^2-M^2) n n/(n.q)^2
+                            '1S': 5,    # {S}  (q^2-M^2+iM*Gamma) n n/(n.q)^2
+                            '1LS': 6,   # {0S} {0} + {S}
+                            }
+
+
+# pieces of the unitary-gauge numerator -g + qq/M^2 only (metric, Theta,
+# qq/q^2, Ward-protected): no FD counterpart, refused in the FD gauge
+UNITARY_ONLY_PROPAGATORS = ('1G', '1H', '1Q', '1W')
+# a massless vector has no longitudinal FD polarisation (eps0 = 0 for M = 0):
+# only the transverse pieces, which are gauge independent, are kept for it
+FD_MASSLESS_POLARIZED_PROPAGATORS = ('1T', '1TR', '1TL')
+
+
+def fd_polarized_propagator(propa):
+    """The FD_POLARIZED_PROPAGATORS code of a list of propagator tags (the
+    'P' tags without their 'P', e.g. ['1L'] or ['1L', '1D']), or None when
+    it is not a polarised propagator handled in the FD gauge."""
+    tags = [p for p in propa if p != '1D']
+    if len(tags) == 1 and tags[0] in FD_POLARIZED_PROPAGATORS:
+        return FD_POLARIZED_PROPAGATORS[tags[0]]
+    return None
+
+
 class WriteALOHA: 
     """ Generic writing functions """ 
     
@@ -35,7 +76,44 @@ class WriteALOHA:
     type_to_size = {'S':3, 'T':18, 'V':6, 'F':6,'R':18}
 
 
-            
+    def complex_mass_fct_width(self):
+        """Complex-mass scheme: the FCT definitions of the $ window (P1D),
+        (M -+ BWCUTOFF*W)**2, need the real pole mass and the width, which the
+        routine no longer receives: M<i> is complex. Both follow from it
+        exactly, M<i>**2 = MR**2 - i MR W. Returns the names (MR<i>, W<i>) to
+        define, and the FCTs then use MR<i> for M<i>; None when there is
+        nothing to do (any other scheme, or no width in the FCTs)."""
+
+        if not (aloha.complex_mass and self.offshell and self.routine.fct):
+            return None
+        width = re.compile(r'\bW%d\b' % self.outgoing)
+        if not any(width.search(' '.join(str(o) for o in objs))
+                   for _, objs in self.routine.fct.values()):
+            return None
+        return 'MR%d' % self.outgoing, 'W%d' % self.outgoing
+
+    def fct_with_pole_mass(self, text, names):
+        """the FCT definition text with the real pole mass for M<i>"""
+        if not names:
+            return text
+        return re.sub(r'\bM%d\b' % self.outgoing, names[0], text)
+
+    def check_complex_mass_propagator(self):
+        """Complex-mass scheme: the mass argument M<i> is complex and carries
+        the width, and the routine has no width argument. A propagator is
+        written as it is as long as neither its numerator nor its (custom)
+        denominator uses the width -- the axial gauge propagator of a massless
+        vector, (P.PBar) P^2, used by `check gauge` and `output --axial_gauge`,
+        is fine. One that does (the polarised propagators, a UFO propagator
+        with Width in it) would need the width split out of the mass again."""
+
+        width = re.compile(r'\bW%d\b' % self.outgoing)
+        if width.search(str(self.routine.denominator)) or \
+                                            width.search(str(self.routine.expr)):
+            raise Exception('The propagator of this routine (tag %s) uses the '
+                            'width of the particle, which is not supported in the '
+                            'complex mass scheme' % ','.join(self.tag))
+
     def __init__(self, abstract_routine, dirpath, options=None):
         if (aloha.loop_mode or aloha.dual_mode):
             self.momentum_size = 4
@@ -207,6 +285,15 @@ class WriteALOHA:
             return False
         return self.particles[self.outgoing-1].startswith(('V','S'))
 
+    def fd_polarization(self):
+        """FD gauge: the FD_POLARIZED_PROPAGATORS code of this routine, when
+        its outgoing line is a polarised propagator, None otherwise."""
+
+        if not self.has_fd_propagator():
+            return None
+        return fd_polarized_propagator(
+                           [t[1:] for t in self.tag if t.startswith('P')])
+
     def rename_wf(self, name):
         """Name under which a wavefunction is written. It is its own name
         except in a term of an assembled multi-structure routine, where all the
@@ -257,6 +344,11 @@ class WriteALOHA:
             elif aloha.complex_mass:
                 call_arg.append(('complex','M%s' % self.outgoing))              
                 self.declaration.add(('complex','M%s' % self.outgoing))
+                # the $ window needs the cutoff in the complex-mass scheme too
+                # (every call site passes it); the width comes from M
+                if 'P1D' in self.tag:
+                    call_arg.append(('double','BWCUTOFF'))              
+                    self.declaration.add(('double','BWCUTOFF'))
             else:
                 call_arg.append(('double','M%s' % self.outgoing))              
                 self.declaration.add(('double','M%s' % self.outgoing))                
@@ -984,6 +1076,14 @@ class ALOHAWriterForFortran(WriteALOHA):
             
         keys = list(self.routine.fct.keys())        
         keys.sort(key=misc.cmp_to_key(sort_fct))
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            # the generic REAL/AIMAG keep the kind of M (complex*32 in the
+            # quadruple-precision routines, where DIMAG does not compile and
+            # DBLE truncates to double)
+            out.write(' %(mr)s = SQRT(REAL(M%(i)d**2))\n %(w)s = -AIMAG(M%(i)d**2)/%(mr)s\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
+            self.declaration.add(('double', cms_names[0]))
         for name in keys:
             fct, objs = self.routine.fct[name]
             format = ' %s = %s\n' % (name, self.get_fct_format(fct))
@@ -992,7 +1092,7 @@ class ALOHAWriterForFortran(WriteALOHA):
             except TypeError:
                 text = format % tuple([self.write_obj(obj) for obj in objs])
             finally:
-                out.write(text)
+                out.write(self.fct_with_pole_mass(text, cms_names))
         
 
         numerator = self.routine.expr
@@ -1033,46 +1133,43 @@ class ALOHAWriterForFortran(WriteALOHA):
                     
             if not is_loop:
                 coeff = 'denom*'    
-                if not aloha.complex_mass:
-                    if self.routine.denominator:
-                        if 'P1N' not in self.tag:
-                            out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
-                                'denom':self.write_obj(self.routine.denominator)}) 
-                    else:
-                        p2 = 'P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2' \
-                              % {'i': self.outgoing}
-                        wdenom = '%(p2)s - M%(i)s * (M%(i)s -CI* W%(i)s)' \
-                              % {'i': self.outgoing, 'p2': p2}
-                        if aloha.t_channel_width:
-                            out.write('    denom = %(COUP)s/(%(wd)s)\n' %
-                                      {'COUP': coup_name, 'wd': wdenom})
-                        else:
-                            # spacelike (t-channel) propagator: no pole to regulate,
-                            # so drop the width unless in the complex-mass scheme.
-                            # A dual momentum (onium p-wave) carries derivatives
-                            # next to its value, and DBLE keeps it dual: take
-                            # the branch on the value alone.
-                            if aloha.dual_mode:
-                                p2sign = '-'.join('P%s(%d)%%comp(0)**2'
-                                                  % (self.outgoing, mu)
-                                                  for mu in range(4))
-                            else:
-                                p2sign = p2
-                            out.write('    if (dble(%(p2)s).gt.0d0) then\n'
-                                      % {'p2': p2sign})
-                            out.write('       denom = %(COUP)s/(%(wd)s)\n' %
-                                      {'COUP': coup_name, 'wd': wdenom})
-                            out.write('    else\n')
-                            out.write('       denom = %(COUP)s/(%(p2)s - M%(i)s**2)\n'
-                                      % {'i': self.outgoing, 'COUP': coup_name,
-                                         'p2': p2})
-                            out.write('    endif\n')
-                else:
-                    if self.routine.denominator:
-                        if 'P1N' not in self.tag:
-                            raise Exception('modify denominator are not compatible with complex mass scheme', self.tag)                
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                if self.routine.denominator:
                     if 'P1N' not in self.tag:
-                        out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s**2)\n' % \
+                        out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
+                            'denom':self.write_obj(self.routine.denominator)}) 
+                elif not aloha.complex_mass:
+                    p2 = 'P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2' \
+                          % {'i': self.outgoing}
+                    wdenom = '%(p2)s - M%(i)s * (M%(i)s -CI* W%(i)s)' \
+                          % {'i': self.outgoing, 'p2': p2}
+                    if aloha.t_channel_width:
+                        out.write('    denom = %(COUP)s/(%(wd)s)\n' %
+                                  {'COUP': coup_name, 'wd': wdenom})
+                    else:
+                        # spacelike (t-channel) propagator: no pole to regulate,
+                        # so drop the width unless in the complex-mass scheme.
+                        # A dual momentum (onium p-wave) carries derivatives
+                        # next to its value, and DBLE keeps it dual: take
+                        # the branch on the value alone.
+                        if aloha.dual_mode:
+                            p2sign = '-'.join('P%s(%d)%%comp(0)**2'
+                                              % (self.outgoing, mu)
+                                              for mu in range(4))
+                        else:
+                            p2sign = p2
+                        out.write('    if (dble(%(p2)s).gt.0d0) then\n'
+                                  % {'p2': p2sign})
+                        out.write('       denom = %(COUP)s/(%(wd)s)\n' %
+                                  {'COUP': coup_name, 'wd': wdenom})
+                        out.write('    else\n')
+                        out.write('       denom = %(COUP)s/(%(p2)s - M%(i)s**2)\n'
+                                  % {'i': self.outgoing, 'COUP': coup_name,
+                                     'p2': p2})
+                        out.write('    endif\n')
+                elif 'P1N' not in self.tag:
+                    out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s**2)\n' % \
                       {'i': self.outgoing, 'COUP': coup_name})
                 if 'P1N' not in self.tag:
                     self.declaration.add(('complex','denom'))
@@ -1198,15 +1295,27 @@ class ALOHAWriterForFortran(WriteALOHA):
 
         out = StringIO()
         outname = self.outname
+        pol = self.fd_polarization()
+        if pol is not None:
+            # polarised propagator: projection on one piece of the FD
+            # numerator, done by the library (aloha_functions_fd.f)
+            out.write('    CALL FD_POLARIZED_PROPAGATOR(%s, M%s, W%s, %d)\n'
+                      % (outname, self.outgoing, self.outgoing, pol))
+            return out.getvalue()
         # number of Lorentz components of the outgoing wavefunction: in FD
         # gauge a vector and its Goldstone share the same 5 slots
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
-        # js1 and js2 contract the wavefunction with n and q (the 5th component
-        # of q carries the mass, hence the conjugation)
+        # js1 and js2 contract the wavefunction with n and q. The 5th component
+        # of q is -i*m and enters js2 as +i*m = -FDQ(4). With a real mass that
+        # is also DCONJG(FDQ(4)), the form written outside the complex-mass
+        # scheme (the generated code stays as it was). With a complex mass the
+        # conjugate would be +i*conj(m), which is not analytic in m and breaks
+        # the gauge cancellations of the complex-mass scheme.
         out.write('    FDJS1 = (%s)/FDNQ\n' % '-'.join(
             ['FDN(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]))
-        out.write('    FDJS2 = (%s-DCONJG(FDQ(4))*%s%%W(5))/FDNQ\n' % (
+        out.write('    FDJS2 = (%s%s*%s%%W(5))/FDNQ\n' % (
             '-'.join(['FDQ(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]),
+            '+FDQ(4)' if aloha.complex_mass else '-DCONJG(FDQ(4))',
             outname))
         for i in range(size):
             out.write('    %(o)s%%W(%(k)d) = %(o)s%%W(%(k)d)-FDQ(%(i)d)*FDJS1'
@@ -1217,6 +1326,9 @@ class ALOHAWriterForFortran(WriteALOHA):
         """Variables of the inlined FD gauge propagator factor. The mass it
         needs is already an argument of any offshell routine."""
 
+        if self.fd_polarization() is not None:
+            # a polarised propagator calls the library (get_fd_propagator_txt)
+            return
         self.declaration.add(('list_complex', 'FDQ'))
         self.declaration.add(('list_double', 'FDN'))
         self.declaration.add(('double', 'FDNQ'))
@@ -2125,8 +2237,13 @@ class ALOHAWriterForCPP(WriteALOHA):
             if self.outgoing and 'P1N' not in self.tag:
                 name = self.particles[self.outgoing-1]
                 if name.startswith(('V', 'S')):
-                    text += '    multiply_propagator_factor(%(name)s%(i)s, M%(i)s, %(name)s%(i)s);\n' % \
-                            {'name': name, 'i': self.outgoing}
+                    pol = self.fd_polarization()
+                    if pol is not None:
+                        text += '    fd_polarized_propagator(%(name)s%(i)s, M%(i)s, W%(i)s, %(pol)d);\n' % \
+                                {'name': name, 'i': self.outgoing, 'pol': pol}
+                    else:
+                        text += '    multiply_propagator_factor(%(name)s%(i)s, M%(i)s, %(name)s%(i)s);\n' % \
+                                {'name': name, 'i': self.outgoing}
         return text + '}\n'
 
     def get_momenta_txt(self):
@@ -2330,10 +2447,16 @@ class ALOHAWriterForCPP(WriteALOHA):
             
         keys = list(self.routine.fct.keys())        
         keys.sort(key=misc.cmp_to_key(sort_fct))
+        cms_names = self.complex_mass_fct_width()
+        if cms_names:
+            out.write(' %(mr)s = sqrt(real(M%(i)d*M%(i)d));\n %(w)s = -imag(M%(i)d*M%(i)d)/%(mr)s;\n'
+                      % {'mr': cms_names[0], 'w': cms_names[1], 'i': self.outgoing})
+            self.declaration.add(('double', cms_names[0]))
         for name in keys:
             fct, objs = self.routine.fct[name]
             format = ' %s = %s;\n' % (name, self.get_fct_format(fct))
-            out.write(format % ','.join([self.write_obj(obj) for obj in objs]))
+            out.write(self.fct_with_pole_mass(
+                format % ','.join([self.write_obj(obj) for obj in objs]), cms_names))
             
         
 
@@ -2379,33 +2502,31 @@ class ALOHAWriterForCPP(WriteALOHA):
                     mydict['post_coup'] = ''
                 mydict['coup'] = coup_name
                 mydict['i'] = self.outgoing
-                if not aloha.complex_mass:
-                    if self.routine.denominator:
-                        if self.routine.denominator == "1":
-                            out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s;\n' % \
-                                  mydict) 
-                        else:
-                            mydict['denom'] = self.write_obj(self.routine.denominator)
-                            out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(denom)s);\n' % \
-                                  mydict) 
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                if self.routine.denominator:
+                    if self.routine.denominator == "1":
+                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s;\n' % \
+                              mydict) 
                     else:
-                        p2 = '(P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3])' % mydict
-                        wd = '%(p2)s - M%(i)s * (M%(i)s -cI* W%(i)s)' % dict(mydict, p2=p2)
-                        if aloha.t_channel_width:
-                            out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(wd)s);\n' % dict(mydict, wd=wd))
-                        else:
-                            # spacelike (t-channel) propagator: no pole to regulate,
-                            # so drop the width unless in the complex-mass scheme.
-                            p2sign = '(%s)%s' % (p2, self.realoperator) if aloha.loop_mode else p2
-                            out.write('    if (%s > 0.){\n' % p2sign)
-                            out.write('       denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(wd)s);\n' % dict(mydict, wd=wd))
-                            out.write('    } else {\n')
-                            out.write('       denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(p2)s - M%(i)s*M%(i)s);\n' % dict(mydict, p2=p2))
-                            out.write('    }\n')
+                        mydict['denom'] = self.write_obj(self.routine.denominator)
+                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(denom)s);\n' % \
+                              mydict) 
+                elif not aloha.complex_mass:
+                    p2 = '(P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3])' % mydict
+                    wd = '%(p2)s - M%(i)s * (M%(i)s -cI* W%(i)s)' % dict(mydict, p2=p2)
+                    if aloha.t_channel_width:
+                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(wd)s);\n' % dict(mydict, wd=wd))
+                    else:
+                        # spacelike (t-channel) propagator: no pole to regulate,
+                        # so drop the width unless in the complex-mass scheme.
+                        p2sign = '(%s)%s' % (p2, self.realoperator) if aloha.loop_mode else p2
+                        out.write('    if (%s > 0.){\n' % p2sign)
+                        out.write('       denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(wd)s);\n' % dict(mydict, wd=wd))
+                        out.write('    } else {\n')
+                        out.write('       denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(p2)s - M%(i)s*M%(i)s);\n' % dict(mydict, p2=p2))
+                        out.write('    }\n')
                 else:
-                    if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')                
-
                     out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/((P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3]) - (M%(i)s*M%(i)s));\n' % \
                               mydict)
 
@@ -2928,26 +3049,24 @@ class ALOHAWriterForPython(WriteALOHA):
 
             if not 'L' in self.tag:
                 coeff = 'denom'
-                if not aloha.complex_mass:
-                    if self.routine.denominator:
-                        out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
-                                'denom':self.write_obj(self.routine.denominator)}) 
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                if self.routine.denominator:
+                    out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
+                            'denom':self.write_obj(self.routine.denominator)}) 
+                elif not aloha.complex_mass:
+                    p2 = 'P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2' % {'i': self.outgoing}
+                    wd = '%(p2)s - M%(i)s * (M%(i)s -1j* W%(i)s)' % {'i': self.outgoing, 'p2': p2}
+                    if aloha.t_channel_width:
+                        out.write('    denom = %(coup)s/(%(wd)s)\n' % {'coup': coup_name, 'wd': wd})
                     else:
-                        p2 = 'P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2' % {'i': self.outgoing}
-                        wd = '%(p2)s - M%(i)s * (M%(i)s -1j* W%(i)s)' % {'i': self.outgoing, 'p2': p2}
-                        if aloha.t_channel_width:
-                            out.write('    denom = %(coup)s/(%(wd)s)\n' % {'coup': coup_name, 'wd': wd})
-                        else:
-                            # spacelike (t-channel) propagator: no pole to regulate,
-                            # so drop the width unless in the complex-mass scheme.
-                            out.write('    if (%s).real > 0:\n' % p2)
-                            out.write('        denom = %(coup)s/(%(wd)s)\n' % {'coup': coup_name, 'wd': wd})
-                            out.write('    else:\n')
-                            out.write('        denom = %(coup)s/(%(p2)s - M%(i)s**2)\n' % {'i': self.outgoing, 'coup': coup_name, 'p2': p2})
+                        # spacelike (t-channel) propagator: no pole to regulate,
+                        # so drop the width unless in the complex-mass scheme.
+                        out.write('    if (%s).real > 0:\n' % p2)
+                        out.write('        denom = %(coup)s/(%(wd)s)\n' % {'coup': coup_name, 'wd': wd})
+                        out.write('    else:\n')
+                        out.write('        denom = %(coup)s/(%(p2)s - M%(i)s**2)\n' % {'i': self.outgoing, 'coup': coup_name, 'p2': p2})
                 else:
-                    if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')                
-                    
                     out.write('    denom = %(coup)s/(P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2 - M%(i)s**2)\n' % 
                           {'i': self.outgoing,'coup':coup_name})                    
             else:
@@ -3082,6 +3201,10 @@ class ALOHAWriterForPython(WriteALOHA):
         elif not combine and aloha.unitary_gauge == 3 and \
              self.outname.startswith(('V','S')) and \
              'P1N' not in self.tag:
+            pol = self.fd_polarization()
+            if pol is not None:
+                return '    %(out)s = wavefunctions.fd_polarized_propagator(%(out)s, M%(num)s, W%(num)s, %(pol)d)\n    return %(out)s\n\n' % \
+                       {'out': self.outname, 'num': self.outgoing, 'pol': pol}
             return '    %(out)s = wavefunctions.multiply_propagator_factor(%(out)s, M%(num)s)\n    return %(out)s\n\n' % \
                    {'out': self.outname, 'num': self.outgoing}
         else:

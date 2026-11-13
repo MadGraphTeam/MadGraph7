@@ -287,6 +287,12 @@ class TestPropagatorDenominators(unittest.TestCase):
                       routines['FFV2_4_3'])
         for name in ('FFV2_3', 'FFV2_4_3'):
             self.assertNotIn('W3', routines[name], name)
+        # 1/M^2 of the unitary propagator is complex too (a cxtype has no
+        # comparison with a double, and does not fit in a fptype_amp)
+        self.assertIn('const cxtype_amp OM3 = ( M3.real() != 0. || M3.imag() != 0. ? '
+                      'static_cast<cxtype_amp>( cxtype( 1. ) / ( M3 * M3 ) ) : cxtype_amp( 0. ) );',
+                      body)
+        self.assertNotIn('fptype_amp OM3', body)
 
     def test_axial_gauge_custom_denominator(self):
         """In axial gauge a massless vector has the custom denominator
@@ -301,7 +307,87 @@ class TestPropagatorDenominators(unittest.TestCase):
             found = re.search(
                 r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
                 r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
-                r' / \( \((dTMP\d+) \* (dTMP\d+)\) \) \);', body)
+                r' / \( (dTMP\d+) \* (dTMP\d+) \) \);', body)
             self.assertTrue(found, name)
             for tmp in found.groups():
                 self.assertIn('const fptype_denom_sv %s = ' % tmp, body, name)
+
+    def test_polarised_propagator_denominator(self):
+        """The polarised propagators of a massive vector ('w+{0}', 'w+{T}',
+        'w+{A}', ...: the P1L, P1T, P1A, ... forms of aloha/create_aloha.py)
+        carry a custom denominator with the pole q^2 - M^2 + i M Gamma. It is
+        written by write_obj like every other expression (cI, one), not by
+        str(), which printed the Python literal '(-0+1j)' and did not
+        compile; with the mass and the width in it, it is not moved to
+        denominator precision."""
+        routines = self.routines([(('FFV2',), ['P1L'], 3),
+                                  (('FFV2',), ['P1T'], 3),
+                                  (('FFV2',), ['P1A'], 3)])
+        for name in ('FFV2P1L_3', 'FFV2P1T_3', 'FFV2P1A_3'):
+            body = routines[name]
+            self.assertNotIn('1j', body, name)
+            self.assertNotIn('madmatrix::denom', body, name)
+            found = re.search(
+                r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
+                r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
+                r' / \( (.*) \) \);', body)
+            self.assertTrue(found, name)
+            denominator = found.group(1)
+            for piece in ('cI', 'M3', 'W3'):
+                self.assertIn(piece, denominator, name)
+            self.assertNotIn('dTMP', denominator, name)
+
+    def test_fd_polarised_propagator(self):
+        """FD gauge: a polarised propagator ('w+{0}' decayed further) is the
+        ordinary FD routine -- massless-type numerator, standard pole -- whose
+        final FD projector is replaced by the projection on the requested
+        piece (aloha_writers.FD_POLARIZED_PROPAGATORS), for the vector routine
+        and for its Goldstone companion alike. The unpolarised routine keeps
+        the full projector."""
+        routines = self.routines([(('FFV2',), [], 3),
+                                  (('FFV2',), ['P1L'], 3), (('FFS3',), ['P1L'], 3),
+                                  (('FFV2',), ['P1T'], 3), (('FFV2',), ['P1TR'], 3),
+                                  (('FFV2',), ['P1TL'], 3), (('FFV2',), ['P1A'], 3),
+                                  (('FFV2',), ['P1S'], 3), (('FFV2',), ['P1LS'], 3)],
+                                 gauge=3)
+        self.assertIn('FDJS1', routines['FFV2_3'])
+        expected = {'FFV2P1L_3': ['wV3[4] = FDI * FDC;'],
+                    'FFS3P1L_3': ['wS3[4] = FDI * FDC;'],
+                    'FFV2P1T_3': ['wV3[1] = FDT1;'],
+                    'FFV2P1TR_3': ['wV3[1] = ( FDT1 + FDI * FDX1 )'],
+                    'FFV2P1TL_3': ['wV3[1] = ( FDT1 - FDI * FDX1 )'],
+                    'FFV2P1A_3': ['const fptype_sv FDA = ', '* FDA ) * FDNW'],
+                    'FFV2P1S_3': ['const cxtype_sv FDS = ', '-M3 * W3'],
+                    'FFV2P1LS_3': ['* FDC + ( FDN[0] * FDNW ) * FDS',
+                                   'wV3[4] = FDI * FDC;']}
+        for name, pieces in expected.items():
+            body = routines[name]
+            # the ordinary FD wavefunction: standard pole, full gauge direction
+            self.assertIn('madmatrix::denom(', body, name)
+            self.assertIn('define_gauge_dir( FDQ, FDN );', body, name)
+            self.assertNotIn('FDJS', body, name)
+            self.assertNotIn('EPS', body, name)
+            for piece in pieces:
+                self.assertIn(piece, body, name)
+            # a line at rest gets its helicity axis pinned to +z, lane by lane,
+            # before the gauge direction is built
+            pin = body.index('FDQ[3] = cxmake( fpternary(')
+            self.assertLess(pin, body.index('define_gauge_dir( FDQ, FDN );'), name)
+            self.assertIn('FDQ[0].real() * 0 + 1e-15f', body, name)
+        # only the temporaries a piece reads are written
+        for name in ('FFV2P1T_3', 'FFV2P1TR_3', 'FFV2P1TL_3'):
+            self.assertNotIn('FDNW', routines[name], name)
+        for name in ('FFV2P1T_3', 'FFV2P1A_3', 'FFV2P1S_3'):
+            self.assertNotIn('FDI', routines[name], name)
+        # the unpolarised routine keeps its axis as it is
+        self.assertNotIn('fpternary', routines['FFV2_3'])
+
+    def test_fd_unitary_only_propagator_refused(self):
+        """{G}, {H}, {Q}, {W} are pieces of the unitary-gauge numerator: in the
+        FD gauge ALOHA refuses them rather than projecting the unitary
+        numerator on the FD gauge (what it did before, the Fortran standalone
+        then crashing), whatever path the routine is asked from."""
+        import aloha
+        for tag in ('P1G', 'P1H', 'P1Q', 'P1W'):
+            self.assertRaises(aloha.ALOHAERROR,
+                              lambda: self.routines([(('FFV2',), [tag], 3)], gauge=3))

@@ -336,6 +336,16 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
         return super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
 
+    def write_aloha_library(self, model, wanted_lorentz, gauge='', **opts):
+        """The HELAS header of the other gauge of an output whose processes
+        are in two gauges, src/HelAmps_<model>_fd.h (called under its
+        aloha.gauge_scope; the parameters are those of the session model)."""
+
+        builder = self.create_model_class(model, pjoin(self.dir_path, 'src'),
+                                          wanted_lorentz, [])
+        builder.helamps_suffix = '_' + gauge.lower()
+        builder.write_aloha_routines()
+
     # AV (default from OM's tutorial) - add a debug printout
     def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[], **opts):
         # **opts: an option meant for one exporter (npwave, for the dual HELAS
@@ -496,7 +506,12 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             # listed nowhere else, and evaluated through the extended flavor
             # index only
             crossed, crossed_flavors,
-            self.scale_dependence(matrix_element)))
+            self.scale_dependence(matrix_element),
+            # the massive fermions whose spin is quantised along a reference
+            # (--axial_gauge): their states are not helicity states
+            helas_call_writers.get_spin_reference_legs(matrix_element,
+                helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                             self.opt.get('output_options')))))
         return out
 
     def crossed_flavor_ids(self, matrix_element, proc_dir_name):
@@ -579,11 +594,13 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         """SubProcesses/madmatrix_processes.json: per subprocess, its library
         (with the make variables LIBTAG, BACKEND and FPTYPE left as '{libtag}',
         '{backend}' and '{fptype}', as for the common library, common_library),
-        its legs, the processes it evaluates, its off-shell legs, the crossed
-        processes folded onto it, per flavor index, every pdg combination (in
-        the leg order of the process) that this index stands for and, for the
-        crossed processes, [extended flavor id, pdgs] for each of their pdg
-        combinations (crossed_flavors).
+        its legs, the processes it evaluates, its off-shell legs, the legs
+        whose two states are not helicity states (spin_reference, output
+        --axial_gauge=True; numbered as the legs of the subprocess), the
+        crossed processes folded onto it, per flavor index, every pdg
+        combination (in the leg order of the process) that this index stands
+        for and, for the crossed processes, [extended flavor id, pdgs] for
+        each of their pdg combinations (crossed_flavors).
 
         A crossed process is evaluated with an extended flavor index (crossing
         row K of ProcessTables.h, K*nmaxflavor + flavor). Its selected
@@ -596,7 +613,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         beyond alpha_s (scale_dependence)."""
         import json
         subprocesses = []
-        for info, (processes, offshell, crossed, crossed_flavors, scale) in zip(
+        for info, (processes, offshell, crossed, crossed_flavors, scale,
+                   spin_reference) in zip(
                 self.process_info, getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
@@ -613,6 +631,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'processes': processes,
                 'offshell': offshell,
                 'crossed': crossed,
+                'spin_reference': spin_reference,
                 # what depends on MU_R besides alpha_s (scale_dependence)
                 'scale_dependence': scale,
                 'flavors': flavors,

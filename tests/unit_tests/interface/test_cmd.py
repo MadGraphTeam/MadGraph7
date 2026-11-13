@@ -533,6 +533,25 @@ class TestValidCmd(unittest.TestCase):
         self.assertEqual(len(proc), 4)
         
     @test_aloha.set_global()
+    def test_dollar_massless_is_refused(self):
+        """`$` removes the on-shell window |sqrt(s) - M| < BWCUTOFF * W: a
+        massless particle has none (in the complex-mass scheme its width
+        would be 0/0, and the diagram silently zero), so `$ a` is refused,
+        also inside a multiparticle; `$ z` and `$$ a` still go through."""
+
+        cmd = self.cmd
+        self.do('import model sm')
+        for line in ('generate e+ e- > mu+ mu- $ a',
+                     'generate e+ e- > mu+ mu- $ g',
+                     'generate e+ e- > mu+ mu- $ z a'):
+            with self.assertRaisesRegex(cmd.InvalidCmd, 'not supported for massless'):
+                cmd.do_generate(line.split(' ', 1)[1])
+        self.do('generate e+ e- > mu+ mu- $ z')
+        self.assertEqual(cmd._curr_amps[0].get('process').get('forbidden_onsh_s_channels'), [23])
+        self.do('generate e+ e- > mu+ mu- $$ a')
+        self.assertTrue(cmd._curr_amps)
+
+    @test_aloha.set_global()
     def test_generate_polarised(self):
         """check that simple syntax goes through and return expected process"""
            
@@ -655,6 +674,117 @@ class TestValidCmd(unittest.TestCase):
                 self.do('generate %s, w+ > ta+ vt' % proc.input_string())
                 self.assertTrue(cmd._curr_amps)
         finally:
+            cmd.exec_cmd('generate p p > t t~')
+
+    @test_aloha.set_global()
+    def test_polarised_propagator_gauges(self):
+        """A polarised propagator of a massive vector ('t > w+{0} b, w+ > ...')
+        is a piece of the propagator numerator. The unitary and axial gauges
+        take every brace (pieces of -g + qq/M^2; the axial gauge only changes
+        the propagator of the massless vectors). The FD gauge takes {0}, {T},
+        {+}, {-}, {A}, {S}, {0S} (pieces of its five-component numerator) and
+        refuses {G}, {H}, {Q}, {W}, which are pieces of the unitary numerator
+        only. The Feynman gauge refuses them all: the qq/M^2 part of the
+        propagator is carried by separate Goldstone diagrams there (the
+        output used to crash with 'particle with custom propagator can not
+        have polarization'). An external polarisation and a polarised fermion
+        propagator are fine in every gauge."""
+        cmd = self.cmd
+        self.do('import model sm')
+        fd_braces = ('0', 'T', '+', '-', 'A', 'S', '0S')
+        unitary_only = ('G', 'H', 'Q', 'W')
+        try:
+            # --- Feynman gauge: every brace refused --------------------
+            self.do('set gauge Feynman')
+            for brace in fd_braces + unitary_only:
+                proc = 'generate t > w+{%s} b, w+ > ta+ vt' % brace
+                try:
+                    self.do(proc)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('w+{%s}' % brace, str(error))
+                    self.assertIn('Feynman gauge', str(error))
+                    self.assertIn('Goldstone', str(error))
+                    self.assertIn('set gauge unitary', str(error))
+                else:
+                    self.fail('%s accepted in the Feynman gauge' % proc)
+            # the walk recurses into the decay chains
+            self.assertRaises(
+                madgraph.InvalidCmd, self.do,
+                'generate p p > t t~, (t > w+{0} b, w+ > ta+ vt)')
+
+            # --- FD gauge: the helicity pieces and the remainder -------
+            self.do('set gauge FD')
+            for brace in fd_braces:
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                self.assertTrue(cmd._curr_amps)
+            for brace in unitary_only:
+                proc = 'generate t > w+{%s} b, w+ > ta+ vt' % brace
+                try:
+                    self.do(proc)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('w+{%s}' % brace, str(error))
+                    self.assertIn('FD gauge', str(error))
+                    self.assertIn('unitary-gauge numerator', str(error))
+                else:
+                    self.fail('%s accepted in the FD gauge' % proc)
+            self.assertRaises(
+                madgraph.InvalidCmd, self.do,
+                'generate p p > t t~, (t > w+{G} b, w+ > ta+ vt)')
+            # the FD remainder is not the unitary one: said when it is used
+            with self.assertLogs('cmdprint', level='WARNING') as log:
+                self.do('generate t > w+{A} b, w+ > ta+ vt')
+            self.assertTrue(any('remainder of the FD propagator' in line
+                                for line in log.output))
+            # a massless vector: only the transverse pieces (its FD
+            # longitudinal vector vanishes)
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
+            for brace in ('0', 'A', 'S', 'G'):
+                try:
+                    self.do('generate e+ e- > z a{%s}, a > mu+ mu-' % brace)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('a{%s}' % brace, str(error))
+                    self.assertIn('massless vector', str(error))
+                else:
+                    self.fail('a{%s} accepted in the FD gauge' % brace)
+
+            # --- external polarisations, fermion propagators -----------
+            for gauge in ('Feynman', 'FD'):
+                self.do('set gauge %s' % gauge)
+                self.do('generate t t~ > w+{0} w-')
+                self.assertTrue(cmd._curr_amps)
+                self.do('generate t t~ > w+{T} w-')
+                self.assertTrue(cmd._curr_amps)
+                self.do('generate e+ e- > t{+} t~, t > w+ b')
+                self.assertTrue(cmd._curr_amps)
+
+            # --- unitary and axial gauges: everything ------------------
+            for gauge in ('axial', 'unitary'):
+                self.do('set gauge %s' % gauge)
+                for brace in fd_braces + unitary_only:
+                    self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                    self.assertTrue(cmd._curr_amps)
+            # a massless vector keeps the same -g propagator in the Feynman
+            # gauge: its transverse propagator stays allowed there
+            self.do('set gauge Feynman')
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
+
+            # --- complex-mass scheme: nowhere ---------------------------
+            self.do('set complex_mass_scheme True')
+            for gauge in ('unitary', 'FD'):
+                self.do('set gauge %s' % gauge)
+                try:
+                    self.do('generate t > w+{0} b, w+ > ta+ vt')
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('complex-mass scheme', str(error))
+                else:
+                    self.fail('accepted in the complex-mass scheme (%s)' % gauge)
+                self.do('generate t t~ > w+{0} w-')
+                self.assertTrue(cmd._curr_amps)
+        finally:
+            self.do('set complex_mass_scheme False')
+            self.do('set gauge unitary')
             cmd.exec_cmd('generate p p > t t~')
 
 

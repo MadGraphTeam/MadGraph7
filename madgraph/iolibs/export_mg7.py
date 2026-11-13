@@ -7,6 +7,7 @@ from madgraph import MadGraph5Error
 from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 from madgraph.iolibs import export_cpp
 from madgraph.iolibs import crossing_table
+from madgraph.iolibs import helas_call_writers
 from madgraph.iolibs.group_subprocs import IdentifyConfigTag
 from madgraph.core import diagram_generation, helas_objects
 from madgraph.core.diagram_generation import DiagramTag
@@ -126,6 +127,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 for (p, l) in zip(is_parts + fs_parts, self.process.get("legs"))
             ),
             self.process.get("id"),
+            self.process.get_gauge(),
         )
 
     def set_topology(self):
@@ -470,6 +472,17 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         return self.color_flow_basis.\
             color_flow_decomposition(repr_dict, n_initial), legs
 
+    def get_unknown_helicity_legs(self):
+        """The (0-based) external legs whose state is not a helicity state:
+        the massive fermions whose spin is quantised along a reference
+        momentum (--axial_gauge, helas_call_writers.get_axial_gauge_refs).
+        Their helicity is written as 9 in the LHE (mg7.common.lhe_helicities)."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None)
+        refs = helas_call_writers.get_output_axial_gauge_refs(
+                                               self.matrix_element, options)
+        return [leg - 1 for leg in helas_call_writers.get_spin_reference_legs(
+                                                  self.matrix_element, refs)]
+
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
         color_flow_dicts, legs = self.get_color_flow_dicts()
@@ -578,6 +591,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "pdg_color_types": pdg_color_types,
                 "diagram_count": len(self.diagrams),
                 "helicities": list(self.matrix_element.get_helicity_matrix()),
+                "unknown_helicity": self.get_unknown_helicity_legs(),
                 "interference": interference,
             },
             self.diagram_tags,

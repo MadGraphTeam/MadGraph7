@@ -1453,6 +1453,7 @@ class TestCmdMatchBox(IOTests.IOTestManager):
         cmd = """
         set apply_flavor_grouping False
         import model sm
+        set gauge unitary
         generate w+ w- > w+ w- @0
         output matchbox %(path)s/TEST --postpone_model
         generate u u~ > u u~ [virt=QCD] @1

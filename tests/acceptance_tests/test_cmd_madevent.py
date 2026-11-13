@@ -3014,6 +3014,13 @@ C
         fsock.close()
         
         self.cmd_line.exec_cmd('decay_events run_01 -f')
+        # the matrix elements came from madmatrix (the default density_backend),
+        # not from the Fortran output it falls back to when it cannot build:
+        # it used to be forced to Fortran in the complex-mass scheme, where
+        # madmatrix did not compile. Both give byte-identical decayed events.
+        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'madspin_me', 'SubProcesses',
+                                             'madmatrix_processes.json')),
+                        'MadSpin did not use madmatrix in the complex-mass scheme')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
         # Not the production 440.779 any more. BR(t -> w+ b) is 1 to seven

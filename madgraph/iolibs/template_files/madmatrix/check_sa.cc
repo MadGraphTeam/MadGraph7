@@ -451,12 +451,6 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
     GpuRuntime gpuRuntime( false );
 
-    PinnedHostBufferRndNumMomenta hstRndmom( nevt );
-    PinnedHostBufferMomenta hstMomenta( nevt );
-    PinnedHostBufferWeights hstWeights( nevt );
-    DeviceBufferRndNumMomenta devRndmom( nevt );
-    DeviceBufferMomenta devMomenta( nevt );
-    DeviceBufferWeights devWeights( nevt );
     DeviceBufferBase<double> devUmamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     DeviceBufferBase<double> devUmamiMEs( nevt );
     DeviceBufferBase<unsigned int> devFlv( nevt );
@@ -464,9 +458,6 @@ namespace
     std::vector<unsigned int> flvVec( nevt );
     std::vector<double> hstUmamiMEs( nevt );
 #else
-    HostBufferRndNumMomenta hstRndmom( nevt );
-    HostBufferMomenta hstMomenta( nevt );
-    HostBufferWeights hstWeights( nevt );
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt );
@@ -500,12 +491,19 @@ namespace
       umami_free( umami_handle );
       return 2;
     }
-    const std::vector<fptype> masses( massesD.begin(), massesD.end() ); // RamboSamplingKernelHost takes vector<fptype>
-
-    // NB: feed the double-precision masses to the classic RAMBO, which works in
-    // double throughout: 'masses' is fptype and would not convert at FPTYPE=f.
+    // NB: the classic RAMBO works in double throughout.
+    // As the Fortran/C++ 'check' drivers: an energy at or below twice the sum
+    // of the external masses is raised to that (t t~ > w+ w- at 1 TeV runs at
+    // 1013.676 GeV), so that the same point is evaluated.
+    double energy = (double)kEnergy;
+    if( CPPProcess::npari == 2 )
+    {
+      double totalmass = 0.;
+      for( double m : massesD ) totalmass += m;
+      if( energy <= 2. * totalmass ) energy = 2. * totalmass;
+    }
     std::vector<std::vector<double>> point =
-      classic_rambo_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
+      classic_rambo_momenta( CPPProcess::npari, energy, massesD, rambowgt );
 
     std::vector<double> alphasVec( nevt, param_card_alpha_s() );
 #ifdef MGONGPUCPP_GPUIMPL
@@ -513,27 +511,16 @@ namespace
     gpuMemcpy( devAlphaS.data(), alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
 #endif
 
-    // Always massive RAMBO
-    std::unique_ptr<SamplingKernelBase> prsk(
-      new RamboSamplingKernelHost( kEnergy, hstRndmom, masses, CPPProcess::npari, nevt, hstMomenta, hstWeights ) );
-    prsk->getMomentaInitial();
-    prsk->getMomentaFinal();
-
-    // Fill the UMAMI SoA buffer with nevt copies of the same event:
-    // soa[ip4 * npar*nevt + ipar*nevt + ievt]
+    // Fill the UMAMI SoA buffer with nevt copies of the printed point:
+    // soa[ip4 * npar*nevt + ipar*nevt + ievt]. (It used to be overwritten
+    // with the momenta of a second, device-style RAMBO at the unchanged
+    // energy, so the matrix element was not the one of the printed point.)
     for( int ip4 = 0; ip4 < 4; ++ip4 )
       for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
         for( unsigned int ievt = 0; ievt < nevt; ++ievt )
           umamiMomenta[(std::size_t)ip4 * CPPProcess::npar * nevt + (std::size_t)ipar * nevt + ievt] = point[ipar][ip4];
 #ifdef MGONGPUCPP_GPUIMPL
     gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
-    // Host only implementation now (copy)
-    copyDeviceFromHost( devMomenta, hstMomenta );
-    gpuLaunchKernel( aosoa_to_umami_kernel, kMatrixBlocks, kMatrixThreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
-    checkGpu( gpuPeekAtLastError() );
-#else
-    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
-      aosoa_to_umami_one( hstMomenta.data(), umamiMomenta.data(), ievt, nevt );
 #endif
 
     if( verbose )

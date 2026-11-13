@@ -7349,8 +7349,9 @@ class TestDecayLoopShortcuts(unittest.TestCase):
 
 class TestDensityBackendChoice(unittest.TestCase):
     """decay_all_events_onshell.density_backend: madmatrix, unless the Fortran
-    is asked for, the production is loop induced (MadLoop) or the sample uses
-    the complex-mass scheme, whose madmatrix parameters do not compile."""
+    is asked for or the production is loop induced (MadLoop). The complex-mass
+    scheme used to force the Fortran (madmatrix did not compile there); it
+    builds now, and gives byte-identical decayed events."""
 
     @staticmethod
     def _choose(commandline, backend='madmatrix', cms=False, with_cmd=True):
@@ -7365,7 +7366,7 @@ class TestDensityBackendChoice(unittest.TestCase):
         self.assertEqual(self._choose('generate p p > t t~', backend='fortran'),
                          'fortran')
         self.assertEqual(self._choose('generate g g > z z [sqrvirt=QCD]'), 'fortran')
-        self.assertEqual(self._choose('generate p p > t t~', cms=True), 'fortran')
+        self.assertEqual(self._choose('generate p p > t t~', cms=True), 'madmatrix')
         self.assertEqual(self._choose('generate p p > t t~', with_cmd=False),
                          'madmatrix')
 

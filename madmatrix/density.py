@@ -153,6 +153,9 @@ class _Subprocess(object):
         self.path = entry['path']
         self.legs = tuple(entry['legs'])
         self.ninitial = entry['ninitial']
+        # the legs whose two states are not helicity states (absent from the
+        # tables written before it was introduced)
+        self.spin_reference = frozenset(entry.get('spin_reference', ()))
         # RTLD_LOCAL: every library exports the same symbol names
         lib = _load(lib_path)
         ptr, size_t, cint = ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int
@@ -212,6 +215,18 @@ class _Subprocess(object):
         if self.handle is None:
             raise MadDensityError('%s: initialise() (the param card) has to come first'
                                   % self.path)
+
+    def check_open_legs(self, hel):
+        """A density matrix is one in the helicity basis: refuse an open leg
+        whose spin is quantised along a reference (output --axial_gauge=True,
+        IXXXXXR/OXXXXXR). Summing over its two states, as for a closed leg,
+        is fine."""
+        legs = sorted(self.spin_reference.intersection(hel.frozen))
+        if legs:
+            raise MadDensityError(
+                '%s: legs %s are not in a helicity state (output --axial_gauge=True): '
+                'regenerate the output with --fermion_reference=False for their '
+                'density matrix' % (self.path, legs))
 
 
 class _Helicities(object):
@@ -484,6 +499,7 @@ class MadDensityLibrary(object):
         sub, iflavor, perm = self.dispatch(pdgs, hel.frozen)
         if sub.handle is None:
             sub.check_initialised()
+        sub.check_open_legs(hel)
         buf = self._pack(momenta, perm)
         sub.alphas.value = self._alphas(alphas)
         sub.flavor.value = iflavor
@@ -526,6 +542,7 @@ class MadDensityLibrary(object):
         for (isub, perm), points in groups.items():
             sub = self.subprocesses[isub]
             sub.check_initialised()
+            sub.check_open_legs(hel)
             index = [k for k, _ in points]
             p = momenta[index]
             if perm is not None:
