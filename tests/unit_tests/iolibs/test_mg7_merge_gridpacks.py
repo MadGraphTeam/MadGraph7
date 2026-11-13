@@ -193,6 +193,15 @@ class TestMergeGridpacks(unittest.TestCase):
         with self.assertRaisesRegex(merge.MergeError, "run card"):
             merge.merge_gridpack_data(paths, self.path("out"))
 
+    def test_execution_settings_may_differ(self):
+        # the settings the cluster passes may override, see RunCardMG7
+        from madgraph.various.banner import RunCardMG7
+        ignored = {f"{section}.{key}" for section, keys in merge._CARD_KEYS_IGNORED.items()
+                   for key in keys}
+        self.assertLessEqual(RunCardMG7().execution_params, ignored)
+        for name in RunCardMG7.cluster_passes:
+            self.assertIn("cluster_" + name, merge._CARD_SECTIONS_IGNORED)
+
     def test_gridpack_without_recorded_indices_holds_every_matrix_element(self):
         paths = [self.path("a"), self.path("b")]
         write_data(paths[0], [0])

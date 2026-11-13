@@ -197,6 +197,48 @@ class TestCleanTrainingData(unittest.TestCase):
 
 
 @unittest.skipIf(cluster_run is None, 'madspace not available')
+class TestPassOverrides(unittest.TestCase):
+
+    def setUp(self):
+        self.cwd = os.getcwd()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        os.chdir(self.tmp.name)
+        self.addCleanup(os.chdir, self.cwd)
+        os.makedirs('Cards')
+        run_card = card(run__device=['cpu'], run__cpu_thread_pool_size=-1)
+        run_card.dynamic_sections['cluster_train'] = {
+            'run': {'device': ['cuda:0'], 'gpu_thread_pool_size': 4}}
+        run_card.dynamic_sections['cluster_deploy'] = {
+            'run': {'cpu_thread_pool_size': 6}}
+        run_card.write(os.path.join('Cards', 'run_card.toml'))
+        self.run = cluster_run.ClusterRun(types.SimpleNamespace(
+            run_card=RunCardMG7(os.path.join('Cards', 'run_card.toml'))), {})
+        self.run.cluster_objects = {
+            'train': (types.SimpleNamespace(nb_core=2), 'local_parallel')}
+
+    def test_devices(self):
+        self.assertEqual(self.run.devices, {'train': ['cuda:0'], 'deploy': ['cpu']})
+
+    def test_threads(self):
+        # an override is taken as it is, -1 shares the cores among the jobs
+        self.assertEqual(self.run.thread_count('deploy', 'local_parallel'), 6)
+        self.assertEqual(self.run.thread_count('train', 'local_parallel'),
+                         max(1, (os.cpu_count() or 1) // 2))
+
+    def test_train_card(self):
+        self.run.cluster_type = 'slurm'
+        self.run.backends = {'train': ['cuda'], 'deploy': ['cpp512y']}
+        os.makedirs('job')
+        self.run.write_train_card({'selection': [0], 'seed': 1}, 'job')
+        job_card = RunCardMG7(os.path.join('job', 'run_card.toml'))
+        self.assertEqual(job_card['run']['device'], ['cuda:0'])
+        self.assertEqual(job_card['run']['gpu_thread_pool_size'], 4)
+        self.assertEqual(job_card['run']['cpu_thread_pool_size'], -1)
+        self.assertFalse(job_card['cluster']['enable'])
+
+
+@unittest.skipIf(cluster_run is None, 'madspace not available')
 class TestSupported(unittest.TestCase):
 
     def test_post_processing_tools_are_refused(self):

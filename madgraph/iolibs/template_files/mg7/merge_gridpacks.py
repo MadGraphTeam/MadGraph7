@@ -34,12 +34,16 @@ _IDENTICAL_DATA = (
 
 
 # What the run cards of the gridpacks to merge may differ in: the selection,
-# how and where each was run, and the sections about running the gridpack.
-_CARD_SECTIONS_IGNORED = ("gridpack", "cluster")
+# how and where each was run (every execution=True setting of RunCardMG7), and
+# the sections about running the gridpack.
+_CARD_SECTIONS_IGNORED = ("gridpack", "cluster", "cluster_train", "cluster_deploy")
 _CARD_KEYS_IGNORED = {
     "phasespace": ("subprocess_selection",),
     "run": ("run_name", "seed", "device", "cpu_mode", "madspace_cpu_mode",
-            "cpu_thread_pool_size", "gpu_thread_pool_size", "verbosity"),
+            "cpu_thread_pool_size", "gpu_thread_pool_size", "combine_thread_pool_size",
+            "use_pigz", "lhe_compression", "lhe_gzip_algorithm", "verbosity"),
+    "generation": ("cpu_batch_size", "gpu_batch_size"),
+    "madnis": ("gpu_generator_batch_granularity",),
 }
 
 

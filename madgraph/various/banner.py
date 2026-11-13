@@ -7191,7 +7191,11 @@ class RunCardMG7(RunCard):
 
     # dynamic (free-form) sections, stored as nested dicts rather than as
     # fixed typed parameters
-    dynamic_section_names = ('multiparticles', 'cuts', 'histograms')
+    dynamic_section_names = ('multiparticles', 'cuts', 'histograms',
+                             'cluster_train', 'cluster_deploy')
+    # the [cluster_<pass>] sections of the run card: run card settings of the
+    # jobs of one pass of the cluster mode, which override the main ones
+    cluster_passes = ('train', 'deploy')
 
     # energy units, expressed in GeV (the unit everything is stored in); the
     # typed parameters carrying an energy dimension are declared energy=True
@@ -7223,6 +7227,10 @@ class RunCardMG7(RunCard):
         self.section_of = {}
         # set of internal keys (section.key) relevant during gridpack execution
         self.gridpack_params = set()
+        # internal keys of the settings of how a run executes (devices, threads,
+        # batch sizes), which leave its result unchanged: a [cluster_<pass>]
+        # section may override them
+        self.execution_params = set()
         # declared default of each fixed parameter: a hidden one (no line in
         # the template) is only written out once it differs from it
         self.toml_defaults = {}
@@ -7239,11 +7247,16 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # parameter declaration
     # ------------------------------------------------------------------
-    def add_toml_param(self, section, key, value, gridpack=False, auto=False, **opts):
+    def add_toml_param(self, section, key, value, gridpack=False, auto=False,
+                       execution=False, **opts):
         """Declare one fixed (typed) TOML parameter belonging to ``section``.
 
         ``gridpack=True`` marks the parameter as relevant during gridpack
         execution; such params are written to ``grid_run_card.toml``.
+
+        ``execution=True`` marks a setting of how the run executes (devices,
+        threads, batch sizes) that leaves its result unchanged; the passes of
+        the cluster mode may override it in [cluster_train] / [cluster_deploy].
 
         ``auto=True`` declares a numeric parameter whose default is
         determined automatically: ``value`` fixes the accepted type (int/
@@ -7265,6 +7278,8 @@ class RunCardMG7(RunCard):
             self.toml_sections[section].append(key)
         if gridpack:
             self.gridpack_params.add(internal)
+        if execution:
+            self.execution_params.add(internal)
         if auto:
             self.auto_set.add(internal)
 
@@ -7297,12 +7312,15 @@ class RunCardMG7(RunCard):
             comment="random seed; -1 draws a fresh one, which is recorded in the output")
         self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
             allowed=['cpu', 'cuda', 'hip', '*'],
+            execution=True,
             comment="list of devices, each cpu, cuda or hip with an optional index (e.g. \"cuda:1\")")
         self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
+            execution=True,
             comment="SIMD width of the matrix elements on cpu devices; auto picks the widest one the host supports")
         self.add_toml_param('run', 'madspace_cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
+            execution=True,
             comment="SIMD width of the phase-space sampling on cpu devices; simd_128 is ARM only")
         self.add_toml_param('run', 'precision', "color32", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
@@ -7316,19 +7334,25 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'hel_recycling_row_color_sum', False, hidden=True,
             comment="--hel_recycling: make the color sum row by row even where BLAS would be used")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
+            execution=True,
             comment="threads for the cpu devices; -1 chooses automatically")
         self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
             allowed=['auto', True, False],
+            execution=True,
             comment="cpu gzip of the lhe output with pigz when available; auto detects it, false uses gzip")
         self.add_toml_param('run', 'lhe_compression', 'auto', gridpack=True,
             allowed=['auto', 'cpu'],
+            execution=True,
             comment="where the lhe output is gzipped: auto uses a gpu device when madspace was built with nvCOMP, cpu always uses pigz/gzip")
         self.add_toml_param('run', 'lhe_gzip_algorithm', 5, gridpack=True,
             allowed=[0, 1, 2, 3, 4, 5],
+            execution=True,
             comment="nvCOMP gzip algorithm for gpu compression of the lhe output: 0 fastest to 5 smallest output")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
+            execution=True,
             comment="threads per gpu device")
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,
+            execution=True,
             comment="threads for combining the channel results; -1 chooses automatically")
         self.add_toml_param('run', 'output_format', "lhe_npy", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'],
@@ -7412,9 +7436,6 @@ class RunCardMG7(RunCard):
                     "local_parallel runs the jobs on this machine")
         self.add_toml_param('cluster', 'parallel_jobs', -1,
             comment="jobs run at once with type local_parallel; -1 uses every core")
-        self.add_toml_param('cluster', 'train_device', [], typelist=str,
-            allowed=['cpu', 'cuda', 'hip', '*'],
-            comment="[run] device of the training jobs; empty keeps the [run] device")
         self.add_toml_param('cluster', 'train_queue', "",
             comment="queue of the training jobs; \"\" takes cluster_queue of the configuration")
         self.add_toml_param('cluster', 'train_walltime', "",
@@ -7428,9 +7449,6 @@ class RunCardMG7(RunCard):
             comment="true: every channel gets the max weight of its training job, the "
                     "statistically correct choice; false: the generation jobs each "
                     "estimate it on the fly")
-        self.add_toml_param('cluster', 'deploy_device', [], typelist=str,
-            allowed=['cpu', 'cuda', 'hip', '*'],
-            comment="[run] device of the event generation jobs; empty keeps the [run] device")
         self.add_toml_param('cluster', 'deploy_queue', "",
             comment="queue of the event generation jobs; \"\" takes cluster_queue of the configuration")
         self.add_toml_param('cluster', 'deploy_walltime', "",
@@ -7639,8 +7657,10 @@ class RunCardMG7(RunCard):
         self.add_toml_param('generation', 'freeze_max_weight_after', 100000, gridpack=True,
             comment="number of events after which the unweighting maximum is frozen")
         self.add_toml_param('generation', 'cpu_batch_size', 1000, gridpack=True,
+            execution=True,
             comment="events per batch on cpu devices")
         self.add_toml_param('generation', 'gpu_batch_size', 64000, gridpack=True,
+            execution=True,
             comment="events per batch on gpu devices")
         self.add_toml_param('generation', 'survey_min_iters', 3,
             comment="minimum number of survey iterations")
@@ -7838,6 +7858,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'generator_target_size_factor', 32,
             comment="number of training batches buffered per channel by the sample generator")
         self.add_toml_param('madnis', 'gpu_generator_batch_granularity', 1000,
+            execution=True,
             comment="gpu sample generation batch sizes are rounded to a multiple of this")
         self.add_toml_param('madnis', 'lr', 3e-4, auto=True,
             comment="learning rate")
@@ -7900,6 +7921,8 @@ class RunCardMG7(RunCard):
             ('sqrt_s', {'min': 0.0}),
         ])
         self.dynamic_sections['histograms'] = collections.OrderedDict()
+        for name in self.cluster_passes:
+            self.dynamic_sections['cluster_%s' % name] = collections.OrderedDict()
 
     # ------------------------------------------------------------------
     # access: nested section views
@@ -8861,6 +8884,60 @@ class RunCardMG7(RunCard):
     # carry an optional device index, e.g. "cuda:1".
     allowed_device_types = ['cpu', 'cuda', 'hip']
 
+    def check_devices(self, devices, where):
+        # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
+        # generic 'allowed' machinery cannot check it on its own.
+        if not devices:
+            raise InvalidRunCard("%s can not be an empty list" % where)
+        for entry in devices:
+            device_type, _, index = str(entry).partition(':')
+            if device_type not in self.allowed_device_types:
+                raise InvalidRunCard(
+                    "Invalid device '%s': each entry of %s must be one of %s, "
+                    "optionally followed by a device index (e.g. \"cuda:1\")"
+                    % (entry, where, ', '.join(self.allowed_device_types)))
+            if index and not index.isdigit():
+                raise InvalidRunCard(
+                    "Invalid device '%s': the device index must be a non-negative integer"
+                    % entry)
+
+    def cluster_overrides(self, name):
+        """The settings of [cluster_<name>] as [(internal key, value)]."""
+        overrides = []
+        section = 'cluster_%s' % name
+        for card_section, content in self.dynamic_sections[section].items():
+            if not isinstance(content, dict):
+                raise InvalidRunCard(
+                    "[%s] %s: give run card settings as <section>.<key>, "
+                    "e.g. run.cpu_thread_pool_size" % (section, card_section))
+            for key, value in content.items():
+                overrides.append(('%s.%s' % (card_section.lower(), key.lower()), value))
+        return overrides
+
+    def cluster_pass_card(self, name):
+        """A copy of the card with the [cluster_<name>] overrides of the pass
+        ``name`` (train or deploy) applied, after checking them."""
+        section = 'cluster_%s' % name
+        card = copy.deepcopy(self)
+        for internal, value in self.cluster_overrides(name):
+            if internal not in self.execution_params:
+                allowed = ', '.join(sorted(
+                    key for key in self.execution_params
+                    if name == 'train' or key in self.gridpack_params))
+                raise InvalidRunCard(
+                    "[%s] can not set %s: only these settings of how the jobs "
+                    "run can differ between the passes: %s" % (section, internal, allowed))
+            if name == 'deploy' and internal not in self.gridpack_params:
+                raise InvalidRunCard(
+                    "[%s] can not set %s: the event generation jobs run the "
+                    "gridpack, which does not use it" % (section, internal))
+            try:
+                card.set(internal, value, user=True)
+            except Exception as error:
+                raise InvalidRunCard("[%s] %s: %s" % (section, internal, error))
+        card.check_devices(card['run']['device'], '[%s] run.device' % section)
+        return card
+
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
@@ -8879,22 +8956,7 @@ class RunCardMG7(RunCard):
                 "scale_factor = %s is ignored: both mu_R and mu_F are fixed.",
                 beam['scale_factor'])
 
-        # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
-        # generic 'allowed' machinery cannot check it on its own.
-        devices = self['run']['device']
-        if not devices:
-            raise InvalidRunCard("device can not be an empty list")
-        for entry in devices:
-            device_type, _, index = str(entry).partition(':')
-            if device_type not in self.allowed_device_types:
-                raise InvalidRunCard(
-                    "Invalid device '%s': each entry of 'device' must be one of %s, "
-                    "optionally followed by a device index (e.g. \"cuda:1\")"
-                    % (entry, ', '.join(self.allowed_device_types)))
-            if index and not index.isdigit():
-                raise InvalidRunCard(
-                    "Invalid device '%s': the device index must be a non-negative integer"
-                    % entry)
+        self.check_devices(self['run']['device'], 'device')
 
         cluster = self['cluster']
         if cluster['enable']:
@@ -8907,15 +8969,9 @@ class RunCardMG7(RunCard):
                     raise InvalidRunCard("cluster.%s must be at least 1" % key)
             if cluster['nb_retry'] < 0:
                 raise InvalidRunCard("cluster.nb_retry can not be negative")
-        for key in ('train_device', 'deploy_device'):
-            for entry in cluster[key]:
-                device_type, _, index = str(entry).partition(':')
-                if device_type not in self.allowed_device_types or \
-                        (index and not index.isdigit()):
-                    raise InvalidRunCard(
-                        "Invalid device '%s' in cluster.%s: each entry must be one of %s, "
-                        "optionally followed by a device index (e.g. \"cuda:1\")"
-                        % (entry, key, ', '.join(self.allowed_device_types)))
+        for name in self.cluster_passes:
+            if self.dynamic_sections['cluster_%s' % name]:
+                self.cluster_pass_card(name)
 
         selection = self['phasespace']['subprocess_selection']
         if any(index < 0 for index in selection) or len(set(selection)) != len(selection):

@@ -167,11 +167,6 @@ It is off by default. See :doc:`cluster` for how it works.
     Jobs running at once with ``local_parallel``. ``-1`` uses every core. The threads of
     each job are divided accordingly if ``cpu_thread_pool_size`` is ``-1``.
 
-``train_device`` (``[]``), ``deploy_device`` (``[]``)
-    The ``[run]`` ``device`` of the training and of the generation jobs. An empty list
-    keeps the ``[run]`` device. Use ``train_device = ["cuda"]`` and
-    ``deploy_device = ["cpu"]`` to train on GPUs and generate on CPUs.
-
 ``train_queue`` (``""``), ``deploy_queue`` (``""``)
     The queue (partition) of the jobs. ``""`` takes ``cluster_queue`` of the MadGraph
     configuration.
@@ -206,6 +201,11 @@ again), ``retry_wait`` (``300``, seconds a job is given to deliver its output),
 ``cluster_temp_path`` of the configuration) and ``keep_job_files`` (``false``, keep the
 gridpacks of the training jobs once merged, and the event files of the generation
 jobs once combined; their logs and info.json are always kept).
+
+The devices, threads and batch sizes of the training and of the generation jobs are set
+in the ``[cluster_train]`` and ``[cluster_deploy]`` sections, for example
+``run.device = ["cuda"]`` in ``[cluster_train]`` and ``run.device = ["cpu"]`` in
+``[cluster_deploy]`` to train on GPUs and generate on CPUs. See :doc:`cluster`.
 
 
 [beam]

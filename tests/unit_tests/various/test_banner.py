@@ -2106,27 +2106,58 @@ class TestRunCardMG7(unittest.TestCase):
         card = bannermod.RunCardMG7()
         output = io.StringIO()
         card.write(output)
-        section = tomllib.loads(output.getvalue())['cluster']
+        data = tomllib.loads(output.getvalue())
+        section = data['cluster']
         # off by default, and only the main options are written out
         self.assertFalse(section['enable'])
         self.assertEqual(section['mode'], 'full')
-        self.assertEqual(section['train_device'], [])
         self.assertNotIn('nb_retry', section)
+        self.assertEqual(data['cluster_train'], {})
         # the gridpack card of a gridpack run knows nothing of the cluster
         output = io.StringIO()
         card.write_gridpack_card(output)
         self.assertNotIn('cluster', tomllib.loads(output.getvalue()))
 
+    def test_cluster_pass_overrides(self):
+        import io
+        import tomllib
+        card = bannermod.RunCardMG7()
+        card.read_data(tomllib.loads(
+            '[cluster_train]\nrun.device = ["cuda:1"]\nrun.gpu_thread_pool_size = 4\n'
+            '[cluster_deploy]\nrun.cpu_thread_pool_size = 8\n'))
+        card.check_validity()
+        train = card.cluster_pass_card('train')
+        self.assertEqual(train['run']['device'], ['cuda:1'])
+        self.assertEqual(train['run']['gpu_thread_pool_size'], 4)
+        self.assertEqual(card.cluster_pass_card('deploy')['run']['cpu_thread_pool_size'], 8)
+        # the card itself keeps its settings, and writes the overrides back
+        self.assertEqual(card['run']['device'], ['cpu'])
+        output = io.StringIO()
+        card.write(output)
+        self.assertEqual(tomllib.loads(output.getvalue())['cluster_deploy'],
+                         {'run': {'cpu_thread_pool_size': 8}})
+
+    def test_cluster_pass_overrides_refused(self):
+        import tomllib
+        for text, message in (
+                ('[cluster_train]\nbeam.ebeam1 = 7000\n', 'can not set beam.ebeam1'),
+                ('[cluster_deploy]\nmadnis.gpu_generator_batch_granularity = 10\n',
+                 'does not use it'),
+                ('[cluster_train]\nrun.device = ["tpu"]\n', 'tpu'),
+                ('[cluster_deploy]\nrun.device = ["cuda:x"]\n', 'cuda:x'),
+                ('[cluster_train]\nrun.cpu_thread_pool_size = "x"\n', 'cpu_thread_pool_size'),
+                ('[cluster_train]\nthreads = 1\n', '<section>.<key>')):
+            card = bannermod.RunCardMG7()
+            card.read_data(tomllib.loads(text))
+            with self.assertRaisesRegex(bannermod.InvalidRunCard, message, msg=text):
+                card.check_validity()
+
     def test_cluster_validity(self):
         card = bannermod.RunCardMG7()
         card.set("cluster.enable", True)
-        card.set("cluster.train_device", ["cuda:1"])
-        card.set("cluster.deploy_device", ["cpu"])
         card.check_validity()
         for key, value in (("cluster.events_per_job", 0),
                            ("cluster.subprocesses_per_job", 0),
-                           ("cluster.deploy_device", ["tpu"]),
-                           ("cluster.train_device", ["cuda:x"]),
                            ("phasespace.subprocess_selection", [1])):
             card = bannermod.RunCardMG7()
             card.set("cluster.enable", True)

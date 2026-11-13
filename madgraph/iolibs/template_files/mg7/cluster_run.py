@@ -129,10 +129,11 @@ class ClusterRun:
         self.options = options
         self.process_dir = os.getcwd()
         self.executable = os.path.join(self.process_dir, "bin", "generate_events")
-        self.devices = {
-            "train": list(self.section["train_device"]) or list(self.card["run"]["device"]),
-            "deploy": list(self.section["deploy_device"]) or list(self.card["run"]["device"]),
-        }
+        # the run card of each pass, with its [cluster_<pass>] overrides
+        self.pass_cards = {name: self.card.cluster_pass_card(name)
+                           for name in ("train", "deploy")}
+        self.devices = {name: list(card["run"]["device"])
+                        for name, card in self.pass_cards.items()}
         self.state = None
 
     # ------------------------------------------------------------------
@@ -195,28 +196,27 @@ class ClusterRun:
     # ------------------------------------------------------------------
     # preparation
     # ------------------------------------------------------------------
-    def thread_count(self, cluster_type: str) -> int:
-        """Threads of one job: the cores of the machine are shared by the jobs
-        of a local_parallel run."""
-        threads = self.card["run"]["cpu_thread_pool_size"]
+    def thread_count(self, name: str, cluster_type: str) -> int:
+        """Threads of one job of the pass ``name``: the cores of the machine
+        are shared by the jobs of a local_parallel run."""
+        threads = self.pass_cards[name]["run"]["cpu_thread_pool_size"]
         if cluster_type == "local_parallel" and threads <= 0:
             jobs = self.cluster_objects["train"][0].nb_core
             return max(1, (os.cpu_count() or 1) // max(1, jobs))
         return threads
 
     def build_matrix_elements(self) -> None:
-        """Compile the matrix elements for the devices of both passes, so that
-        the jobs find them. The backend 'auto' stands for is resolved here too:
-        every job then uses the one built."""
+        """Compile the matrix elements for the devices (and cpu_mode) of both
+        passes, so that the jobs find them. The backend 'auto' stands for is
+        resolved here too: every job then uses the one built."""
         self.backends = {}
-        run_card = self.process.run_card
-        saved = run_card["run"]["device"]
+        saved = self.process.run_card
         try:
             for name in ("train", "deploy"):
-                run_card["run"]["device"] = self.devices[name]
+                self.process.run_card = self.pass_cards[name]
                 self.backends[name] = self.process.compile_matrix_elements()
         finally:
-            run_card["run"]["device"] = saved
+            self.process.run_card = saved
         self.process.init_custom_function_paths()
 
     def cpu_mode_of(self, name: str):
@@ -291,9 +291,11 @@ class ClusterRun:
         return os.path.exists(os.path.join(job_dir, "done"))
 
     def write_train_card(self, job: dict, job_dir: str) -> None:
-        threads = self.thread_count(self.cluster_type)
+        threads = self.thread_count("train", self.cluster_type)
         fix_max_weight = self.section["fix_max_weight"]
-        settings = [
+        # the [cluster_train] overrides first: the settings of the cluster mode
+        # below take the overridden devices and threads into account
+        settings = self.card.cluster_overrides("train") + [
             ("cluster.enable", False),
             ("phasespace.subprocess_selection", job["selection"]),
             ("run.seed", job["seed"]),
@@ -372,9 +374,8 @@ class ClusterRun:
             raise ClusterRunError(f"merging the gridpacks failed: {error}") from error
         # the shell of the gridpack is the one for the generation pass: its
         # devices, and the resolved backend of its cpu
-        card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        card = RunCardMG7(os.path.join("Cards", "run_card.toml")).cluster_pass_card("deploy")
         card.set("cluster.enable", False, user=True)
-        card.set("run.device", self.devices["deploy"], user=True)
         launch.MadgraphProcess.write_gridpack_shell(
             gridpack_path, card, self.backends["deploy"],
             self.process.custom_function_paths, self.process.subprocess_data,
@@ -400,7 +401,7 @@ class ClusterRun:
 
     def deploy(self, gridpack_path: str) -> None:
         program = os.path.join(gridpack_path, "bin", "generate_events")
-        threads = self.thread_count(self.cluster_type)
+        threads = self.thread_count("deploy", self.cluster_type)
         jobs = []
         for job in self.state["deploy_jobs"]:
             job_dir = self.job_dir("deploy", job["index"])
