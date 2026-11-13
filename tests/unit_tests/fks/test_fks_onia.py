@@ -116,6 +116,32 @@ class TestFKSOniaGeneration(unittest.TestCase):
         real = [r for r in born.real_amps if r.process['legs'][-1]['id'] == 21][0]
         self.assertEqual(sorted(real.fks_j_from_i[5]), [1, 2, 3])
 
+    def test_builtin_virtuals(self):
+        """[QCD] with bound states: which 2 -> 1 Borns get a built-in virtual
+        (BinothLHA_onia.f, Petrelli et al.), which vanish, and which need the
+        user hook (fks_onia.builtin_virtual)."""
+        model = self.cmd._curr_model
+        cases = {'g g > etac(1|1S01) [QCD]': (1, fks_onia.PETRELLI_GG[((0, 0, 0), 1)]),
+                 'g g > chic2(1|3P21) [QCD]': (1, fks_onia.PETRELLI_GG[((1, 1, 2), 1)]),
+                 'g g > Jpsi(1|3P08) [QCD]': (2, fks_onia.PETRELLI_GG[((1, 1, 0), 8)]),
+                 'u u~ > Jpsi(1|3S18) [QCD]': (3, fks_onia.PETRELLI_QQ_3S18),
+                 'u u~ > tata(1|3S1) [QCD]': (4, 0.),
+                 'u u~ > chic0(1|3P01) [QCD]': (5, 0.),
+                 'g g > hc(1|1P11) [QCD]': (5, 0.),
+                 'g g > etac(1|1S01) g [QCD]': (0, 0.)}
+        for line, (case, bconst) in cases.items():
+            borns = self.generate(line)
+            for born in borns:
+                self.assertTrue(getattr(born, 'onia_virtual', False), line)
+                info = fks_onia.builtin_virtual(born.born_amp['process']['legs'], model)
+                self.assertEqual(info['case'], case, line)
+                self.assertAlmostEqual(info['bconst'], bconst, places=12)
+        # eq. (125) of hep-ph/9707223 for 1S0[1], C_F (-5 + pi^2/4) + C_A (1 + 5 pi^2/12)
+        self.assertAlmostEqual(fks_onia.PETRELLI_GG[((0, 0, 0), 1)], 11.96020697, places=7)
+        # [real=QCD] keeps the user hook
+        for born in self.generate('g g > etac(1|1S01) [real=QCD]'):
+            self.assertFalse(getattr(born, 'onia_virtual', False))
+
     def test_missing_singular_borns(self):
         """A real whose soft or collinear region has no generated Born is
         reported (MadFKS would not subtract it): with gluons only in the
