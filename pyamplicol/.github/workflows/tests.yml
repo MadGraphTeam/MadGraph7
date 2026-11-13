@@ -404,12 +404,15 @@ jobs:
           python dependencies/install_dependencies.py --dependencies-only
           .venv/bin/python tools/developer/build_loop_native.py stage "$RUNNER_TEMP/loop-native"
           .venv/bin/python -m pip install "mpmath==1.3.0"
-      # Deselected (35 of 2558 ids at ca602436), each listed below in order.
-      # 26 need external inputs this job does not fetch: the sgluon NLO and
+      # Deselected (37 of 3053 ids at aca98b2d1), each listed below in order.
+      # 28 need external inputs this job does not fetch: the sgluon NLO and
       # HC NLO UFO downloads, the MadGraph source (MG5_aMC v3.7.0 runs) and
       # the unpatched UFOmodeldb 6ca4b120 copies, all public and pinnable (a
-      # hash-checked fetch step would restore them), and the saved PACBIN
-      # controls (workspace only). 9 fail under PyPI symbolica 3.0.3 and pass
+      # hash-checked fetch step would restore them), the saved PACBIN
+      # controls (workspace only), and the patched UFOmodeldb reference
+      # copies the 2 ew_public_models ids compare the shipped QCD+QED UFOs
+      # with (the TeX-name escape repair makes the shipped files differ from
+      # them; this job's EW references are the shipped copies). 9 fail under PyPI symbolica 3.0.3 and pass
       # with the Community build dfe6bd97 (symbolica-dev/symbolica#163): the
       # 6 sdk_extras ids differ at ~1e-30 relative, and the 3 stored-process
       # ids are an identity check (the same call gives other bits in a fresh
@@ -437,6 +440,7 @@ jobs:
           --deselect tests/unit/test_loop_v2_artifact.py::test_legacy_loop_artifacts_are_refused_with_the_reason
           --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_feynman_gauge_trees_equal_unitary_gauge["
           --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_slavnov_taylor_identities["
+          --deselect "tests/unit/test_loop_v2_ew_public_models.py::test_shipped_qcd_qed_model_is_the_reference_and_selected_by_name["
           --deselect tests/unit/test_loop_v2_hc.py::test_tree_heft_merges_with_x0_equal_the_madloop_borns
           --deselect tests/unit/test_loop_v2_hc.py::test_hc05_five_point_gluon_r2_is_lowered_and_equals_madloop
           --deselect tests/unit/test_loop_v2_hc.py::test_a_five_point_r2_colour_without_a_vocabulary_form_is_refused_typed
