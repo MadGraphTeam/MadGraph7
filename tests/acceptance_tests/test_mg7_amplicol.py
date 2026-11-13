@@ -65,6 +65,10 @@ def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
                       'dynamical_scale_choice = "ckkwl"', card)
         card = re.sub(r'(?m)^ktdurham = .*$', 'ktdurham = 30.0', card)
     else:
+        # unmerged even where the output defaults to MLM (several multiplicities)
+        card = re.sub(r'(?m)^dynamical_scale_choice = ".*"',
+                      'dynamical_scale_choice = "half_transverse_mass"', card)
+        card = re.sub(r'(?m)^xqcut = .*$', 'xqcut = 0.0', card)
         card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
         card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
     card = re.sub(r'(?m)^(pdf[12]) = ".*"$', r'\1 = "%s"' % _PDF, card)

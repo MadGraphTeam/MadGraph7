@@ -3890,6 +3890,13 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if procs:
             pc['nexternal'] = max(pc['nexternal'], amplicol_nexternal)
             pc['ninitial'] = 2
+            try:
+                import madgraph.iolibs.export_amplicol as export_amplicol
+                pc['max_n_matched_jets'] = max(
+                    pc['max_n_matched_jets'], export_amplicol.max_matched_jets(
+                        self.amplicol_defs, self.amplicol_model))
+            except Exception as error:
+                logger.debug('could not count the [amplicol] matched jets: %s', error)
         for me in me_list:
             if not me.get('processes'):
                 continue

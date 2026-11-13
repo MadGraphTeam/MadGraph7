@@ -27,7 +27,7 @@ from madgraph.mg7.amplicol_clustering import (
     madspace_lines,
     planar_diagrams,
 )
-from madgraph.mg7.common import lhe_helicities, mlm_clustering_history, ms
+from madgraph.mg7.common import lhe_helicities, logger, mlm_clustering_history, ms
 from madgraph.mg7.observables import clean_pids
 from madgraph.mg7.subprocess_madmatrix import (
     Channel,
@@ -265,25 +265,49 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
     )
 
 
+def file_key(path: str) -> tuple:
+    """The cache key of a file: a new output into the same directory changes it."""
+    stat = os.stat(path)
+    return path, stat.st_mtime_ns, stat.st_size
+
+
 @lru_cache(maxsize=None)
+def _vertex_table(key: tuple) -> VertexTable:
+    table = VertexTable.load(key[0])
+    if table.contact_vertices:
+        logger.warning(
+            "the MLM clustering of [amplicol] events leaves out the diagrams of "
+            "the contact vertices %s", table.contact_vertices
+        )
+    return table
+
+
 def vertex_table(path: str) -> VertexTable:
-    return VertexTable.load(path)
+    return _vertex_table(file_key(path))
 
 
 @lru_cache(maxsize=None)
-def max_coupling_orders(path: str) -> tuple:
-    with open(path) as stream:
+def _max_coupling_orders(key: tuple) -> tuple:
+    with open(key[0]) as stream:
         return tuple(sorted(json.load(stream)["max_coupling_orders"].items()))
 
 
+def max_coupling_orders(path: str) -> tuple:
+    return _max_coupling_orders(file_key(path))
+
+
 @lru_cache(maxsize=None)
+def _clustering_diagrams(table_key, pdgs, n_in, flow, orders) -> list:
+    return planar_diagrams(
+        _vertex_table(table_key), list(pdgs), n_in,
+        None if flow is None else [list(tags) for tags in flow], dict(orders),
+    )
+
+
 def clustering_diagrams(table_path, pdgs, n_in, flow, orders) -> list:
     """planar_diagrams, shared by the subprocesses with these arguments (flow
     and orders as tuples)."""
-    return planar_diagrams(
-        vertex_table(table_path), list(pdgs), n_in,
-        None if flow is None else [list(tags) for tags in flow], dict(orders),
-    )
+    return _clustering_diagrams(file_key(table_path), pdgs, n_in, flow, orders)
 
 
 class AmplicolSubprocess(MadgraphSubprocess):
@@ -346,9 +370,16 @@ class AmplicolSubprocess(MadgraphSubprocess):
             if key not in keys:
                 diagrams = clustering_diagrams(table_path, pdgs, n_in, flow, orders)
                 if not diagrams:
+                    contact = (
+                        "; it may come only from a contact vertex of the "
+                        f"model ({table.contact_vertices}), which the "
+                        "clustering does not support"
+                        if table.contact_vertices else ""
+                    )
                     raise RuntimeError(
-                        f"no diagram of {pdgs} has the colour flow {flow} of its "
-                        "[amplicol] events, which the MLM clustering needs"
+                        f"no diagram of 3-point vertices of {pdgs} has the colour "
+                        f"flow {flow} of its [amplicol] events, which the MLM "
+                        f"clustering needs{contact}"
                     )
                 keys[key] = len(classes)
                 classes.append(ms.ClusteringClass(

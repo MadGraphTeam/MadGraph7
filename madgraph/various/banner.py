@@ -7161,6 +7161,10 @@ class TOMLSectionView(object):
         return repr(dict(self.items()))
 
 
+# madevent's pdgs_for_merging_cut default, for a process with no colored_pdgs
+DEFAULT_MERGING_PDGS = [21, 1, 2, 3, 4, 5, 6]
+
+
 class RunCardMG7(RunCard):
     """Python representation of the TOML ``run_card.toml`` used by the default
     (mg7/madnis) generation mode.
@@ -7700,7 +7704,7 @@ class RunCardMG7(RunCard):
             comment="CKKW-L: min Pythia8 evolution pT of the merging partons (0 disables it)")
         self.add_toml_param('phasespace', 'dparameter', 0.4,
             comment="D of the hadronic ktdurham measure (Merging:Dparameter)")
-        self.add_toml_param('phasespace', 'merging_pdgs', [21, 1, 2, 3, 4, 5, 6],
+        self.add_toml_param('phasespace', 'merging_pdgs', list(DEFAULT_MERGING_PDGS),
             typelist=int, auto=True,
             comment="pdg ids subject to the CKKW-L cut; auto: all coloured particles")
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
@@ -7989,6 +7993,25 @@ class RunCardMG7(RunCard):
                 "dynamical_scale_choice." % (beam['max_jet_flavor'], expected,
                                              expected, expected))
 
+    def resolved_merging_pdgs(self):
+        """The pdg ids of the CKKW-L cut. "auto" is, as in madevent, every
+        coloured particle of the model (proc_characteristics colored_pdgs of
+        the process directory of the card, or the working directory)."""
+        pdgs = self['phasespace']['merging_pdgs']
+        if pdgs != 'auto':
+            return [int(pdg) for pdg in pdgs]
+        me_dir = os.path.dirname(os.path.dirname(self.path)) \
+            if getattr(self, 'path', None) else os.getcwd()
+        path = pjoin(me_dir, 'SubProcesses', 'proc_characteristics')
+        colored = None
+        if os.path.exists(path):
+            try:
+                colored = ProcCharacteristic(path)['colored_pdgs']
+            except Exception as error:
+                logger.debug('could not read %s: %s', path, error)
+        return [int(pdg) for pdg in colored] if colored \
+            else list(DEFAULT_MERGING_PDGS)
+
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
@@ -8047,8 +8070,7 @@ class RunCardMG7(RunCard):
         if key == 'dparameter':
             return float(self['phasespace']['dparameter'])
         if key == 'pdgs_for_merging_cut':
-            pdgs = self['phasespace']['merging_pdgs']
-            return [21, 1, 2, 3, 4, 5, 6] if pdgs == 'auto' else list(pdgs)
+            return self.resolved_merging_pdgs()
         # --- run / seed bookkeeping ---
         if key == 'lhaid':
             return self.get_lhapdf_id()
@@ -9809,8 +9831,16 @@ class RunCardMG7(RunCard):
             if 'pdgs_for_merging_cut' in lo:
                 mg7.set('phasespace.merging_pdgs',
                         [int(pdg) for pdg in lo['pdgs_for_merging_cut']])
-            if dyn == -1:
+            # madevent does not cluster for fixed scales (reweight.f), mg7's
+            # "ckkwl" ignores them: keep a closed-form choice then
+            fixed = [bool(lo[key]) for key in ('fixed_ren_scale', 'fixed_fac_scale')
+                     if key in lo]
+            if dyn == -1 and not (fixed and all(fixed)):
                 mg7.set('beam.dynamical_scale_choice', 'ckkwl')
+                if any(fixed):
+                    dropped.append('fixed_ren_scale/fixed_fac_scale with a '
+                                   'CKKW-L cut (mg7 uses the ckkwl clustering '
+                                   'scale for both)')
 
         # --- SDE strategy ---
         sde = lo['SDE_strategy'] if 'SDE_strategy' in lo else 1

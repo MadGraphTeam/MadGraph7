@@ -4,8 +4,12 @@ An [amplicol] event comes from one leading-colour flow, so it can only be
 clustered along the tree diagrams contributing to that flow: the planar diagrams
 of its colour order. They are enumerated here from the model's 3-point vertices
 (export_amplicol.clustering_model, in CLUSTERING_MODEL) within the
-coupling orders of the process. Four-point vertices are left out: every line
-they make is a line of some diagram with 3-point vertices.
+coupling orders of the process. Vertices with more legs are left out: the
+lines of a 4-point vertex that two 3-point vertices joined by a propagator
+reproduce (the 4-gluon, VVVV, VVHH, HHHH vertices of the SM) are lines of some
+3-point diagram, but a contact interaction (a four-fermion or ggHH operator,
+say) is not, and the topologies only it makes cannot be clustered
+(VertexTable.contact_vertices).
 
 A line of a leading-colour diagram carries as many colour lines across it as its
 colour representation: none for a singlet, one colour (anticolour) for a
@@ -44,6 +48,26 @@ class VertexTable:
                 known = self.merges.setdefault(tuple(sorted((a, b))), [])
                 if merge not in known:
                     known.append(merge)
+        # the vertices of more legs that no pair of 3-point vertices reproduces
+        self.contact_vertices = [
+            list(pdgs) for pdgs in data.get("contact_vertices", [])
+            if not self._split_by_3_point(pdgs)
+        ]
+
+    def _split_by_3_point(self, pdgs: list[int]) -> bool:
+        """Whether two 3-point vertices joined by a line have the legs of this
+        4-point vertex."""
+        if len(pdgs) != 4:
+            return False
+        for pair in ((0, 1), (0, 2), (0, 3)):
+            a, b = (pdgs[i] for i in pair)
+            c, d = (pdgs[i] for i in range(4) if i not in pair)
+            lines = {line for line, _ in self.merges.get(tuple(sorted((a, b))), [])}
+            if any(self.anti(line) == other
+                   for other, _ in self.merges.get(tuple(sorted((c, d))), [])
+                   for line in lines):
+                return True
+        return False
 
     @classmethod
     def load(cls, path: str) -> VertexTable:

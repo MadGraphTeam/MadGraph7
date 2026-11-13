@@ -821,11 +821,9 @@ class MadgraphProcess:
             measure, value = ms.MergingScale.Measure.kt_durham, float(ps["ktdurham"])
         else:
             measure, value = ms.MergingScale.Measure.pt_lund, float(ps["ptlund"])
-        pdgs = ps["merging_pdgs"]
-        if pdgs == "auto":
-            # madevent's default for pdgs_for_merging_cut: the coloured particles
-            pdgs = _proc_characteristic().get("colored_pdgs") or [21, 1, 2, 3, 4, 5, 6]
-        self.merging_cut = (measure, value, {abs(int(pdg)) for pdg in pdgs})
+        # the list the banner reports as pdgs_for_merging_cut
+        pdgs = self.run_card.resolved_merging_pdgs()
+        self.merging_cut = (measure, value, {abs(pdg) for pdg in pdgs})
 
     def init_cuts(self) -> None:
         inf = float("inf")

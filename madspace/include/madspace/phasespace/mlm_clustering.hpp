@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 
@@ -220,9 +222,15 @@ public:
         const std::vector<me_int_t>& leg_flavors
     ) const;
     // Whether any clustering of the compiled state machines depends on the
-    // flavours of the event. Without one, the flavours change nothing.
+    // flavours of the event. Without one, the flavours change nothing. Classes
+    // with one offset share the state machine and the leg flags.
     bool has_flavor_dependent_clusterings() const {
-        return _has_same_flavor || _class_start_states.size() > 1;
+        return _has_same_flavor ||
+            std::adjacent_find(
+                _class_start_states.begin(),
+                _class_start_states.end(),
+                std::not_equal_to<>()
+            ) != _class_start_states.end();
     }
     // Per clustering class, its offset in cluster_state_machine; empty for a
     // clustering built from topologies. Identical classes share one offset.

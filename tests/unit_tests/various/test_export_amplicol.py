@@ -171,3 +171,22 @@ class TestModelCache(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestMaxMatchedJets(unittest.TestCase):
+    """The jets the shower of an MLM / CKKW-L sample matches, counted for the
+    [amplicol] processes as madevent counts them."""
+
+    def test_light_partons_up_to_the_qcd_order(self):
+        import madgraph.interface.master_interface as master_interface
+        cmd = master_interface.MasterCmd()
+        cmd.exec_cmd('import model sm', printcmd=False)
+        model = cmd._curr_model
+
+        def count(*processes):
+            return export_amplicol.max_matched_jets(
+                [cmd.extract_process(process) for process in processes], model)
+
+        self.assertEqual(count('p p > j j j'), 3)
+        self.assertEqual(count('p p > e+ ve j j'), 2)
+        self.assertEqual(count('p p > j j', 'g g > g g g'), 3)

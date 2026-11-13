@@ -54,6 +54,22 @@ class TestPlanarDiagrams(unittest.TestCase):
         self.assertEqual(self.table.anti(2), -2)
         self.assertEqual(self.table.color(-2), -3)
 
+    def test_sm_4_point_vertices_are_split_by_3_point_ones(self):
+        self.assertTrue(self.data['contact_vertices'])
+        self.assertEqual(self.table.contact_vertices, [])
+
+    def test_a_contact_vertex_is_reported(self):
+        data = dict(self.data, contact_vertices=self.data['contact_vertices']
+                    + [[-2, 2, -1, 1], [21, 21, 25, 25, 25]])
+        table = clustering.VertexTable(data)
+        # u u~ d d~ has a gluon and a Z between the pairs, so only the 5-point one
+        self.assertEqual(table.contact_vertices, [[21, 21, 25, 25, 25]])
+        data['contact_vertices'] = [[11, -11, 12, -12]]
+        data['vertices'] = [vertex for vertex in self.data['vertices']
+                            if not {11, 12} & {abs(p) for p in vertex[0]}]
+        self.assertEqual(clustering.VertexTable(data).contact_vertices,
+                         [[11, -11, 12, -12]])
+
     def test_gluons_in_one_trace_have_the_planar_diagrams(self):
         """Catalan(n - 2) cubic planar trees, and (2n - 5)!! without a flow."""
         catalan = {4: 2, 5: 5, 6: 14, 7: 42, 8: 132}

@@ -2876,6 +2876,19 @@ class TestRunCardMG7(unittest.TestCase):
         lo['dynamical_scale_choice'] = 3
         mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
         self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'half_transverse_mass')
+        # fixed scales: madevent does not cluster, so neither does mg7
+        lo['dynamical_scale_choice'] = -1
+        lo['fixed_ren_scale'] = lo['fixed_fac_scale'] = True
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertNotEqual(mg7['beam']['dynamical_scale_choice'], 'ckkwl')
+        self.assertTrue(mg7['beam']['fixed_ren_scale'])
+        self.assertTrue(mg7['beam']['fixed_fact_scale'])
+        # one fixed scale only: madevent clusters for the other one
+        lo['fixed_fac_scale'] = False
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'ckkwl')
+        self.assertIn('fixed_ren_scale/fixed_fac_scale', ' '.join(dropped))
+        lo['fixed_ren_scale'] = False
         # CKKW-L and MLM together can not be represented
         lo['ickkw'] = 1
         lo['xqcut'] = 20
@@ -2883,6 +2896,29 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(mg7['phasespace']['ktdurham'], 0.0)
         self.assertIn('ktdurham/ptlund with ickkw=1', ' '.join(dropped))
         mg7.check_validity()
+
+    def test_auto_merging_pdgs_are_the_coloured_particles(self):
+        """The banner's pdgs_for_merging_cut is the list the cut uses: for
+        "auto" the colored_pdgs of the process."""
+        me_dir = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(me_dir, 'Cards'))
+            os.makedirs(os.path.join(me_dir, 'SubProcesses'))
+            card_path = os.path.join(me_dir, 'Cards', 'run_card.toml')
+            bannermod.RunCardMG7().write(card_path)
+            rc = bannermod.RunCardMG7(card_path)
+            self.assertEqual(rc['phasespace']['merging_pdgs'], 'auto')
+            self.assertEqual(rc['pdgs_for_merging_cut'],
+                             bannermod.DEFAULT_MERGING_PDGS)
+            pc = bannermod.ProcCharacteristic()
+            pc['colored_pdgs'] = [1, 2, 3, 4, 5, 6, 21, 1000021]
+            pc.write(os.path.join(me_dir, 'SubProcesses', 'proc_characteristics'))
+            self.assertEqual(rc['pdgs_for_merging_cut'],
+                             [1, 2, 3, 4, 5, 6, 21, 1000021])
+            rc['phasespace']['merging_pdgs'] = [21, 1, 2]
+            self.assertEqual(rc['pdgs_for_merging_cut'], [21, 1, 2])
+        finally:
+            shutil.rmtree(me_dir)
 
     def test_mlm_shower_start(self):
         """Hidden [beam] switch for where the MLM shower of the non-jet
