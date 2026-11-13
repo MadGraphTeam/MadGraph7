@@ -1,0 +1,7 @@
+BeamstrahlungSampler
+====================
+
+.. autoclass:: madspace.BeamstrahlungSampler
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,4 @@
+multichannel_batch_size
+=======================
+
+.. autofunction:: madspace.multichannel_batch_size

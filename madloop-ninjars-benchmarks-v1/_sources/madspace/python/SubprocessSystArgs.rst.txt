@@ -1,0 +1,7 @@
+SubprocessSystArgs
+==================
+
+.. autoclass:: madspace.SubprocessSystArgs
+   :members:
+   :undoc-members:
+   :show-inheritance:

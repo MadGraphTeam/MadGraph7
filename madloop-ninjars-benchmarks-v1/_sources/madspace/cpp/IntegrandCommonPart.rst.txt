@@ -1,0 +1,6 @@
+IntegrandCommonPart
+===================
+
+.. doxygenclass:: madspace::IntegrandCommonPart
+   :members:
+   :undoc-members:

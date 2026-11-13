@@ -1,0 +1,7 @@
+Verbosity
+=========
+
+.. autoclass:: madspace.Verbosity
+   :members:
+   :undoc-members:
+   :show-inheritance:

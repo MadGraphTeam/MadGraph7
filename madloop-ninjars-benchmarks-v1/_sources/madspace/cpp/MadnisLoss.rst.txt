@@ -1,0 +1,6 @@
+MadnisLoss
+==========
+
+.. doxygenclass:: madspace::MadnisLoss
+   :members:
+   :undoc-members:

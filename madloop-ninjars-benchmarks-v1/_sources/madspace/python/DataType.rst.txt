@@ -1,0 +1,7 @@
+DataType
+========
+
+.. autoclass:: madspace.DataType
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+SystematicsCalculator
+=====================
+
+.. autoclass:: madspace.SystematicsCalculator
+   :members:
+   :undoc-members:
+   :show-inheritance:

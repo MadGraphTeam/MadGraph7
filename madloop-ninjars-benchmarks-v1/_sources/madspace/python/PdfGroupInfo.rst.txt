@@ -1,0 +1,7 @@
+PdfGroupInfo
+============
+
+.. autoclass:: madspace.PdfGroupInfo
+   :members:
+   :undoc-members:
+   :show-inheritance:

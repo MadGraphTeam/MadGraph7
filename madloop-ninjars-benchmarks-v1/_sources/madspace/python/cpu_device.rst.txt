@@ -1,0 +1,4 @@
+cpu_device
+==========
+
+.. autofunction:: madspace.cpu_device

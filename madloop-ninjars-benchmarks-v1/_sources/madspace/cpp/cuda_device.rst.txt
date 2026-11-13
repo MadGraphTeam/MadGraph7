@@ -1,0 +1,4 @@
+cuda_device
+===========
+
+.. doxygenfunction:: madspace::cuda_device

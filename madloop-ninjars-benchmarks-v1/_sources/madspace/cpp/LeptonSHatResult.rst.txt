@@ -1,0 +1,6 @@
+LeptonSHatResult
+================
+
+.. doxygenstruct:: madspace::LeptonSHatResult
+   :members:
+   :undoc-members:

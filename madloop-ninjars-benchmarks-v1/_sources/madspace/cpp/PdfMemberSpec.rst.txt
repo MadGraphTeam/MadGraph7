@@ -1,0 +1,6 @@
+PdfMemberSpec
+=============
+
+.. doxygenstruct:: madspace::PdfMemberSpec
+   :members:
+   :undoc-members:

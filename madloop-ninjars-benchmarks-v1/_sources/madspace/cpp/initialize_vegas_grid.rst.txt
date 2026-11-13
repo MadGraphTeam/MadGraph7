@@ -1,0 +1,4 @@
+initialize_vegas_grid
+=====================
+
+.. doxygenfunction:: madspace::initialize_vegas_grid

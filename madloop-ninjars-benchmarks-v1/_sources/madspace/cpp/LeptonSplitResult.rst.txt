@@ -1,0 +1,6 @@
+LeptonSplitResult
+=================
+
+.. doxygenstruct:: madspace::LeptonSplitResult
+   :members:
+   :undoc-members:

@@ -1,0 +1,4 @@
+format_progress
+===============
+
+.. doxygenfunction:: madspace::format_progress

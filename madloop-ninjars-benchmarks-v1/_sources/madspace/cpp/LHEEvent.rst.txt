@@ -1,0 +1,6 @@
+LHEEvent
+========
+
+.. doxygenstruct:: madspace::LHEEvent
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+BeamstrahlungParameters
+=======================
+
+.. doxygenstruct:: madspace::BeamstrahlungParameters
+   :members:
+   :undoc-members:

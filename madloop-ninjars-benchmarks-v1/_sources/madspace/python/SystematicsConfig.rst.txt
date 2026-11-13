@@ -1,0 +1,7 @@
+SystematicsConfig
+=================
+
+.. autoclass:: madspace.SystematicsConfig
+   :members:
+   :undoc-members:
+   :show-inheritance:

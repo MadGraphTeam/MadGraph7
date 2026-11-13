@@ -1,0 +1,7 @@
+DiscreteSampler
+===============
+
+.. autoclass:: madspace.DiscreteSampler
+   :members:
+   :undoc-members:
+   :show-inheritance:

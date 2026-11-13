@@ -1,0 +1,6 @@
+ChiliMapping
+============
+
+.. doxygenclass:: madspace::ChiliMapping
+   :members:
+   :undoc-members:

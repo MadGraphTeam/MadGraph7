@@ -1,0 +1,7 @@
+PhaseSpaceMapping
+=================
+
+.. autoclass:: madspace.PhaseSpaceMapping
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+DiscreteHistogram
+=================
+
+.. autoclass:: madspace.DiscreteHistogram
+   :members:
+   :undoc-members:
+   :show-inheritance:

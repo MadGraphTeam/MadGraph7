@@ -1,0 +1,7 @@
+EELuminosity
+============
+
+.. autoclass:: madspace.EELuminosity
+   :members:
+   :undoc-members:
+   :show-inheritance:

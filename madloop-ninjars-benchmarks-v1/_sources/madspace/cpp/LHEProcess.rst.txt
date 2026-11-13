@@ -1,0 +1,6 @@
+LHEProcess
+==========
+
+.. doxygenstruct:: madspace::LHEProcess
+   :members:
+   :undoc-members:

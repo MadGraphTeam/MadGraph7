@@ -1,0 +1,7 @@
+ChannelEventGenerator
+=====================
+
+.. autoclass:: madspace.ChannelEventGenerator
+   :members:
+   :undoc-members:
+   :show-inheritance:

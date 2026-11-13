@@ -1,0 +1,6 @@
+Device
+======
+
+.. doxygenclass:: madspace::Device
+   :members:
+   :undoc-members:

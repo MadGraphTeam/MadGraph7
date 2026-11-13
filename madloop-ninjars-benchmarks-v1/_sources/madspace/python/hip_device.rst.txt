@@ -1,0 +1,4 @@
+hip_device
+==========
+
+.. autofunction:: madspace.hip_device

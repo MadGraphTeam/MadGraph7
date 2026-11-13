@@ -1,0 +1,7 @@
+WeightingStep
+=============
+
+.. autoclass:: madspace.WeightingStep
+   :members:
+   :undoc-members:
+   :show-inheritance:

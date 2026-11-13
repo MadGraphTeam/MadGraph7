@@ -1,0 +1,7 @@
+ThreeBodyDecay
+==============
+
+.. autoclass:: madspace.ThreeBodyDecay
+   :members:
+   :undoc-members:
+   :show-inheritance:

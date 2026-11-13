@@ -1,0 +1,6 @@
+LHECompleter
+============
+
+.. doxygenclass:: madspace::LHECompleter
+   :members:
+   :undoc-members:

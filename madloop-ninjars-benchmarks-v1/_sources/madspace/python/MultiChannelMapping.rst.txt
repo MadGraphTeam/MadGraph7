@@ -1,0 +1,7 @@
+MultiChannelMapping
+===================
+
+.. autoclass:: madspace.MultiChannelMapping
+   :members:
+   :undoc-members:
+   :show-inheritance:

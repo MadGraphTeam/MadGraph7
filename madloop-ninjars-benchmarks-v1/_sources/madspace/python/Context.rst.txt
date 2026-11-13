@@ -1,0 +1,7 @@
+Context
+=======
+
+.. autoclass:: madspace.Context
+   :members:
+   :undoc-members:
+   :show-inheritance:

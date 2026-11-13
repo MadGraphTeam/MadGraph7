@@ -1,0 +1,6 @@
+PhaseSpaceMapping
+=================
+
+.. doxygenclass:: madspace::PhaseSpaceMapping
+   :members:
+   :undoc-members:

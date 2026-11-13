@@ -1,0 +1,6 @@
+Flow
+====
+
+.. doxygenclass:: madspace::Flow
+   :members:
+   :undoc-members:

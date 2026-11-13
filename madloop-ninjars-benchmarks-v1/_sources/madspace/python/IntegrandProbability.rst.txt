@@ -1,0 +1,7 @@
+IntegrandProbability
+====================
+
+.. autoclass:: madspace.IntegrandProbability
+   :members:
+   :undoc-members:
+   :show-inheritance:

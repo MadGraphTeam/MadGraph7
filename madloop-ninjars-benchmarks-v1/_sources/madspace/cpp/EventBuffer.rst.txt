@@ -1,0 +1,6 @@
+EventBuffer
+===========
+
+.. doxygenclass:: madspace::EventBuffer
+   :members:
+   :undoc-members:

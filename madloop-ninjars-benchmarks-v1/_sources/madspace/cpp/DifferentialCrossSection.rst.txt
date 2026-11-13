@@ -1,0 +1,6 @@
+DifferentialCrossSection
+========================
+
+.. doxygenclass:: madspace::DifferentialCrossSection
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+MLMClusteringWithFlavors
+========================
+
+.. doxygenclass:: madspace::MLMClusteringWithFlavors
+   :members:
+   :undoc-members:

@@ -1,0 +1,7 @@
+BeamstrahlungQTerm
+==================
+
+.. autoclass:: madspace.BeamstrahlungQTerm
+   :members:
+   :undoc-members:
+   :show-inheritance:

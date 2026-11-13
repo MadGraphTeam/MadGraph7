@@ -1,0 +1,7 @@
+TwoBodyDecay
+============
+
+.. autoclass:: madspace.TwoBodyDecay
+   :members:
+   :undoc-members:
+   :show-inheritance:

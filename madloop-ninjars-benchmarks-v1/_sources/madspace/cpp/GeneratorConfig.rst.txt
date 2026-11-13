@@ -1,0 +1,6 @@
+GeneratorConfig
+===============
+
+.. doxygenstruct:: madspace::GeneratorConfig
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+EventGenerator
+==============
+
+.. doxygenclass:: madspace::EventGenerator
+   :members:
+   :undoc-members:

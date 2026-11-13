@@ -1,0 +1,4 @@
+fuse_instructions
+=================
+
+.. doxygenfunction:: madspace::fuse_instructions

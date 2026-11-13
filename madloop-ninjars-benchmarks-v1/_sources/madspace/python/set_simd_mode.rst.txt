@@ -1,0 +1,4 @@
+set_simd_mode
+=============
+
+.. autofunction:: madspace.set_simd_mode

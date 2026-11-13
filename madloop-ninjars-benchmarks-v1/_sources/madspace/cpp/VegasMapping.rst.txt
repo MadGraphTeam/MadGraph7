@@ -1,0 +1,6 @@
+VegasMapping
+============
+
+.. doxygenclass:: madspace::VegasMapping
+   :members:
+   :undoc-members:

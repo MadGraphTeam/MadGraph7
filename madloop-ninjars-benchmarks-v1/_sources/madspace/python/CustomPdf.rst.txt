@@ -1,0 +1,7 @@
+CustomPdf
+=========
+
+.. autoclass:: madspace.CustomPdf
+   :members:
+   :undoc-members:
+   :show-inheritance:

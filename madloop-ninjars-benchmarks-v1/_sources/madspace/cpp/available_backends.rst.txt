@@ -1,0 +1,4 @@
+available_backends
+==================
+
+.. doxygenfunction:: madspace::available_backends

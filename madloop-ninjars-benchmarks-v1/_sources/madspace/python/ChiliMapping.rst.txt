@@ -1,0 +1,7 @@
+ChiliMapping
+============
+
+.. autoclass:: madspace.ChiliMapping
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,6 @@
+Topology
+========
+
+.. doxygenclass:: madspace::Topology
+   :members:
+   :undoc-members:

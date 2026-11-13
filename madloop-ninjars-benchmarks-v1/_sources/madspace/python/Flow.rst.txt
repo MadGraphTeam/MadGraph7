@@ -1,0 +1,7 @@
+Flow
+====
+
+.. autoclass:: madspace.Flow
+   :members:
+   :undoc-members:
+   :show-inheritance:

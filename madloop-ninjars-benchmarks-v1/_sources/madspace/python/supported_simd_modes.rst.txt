@@ -1,0 +1,4 @@
+supported_simd_modes
+====================
+
+.. autofunction:: madspace.supported_simd_modes

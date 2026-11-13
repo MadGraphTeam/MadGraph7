@@ -1,0 +1,7 @@
+MLMClusteringWithFlavors
+========================
+
+.. autoclass:: madspace.MLMClusteringWithFlavors
+   :members:
+   :undoc-members:
+   :show-inheritance:

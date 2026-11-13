@@ -1,0 +1,7 @@
+StatusFile
+==========
+
+.. autoclass:: madspace.StatusFile
+   :members:
+   :undoc-members:
+   :show-inheritance:

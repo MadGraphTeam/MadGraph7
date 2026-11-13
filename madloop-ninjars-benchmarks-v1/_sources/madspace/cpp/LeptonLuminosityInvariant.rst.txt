@@ -1,0 +1,6 @@
+LeptonLuminosityInvariant
+=========================
+
+.. doxygenclass:: madspace::LeptonLuminosityInvariant
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+MatrixElementApi
+================
+
+.. doxygenclass:: madspace::MatrixElementApi
+   :members:
+   :undoc-members:

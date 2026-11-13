@@ -1,0 +1,7 @@
+MLMClusteringAlongDiagram
+=========================
+
+.. autoclass:: madspace.MLMClusteringAlongDiagram
+   :members:
+   :undoc-members:
+   :show-inheritance:

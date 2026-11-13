@@ -1,0 +1,7 @@
+DiscreteOptimizer
+=================
+
+.. autoclass:: madspace.DiscreteOptimizer
+   :members:
+   :undoc-members:
+   :show-inheritance:

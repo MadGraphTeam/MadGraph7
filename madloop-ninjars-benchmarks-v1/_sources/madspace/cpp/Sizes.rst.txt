@@ -1,0 +1,6 @@
+Sizes
+=====
+
+.. doxygenclass:: madspace::Sizes
+   :members:
+   :undoc-members:

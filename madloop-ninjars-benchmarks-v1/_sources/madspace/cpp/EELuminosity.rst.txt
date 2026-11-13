@@ -1,0 +1,6 @@
+EELuminosity
+============
+
+.. doxygenclass:: madspace::EELuminosity
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+Value
+=====
+
+.. doxygenstruct:: madspace::Value
+   :members:
+   :undoc-members:
