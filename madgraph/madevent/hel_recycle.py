@@ -396,7 +396,11 @@ class CppDialect(Dialect):
                 break               # a scalar has none: nothing to replace
         return args
 
-    _AMP_TAG = re.compile(r'//\s*HRAMP\s+(\d+)(?:\s+(\d+(?:,\d+)*))?')
+    _AMP_TAG = re.compile(r'//\s*HRAMP\s+(\d+)(?:\s+(\d+(?:,\d+)*))?'
+                          r'(?:\s+flv=(0x[0-9a-fA-F]+))?')
+    # the runtime test of a grouped flavour mask, as the exporter writes it in
+    # the plain calls (MadMatrixUFOHelasCallWriter.FLAVOUR_GUARD)
+    FLAVOUR_GUARD = 'if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {'
 
     def amplitude_diagram(self, line, args):
         # the scratch every amplitude writes to cannot say which diagram it is,
@@ -410,6 +414,15 @@ class CppDialect(Dialect):
         if not match or not match.group(2):
             return None
         return tuple(int(spin) for spin in match.group(2).split(','))
+
+    def amplitude_flavour_mask(self, line):
+        '''The grouped flavours (bit iflavor) an amplitude call contributes to,
+        as the exporter tagged it (flv=0x...); None when it contributes to all
+        of them.'''
+        match = self._AMP_TAG.search(line)
+        if not match or not match.group(3):
+            return None
+        return int(match.group(3), 16)
 
     # -- line shape ----------------------------------------------------------
     def is_continuation(self, line):
@@ -740,24 +753,33 @@ class CppDialect(Dialect):
     def render_amplitudes(self, line, new_amps, gauge, amp_splt):
         '''One amplitude, once per helicity row that keeps it: the call into the
         shared scratch, then that row's fold. With amp_splt, the rows that share
-        every leg but one get the vertex evaluated once between them.'''
+        every leg but one get the vertex evaluated once between them.
+
+        An amplitude of a flavour-merged process that only some flavours have
+        (flv= on its tag) is guarded with their mask, every copy, P1N groups
+        and folds alike, as the plain calls guard it: it is not always zero at
+        the other flavours (see MadMatrixUFOHelasCallWriter
+        .super_get_matrix_element_calls).'''
         plan = plan_amp_split(new_amps, self.is_wavefunction) if amp_splt else None
+        out = []
         if plan is None:
-            out = []
             for amp in new_amps:
                 out.extend(self._whole_amplitude(line, amp))
-            return '\n'.join(out) + '\n'
-
-        peel, groups = plan
-        out = []
-        for group in groups:
-            split = (self._p1n_group(line, group, peel, gauge)
-                     if len(group) >= self.P1N_MIN_SHARING else None)
-            if split is None:
-                for amp in group:
-                    out.extend(self._whole_amplitude(line, amp))
-            else:
-                out.extend(split)
+        else:
+            peel, groups = plan
+            for group in groups:
+                split = (self._p1n_group(line, group, peel, gauge)
+                         if len(group) >= self.P1N_MIN_SHARING else None)
+                if split is None:
+                    for amp in group:
+                        out.extend(self._whole_amplitude(line, amp))
+                else:
+                    out.extend(split)
+        mask = self.amplitude_flavour_mask(line)
+        if mask is not None and out:
+            indent = re.match(r'\s*', out[0]).group(0)
+            out = ['%s%s' % (indent, self.FLAVOUR_GUARD % mask)] + \
+                  ['  ' + text for text in out] + ['%s}' % indent]
         return '\n'.join(out) + '\n'
 
     def render_external(self, line, wav):

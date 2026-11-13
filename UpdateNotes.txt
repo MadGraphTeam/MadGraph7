@@ -66,6 +66,17 @@ ANNOUNCEMENT:
        same phase-space point, and the C++ FD vxxxxx has the FD longitudinal polarisation.
 
 0.3.0 (XX/XX/XX):
+   OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix
+       element left out the flavour masks of a flavour-merged subprocess, on the assumption
+       that an amplitude masked for a flavour vanishes there anyway. It does not always (a
+       diagram closed by a bosonic vertex, fed by fermion currents that follow the coupling
+       partner tables): |M|^2 was wrong for some flavours of merged electroweak multi-quark
+       processes with charged currents. p p > w+ w- j j QCD=0: 12 of 36 flavours, e.g.
+       d d~ > w+ w- u u~ x55, d u~ > w+ w- s c~ x169, and 83.7 pb instead of 0.934 pb in a
+       MadSpace run. Every copy of such an amplitude is now guarded with its mask, as in the
+       plain build. GPU builds, --hel_recycling=False and MadEvent were not affected; outputs
+       made before this fix must be regenerated. Also: a recycled build cut into chunks
+       (HelRecyclingChunks_*.cc) did not compile (ndcoup undeclared).
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point

@@ -649,9 +649,13 @@ namespace madmatrix
   // In the rows mode this is where the row's color flows are made, from its
   // amplitudes, as the fortran recycler's DO K = 1, NCOMB loop makes them: the
   // numerators go straight into the event's (no table of every row's), and the
-  // color flows of one row at a time are all that is kept.
+  // color flows of one row at a time are all that is kept. They read iflavor:
+  // in a flavour-merged process an amplitude that only some flavours have is
+  // guarded with their mask, as in calculate_jamps, and calculate_all_jamps
+  // neither makes nor stores it at the others.
   inline void
   hr_row( int ihel,
+          [[maybe_unused]] const unsigned int* iflavorVec, // input: indices of the flavor combinations (rows mode)
           [[maybe_unused]] const cxtype_amp_sv* ampAll_sv,  // input: amplitudes of every row (rows mode)
           [[maybe_unused]] const cxtype_amp_sv* jampAll_sv, // input: jamps of every row (fold, expanded)
           [[maybe_unused]] const fptype_amp_sv* numAll_sv,  // input: |amp|^2 by diagram of every row (fold, expanded)
@@ -662,6 +666,7 @@ namespace madmatrix
           const int ievt00 )               // input: first event number in current C++ event page
   {
     using NUM_ACCESS = HostAccessNumerators;
+    using F_ACCESS [[maybe_unused]] = HostAccessIflavorVec;
     const int row = cHrRow[ihel]; // >= 0: hr_page computes a row that was not built with calculate_jamps
     for( int iParity = 0; iParity < nParity; ++iParity )
     {
@@ -674,6 +679,10 @@ namespace madmatrix
       if( row >= 0 )
       {
 #ifdef MGONGPU_HR_ROWS
+        // the scalar iflavor of the page, as JampsPreamble.h reads it for calculate_all_jamps
+        const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
+        const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
+        [[maybe_unused]] const unsigned int iflavor = reinterpret_cast<const unsigned int*>( &iflavor_sv )[0];
 #include "HelRecyclingJamps.inc"
 #else
         for( int icol = 0; icol < njampso; icol++ ) jamp_sv[icol] = jampAll_sv[slot * njampso + icol];
@@ -712,7 +721,7 @@ namespace madmatrix
   {
     if( cHrRow[ihel] >= 0 )
     {
-      hr_row( ihel, ampAll_sv, jampAll_sv, numAll_sv, allJamp_sv, storeChannelWeights, allNumerators, jamp2_sv, ievt00 );
+      hr_row( ihel, iflavorVec, ampAll_sv, jampAll_sv, numAll_sv, allJamp_sv, storeChannelWeights, allNumerators, jamp2_sv, ievt00 );
       return;
     }
     hr_unbaked_row( ihel );
