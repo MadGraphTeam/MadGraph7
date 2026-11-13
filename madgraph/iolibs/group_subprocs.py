@@ -537,7 +537,8 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols, interference]
+                           process.get('id'), pols, interference,
+                           process.get_gauge()]
             if (criteria=="madweight"):
               proc_class = [ [(abs(p.get('pdg_code'))==5, abs(p.get('pdg_code'))==11, 
                            abs(p.get('pdg_code'))==13, abs(p.get('pdg_code'))==15) for p in \
@@ -552,7 +553,8 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols, interference]
+                           process.get('id'), pols, interference,
+                           process.get_gauge()]
 
             try:
                 amplitude_classes[iamp] = proc_classes.index(proc_class)
@@ -781,12 +783,16 @@ class DecayChainSubProcessGroup(SubProcessGroup):
 
         # Now calculate the corresponding properties for process
 
-        # Find core process group
+        # Find core process group; the groups are split by gauge as well (an
+        # output whose process lines are in two gauges, --gauge=FD): two lines
+        # with the same core process in two gauges have a group each
         ids = [(l.get('id'),l.get('onshell')) for l in process.get('legs')]
+        gauge = process.get_gauge()
         core_groups = [(i, group) for (i, group) in \
                       enumerate(self.get('core_groups')) \
-                      if ids in [[(l.get('id'),l.get('onshell')) for l in \
-                                  a.get('process').get('legs')] \
+                      if [ids, gauge] in [[[(l.get('id'),l.get('onshell')) for l in \
+                                  a.get('process').get('legs')],
+                                  a.get('process').get_gauge()] \
                                  for a in group.get('amplitudes')] \
                        and process.get('id') == group.get('number')]
 

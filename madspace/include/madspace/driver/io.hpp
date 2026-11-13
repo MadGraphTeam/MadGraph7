@@ -226,6 +226,7 @@ public:
     static constexpr int f_syst_weights = 128;
     static constexpr int f_bias = 256;
     static constexpr int f_matrix_element = 512;
+    static constexpr int f_beamstrahlung = 1024;
 
     // With f_syst_weights, one column rwgt_<id> is added per entry of
     // `syst_weight_ids`.
@@ -278,6 +279,17 @@ public:
                 {
                     {"x2", FieldLayout::f64, 5},
                     {"fact_scale2", FieldLayout::f64, 5},
+                }
+            );
+        }
+        if (fields & f_beamstrahlung) {
+            // the fraction each beam kept after beamstrahlung; written to the
+            // event file as <beamstrahlung>, and not part of the weight
+            ret.insert(
+                ret.end(),
+                {
+                    {"xbs1", FieldLayout::f64, 6},
+                    {"xbs2", FieldLayout::f64, 6},
                 }
             );
         }

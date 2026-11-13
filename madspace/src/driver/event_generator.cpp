@@ -148,10 +148,13 @@ void EventGenerator::run_generate(GenerateMode mode) {
         update_integral_fractions();
     }
 
+    // only the generation of events can stop early, see request_stop()
+    auto stopping = [&] { return mode == GenerateMode::events && _stop_requested; };
     while (true) {
         _abort_check_function();
 
-        for (std::size_t channel_index = 0; channel_index < _channels.size();
+        for (std::size_t channel_index = 0;
+             channel_index < _channels.size() && !stopping();
              ++channel_index) {
             auto& channel = _channels.at(channel_index);
             double integral_frac = _channel_integral_fractions.at(channel_index);
@@ -194,6 +197,10 @@ void EventGenerator::run_generate(GenerateMode mode) {
         // Wait for the round to commit before updating the channel fractions.
         while (round_in_flight > 0) {
             std::size_t job_id = wait_for_result(round_in_flight);
+            if (stopping()) {
+                // no new batches; the ones in flight still commit and unweight
+                _ready_jobs.clear();
+            }
             if (WeightingPipeline::owns_job(job_id)) {
                 _pipeline->commit_job(job_id);
                 update_counts();
@@ -244,6 +251,12 @@ void EventGenerator::run_generate(GenerateMode mode) {
             }
             continue;
         }
+
+        if (stopping()) {
+            finish_stopped_generation();
+            break;
+        }
+        apply_pending_changes();
 
         update_integral_fractions();
         // only with the steps drained, they are not in the commit order of the jobs
@@ -650,7 +663,152 @@ void EventGenerator::update_integral_status() {
     sum_channel_status(_channels, _status);
 }
 
-void EventGenerator::update_integral_fractions(bool final_step) {
+void EventGenerator::apply_pending_changes() {
+    if (_pending_thread_count) {
+        for (auto& context : _contexts) {
+            if (context->device()->device_type() == DeviceType::cpu) {
+                context->thread_pool().set_thread_count(*_pending_thread_count);
+            }
+        }
+        Logger::info(std::format("CPU thread count set to {}", *_pending_thread_count));
+        _pending_thread_count.reset();
+    }
+    if (_pending_target_count && _generate_mode == GenerateMode::events) {
+        Logger::info(
+            std::format(
+                "requested events changed from {} to {}",
+                _config.target_count,
+                *_pending_target_count
+            )
+        );
+        _config.target_count = *_pending_target_count;
+        _status.count_target = *_pending_target_count;
+        _pending_target_count.reset();
+    }
+}
+
+std::size_t EventGenerator::cpu_thread_count() const {
+    for (auto& context : _contexts) {
+        if (context->device()->device_type() == DeviceType::cpu) {
+            return context->thread_pool().thread_count();
+        }
+    }
+    return 0;
+}
+
+std::tuple<std::size_t, std::string, double> EventGenerator::stop_estimate() const {
+    // the shares as update_integral_fractions() computes them
+    double total_estimate = 0.;
+    for (auto& channel : _channels) {
+        total_estimate += channel->abs_integral_estimate();
+    }
+    std::size_t target_count = _config.target_count;
+    std::string limiting_name;
+    double limiting_fraction = 0.;
+    // empty if no channel limits the configured target
+    for (auto& channel : _channels) {
+        double fraction = channel->abs_integral_estimate() / total_estimate;
+        if (!(fraction > 0)) {
+            continue;
+        }
+        // the fixed point of finish_stopped_generation()'s first loop
+        std::size_t channel_target = channel->status().count_target;
+        double count = channel->count_after_target(channel_target);
+        while (count < channel_target) {
+            channel_target = static_cast<std::size_t>(count);
+            count = channel->count_after_target(channel_target);
+        }
+        std::size_t channel_limit = static_cast<std::size_t>(count / fraction);
+        if (channel_limit < target_count) {
+            target_count = channel_limit;
+            limiting_name = channel->status().name;
+            limiting_fraction = fraction;
+        }
+    }
+    return {target_count, limiting_name, limiting_fraction};
+}
+
+void EventGenerator::redraw_progress() const {
+    if (_config.verbosity != Verbosity::pretty) {
+        return;
+    }
+    _pretty_box_upper.print_first();
+    if (_channels.size() > 1) {
+        _pretty_box_lower.print_first();
+    }
+}
+
+void EventGenerator::finish_stopped_generation() {
+    update_integral_fractions();
+    for (auto& channel : _channels) {
+        channel->apply_step_truncation_budgets();
+    }
+    // The truncation budget of a maximum weight scales with the target count of its
+    // channel, as that many events are expected from it. Lower each target to the
+    // events the channel really has, which the smaller total target below does not
+    // change: dropping events at random keeps the truncated fraction. A tighter
+    // maximum accepts fewer events, hence the loop.
+    unweight_all();
+    while (!_status.done) {
+        for (auto& channel : _channels) {
+            auto& status = channel->status();
+            channel->set_target_count(
+                std::min(
+                    status.count_target,
+                    static_cast<std::size_t>(status.count_unweighted)
+                )
+            );
+            channel->apply_step_truncation_budgets();
+        }
+        unweight_all();
+    }
+
+    // The channel with the fewest events for its share of the integral limits the
+    // total; the others drop their extra events.
+    std::size_t target_count = _config.target_count;
+    std::size_t limiting_index = 0;
+    for (std::size_t channel_index = 0; channel_index < _channels.size();
+         ++channel_index) {
+        double fraction = _channel_integral_fractions.at(channel_index);
+        if (fraction <= 0) {
+            continue;
+        }
+        double count = _channels.at(channel_index)->status().count_unweighted;
+        std::size_t channel_limit = static_cast<std::size_t>(count / fraction);
+        if (channel_limit < target_count) {
+            target_count = channel_limit;
+            limiting_index = channel_index;
+        }
+    }
+    // the shares are rounded, which can ask a channel for one event too many
+    while (true) {
+        update_integral_fractions(true, target_count, false);
+        update_counts();
+        if (_status.done || target_count == 0) {
+            break;
+        }
+        --target_count;
+    }
+    _status.count_target = target_count;
+    update_counts();
+    auto& limiting = _channels.at(limiting_index)->status();
+    Logger::info(
+        std::format(
+            "generation stopped early: keeping {} of the {} requested events, "
+            "limited by channel '{}' ({} events for {:.3g} % of the integral)",
+            target_count,
+            _config.target_count,
+            limiting.name,
+            static_cast<std::size_t>(limiting.count_unweighted),
+            100. * _channel_integral_fractions.at(limiting_index)
+        )
+    );
+}
+
+void EventGenerator::update_integral_fractions(
+    bool final_step, std::optional<std::size_t> target_count, bool tighten_max_weights
+) {
+    std::size_t total_count = target_count.value_or(_config.target_count);
     // the sum of the channel estimates normalizes the fractions
     double total_estimate = 0.;
     for (auto& channel : _channels) {
@@ -661,13 +819,13 @@ void EventGenerator::update_integral_fractions(bool final_step) {
         integral_fraction = channel->abs_integral_estimate(final_step) / total_estimate;
     }
 
-    // Distribute events between channels, ensure sum is exactly target_count
+    // Distribute events between channels, ensure sum is exactly total_count
     std::vector<std::size_t> counts(_channels.size());
     std::vector<double> remainders(_channels.size());
     std::size_t allocated = 0;
     for (auto [count, remainder, fraction] :
          zip(counts, remainders, _channel_integral_fractions)) {
-        double raw = fraction * _config.target_count;
+        double raw = fraction * total_count;
         double floored = std::floor(std::isfinite(raw) && raw > 0. ? raw : 0.);
         count = static_cast<std::size_t>(floored);
         remainder = raw - floored;
@@ -679,8 +837,7 @@ void EventGenerator::update_integral_fractions(bool final_step) {
         double rem_a = remainders.at(a), rem_b = remainders.at(b);
         return rem_a == rem_b ? a < b : rem_a > rem_b;
     });
-    std::size_t leftover =
-        allocated <= _config.target_count ? _config.target_count - allocated : 0;
+    std::size_t leftover = allocated <= total_count ? total_count - allocated : 0;
     leftover = std::min(leftover, order.size());
     for (std::size_t index : order | std::views::take(leftover)) {
         ++counts.at(index);
@@ -698,7 +855,7 @@ void EventGenerator::update_integral_fractions(bool final_step) {
             }
             count = fraction > 0 ? freeze_count : 0;
         }
-        channel->set_target_count(count);
+        channel->set_target_count(count, tighten_max_weights);
     }
 }
 
@@ -814,7 +971,8 @@ void EventGenerator::combine_to_lhe_npy(
                 i,
                 rand_gen,
                 _channels.at(0)->event_layout_extra_flags(),
-                _channels.at(0)->particle_layout_extra_flags()
+                _channels.at(0)->particle_layout_extra_flags(),
+                _config
             );
             buffer_out.event(i).from_lhe_event(lhe_event);
             copy_event_fields(buffer, i, buffer_out, i, syst_weights);
@@ -836,7 +994,9 @@ void EventGenerator::combine_to_lhe(
     LHECompleter& lhe_completer,
     const LHEMeta& meta,
     SystematicsCalculator* systematics,
-    EventHistograms* histograms
+    EventHistograms* histograms,
+    DevicePtr gzip_device,
+    int gzip_algorithm
 ) {
     reset_start_time();
     _systematics = systematics;
@@ -871,7 +1031,7 @@ void EventGenerator::combine_to_lhe(
             full_meta.headers.push_back({"initrwgt", _systematics->initrwgt(), false});
         }
     }
-    LHEFileWriter event_file(file_name, full_meta);
+    LHEFileWriter event_file(file_name, full_meta, gzip_device, gzip_algorithm);
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     bool done = false;
@@ -919,7 +1079,8 @@ void EventGenerator::combine_to_lhe(
                             i,
                             rand_gen,
                             _channels.at(0)->event_layout_extra_flags(),
-                            _channels.at(0)->particle_layout_extra_flags()
+                            _channels.at(0)->particle_layout_extra_flags(),
+                            _config
                         );
                         fill_systematics(
                             lhe_event, in_buffer, i, syst_weights, syst_ids
@@ -953,6 +1114,7 @@ void EventGenerator::combine_to_lhe(
             break;
         }
     }
+    event_file.close();
     print_combine_update(_config.target_count);
     _systematics = nullptr;
     _event_histograms = nullptr;
@@ -1817,7 +1979,7 @@ void EventGenerator::print_combine_init() {
 }
 
 void EventGenerator::print_combine_update(std::size_t count) {
-    if (count == _config.target_count) {
+    if (count == _status.count_target) {
         add_timing_data("combine");
         write_status("done", true);
     } else {
@@ -1831,14 +1993,14 @@ void EventGenerator::print_combine_update(std::size_t count) {
 }
 
 void EventGenerator::print_combine_update_pretty(std::size_t count) {
-    if (count == _config.target_count) {
+    if (count == _status.count_target) {
         auto [wall_time_sec, cpu_time_sec] = _timing_data.at("combine");
         _pretty_box_upper.set_column(
             1,
             {std::format(
                  "{:>5} / {:>5}",
                  format_si_prefix(count),
-                 format_si_prefix(_config.target_count)
+                 format_si_prefix(_status.count_target)
              ),
              format_run_time(wall_time_sec, cpu_time_sec)}
         );
@@ -1855,8 +2017,8 @@ void EventGenerator::print_combine_update_pretty(std::size_t count) {
             {std::format(
                  "{:>5} / {:>5}   {}",
                  format_si_prefix(count),
-                 format_si_prefix(_config.target_count),
-                 format_progress(static_cast<double>(count) / _config.target_count, 60)
+                 format_si_prefix(_status.count_target),
+                 format_progress(static_cast<double>(count) / _status.count_target, 60)
              ),
              std::format(
                  "{:%H:%M:%S}",
@@ -1870,7 +2032,7 @@ void EventGenerator::print_combine_update_pretty(std::size_t count) {
 void EventGenerator::print_combine_update_log(std::size_t count) {
     auto now = std::chrono::steady_clock::now();
     using namespace std::chrono_literals;
-    if (now - _last_print_time < 10s && count != _config.target_count) {
+    if (now - _last_print_time < 10s && count != _status.count_target) {
         return;
     }
     _last_print_time = now;
@@ -1879,12 +2041,12 @@ void EventGenerator::print_combine_update_log(std::size_t count) {
         std::format(
             "combining, events: {} / {}, time: {:%H:%M:%S}",
             format_si_prefix(count),
-            format_si_prefix(_config.target_count),
+            format_si_prefix(_status.count_target),
             std::chrono::round<std::chrono::seconds>(now - _start_time)
         )
     );
 
-    if (count == _config.target_count) {
+    if (count == _status.count_target) {
         auto [wall_time_sec, cpu_time_sec] = _timing_data.at("combine");
         Logger::info(
             std::format(

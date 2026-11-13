@@ -390,30 +390,30 @@ class Event:
         line1=' %2d %6d %+13.7e %14.8e %14.8e %14.8e' % \
         (self.nexternal,self.ievent,self.wgt,self.scale,self.aqed,self.aqcd)
         line+=line1+"\n"
-        scales= []
+        scales = []
         for item in range(1,len(list(self.event2mg.keys()))+1):
             part=self.event2mg[item]
             if part>0:
-                particle_line=self.get_particle_line(self.particle[part])
-                if abs(self.particle[part]["istup"]) == 1 or abs(self.particle[part]["istup"]) == 2:
-                    if "pt_scale" in self.particle[part]:
-                        scales.append(self.particle[part]["pt_scale"])
-                    else:
-                        scales.append(None)
+                particle = self.particle[part]
             else:
-                particle_line=self.get_particle_line(self.resonance[part])
-            line+=particle_line        
+                particle = self.resonance[part]
+            line += self.get_particle_line(particle)
+            # The suffix is the LHE row, including intermediate resonances.
+            # Missing tags must not shift tags belonging to later particles.
+            if "pt_scale" in particle or particle["istup"] == 1:
+                scales.append((item, particle.get("pt_scale")))
         
         if self.diese:
             line += self.diese
         if self.rwgt:
             line += self.rwgt
-        if any(scales):
-            sqrts = self.particle[1]["pt_scale"]
-            line += "<scales %s></scales>\n" % ' '.join(['pt_clust_%i=\"%s\"'
-                                                        %(i+1,s if s else self.scale)
-                                                       for i,s in enumerate(scales)
-                                                       if i>1])
+        if any(scale is not None for _, scale in scales):
+            # Pythia replaces SCALUP by the maximum tagged external scale.
+            # New decay products must retain that maximum even if all the
+            # remaining production jets carry the lower EW-jet scale.
+            line += "<scales %s></scales>\n" % ' '.join(
+                'pt_clust_%i="%s"' % (item, scale if scale is not None else self.scale)
+                for item, scale in scales)
         line+="</event> \n"
         return line
 
@@ -591,15 +591,11 @@ class Event:
                 else: 
                     logger.warning('unknown status in lhe file')
             elif line_type == "clusteringv3":
-                scales = re.findall(r"""pt_clust_(\d+)=\"([e\+\-.\d]+)\"""", line)
-                scales = sorted(scales, key= lambda x: -1*int(x[0]))
-                for index in range(1,len(self.particle)+1):
-                    if self.particle[index]["istup"] == 1:
-                        self.particle[index]["pt_scale"] = scales.pop()[1]
-                if not self.banner:
-                    self.particle[1]["pt_scale"] = self.particle[1]["momentum"].E + self.particle[2]["momentum"].E
-                else:
-                    self.particle[1]["pt_scale"] = float(self.banner.get('run_card', 'ebeam1'))+float(self.banner.get('run_card', 'ebeam2'))
+                scales = re.findall(r"""pt_clust_(\d+)\s*=\s*['"]([e\+\-.\d]+)['"]""", line)
+                for index, scale in scales:
+                    part = self.event2mg[int(index)]
+                    particle = self.particle[part] if part > 0 else self.resonance[part]
+                    particle["pt_scale"] = scale
                 
         return "no_event"
 
@@ -1846,6 +1842,8 @@ class width_estimate(object):
         aloha.loop_mode = False
         aloha.unitary_gauge = False
         cmd = Cmd.MasterCmd()        
+        # the width calculator keeps the gauge set just above
+        cmd.options['auto_gauge'] = False
         for line in commandline.split('\n'):
             cmd.run_cmd(line)
         
@@ -2845,7 +2843,7 @@ class decay_all_events(object):
             # global value for flavors not seen during the maxweight probing.
             mw_for_event = decay_me.get('max_weight_per_flavor', {}).get(
                 flavor_index_full, decay_me['max_weight'])
-            stdin_text=' %s %s %s %s %s %s %s %s %s\n' % ('2', self.options['BW_cut'], self.Ecollider, mw_for_event, self.options['frame_id'], self.options.beampol_me()[0], self.options.beampol_me()[1], flavor_index_prod, flavor_index_full)
+            stdin_text=' %s %s %s %s %s %s %s %s %s\n' % ('2', self.options['BW_cut'], self.Ecollider, mw_for_event, self.options['frame_id'], *self.event_beampol(event_map), flavor_index_prod, flavor_index_full)
             stdin_text+=p_str
             # here I also need to specify the Monte Carlo Masses
             stdin_text+=" %s \n" % nb_mc_masses
@@ -3054,6 +3052,17 @@ class decay_all_events(object):
         return  event_nb/(event_nb+nb_skip)       
 
 
+    def event_beampol(self, event_map):
+        """options.beampol_me() for the incoming legs of self.curr_event in the
+        order event_map hands them to the matrix element (give_momenta)"""
+        if not event_map:
+            event_map = dict((i, i) for i in range(len(self.curr_event.particle)))
+        legs = [self.curr_event.particle[event_map[i] + 1] for i in (0, 1)
+                if i in event_map]
+        if len(legs) == 2 and all(leg['istup'] == -1 for leg in legs):
+            return self.options.beampol_me([leg['momentum'] for leg in legs])
+        return self.options.beampol_me()
+
     def adding_only_helicity(self, event_map, production_tag):
         """no decays for this production mode, run in passthrough mode,
            only adding the helicities to the events """
@@ -3066,7 +3075,7 @@ class decay_all_events(object):
         except KeyError:
             frameid = 6
         try:
-            beampol = self.options.beampol_me()
+            beampol = self.event_beampol(event_map)
         except KeyError:
             beampol = (1.0, 1.0)
         mepath = self.all_ME[production_tag]['path']
@@ -4565,7 +4574,7 @@ class decay_all_events(object):
             rel_brs = [1.0]
 
         try:
-            beampol = self.options.beampol_me()
+            beampol = self.event_beampol(event_map)
         except KeyError:
             beampol = (1.0, 1.0)
         std_in = " %s  %s %s %s %s %s %s %s %s\n" % ("1", BWcut, self.Ecollider, nbpoints,
@@ -4945,6 +4954,7 @@ class decay_all_events(object):
                 else:
                     # now we need to write the decay products in the event
                     # follow the decay chain order, so that we can easily keep track of the mother index
+                    decay_start = part_number + 1
                     map_to_part_number={}
                     for res in range(-1,-len(list(decay_struct[part]["tree"].keys()))-1,-1):
                         index_res_for_mom=decay_struct[part]['mg_tree'][-res-1][0]
@@ -5162,7 +5172,15 @@ class decay_all_events(object):
 
                         decayed_event.event2mg[part_number]=part_number
 
-                
+                    # Keep the production tag on the resonance and let its
+                    # daughters inherit the exact same scale. Pythia ignores
+                    # daughters in matching, but includes their scales when
+                    # resetting SCALUP. Using the raw event scale instead can
+                    # erase the 1 MeV EW-jet distinction after rounding.
+                    if "pt_scale" in curr_event.particle[part_for_curr_evt]:
+                        for daughter in range(decay_start, part_number + 1):
+                            decayed_event.particle[daughter]["pt_scale"] = \
+                                curr_event.particle[part_for_curr_evt]["pt_scale"]
             
             else: # resonance in the production event
                 part=curr_event.event2mg[index]
@@ -5624,15 +5642,6 @@ class decay_all_events_onshell(decay_all_events):
         if '[' in commandline:
             # a loop-induced production (get_LO_definition_from_NLO leaves its
             # [sqrvirt=...]/[virt=...] in place): MadLoop, only in the Fortran
-            return 'fortran'
-        mgcmd = getattr(self, 'mgcmd', None)
-        if mgcmd is not None and mgcmd.options.get('complex_mass_scheme'):
-            # the complex-mass scheme (set from the banner's proc card): the
-            # parameters madmatrix writes for it do not compile, and its
-            # output only fails at the build, which output_density_me cannot
-            # catch
-            logger.info('MadSpin: complex-mass scheme, the density matrices '
-                        'come from the Fortran matrix elements')
             return 'fortran'
         if zero_width:
             # auto_zero_width_PA: only the Fortran output writes propagators

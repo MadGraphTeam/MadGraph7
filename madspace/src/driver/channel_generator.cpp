@@ -814,15 +814,38 @@ void ChannelEventGenerator::update_max_weight(Tensor weights, bool unweight) {
     }
 }
 
-void ChannelEventGenerator::set_target_count(std::size_t target_count) {
+void ChannelEventGenerator::set_target_count(
+    std::size_t target_count, bool tighten_max_weight
+) {
     std::size_t old_target = _status.count_target;
     _status.count_target = target_count;
     // The truncation budget scales with count_target and _max_weight only rises, so
     // tighten the cap for a smaller target here; unweight_all() re-unweights later.
-    if (target_count < old_target && _max_weight != 0 && !_max_weight_fixed &&
-        _freeze_count <= _config.freeze_max_weight_after) {
+    if (tighten_max_weight && target_count < old_target && _max_weight != 0 &&
+        !_max_weight_fixed && _freeze_count <= _config.freeze_max_weight_after) {
         apply_truncation_budget();
     }
+}
+
+double ChannelEventGenerator::count_after_target(std::size_t target_count) const {
+    // same conditions and budget as set_target_count() and apply_truncation_budget()
+    if (target_count >= _status.count_target || _max_weight == 0 || _max_weight_fixed ||
+        _freeze_count > _config.freeze_max_weight_after) {
+        return _status.count_unweighted;
+    }
+    double max_truncation = _config.max_overweight_truncation *
+        static_cast<double>(std::min(target_count, _config.freeze_max_weight_after));
+    double w_sum = 0;
+    for (auto w : _large_weights) {
+        if (w < _max_weight) {
+            break;
+        }
+        w_sum += w;
+        if (w_sum / w > max_truncation) {
+            return _status.count_unweighted * std::min(_max_weight / w, 1.);
+        }
+    }
+    return _status.count_unweighted;
 }
 
 void ChannelEventGenerator::apply_truncation_budget() {

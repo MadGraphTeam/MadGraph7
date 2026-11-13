@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from madgraph import core
 
 import copy
+import re
 import os
 
 import aloha
@@ -1247,8 +1248,9 @@ amp[11]= VVV1_0(w[2],w[1],w[9],GC_4)"""
 # AxialGaugeReferenceTest
 #===============================================================================
 class AxialGaugeReferenceTest(unittest.TestCase):
-    """--axial_gauge: the reference leg of every massless external vector,
-    and the vxxxxxr calls written with it"""
+    """--axial_gauge: the reference leg of every massless external vector
+    and of every massive external fermion, and the vxxxxxr, ixxxxxr and
+    oxxxxxr calls written with it"""
 
     cmd = None
 
@@ -1354,6 +1356,286 @@ class AxialGaugeReferenceTest(unittest.TestCase):
         self.assertTrue(lines[2].startswith('vxxxxxr<'), lines[2])
         self.assertTrue(lines[2].endswith('aloha_obj[4], 4, 0 );'), lines[2])
 
+    def test_reference_massive_fermions(self):
+        """g g > t t~ g: the top quarks are quantised along the reference of
+        the gluons (the first beam gluon); the gluons keep their references"""
+
+        me = self.matrix_element('g g > t t~ g')
+        refs = helas_call_writers.get_axial_gauge_refs(me)
+        self.assertEqual(refs, {1: 2, 2: 1, 3: 1, 4: 1, 5: 1})
+        self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
+                         [3, 4])
+        # without them: the references of the vectors alone, as for massless
+        # quarks
+        refs = helas_call_writers.get_axial_gauge_refs(me,
+                                                       massive_fermions=False)
+        self.assertEqual(refs, {1: 2, 2: 1, 5: 1})
+        self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
+                         [])
+
+    def test_reference_massive_fermions_massless_quark(self):
+        """u u~ > t t~ g g: the reference of the gluons is a massless quark,
+        which the top quarks share. An initial quark comes before an initial
+        gluon, so that every gluon shares it (u g > t t~ u g, g u > t t~ u g)"""
+
+        cases = (('u u~ > t t~ g g', {5: 1, 6: 1, 3: 1, 4: 1}),
+                 ('u g > t t~ u g', {2: 1, 6: 1, 3: 1, 4: 1}),
+                 ('g u > t t~ u g', {1: 2, 6: 2, 3: 2, 4: 2}),
+                 ('u g > u g g', {2: 1, 4: 1, 5: 1}))
+        for process, expected in cases:
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             expected, process)
+
+    def test_reference_massive_fermions_single_vector(self):
+        """With a single massless vector no reference is shared by two of
+        them, and the spin axis does not pay for the costlier wavefunctions
+        (u u~ > t t~ g: 1.20 against 1.19 us): the top quarks keep the
+        helicity basis"""
+
+        for process, expected in (('u u~ > t t~ g', {5: 1}),
+                                  ('u g > t t~ u', {2: 1})):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             expected, process)
+
+    def test_reference_massive_fermions_single_gluon(self):
+        """e+ e- > t t~ g: no massless coloured leg but the gluon, which
+        keeps the beam reference it has without the top quarks (never the
+        momentum of a top quark: another gauge, which a fixed top width
+        breaks), and the top quarks keep the helicity basis. With two gluons
+        they reference each other: no reference is shared by two vectors,
+        and the top quarks keep the helicity basis as well (no further
+        vanishing amplitude, measured)"""
+
+        me = self.matrix_element('e+ e- > t t~ g')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me), {5: 1})
+        me = self.matrix_element('e+ e- > t t~ g g')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {5: 6, 6: 5})
+
+    def test_reference_massive_fermions_photon(self):
+        """a a > t t~ g and g g > t t~ a: the vectors keep the references
+        they have without the top quarks, which follow the gluons first"""
+
+        for process in ('a a > t t~ g', 'g g > t t~ a'):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             {1: 2, 2: 1, 5: 1, 3: 1, 4: 1}, process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me,
+                       massive_fermions=False), {1: 2, 2: 1, 5: 1}, process)
+
+    def test_two_vectors_to_two_massive_fermions(self):
+        """g g > t t~ and a a > t t~ keep the helicity basis, which has its
+        own vanishing helicity configurations there (and as many as any
+        other spin axis): the two beam vectors reference each other"""
+
+        for process in ('g g > t t~', 'a a > t t~'):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             {1: 2, 2: 1})
+
+    def test_reference_massive_fermions_no_vector(self):
+        """u u~ > t t~, e+ e- > t t~, u u~ > ta+ ta-: no vector to gauge,
+        and the fermions keep the helicity basis as well"""
+
+        for process in ('u u~ > t t~', 'e+ e- > t t~', 'u u~ > ta+ ta-'):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me), {},
+                             process)
+
+    def test_no_spin_reference_for_a_helicity_that_matters(self):
+        """The two states of IXXXXXR/OXXXXXR are not helicity states. A
+        polarised process keeps the helicity basis for all its fermions, and
+        so does an initial-state fermion (beam polarisation)"""
+
+        me = self.matrix_element('g g > t t~{L}')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {1: 2, 2: 1})
+        me = self.matrix_element('g g > t t~ z{0}')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {1: 2, 2: 1})
+        # t g > t g g: only the final-state top quark
+        me = self.matrix_element('t g > t g g')
+        refs = helas_call_writers.get_axial_gauge_refs(me)
+        self.assertEqual(refs, {2: 4, 4: 2, 5: 2, 3: 2})
+        self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
+                         [3])
+
+    def test_fortran_ixxxxxr_call(self):
+        """the reference momentum is passed after the flavor; a massless
+        fermion, which shares the cached call template, keeps IXXXXX"""
+
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.FortranUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:6],
+            ['CALL IXXXXX(P(0,1),ZERO,NHEL(1),+1, FLAVOR(1),W(1))',
+             'CALL OXXXXX(P(0,2),ZERO,NHEL(2),-1, FLAVOR(2),W(2))',
+             'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
+             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))',
+             'CALL VXXXXXR(P(0,6),ZERO,NHEL(6),+1,P(0,1),W(6))'])
+        # the gluons keep the references they have without the top quarks
+        me = self.matrix_element('g g > t t~ g')
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:5],
+            ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
+             'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
+             'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
+             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
+        # and nothing changes without the references of the fermions
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me,
+                                                       massive_fermions=False)
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:5],
+            ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
+             'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
+             'CALL OXXXXX(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),W(3))',
+             'CALL IXXXXX(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
+
+    def test_fortran_v4_writer_reference_calls(self):
+        """the old-style Fortran writer writes the same calls: R appended to
+        the routine, the reference momentum before the output, and the plain
+        call for a leg without a reference (the cached call template is
+        shared by the massless and the massive quarks)"""
+
+        me = self.matrix_element('u u~ > t t~ g g')
+        externals = sorted([wf for wf in me.get_all_wavefunctions()
+                            if not wf.get('mothers')],
+                           key=lambda wf: wf.get('number_external'))
+        writer = helas_call_writers.FortranHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        self.assertEqual([writer.get_wavefunction_call(wf) for wf in externals],
+            ['CALL IXXXXX(P(0,1),ZERO,NHEL(1),+1, FLAVOR(1),W(1))',
+             'CALL OXXXXX(P(0,2),ZERO,NHEL(2),-1, FLAVOR(2),W(2))',
+             'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
+             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))',
+             'CALL VXXXXXR(P(0,6),ZERO,NHEL(6),+1,P(0,1),W(6))'])
+        writer = helas_call_writers.FortranHelasCallWriter(self.model)
+        self.assertEqual([writer.get_wavefunction_call(wf) for wf in externals][2:],
+            ['CALL OXXXXX(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),W(3))',
+             'CALL IXXXXX(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),W(4))',
+             'CALL VXXXXX(P(0,5),ZERO,NHEL(5),+1,W(5))',
+             'CALL VXXXXX(P(0,6),ZERO,NHEL(6),+1,W(6))'])
+
+    def test_python_reference_calls(self):
+        """the Python writer of check gauge / brs: the reference leg after
+        nsv / nsf when axial_gauge is set (references computed per matrix
+        element), the momentum-replaced BRS leg left as it is"""
+
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.PythonUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:6],
+            ['w[0] = ixxxxx(p[0],ZERO,hel[0],+1, flavor[0] if flavor is not None else -1)',
+             'w[1] = oxxxxx(p[1],ZERO,hel[1],-1, flavor[1] if flavor is not None else -1)',
+             'w[2] = oxxxxxr(p[2],mdl_MT,hel[2],+1, flavor[2] if flavor is not None else -1,p[0])',
+             'w[3] = ixxxxxr(p[3],mdl_MT,hel[3],-1, flavor[3] if flavor is not None else -1,p[0])',
+             'w[4] = vxxxxxr(p[4],ZERO,hel[4],+1,p[0])',
+             'w[5] = vxxxxxr(p[5],ZERO,hel[5],+1,p[0])'])
+        calls = writer.get_matrix_element_calls(me, gauge_check=True)
+        self.assertEqual(calls[0], 'w[4] = vxxxxx(p[4],ZERO, 4,+1)')
+        self.assertIn('w[5] = vxxxxxr(p[5],ZERO,hel[5],+1,p[0])', calls)
+        # (the BRS call consumed the replaced leg of me: a new one)
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = helas_call_writers.PythonUFOHelasCallWriter(self.model)
+        self.assertNotIn('xxxxxr(', ' '.join(writer.get_matrix_element_calls(me)))
+
+    def test_madmatrix_ixxxxxr_call(self):
+        """madmatrix: the 0-based particle number of the reference comes
+        last, after the one of the leg"""
+
+        from madmatrix import model_handling
+        me = self.matrix_element('u u~ > t t~ g g')
+        writer = model_handling.MadMatrixUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        externals = sorted([wf for wf in me.get_all_wavefunctions()
+                            if not wf.get('mothers')],
+                           key=lambda wf: wf.get('number_external'))
+        lines = [writer.get_external(wf, wf).strip() for wf in externals]
+        self.assertEqual(lines[0],
+            'ixxxxx<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[0], +1, '
+            'cFlavors[iflavor][0], aloha_obj[0], 0 );')
+        self.assertEqual(lines[2],
+            'oxxxxxr<M_ACCESS, W_ACCESS>( momenta, cIPD[0], hel_sv[2], +1, '
+            'cFlavors[iflavor][2], aloha_obj[2], 2, 0 );')
+        self.assertEqual(lines[3],
+            'ixxxxxr<M_ACCESS, W_ACCESS>( momenta, cIPD[0], hel_sv[3], -1, '
+            'cFlavors[iflavor][3], aloha_obj[3], 3, 0 );')
+        self.assertEqual(lines[4],
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[4], +1, '
+            'cFlavors[iflavor][4], aloha_obj[4], 4, 0 );')
+
+    def test_output_options(self):
+        """--axial_gauge=True gives the references of the vectors and of the
+        massive fermions; --fermion_reference=False and --density keep the
+        fermions in the helicity basis"""
+
+        me = self.matrix_element('g g > t t~ g')
+        refs = helas_call_writers.get_output_axial_gauge_refs
+        both = {1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+        vectors = {1: 2, 2: 1, 5: 1}
+        self.assertEqual(refs(me, None), {})
+        self.assertEqual(refs(me, {}), {})
+        self.assertEqual(refs(me, {'fermion_reference': 'True'}), {})
+        self.assertEqual(refs(me, {'axial_gauge': 'True'}), both)
+        self.assertEqual(refs(me, {'axial_gauge': True,
+                                   'fermion_reference': 'True'}), both)
+        self.assertEqual(refs(me, {'axial_gauge': 'True',
+                                   'fermion_reference': 'False'}), vectors)
+        self.assertEqual(refs(me, {'axial_gauge': 'True',
+                                   'fermion_reference': False}), vectors)
+        self.assertEqual(refs(me, {'axial_gauge': 'True', 'density': '3'}),
+                         vectors)
+        self.assertEqual(refs(me, {'axial_gauge': 'False'}), {})
+
+    def test_unknown_helicity_in_the_event_file(self):
+        """The state of a fermion with a spin reference is not a helicity
+        state: madevent (get_helicities) and mg7 (the "unknown_helicity"
+        legs of the subprocess) report it as 9 in the event file"""
+
+        import types
+        import madgraph.iolibs.export_v4 as export_v4
+        import madgraph.iolibs.export_mg7 as export_mg7
+
+        class Exporter(object):
+            get_unknown_helicity_lines = \
+                     export_v4.ProcessExporterFortran.get_unknown_helicity_lines
+
+        me = self.matrix_element('g g > t t~ g')
+        cases = [({'axial_gauge': 'True'}, [3, 4]),
+                 ({'axial_gauge': 'True', 'fermion_reference': 'False'}, []),
+                 ({'axial_gauge': 'True', 'density': '3'}, []),
+                 ({}, [])]
+        for options, legs in cases:
+            exporter = Exporter()
+            exporter.cmd_options = options
+            exporter.opt = {'axial_gauge': 'axial_gauge' in options,
+                            'output_options': options}
+            self.assertEqual(exporter.get_unknown_helicity_lines(me),
+                             ['   nhel(%d) = 9' % leg for leg in legs])
+            mg7 = types.SimpleNamespace(matrix_element=me,
+                 helas_call_writer=types.SimpleNamespace(cmd_options=options))
+            self.assertEqual(
+                export_mg7.OneProcessExporterMG7.get_unknown_helicity_legs(mg7),
+                [leg - 1 for leg in legs])
+        # no massive fermion with a reference: nothing to hide
+        me = self.matrix_element('g g > g g g')
+        exporter = Exporter()
+        exporter.cmd_options = {'axial_gauge': 'True'}
+        exporter.opt = {'axial_gauge': True}
+        self.assertEqual(exporter.get_unknown_helicity_lines(me), [])
+
     def test_axial_gauge_requested(self):
         """the output option, and its refusal in the FD gauge (no vxxxxxr in
         the five-component HELAS library)"""
@@ -1411,6 +1693,206 @@ class CombineNameHashTest(unittest.TestCase):
         written = combine_name('FFVV1010', others, 3, [])
         call = combine_name('FFVV1010', others, 3, [], unknown_tag=True)
         self.assertEqual(call % {'tags': '', 'propa': ''}, written)
+
+
+class FDPropagatorComplexMassTest(unittest.TestCase):
+    """The FD gauge propagator projects the off-shell wavefunction with the
+    5-momentum q = (q^mu, -i m): js2 contracts it with +i m, the value of
+    -q(4). The routines used to write the conjugate of q(4), which is the same
+    for a real mass and is not analytic in a complex one, so FD and unitary
+    disagreed in the complex-mass scheme (2e-5 for b b > h b b QCD=0 with the
+    width of the external h set to zero, see docs/auto-fd-gauge.md). Outside
+    the complex-mass scheme the routines are written as before."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+
+    def routine(self, language, complex_mass):
+        """the FD gauge Z propagator routine FFV2_3 as *language* writes it"""
+        import aloha.create_aloha as create_aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        aloha.complex_mass, aloha.unitary_gauge = complex_mass, 3
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(
+                self.model, explicit_combine=True)
+            aloha_model.add_Lorentz_object(self.model.get('lorentz'))
+            aloha_model.compute_subset([(('FFV2',), [], 3)])
+            text = dict(aloha_model)[('FFV2', 3)].write(
+                output_dir=None, mode='no_include', language=language)
+        finally:
+            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+        return text if isinstance(text, str) else '\n'.join(text)
+
+    def test_fortran(self):
+        text = self.routine('Fortran', complex_mass=True)
+        self.assertIn('FDQ(4) = -CI*M3', text)
+        self.assertIn('+FDQ(4)*V3%W(5))/FDNQ', text)
+        self.assertNotIn('CONJG', text)
+        # real mass: unchanged (the conjugate is the same number there)
+        self.assertIn('-DCONJG(FDQ(4))*V3%W(5))/FDNQ',
+                      self.routine('Fortran', complex_mass=False))
+
+    def test_madmatrix(self):
+        from madmatrix import model_handling
+        text = self.routine(model_handling.MadMatrixALOHAWriter, complex_mass=True)
+        # M3 is a cxtype: -i*M3 = ( Im M3, -Re M3 )
+        self.assertIn('cxmake( M3.imag() + fptype_sv{ 0 }, -M3.real() + fptype_sv{ 0 } )',
+                      text)
+        self.assertIn('+ FDQ[4] * wV3[4] ) / FDNQ', text)
+        self.assertNotIn('cxconj', text)
+        text = self.routine(model_handling.MadMatrixALOHAWriter, complex_mass=False)
+        self.assertIn('cxmake( fptype_sv{ 0 }, -M3 + fptype_sv{ 0 } )', text)
+        self.assertIn('- cxconj( FDQ[4] ) * wV3[4] ) / FDNQ', text)
+
+    def test_python_template(self):
+        """wavefunctions.multiply_propagator_factor (the Python routines and
+        `check`) is analytic in the mass: with m complex it is the continuation
+        of the real-mass projection, not a function of conj(m)."""
+        import aloha.template_files.wavefunctions as wavefunctions
+        win = wavefunctions.WaveFunction(size=7)
+        win.momenta = [500., 120., -80., 300.]
+        win[2:7] = [0.3 + 0.1j, -0.2j, 0.7, 0.1 - 0.4j, 0.25 + 0.5j]
+
+        def project(m):
+            return list(wavefunctions.multiply_propagator_factor(win, m)[2:7])
+
+        # an analytic function of m: the derivative along the real and the
+        # imaginary axis agree (Cauchy-Riemann), d/d(Im m) = i d/d(Re m)
+        m, h = 80.4 - 1.0j, 1e-4
+        along_re = [(a - b) / (2 * h) for a, b in zip(project(m + h), project(m - h))]
+        along_im = [(a - b) / (2 * h) for a, b in zip(project(m + 1j * h), project(m - 1j * h))]
+        for d_re, d_im in zip(along_re, along_im):
+            self.assertAlmostEqual(abs(d_im - 1j * d_re), 0., delta=1e-6 * (1 + abs(d_re)))
+
+
+class ComplexMassCustomPropagatorTest(unittest.TestCase):
+    """Complex-mass scheme: the mass argument is complex and carries the width,
+    and there is no width argument. Every writer used to refuse any custom
+    propagator denominator there, including the axial gauge (P.PBar) P^2 of a
+    massless vector (check gauge). Now a propagator is written as it is unless
+    its numerator or denominator uses the width, which is still refused."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+
+    def routine(self, request, language, gauge):
+        import aloha.create_aloha as create_aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        aloha.complex_mass, aloha.unitary_gauge = True, gauge
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(
+                self.model, explicit_combine=True)
+            aloha_model.add_Lorentz_object(self.model.get('lorentz'))
+            aloha_model.compute_subset([request])
+            name = (request[0][0] + ''.join(request[1]), request[2])
+            text = dict(aloha_model)[name].write(
+                output_dir=None, mode='no_include', language=language)
+        finally:
+            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+        return text if isinstance(text, str) else '\n'.join(text)
+
+    def languages(self):
+        from madmatrix import model_handling
+        return ['Fortran', 'CPP', 'Python', model_handling.MadMatrixALOHAWriter]
+
+    def test_axial_gauge_denominator_is_written(self):
+        """the photon propagator of the axial gauge, (P.PBar) P^2: two TMPs"""
+        for language in self.languages():
+            text = self.routine((('FFV1',), ['P0'], 3), language, 2)
+            self.assertRegex(text, r'denom = .*TMP\d+ ?\* ?d?TMP\d+', str(language))
+
+    def test_width_in_the_propagator_is_refused(self):
+        """1W, (-g + q q / (M^2 - i M W)): the width is in the numerator and in
+        the denominator"""
+        for language in self.languages():
+            with self.assertRaisesRegex(Exception, 'uses the width', msg=str(language)):
+                self.routine((('FFV2',), ['P1W'], 3), language, True)
+
+    def test_dollar_propagator(self):
+        """The $ exclusion (P1D) keeps the width inside its FCT definitions,
+        (M -+ BWCUTOFF*W)**2, which the numerator and denominator checks do
+        not see. In the complex-mass scheme the routine used to lose both W
+        and BWCUTOFF from its arguments, although every call site passes
+        BWCUTOFF: an uninitialised W3 (and the arguments shifted by one) in
+        Fortran, no compilation in C++. Now BWCUTOFF stays an argument and
+        the window uses the real pole mass and the width of the complex mass,
+        M**2 = MR**2 - i MR W, which reproduce the fixed-width window."""
+        from madmatrix import model_handling
+        from aloha.aloha_writers import ALOHAWriterForFortranQP
+        expected = {
+            'Fortran': ['FFV2P1D_3(F1, F2, COUP, M3, BWCUTOFF,V3)',
+                        'MR3 = SQRT(REAL(M3**2))', 'W3 = -AIMAG(M3**2)/MR3',
+                        'FCT0 = ((MR3-W3*BWCUTOFF))**(2d0)'],
+            # quadruple precision (MadLoop, aMC@NLO): the generic REAL/AIMAG
+            # keep the kind of the complex*32 M3 -- DIMAG does not compile
+            # there and DBLE would truncate the pole mass to double
+            ALOHAWriterForFortranQP: ['complex*32 M3', 'real*16 MR3',
+                        'MR3 = SQRT(REAL(M3**2))', 'W3 = -AIMAG(M3**2)/MR3',
+                        'FCT0 = ((MR3-W3*BWCUTOFF))**(2q0)'],
+            'CPP': ['std::complex<double> M3, double BWCUTOFF,ALOHAOBJ',
+                    'MR3 = sqrt(real(M3*M3));', 'W3 = -imag(M3*M3)/MR3;',
+                    'FCT0 = pow((MR3-W3*BWCUTOFF),2.);'],
+            model_handling.MadMatrixALOHAWriter: [
+                    'const fptype & BWCUTOFF',
+                    'const fptype MR3 = sqrt( ( M3 * M3 ).real() );',
+                    'const fptype W3 = -( M3 * M3 ).imag() / MR3;',
+                    'FCT0 = cxpow( ( MR3 - W3 * BWCUTOFF ), two );']}
+        for language, lines in expected.items():
+            text = self.routine((('FFV2',), ['P1D'], 3), language, True)
+            for line in lines:
+                self.assertIn(line, text, str(language))
+            # the FCTs use the real pole mass, never the complex M3
+            fcts = [l for l in text.splitlines() if re.search(r'FCT[01] =', l)]
+            self.assertEqual(len(fcts), 2, str(language))
+            for fct in fcts:
+                self.assertNotRegex(fct, r'\bM3\b', str(language))
+
+    def test_madmatrix_doubleexpansion_propagator(self):
+        """MADMATRIX_DOUBLEEXPANSION (FPTYPE=e) writes P^2 - m^2 itself, in
+        double-word arithmetic. With the complex mass, m^2 = M*M carries the
+        width: P^2 - m^2 = ( P^2 - Re(m^2) ) + i ( -Im(m^2) ), the same
+        number as the fixed-width ( P^2 - M^2 ) + i M W, since
+        m^2 = M^2 - i M W. (FPTYPE=e does not build everywhere, so the text
+        is what can be checked here.)"""
+        from madmatrix import model_handling
+        saved = model_handling.arith_doubleexpansion
+        model_handling.arith_doubleexpansion = True
+        try:
+            text = self.routine((('FFV2',), [], 3),
+                                model_handling.MadMatrixALOHAWriter, 1)
+        finally:
+            model_handling.arith_doubleexpansion = saved
+        block = text.split('#ifdef MADARITH_DOUBLEEXPANSION', 1)[1].split('#endif', 1)[0]
+        for line in ['const cxtype M2c3 = M3 * M3;',
+                     'M2d3 = static_cast<MG_ARITHM::Double<fptype_amp>>(M2c3.real());',
+                     '( P3d[3] * P3d[3] ) - M2d3 );',
+                     'const fptype_amp_sv iMW = -M2c3.imag();',
+                     'const cxtype_amp_sv denden = cxmake( PmM2, iMW );']:
+            self.assertIn(line, block)
+        # M is complex: no real-mass cast, and no width argument
+        self.assertNotIn('static_cast<MG_ARITHM::Double<fptype_amp>>(M3)', block)
+        self.assertNotRegex(text, r'\bW3\b')
+        # and the default build keeps the complex-mass madmatrix::denom
+        self.assertIn('madmatrix::denom( Ccoeff, COUP, dP3, M3 );', text)
+
+    def test_width_in_the_numerator_only_is_refused(self):
+        """the numerator is checked too, not only a custom denominator"""
+        from aloha.aloha_writers import WriteALOHA
+
+        class Stub(object):
+            outgoing = 3
+            tag = ['P1X']
+            class routine(object):
+                denominator = None
+                expr = '( TMP0 * M3 * W3 )'
+        with self.assertRaisesRegex(Exception, 'uses the width'):
+            WriteALOHA.check_complex_mass_propagator(Stub())
+        Stub.routine.expr = '( TMP0 * M3 * OM3 )'
+        WriteALOHA.check_complex_mass_propagator(Stub())    # no width: fine
 
 
 class TestZeroWidthPdgs(unittest.TestCase):

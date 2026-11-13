@@ -3,8 +3,11 @@ import logging
 import os
 from collections import defaultdict
 
+from madgraph import MadGraph5Error
+from madgraph.core import helas_objects
 from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 from madgraph.iolibs import export_cpp
+from madgraph.iolibs import helas_call_writers
 from madgraph.iolibs.group_subprocs import IdentifyConfigTag
 from madgraph.core.diagram_generation import DiagramTag
 
@@ -59,6 +62,16 @@ class IdentifySGTopologyTag(IdentifySGConfigTag):
 class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
     def __init__(self, matrix_element, cpp_helas_call_writer, merge_same_topologies=True):
+        if isinstance(matrix_element, helas_objects.HelasMultiProcess):
+            matrix_element = matrix_element.get('matrix_elements')
+        if isinstance(matrix_element, helas_objects.HelasMatrixElementList) and len(matrix_element) == 1:
+            matrix_element = matrix_element[0]
+        # The diagrams, color flows and helicity tables describe one ME; a
+        # mirror reuses it. Reject other inputs before CPP renumbers them.
+        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
+            raise MadGraph5Error(
+                'MG7 requires exactly one HelasMatrixElement per subprocess '
+                'directory; export multiple matrix elements in separate directories.')
         super().__init__(matrix_element, cpp_helas_call_writer)
         self.matrix_element = matrix_element
         self.name = f"P{matrix_element.get('processes')[0].shell_string()}"
@@ -117,6 +130,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 for (p, l) in zip(is_parts + fs_parts, self.process.get("legs"))
             ),
             self.process.get("id"),
+            self.process.get_gauge(),
         )
 
     def set_topology(self):
@@ -405,6 +419,17 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 self.active_color_map.append(active_colors)
                 i += 1
 
+    def get_unknown_helicity_legs(self):
+        """The (0-based) external legs whose state is not a helicity state:
+        the massive fermions whose spin is quantised along a reference
+        momentum (--axial_gauge, helas_call_writers.get_axial_gauge_refs).
+        Their helicity is written as 9 in the LHE (mg7.common.lhe_helicities)."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None)
+        refs = helas_call_writers.get_output_axial_gauge_refs(
+                                               self.matrix_element, options)
+        return [leg - 1 for leg in helas_call_writers.get_spin_reference_legs(
+                                                  self.matrix_element, refs)]
+
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
         if self.color_basis:
@@ -511,6 +536,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "pdg_color_types": pdg_color_types,
                 "diagram_count": len(self.diagrams),
                 "helicities": list(self.matrix_element.get_helicity_matrix()),
+                "unknown_helicity": self.get_unknown_helicity_legs(),
                 "interference": interference,
             },
             self.diagram_tags,

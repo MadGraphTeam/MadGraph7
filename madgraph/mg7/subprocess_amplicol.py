@@ -338,6 +338,14 @@ class AmplicolSubprocess(MadgraphSubprocess):
         density of its mapping over those of each flavour's partners, the other
         phase-space channels, which are sampled by the subprocesses of the
         flavour's copies."""
+        if self.process.lepton_density is not None:
+            # The dressed-lepton luminosity and its x sampling are wired into
+            # the madmatrix subprocesses only; here the beams would silently
+            # stay monochromatic.
+            raise NotImplementedError(
+                "dressed-lepton beams (beam.lepton_density) are not supported "
+                "with the AmpliCol output; use the madmatrix one"
+            )
         flavors = self.meta["flavors"]
         particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         mappings = []

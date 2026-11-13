@@ -1446,6 +1446,7 @@ class TestCmdMatchBox(IOTests.IOTestManager):
         cmd = """
         set apply_flavor_grouping False
         import model sm
+        set gauge unitary
         generate w+ w- > w+ w- @0
         output matchbox %(path)s/TEST --postpone_model
         generate u u~ > u u~ [virt=QCD] @1
@@ -1478,6 +1479,9 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         misc.deactivate_dependence('samurai', cmd = interface, log='stdout')        
         misc.deactivate_dependence('golem', cmd = interface, log='stdout')
         misc.activate_dependence('ninja', cmd = interface, log='stdout',MG5dir=MG5DIR)
+
+        # The reference includes COLLIER interfaces on every runner.
+        misc.activate_dependence('collier', cmd = interface, log='stdout',MG5dir=MG5DIR)
 
         run_cmd('generate g g > t t~ [virt=QCD]')
         interface.onecmd('output %s -f' % str(pjoin(self.IOpath,'ggttx_IOTest')))
