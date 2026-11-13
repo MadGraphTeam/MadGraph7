@@ -7,7 +7,6 @@ import hashlib
 import io
 import json
 import os
-import re
 import struct
 import subprocess
 import sys
@@ -1022,25 +1021,11 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
     # The installer stages the native runtime within its guarded invocation.
     # Restricted-mode and ordinary integration checks use separate invocations.
-    assert workflow.count(guarded) == 8
-    # The licensed loop jobs guard their build, test and tir invocations (the
-    # tir tests: the workspace, then the Python-producer tests in a loop) at
-    # what their 16 GB runner holds, in each job after the licence gate.
-    loop_guarded = "tools/ci/memory_watchdog.py --limit-gib 12 --"
-    assert workflow.count(loop_guarded) == 6
-    head, gate, loop_jobs = workflow.partition("\n  licence:\n")
-    assert gate and loop_guarded not in head and guarded not in loop_jobs
-    jobs = dict(
-        block.split(":\n", 1)
-        for block in re.split(r"\n  (?=[a-z][a-z0-9-]*:\n)", loop_jobs)[1:]
-    )
-    assert {name: body.count(loop_guarded) for name, body in jobs.items()} == {
-        "loop-runtime": 1,
-        "loop-shard": 1,
-        "loop": 0,
-        "loop-induced": 1,
-        "tir": 3,
-    }
+    # The light one-loop tests are the ninth guarded invocation; they run
+    # without the licence secret (the package's own Symbolica library key).
+    assert workflow.count(guarded) == 9
+    assert "secrets.SYMBOLICA_LICENSE" not in text
+    assert f"env -u SYMBOLICA_LICENSE .venv/bin/python {guarded}" in workflow
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",
