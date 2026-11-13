@@ -1867,6 +1867,11 @@ int main(void) {{
         flags.append(str(shared))
     if flags:
         flags.append(f"-Wl,-rpath,{shared_directory}")
+    # The section garbage collection rusticol-config --libs adds.
+    if "apple-darwin" in rust_target:
+        flags.append("-Wl,-dead_strip")
+    elif "-linux-" in rust_target:
+        flags.append("-Wl,--gc-sections")
     flags.extend(f"-l{item}" for item in link.get("system_libraries", []))
     for framework in link.get("frameworks", []):
         flags.extend(("-framework", str(framework)))

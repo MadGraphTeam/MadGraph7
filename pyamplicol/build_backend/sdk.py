@@ -436,6 +436,12 @@ def _native_link_flags(
     flags: list[str] = [str(path) for path in shared_files]
     for directory in dict.fromkeys(path.parent for path in shared_files):
         flags.append(f"-Wl,-rpath,{directory}")
+    # rusticol-config --libs's section garbage collection (rusticol_config.
+    # section_gc_flags): the probe links as consumers do.
+    if "apple-darwin" in target:
+        flags.append("-Wl,-dead_strip")
+    elif "-linux-" in target:
+        flags.append("-Wl,--gc-sections")
     libraries = link.get("system_libraries")
     frameworks = link.get("frameworks")
     if not isinstance(libraries, list) or not all(

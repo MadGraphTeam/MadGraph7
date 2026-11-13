@@ -85,14 +85,17 @@ macOS; see [The SDK archive cache](native-apis.md#the-sdk-archive-cache)).
 `rusticol-config --libs` (which the generated drivers' Makefiles use) prints
 everything a C, C++ or Fortran consumer links against: the unpacked archive,
 the three shared libraries by path (dependents first), a run path to their
-directory, and the target's system libraries. On Linux, for example:
+directory, the linker's unused-section removal (see
+[Linking the SDK](native-apis.md#linking-the-sdk)) and the target's system
+libraries. On Linux, for example:
 
 ```text
 ~/.cache/pyamplicol/sdk/<version>-<sha256>/librusticol_capi.a
 <site-packages>/pyamplicol/_sdk/lib/libmpc-pyamplicol.so.3
 <site-packages>/pyamplicol/_sdk/lib/libmpfr-pyamplicol.so.6
 <site-packages>/pyamplicol/_sdk/lib/libgmp-pyamplicol.so.10
--Wl,-rpath,<site-packages>/pyamplicol/_sdk/lib -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+-Wl,-rpath,<site-packages>/pyamplicol/_sdk/lib -Wl,--gc-sections
+-lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
 ```
 
 `rusticol-config --rustflags` gives the same flags as `-C link-arg=...` for a

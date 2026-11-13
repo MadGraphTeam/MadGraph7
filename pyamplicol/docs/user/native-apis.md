@@ -315,6 +315,20 @@ In the source workflow, generated drivers below a checkout can find the nearest
 `.venv/bin/rusticol-config` created by `just dev-install`. This is a
 development convenience, not an embedded build-machine path.
 
+### Linking the SDK
+
+The archive is linked one object file per Rust crate. `--libs` (and
+`--rustflags`) therefore also ask the linker to remove unreferenced sections:
+`-Wl,--gc-sections` on Linux, `-Wl,-dead_strip` on macOS, the flags Rust
+links its own binaries with. Without them a consumer keeps every function of
+each crate it touches; a tree-level consumer, which calls no one-loop entry
+point, then also carries most of the one-loop engine (the selftest artifact's
+UMAMI provider on Linux x86-64: 78 MB without, 49 MB with section removal).
+The flags apply to the whole link: exported, referenced and constructor code
+stays, and unreferenced functions of the consumer's own objects go as well. A
+consumer that relies on otherwise unreferenced sections can append
+`-Wl,--no-gc-sections` after the SDK flags (GNU ld, gold, lld).
+
 `--cflags`, `--libs`, and `--rustflags` emit shell-escaped argument streams.
 By contrast, `--cargo-rustflags` emits the same linker arguments using Cargo's
 unit-separator encoding for `CARGO_ENCODED_RUSTFLAGS`; it is not a shell

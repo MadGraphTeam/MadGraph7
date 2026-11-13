@@ -130,7 +130,14 @@ class SdkInfo:
         frameworks = tuple(
             token for name in self.frameworks for token in ("-framework", name)
         )
-        return (str(self.library), *shared, *run_paths, *libraries, *frameworks)
+        return (
+            str(self.library),
+            *shared,
+            *run_paths,
+            *section_gc_flags(self.target),
+            *libraries,
+            *frameworks,
+        )
 
     @property
     def rust_flags(self) -> tuple[str, ...]:
@@ -170,6 +177,28 @@ class SdkInfo:
             "link_flags": list(self.link_flags),
             "rust_flags": list(self.rust_flags),
         }
+
+
+def section_gc_flags(target: str) -> tuple[str, ...]:
+    """The linker's unused-section removal for a consumer of the archive.
+
+    The archive's Rust objects keep each function and data item in a section
+    of its own (ELF) or a subsection (Mach-O), as rustc emits them, but a
+    static archive is linked one object file per crate: without section
+    garbage collection a consumer keeps every function of each crate it
+    references, including the one-loop engine's, which the tree-level C ABI
+    never calls. Rust links its own binaries with the same flags.
+    ``-Wl,--gc-sections`` (GNU ld, gold, lld) keeps exported and referenced
+    code, constructors and everything they reach; a consumer that needs
+    otherwise unreferenced sections can append ``-Wl,--no-gc-sections``.
+    macOS's linker does the same with ``-Wl,-dead_strip``.
+    """
+
+    if "apple-darwin" in target:
+        return ("-Wl,-dead_strip",)
+    if "-linux-" in target:
+        return ("-Wl,--gc-sections",)
+    return ()
 
 
 def sdk_cache_root() -> Path:
