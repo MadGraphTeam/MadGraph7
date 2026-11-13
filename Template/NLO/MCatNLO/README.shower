@@ -30,13 +30,16 @@ showered with the current cards, with a warning.
 
 The command file (MCatNLO/RUN_PYTHIA8_<n>/Pythia8.cmd) has three groups of
 settings:
- - required by the matching: starting scales (pTmaxMatch, pTmaxFudge), the
+ - required by the matching: the simple Pythia8 shower (PartonShowers:model
+   = 1 where available), FSR and ISR (ISR stays off for ultraperipheral
+   photon beams), starting scales (pTmaxMatch, pTmaxFudge), the
    global-recoil scheme of the first FSR emission of S events, the dead-cone
    recoil weight, SpaceShower:dipoleRecoil and rapidityOrder, the
    MC@NLO-Delta, FxFx and QED-matching settings, masses, lepton beams. They
    are listed in mcatnlo_locked.dat and checked by the driver after Pythia8
    is initialised: a tune, a plugin or any later setting that changes them
-   stops the run ("MG5_MCATNLO_CONTRACT" lines in the log);
+   stops the run ("MG5_MCATNLO_CONTRACT" lines in the log). Failed or missing
+   checks also stop output collection after batch jobs finish;
  - defaults, which pythia8_options can change: couplings (alphaS, alphaEM),
    PDFs, underlying event, hadronisation, decays, stable particles, tunes;
  - run control set by MG5_aMC (event file, numbers of events).
@@ -46,6 +49,17 @@ UNSAFE in the log and the NLO accuracy of the result is not guaranteed.
 Settings unknown to the installed Pythia8 version are refused; a required
 setting missing in an old version (for example the per-dipole starting
 scales needed by MC@NLO-Delta) stops the run.
+
+For FxFx, njmax remains a user choice: it may cover +0, +1, +2, ... samples
+generated in separate process directories. It must be at least
+max_n_matched_jets of the current sample, recorded from proc_characteristics
+in the event file. njmax = -1 uses this recorded value. The same lower bound
+applies to JetMatching:nJetMax in pythia8_options. Older event files that do
+not record the bound use proc_characteristics when reconstructing a legacy
+contract, if available.
+
+When NLO QED corrections are matched, qed_shower = F gives a warning and
+the QED shower stays on, as required by the matching.
 
 Matrix-element corrections follow arXiv:2308.06389: SpaceShower:MEcorrections
 and TimeShower:MEextended are off, so that the hard process has no MECs (they

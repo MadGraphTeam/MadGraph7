@@ -68,7 +68,8 @@ class TestPythia8Driver(unittest.TestCase):
         self.executables[hepmc] = builddir / 'Pythia8.exe'
         return self.executables[hepmc]
 
-    def shower(self, sample, limit, fxfx=False, hepmc=0, event_norm='average'):
+    def shower(self, sample, limit, fxfx=False, hepmc=0, event_norm='average',
+               command_suffix='', expected_status=0):
         executable = self.build(hepmc)
         directory = tempfile.TemporaryDirectory(prefix='run_', dir=self.root)
         self.addCleanup(directory.cleanup)
@@ -93,7 +94,8 @@ class TestPythia8Driver(unittest.TestCase):
         card['njmax'] = 1
         contract = mcatnlo_shower.MatchingContract(
             parton_shower='PYTHIA8', ickkw=3 if fxfx else 0,
-            ptj=20., born_coloured_partons=-1 if fxfx else 2)
+            ptj=20., born_coloured_partons=-1 if fxfx else 2,
+            max_n_matched_jets=1 if fxfx else -1)
         run = dict(nevents=limit, nevents_total=header.nevents,
                    event_norm=event_norm, seed=17,
                    mc_masses={pdg: mass for pdg, mass in header.mc_masses().items()
@@ -101,7 +103,7 @@ class TestPythia8Driver(unittest.TestCase):
                    masses={6: 173., 25: 125.}, widths={6: 1.49},
                    pdf=('internal', None, False))
         settings = mcatnlo_shower.pythia8_settings(contract, card, run, self.pythia)
-        (work / 'Pythia8.cmd').write_text(settings.render())
+        (work / 'Pythia8.cmd').write_text(settings.render() + command_suffix)
         (work / 'locked.dat').write_text(settings.render_locked())
         environment = dict(os.environ)
         environment['PYTHIA8DATA'] = self.pythia.xmldoc
@@ -110,11 +112,20 @@ class TestPythia8Driver(unittest.TestCase):
         result = subprocess.run([str(executable), 'Pythia8.cmd', 'locked.dat'],
                                 cwd=work, env=environment, capture_output=True,
                                 text=True, timeout=60)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, expected_status, result.stdout + result.stderr)
         (work / 'run.log').write_text(result.stdout + result.stderr)
         summary = mcatnlo_shower.check_shower_log(str(work / 'run.log'))
-        self.assertTrue(summary['contract'], result.stdout + result.stderr)
+        self.assertIs(summary['contract'], expected_status == 0, result.stdout + result.stderr)
         return work, summary
+
+    def test_late_radiation_changes_fail_the_runtime_matching_check(self):
+        for key in ('PartonLevel:FSR', 'PartonLevel:ISR'):
+            with self.subTest(setting=key):
+                _, summary = self.shower(
+                    'ttbar_nlo.lhe.gz', 2, command_suffix='%s = off\n' % key,
+                    expected_status=3)
+                self.assertTrue(any('mismatch: ' + key in line
+                                    for line in summary['mismatches']))
 
     def test_fxfx_vetoes_respect_the_requested_lhe_prefix(self):
         for norm in ('average', 'sum'):

@@ -5003,12 +5003,28 @@ RESTART = %(mint_mode)s
         return max(1, jobs)
 
     def check_pythia8_logs(self, logs, settings):
-        """Report what the Pythia8 driver did in each job."""
+        """Require successful matching checks and report each job's summary."""
         expected = int(settings.get('Main:spareMode1').value)
         split_logs = [l for l in logs if '__' in os.path.basename(l)] or logs
+        reports = [(log, mcatnlo_shower.check_shower_log(log)) for log in split_logs]
+        required = bool(settings.locked())
+        errors = []
+        for log, info in reports:
+            if info['contract'] is False:
+                errors.append('%s: MC@NLO matching check failed' % log)
+                errors.extend(info['mismatches'])
+            elif required and info['contract'] is None:
+                errors.append('%s: no MC@NLO matching check was reported' % log)
+        if required and len(split_logs) != self.shower_card['nsplit_jobs']:
+            errors.append('Expected %d Pythia8 shower logs, found %d.'
+                          % (self.shower_card['nsplit_jobs'], len(split_logs)))
+        if errors:
+            raise aMCatNLOError(
+                'Pythia8 did not verify the settings required by the MC@NLO matching:\n  %s\n'
+                'Check pythia8_options in the shower card and the archived shower logs.'
+                % '\n  '.join(errors))
         total = 0
-        for log in split_logs:
-            info = mcatnlo_shower.check_shower_log(log)
+        for log, info in reports:
             if info['showered'] is None:
                 logger.warning('No summary from the Pythia8 driver in %s' % log)
                 continue
@@ -5020,7 +5036,7 @@ RESTART = %(mint_mode)s
             if info['failed'] and int(info['failed']):
                 logger.info('%s: %s events failed in Pythia8 and were skipped'
                             % (os.path.basename(log), info['failed']))
-        if settings.locked():
+        if required:
             logger.info('Pythia8 settings required by the MC@NLO matching verified '
                         '(%d events showered)' % total)
 
@@ -5096,7 +5112,7 @@ RESTART = %(mint_mode)s
                'seed': card['rnd_seed'] or derive_shower_seed(0)}
         settings = mcatnlo_shower.pythia8_settings(contract, card, run, installation)
         for note in settings.notes:
-            if note.startswith('UNSAFE'):
+            if note.startswith(('UNSAFE', 'WARNING:')):
                 logger.warning(note)
             else:
                 logger.info(note)

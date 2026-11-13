@@ -27,7 +27,8 @@ short-distance cross section. User documentation is in
      `MCatNLO/banner.dat`, and `MCatNLO_MadFKS.inputs` sources the shell
      script `Scripts/MCatNLO_MadFKS_<shower>.Script`.
    * `shower_template.sh` runs each (split) job; `check_pythia8_logs`
-     reports what the Pythia8 driver did.
+     requires a successful matching check in every job log before output
+     collection, including on batch clusters, and reports the event summaries.
 
 ## The matching contract
 
@@ -36,6 +37,7 @@ short-distance cross section. User documentation is in
 | `parton_shower` | shower of the MC counterterms; must match the run card |
 | `mcatnlo_delta` | MC@NLO-Delta: per-dipole starting scales in the LHE file |
 | `ickkw`, `ptj` | FxFx merging and its matrix-element cut |
+| `max_n_matched_jets` | minimum allowed FxFx `njmax`, from `proc_characteristics`; -1 if unknown in older files |
 | `qed_matching` | QED splittings are matched (`splitting_types` contains QED) |
 | `pythia8_mmaxgamma` | `#Pythia8MMaxGamma` of `FKS_params.dat` |
 | `fxfx_pythia8_finite_terms` | FxFx Sudakov finite terms (forced for PYTHIA8) |
@@ -53,14 +55,26 @@ the beginning of every event file produced by the integration channels.
 `Pythia8Settings` holds three tiers:
 
 * `INTERNAL`: run control and event input, never changed by the user;
-* `LOCKED`: required by the PYTHIA8 MC counterterms (starting scales,
+* `LOCKED`: required by the PYTHIA8 MC counterterms (the simple shower model,
+  FSR and ISR, starting scales,
   global-recoil scheme, recoil dead cone, `dipoleRecoil`, `rapidityOrder`,
   MEC policy, Delta, FxFx, QED matching, masses, beams). They are written
   last in the command file and listed in `mcatnlo_locked.dat`; the driver
   checks them after `Pythia::init()` and exits with status 3 on a mismatch.
   `pythia8_options` may override them only with
   `allow_unsafe_shower_options = T`;
-* `FREE`: defaults (couplings, PDF, MPI, hadronisation, decays, seeds).
+* `FREE`: defaults (couplings, PDF, MPI, hadronisation, decays, seeds,
+  FxFx `njmax`).
+
+`PartonShowers:model = 1` is locked only where the installed version has
+that switch. ISR remains locked off for ultraperipheral photon beams.
+Turning off matched radiation otherwise needs the unsafe opt-in. With QED
+matching, `qed_shower = F` is ignored with a warning.
+
+FxFx `njmax` may exceed `max_n_matched_jets` to cover samples generated in
+separate process directories. Its default, -1, uses the recorded maximum.
+The effective `JetMatching:nJetMax`, including `pythia8_options`, must meet
+this lower bound when it is known; it is not locked to an equality.
 
 Required settings unknown to the installed Pythia8 version stop the run
 (per-feature gating, from the `xmldoc` of the installation); unknown

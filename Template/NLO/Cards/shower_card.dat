@@ -59,11 +59,14 @@ is_bbar      = XXX      # T if bb~ production           !ONLY FOR HERWIG6!
 #***********************************************************************
 Qcut       = XXX     # Merging scale for FxFx
 njmax      = XXX       # Maximal multiplicity in the merging (fxFx).
-#                     # -1 means guessed  from the process definition
+#                     # -1 uses max_n_matched_jets from the generation.
+#                     # Must be at least that value; larger values can cover
+#                     # samples generated in separate process directories.
 qed_shower   = XXX      # T = enable the QED shower (photon emission by quarks,
 #                       # top included, leptons, W and other charged resonances,
 #                       # and photon splittings); always on if NLO QED
-#                       # corrections are matched !ONLY FOR PYTHIA8!
+#                       # corrections are matched (F then gives a warning)
+#                       # !ONLY FOR PYTHIA8!
 primordialkt = XXX      # T = enable primordial parton k_T  
 hepmc_format = XXX      # HepMC version of the output: hepmc3, hepmc2 or auto
 #                       # (auto: hepmc3, or hepmc2 if MadAnalysis5 runs at

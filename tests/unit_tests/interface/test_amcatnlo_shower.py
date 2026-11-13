@@ -237,6 +237,35 @@ elif mode in ('HWU', 'FXFX'):
         self.assertTrue(self.input.is_file())
         self.assertTrue((self.events / 'events.lhe_0.lhe').is_file())
 
+    def test_batch_contract_failure_raises_when_submission_returns_normally(self):
+        self.input.write_text(self.input.read_text().replace('HERWIG6', 'PYTHIA8'))
+        self.cmd.options['pythia8_path'] = str(self.root)
+        self.cmd.shower_card['nsplit_jobs'] = 1
+        settings = mcatnlo_shower.Pythia8Settings()
+        settings.internal('main', 'Main:spareMode1', 12)
+        settings.lock('matching', 'PartonShowers:model', 1)
+        self.cmd.prepare_pythia8_shower = mock.Mock(return_value={
+            'exe': str(self.mcatnlo / 'analysis_fixture'), 'cmd': '',
+            'locked': settings.render_locked(), 'settings': settings})
+        mismatch = ('MG5_MCATNLO_CONTRACT mismatch: PartonShowers:model is 2, '
+                    'the MC@NLO subtraction requires 1')
+
+        # Batch backends can return normally after exhausting retries, even
+        # though the executable failed. Its archived log must stop the run.
+        def batch_result(jobs, args, run_type):
+            rundir = Path(next(iter(jobs)))
+            (rundir / 'mcatnlo_run.log').write_text(
+                mismatch + '\nMG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+
+        self.cmd.run_all = mock.Mock(side_effect=batch_result)
+        with self.assertRaisesRegex(interface.aMCatNLOError, mismatch):
+            self.cmd.run_mcatnlo(str(self.input), {})
+        self.assertIn(mismatch,
+                      (self.events / 'mcatnlo_run_PYTHIA8_1.log').read_text())
+        self.assertTrue(self.input.is_file())
+        self.assertNotIn(mock.call('Run complete', level='shower', update_results=True),
+                         self.cmd.update_status.call_args_list)
+
     def test_analysis_with_no_histograms_still_archives_logs_and_cleans_up(self):
         self.run_shower('EMPTY')
         self.assert_clean()
@@ -281,6 +310,92 @@ class TestPythia8OutputSetup(unittest.TestCase):
                                side_effect=[interface.MadGraph5Error('missing'),
                                             '-lHepMC']):
             self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (2, '-lHepMC'))
+
+    def test_qed_shower_override_is_logged_as_a_warning(self):
+        self.cmd.shower_card['qed_shower'] = False
+        self.cmd.banner = interface.banner_mod.Banner()
+        self.cmd.banner['mgruncard'] = "1 = nevents\n'average' = event_norm\n"
+        self.cmd.banner['montecarlomasses'] = '5 4.8\n'
+        self.cmd.get_shower_pdf = mock.Mock(return_value=('internal', None, False))
+        self.cmd.get_pythia8_hepmc_setup = mock.Mock(return_value=(0, ''))
+        self.cmd.compilation_jobs = mock.Mock(return_value=1)
+        installation = mock.Mock(version='8.318', path='/pythia8')
+        contract = mcatnlo_shower.MatchingContract(
+            parton_shower='PYTHIA8', qed_matching=True)
+        with tempfile.TemporaryDirectory() as root:
+            self.cmd.me_dir = root
+            with mock.patch.object(mcatnlo_shower, 'Pythia8Installation',
+                                   return_value=installation), \
+                 mock.patch.object(mcatnlo_shower, 'build_pythia8_driver',
+                                   return_value='/fake/Pythia8.exe'), \
+                 self.assertLogs(interface.logger, level='WARNING') as output:
+                result = self.cmd.prepare_pythia8_shower('events.lhe', contract, None)
+        self.assertTrue(any('qed_shower = F is ignored' in line for line in output.output))
+        self.assertEqual(result['settings'].get('TimeShower:QEDshowerByQ').value, 'on')
+
+
+class TestPythia8LogValidation(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='mg7_shower_logs_')
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.shower_card = ShowerCard()
+        self.settings = mcatnlo_shower.Pythia8Settings()
+        self.settings.internal('main', 'Main:spareMode1', 2)
+        self.settings.lock('matching', 'PartonShowers:model', 1)
+
+    def log(self, name, content):
+        path = self.root / name
+        path.write_text(content)
+        return str(path)
+
+    def test_a_failed_split_job_stops_the_run_with_mismatch_details(self):
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        good = self.log('shower__1.log', 'MG5_MCATNLO_CONTRACT OK (1 settings verified)\n')
+        mismatch = ('MG5_MCATNLO_CONTRACT mismatch: PartonShowers:model is 2, '
+                    'the MC@NLO subtraction requires 1')
+        bad = self.log('shower__2.log', mismatch + '\n'
+                       'MG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+        with self.assertRaises(interface.aMCatNLOError) as error:
+            self.cmd.check_pythia8_logs([good, bad], self.settings)
+        self.assertIn(bad, str(error.exception))
+        self.assertIn(mismatch, str(error.exception))
+
+    def test_missing_contract_check_is_fatal_with_or_without_event_summary(self):
+        for content in ('', 'MG5_MCATNLO_SUMMARY read=2 showered=2 failed=0\n'):
+            with self.subTest(content=content):
+                log = self.log('shower.log', content)
+                with self.assertRaisesRegex(interface.aMCatNLOError,
+                                            'no MC@NLO matching check was reported'):
+                    self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_missing_job_logs_prevent_claiming_success(self):
+        for logs in ([], [str(self.root / 'missing.log')]):
+            with self.subTest(logs=logs):
+                with self.assertRaises(interface.aMCatNLOError):
+                    self.cmd.check_pythia8_logs(logs, self.settings)
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        log = self.log('shower__1.log', 'MG5_MCATNLO_CONTRACT OK (1 settings verified)\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'Expected 2 Pythia8 shower logs'):
+            self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_explicit_failure_without_mismatches_or_locked_settings_is_fatal(self):
+        self.settings.free('matching', 'PartonShowers:model', 1)
+        log = self.log('shower.log', 'MG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'MC@NLO matching check failed'):
+            self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_successful_split_summaries_are_counted_once(self):
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        content = ('MG5_MCATNLO_CONTRACT OK (1 settings verified)\n'
+                   'MG5_MCATNLO_SUMMARY read=2 showered=2 failed=0\n')
+        logs = [self.log('shower__%d.log' % i, content) for i in (1, 2)]
+        logs.append(self.log('shower.log', content * 2))
+        with self.assertLogs(interface.logger, level='INFO') as output:
+            self.cmd.check_pythia8_logs(logs, self.settings)
+        self.assertIn('(4 events showered)', output.output[-1])
 
 
 class TestShowerPDFSelection(unittest.TestCase):

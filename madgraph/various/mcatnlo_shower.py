@@ -286,6 +286,7 @@ class MatchingContract(dict):
         ('mcatnlo_delta', bool, False),
         ('ickkw', int, 0),
         ('ptj', float, 0.),
+        ('max_n_matched_jets', int, -1),
         ('shower_scale_factor', float, 1.),
         ('lpp1', int, 1),
         ('lpp2', int, 1),
@@ -420,6 +421,8 @@ def contract_from_generation(me_dir, run_card, proc_characteristics,
         mcatnlo_delta=bool(value('mcatnlo_delta', False)),
         ickkw=ickkw,
         ptj=value('ptj', 0.),
+        max_n_matched_jets=(proc_characteristics or {}).get(
+            'max_n_matched_jets', -1),
         shower_scale_factor=value('shower_scale_factor', 1.),
         lpp1=value('lpp1', 1),
         lpp2=value('lpp2', 1),
@@ -448,6 +451,8 @@ def legacy_contract(banner, me_dir, event_file=None):
                 name, value = [x.strip() for x in line.split('=', 1)]
                 if name == 'splitting_types':
                     proc[name] = re.findall(r"'(\w+)'", value)
+                elif name == 'max_n_matched_jets':
+                    proc[name] = int(value)
     has_madspin = bool(dict.get(banner, 'madspin'))
     files = [event_file] if event_file else []
     contract = contract_from_generation(
@@ -835,6 +840,9 @@ def pythia8_settings(contract, card, run, installation):
     # --- beams -----------------------------------------------------------
     s.internal('beams', 'Beams:frameType', 4, 'beams and events from the LHE file')
     s.internal('beams', 'Beams:LHEF', 'events.lhe')
+    for radiation in ('FSR', 'ISR'):
+        s.lock('beams', 'PartonLevel:%s' % radiation, True,
+               reason='the MC counterterms require shower radiation')
     lpp = (contract['lpp1'], contract['lpp2'])
     if abs(lpp[0]) == 2 and abs(lpp[1]) == 2:
         reason = 'photon-photon collisions from ultraperipheral beams'
@@ -850,6 +858,9 @@ def pythia8_settings(contract, card, run, installation):
 
     # --- matching: scales and recoil -------------------------------------
     why = 'assumed by the PYTHIA8 MC counterterms'
+    if has('PartonShowers:model'):
+        s.lock('matching', 'PartonShowers:model', 1,
+               'the simple Pythia8 shower', reason=why)
     for shower in ('TimeShower', 'SpaceShower'):
         s.lock('matching', '%s:pTmaxMatch' % shower, 1,
                'start the shower at SCALUP', reason=why)
@@ -942,7 +953,10 @@ def pythia8_settings(contract, card, run, installation):
                 'FxFx merging: Qcut in the shower card (%s) must be larger than '
                 'ptj in the run card (%s).' % (card['qcut'], contract['ptj']))
         s.free('merging', 'JetMatching:qCut', qcut, 'merging scale (Qcut)')
-        s.free('merging', 'JetMatching:nJetMax', int(card['njmax']),
+        njmax = int(card['njmax'])
+        if njmax == -1:
+            njmax = contract['max_n_matched_jets']
+        s.free('merging', 'JetMatching:nJetMax', njmax,
                'maximal multiplicity (njmax)')
     else:
         s.lock('merging', 'JetMatching:doFxFx', False, reason='no FxFx merging')
@@ -1050,12 +1064,33 @@ def pythia8_settings(contract, card, run, installation):
     if card['time_shower_me_extended']:
         from_card.append(('TimeShower:MEextended', 'on'))
     if contract['qed_matching'] and not qed:
-        notes.append('qed_shower = F is ignored: the NLO QED corrections are '
+        notes.append('WARNING: qed_shower = F is ignored: the NLO QED corrections are '
                      'matched to the QED shower, which is therefore on.')
     options = dict(from_card)
     options.update(card['pythia8_options'] or {})
     s.apply_user_options(options, allow_unsafe=bool(
         card['allow_unsafe_shower_options']))
+    if contract['ickkw'] == 3 and contract['max_n_matched_jets'] >= 0:
+        # njmax may cover samples generated in other process directories.
+        # Check the effective value, including case-insensitive user options,
+        # without locking it to the multiplicity of this sample.
+        njmax = s.get('JetMatching:nJetMax').value
+        for setting in s.user:
+            if setting.key.lower() == 'jetmatching:njetmax':
+                njmax = setting.value
+        try:
+            njmax = int(njmax)
+        except ValueError:
+            raise ShowerInterfaceError(
+                'FxFx merging: njmax (JetMatching:nJetMax) must be an integer: %s.'
+                % njmax)
+        if njmax < contract['max_n_matched_jets']:
+            raise ShowerInterfaceError(
+                'FxFx merging: njmax (JetMatching:nJetMax = %s) must be at least '
+                'max_n_matched_jets = %s, recorded from proc_characteristics at '
+                'event generation. Larger values are allowed for samples '
+                'generated in separate process directories.'
+                % (njmax, contract['max_n_matched_jets']))
     for setting in s.overridden:
         notes.append('UNSAFE: %s = %s overrides a setting required by the '
                      'MC@NLO matching.' % (setting.key, setting.value))
@@ -1209,15 +1244,19 @@ def lhapdf_set_name(lhapdf_config, lhaid, pdfsetsdir=None):
 
 def check_shower_log(path):
     """Interpret the summary lines written by the Pythia8 driver."""
-    info = {'contract': None, 'showered': None, 'failed': None}
+    info = {'contract': None, 'showered': None, 'failed': None, 'mismatches': []}
     if not os.path.isfile(path):
         return info
     with open(path, errors='replace') as stream:
         for line in stream:
             if line.startswith('MG5_MCATNLO_CONTRACT OK'):
-                info['contract'] = True
+                if info['contract'] is not False:
+                    info['contract'] = True
             elif line.startswith('MG5_MCATNLO_CONTRACT FAILED'):
                 info['contract'] = False
+            elif line.startswith('MG5_MCATNLO_CONTRACT mismatch'):
+                info['contract'] = False
+                info['mismatches'].append(line.strip())
             elif line.startswith('MG5_MCATNLO_SUMMARY'):
                 for item in line.split()[1:]:
                     if '=' in item:

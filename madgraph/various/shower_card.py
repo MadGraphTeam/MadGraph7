@@ -180,7 +180,7 @@ class ShowerCard(banner.RunCard):
         # FxFx merging parameters 
         self.add_param("Qcut",  -1.0, comment="Merging scale", 
                        py8='qcut')
-        self.add_param("njmax", -1, comment="Maximal multiplicity in the merging. -1 means guessed  from the process definition",
+        self.add_param("njmax", -1, comment="Maximal multiplicity in the merging, at least max_n_matched_jets of the generation. -1 uses that value; larger values may cover separately generated samples",
                        py8='njmax')
 
         # DECAY

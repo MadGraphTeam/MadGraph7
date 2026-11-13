@@ -48,12 +48,29 @@ class TestMatchingContract(unittest.TestCase):
         contract = mcatnlo_shower.MatchingContract(
             parton_shower='PYTHIA8', mcatnlo_delta=True, ickkw=3, ptj='10d0',
             qed_matching='.true.', pythia8_mmaxgamma='2.5d0',
-            nlo_resonance_decays='23, 6', born_coloured_partons=2)
+            nlo_resonance_decays='23, 6', born_coloured_partons=2,
+            max_n_matched_jets=2)
         reread = mcatnlo_shower.MatchingContract.from_text(contract.to_text())
         self.assertEqual(reread, contract)
         self.assertEqual(reread['nlo_resonance_decays'], [6, 23])
         self.assertAlmostEqual(reread['pythia8_mmaxgamma'], 2.5)
         self.assertTrue(reread['qed_matching'])
+        self.assertEqual(reread['max_n_matched_jets'], 2)
+
+    def test_old_contract_has_unknown_maximum_jet_multiplicity(self):
+        contract = mcatnlo_shower.MatchingContract.from_text(
+            'parton_shower = PYTHIA8\nickkw = 3\n')
+        self.assertEqual(contract['max_n_matched_jets'], -1)
+
+    def test_legacy_contract_reads_maximum_jet_multiplicity(self):
+        os.mkdir(pjoin(self.root, 'SubProcesses'))
+        with open(pjoin(self.root, 'SubProcesses', 'proc_characteristics'), 'w') as stream:
+            stream.write("splitting_types = ['QCD']\nmax_n_matched_jets = 2\n")
+        path = self.write('legacy.lhe', [])
+        contract = mcatnlo_shower.legacy_contract(
+            banner_mod.Banner(path), self.root, path)
+        self.assertTrue(contract['legacy'])
+        self.assertEqual(contract['max_n_matched_jets'], 2)
 
     def test_scan_born_multiplicity_and_resonances(self):
         # q q~ > t t~ (S) and q q~ > t t~ g (H); a Z decaying to b b~ in
@@ -147,7 +164,8 @@ class TestMatchingContract(unittest.TestCase):
                     'ickkw': 3, 'ptj': 20., 'shower_scale_factor': 1.,
                     'lpp1': 1, 'lpp2': 1}
         contract = mcatnlo_shower.contract_from_generation(
-            self.root, run_card, {'splitting_types': ['QCD', 'QED']},
+            self.root, run_card, {'splitting_types': ['QCD', 'QED'],
+                                  'max_n_matched_jets': 2},
             [self.write('events.lhe', events)])
         self.assertEqual(contract['parton_shower'], 'PYTHIA8')
         self.assertTrue(contract['qed_matching'])
@@ -158,6 +176,7 @@ class TestMatchingContract(unittest.TestCase):
         self.assertEqual(contract['nlo_resonance_decays'], [23])
         self.assertEqual(contract['born_coloured_partons'], 0)
         self.assertTrue(contract['fks_params_md5'])
+        self.assertEqual(contract['max_n_matched_jets'], 2)
 
 
 class FakePythia8(object):
@@ -202,6 +221,9 @@ class TestPythia8Settings(unittest.TestCase):
         s = self.settings()
         locked = self.locked(s)
         for key, value in [('TimeShower:pTmaxMatch', '1'),
+                           ('PartonShowers:model', '1'),
+                           ('PartonLevel:FSR', 'on'),
+                           ('PartonLevel:ISR', 'on'),
                            ('SpaceShower:pTmaxMatch', '1'),
                            ('TimeShower:globalRecoil', 'on'),
                            ('TimeShower:globalRecoilMode', '2'),
@@ -225,6 +247,36 @@ class TestPythia8Settings(unittest.TestCase):
         self.assertIn('Random:seed = 7', text)
         self.assertIn('Main:spareMode1 = 100', text)
         self.assertIn('TimeShower:globalRecoil = on', s.render_locked())
+
+    def test_shower_model_and_radiation_need_unsafe_opt_in(self):
+        for key, value in [('PartonShowers:model', 2),
+                           ('PartonShowers:model', 3),
+                           ('PartonLevel:FSR', 'off'),
+                           ('PartonLevel:ISR', 'off')]:
+            for options in ({key: value}, '%s = %s' % (key.swapcase(), value)):
+                with self.subTest(options=options):
+                    with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                                'allow_unsafe_shower_options'):
+                        self.settings(pythia8_options=options,
+                                      allow_unsafe_shower_options='F')
+                    settings = self.settings(pythia8_options=options,
+                                             allow_unsafe_shower_options='T')
+                    self.assertNotIn(key, self.locked(settings))
+                    self.assertTrue(any(note.startswith('UNSAFE: ' + key)
+                                        for note in settings.notes))
+
+    def test_older_pythia_without_shower_model_switch(self):
+        settings = self.settings(installation=FakePythia8(
+            missing=['PartonShowers:model']))
+        self.assertIsNone(settings.get('PartonShowers:model'))
+        self.assertNotIn('PartonShowers:model', settings.render_locked())
+
+    def test_upc_preserves_disabled_isr(self):
+        contract = mcatnlo_shower.MatchingContract(
+            parton_shower='PYTHIA8', lpp1=2, lpp2=-2)
+        settings = self.settings(contract)
+        self.assertEqual(self.locked(settings)['PartonLevel:ISR'], 'off')
+        self.assertEqual(self.locked(settings)['PartonLevel:FSR'], 'on')
 
     def test_mec_off_for_nlo_resonance_decays(self):
         contract = mcatnlo_shower.MatchingContract(parton_shower='PYTHIA8',
@@ -257,6 +309,56 @@ class TestPythia8Settings(unittest.TestCase):
         self.assertEqual(locked['JetMatching:qCutME'], '20.0')
         self.assertEqual(locked['TimeShower:nPartonsInBorn'], '-1')
         self.assertEqual(s.get('JetMatching:qCut').value, '30.0')
+
+    def test_fxfx_njmax_can_include_separately_generated_samples(self):
+        for maximum in (0, 1, 2):
+            contract = mcatnlo_shower.MatchingContract(
+                parton_shower='PYTHIA8', ickkw=3, ptj=20.,
+                max_n_matched_jets=maximum)
+            for requested in (-1, maximum, maximum + 2):
+                with self.subTest(maximum=maximum, njmax=requested):
+                    settings = self.settings(contract, qcut=30., njmax=requested)
+                    self.assertEqual(settings.get('JetMatching:nJetMax').value,
+                                     str(maximum if requested == -1 else requested))
+                    self.assertEqual(settings.tier('JetMatching:nJetMax'),
+                                     mcatnlo_shower.FREE)
+                    self.assertNotIn('JetMatching:nJetMax', settings.render_locked())
+
+    def test_fxfx_njmax_cannot_be_below_generated_multiplicity(self):
+        contract = mcatnlo_shower.MatchingContract(
+            parton_shower='PYTHIA8', ickkw=3, ptj=20., max_n_matched_jets=2)
+        for njmax in (-2, 0, 1):
+            with self.subTest(njmax=njmax):
+                with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                            'at least max_n_matched_jets = 2'):
+                    self.settings(contract, qcut=30., njmax=njmax)
+
+    def test_fxfx_njmax_checks_effective_pythia8_option(self):
+        contract = mcatnlo_shower.MatchingContract(
+            parton_shower='PYTHIA8', ickkw=3, ptj=20., max_n_matched_jets=2)
+        for options in ({'JetMatching:nJetMax': 1}, 'jetmatching:NJETMAX = 1'):
+            with self.subTest(options=options):
+                with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                            'at least max_n_matched_jets = 2'):
+                    self.settings(contract, qcut=30., njmax=3,
+                                  pythia8_options=options,
+                                  allow_unsafe_shower_options='T')
+        settings = self.settings(contract, qcut=30., njmax=1,
+                                 pythia8_options={'JetMatching:nJetMax': 3})
+        self.assertIn('JetMatching:nJetMax = 3', settings.render())
+        self.assertEqual(settings.tier('JetMatching:nJetMax'), mcatnlo_shower.FREE)
+        for value in ('invalid', '1.5', '1e1'):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                            'must be an integer'):
+                    self.settings(contract, qcut=30.,
+                                  pythia8_options={'JetMatching:nJetMax': value})
+
+    def test_fxfx_old_contract_without_multiplicity_remains_usable(self):
+        contract = mcatnlo_shower.MatchingContract.from_text(
+            'parton_shower = PYTHIA8\nickkw = 3\nptj = 20\n')
+        settings = self.settings(contract, qcut=30., njmax=3)
+        self.assertEqual(settings.get('JetMatching:nJetMax').value, '3')
 
     def test_user_options_and_opt_in(self):
         s = self.settings(pythia8_options="{'Tune:pp': 14, 'TimeShower:alphaSvalue': 0.1365}")
@@ -315,7 +417,8 @@ class TestPythia8Settings(unittest.TestCase):
                                                    qed_matching=True)
         s = self.settings(contract, qed_shower='F')
         self.assertEqual(self.locked(s)['TimeShower:QEDshowerByL'], 'on')
-        self.assertTrue(any('qed_shower = F is ignored' in n for n in s.notes))
+        self.assertTrue(any(n.startswith('WARNING: qed_shower = F is ignored')
+                            for n in s.notes))
 
     def test_unknown_settings(self):
         with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
@@ -440,6 +543,20 @@ class TestPythia8Installation(unittest.TestCase):
             self.assertTrue(info['contract'])
             self.assertEqual(info['showered'], '100')
             self.assertEqual(info['read'], '102')
+
+    def test_shower_log_failure_keeps_mismatch_details(self):
+        mismatch = ('MG5_MCATNLO_CONTRACT mismatch: PartonShowers:model is 2, '
+                    'the MC@NLO subtraction requires 1')
+        with tempfile.TemporaryDirectory() as root:
+            log = pjoin(root, 'log')
+            for suffix in ('', 'MG5_MCATNLO_CONTRACT FAILED (1 of 31 settings differ)\n',
+                           'MG5_MCATNLO_CONTRACT OK (31 settings verified)\n'):
+                with self.subTest(suffix=suffix):
+                    with open(log, 'w') as stream:
+                        stream.write(mismatch + '\n' + suffix)
+                    info = mcatnlo_shower.check_shower_log(log)
+                    self.assertIs(info['contract'], False)
+                    self.assertEqual(info['mismatches'], [mismatch])
 
 
 if __name__ == '__main__':
