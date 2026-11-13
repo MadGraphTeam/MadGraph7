@@ -13,6 +13,7 @@ from madgraph.various.banner import RunCardMG7
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
 from madgraph.mg7.driver import (
+    run_cluster_job,
     ExistingRun,
     REWEIGHT_CARD,
     compute_decay_widths,
@@ -736,6 +737,8 @@ def main() -> None:
         "--make-arg", action="append", default=[],
         help="extra argument of the matrix element build (--decay-widths)")
     parser.add_argument(
+        "--cluster-job", metavar="DIR", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
         "--reweight", dest="reweight_card", default=None,
         help="reweight the events after generation with this reweight card "
              "(it becomes Cards/reweight_card.dat and switches reweighting on)",
@@ -751,6 +754,12 @@ def main() -> None:
         help="read the answers to the questions piped or redirected into stdin, "
              "as an interactive session: invalid \"set\" commands then only warn")
     args = parser.parse_args()
+
+    # A cluster job asks nothing, whatever stdin of the submitting process is.
+    if args.cluster_job:
+        _raise_open_file_limit()
+        run_cluster_job(os.path.abspath(args.cluster_job))
+        return
 
     # The answers to the questions are read from stdin as in an interactive
     # session, where a command that cannot be applied (e.g. an invalid "set")

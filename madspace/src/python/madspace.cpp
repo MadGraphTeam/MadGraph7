@@ -456,6 +456,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("file"),
             py::arg("param_card"),
             py::arg("parameters") = std::unordered_map<std::string, double>{},
+            py::arg("index") = -1,
             py::return_value_policy::reference_internal,
             pydoc::doc("Context::load_matrix_element")
         )
@@ -871,8 +872,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "sample",
             &BeamstrahlungSampler::sample,
-            py::arg("x1"), py::arg("x2"), py::arg("q2"), py::arg("component"),
-            py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"),
+            py::arg("x1"),
+            py::arg("x2"),
+            py::arg("q2"),
+            py::arg("component"),
+            py::arg("u1"),
+            py::arg("u2"),
+            py::arg("u3"),
+            py::arg("u4"),
             pydoc::doc("BeamstrahlungSampler::sample")
         );
 

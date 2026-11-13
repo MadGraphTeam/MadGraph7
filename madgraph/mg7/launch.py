@@ -72,6 +72,8 @@ from madgraph.mg7.driver import (  # noqa: F401
     detect_param_scan,
     run_scan,
     run_generation,
+    cluster_enabled,
+    run_cluster_job,
     _lhe_needed_by,
     force_lhe_output_if_needed,
 )
