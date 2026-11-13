@@ -251,8 +251,10 @@ reconstructs member programs from their representative references before
 comparing every colour and helicity bit for bit. Set
 `RUSTICOL_RECURRENCE_PROCESSES` to a JSON array of process IDs to restrict that
 traversal. Without an artifact the test reports that it skipped. CI runs it
-against the topology-replay and all-flow-union artifacts that the export
-integration test generates.
+against the artifacts that the export integration tests generate: `d d~ > z g`
+in the topology-replay and all-flow-union layouts, and a grouped
+`q q~ > t t~ g` set with an explicit alias, flavour-blind process-group members
+(including crossed initial states), and massive top sources.
 
 ```console
 RUSTICOL_RECURRENCE_ARTIFACT=/path/to/artifact \

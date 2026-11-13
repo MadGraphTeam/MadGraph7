@@ -205,8 +205,10 @@ jobs:
         # Collection of the ordinary integration batch initializes Symbolica.
         # The restricted child must run first with an uninitialized parent;
         # the others run one process per file, one at a time.
-        # The recurrence export test keeps its two generated artifacts for the
-        # Rust parity test below, so CI compares exported values bit for bit.
+        # The recurrence export tests keep their three generated artifacts
+        # (d d~ > z g in both LC layouts; a grouped q q~ > t t~ g set with an
+        # alias, crossed group members and a massive top) for the Rust parity
+        # test below, so CI compares exported values bit for bit.
         env:
           PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS: ${{ runner.temp }}/recurrence-export
         run: |
@@ -225,14 +227,15 @@ jobs:
             tests/integration/test_adjoint_fft_runtime.py \
             tests/integration/test_generalized_adjoint_fft_runtime.py \
             tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings \
-            tests/integration/test_recurrence_generation_runtime.py::test_lc_recurrence_export_is_resolved_complete_and_static
+            tests/integration/test_recurrence_generation_runtime.py::test_lc_recurrence_export_is_resolved_complete_and_static \
+            tests/integration/test_recurrence_generation_runtime.py::test_lc_recurrence_export_covers_aliases_group_members_and_masses
       - name: Check Rust workspace (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-check
       - name: Test Rust workspace (30 GiB RSS limit)
         env:
-          RUSTICOL_RECURRENCE_ARTIFACT: ${{ runner.temp }}/recurrence-export/topology-replay:${{ runner.temp }}/recurrence-export/all-flow-union
+          RUSTICOL_RECURRENCE_ARTIFACT: ${{ runner.temp }}/recurrence-export/topology-replay:${{ runner.temp }}/recurrence-export/all-flow-union:${{ runner.temp }}/recurrence-export/grouped
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-test

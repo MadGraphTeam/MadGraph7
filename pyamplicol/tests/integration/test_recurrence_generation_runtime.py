@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import io
 import json
 import math
 import os
@@ -2565,7 +2566,6 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
     assert all(source["mass"] == {"re": 100.0, "im": 0.0} for source in z_sources)
     selected = runtime.export_recurrence(color_flows=[physics.color_flows[0].id])
     assert selected["programs"] == [changed["programs"][0]]
-
     # Flow IDs are per process: an unknown one names the process and its flows.
     with pytest.raises(EvaluationError) as refused:
         runtime.export_recurrence(color_flows=["flow:not-of-this-process"])
@@ -2573,6 +2573,7 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
     assert '"flow:not-of-this-process"' in message
     assert f'process "{physics.process_id}"' in message
     assert all(flow.id in message for flow in physics.color_flows)
+
     with_references = runtime.export_recurrence(reference_momenta=points[:1])
     expected = runtime.evaluate_resolved(points[:2])
     for program in with_references["programs"]:
@@ -2584,3 +2585,117 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
             [complex(helicity[color]).real for helicity in expected.values[0]]
         ]
     assert all("reference_values" not in program for program in changed["programs"])
+
+
+def test_lc_recurrence_export_covers_aliases_group_members_and_masses(
+    tmp_path: Path,
+    builtin_sm_current_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Export a small grouped artifact with an alias, crossed group members
+    and a massive top; CI interprets its programs bit for bit as well."""
+
+    from pyamplicol import ProcessAlias, ProcessSet
+    from pyamplicol.cli import run_cli
+    from pyamplicol.config import ProcessConfig
+
+    _require_native_recurrence()
+    artifact = tmp_path / "grouped-artifact"
+    config = replace(
+        _generation_config("recurrence"),
+        process=ProcessConfig(flavor_blind=True, max_coupling_orders={"QED": 0}),
+    )
+    processes = ProcessSet.from_expressions(
+        ("u u~ > t t~ g", "d d~ > t t~ g", "u~ u > t t~ g"),
+        names=("uu_ttg", "dd_ttg", "uxu_ttg"),
+        # The alias reorders the outgoing top pair: a crossing of a stored
+        # representative under its own public identity.
+        aliases=(ProcessAlias("uu_txtg", "uu_ttg", (0, 1, 3, 2, 4)),),
+    )
+    Generator(config).generate(
+        processes, artifact, model=builtin_sm_current_recurrence_jit_o2_model
+    )
+    kept = os.environ.get("PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS")
+    if kept:
+        destination = Path(kept) / "grouped"
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(artifact, destination)
+    manifest = load_manifest(artifact)
+    groups = read_process_groups(artifact)
+    assert groups is not None
+    members = [member.process_id for member in groups.members() if not member.generated]
+    assert members, "flavour-blind generation must store group members"
+    assert any(process["aliases"] for process in manifest.processes)
+
+    capture_path = tmp_path / "capture.json"
+    errors = io.StringIO()
+    status = run_cli(
+        ["export-recurrence", str(artifact), "-o", str(capture_path), "--json"],
+        stdout=io.StringIO(),
+        stderr=errors,
+    )
+    assert status == 0, errors.getvalue()
+    capture = json.loads(capture_path.read_text(encoding="utf-8"))
+    programs = capture["programs"]
+    keys = {program["process_key"] for program in programs}
+    assert "uu_txtg" in keys
+    assert set(members) <= keys
+    references = [program for program in programs if "program_reference" in program]
+    assert references, "aliases and members must reference representatives"
+    assert any(program.get("crossing") for program in programs)
+    assert any(
+        source["mass"]["re"] > 0.0
+        for program in programs
+        if "body" in program
+        for run in program["runs"]
+        for source in run["sources"]
+        if abs(program["legs"][source["leg"]]["pdg"]) == 6
+    ), "the top sources must carry the resolved top mass"
+
+    # Colour-flow IDs are per process: a flow of the representative that the
+    # alias (whose outgoing legs are reordered) lacks, selected without
+    # --process, is refused with the process that lacks it.
+    alias_flows = {
+        program["colour_id"]
+        for program in programs
+        if program["process_key"] == "uu_txtg"
+    }
+    flow = next(
+        program["colour_id"]
+        for program in programs
+        if program["process_key"] == "uu_ttg"
+        and program["colour_id"] not in alias_flows
+    )
+    errors = io.StringIO()
+    status = run_cli(
+        [
+            "export-recurrence",
+            str(artifact),
+            "-o",
+            str(tmp_path / "selected.json"),
+            "--color-flow",
+            flow,
+        ],
+        stdout=io.StringIO(),
+        stderr=errors,
+    )
+    assert status == 2
+    assert "colour-flow IDs are per process" in errors.getvalue()
+    assert not (tmp_path / "selected.json").exists()
+    status = run_cli(
+        [
+            "export-recurrence",
+            str(artifact),
+            "-o",
+            str(tmp_path / "selected.json"),
+            "--process",
+            "uu_ttg",
+            "--color-flow",
+            flow,
+            "--json",
+        ],
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+    )
+    assert status == 0
+    selected = json.loads((tmp_path / "selected.json").read_text(encoding="utf-8"))
+    assert [program["colour_id"] for program in selected["programs"]] == [flow]
