@@ -408,6 +408,7 @@ jobs:
             tests/unit/test_loop_paired_model.py \
             tests/unit/test_unlicensed_generation.py::test_every_native_entry_point_holds_the_library_key \
             tests/unit/test_symbolica_thread_license.py \
+            tests/unit/test_loop_packed_payloads.py \
             --deselect tests/unit/test_loop_adjoint_scalar_counterterms.py::test_np_zero_is_exact_source_selection_not_particle_or_arity_pruning \
             --deselect tests/unit/test_loop_v2_observables_fast.py::test_canonical_stages_do_not_depend_on_the_process_history \
             -q -rs
