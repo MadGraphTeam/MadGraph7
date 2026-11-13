@@ -53,17 +53,6 @@ it into `pyamplicol/build/rust`, without touching `~/.rustup` or `~/.cargo`.
 The Cargo build tree is kept in `pyamplicol/build`, so rebuilds after a source
 change are incremental.
 
-On macOS 27 with the Command Line Tools 27.2 linker, a library built with the
-pinned Rust 1.97.1 can have its string table at an offset the macOS 27 loader
-rejects ("mis-aligned LINKEDIT string pool"; fixed in Rust 1.99,
-rust-lang/rust#157750), so importing pyAmpliCol fails. Pad the table and sign
-the library ad hoc after the install:
-
-```console
-python pyamplicol/tools/local/fix_macho_alignment.py \
-  pyamplicol/install/pyamplicol/_rusticol.abi3.so
-```
-
 The prepared SM and SM+HEFT models shipped in the package are not stored in
 Git. The installer downloads them from the MadGraph7 release (the release of
 this version, else the latest one) and checks that they match the source tree.
@@ -244,7 +233,7 @@ tooling, install that wheel alone in a fresh virtual environment outside the
 repository, and run every shipped one-loop example. They are the commands the
 release check runs.
 
-**1. Build the wheel.** The toolchain is Rust 1.97.1 (`rust-toolchain.toml`),
+**1. Build the wheel.** The toolchain is Rust 1.99.1 (`rust-toolchain.toml`),
 a C/C++ compiler, `make` and `m4`, and `gfortran` for the Fortran SDK; the
 build also needs network access for the locked Python and Cargo inputs. On
 Linux x86-64 the release build runs in the pinned manylinux 2.28 image, as
@@ -264,7 +253,7 @@ docker run --rm -v "$PWD:/io" -w /io -e PYAMPLICOL_BUILD_MODE=release \
     curl --proto "=https" --tlsv1.2 -sSf -o /tmp/rustup-init \
       https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init
     chmod +x /tmp/rustup-init
-    /tmp/rustup-init -y --profile minimal --default-toolchain 1.97.1
+    /tmp/rustup-init -y --profile minimal --default-toolchain 1.99.1
     source "$HOME/.cargo/env"
     PY311=/opt/python/cp311-cp311/bin/python
     "$PY311" -m pip install "build>=1.2,<2" "maturin==1.15.0"
