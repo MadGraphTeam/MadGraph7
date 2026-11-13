@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 import array
 import random
+import glob
 import subprocess
 import unittest
 import os
@@ -23,6 +24,7 @@ import shutil
 import sys
 import logging
 import tempfile
+import glob
 
 pjoin = os.path.join
 
@@ -263,7 +265,7 @@ class TestCmdShell1(unittest.TestCase):
                     'collier':'./HEPTools/lib',
                     'hepmc_path': './hepmc',
                     'hepmc3_path': './HEPTools/hepmc3',
-                    'hwpp_path': './herwigPP',
+                    'herwig7_path': './herwig7',
                     'thepeg_path': './thepeg',
                     #'applgrid': 'applgrid-config',
                     'pineappl': 'pineappl',
@@ -279,6 +281,7 @@ class TestCmdShell1(unittest.TestCase):
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,
                     'auto_convert_model': True,
+                    'auto_gauge': True,
                     'nlo_mixed_expansion': True,
                     'acknowledged_v3.1_syntax': True,
                     'contur_path': './HEPTools/contur',
@@ -960,6 +963,9 @@ class TestCmdShell2(unittest.TestCase,
             # starts from a clean process list.
             self.cmd = Cmd.MasterCmd()
             self.do('import model sm')
+            # the references are unitary-gauge values (the process picks the
+            # FD gauge by default, which differs at the width level)
+            self.do('set gauge unitary')
             self.do('define q = u d')
             self.do('generate u q > Z u q QCD=0')
             output_cmd = 'output standalone_fortran %s' % self.out_dir
@@ -1398,6 +1404,129 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
+
+    def _standalone_me(self, output_format, make_args=()):
+        """Output the current process as `output_format` ('standalone', the
+        madmatrix one, or 'standalone_fortran'), build its check driver and
+        return the matrix element it prints at its RAMBO point (1000 GeV)."""
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('output %s %s -f' % (output_format, self.out_dir))
+        fortran = output_format == 'standalone_fortran'
+        if fortran:
+            subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                            cwd=pjoin(self.out_dir, 'Source'))
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertEqual(len(dirs), 1, 'one subprocess expected for %s'
+                         % output_format)
+        proc_dir = pjoin(proc_root, dirs[0])
+        target = ['make', 'check'] if fortran else ['make'] + list(make_args)
+        self.assertEqual(0, subprocess.call(target, stdout=devnull,
+                                            stderr=devnull, cwd=proc_dir),
+                         '%s did not build' % output_format)
+        log = pjoin(proc_dir, 'check.log')
+        subprocess.call('%s 1000' % ('./check' if fortran else './check_sa.exe'),
+                        stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                        cwd=proc_dir, shell=True)
+        found = me_re.findall(open(log).read())
+        self.assertEqual(len(found), 1, '%s produced no matrix element '
+                         '(see %s)' % (output_format, log))
+        return float(found[0])
+
+    def test_polarised_propagator_madmatrix_vs_fortran(self):
+        """A polarised propagator of a massive vector -- 'w+{0}' decayed
+        further, the P1L form of aloha/create_aloha.py, and the auxiliary
+        'w+{A}' -- builds and gives the Fortran value in the standalone
+        (madmatrix) output, which is what the mg7 output runs. Its custom
+        denominator carries the width term i M Gamma, which madmatrix used to
+        write as the Python literal '(-0+1j)': the output did not compile.
+        Both drivers evaluate the same RAMBO point, and the mixed-precision
+        madmatrix build is within 1e-6 of the double-precision Fortran one."""
+        self.do('import model sm')
+        for proc in ('e+ e- > w+{0} w-, w+ > mu+ vm',
+                     't > w+{A} b, w+ > ta+ vt'):
+            self.do('generate %s' % proc)
+            madmatrix = self._standalone_me('standalone')
+            fortran = self._standalone_me('standalone_fortran')
+            self.assertNotEqual(fortran, 0., proc)
+            self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-6,
+                                   msg='%s: madmatrix %r vs Fortran %r'
+                                   % (proc, madmatrix, fortran))
+
+    def test_fd_polarised_propagator_madmatrix_vs_fortran(self):
+        """FD gauge: the polarised propagators (the ordinary FD wavefunction
+        projected on one piece of the five-component numerator instead of the
+        full projector) give the same value in the Fortran standalone (library
+        routine fd_polarized_propagator) and in madmatrix (inlined), here built
+        in double precision, for every brace. Before, the Fortran output
+        crashed at run time (SIGBUS) and the madmatrix one did not compile.
+
+        The transverse pieces are the same in the FD and unitary gauges, so
+        {T}, {+}, {-} must also equal their unitary-gauge values at this
+        (off-shell) point.
+
+        The madmatrix comparison runs without flavour grouping: with the
+        leptons merged the FD madmatrix output of a top decay into a tau
+        returns 0 even without polarisation, a separate bug
+        (test_fd_polarised_propagator_madmatrix_flavour_grouping). The default
+        configuration, flavour grouping on, is checked with the Fortran output,
+        which must give the same values."""
+        braces = ('0', 'T', '+', '-', 'A', 'S', '0S')
+        try:
+            self.do('import model sm')
+            self.do('set gauge FD')
+            grouped = {}
+            for brace in braces:
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                grouped[brace] = self._standalone_me('standalone_fortran')
+
+            self.do('set apply_flavor_grouping False')
+            self.do('import model sm')
+            self.do('set gauge FD')
+            for brace in braces:
+                proc = 't > w+{%s} b, w+ > ta+ vt' % brace
+                self.do('generate %s' % proc)
+                madmatrix = self._standalone_me('standalone', ['FPTYPE=d'])
+                fortran = self._standalone_me('standalone_fortran')
+                self.assertNotEqual(fortran, 0., proc)
+                self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-12,
+                                       msg='%s: madmatrix %r vs Fortran %r'
+                                       % (proc, madmatrix, fortran))
+                self.assertAlmostEqual(grouped[brace] / fortran, 1., delta=1e-12,
+                                       msg='%s: flavour grouping %r vs none %r'
+                                       % (proc, grouped[brace], fortran))
+            self.do('set gauge unitary')
+            for brace in ('T', '+', '-'):
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                unitary = self._standalone_me('standalone_fortran')
+                self.assertAlmostEqual(grouped[brace] / unitary, 1., delta=1e-12,
+                                       msg='{%s}: FD %r vs unitary %r'
+                                       % (brace, grouped[brace], unitary))
+        finally:
+            self.do('set gauge unitary')
+            self.do('set apply_flavor_grouping True')
+
+    def test_fd_polarised_propagator_madmatrix_flavour_grouping(self):
+        """The default configuration of the mg7 output: FD gauge, flavour
+        grouping on, madmatrix. With the leptons merged the FD madmatrix output
+        of a top decay into a tau used to return 0, polarised or not (the
+        merged W/Goldstone couplings of an off-diagonal lepton pair, fixed in
+        madmatrix/model_handling.py); it now equals the Fortran output."""
+        try:
+            self.do('import model sm')
+            self.do('set gauge FD')
+            self.do('generate t > w+{0} b, w+ > ta+ vt')
+            madmatrix = self._standalone_me('standalone', ['FPTYPE=d'])
+            fortran = self._standalone_me('standalone_fortran')
+            self.assertNotEqual(fortran, 0.)
+            self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-12)
+        finally:
+            self.do('set gauge unitary')
 
     def test_standalone_split_orders_interference(self):
         """standalone (madmatrix) must return the squared-order contribution asked for.
@@ -1868,6 +1997,78 @@ class TestCmdShell2(unittest.TestCase,
                                     [float(f_me.group('value'))])
 
     
+    def test_standalone_axial_gauge_massive_fermions(self):
+        """output --axial_gauge=True builds the massless vectors in the axial
+        gauge of a reference momentum (VXXXXXR) and quantises the spin of the
+        massive final-state fermions along one (IXXXXXR / OXXXXXR): the
+        matrix element summed over the helicities is the one of the default
+        gauge and of the helicity basis, in the standalone_fortran and in the
+        standalone (madmatrix) output, for Dirac (g g > t t~ g) and for
+        Majorana (g g > go go g) fermions.
+
+        The widths are set to zero: a fixed width breaks gauge invariance, and
+        with it the independence of the references of the gluons.
+        """
+
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)\s*GeV',
+                           re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+
+        def matrix_element(fmt, options, routines):
+            """The matrix element of the single subprocess of this output at
+            the phase-space point of its check driver; *routines* are the
+            external wavefunctions the code has to call."""
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f %s' % (fmt, self.out_dir, options))
+            card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+            text = open(card).read()
+            zero = re.sub(r'(?mi)^(DECAY +\d+) +\S+', r'\1 0.000000e+00', text)
+            self.assertNotEqual(text, zero)
+            open(card, 'w').write(zero)
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dirs = [d for d in os.listdir(proc_root) if d.startswith('P')
+                         and os.path.isdir(pjoin(proc_root, d))]
+            self.assertEqual(len(proc_dirs), 1, proc_dirs)
+            proc_dir = pjoin(proc_root, proc_dirs[0])
+            if fmt == 'standalone_fortran':
+                source = open(pjoin(proc_dir, 'matrix.f')).read().upper()
+                build, run = ['make', 'check'], './check 2000'
+            else:
+                source = open(pjoin(proc_dir,
+                                    'EvaluateDiagrams.inc')).read().upper()
+                # FPTYPE=d: the default mixed precision rounds |M|^2 to a float
+                build, run = ['make', 'FPTYPE=d'], './check_sa.exe 2000'
+            called = set(re.findall(r'\b([IOV]XXXXXR?)\b', source))
+            self.assertEqual(called, set(routines), '%s %s' % (fmt, options))
+            self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                stderr=devnull, cwd=proc_dir))
+            log = pjoin(proc_dir, 'check.log')
+            subprocess.call(run, stdout=open(log, 'w'),
+                            stderr=subprocess.STDOUT, cwd=proc_dir, shell=True)
+            found = me_re.search(open(log).read())
+            self.assertTrue(found, '%s %s: no matrix element' % (fmt, options))
+            return float(found.group('value'))
+
+        fermions = ['IXXXXX', 'OXXXXX']
+        cases = (('sm', 'g g > t t~ g', fermions + ['VXXXXX'],
+                  fermions + ['VXXXXXR'], ['VXXXXXR', 'IXXXXXR', 'OXXXXXR']),
+                 ('MSSM_SLHA2-full', 'g g > go go g', fermions + ['VXXXXX'],
+                  fermions + ['VXXXXXR'], ['VXXXXXR', 'IXXXXXR', 'OXXXXXR']))
+        for model, process, plain, gauged, quantised in cases:
+            self.do('import model %s' % model)
+            self.do('generate %s' % process)
+            for fmt in ('standalone_fortran', 'standalone'):
+                default = matrix_element(fmt, '', plain)
+                self.assertGreater(default, 0.)
+                vectors = matrix_element(
+                    fmt, '--axial_gauge=True --fermion_reference=False',
+                    gauged)
+                both = matrix_element(fmt, '--axial_gauge=True', quantised)
+                for value in (vectors, both):
+                    self.assertAlmostEqual(value / default, 1., delta=1e-10,
+                        msg='%s %s: %s vs %s' % (fmt, process, value, default))
+
     def test_standalone_cpp_output_consistency(self):
         """test that standalone cpp is working"""
 
@@ -1996,6 +2197,92 @@ class TestCmdShell2(unittest.TestCase,
         for x, y in zip(a, b):
             self.assertLessEqual(abs(x - y), atol + rtol * max(abs(x), abs(y)),
                                  'matrix-element mismatch: %s vs %s' % (x, y))
+
+    def standalone_fortran_values(self, lines, out_dir):
+        """Matrix element of check_sa at its default point for every P
+        directory of a standalone_fortran output of `lines`."""
+
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        self.cmd = Cmd.MasterCmd()
+        for line in ['set auto_gauge False', 'import model sm'] + lines:
+            self.do(line)
+        self.do('output standalone_fortran %s -f' % out_dir)
+        devnull = open(os.devnull, 'w')
+        subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                        cwd=pjoin(out_dir, 'Source'))
+        values = {}
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)')
+        for pdir in sorted(glob.glob(pjoin(out_dir, 'SubProcesses', 'P*'))):
+            subprocess.call(['make', 'check'], stdout=devnull, stderr=devnull,
+                            cwd=pdir)
+            out = subprocess.Popen('./check', stdout=subprocess.PIPE, cwd=pdir,
+                                   shell=True).communicate()[0].decode()
+            values[os.path.basename(pdir).split('_', 1)[1]] = \
+                                        float(me_re.search(out).group('value'))
+        return values
+
+    def test_standalone_fortran_two_gauges(self):
+        """--gauge=FD on one process line: its P directory links the FD
+        HELAS library and gives the FD value, the other the unitary one"""
+
+        mixed = self.standalone_fortran_values(
+            ['generate u u~ > w+ w- --gauge=FD', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'MIXED'))
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir, 'MIXED', 'lib',
+                                             'libdhelas_fd.a')))
+        fd = self.standalone_fortran_values(
+            ['set gauge FD', 'generate u u~ > w+ w-'], pjoin(self.tmpdir, 'FD'))
+        unitary = self.standalone_fortran_values(
+            ['generate u u~ > w+ w-', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'UNITARY'))
+        self.assertEqual(sorted(mixed), ['gg_ttx', 'uux_wpwm'])
+        self.assertAlmostEqual(mixed['uux_wpwm'] / fd['uux_wpwm'], 1., places=12)
+        self.assertAlmostEqual(mixed['gg_ttx'] / unitary['gg_ttx'], 1., places=12)
+        # the two gauges differ at the width level for W pairs: a real check
+        self.assertNotAlmostEqual(mixed['uux_wpwm'] / unitary['uux_wpwm'], 1.,
+                                  places=6)
+
+    def standalone_cpp_values(self, lines, out_dir):
+        """Matrix element of check_sa.exe at 1 TeV for every P directory of a
+        standalone (madmatrix) output of `lines`."""
+
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        self.cmd = Cmd.MasterCmd()
+        for line in ['set auto_gauge False', 'import model sm'] + lines:
+            self.do(line)
+        self.do('output standalone %s -f' % out_dir)
+        devnull = open(os.devnull, 'w')
+        values = {}
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)')
+        for pdir in sorted(glob.glob(pjoin(out_dir, 'SubProcesses', 'P*'))):
+            subprocess.call(['make'], stdout=devnull, stderr=devnull, cwd=pdir)
+            out = subprocess.Popen('./check_sa.exe 1000', stdout=subprocess.PIPE,
+                                   cwd=pdir, shell=True).communicate()[0].decode()
+            values[os.path.basename(pdir).split('_', 1)[1]] = \
+                                        float(me_re.search(out).group('value'))
+        return values
+
+    def test_standalone_cpp_two_gauges(self):
+        """the madmatrix version of test_standalone_fortran_two_gauges: the FD
+        P directory includes HelAmps_sm_fd.h and gives the FD value"""
+
+        mixed = self.standalone_cpp_values(
+            ['generate u u~ > w+ w- --gauge=FD', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'MIXED'))
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir, 'MIXED', 'src',
+                                             'HelAmps_sm_fd.h')))
+        fd = self.standalone_cpp_values(
+            ['set gauge FD', 'generate u u~ > w+ w-'], pjoin(self.tmpdir, 'FD'))
+        unitary = self.standalone_cpp_values(
+            ['generate u u~ > w+ w-', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'UNITARY'))
+        self.assertEqual(sorted(mixed), ['gg_ttx', 'uux_wpwm'])
+        self.assertAlmostEqual(mixed['uux_wpwm'] / fd['uux_wpwm'], 1., places=12)
+        self.assertAlmostEqual(mixed['gg_ttx'] / unitary['gg_ttx'], 1., places=12)
+        self.assertNotAlmostEqual(mixed['uux_wpwm'] / unitary['uux_wpwm'], 1.,
+                                  places=6)
 
     def test_standalone_cpp_fd_output_consistency(self):
         """test the standalone (madmatrix) output in FD gauge against standalone_fortran
@@ -2161,6 +2448,131 @@ class TestCmdShell2(unittest.TestCase,
             # -ffast-math on the C++ side puts the backends ~3e-8 apart
             self._assert_me_lists_close(values, standalone, rtol=1e-6)
 
+    def test_madmatrix_complex_mass_scheme_vs_fortran(self):
+        """Complex-mass scheme: madmatrix compiles and agrees with the Fortran
+        standalone, in the unitary and in the FD gauge.
+
+        It did not compile: Parameters.cc takes the sqrt of a cxsmpl (the
+        complex masses), the real cIPD table held the complex CMASS_* of the
+        propagators, and the unitary propagator wrote 1/M^2 into a real OM.
+        u u~ > w+ w- has a Z propagator (a complex mass, and OM in the unitary
+        gauge) and the two drivers evaluate the same RAMBO point (massless
+        initial state). The default mixed-precision build puts the backends
+        ~1e-7 apart; in double precision they agree to 1e-15."""
+
+        import aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV', re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+        self.addCleanup(devnull.close)
+
+        def get_value(output_format, check_exe):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if output_format == 'standalone_fortran':
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+                target = ['make', 'check']
+            else:
+                target = ['make']
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dir = pjoin(proc_root, [d for d in sorted(os.listdir(proc_root))
+                                         if d.startswith('P')][0])
+            self.assertEqual(subprocess.call(target, stdout=devnull, stderr=devnull,
+                                             cwd=proc_dir), 0,
+                             '%s does not compile in the complex-mass scheme' % output_format)
+            out = subprocess.check_output('%s 1000' % check_exe, shell=True,
+                                          cwd=proc_dir).decode()
+            found = me_re.findall(out)
+            self.assertTrue(found, '%s produced no matrix element' % output_format)
+            return [float(v) for v in found]
+
+        self.do('set auto_gauge False')
+        self.do('set complex_mass_scheme True')
+        try:
+            # g g > t t~ g: the running coupling GC_12 = i G^2 goes through
+            # mdl_G__exp__2, complex in the complex-mass scheme (a cxtype_sv
+            # among the dependent parameters, and G itself has to be left out)
+            for gauge, process in (('unitary', 'u u~ > w+ w-'), ('FD', 'u u~ > w+ w-'),
+                                   ('unitary', 'g g > t t~ g')):
+                self.do('set gauge %s' % gauge)
+                self.do('import model sm')
+                self.do('generate %s' % process)
+                fortran = get_value('standalone_fortran', './check')
+                madmatrix = get_value('standalone', './check_sa.exe')
+                self.assertGreater(max(abs(v) for v in fortran), 1e-6, process)
+                self._assert_me_lists_close(madmatrix, fortran, rtol=1e-6)
+        finally:
+            self.do('set complex_mass_scheme False')
+            self.do('set gauge unitary')
+
+    def test_dollar_exclusion_complex_mass_scheme(self):
+        """`$ z` in the complex-mass scheme, Fortran and madmatrix.
+
+        The $ window |sqrt(s) - M| < BWCUTOFF * W was written with a width
+        and a cutoff the routine no longer received: the Fortran routine took
+        one argument less than its call (BWCUTOFF landed in the output
+        wavefunction) and an uninitialised W, madmatrix did not compile. With
+        the real pole mass and width of the complex mass the window is the
+        fixed-width one: inside it (91.5 GeV) the Z diagram is gone and the
+        value is the photon-only one, outside (300 GeV) it is back."""
+
+        import aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV', re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+        self.addCleanup(devnull.close)
+
+        def values(output_format, energies):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if output_format == 'standalone_fortran':
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+                target, exe = ['make', 'check'], './check'
+            else:
+                target, exe = ['make'], './check_sa.exe'
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dir = pjoin(proc_root, [d for d in sorted(os.listdir(proc_root))
+                                         if d.startswith('P')][0])
+            self.assertEqual(subprocess.call(target, stdout=devnull, stderr=devnull,
+                                             cwd=proc_dir), 0,
+                             '%s does not compile' % output_format)
+            out = {}
+            for energy in energies:
+                text = subprocess.check_output('%s %s' % (exe, energy), shell=True,
+                                               cwd=proc_dir).decode()
+                out[energy] = float(me_re.findall(text)[0])
+            return out
+
+        energies = ('91.5', '300')
+        self.do('set auto_gauge False')
+        self.do('set complex_mass_scheme True')
+        try:
+            self.do('import model sm')
+            self.do('generate e+ e- > mu+ mu- $ z')
+            fortran = values('standalone_fortran', energies)
+            madmatrix = values('standalone', energies)
+            self.do('generate e+ e- > mu+ mu- / z')
+            photon = values('standalone_fortran', energies)
+        finally:
+            self.do('set complex_mass_scheme False')
+
+        for energy in energies:
+            self.assertAlmostEqual(madmatrix[energy] / fortran[energy], 1., delta=1e-6)
+        # inside the window: no Z; outside: the Z is there (10% and more)
+        self.assertAlmostEqual(fortran['91.5'] / photon['91.5'], 1., delta=1e-12)
+        self.assertGreater(abs(fortran['300'] / photon['300'] - 1.), 0.1)
+
     def test_madmatrix_fd_simd_lanes(self):
         """FD gauge: the scalar and the vectorised madmatrix backends must
         compute the same thing, over many events.
@@ -2234,6 +2646,76 @@ class TestCmdShell2(unittest.TestCase,
                                  'the scalar and vectorised backends disagree '
                                  'in %s: %s vs %s' % (d, scalar, vector))
 
+    def test_madmatrix_fd_flavor_grouping_goldstone(self):
+        """FD gauge with flavour grouping: a merged W/Goldstone coupling of an
+        off-diagonal (charged-current) lepton pair must not be dropped.
+
+        In FD gauge the W and its Goldstone share one 5 component propagator,
+        so the vector and the scalar couplings of a vertex are summed in one
+        combined routine (FFV2_FFS3M_3 for the W+ current of t > b ta+ vt,
+        FFV2_FFS1M_0 for the amplitude of ta+ vt > t b~). With flavour grouping
+        on (the default) the charged leptons are merged while vt is not, so the
+        vertex pairs flavour 0 (vt) with flavour 2 (tau). The combined
+        multi-coupling routine checked flv_index1 == flv_index2, i.e. it
+        assumed a diagonal coupling, and returned zero: |M|^2 = 0 for both
+        processes, while the single-coupling routines (unitary gauge, or
+        'set apply_flavor_grouping False') resolve the flavour slot from the
+        partner table and were right. The Goldstone coupling also only has an
+        entry for the tau, so each coupling of the sum must resolve its own
+        slot rather than share the one of the first.
+
+        A decay and a scattering cannot share an output, hence two generates.
+        """
+        energy = '1000'
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def get_values(output_format, check_exe, build_source=False):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if build_source:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = sorted(d for d in os.listdir(proc_root)
+                          if d.startswith('P') and
+                          os.path.isdir(pjoin(proc_root, d)))
+            self.assertTrue(dirs, 'no subprocess for %s' % output_format)
+            values = []
+            for d in dirs:
+                proc_dir = pjoin(proc_root, d)
+                target = ['make', 'check'] if output_format == 'standalone_fortran' \
+                    else ['make']
+                subprocess.call(target, stdout=devnull, stderr=devnull,
+                                cwd=proc_dir)
+                log = pjoin(proc_dir, 'check.log')
+                subprocess.call('%s %s' % (check_exe, energy),
+                                stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                                cwd=proc_dir, shell=True)
+                found = me_re.findall(open(log).read())
+                self.assertTrue(found, '%s produced no matrix element (see %s)'
+                                % (output_format, log))
+                values.extend(float(v) for v in found)
+            return values
+
+        self.do('import model sm')
+        self.do('set gauge FD')
+        try:
+            for process in ('t > b ta+ vt', 'ta+ vt > t b~'):
+                self.do('generate %s' % process)
+                fortran = get_values('standalone_fortran', './check',
+                                     build_source=True)
+                mg7 = get_values('standalone', './check_sa.exe')
+                # the bug gave exactly 0: make sure the reference is not
+                self.assertGreater(min(abs(v) for v in fortran), 1e-3,
+                                   'unexpectedly small Fortran matrix element '
+                                   'for %s: %s' % (process, fortran))
+                self._assert_me_lists_close(mg7, fortran, rtol=1e-6)
+        finally:
+            self.do('set gauge unitary')
+
     def test_madmatrix_hel_recycling_vs_plain(self):
         """--hel_recycling must not change |M|^2, event by event.
 
@@ -2250,9 +2732,10 @@ class TestCmdShell2(unittest.TestCase,
         at simd_128, two events per lane in mixed precision. FPTYPE=d keeps the
         two builds within rounding of each other (1e-12); the warm-up must have
         produced the recycled build (HelRecycling.inc), or the test would compare
-        plain with plain.
+        plain with plain. The recycled side is the default output (helicity
+        recycling is on unless --hel_recycling=False).
         """
-        self._hel_recycling_vs_plain('g g > t t~ g')
+        self._hel_recycling_vs_plain('g g > t t~ g', recycled_flag='')
 
     def test_madmatrix_fd_hel_recycling_vs_plain(self):
         """--hel_recycling in the FD gauge must not change |M|^2 either.
@@ -2280,10 +2763,139 @@ class TestCmdShell2(unittest.TestCase,
                      'hr_p1n_fold<W_ACCESS, 4, true>'):
             self.assertIn(kind, calls, 'no %s group in the recycled build' % kind)
 
-    def _hel_recycling_vs_plain(self, process):
-        """plain and --hel_recycling standalone outputs of `process`, |M|^2
-        compared event by event (see test_madmatrix_hel_recycling_vs_plain);
-        returns the recycled subprocess directory"""
+    # test_madmatrix_hel_recycling_every_flavour: |M|^2 (helicity sum) through
+    # umami for every flavour index of one subprocess library.
+    # usage: <param_card> <library> <momenta (check_sa --dump-momenta)> <npar> <nflavour>
+    # prints [[|M|^2 of each event] for each flavour index] as one JSON list.
+    _UMAMI_FLAVOUR_DRIVER = '''
+import ctypes, json, os, sys
+card, path, momenta = sys.argv[1].encode(), sys.argv[2], sys.argv[3]
+npar, nflavour = int(sys.argv[4]), int(sys.argv[5])
+# madspace loads them with dlopen(RTLD_NOW): RTLD_GLOBAL on macOS
+lib = ctypes.CDLL(path, mode=os.RTLD_NOW)
+handle = ctypes.c_void_p()
+assert lib.umami_initialize(ctypes.byref(handle), card) == 0
+raw = open(momenta, 'rb').read()
+count = len(raw) // (8 * 4 * npar)
+point = (ctypes.c_double * (4 * npar * count)).from_buffer_copy(raw)
+mom = (ctypes.c_double * (4 * npar * count))()
+for ievt in range(count):  # (E,px,py,pz) per leg per event -> momenta[mu][leg][event]
+    for ipart in range(npar):
+        for mu in range(4):
+            mom[count * (npar * mu + ipart) + ievt] = point[(ievt * npar + ipart) * 4 + mu]
+out = []
+for iflavour in range(nflavour):
+    flavour = (ctypes.c_uint * count)(*([iflavour] * count))
+    me = (ctypes.c_double * count)()
+    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2, UMAMI_OUT_MATRIX_ELEMENT = 0
+    status = lib.umami_matrix_element(
+        handle, ctypes.c_size_t(count), ctypes.c_size_t(count), ctypes.c_size_t(0),
+        ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
+        (ctypes.c_void_p * 2)(ctypes.addressof(mom), ctypes.addressof(flavour)),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+    assert status == 0, status
+    out.append(list(me))
+print(json.dumps(out))
+'''
+
+    def test_madmatrix_hel_recycling_every_flavour(self):
+        """--hel_recycling must not change |M|^2 at any flavour index of a
+        subprocess that merges flavours.
+
+        The amplitude split (P1N) evaluates a vertex once with one external
+        leg left off; when that leg is a fermion the current takes its flavour
+        from its fermion input and through the coupling's flavour table. That
+        table is filled with the merged leg as its first fermion (cDPF_partner1/2
+        for a running coupling), while the call can put that leg second: the
+        _0 / _3 routines try both orientations, the P1N currents with a fermion
+        output tried one. In MSSM_SLHA2 p p > go go j the gluino-squark-quark
+        current with the merged (anti)quark as its input then found no partner
+        and was zero, for every flavour but the first, whose table is
+        symmetric: |M|^2 off by up to a factor 2.8 at flavour 1-3 in three of
+        the four subprocesses, and the mg7 run died in its survey.
+
+        check_sa.exe only evaluates flavour 0, which is why the other tests
+        did not see it: here every subprocess is evaluated through umami at
+        every flavour index, plain against recycled, on the same points.
+        """
+        import glob
+        import json
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrflv'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model MSSM_SLHA2')
+        try:
+            self.do('generate p p > go go j')
+            self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+            self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        finally:
+            self.do('import model sm')
+        driver = root + '_umami_flavours.py'
+        with open(driver, 'w') as fsock:
+            fsock.write(self._UMAMI_FLAVOUR_DRIVER)
+        card = pjoin(dirs['plain'], 'Cards', 'param_card.dat')
+        info = json.load(open(pjoin(dirs['plain'], 'SubProcesses',
+                                    'madmatrix_processes.json')))
+        compared, merged, split = 0, 0, 0
+        for sub in info['subprocesses']:
+            proc = sub['path']
+            npar, nflavour = len(sub['legs']), len(sub['flavors'])
+            merged += nflavour > 1
+            values = {}
+            for name, path in dirs.items():
+                proc_dir = pjoin(path, 'SubProcesses', proc)
+                if name == 'recycled':
+                    self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                    'the --hel_recycling warm-up did not produce '
+                                    'the recycled build of %s' % proc)
+                    # HelRecycling*.inc, and HelRecyclingChunks_*.cc when chunked
+                    calls = ''.join(open(f).read() for f in
+                                    glob.glob(pjoin(proc_dir, 'HelRecycling*')))
+                    # a P1N current with a fermion output and a flavoured coupling
+                    split += bool(re.search(r'MP1N_[12]<', calls))
+                self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir))
+                momenta = pjoin(dirs['plain'], 'SubProcesses', proc, 'momenta.bin')
+                if name == 'plain':
+                    subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momenta,
+                                     '1', '32', '1'], cwd=proc_dir,
+                                    stdout=devnull, stderr=devnull)
+                    self.assertTrue(os.path.exists(momenta), 'no momenta for %s' % proc)
+                # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+                lib = glob.glob(pjoin(path, 'lib', 'libmadmatrix_*_%s_*.so' % proc))
+                self.assertEqual(len(lib), 1, lib)
+                # in a child process: the library is loaded RTLD_GLOBAL, as
+                # madspace does on macOS, which must not leak into this one
+                out = subprocess.check_output([sys.executable, driver, card, lib[0],
+                                               momenta, str(npar), str(nflavour)])
+                values[name] = json.loads(out.decode().strip().splitlines()[-1])
+            for iflavour in range(nflavour):
+                plain = values['plain'][iflavour]
+                recycled = values['recycled'][iflavour]
+                self.assertEqual(len(plain), len(recycled))
+                self.assertTrue(any(plain), 'all-zero |M|^2 (%s, flavour %d)'
+                                % (proc, iflavour))
+                for i, (a, b) in enumerate(zip(plain, recycled)):
+                    self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                         '%s flavour %d event %d: plain %r, recycled %r'
+                                         % (proc, iflavour, i, a, b))
+                compared += 1
+        self.assertGreater(merged, 0, 'no subprocess merges flavours')
+        self.assertGreater(split, 0, 'no fermion P1N current with a flavoured '
+                           'coupling in the recycled build: nothing was tested')
+        self.assertGreater(compared, len(info['subprocesses']))
+
+    def _hel_recycling_vs_plain(self, process,
+                                recycled_flag=' --hel_recycling=True'):
+        """plain (--hel_recycling=False) and recycled standalone outputs of
+        `process`, |M|^2 compared event by event (see
+        test_madmatrix_hel_recycling_vs_plain); recycled_flag is what the
+        recycled output passes ('' for the default); returns the recycled
+        subprocess directory"""
         devnull = open(os.devnull, 'w')
         root = self.out_dir + '_hr'
         dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
@@ -2292,8 +2904,8 @@ class TestCmdShell2(unittest.TestCase,
                 shutil.rmtree(path)
         self.do('import model sm')
         self.do('generate %s' % process)
-        self.do('output standalone %s -f' % dirs['plain'])
-        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f%s' % (dirs['recycled'], recycled_flag))
         proc = {}
         for name, path in dirs.items():
             proc_root = pjoin(path, 'SubProcesses')
@@ -2303,6 +2915,8 @@ class TestCmdShell2(unittest.TestCase,
             proc[name] = pjoin(proc_root, found[0])
         self.assertTrue(os.path.exists(pjoin(proc['recycled'], 'HelRecycling.inc')),
                         'the --hel_recycling warm-up did not produce the recycled build')
+        self.assertFalse(os.path.exists(pjoin(proc['plain'], 'HelRecycling.inc')),
+                         '--hel_recycling=False still produced a recycled build')
         ncomb = int(re.search(r'constexpr int ncomb = (\d+)',
                               open(pjoin(proc['plain'], 'ProcessData.h')).read()).group(1))
         nevt = 512
@@ -2420,6 +3034,182 @@ class TestCmdShell2(unittest.TestCase,
                 self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
                                      'call %d (%s), event %d: alone %r, after the '
                                      'other libraries %r' % (ncall, proc, i, a, b))
+
+    # b b~ > t t~ QCD=0: the photon, Z, W and Higgs diagrams. The Higgs one is
+    # proportional to ymb, which is a parameter of the card (the b mass is
+    # MB): at ymb = 0 its amplitude vanishes at every helicity, at the
+    # default card only at half of them.
+    _HR_CARD_PROCESS = 'b b~ > t t~ QCD=0'
+
+    @staticmethod
+    def _hr_card_with(card, block, code, value):
+        """The text of param_card `card` with the entry `code` of `block` set to
+        `value` (a number, or a scan:[...] string)."""
+        out, current = [], None
+        for line in open(card).read().split('\n'):
+            words = line.split('#')[0].split()
+            if words and words[0].lower() == 'block':
+                current = words[1].lower()
+            elif current == block and words[:-1] == [str(code)]:
+                line = '    %s %s # changed' % (code, value)
+            out.append(line)
+        return '\n'.join(out)
+
+    def test_madmatrix_hel_recycling_launch_parameters(self):
+        """--hel_recycling: a run at other parameters than the output's must get
+        a recycled build for those (madmatrix/hel_recycling_filter.update, what
+        the mg7 launch runs on its param_card).
+
+        The recycled build drops the amplitudes that vanish at the parameters
+        it is measured at. Measured at ymb = 0 it drops the Higgs diagram at
+        every helicity, which is wrong at the default card: there the build's
+        run-time check (hr_check_stale, what a standalone user who edits the
+        card relies on) must see that a skipped amplitude is alive, say so and
+        use the plain code. Measured again at the default card it recycles
+        again. A card at which the filter comes out the same rewrites nothing,
+        and the card it was measured at measures nothing. Each build is
+        compared with the plain matrix element at its card, event by event, and
+        must say it is stale exactly where its filter does not hold."""
+        import glob
+        from madmatrix import hel_recycling_filter as hrf
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrcard'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        found = sorted(d for d in os.listdir(pjoin(dirs['recycled'], 'SubProcesses'))
+                       if re.match(r'P\d+_', d))
+        self.assertEqual(len(found), 1, found)
+        pdir = 'SubProcesses/' + found[0]
+        recycled = pjoin(dirs['recycled'], pdir)
+        self.assertEqual(sorted(d for d in os.listdir(pjoin(dirs['plain'], 'SubProcesses'))
+                                if re.match(r'P\d+_', d)), found)
+        default = root + '_default.dat'
+        shutil.copy(pjoin(dirs['plain'], 'Cards', 'param_card.dat'), default)
+        ymb0 = root + '_ymb0.dat'
+        with open(ymb0, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'yukawa', 5, '0.000000e+00'))
+        mt = root + '_mt.dat'
+        with open(mt, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'mass', 6, '1.750000e+02'))
+
+        def me(output, card):
+            proc_dir = pjoin(output, pdir)
+            shutil.copy(card, pjoin(output, 'Cards', 'param_card.dat'))
+            exe = pjoin(proc_dir, 'check_sa.exe')
+            if os.path.exists(exe):
+                os.remove(exe)
+            subprocess.call(['make', 'BACKEND=scalar', 'FPTYPE=d', 'USEBUILDDIR=1', '-j4'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(exe), 'no check_sa.exe in %s' % proc_dir)
+            out = pjoin(proc_dir, 'me.bin')
+            run = subprocess.run(['./check_sa.exe', 'perf', '--dump-me', out, '16', '32', '1'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 cwd=proc_dir)
+            stale = 'do not vanish at these parameters' in \
+                run.stdout.decode(errors='replace')
+            return array.array('d', open(out, 'rb').read()), stale
+
+        def worst(card, stale=False):
+            (plain, _), (values, said) = me(dirs['plain'], card), me(dirs['recycled'], card)
+            self.assertEqual(len(plain), len(values))
+            self.assertTrue(any(plain))
+            self.assertEqual(said, stale, 'the run-time check %s at %s'
+                             % ('missed the stale build' if stale else
+                                'took a right build for stale', os.path.basename(card)))
+            return max(abs(a - b) / abs(a) for a, b in zip(plain, values))
+
+        def update(card):
+            return hrf.update(dirs['recycled'], [card], [pdir])
+
+        output_zeros = len(hrf.read_state(recycled)['zero_perhel'])
+        self.assertEqual(update(default), {})          # the output's own card
+        self.assertLessEqual(worst(default), 1e-12)
+
+        tags = update(ymb0)
+        self.assertRegex(tags.get(pdir, ''), r'^_hr[0-9a-f]{8}$')
+        self.assertGreater(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(ymb0), 1e-12)
+        self.assertTrue(glob.glob(pjoin(dirs['recycled'], 'lib',
+                                        'libmadmatrix_*_%s%s_scalar_d.so'
+                                        % (found[0], tags[pdir]))))
+        # that build at the default card skips the Higgs diagram, which is
+        # alive there: the run-time check sees it and the plain code is used
+        self.assertLessEqual(worst(default, stale=True), 1e-12)
+
+        self.assertEqual(update(default), {pdir: ''})  # back to the output's own
+        self.assertEqual(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(default), 1e-12)
+        stamp = os.path.getmtime(pjoin(recycled, 'HelRecycling.inc'))
+        self.assertEqual(update(default), {})          # measured there already
+        self.assertEqual(update(mt), {})               # the same filter
+        self.assertEqual(os.path.getmtime(pjoin(recycled, 'HelRecycling.inc')), stamp)
+        self.assertLessEqual(worst(mt), 1e-12)
+
+    def test_mg7_hel_recycling_param_scan(self):
+        """--hel_recycling through the mg7 launch: a scan whose points need
+        other recycled builds must give, at every point, the cross section of
+        the plain matrix element.
+
+        ymb = 0, 4.7, 0: the first point drops the Higgs diagram, the second
+        needs it back and the third goes back to the first. The libraries of a
+        point stay loaded in the process while the next one is built, so each
+        build has a library name of its own (the third finds the first's)."""
+        import glob as _glob
+        import json as _json
+        from tests.acceptance_tests.test_cmd_madevent import _mg7_datadir_or_skip
+        _mg7_datadir_or_skip(self)
+        root = self.out_dir + '_hrscan'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output mg7 %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output mg7 %s -f --hel_recycling=True' % dirs['recycled'])
+        xsec = {}
+        for name, path in dirs.items():
+            toml = pjoin(path, 'Cards', 'run_card.toml')
+            lines, section = [], None
+            settings = {('run', 'seed'): '4242', ('run', 'precision'): '"all64"',
+                        ('generation', 'events'): '2000', ('madnis', 'enable'): 'false'}
+            for line in open(toml).read().split('\n'):
+                found = re.match(r'^\[(\w+)\]', line)
+                if found:
+                    section = found.group(1)
+                key = line.split('=')[0].strip()
+                if (section, key) in settings:
+                    line = '%s = %s' % (key, settings.pop((section, key)))
+                lines.append(line)
+            self.assertEqual(settings, {}, 'not in the run_card')
+            with open(toml, 'w') as fsock:
+                fsock.write('\n'.join(lines))
+            card = pjoin(path, 'Cards', 'param_card.dat')
+            text = self._hr_card_with(card, 'yukawa', 5, 'scan:[0.0, 4.7, 0.0]')
+            with open(card, 'w') as fsock:
+                fsock.write(text)
+            log = pjoin(path, 'generate_events.log')
+            with open(log, 'w') as fsock:
+                status = subprocess.call([sys.executable, pjoin(path, 'bin', 'generate_events'),
+                                          '-f'], cwd=path, stdout=fsock,
+                                         stderr=subprocess.STDOUT)
+            self.assertEqual(status, 0, 'mg7 failed, see %s' % log)
+            infos = sorted(_glob.glob(pjoin(path, 'Events', 'run_*', 'info.json')))
+            self.assertEqual(len(infos), 3, infos)
+            xsec[name] = [float(_json.load(open(info))['process']['mean']) for info in infos]
+        for point, (a, b) in enumerate(zip(xsec['plain'], xsec['recycled'])):
+            self.assertLessEqual(abs(a - b), 1e-10 * abs(a),
+                                 'scan point %d: plain %r, recycled %r' % (point + 1, a, b))
+        # one library per filter: the third point reused the first's
+        libs = [lib for lib in _glob.glob(pjoin(dirs['recycled'], 'lib', 'libmadmatrix_*.so'))
+                if 'common' not in os.path.basename(lib)]
+        self.assertEqual(len(libs), 2, libs)
 
     def test_standalone_cpp_perf_alpha_s_from_param_card(self):
         """check_sa.exe 'perf' mode must use the alpha_s of the param card,
@@ -2996,6 +3786,9 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
         self.do('set group_subprocesses False')
+        # the HELAS calls checked below are the unitary-gauge ones (the FD
+        # gauge, picked by default here, wraps them differently)
+        self.do('set gauge unitary')
         self.do('generate t > e+ ve b')
         self.do('add process t > w+ b g')
         for option in ('True', '6,24'):
@@ -4727,6 +5520,9 @@ set boost_choice [6, -6] pt [0, 0]
         self.do('set apply_flavor_grouping False')
         self.do('import model sm')
         self.do('set group_subprocesses False')
+        # pin the gauge: the reference routines below are the unitary-gauge
+        # ones, while a purely electroweak process picks the FD gauge by default
+        self.do('set gauge unitary')
         self.do('generate e+ e- > e+ e-')
         self.do('output madevent %s ' % self.out_dir)
         # Check that the needed ALOHA subroutines are generated
@@ -5313,9 +6109,12 @@ C
 
         With apply_flavor_grouping on (the default), the four light-quark
         subprocesses are carried by the single merged matrix element
-        Q Qx > w+ w-, so the gauge block checks one process, not four.  The
-        per-flavor coverage lives in the flavor-grouping block, which compares
-        the merged matrix element against the unmerged one for every flavor.
+        Q Qx > w+ w-, whose flavour is chosen at run time: the gauge,
+        lorentz and permutation blocks evaluate it for each physical flavour
+        (d d~, u u~, s s~, c c~), as without grouping; the charge-violating
+        combinations (d u~, ...) vanish and are skipped. The flavor-grouping
+        block compares the merged matrix element against the unmerged one for
+        every flavor.
         """
 
         self.do('import model sm')
@@ -5324,16 +6123,21 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Q Qx > w+ w-', log)
-        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
-        # the four flavors (both orderings) are still checked, here:
+        for proc in ['d d~ > w+ w-', 'u u~ > w+ w-', 's s~ > w+ w-',
+                     'c c~ > w+ w-']:
+            self.assertIn(proc, log)
+        self.assertNotIn('Q Qx > w+ w-', log)
+        self.assertNotIn('d u~ > w+ w-', log)
+        self.assertNotIn('Not checked processes', log)
+        # gauge, lorentz and permutation blocks
+        self.assertEqual(log.count('Summary: 4/4 passed, 0/4 failed'), 3)
         self.assertIn('Flavor grouping check results:', log)
         self.assertIn('Summary: 8/8 passed, 0/8 failed', log)
 
     def test_check_gauge_pp_wpwm(self):
         """Test `check gauge p p > w+ w-` includes axial and succeeds.
 
-        See test_check_pp_wpwm for why a single merged process is checked.
+        See test_check_pp_wpwm for the flavours that are checked.
         """
 
         self.do('import model sm')
@@ -5342,8 +6146,157 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Q Qx > w+ w-', log)
+        self.assertIn('u u~ > w+ w-', log)
+        self.assertIn('Summary: 4/4 passed, 0/4 failed', log)
+
+    def test_check_charged_current_flavour_grouping(self):
+        """`check` on a charged-current process with flavour grouping on.
+
+        `u d~ > w+ g` is generated as the merged `_quark _anti_quark > w+ g`.
+        The checks used to drop the flavour of the legs and evaluate it as
+        `d d~ > w+ g`, which vanishes: nothing was compared, and `check gauge`
+        printed an empty table ("Summary: 0/0 passed") and `check
+        permutation` a "Passed" 0 = 0. Every check must now evaluate the
+        flavour that was asked for.
+        """
+
+        self.do('import model sm')
+        self.assertTrue(self.cmd._curr_model.get('merged_particles'))
+        four_gauges = 'Gauge results (switching between Unitary/Feynman/Axial/FD gauge):'
+        for proc in ['u d~ > w+ g', 'u d~ > w+{0} g']:
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check gauge %s' % proc)
+            log = '\n'.join(cm.output)
+            self.assertIn(four_gauges, log)
+            self.assertRegex(log, r'\n%s +[1-9]' % re.escape(proc))
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+        for mode, header in [('brs', 'Gauge results:'),
+                             ('lorentz', 'Lorentz invariance results:'),
+                             ('permutation', 'Process permutation results:')]:
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check %s u d~ > w+ g' % mode)
+            log = '\n'.join(cm.output)
+            self.assertIn(header, log)
+            self.assertRegex(log, r'\nu d~ > w\+ g +[1-9]')
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+        # p p > w+ g: the two flavours with a W coupling (no CKM in sm)
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check gauge p p > w+ g')
+        log = '\n'.join(cm.output)
+        self.assertIn('u d~ > w+ g', log)
+        self.assertIn('c s~ > w+ g', log)
+        self.assertIn('Summary: 2/2 passed, 0/2 failed', log)
+
+    def test_check_flavour_grouping_nothing_checked(self):
+        """A process that cannot be checked is reported as such.
+
+        `d u~ > w+ g` has diagrams as the merged `_quark _anti_quark > w+ g`
+        but a vanishing matrix element for that flavour: no table, and a
+        warning instead of "Summary: 0/0 passed".
+        """
+
+        self.do('import model sm')
+        for mode in ['gauge', 'brs', 'lorentz', 'permutation']:
+            with self.assertLogs('check', level='INFO') as cm_check, \
+                 self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check %s d u~ > w+ g' % mode)
+            log = '\n'.join(cm.output)
+            self.assertNotIn('Summary:', log)
+            self.assertNotIn('Passed', log)
+            check_log = '\n'.join(cm_check.output)
+            self.assertIn('0 check performed', check_log)
+            self.assertIn('WARNING:check:check %s: no process could be checked'
+                          % mode, check_log)
+
+    def test_check_gauge_complex_mass_scheme(self):
+        """`check gauge` in the complex-mass scheme runs its axial step, and
+        the four gauges agree once the external W has a zero width.
+
+        Every ALOHA writer refused a custom denominator with a complex mass,
+        including the axial gauge (P.PBar) P^2 of a massless vector that has
+        none; `check gauge` stopped there. With the width of an external
+        particle the gauges differ by O(width/mass) (docs/auto-fd-gauge.md),
+        so the card sets it to zero."""
+
+        import aloha
+        import madgraph.models.write_param_card as write_param_card
+        import madgraph.models.check_param_card as check_param_card
+
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+
+        self.do('set complex_mass_scheme True')
+        try:
+            self.do('import model sm')
+            card = pjoin(self.tmpdir, 'param_card_cms.dat')
+            write_param_card.ParamCardWriter(self.cmd._curr_model, card)
+            param_card = check_param_card.ParamCard(card)
+            param_card['decay'].get((24,)).value = 0.
+            param_card.write(card)
+
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check gauge %s w+ w- > w+ w-' % card)
+        finally:
+            self.do('set complex_mass_scheme False')
+
+        log = '\n'.join(cm.output)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+    def test_check_language_massive_initial_state_and_fd(self):
+        """`check language` compares the backends at one phase-space point.
+
+        Two processes it got wrong:
+        - t t~ > w+ w- (unitary, 0.4%): the Fortran/C++ drivers raise the
+          energy to twice the sum of the external masses (1013.676 GeV), the
+          madmatrix matrix mode and the Python column did not, and madmatrix
+          evaluated a second RAMBO point instead of the one it printed;
+        - w+ w- > w+ w- in the FD gauge (5%): the C++ FD vxxxxx wrote the full
+          longitudinal polarisation and no goldstone component, which equals
+          the FD one only at zero width.
+        """
+        self.do('set auto_gauge False')
+        self.do('import model sm')
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check language t t~ > w+ w-')
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', '\n'.join(cm.output))
+
+        self.do('set gauge FD')
+        try:
+            self.do('import model sm')
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check language w+ w- > w+ w-')
+        finally:
+            self.do('set gauge unitary')
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', '\n'.join(cm.output))
+
+    def test_check_gauge_and_brs_reference_momenta(self):
+        """`check gauge` and `check brs` compare the external wavefunctions of
+        output --axial_gauge=True (column Reference: the gluons in the axial
+        gauge of a reference momentum, the top quarks quantised along it)
+        with the standard ones, for massive and massless fermions."""
+
+        self.do('import model sm')
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check gauge g g > t t~ g')
+        log = '\n'.join(cm.output)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Reference: unitary gauge with the reference momenta', log)
+        header = [line for line in log.splitlines() if 'Unitary' in line and 'Feynman' in line
+                  and 'Result' in line][0]
+        self.assertIn('Reference', header)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+        for process in ('u u~ > t t~ g g', 'g g > g g g'):
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check brs %s' % process)
+            log = '\n'.join(cm.output)
+            header = [line for line in log.splitlines() if 'BRS' in line][0]
+            self.assertIn('Reference', header)
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""
@@ -5356,6 +6309,48 @@ C
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
          
+
+    def test_madevent_dressed_lepton_components(self):
+        """The dressed-lepton luminosity must survive flavor grouping.
+
+        With apply_flavor_grouping on (the default) 'e+ e- > mu+ mu-' is
+        written out as the merged process '_anti_lepton _lepton >
+        _anti_lepton _lepton', whose initial states expand to
+        ([-11,-13],[11,13]). get_pdf_lines used to recognize a dressed-lepton
+        beam by comparing that pair against a hard-coded list of single-flavor
+        pairs, so the grouped process fell through to PD(IPROC)=EP1*EM2 and
+        lost every lepton-density component but the first -- the
+        beamstrahlung ones, 13% of the luminosity at FCC-ee, silently.
+        """
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate e+ e- > mu+ mu-')
+        self.do('output madevent %s -nojpeg' % self.out_dir)
+
+        auto_dsig = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*',
+                                    'auto_dsig1.f'))
+        self.assertEqual(len(auto_dsig), 1)
+        content = open(auto_dsig[0]).read()
+
+        # the luminosity is the contraction of the two beams' components,
+        # once in the scalar routine and once in the vectorized one
+        self.assertIn('EE_COMP_PROD', content)
+        self.assertEqual(content.count('=EE_COMP_PROD('), 2)
+        # and every PDG2PDF call keeps the components it just filled, since
+        # the next call overwrites the ee_components common block
+        self.assertEqual(content.count('=PDG2PDF('),
+                         content.count('EE_COMPONENTS(1:4)'))
+        # The densities read 1-x from OMX_EE, which genps sets per generated
+        # point: the vectorized routine has to restore each lane's value
+        # before its PDFs (and before UNWGT samples the beamstrahlung split),
+        # or every lane uses the 1-x of the last point -- which doubled the
+        # FCC-ee 240 GeV cross section at vector_size 16.
+        self.assertEqual(
+            content.replace(' ', '').upper().count(
+                'OMX_EE(:)=ALL_OMX_EE(:,IVEC)'), 3)
 
     def test_madevent_subproc_group(self):
         """Test MadEvent output using the SubProcess group functionality"""
@@ -5965,6 +6960,10 @@ P1_qq_wp_wp_lvl
 
         cmd = ['set apply_flavor_grouping False',
                'import model sm ',
+               # the references are unitary-gauge values; a purely electroweak
+               # decay chain picks the FD gauge by default and its diagram subset
+               # is gauge dependent off resonance
+               'set gauge unitary',
                'generate e+ e- > z z, z > e+ e-, z > e+ e-']
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
@@ -5975,7 +6974,7 @@ P1_qq_wp_wp_lvl
 
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False' 
-        cmd[2] = 'generate e+ e- > z z, z > mu+ mu-, z > e+ e-'
+        cmd[3] = 'generate e+ e- > z z, z > mu+ mu-, z > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -5987,7 +6986,7 @@ P1_qq_wp_wp_lvl
         # the decay-tree fingerprint fix correctly sets COMP_OLD=1 for the
         # no-grouping case (preventing a spurious factor of 2).
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z, z > u u~, z > e+ e-'
+        cmd[3] = 'generate e+ e- > z z, z > u u~, z > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -5999,7 +6998,7 @@ P1_qq_wp_wp_lvl
         # tests that no-grouping COMP_OLD=1 while grouping COMP_OLD=2 with
         # runtime correction, giving the same physical result.
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z, z > d d~, z > s s~'
+        cmd[3] = 'generate e+ e- > z z, z > d d~, z > s s~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6009,7 +7008,7 @@ P1_qq_wp_wp_lvl
         #######################################################################
         # Two Z bosons decaying to identical quarks (COMP_OLD=2 in both cases).
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z, z > u u~, z > u u~'
+        cmd[3] = 'generate e+ e- > z z, z > u u~, z > u u~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6018,7 +7017,7 @@ P1_qq_wp_wp_lvl
 
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > e+ e-, a > e+ e-'
+        cmd[3] = 'generate e+ e- > z a, z > e+ e-, a > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6027,7 +7026,7 @@ P1_qq_wp_wp_lvl
 
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > mu+ mu-, a > e+ e-'
+        cmd[3] = 'generate e+ e- > z a, z > mu+ mu-, a > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6035,7 +7034,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/1.9524089070808569e-14, 1.0, places=5)
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > mu+ mu-, a > u u~'
+        cmd[3] = 'generate e+ e- > z a, z > mu+ mu-, a > u u~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6043,7 +7042,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/2.6032118761078096e-14, 1.0, places=5)
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > mu+ mu-, a > t t~'
+        cmd[3] = 'generate e+ e- > z a, z > mu+ mu-, a > t t~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6051,7 +7050,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/3.9704302268721535e-14, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z h, z > u u~, z > e+ e-, h > b b~'
+        cmd[3] = 'generate e+ e- > z z h, z > u u~, z > e+ e-, h > b b~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'   
         unflavor_value = self.run_standalone(cmd)
@@ -6060,7 +7059,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/2.1127915184144537e-27, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z h, h > b b~, z > u u~, z > e+ e-'
+        cmd[3] = 'generate e+ e- > z z h, h > b b~, z > u u~, z > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6070,7 +7069,7 @@ P1_qq_wp_wp_lvl
         
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > e+ e- )'
+        cmd[3] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > e+ e- )'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6078,7 +7077,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/unflavor_value, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
+        cmd[3] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -6086,7 +7085,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/unflavor_value, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > t t~ z, z > d d~, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
+        cmd[3] = 'generate e+ e- > t t~ z, z > d d~, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)

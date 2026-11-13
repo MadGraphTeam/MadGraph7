@@ -14,6 +14,53 @@ from tests.input_files.running_helas_model import create_model
 
 
 class TestMadMatrixRunningHelas(unittest.TestCase):
+    def test_madmatrix_running_helas_complex_mass(self):
+        """Running numerator inputs preserve the complex mass in the denominator."""
+        import aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+        with tempfile.TemporaryDirectory(prefix='running_helas_cms_') as directory:
+            cmd = MasterCmd()
+            cmd.exec_cmd('set auto_gauge False', errorhandling=False)
+            cmd.exec_cmd('set gauge unitary', errorhandling=False)
+            cmd.exec_cmd('set complex_mass_scheme True', errorhandling=False)
+            try:
+                model = create_model(os.path.join(directory, 'running_cms_ufo'), complex_mass=True)
+                cmd.exec_cmd('import model %s' % model, errorhandling=False)
+                cmd.exec_cmd('generate b b~ > h > ta+ ta-', errorhandling=False)
+                roots = {}
+                for output_format in ('standalone_fortran', 'standalone'):
+                    root = os.path.join(directory, output_format)
+                    cmd.exec_cmd('output %s %s -f' % (output_format, root), errorhandling=False)
+                    roots[output_format] = root
+                fortran, cpp = roots['standalone_fortran'], roots['standalone']
+                fdir, = glob.glob(os.path.join(fortran, 'SubProcesses', 'P*'))
+                cdir, = glob.glob(os.path.join(cpp, 'SubProcesses', 'P*'))
+                self.run_command(['make', '-j2'], os.path.join(fortran, 'Source'))
+                self.run_command(['make', 'check'], fdir)
+                reference = {}
+                for alphas in (0.08, 0.16):
+                    self.set_alphas(fortran, alphas)
+                    reference[alphas] = self.matrix_element(self.run_command(['./check', '125'], fdir))
+                backend = os.environ.get('MG7_TEST_GPU_BACKEND', 'simd_128')
+                for configuration in (['BACKEND=scalar', 'FPTYPE=d'],
+                                      ['BACKEND=' + backend, 'FPTYPE=v', 'HRDCOD=0']):
+                    self.errors = []
+                    self.run_command(['make', 'cleanall'], cdir)
+                    self.run_command(['make', '-j2'] + configuration, cdir)
+                    for alphas, expected in reference.items():
+                        self.set_alphas(cpp, alphas)
+                        actual = self.matrix_element(self.run_command(['./check_sa.exe', 'matrix', '125'], cdir))
+                        self.assert_close(actual, expected, 3e-6)
+                    print('Validated complex mass %s: max relative error %.3g' %
+                          (' '.join(configuration), max(self.errors)), flush=True)
+            finally:
+                # The temporary model cannot be reimported by its bare name.
+                cmd._curr_model = None
+                cmd.exec_cmd('set complex_mass_scheme False', errorhandling=False)
+
     def test_madmatrix_running_helas_parameters(self):
         with tempfile.TemporaryDirectory(prefix='running_helas_') as directory:
             cmd = MasterCmd()

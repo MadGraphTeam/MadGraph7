@@ -1,12 +1,16 @@
 """The run of one process directory: cards, integration, events and output."""
 
+import contextlib
 import glob
 import json
 import math
 import os
+import select
 import shutil
+import signal
 import subprocess
 import tempfile
+import threading
 import time
 
 from madgraph.mg7.common import backend_of, fptype_of, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, mlm_pdf_ladder, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
@@ -15,11 +19,14 @@ from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
 from madgraph.models.model_reader import Alphas_Runner
 from madgraph.mg7 import hwu_output
+from madgraph.mg7 import lepton_density as lepton_density_module
+import madgraph.various.py8_bstrahl as py8_bstrahl
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7 import options
 from madgraph.mg7 import plots
 from madgraph.mg7 import systematics_summary
 from madgraph.mg7.bootstrap import INSTALL_DIR as _INSTALL_DIR
+from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
 from madgraph.mg7.bootstrap import MADSPACE_DIR as _MADSPACE_DIR
 from madgraph.mg7.bootstrap import MADTREX_DIR as _MADTREX_DIR
 from madgraph.mg7.bootstrap import MADTREX_INSTALL_DIR as _MADTREX_INSTALL_DIR
@@ -28,6 +35,7 @@ from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custo
 from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
 from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
+from madgraph.mg7.model_widths import _proc_characteristic
 from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
@@ -36,6 +44,238 @@ from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, bu
 # spends most of its time parsing them. Below, building the precompiled header
 # costs about what it saves.
 PCH_MIN_SUBPROCESSES = 4
+
+
+class GenerationControl:
+    """While the events are generated, Ctrl-C opens a menu on the terminal of
+    the run to stop early, or to change the number of requested events or of
+    CPU threads. The generation pauses while the menu is open (the batches in
+    flight finish), and goes on after MENU_TIMEOUT seconds without an answer.
+    Ctrl-C again, in the menu or once a stop is requested, aborts the run as
+    Ctrl-C always did (KeyboardInterrupt, no events written).
+
+    Stopping early keeps the events generated so far: every channel keeps its
+    share of the integral, so the channel with the fewest events for its share
+    limits the total (see ms.EventGenerator.request_stop). The menu shows an
+    estimate of that total.
+
+    Without a terminal in the foreground (nohup, a background job, a cluster),
+    write the commands into <run dir>/control, one per line: `stop`,
+    `nevents <n>`, `nb_core <n>`, then `kill -INT <pid>`. Without that file
+    either, the signal stops the generation.
+
+    Outside the generation (while the events are written, ...), Ctrl-C keeps
+    its usual meaning; only while `armed` does it open the menu. A run started
+    with SIGINT ignored (a background job of a script) keeps ignoring it."""
+
+    MENU_TIMEOUT = 60
+
+    def __init__(self, event_generator, run_path):
+        self.event_generator = event_generator
+        self.control_path = os.path.join(run_path, "control")
+        self.armed = False
+        self.installed = False
+        self.previous = None
+        # a second Ctrl-C while the menu is open, or after a stop, aborts
+        self.in_menu = False
+        self.stopping = False
+        # changes not applied yet, shown by the menu
+        self.pending_events = None
+        self.pending_threads = None
+
+    def __enter__(self):
+        # signal handlers can only be installed from the main thread
+        if threading.current_thread() is not threading.main_thread():
+            return self
+        previous = signal.getsignal(signal.SIGINT)
+        # ignored on purpose (a background job of a script) or not set from
+        # Python: leave it alone
+        if previous is None or previous == signal.SIG_IGN:
+            return self
+        ms.EventGenerator.request_stop(False)
+        self.previous = signal.signal(signal.SIGINT, self.handle)
+        self.installed = True
+        logger.info("Ctrl-C: menu to stop early or change the number of events or threads "
+                    "(without a terminal: commands in %s, then kill -INT %d)",
+                    self.control_path, os.getpid())
+        return self
+
+    def __exit__(self, *exc):
+        if self.installed:
+            signal.signal(signal.SIGINT, self.previous)
+            ms.EventGenerator.request_stop(False)
+            self.installed = False
+        return False
+
+    def abort(self, signum, frame):
+        """What Ctrl-C did before this handler: by default KeyboardInterrupt."""
+        if callable(self.previous):
+            return self.previous(signum, frame)
+        if self.previous == signal.SIG_IGN:
+            return None
+        raise KeyboardInterrupt
+
+    def handle(self, signum, frame):
+        if not self.armed or self.in_menu or self.stopping:
+            return self.abort(signum, frame)
+        # an error here would abort the generation it is meant to steer
+        try:
+            if os.path.exists(self.control_path):
+                self.run_control_file()
+                return
+            tty = self.open_tty()
+            if tty is None:
+                self.stop()
+                return
+            self.in_menu = True
+            try:
+                self.menu(*tty)
+            finally:
+                self.in_menu = False
+                for stream in tty:
+                    stream.close()
+            self.event_generator.redraw_progress()
+        except Exception as error:
+            logger.warning("Ctrl-C ignored, it failed with %s: %s",
+                           type(error).__name__, error)
+
+    def stop(self):
+        logger.info("stopping the generation, the events generated so far will be written "
+                    "(Ctrl-C again to abort)")
+        self.stopping = True
+        ms.EventGenerator.request_stop()
+
+    def set_events(self, count):
+        self.event_generator.set_target_count(count)
+        self.pending_events = count
+        logger.info("requested events set to %d (from the end of the running batches)", count)
+
+    def set_threads(self, count):
+        self.event_generator.set_thread_count(count)
+        self.pending_threads = count
+        logger.info("CPU threads set to %d (from the end of the running batches)", count)
+
+    def run_control_file(self):
+        with open(self.control_path) as f:
+            lines = f.read().splitlines()
+        # consumed, so that the next signal does not replay it
+        os.remove(self.control_path)
+        stop = False
+        for line in lines:
+            words = line.split("#", 1)[0].split()
+            if not words:
+                continue
+            command, value = words[0].lower(), words[1:]
+            try:
+                if command == "stop" and not value:
+                    stop = True
+                elif command == "nevents" and len(value) == 1 and int(value[0]) > 0:
+                    self.set_events(int(value[0]))
+                elif command in ("nb_core", "cpu_thread_pool_size") and len(value) == 1 \
+                        and int(value[0]) > 0:
+                    self.set_threads(int(value[0]))
+                else:
+                    raise ValueError
+            except ValueError:
+                logger.warning("%s: ignored invalid command %r "
+                               "(stop, nevents <n> or nb_core <n>)", self.control_path, line)
+        if stop:
+            self.stop()
+
+    @staticmethod
+    def open_tty():
+        """A reader and a writer on the terminal of the run, if it is in the
+        foreground: reading from it in a background job would stop the process
+        (SIGTTIN)."""
+        try:
+            fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+        except OSError:
+            return None
+        try:
+            if os.tcgetpgrp(fd) != os.getpgrp():
+                os.close(fd)
+                return None
+        except OSError:
+            os.close(fd)
+            return None
+        # a terminal is not seekable, which a text stream opened "r+" needs
+        reader = open(fd, encoding="utf-8", errors="replace")
+        writer = open(os.dup(fd), "w", encoding="utf-8")
+        return reader, writer
+
+    def ask(self, reader, writer, question):
+        """A line read from the terminal, None after MENU_TIMEOUT seconds."""
+        writer.write(question)
+        writer.flush()
+        ready, _, _ = select.select([reader], [], [], self.MENU_TIMEOUT)
+        if not ready:
+            writer.write("\n")
+            return None
+        return reader.readline().strip()
+
+    def ask_count(self, reader, writer, question):
+        answer = self.ask(reader, writer, question)
+        try:
+            count = int(float(answer)) if answer else 0
+        except ValueError:
+            count = 0
+        if count <= 0:
+            writer.write("  not a positive number, nothing changed\n")
+            return None
+        return count
+
+    def menu(self, reader, writer):
+        while True:
+            status = self.event_generator.status()
+            target = status.count_target
+            threads = self.event_generator.cpu_thread_count()
+            # applied once the running batches are committed
+            if self.pending_events not in (None, target):
+                target = f"{target} -> {self.pending_events}"
+            else:
+                self.pending_events = None
+            if self.pending_threads not in (None, threads):
+                threads = f"{threads} -> {self.pending_threads}"
+            else:
+                self.pending_threads = None
+            estimate, channel, fraction = self.event_generator.stop_estimate()
+            if channel:
+                limit = (f"limited by channel {channel} "
+                         f"with {100 * fraction:.3g} % of the integral")
+            else:
+                limit = "all channels have their share"
+            if estimate > 0:
+                stop = f"stop now and write about {estimate} events ({limit})"
+            else:
+                stop = f"stop now: no events can be written yet ({limit})"
+            writer.write(
+                "\n"
+                "MG7 generation paused (the running batches finish)\n"
+                f"  events: {status.count_unweighted:.0f} / {target}, "
+                f"CPU threads: {threads}\n"
+                f"  1) {stop}\n"
+                "  2) change the number of requested events\n"
+                "  3) change the number of CPU threads\n"
+                f"  0) continue (default, also after {self.MENU_TIMEOUT} s)\n"
+                "  Ctrl-C) abort the run, no events written\n"
+            )
+            answer = self.ask(reader, writer, "choice: ")
+            if answer == "1":
+                self.stop()
+                return
+            if answer == "2":
+                count = self.ask_count(
+                    reader, writer, f"number of events ({status.count_unweighted:.0f} generated so far): ")
+                if count is not None:
+                    self.set_events(count)
+            elif answer == "3":
+                count = self.ask_count(reader, writer, "number of CPU threads: ")
+                if count is not None:
+                    self.set_threads(count)
+            elif answer in (None, "", "0"):
+                return
+            else:
+                writer.write(f"  unknown choice {answer!r}\n")
 
 
 class MadgraphProcess:
@@ -698,6 +938,18 @@ class MadgraphProcess:
             self.beam_rapidity = 0.5 * math.log(ebeam1 / ebeam2)
             self.leptonic = beam_args["leptonic"]
 
+        # A dressed-lepton density is not the same thing as beam.leptonic:
+        # 'leptonic' means no parton luminosity at all (monochromatic beams),
+        # while a density brings ISR and, for the collider-specific sets,
+        # beamstrahlung. Both are set for such a run -- there is no hadronic
+        # PDF -- but the density is what supplies the luminosity.
+        # Built lazily: which components radiate is not symmetric between the
+        # beams, so the density needs the beam PDGs, and those come from the
+        # subprocess data, which is not loaded yet.
+        self._lepton_density_name = (
+            beam_args.get("lepton_density", "") if not self.is_decay else "")
+        self._lepton_density = None
+
         dynamical_scales = {
             "transverse_energy": ms.EnergyScale.transverse_energy,
             "transverse_mass": ms.EnergyScale.transverse_mass,
@@ -711,6 +963,10 @@ class MadgraphProcess:
             self.mlm_clustering = True
             self.scale_kwargs = {}
             if not self.is_decay:
+                # the clustering's jets have to be the massless quarks of the
+                # model: no free choice of max_jet_flavor with MLM
+                self.run_card.check_mlm_max_jet_flavor(
+                    _proc_characteristic().get("max_jet_flavor", 0))
                 # where the shower of the particles that are not light partons
                 # starts: the hardest scale of the event (max of the
                 # core-process scale the clustering gives them, mu_F and the
@@ -1515,6 +1771,11 @@ class MadgraphProcess:
             nb_core = os.cpu_count() or 1
 
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
+        # --hel_recycling: the build of a recycled subprocess is for the good
+        # helicities and vanishing amplitudes at the parameters of this run
+        # (a CPU build: a cuda/hip one ignores them, see below)
+        if any(not b.startswith(("cuda", "hip")) for b in resolved):
+            self.update_hel_recycling(madmatrix_data, nb_core)
         # --hel_recycling is a CPU build: on a cuda/hip device the same output
         # compiles the plain matrix element (see backend/gpu/SigmaKin.cc)
         recycled = [
@@ -1524,8 +1785,8 @@ class MadgraphProcess:
         gpu_backends = [b for b in resolved if b.startswith(("cuda", "hip"))]
         if recycled and gpu_backends:
             logger.info(
-                "--hel_recycling is CPU only: the %s build of %s uses the plain "
-                "matrix element", "/".join(gpu_backends), ", ".join(recycled)
+                "helicity recycling is CPU only: the %s build of %s uses the "
+                "plain matrix element", "/".join(gpu_backends), ", ".join(recycled)
             )
         # On a CPU the recycled build itself falls back to the plain matrix
         # element when its tables are too big for the SIMD width (see
@@ -1596,6 +1857,35 @@ class MadgraphProcess:
         for path in paths:
             logger.info(f"Compiling the AmpliCol matrix elements in {path}, see {log_path}")
             self.make_subprocesses(path, [], nb_core, log_path)
+
+    # what an --hel_recycling subprocess keeps of its generation, to be
+    # rewritten for other parameters (madmatrix/hel_recycling_filter.py)
+    HR_RECIPE = "HelRecyclingRecipe.json"
+
+    def update_hel_recycling(self, madmatrix_data: list, nb_core: int) -> None:
+        """--hel_recycling: the recycled build of a subprocess is for the good
+        helicities and the vanishing amplitudes of the parameters it was made
+        at. Measure them again at this run's param_card (the one the launch
+        question settled, and each point of a scan), and have a subprocess
+        whose filter changed rebuilt for the new one, under that filter's own
+        library name: a library this process has loaded already (an earlier
+        point of the scan) would otherwise be the one it gets again. A run at
+        the parameters the build is for measures nothing; one whose filter
+        comes out the same rewrites and rebuilds nothing."""
+        pdirs = sorted({
+            meta["path"] for meta in madmatrix_data
+            if os.path.isfile(os.path.join(meta["path"], self.HR_RECIPE))
+        })
+        if not pdirs:
+            return
+        from madmatrix import hel_recycling_filter
+        me_paths = hel_recycling_filter.update(
+            ".", [self.param_card_path], pdirs, nb_core=nb_core,
+            subprocesses_json=os.path.join("SubProcesses", "subprocesses.json"),
+            log=logger)
+        for meta in self.subprocess_data:
+            if meta.get("path") in me_paths:
+                meta["me_path"] = me_paths[meta["path"]]
 
     def hel_recycling_make_args(self) -> list[str]:
         """HRMAXMB=... and HRNOBLAS=... for make (madmatrix.mk), from the hidden
@@ -1923,9 +2213,35 @@ class MadgraphProcess:
         if self.gridpack_run_mode != "regular":
             self.finish_without_events()
             return
-        self.event_generator.generate()
+        with GenerationControl(self.event_generator, self.run_path) as control:
+            control.armed = True
+            self.event_generator.generate()
+            control.armed = False
+            self.write_events(output_format)
+
+    def write_events(self, output_format) -> None:
+        """Combine the generated events into the output_format file, then write
+        the histograms and plots and store the gridpack."""
+        density = self.lepton_density
+        has_beamstrahlung = density is not None and density.has_beamstrahlung
         if output_format is None:
             output_format = self.run_card["run"]["output_format"]
+            if has_beamstrahlung and output_format != "lhe":
+                # The beamstrahlung split is sampled onto the written LHE
+                # events (see below); the npy formats and their later
+                # conversion have nowhere to keep it, and a shower without it
+                # treats beamstrahlung as ISR off a full-energy beam.
+                logger.warning(
+                    "the %s density folds beamstrahlung into the luminosity: "
+                    "writing the events as lhe rather than %s, so that each "
+                    "event carries its <beamstrahlung> fractions",
+                    self._lepton_density_name, output_format)
+                output_format = "lhe"
+        elif has_beamstrahlung and output_format != "lhe":
+            logger.warning(
+                "events written as %s carry no <beamstrahlung> fractions; "
+                "they cannot be showered with the beamstrahlung Pythia8 main",
+                output_format)
         systematics = self.build_systematics()
         histograms = self.build_event_histograms()
         if output_format == "compact_npy":
@@ -1946,18 +2262,37 @@ class MadgraphProcess:
             self.write_lhe_header(systematics)
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
-            lhe_path = os.path.join(self.run_path, "events.lhe")
+            # Ship the LHE compressed. These files are large and very
+            # compressible, madevent has always stored its events gzipped, and
+            # every consumer here already accepts either form (see
+            # _find_event_file). A GPU gzips while the events are written;
+            # otherwise misc.gzip replaces events.lhe with events.lhe.gz using
+            # pigz, which beats in-process gzip at any file size. Beamstrahlung
+            # annotation rewrites the file, so write it plain.
+            gzip_device = None if has_beamstrahlung else self.lhe_gzip_device()
+            lhe_path = os.path.join(
+                self.run_path, "events.lhe.gz" if gzip_device else "events.lhe"
+            )
             self.event_generator.combine_to_lhe(
                 lhe_path, self.lhe_completer,
-                self.build_lhe_meta(), systematics, histograms
+                self.build_lhe_meta(), systematics, histograms, gzip_device,
+                self.run_card["run"]["lhe_gzip_algorithm"]
             )
-            # Ship the LHE compressed by default. These files are large and
-            # very compressible, madevent has always stored its events
-            # gzipped, and every consumer here already accepts either form
-            # (see _find_event_file). misc.gzip replaces events.lhe with
-            # events.lhe.gz, and switches to an external multithreaded tool
-            # above 256 MB.
-            misc.gzip(lhe_path)
+            # A dressed-lepton density folds beamstrahlung into the PDF, so
+            # the initial-state momenta carry x = x_BS * x_ISR and a shower
+            # cannot separate the two on its own. Sampling the split here --
+            # once per written event, after unweighting -- is enough: it does
+            # not enter the weight.
+            if has_beamstrahlung:
+                count = density.annotate_lhe(
+                    lhe_path,
+                    seed=self.run_seed,
+                    fact_scale=self.fixed_fact_scale)
+                logger.info(
+                    "wrote <beamstrahlung> into %d events; they need the "
+                    "dedicated Pythia8 main to be showered correctly", count)
+            if gzip_device is None:
+                misc.gzip(lhe_path, forceexternal=True)
             self.events_path = _find_event_file(self.run_path)
         else:
             raise ValueError("Unknown output format")
@@ -1967,6 +2302,12 @@ class MadgraphProcess:
             self.write_systematics_sidecar()
             self.log_systematics_summary()
         self.save_gridpack()
+
+    def lhe_gzip_device(self):
+        """The device that gzips the LHE output, None to gzip it on the CPU."""
+        if self.run_card["run"]["lhe_compression"] != "auto":
+            return None
+        return next((device for device in self.devices if device.supports_gzip()), None)
 
     def save_lhe_completer(self) -> None:
         """Keep the LHE completer next to compact_npy events, so npy_to_lhe
@@ -2102,6 +2443,59 @@ class MadgraphProcess:
         except Exception as err:
             logger.warning("could not extract observable means: %s", err)
         return result
+
+    @property
+    def lepton_density(self):
+        """The dressed-lepton density, or None.
+
+        Which components carry beamstrahlung differs between the electron and
+        the positron, so the beam PDGs decide which parameters go with which
+        beam; taking them from the process rather than assuming an order is
+        what keeps an e+ e- process from being handed the e- e+ tables.
+        """
+        if not self._lepton_density_name:
+            return None
+        if self._lepton_density is None:
+            source_dir = os.path.abspath("Source")
+            beam_pdgs, _energies = self._beam_info()
+            self._lepton_density = lepton_density_module.LeptonDensity(
+                self._lepton_density_name,
+                source_dir,
+                str(_MG_ROOT),
+                ms,
+                self.contexts[0],
+                self.e_cm,
+                beam_pdgs=tuple(beam_pdgs),
+                cache_dir=os.path.join(source_dir, "PDF", "lep_densities",
+                                       self._lepton_density_name),
+            )
+            logger.info(
+                "using the %s dressed-lepton density for beams %s%s",
+                self._lepton_density_name, tuple(beam_pdgs),
+                " (with beamstrahlung)"
+                if self._lepton_density.has_beamstrahlung else "")
+            if self._lepton_density.has_beamstrahlung:
+                error = py8_bstrahl.beamstrahlung_setup_error(
+                    self._lepton_density_name,
+                    self.beam_energies[0], self.beam_energies[1],
+                    self.run_card["beam"]["dynamical_scale_choice"] == "mlm")
+                if error:
+                    raise ValueError(error)
+        return self._lepton_density
+
+    @property
+    def fixed_fact_scale(self):
+        """The factorisation scale as a number, or None if it is dynamical.
+
+        The beamstrahlung split has to be sampled at the scale the density
+        was evaluated at, which is `fact_scale1` -- the same one Integrand
+        hands to the luminosity. With a dynamical scale annotate_lhe reads it
+        back per event from SCALUP, which mg7 writes as mu_F.
+        """
+        beam = self.run_card["beam"]
+        if not beam["fixed_fact_scale"]:
+            return None
+        return float(beam["fact_scale1"])
 
     def _beam_info(self):
         """Return (beam_pdg_ids, beam_energies) for the LHE <init> block.
