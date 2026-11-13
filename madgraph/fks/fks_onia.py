@@ -669,6 +669,35 @@ _ZERO_QQ = set([(0, 0, 0, 1), (0, 0, 0, 8), (0, 1, 1, 1), (1, 0, 1, 1), (1, 0, 1
                + [(1, 1, j, c) for j in (0, 1, 2) for c in (1, 8)])
 
 
+def vanishing_2to1(legs, model, state=None):
+    """True when legs (the constituent legs of a Born) are a 2 -> 1
+    production of a quarkonium from g g or a massless q qbar whose amplitude
+    vanishes identically (_ZERO_GG, _ZERO_QQ: Landau-Yang, C and P parity,
+    helicity, colour). state = dict(L, S, J, C) replaces the quantum numbers
+    of the quarkonium (the auxiliary S-wave Borns of a P-wave soft current).
+    The projected amplitudes of such Borns are rounding noise, not zero
+    (the P-wave derivative is numerical): the generated kernels return zero
+    for them (export_fks.get_onia_kernel)."""
+    phys = physical_legs(legs)
+    initial = [l for l in phys if not l.get('state')]
+    final = [l for l in phys if l.get('state')]
+    if len(initial) != 2 or len(final) != 1 or not onium_of(final[0]) \
+            or not is_quarkonium(final[0], model):
+        return False
+    onium = dict(onium_of(final[0]))
+    if state:
+        onium.update(state)
+    a, b = initial[0].get('id'), initial[1].get('id')
+    pdict = model.get('particle_dict')
+    key = (onium.get('L', 0), onium.get('S'), onium.get('J'), onium.get('C'))
+    if a == b == 21:
+        return key in _ZERO_GG
+    massless = all(pdict[i].get('mass').lower() == 'zero' for i in (a, b))
+    if massless and a == -b and 0 < abs(a) <= 6:
+        return key in _ZERO_QQ
+    return False
+
+
 def builtin_virtual(legs, model):
     """The built-in virtual of a Born with bound states (legs: the constituent
     legs of the Born process): dict(case, bconst, label), case 0 when there is
@@ -700,6 +729,6 @@ def builtin_virtual(legs, model):
                     label=label + ' (Petrelli et al., hep-ph/9707223)')
     if qq and key == (0, 1, 1) and colour == 8:
         return dict(case=3, bconst=PETRELLI_QQ_3S18, label=label + ' (Petrelli et al., eq. 133, + Q loop)')
-    if (gg and key + (colour,) in _ZERO_GG) or (qq and key + (colour,) in _ZERO_QQ):
+    if vanishing_2to1(legs, model):
         return dict(case=5, bconst=0., label=label + ' (vanishing Born)')
     return none

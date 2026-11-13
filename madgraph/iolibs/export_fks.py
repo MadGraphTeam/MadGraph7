@@ -2449,8 +2449,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         # Write the file
         writer.writelines(file)
         if onia_kname:
+            # Born-type kernels set amplitudes that vanish identically to zero
+            flush = (matrix_element['color_basis'], None) \
+                if proc_type in ('born', 'born_links', 'bhel') else None
             writer.writelines(self.get_onia_kernel(matrix_element, replace_dict,
-                                                   onia_kname, fortran_model=fortran_model))
+                                                   onia_kname, fortran_model=fortran_model,
+                                                   flush=flush))
 
         return len(list([call for call in helas_calls if call.find('#') != 0])), ncolor, \
                 replace_dict['nAmpSplitOrders'], replace_dict['nSqAmpSplitOrders']
@@ -2627,7 +2631,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                          for line in lines)
 
     def get_onia_kernel(self, matrix_element, replace_dict, kname, aux=None,
-                        fortran_model=None):
+                        fortran_model=None, flush=None):
         """The projection kernel <kname> of a matrix element with bound states
         (template onia_amp_kernel_fks[_pwave].inc) and its LDME factor
         <kname>FAC: projected amplitudes of the diagrams for physical momenta
@@ -2637,7 +2641,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         aux = (onium index, colour) gives instead the S-wave amplitudes of the
         same diagrams for that P-wave onium: L = 0, J = S, the given colour
         projector, and its J_z entry of NHEL read as S_z (the auxiliary
-        S-wave Borns of the P-wave soft current, born_onia.f)."""
+        S-wave Borns of the P-wave soft current, born_onia.f).
+
+        flush = (colour basis, onium state override): the kernel tests each
+        helicity amplitude it returns against rounding noise (get_onia_flush)
+        and sets it to zero when it vanishes (Born-type kernels only)."""
         class _Lines(object):
             def __init__(self):
                 self.lines = []
@@ -2681,15 +2689,147 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                        'pmassonia_lines': '\n'.join(l for l in pmass.lines if l.strip()),
                        'helas_calls': helas_calls,
                        'ldme_perturbative': self.get_ldme_perturbative(matrix_element),
-                       'ldme_product': self.get_ldme_product(matrix_element)}
+                       'ldme_product': self.get_ldme_product(matrix_element),
+                       'onia_flush_decl': '', 'onia_flush': '', 'onia_flush_init': '',
+                       'onia_flush_acc': ''}
         template = 'onia_amp_kernel_fks_pwave.inc' if matrix_element.get_npwave() \
                    else 'onia_amp_kernel_fks.inc'
+        flush_routines = ''
+        if flush is not None:
+            pwave = template == 'onia_amp_kernel_fks_pwave.inc' or aux is not None
+            (kernel_dict['onia_flush_decl'], kernel_dict['onia_flush'],
+             kernel_dict['onia_flush_init'], kernel_dict['onia_flush_acc'], flush_routines) = \
+                self.get_onia_flush(matrix_element, kname, flush[0], flush[1], pwave)
         if aux is not None:
             kernel_dict['onia_data'] = self.onia_data_as_s_wave(
                 kernel_dict['onia_data'], aux[0], aux[1])
             template = 'onia_amp_kernel_fks_pwave.inc'
         text = open(pjoin(_file_path, 'iolibs', 'template_files', template)).read()
-        return text % kernel_dict
+        return text % kernel_dict + flush_routines
+
+    # a helicity amplitude below this fraction of its bound is rounding noise
+    ONIA_FLUSH_REL = 1e-18
+
+    def get_onia_flush(self, matrix_element, kname, basis, state, pwave=False):
+        """The numerical test of a Born-type onium kernel for amplitudes that
+        vanish identically, whatever the reason (symmetry, colour, helicity,
+        the dynamics of the diagrams, the model or a diagram selection): for
+        each helicity, the colour-summed square of the projected amplitudes,
+        M2 = sum_ij conj(J_i) CF_ij J_j with J = c A, is compared with its
+        bound SCALE = K sum_d B_d^2, K = max_i sum_j |CF_ij| sum_d |c e_d|^2,
+        where B_d >= |A_d| sums the moduli of the terms the kernel adds into
+        A_d: open amplitudes times the moduli of the spin-projector,
+        Clebsch-Gordan and stencil weights. The bound is thus taken before
+        any cancellation, also when every diagram of a helicity vanishes
+        alone (angular momentum): rounding gives M2/SCALE ~ 1d-32, the
+        P-wave stencil (error (h/M)**7 against B) ~ 1d-28, a genuine
+        amplitude > 1d-8 ((h/M)**2 for a P wave): below ONIA_FLUSH_REL the
+        amplitudes of that helicity are set to zero, so that the Born, its
+        colour links and the soft currents built from them vanish together.
+        M2/SCALE of the last call is kept in COMMON /<kname>RL/ (checks).
+        Returns the declarations, the test, the initialisation and the
+        accumulation of B for the kernel (pwave: the P-wave template, whose
+        projector weight is PABS), and the routines <kname>M2 and <kname>JF
+        (colour flows of the basis, state: onium quantum numbers of the
+        flows as in write_born_onia_file)."""
+        decl = '\n'.join([
+            '      DOUBLE PRECISION ONIA_M2, ONIA_SCALE, ONIA_RLAST',
+            '      DOUBLE PRECISION ONIA_ABSAMP(NGRAPHS)',
+            '      COMMON/%sRL/ONIA_RLAST' % kname,
+            '      DOUBLE PRECISION ONIA_FLUSH_REL',
+            '      PARAMETER (ONIA_FLUSH_REL=%s)' % ('%.1e' % self.ONIA_FLUSH_REL).replace('e', 'D')])
+        test = '\n'.join([
+            'C     an amplitude that vanishes identically (symmetry, colour,',
+            'C     helicity, dynamics) is rounding noise here: set to zero',
+            'C     (export_fks.get_onia_flush)',
+            '      CALL %sM2(AMP_OUT,ONIA_ABSAMP,ONIA_M2,ONIA_SCALE)' % kname,
+            '      ONIA_RLAST = 0D0',
+            '      IF (ONIA_SCALE.GT.0D0) ONIA_RLAST = ABS(ONIA_M2)/ONIA_SCALE',
+            '      IF (ABS(ONIA_M2).LE.ONIA_FLUSH_REL*ONIA_SCALE)',
+            '     &  AMP_OUT(:) = (0D0,0D0)'])
+        init = '      ONIA_ABSAMP(:) = 0D0'
+        acc = '          ONIA_ABSAMP(:) = ONIA_ABSAMP(:)+ABS(AMP(:))*%s' % (
+            'PABS' if pwave else 'ABS(PROJ)')
+        ngraphs = matrix_element.get_number_of_amplitudes()
+        model = matrix_element.get('processes')[0].get('model')
+        has_colour = any(abs(l.get('color')) > 1 for l in
+                         fks_onia.physical_fks_legs(matrix_element.get('base_amplitude')
+                                                    .get('process').get('legs'), model))
+        saved = matrix_element['color_basis']
+        matrix_element['color_basis'] = basis
+        matrix_element.onia_state_override = state
+        try:
+            if has_colour and not len(basis):
+                lines, ntemp = [], 0              # colour forbidden: no flow
+            else:
+                lines, ntemp = self.get_JAMP_lines(matrix_element)
+        finally:
+            matrix_element['color_basis'] = saved
+            matrix_element.onia_state_override = None
+        ncolor = max(1, len(basis)) if len(basis) or not has_colour else 1
+        cf = fks_onia.colour_matrix(basis) if len(basis) else ({} if has_colour else
+                                                                 {(0, 0): (1, 0)})
+        cflines = []
+        for (i, j), (re_, im_) in sorted(cf.items()):
+            if im_:
+                raise MadGraph5Error('Bound states: complex colour matrix')
+            cflines.append('        CF(%d,%d) = %s' % (i + 1, j + 1,
+                                                       ('%.17e' % float(re_)).replace('e', 'D')))
+        routines = [
+            '', '',
+            '      SUBROUTINE %sM2(AMP,ABSAMP,M2,SCALE)' % kname,
+            'C     colour-summed square M2 of the projected amplitudes AMP of',
+            'C     one helicity of %s, and its bound SCALE from the moduli' % kname,
+            'C     ABSAMP >= |AMP| of their terms (get_onia_flush)',
+            '      IMPLICIT NONE',
+            '      INTEGER NGRAPHS, NCOLOR',
+            '      PARAMETER (NGRAPHS=%d, NCOLOR=%d)' % (ngraphs, ncolor),
+            '      COMPLEX*16 AMP(NGRAPHS)',
+            '      DOUBLE PRECISION ABSAMP(NGRAPHS)',
+            '      DOUBLE PRECISION M2, SCALE',
+            '      COMPLEX*16 JAMP(NCOLOR), A(NGRAPHS)',
+            '      DOUBLE PRECISION CF(NCOLOR,NCOLOR), K, ROWMAX',
+            '      INTEGER I, J, D',
+            '      LOGICAL FIRSTTIME',
+            '      DATA FIRSTTIME/.TRUE./',
+            '      SAVE FIRSTTIME, CF, K',
+            '      IF (FIRSTTIME) THEN',
+            '        CF(:,:) = 0D0'] + cflines + [
+            '        ROWMAX = 0D0',
+            '        DO I = 1, NCOLOR',
+            '          ROWMAX = MAX(ROWMAX, SUM(ABS(CF(I,:))))',
+            '        ENDDO',
+            'C       sum_d |c e_d|^2: the colour flows of each diagram alone',
+            '        K = 0D0',
+            '        DO D = 1, NGRAPHS',
+            '          A(:) = (0D0,0D0)',
+            '          A(D) = (1D0,0D0)',
+            '          CALL %sJF(A,JAMP)' % kname,
+            '          K = K+SUM(ABS(JAMP(:))**2)',
+            '        ENDDO',
+            '        K = K*ROWMAX',
+            '        FIRSTTIME = .FALSE.',
+            '      ENDIF',
+            '      CALL %sJF(AMP,JAMP)' % kname,
+            '      M2 = 0D0',
+            '      DO I = 1, NCOLOR',
+            '        DO J = 1, NCOLOR',
+            '          M2 = M2+DBLE(DCONJG(JAMP(I))*CF(I,J)*JAMP(J))',
+            '        ENDDO',
+            '      ENDDO',
+            '      SCALE = K*SUM(ABSAMP(:)**2)',
+            '      END', '', '',
+            '      SUBROUTINE %sJF(AMP,JAMP)' % kname,
+            'C     the colour flows of the diagrams of %s' % kname,
+            '      IMPLICIT NONE',
+            '      INTEGER NGRAPHS, NCOLOR',
+            '      PARAMETER (NGRAPHS=%d, NCOLOR=%d)' % (ngraphs, ncolor),
+            '      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR)',
+            '      COMPLEX*16 TMP_JAMP(%d)' % max(1, ntemp),
+            '      COMPLEX*16 IMAG1',
+            '      PARAMETER (IMAG1=(0D0,1D0))',
+            '      JAMP(:) = (0D0,0D0)'] + lines + ['      END', '']
+        return decl, test, init, acc, '\n'.join(routines)
 
     @staticmethod
     def onia_data_as_s_wave(text, index, colour):
@@ -2901,12 +3041,15 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             'pmassonia_lines': self.get_pmassonia_lines(born_me)}
         text = [main]
         text.append(self.get_onia_kernel(born_me, rdict, 'ONIA_SOFT_AMPP',
-                                         fortran_model=fortran_model))
+                                         fortran_model=fortran_model,
+                                         flush=(born_me['color_basis'], None)))
         text.append('\n'.join(jamp_routine('ONIA_SOFT_JAMPP', born_me['color_basis'], ncolp)))
         for ia_aux, aux in enumerate(data['aux']):
+            aux_state = {data['index']: {'L': 0, 'S': data['S'], 'C': aux['colour']}}
             text.append(self.get_onia_kernel(born_me, rdict, 'ONIA_SOFT_AMPS%d' % (ia_aux + 1),
                                              aux=(data['index'], aux['colour']),
-                                             fortran_model=fortran_model))
+                                             fortran_model=fortran_model,
+                                             flush=(aux['basis'], aux_state)))
             text.append('\n'.join(jamp_routine('ONIA_SOFT_JAMPS%d' % (ia_aux + 1),
                                                 aux['basis'], ncols[ia_aux],
                                                 state={data['index']: {

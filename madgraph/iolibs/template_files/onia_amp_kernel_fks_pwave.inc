@@ -59,6 +59,7 @@ C
       DATA STENCIL /-3D0, -2D0, -1D0, 1D0, 2D0, 3D0/
       DATA SWEIGHT /-1D0, 9D0, -45D0, 45D0, -9D0, 1D0/
       COMPLEX*16 AMP(NGRAPHS), PROJ
+      REAL*8 PABS
       type(aloha) W(NWAVEFUNCS), EPS_L
       REAL*8 P_ONIA(0:3,NEXTERNAL+NONIA), ONIA_MS(NEXTERNAL+NONIA)
       REAL*8 PMASS_ONIA(NEXTERNAL+NONIA), PMASS_RESH(NEXTERNAL)
@@ -74,6 +75,7 @@ C     the S_z combinations with a non-zero Clebsch-Gordan weight
       INTEGER HELQ(2)
       DATA HELQ/-1, 1/
       INCLUDE 'coupl.inc'
+%(onia_flush_decl)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -119,6 +121,7 @@ C     the frame of P)
         ENDIF
       ENDDO
       AMP_OUT(:) = (0D0,0D0)
+%(onia_flush_init)s
 C     the combinations of S_z of the onia (ISZ codes them) with a non-zero
 C     Clebsch-Gordan weight, and for each P wave eps*(L_z) = sum_a CA(a) e_a,
 C     L_z = J_z - S_z. The diagrams do not depend on S_z: they are evaluated
@@ -225,6 +228,7 @@ C       diagram.)
             NHEL_ONIA(Q2) = HELQ(IBITS(J-1,2*I-1,1)+1)
           ENDDO
           PROJ = (0D0,0D0)
+          PABS = 0D0
           DO IGS = 1, NGOOD
             PRJ = COEFS(IGS)
             DO I = 1, NONIA
@@ -233,13 +237,16 @@ C       diagram.)
               PRJ = PRJ*PROJ_SAVED(I,NHEL_ONIA(Q1),NHEL_ONIA(Q2),IGS)
             ENDDO
             PROJ = PROJ+PRJ
+            PABS = PABS+ABS(PRJ)
           ENDDO
           IF (PROJ.NE.(0D0,0D0)) THEN
 %(helas_calls)s
             AMP_OUT(:) = AMP_OUT(:)+AMP(:)*PROJ
+%(onia_flush_acc)s
           ENDIF
         ENDDO
       ENDDO
+%(onia_flush)s
       END
 
 

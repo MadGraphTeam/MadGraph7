@@ -143,6 +143,59 @@ class TestFKSOniaGeneration(unittest.TestCase):
         for born in self.generate('g g > etac(1|1S01) [real=QCD]'):
             self.assertFalse(getattr(born, 'onia_virtual', False))
 
+    def test_vanishing_2to1(self):
+        """2 -> 1 Borns and auxiliary S-wave Borns that vanish by symmetry
+        (Landau-Yang, C and P parity, helicity, colour) are flagged, so that
+        their generated kernels return zero instead of rounding noise."""
+        model = self.cmd._curr_model
+        cases = {'g g > Jpsi(1|3S18) [QCD]': True, 'g g > chic1(1|3P11) [QCD]': True,
+                 'g g > hc(1|1P11) [QCD]': True, 'g g > Jpsi(1|3P18) [QCD]': True,
+                 'u u~ > Jpsi(1|3P08) [QCD]': True, 'u u~ > etac(1|1P18) [QCD]': True,
+                 'u u~ > etac(1|1S08) [QCD]': True,
+                 'g g > etac(1|1S01) [QCD]': False, 'g g > chic0(1|3P01) [QCD]': False,
+                 'g g > etac(1|1P18) [QCD]': False, 'u u~ > Jpsi(1|3S18) [QCD]': False,
+                 'u u~ > tata(1|3S1) [QCD]': False, 'g g > etac(1|1S01) g [real=QCD]': False}
+        for line, zero in cases.items():
+            for born in self.generate(line):
+                legs = born.born_amp['process']['legs']
+                self.assertEqual(fks_onia.vanishing_2to1(legs, model), zero, line)
+        # auxiliary S-wave Borns: g g -> 3S1[8] vanishes, g g -> 1S0[8] does not
+        for born in self.generate('g g > chic0(1|3P01) [QCD]'):
+            legs = born.born_amp['process']['legs']
+            self.assertTrue(fks_onia.vanishing_2to1(legs, model, dict(L=0, S=1, J=1, C=8)))
+        for born in self.generate('g g > hc(1|1P11) [QCD]'):
+            legs = born.born_amp['process']['legs']
+            self.assertFalse(fks_onia.vanishing_2to1(legs, model, dict(L=0, S=0, J=0, C=8)))
+
+    def test_flush_routines(self):
+        """Born-type onium kernels test each helicity amplitude against
+        rounding noise (export_fks.get_onia_flush): the routine <k>M2 forms
+        the colour-summed square from the colour flows <k>JF of the kernel's
+        colour basis and its colour matrix, and the kernel sets amplitudes
+        below ONIA_FLUSH_REL of their bound to zero; real kernels have no
+        such test."""
+        import madgraph.fks.fks_helas_objects as fks_helas
+        import madgraph.iolibs.export_fks as export_fks
+        exporter = export_fks.ProcessExporterFortranFKS()
+        for line, ncolor in (('g g > Jpsi(1|3S18) [real=QCD]', 2),
+                             ('u u~ > Jpsi(1|3S18) [real=QCD]', 1)):
+            self.generate(line)
+            multi = fks_helas.FKSHelasMultiProcess(self.cmd._fks_multi_proc)
+            for me in multi.get('matrix_elements'):
+                born_me = me.born_me
+                decl, test, init, acc, routines = exporter.get_onia_flush(
+                    born_me, 'KN', born_me['color_basis'], None)
+                self.assertIn('COMMON/KNRL/ONIA_RLAST', decl)
+                self.assertIn('CALL KNM2(AMP_OUT,ONIA_ABSAMP,ONIA_M2,ONIA_SCALE)', test)
+                self.assertIn('AMP_OUT(:) = (0D0,0D0)', test)
+                self.assertIn('ONIA_ABSAMP(:) = 0D0', init)
+                self.assertIn('ABS(AMP(:))*ABS(PROJ)', acc)
+                self.assertIn('SUBROUTINE KNM2(AMP,ABSAMP,M2,SCALE)', routines)
+                self.assertIn('SUBROUTINE KNJF(AMP,JAMP)', routines)
+                self.assertIn('NCOLOR=%d)' % ncolor, routines, line)
+                self.assertIn('CF(1,1) = ', routines)
+        self.assertLess(exporter.ONIA_FLUSH_REL, 1e-16)
+
     def test_missing_singular_borns(self):
         """A real whose soft or collinear region has no generated Born is
         reported (MadFKS would not subtract it): with gluons only in the

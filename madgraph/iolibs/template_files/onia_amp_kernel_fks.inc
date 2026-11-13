@@ -52,6 +52,7 @@ C
       INTEGER HELQ(2)
       DATA HELQ/-1, 1/
       INCLUDE 'coupl.inc'
+%(onia_flush_decl)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -94,6 +95,7 @@ C     the spin projectors of each onium for its J_z, and the colour norm
       ENDDO
 C     the open amplitudes for every constituent helicity, projected
       AMP_OUT(:) = (0D0,0D0)
+%(onia_flush_init)s
       DO J = 1, 4**NONIA
         PROJ = SQRT(NORM)
         DO I = 1, NONIA
@@ -106,8 +108,10 @@ C     the open amplitudes for every constituent helicity, projected
         IF (PROJ.NE.(0D0,0D0)) THEN
 %(helas_calls)s
           AMP_OUT(:) = AMP_OUT(:)+AMP(:)*PROJ
+%(onia_flush_acc)s
         ENDIF
       ENDDO
+%(onia_flush)s
       END
 
 
