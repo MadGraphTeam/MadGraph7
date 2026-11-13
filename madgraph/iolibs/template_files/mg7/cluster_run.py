@@ -246,8 +246,7 @@ class ClusterRun:
         # that wait() is given. Name them all like that: otherwise a job is not
         # found, taken for finished, and resubmitted once cluster_retry_wait has
         # passed without its output.
-        identifier = cluster.get_jobs_identifier(self.run_path)
-        cluster.get_jobs_identifier = lambda path, second_path=None: identifier
+        cluster.jobs_identifier = cluster.get_jobs_identifier(self.run_path)
         for job_dir, arguments, required_output, program in jobs:
             # Batch systems run a copy of the submitted script (slurm: in its
             # spool directory), but bin/generate_events finds the directory it

@@ -264,6 +264,19 @@ class TestEarlierJobs(unittest.TestCase):
             self.assertEqual(json.load(f)['job_ids'], {})
 
 
+class TestJobsIdentifier(unittest.TestCase):
+
+    def test_fixed_identifier(self):
+        from madgraph.various import cluster
+        slurm = cluster.SLURMCluster(cluster_queue='q')
+        derived = slurm.get_jobs_identifier('/tmp/a/SubProcesses/P1')
+        self.assertNotEqual(derived, 'run7')
+        slurm.jobs_identifier = 'run7'
+        self.assertEqual(slurm.get_jobs_identifier('/tmp/a/SubProcesses/P1'), 'run7')
+        self.assertEqual(slurm.get_jobs_identifier('/tmp/b', 'prog'), 'run7')
+        self.assertIsNone(cluster.SLURMCluster(cluster_queue='q').jobs_identifier)
+
+
 @unittest.skipIf(cluster_run is None, 'madspace not available')
 class TestPassOverrides(unittest.TestCase):
 

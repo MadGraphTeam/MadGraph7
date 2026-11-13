@@ -97,6 +97,8 @@ class Cluster(object):
     name = 'mother class'
     identifier_length = 14
     badstatus = ''
+    # when set, the name of every job, instead of one derived from its path
+    jobs_identifier = None
 
     def __init__(self,*args, **opts):
         """Init the cluster"""
@@ -284,7 +286,9 @@ class Cluster(object):
     def get_jobs_identifier(self, path, second_path=None):
         """get a unique run_name for all the jobs helps to identify the runs 
         in the controller for some cluster."""
-        
+
+        if self.jobs_identifier:
+            return self.jobs_identifier
         if second_path:
             path = os.path.realpath(pjoin(path, second_path))
         elif not os.path.exists(path):
