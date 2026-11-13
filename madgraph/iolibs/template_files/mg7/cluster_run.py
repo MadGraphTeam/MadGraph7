@@ -265,9 +265,12 @@ class ClusterRun:
                 launcher, arguments, cwd=job_dir,
                 stdout=os.path.join(job_dir, "log"), stderr=-2,
                 required_output=required_output)
+        self.record_job_ids(name, cluster)
         state = []
 
         def update(idle, running, done):
+            # resubmitted jobs get new ids
+            self.record_job_ids(name, cluster)
             if (idle, running, done) != tuple(state):
                 state[:] = [idle, running, done]
                 logger.info("%s jobs: %d waiting, %d running, %d done",
@@ -281,6 +284,37 @@ class ClusterRun:
             except Exception:
                 pass
             raise
+        self.clear_job_ids(name)
+
+    def record_job_ids(self, name: str, cluster) -> None:
+        """Keep the batch ids of the jobs of a pass in the state, for a rerun to
+        cancel the ones a killed steering process left behind."""
+        if self.cluster_type == "local_parallel":
+            return
+        ids = self.state.setdefault("job_ids", {}).setdefault(name, [])
+        new = [str(i) for i in cluster.submitted_ids if str(i) not in ids]
+        if new:
+            ids.extend(new)
+            write_json(self.state_path, self.state)
+
+    def clear_job_ids(self, name: str) -> None:
+        if self.state.get("job_ids", {}).pop(name, None) is not None:
+            write_json(self.state_path, self.state)
+
+    def cancel_earlier_jobs(self, name: str) -> None:
+        """Cancel the jobs of the pass that an earlier, interrupted steering
+        process submitted: they would write into the directories of the jobs
+        submitted again."""
+        ids = self.state.get("job_ids", {}).get(name)
+        if not ids:
+            return
+        logger.info("cancelling the %d %s job(s) of the interrupted run that may "
+                    "still be queued or running", len(ids), name)
+        cluster = self.cluster_objects[name][0]
+        cluster.submitted_ids = list(ids)
+        cluster.remove()
+        cluster.submitted_ids = []
+        self.clear_job_ids(name)
 
     def job_dir(self, name: str, index: int) -> str:
         return os.path.join(self.cluster_path, name, "job_%03d" % index)
@@ -320,6 +354,7 @@ class ClusterRun:
         card.write(os.path.join(job_dir, "run_card.toml"))
 
     def train(self) -> None:
+        self.cancel_earlier_jobs("train")
         jobs = []
         for job in self.state["train_jobs"]:
             job_dir = self.job_dir("train", job["index"])
@@ -405,6 +440,7 @@ class ClusterRun:
     def deploy(self, gridpack_path: str) -> None:
         program = os.path.join(gridpack_path, "bin", "generate_events")
         threads = self.thread_count("deploy", self.cluster_type)
+        self.cancel_earlier_jobs("deploy")
         jobs = []
         for job in self.state["deploy_jobs"]:
             job_dir = self.job_dir("deploy", job["index"])

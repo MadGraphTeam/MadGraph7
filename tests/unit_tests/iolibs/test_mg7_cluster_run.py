@@ -225,6 +225,46 @@ class TestCleanDeployData(unittest.TestCase):
 
 
 @unittest.skipIf(cluster_run is None, 'madspace not available')
+class TestEarlierJobs(unittest.TestCase):
+
+    def test_recorded_jobs_cancelled_on_rerun(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        removed = []
+
+        class FakeCluster:
+            submitted_ids = []
+
+            def remove(self):
+                removed.append(list(self.submitted_ids))
+
+        run = cluster_run.ClusterRun(types.SimpleNamespace(run_card=card()), {})
+        run.cluster_type = 'slurm'
+        run.state_path = os.path.join(tmp.name, 'state.json')
+        run.state = {'stage': 'deploy'}
+        fake = FakeCluster()
+        fake.submitted_ids = [12, '13']
+        run.record_job_ids('deploy', fake)
+        fake.submitted_ids = ['13', '14']
+        run.record_job_ids('deploy', fake)
+        with open(run.state_path) as f:
+            self.assertEqual(json.load(f)['job_ids'], {'deploy': ['12', '13', '14']})
+
+        # a rerun reads the state the killed steering process left
+        rerun = cluster_run.ClusterRun(types.SimpleNamespace(run_card=card()), {})
+        rerun.state_path = run.state_path
+        with open(run.state_path) as f:
+            rerun.state = json.load(f)
+        rerun.cluster_objects = {'deploy': (FakeCluster(), 'slurm')}
+        rerun.cancel_earlier_jobs('train')
+        self.assertEqual(removed, [])
+        rerun.cancel_earlier_jobs('deploy')
+        self.assertEqual(removed, [['12', '13', '14']])
+        with open(run.state_path) as f:
+            self.assertEqual(json.load(f)['job_ids'], {})
+
+
+@unittest.skipIf(cluster_run is None, 'madspace not available')
 class TestPassOverrides(unittest.TestCase):
 
     def setUp(self):
