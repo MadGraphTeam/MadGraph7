@@ -66,7 +66,15 @@ def find_results(campaign, case):
 
 
 def collect(campaign):
+    """Per-case lane summaries from raw results; falls back to the committed summary.
+
+    Raw lane evidence stays on the producing host, so another checkout reads the
+    campaign's summaries/numerical-summary.json instead.
+    """
     cases = json.loads((CAMPAIGNS / campaign / "cases.json").read_text())["cases"]
+    committed = CAMPAIGNS / campaign / "summaries/numerical-summary.json"
+    if committed.is_file() and not any(find_results(campaign, case["id"]) for case in cases):
+        return json.loads(committed.read_text())["cases"]
     summary = {}
     for case in cases:
         path = find_results(campaign, case["id"])

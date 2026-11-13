@@ -129,21 +129,42 @@ def display(data):
                                    yes[v.get("cache-off_identical")], yes[v.get("small-budget_identical")]]
                                   for c, v in data["provenance"]["cases"].items() if v["status"] == "complete"]
     if "stress" in data:
-        rows = []
+        names = {"1": "CutTools", "6": "Ninja", "7": "COLLIER", "8": "NinjaRS"}
+        groups = {}
         for e in data["stress"]["points"]:
             lanes = e["lanes"]
             tirust, chain, qp = lanes.get("candidate-9-auto", {}), lanes.get("chain-9671-auto", {}), lanes.get("candidate-9-qp", {})
-            qp_text = ("agrees" if qp.get("vs_reference", {}).get("passed") else "differs" if "vs_reference" in qp else "–")
-            codes = lambda lane: ",".join(map(str, lane.get("codes", []))) or "–"
             reference = e["reference"]
             if reference.startswith("checked: "):
-                names = {"1": "CutTools", "6": "Ninja", "7": "COLLIER", "8": "NinjaRS"}
                 reference = "checked " + " = ".join(names[x] for x in reference[len("checked: "):].split(" = "))
-            rows.append([LABELS[e["case"]], e.get("kind") or "", reference,
-                         f"{tirust.get('classification', 'pending')} ({codes(tirust)})",
-                         f"{chain.get('classification', 'pending')} ({codes(chain)})", qp_text])
+            qp_text = ("agrees" if qp.get("vs_reference", {}).get("passed") else "differs" if "vs_reference" in qp else "–")
+            codes = lambda lane: ",".join(map(str, lane.get("codes", []))) or "–"
+            row = (tirust.get("classification", "pending"), codes(tirust),
+                   chain.get("classification", "pending"), codes(chain), qp_text, reference)
+            # Ordinary anchor points of a case collapse into one counted row.
+            key = (e["case"], e.get("kind") or "", e["id"] if e.get("kind") != "ordinary" else "ordinary")
+            groups.setdefault(key, []).append(row)
+        rows = []
+        for (case, kind, ident), members in groups.items():
+            count = len(members)
+            def summary(index_label, index_codes=None):
+                values = {}
+                for m in members:
+                    label = m[index_label] + (f" ({m[index_codes]})" if index_codes is not None else "")
+                    values[label] = values.get(label, 0) + 1
+                return "; ".join(k if count == 1 else f"{k} ×{v}" for k, v in values.items())
+            point = kind if count == 1 else f"{count} {kind}"
+            rows.append([LABELS[case], point, summary(5), summary(0, 1), summary(2, 3), summary(4)])
         out["stress_rows"] = rows
         out["stress_blocking"] = data["stress"]["blocking_wrong_accepted"]
+    if "profile" in data:
+        prof = data["profile"]
+        ninjars = next(r["full_ms_median"] for r in prof["rows"] if r["backend"] == 8)
+        out["profile_rows"] = [[r["name"], f"{r['full_ms_median']:.1f}", " / ".join(f"{x:.1f}" for x in r["full_ms"]),
+                                f"{r['initialization_s_median']:.1f}", f"{r['full_ms_median'] / ninjars:.3f}"]
+                               for r in prof["rows"]]
+        out["profile_ratio"] = f"{prof['tirust_over_ninjars_median']:.3f}"
+        out["profile_dso"] = prof["tirust_dso_sha256"][:12]
     if "stability" in data:
         out["stability_rows"] = [[r["variant"], LABELS[r["case"]], r["reducer"], f"{r['available']}/{r['points']}",
                                   *(("{:.2f}".format(lo) if lo == hi else "[{:.2f}, {:.2f}]".format(lo, hi))
@@ -179,6 +200,9 @@ def collect(campaign, dd_gate=None, predecessor="entry-latch-cache-guard-1"):
             shutil.copy2(source, target / source.name)
             if source.with_suffix(".md").is_file():
                 shutil.copy2(source.with_suffix(".md"), target / source.with_suffix(".md").name)
+    profile = target / "profile-zggg-o3.json"
+    if profile.is_file():
+        data["profile"] = json.loads(profile.read_text())
     table = base / "stability/stability-table.json"
     if table.is_file():
         data["stability"] = {"table": json.loads(table.read_text()),

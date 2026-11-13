@@ -137,7 +137,10 @@ entirely native-DP arithmetic. Genuine QP-input rescue remains distinct and
 uses code `323`; a QP numerator also requires the effective
 `UseQPIntegrandForTIRust` setting. Optional bridge route counters do not observe
 Fortran coefficient-cache hits. The stock profile driver does not emit those
-counters, so its timed internal routes remain unknown.
+counters, so its timed internal routes remain unknown. Per-point routes are
+classified by `tools/tirust_provenance.py`, and timed per-call cohorts by
+`tools/tirust_benchmark_cohorts.py --backend 9`. MadLoop clears both caches at
+every phase-space point, so a point's route deltas are complete.
 
 Use the [current local validation checklist](benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md)
 for paired warmed measurements with natural stability/rescue behavior and the
@@ -163,8 +166,24 @@ for every topology.
 The [benchmark guide](benchmarkfolder/README.md) provides the pinned models,
 saved points, build commands and acceptance protocol. The [report](benchmarkfolder/benchmark.pdf)
 distinguishes completed numerical checks, failed or unqualified stress cases,
-and pending runtime measurements. Acceptance remains in progress; the preserved
-initial candidate has a qualified runtime regression in the smallest process.
+and pending runtime measurements. [`CURRENT_STATUS.md`](benchmarkfolder/CURRENT_STATUS.md)
+names the current campaign; its `summaries/` hold the 66-lane matrix,
+double-double gate, per-point provenance, stress and stability results.
+Precise runtime acceptance is performed locally (see the campaign's
+`timing-handoff-1/LOCAL_TIMING_TODO.md`).
+
+A new TIRust pin is requalified with one driver,
+`tools/tirust_requalify.sh <campaign>`. It runs these phases in order:
+- installation;
+- campaign registration;
+- exports;
+- the 66 numerical lanes;
+- bridge-call capture and replay of the double-double gate (`tools/tirust_capture`);
+- physical and complex-mass stress points (`tools/tirust_stress.py`);
+- Appendix-C stability (`tools/tirust_stability.py`);
+- per-point provenance with cache-off and small-budget equivalence (`tools/tirust_provenance.py`).
+
+`tools/tirust_pin/README.md` describes the pin bump itself.
 
 The common benchmark uses `MLStabThres=1e-6` for every reducer and both revisions;
 the production default remains `1e-3`. Independent numerical comparisons and QP

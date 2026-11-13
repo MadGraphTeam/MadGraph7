@@ -117,6 +117,17 @@ class TestPointFiles(unittest.TestCase):
                 stress.split_points(path)
 
 
+class TestPartialOutputs(unittest.TestCase):
+    def test_incomplete_trailing_point_is_dropped_only_when_partial(self):
+        row = lambda p, j: f"{p} {j} 219 1.0 2.0 3.0 4.0 1e-12 1 0 0\n"
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "stress-values.dat"
+            path.write_text(row(1, 0) + row(1, 1) + row(2, 0))
+            self.assertEqual({r["point"] for r in stress.parse_values(path, 1, partial=True)}, {1})
+            with self.assertRaises(ValueError):
+                stress.parse_values(path, 1)
+
+
 class TestStressClassification(unittest.TestCase):
     def lane(self, accepted, passed=None, status="complete"):
         lane = {"status": status, "accepted": accepted}
@@ -134,8 +145,9 @@ class TestStressClassification(unittest.TestCase):
         self.assertEqual(stress.classify(self.lane(None), [9, 6, 7, 1], reference), "unrescued")
         self.assertEqual(stress.classify(self.lane([9, "DP"]), [9], None), "accepted-unreferenced")
         self.assertEqual(stress.classify(self.lane(None, status="timeout"), [9], None), "driver-timeout")
-        stopped = dict(self.lane(None), stopped=True)
+        stopped = dict(self.lane(None), stopped="STOP")
         self.assertEqual(stress.classify(stopped, [9, 6, 7, 1], None), "unrescued (process STOP)")
+        self.assertEqual(stress.classify(dict(stopped, stopped="hang"), [9], None), "refused (process hang)")
 
     def test_nonfinite_or_flagged_results_are_never_accepted(self):
         row = {"point": 1, "order": 0, "status": 219, "finite": True, "fpe_dp": False, "fpe_qp": False,

@@ -92,6 +92,8 @@ C@STRESS_ROUTE_WRITE@
      $           ESTIMATE,VALID,MERGE(1,0,FPE_IN_DP_REDUCTION),
      $           MERGE(1,0,FPE_IN_QP_REDUCTION)
          ENDDO
+C        A reducer may hang or abort on the next point: keep this one on disk.
+         FLUSH(76)
       ENDDO
       CALL SYSTEM_CLOCK(T1)
       CLOSE(76)

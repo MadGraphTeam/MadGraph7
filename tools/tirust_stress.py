@@ -61,7 +61,8 @@ def route_hooks(prefix, enabled):
             "BEFORE": getter + "STRESS_RB,STRESS_RSB)",
             "WRITE": (getter + "STRESS_RA,STRESS_RSA)\n"
                       "      WRITE(79,'(3I12,20I20)') K,STRESS_RSB,STRESS_RSA,\n"
-                      "     $ STRESS_RA-STRESS_RB"),
+                      "     $ STRESS_RA-STRESS_RB\n"
+                      "      FLUSH(79)"),
             "CLOSE": "      CLOSE(79)"}
 
 
@@ -81,7 +82,8 @@ def render(template, parameters, numerical_source, routes=False):
     return bench.render_worker(text, parameters)
 
 
-def parse_values(path, ndim):
+def parse_values(path, ndim, partial=False):
+    """Rows of stress-values.dat; with ``partial`` an incomplete trailing point is dropped."""
     rows = []
     for line in Path(path).read_text().splitlines():
         fields = line.split()
@@ -95,6 +97,9 @@ def parse_values(path, ndim):
                      "accuracy": numbers[4] if math.isfinite(numbers[4]) else None,
                      "finite": bool(valid), "fpe_dp": bool(fpe_dp), "fpe_qp": bool(fpe_qp)})
     points = sorted({r["point"] for r in rows})
+    if partial and points and sum(1 for r in rows if r["point"] == points[-1]) < ndim + 1:
+        rows = [r for r in rows if r["point"] != points[-1]]
+        points = points[:-1]
     if [(r["point"], r["order"]) for r in rows] != [(p, j) for p in points for j in range(ndim + 1)]:
         raise ValueError("Stress value rows are missing or reordered")
     return rows
@@ -128,9 +133,11 @@ def run_driver(campaign, config, case, lane, cpu, points, report, workspace, opt
     """Clone the campaign export for one lane, render the stress driver and evaluate every point.
 
     Some reducers end the whole program with a Fortran STOP on a pathological point
-    (CutTools: momentum-conservation flag CT692) and exit 0. The driver prints
-    STRESS-DONE only after its last point; when it is missing, the next point is
-    recorded as stopping the process and the remaining points run in a fresh process.
+    (CutTools: momentum-conservation flag CT692) and exit 0, or never return (CutTools
+    at an exact complex-mass resonance). The driver prints STRESS-DONE only after its
+    last point; when it is missing, or an invocation exceeds `timeout` seconds, the
+    next point is recorded as stopping the process and the remaining points run in a
+    fresh process.
     """
     source, chain = LANES[lane]
     warm = (extra or {}).get("warm") or bench.REPORT / "points" / f"{case['id']}.dat"
@@ -170,27 +177,35 @@ def run_driver(campaign, config, case, lane, cpu, points, report, workspace, opt
                            "checked" if checked else "unchecked"]
                 log_path = report / f"driver-run{invocations}.log"
                 with log_path.open("w") as log:
-                    completed = subprocess.run(command, cwd=directory, env=env, stdout=log,
-                                               stderr=subprocess.STDOUT, timeout=timeout)
+                    try:
+                        completed = subprocess.run(command, cwd=directory, env=env, stdout=log,
+                                                   stderr=subprocess.STDOUT, timeout=timeout)
+                        returncode = completed.returncode
+                    except subprocess.TimeoutExpired:
+                        returncode = "timeout"
                 for name in OUTPUTS:
                     if (directory / name).is_file():
                         shutil.copy2(directory / name, report / (name if invocations == 1 else f"run{invocations}-{name}"))
                 ndim = int((directory / "dimensions.dat").read_text().split()[0])
                 if invocations == 1:
                     record["warm_calls"] = len((directory / "warm.dat").read_text().splitlines())
-                done = parse_values(directory / "stress-values.dat", ndim) if (directory / "stress-values.dat").is_file() else []
+                done = parse_values(directory / "stress-values.dat", ndim, partial=True) \
+                    if (directory / "stress-values.dat").is_file() else []
                 for row in done:
                     row["point"] = remaining[row["point"] - 1]
                 rows += done
                 if (directory / "stress-routes.dat").is_file():
+                    complete = {row["point"] for row in done}
                     for k, route in parse_routes(directory / "stress-routes.dat").items():
-                        routes[remaining[k - 1]] = route
+                        if remaining[k - 1] in complete:
+                            routes[remaining[k - 1]] = route
                 finished = sorted({row["point"] for row in done})
-                if completed.returncode == 0 and "STRESS-DONE" in log_path.read_text():
+                if returncode == 0 and "STRESS-DONE" in log_path.read_text():
                     break
                 culprit = remaining[len(finished)] if len(finished) < len(remaining) else None
-                tail = log_path.read_text().splitlines()[-3:]
-                stops.append({"point": culprit, "exit_code": completed.returncode, "log_tail": tail})
+                tail = log_path.read_text(errors="replace").splitlines()[-3:]
+                stops.append({"point": culprit, "exit_code": returncode,
+                              "reason": "timeout" if returncode == "timeout" else "stop", "log_tail": tail})
                 if culprit is None:
                     break
                 remaining = remaining[len(finished) + 1:]
@@ -206,7 +221,7 @@ def run_driver(campaign, config, case, lane, cpu, points, report, workspace, opt
     return record
 
 
-def run(campaign, case_id, lane, mode, cpu, timeout=7200.):
+def run(campaign, case_id, lane, mode, cpu, timeout=3600.):
     from tirust_benchmark_campaign import activate_campaign
     activate_campaign(bench, campaign)
     config = bench.load_config()
@@ -300,7 +315,8 @@ def summarize(campaign):
                 rows = point_rows(result, index)
                 lane = {"status": result["status"], "codes": sorted({r["status"] for r in rows}),
                         "accuracy": rows[0]["accuracy"] if rows else None,
-                        "stopped": any(stop["point"] == index for stop in result.get("stopped_points", []))}
+                        "stopped": next((("hang" if stop.get("reason") == "timeout" else "STOP")
+                                         for stop in result.get("stopped_points", []) if stop["point"] == index), None)}
                 if result["mode"] == "auto":
                     accepted = accepted_backend(rows, result["chain"]) if result["status"] == "complete" else None
                     lane["accepted"] = list(accepted) if accepted else None
@@ -329,7 +345,7 @@ def classify(lane, chain, reference):
         return "driver-" + lane["status"]
     if not lane["accepted"]:
         verb = "refused" if chain == [9] else "unrescued"
-        return verb + (" (process STOP)" if lane.get("stopped") else "")
+        return verb + (f" (process {lane['stopped']})" if lane.get("stopped") else "")
     backend = lane["accepted"][0]
     label = "accepted" if backend == 9 else f"rescued-by-{backend}"
     if reference is None or "vs_reference" not in lane:
@@ -365,7 +381,7 @@ def main(argv=None):
     parser.add_argument("--lane", choices=sorted(LANES))
     parser.add_argument("--mode", choices=("auto", "qp"), default="auto")
     parser.add_argument("--cpu", type=int)
-    parser.add_argument("--timeout", type=float, default=7200.)
+    parser.add_argument("--timeout", type=float, default=3600., help="per driver invocation, seconds")
     args = parser.parse_args(argv)
     if Path.cwd() != bench.ROOT:
         parser.error(f"Run from {bench.ROOT}")
