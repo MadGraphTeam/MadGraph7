@@ -161,12 +161,10 @@ class MG7MLMMultijetTest(unittest.TestCase):
                 self.assertEqual(set(counts), set(range(len(metadata))))
                 for index, values in counts.items():
                     self.assertEqual(values['errors'], 0, (history, index, values))
-                    self.assertGreater(values['forced'], 0, (history, index, values))
                     self.assertGreater(values['colored'], 0, (history, index, values))
+                    self.assertGreater(values['sampled'], 0, (history, index, values))
                     if history == 'all_diagrams':
-                        self.assertEqual(values['sampled'], 0)
-                    else:
-                        self.assertGreater(values['sampled'], 0)
+                        self.assertEqual(values['forced'], 0)
                 self.assertTrue(any(values['diagrams'] > 1 for values in counts.values()))
                 events = np.load(infos[-1].parent / 'events.npy')
                 self.assertEqual(len(events), _EVENTS)

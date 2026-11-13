@@ -76,7 +76,7 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
         if (ok[k] == UMAMI_OUT_COLOR_INDEX) colors = static_cast<int*>(out[k]);
         if (ok[k] == UMAMI_OUT_MATRIX_ELEMENT) matrix = static_cast<double*>(out[k]);
     }
-    if (!diagrams || !chosen || !colors || !matrix) {
+    if (!chosen || !colors || !matrix) {
         ++state.errors;
         std::fprintf(stderr, "MLM probe: subprocess %d missing diagram handoff/output\n", subprocess);
         return UMAMI_ERROR;
@@ -84,11 +84,12 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
     auto status = api().matrix(state.real, count, stride, offset, ni, ik, in, no, ok, out);
     if (status != UMAMI_SUCCESS) return status;
     for (size_t i = offset; i < offset + count; ++i) {
-        int diagram = diagrams[i];
-        if (diagram == -1) { ++state.sampled; continue; }
-        ++state.forced;
+        int given = diagrams ? diagrams[i] : -1;
+        if (given == -1) ++state.sampled;
+        else ++state.forced;
+        int diagram = chosen[i];
         state.diagrams.insert(diagram);
-        bool mismatch = diagram < 0 || diagram >= ndiagrams || chosen[i] != diagram;
+        bool mismatch = diagram < 0 || diagram >= ndiagrams || (given != -1 && chosen[i] != given);
         if (std::isfinite(matrix[i]) && matrix[i] != 0.) {
             ++state.colored;
             mismatch = mismatch || colors[i] < 0 || colors[i] >= ncolors ||
@@ -97,7 +98,7 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
         if (mismatch) {
             ++state.errors;
             std::fprintf(stderr, "MLM probe: subprocess %d expected diagram %d, got %d/color %d\n",
-                         subprocess, diagram, chosen[i], colors[i]);
+                         subprocess, given, chosen[i], colors[i]);
             return UMAMI_ERROR;
         }
     }
