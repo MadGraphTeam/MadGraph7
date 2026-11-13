@@ -162,8 +162,10 @@ def compile_dir(*arguments):
             # skip check_poles for LOonly dirs
             if test == 'check_poles' and os.path.exists(pjoin(this_dir, 'parton_lum_0.f')):
                 continue
-            # skip check_poles for no virtual
-            if test == 'check_poles' and len(misc.glob(pjoin(this_dir, 'V*'))) == 0:
+            # skip check_poles for no virtual (bound states: the built-in
+            # virtual of onia_virtual.inc, BinothLHA_onia.f)
+            if test == 'check_poles' and len(misc.glob(pjoin(this_dir, 'V*'))) == 0 \
+                    and not os.path.exists(pjoin(this_dir, 'onia_virtual.inc')):
                 continue
             if test == 'test_ME' or test == 'test_MC':
                 test_exe='test_soft_col_limits'
@@ -5784,6 +5786,10 @@ RESTART = %(mint_mode)s
             if mode in ['NLO', 'aMC@NLO', 'noshower']:
                 tests.append('check_poles')
             pass
+        # bound states with [QCD]: the built-in virtuals are pole-checked too
+        elif mode in ['NLO', 'aMC@NLO', 'noshower'] and \
+                misc.glob(pjoin(self.me_dir, 'SubProcesses', 'P*', 'onia_virtual.inc')):
+            tests.append('check_poles')
 
         # make and run tests (if asked for), gensym and make madevent in each dir
         self.update_status('Compiling directories...', level=None)
@@ -5840,7 +5846,7 @@ RESTART = %(mint_mode)s
             return self.parse_test_mx_log(pjoin(dir, '%s.log' % test)) 
         # we must ensure there is virtual. Otherwise, we skip the pole checks
         elif test == 'check_poles' and not os.path.exists(pjoin(dir,'parton_lum_0.f')) \
-          and len(misc.glob(pjoin(dir,'V*'))) > 0:
+          and (len(misc.glob(pjoin(dir,'V*'))) > 0 or os.path.exists(pjoin(dir, 'onia_virtual.inc'))):
             return self.parse_check_poles_log(pjoin(dir, '%s.log' % test)) 
 
 

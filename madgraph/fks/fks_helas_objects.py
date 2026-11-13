@@ -757,6 +757,8 @@ class FKSHelasProcess(object):
                           optimized_output = loop_optimized)
             else: 
                 self.virt_matrix_element = None
+            # bound states with [QCD]: the built-in or user virtual (fks_onia)
+            self.onia_virtual = getattr(fksproc, 'onia_virtual', False)
 
             self.sudakov_matrix_elements = []
             self.ewsudakov = fksproc.ewsudakov

@@ -624,3 +624,80 @@ def soft_current_data(born_me):
     return dict(onium=tm['onium'], index=onium['index'], S=onium['S'], J=onium['J'],
                 C=onium['C'], quark=quark.get('number'), antiquark=antiquark.get('number'),
                 ncolor_p=len(tm['keys_p']), aux=tm['aux'])
+
+
+# ----------------------------------------------------- built-in virtuals ----
+# One-loop virtuals of 2 -> 1 onium Borns, written to onia_virtual.inc and
+# evaluated by Template/NLO/SubProcesses/BinothLHA_onia.f. Petrelli et al.,
+# hep-ph/9707223 (NPB 514 (1998) 245), give the UV-unrenormalised virtual as
+#   sigma_V = sigma_Born (alpha_s/pi) f_eps(M^2) [A/eps^2 + B/eps + b_0/eps_UV
+#             + C pi^2/(2v) + B_n]
+# with f_eps(M^2) = (4 pi mu^2/M^2)^eps Gamma(1+eps), the D-dimensional Born
+# and n_f light flavours (eqs. 121-133). BinothLHA_onia converts to the FKS
+# normalisation (alpha_s/2 pi) (4 pi)^eps/Gamma(1-eps) (mu^2/Q_ES^2)^eps at
+# mu = Q_ES, MSbar coupling, Coulomb term dropped (absorbed into the LDME,
+# Petrelli sect. 6). Cases:
+#   1  g g -> 1S0, 3P0, 3P2 colour singlet: A = -C_A, B = -b_0
+#   2  g g -> 1S0, 3P0, 3P2 colour octet:   A = -C_A, B = -b_0 - C_A/2
+#   3  q qbar -> 3S1[8]: A = -C_F, B = -3/2 C_F - C_A/2, with the light-quark
+#      bubble -10/9 n_f T_F (eq. 133) and the bound heavy-quark bubble in the
+#      s-channel gluon, -16/9 T_F (decoupling scheme, Pi(4m^2) - Pi(0))
+#   4  q qbar -> leptonium (one electroweak current): the light-quark form
+#      factor, C_F (-2/eps^2 - 3/eps + pi^2 - 8) in FKS normalisation
+#   5  a Born that vanishes identically (Landau-Yang, C or P parity): no
+#      virtual at this order
+#   0  no built-in virtual: BinothLHA_onia stops and points to the user hook
+_CA, _CF = 3., 4. / 3.
+_PI2 = 9.869604401089358618834490999876151135314
+_LOG2 = 0.6931471805599453094172321214581765680755
+# B_n of Petrelli et al., eqs. (125)-(131), by (L, S, J) and colour
+PETRELLI_GG = {
+    ((0, 0, 0), 1): _CF * (-5 + _PI2 / 4) + _CA * (1 + 5 * _PI2 / 12),
+    ((1, 1, 0), 1): _CF * (-7. / 3 + _PI2 / 4) + _CA * (1. / 3 + 5 * _PI2 / 12),
+    ((1, 1, 2), 1): -4 * _CF + _CA * (1. / 3 + 5. / 3 * _LOG2 + _PI2 / 6),
+    ((0, 0, 0), 8): _CF * (-5 + _PI2 / 4) + _CA * (2 + 7 * _PI2 / 24),
+    ((1, 1, 0), 8): _CF * (-7. / 3 + _PI2 / 4) + _CA * (17. / 54 + 35. / 27 * _LOG2 + 7 * _PI2 / 24),
+    ((1, 1, 2), 8): -4 * _CF + _CA * (23. / 36 + 7. / 9 * _LOG2 + 5 * _PI2 / 12),
+}
+# the n_f-independent part of eq. (133); BinothLHA_onia adds -10/9 n_f T_F
+PETRELLI_QQ_3S18 = _CF * (-8 + 2 * _PI2 / 3) + _CA * (50. / 9 + 2. / 3 * _LOG2 - _PI2 / 4)
+# Borns that vanish identically, by initial state and (L, S, J, colour)
+_ZERO_GG = set([(0, 1, 1, 1), (0, 1, 1, 8), (1, 1, 1, 1), (1, 1, 1, 8), (1, 0, 1, 1), (1, 0, 1, 8)])
+_ZERO_QQ = set([(0, 0, 0, 1), (0, 0, 0, 8), (0, 1, 1, 1), (1, 0, 1, 1), (1, 0, 1, 8)]
+               + [(1, 1, j, c) for j in (0, 1, 2) for c in (1, 8)])
+
+
+def builtin_virtual(legs, model):
+    """The built-in virtual of a Born with bound states (legs: the constituent
+    legs of the Born process): dict(case, bconst, label), case 0 when there is
+    none (see the table above)."""
+    phys = physical_legs(legs)
+    none = dict(case=0, bconst=0., label='no built-in virtual')
+    initial = [l for l in phys if not l.get('state')]
+    final = [l for l in phys if l.get('state')]
+    if len(initial) != 2 or len(final) != 1 or not onium_of(final[0]):
+        return none
+    onium = onium_of(final[0])
+    a, b = initial[0].get('id'), initial[1].get('id')
+    pdict = model.get('particle_dict')
+    massless = all(pdict[i].get('mass').lower() == 'zero' for i in (a, b))
+    gg = a == b == 21
+    qq = massless and a == -b and 0 < abs(a) <= 6
+    key = (onium.get('L', 0), onium.get('S'), onium.get('J'))
+    name = '%d%s%d' % (2 * onium.get('S') + 1, 'SPDF'[key[0]], key[2])
+    if not is_quarkonium(final[0], model):
+        if qq:
+            return dict(case=4, bconst=0., label='q qbar -> leptonium %s (light-quark form factor)' % name)
+        if not any(abs(pdict[i].get_color()) > 1 for i in (a, b)):
+            return dict(case=5, bconst=0., label='no coloured parton: no QCD virtual')
+        return none
+    colour = onium.get('C')
+    label = '%s -> %s[%d]' % ('g g' if gg else 'q qbar', name, colour)
+    if gg and (key, colour) in PETRELLI_GG:
+        return dict(case=1 if colour == 1 else 2, bconst=PETRELLI_GG[(key, colour)],
+                    label=label + ' (Petrelli et al., hep-ph/9707223)')
+    if qq and key == (0, 1, 1) and colour == 8:
+        return dict(case=3, bconst=PETRELLI_QQ_3S18, label=label + ' (Petrelli et al., eq. 133, + Q loop)')
+    if (gg and key + (colour,) in _ZERO_GG) or (qq and key + (colour,) in _ZERO_QQ):
+        return dict(case=5, bconst=0., label=label + ' (vanishing Born)')
+    return none

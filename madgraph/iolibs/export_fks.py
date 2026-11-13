@@ -862,6 +862,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         os.system("ln -s ../makefile_fks_dir ./makefile")
         if matrix_element.virt_matrix_element:
             os.system("ln -s ../BinothLHA.f ./BinothLHA.f")
+        elif getattr(matrix_element, 'onia_virtual', False):
+            # bound states with [QCD]: the built-in 2 -> 1 virtuals (or a stop
+            # pointing to the user hook), fks_onia.builtin_virtual
+            self.write_onia_virtual_file('onia_virtual.inc', matrix_element)
+            os.system("ln -s ../BinothLHA_onia.f ./BinothLHA.f")
         elif OLP!='MadLoop':
             os.system("ln -s ../BinothLHA_OLP.f ./BinothLHA.f")
         else:
@@ -2705,6 +2710,24 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         if not match:
             raise MadGraph5Error('Bound states: no P wave in the onia data')
         return text[:match.start(1)] + str(int(match.group(1)) - 1) + text[match.end(1):]
+
+    def write_onia_virtual_file(self, filename, matrix_element):
+        """onia_virtual.inc: the built-in virtual of a Born with bound states
+        (fks_onia.builtin_virtual), read by BinothLHA_onia.f."""
+        process = matrix_element.born_me.get('base_amplitude').get('process')
+        info = fks_onia.builtin_virtual(process.get('legs'), process.get('model'))
+        if info['case'] == 0:
+            logger.warning('No built-in virtual for %s: the run will stop unless '
+                           'SubProcesses/%s/BinothLHA.f is replaced by a user virtual '
+                           '(see BinothLHA_user.f).' % (process.nice_string().replace('Process: ', ''),
+                                                        os.path.basename(os.getcwd())))
+        lines = ['c Built-in virtual of %s: %s' % (process.shell_string(), info['label']),
+                 'c (madgraph/fks/fks_onia.py, builtin_virtual; BinothLHA_onia.f)',
+                 '      integer onia_virt_case',
+                 '      double precision onia_virt_b',
+                 '      parameter (onia_virt_case=%d)' % info['case'],
+                 '      parameter (onia_virt_b=%s)' % ('%.16e' % info['bconst']).replace('e', 'd')]
+        open(filename, 'w').write('\n'.join(lines) + '\n')
 
     def write_onia_legs_file(self, filename, matrix_element):
         """onia_legs.f: FKS_ONIA_LEG(I) is true when leg I (physical numbering)
