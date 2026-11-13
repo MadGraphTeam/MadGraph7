@@ -290,7 +290,8 @@ class MadgraphProcess:
     # is the same for all of them, and written once for the merged gridpack
     gridpack_data_only = False
 
-    def __init__(self, extra_make_args=(), split_flavors=False, run_card_path=None):
+    def __init__(self, extra_make_args=(), split_flavors=False, run_card_path=None,
+                 steering_only=False):
         # appended to the make command that builds the matrix elements
         self.extra_make_args = list(extra_make_args)
         # one subprocess per flavour of a decay (split_decay_flavors)
@@ -300,6 +301,8 @@ class MadgraphProcess:
         self.madnis_trained = False
         self.lhe_completer = None
         self.load_cards()
+        if steering_only:
+            return
         self.init_backend()
         self.init_event_dir()
         self.init_context()
@@ -316,14 +319,7 @@ class MadgraphProcess:
         """A process that has only read the cards, for the steering of a
         cluster run: it builds the matrix elements and writes gridpacks, but
         integrates nothing itself."""
-        process = cls.__new__(cls)
-        process.extra_make_args = []
-        process.split_flavors = False
-        process.run_card_path = os.path.join("Cards", "run_card.toml")
-        process.madnis_trained = False
-        process.lhe_completer = None
-        process.load_cards()
-        return process
+        return cls(steering_only=True)
 
     def load_cards(self) -> None:
         self.run_card = RunCardMG7(self.run_card_path)
