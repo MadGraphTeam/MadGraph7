@@ -377,10 +377,12 @@ class ClusterRun:
         # devices, and the resolved backend of its cpu
         card = RunCardMG7(os.path.join("Cards", "run_card.toml")).cluster_pass_card("deploy")
         card.set("cluster.enable", False, user=True)
+        # the mode of the training jobs (see write_train_card), not of the main card
+        run_mode = "fix_max_weight" if self.section["fix_max_weight"] else "minimal"
         launch.MadgraphProcess.write_gridpack_shell(
             gridpack_path, card, self.backends["deploy"],
             self.process.custom_function_paths, self.process.subprocess_data,
-            self.process.gridpack_run_mode)
+            run_mode)
         return gridpack_path
 
     def clean_training_data(self) -> None:
