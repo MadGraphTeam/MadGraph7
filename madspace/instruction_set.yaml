@@ -4735,6 +4735,48 @@ cs_initial_initial_dipole:
       desc: "k_t, the vector that replaces the polarization of the Born emitter"
   desc: "Catani-Seymour dipole with an incoming emitter and spectator, CS eqs. 5.145-5.148, with the kernels of @ref cs_initial_final_dipole. It vanishes for v >= alpha, over the invariant x p_a.p_i. k_t is p_i without its parts along p_a and p_b, the same in the frames of the real emission and of its Born. The dipole is -g_s^2 (color_weight <T_j . T_k> + spin_weight <T_j . T_k>(k_t)) with the color-correlated Born of the Born emitter j and spectator k, and <T_j . T_k>(k_t) the same with the real vector k_t in place of the polarization vector of the Born emitter, a gluon. k_t is the vector k~ of the tensor part k~^mu k~^nu of the kernel without its part along the Born emitter (by the Born spectator), which the gauge invariance of the Born leaves out. The weights are the kernel, over the invariant of the dipole and normalized to the Casimir of the Born emitter, zero outside alpha. The momenta are in one frame. See @ref CSDipoles."
 
+cs_insertion:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "momenta of the Born, in any frame"
+    - name: color_correlated
+      type: [float, b, n, n]
+      desc: "color-correlated Borns <T_j . T_k> B of the particles j, k of the Born per Born order"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: ren_scale
+      type: [float]
+      desc: "renormalization scale, the scale mu of the I operator"
+    - name: casimir
+      type: [float, single, n]
+      desc: "T_j^2 of each particle of the Born: C_F for a quark, C_A for a gluon, zero for a colorless particle"
+    - name: gamma
+      type: [float, single, n]
+      desc: "gamma_j of each particle of the Born (CS eq. 7.13), with n_f light flavors for a gluon"
+    - name: k_constant
+      type: [float, single, n]
+      desc: "K_j of each particle of the Born (CS eq. 7.27)"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle of the Born, zero for the incoming ones and for gluons"
+    - name: options
+      type: [float, single, 3]
+      desc: "kappa of CDST, alpha of the final-final dipoles and n_f"
+    - name: incoming
+      type: [int, single]
+      desc: "number of incoming particles, the first of the momenta"
+  outputs:
+    - name: insertion
+      type: [float, b]
+      desc: "the finite part of <I> per Born order"
+    - name: poles
+      type: [float, b, 2]
+      desc: "the coefficients of eps^-2 and eps^-1 of <I> per Born order"
+  vectorized: False
+  desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). See @ref CSInsertion."
+
 ---
 title: Invariants
 

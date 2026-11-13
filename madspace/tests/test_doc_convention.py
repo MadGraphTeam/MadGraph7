@@ -105,6 +105,14 @@ CASES = {
         alpha_ii=1.0,
         kappa=2.0 / 3.0,
     ),
+    "CSInsertion": dict(
+        pdgs=[21, 21, 6, -6],
+        masses=[0.0, 0.0, 173.0, 173.0],
+        born_orders=1,
+        kappa=2.0 / 3.0,
+        alpha_ff=1.0,
+        n_f=5.0,
+    ),
     "FKSConfigurationMapping": dict(
         born=ms.PhaseSpaceMapping(
             [0.0] * 4,

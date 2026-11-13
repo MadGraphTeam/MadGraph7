@@ -2,6 +2,7 @@
 
 #include "chili.hpp"
 #include "cs.hpp"
+#include "cs_integrated.hpp"
 #include "cuts.hpp"
 #include "discrete.hpp"
 #include "ew_sudakov.hpp"

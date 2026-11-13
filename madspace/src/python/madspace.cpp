@@ -2155,6 +2155,36 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("mappings", &CSDipoles::mappings, pydoc::doc("CSDipoles::mappings"));
 
+    py::classh<CSInsertion, FunctionGenerator>(
+        m, "CSInsertion", pydoc::doc("CSInsertion")
+    )
+        .def(
+            py::init<
+                const std::vector<int>&,
+                const std::vector<double>&,
+                std::size_t,
+                double,
+                double,
+                double>(),
+            py::arg("pdgs"),
+            py::arg("masses"),
+            py::arg("born_orders") = 1,
+            py::arg("kappa") = 2. / 3.,
+            py::arg("alpha_ff") = 1.,
+            py::arg("n_f") = 5.,
+            pydoc::doc("CSInsertion::CSInsertion")
+        )
+        .def(
+            "particle_count",
+            &CSInsertion::particle_count,
+            pydoc::doc("CSInsertion::particle_count")
+        )
+        .def(
+            "born_order_count",
+            &CSInsertion::born_order_count,
+            pydoc::doc("CSInsertion::born_order_count")
+        );
+
     m.def(
         "fks_sqrt_s_hat_min",
         &fks_sqrt_s_hat_min,

@@ -1,0 +1,98 @@
+#include "madspace/phasespace/cs_integrated.hpp"
+
+#include <cmath>
+#include <cstdlib>
+#include <stdexcept>
+
+using namespace madspace;
+
+namespace {
+
+constexpr double CA = 3., CF = 4. / 3., TR = 0.5;
+constexpr double PI = 3.14159265358979323846;
+
+NamedVector<Type> insertion_arg_types(
+    const std::vector<int>& pdgs, const std::vector<double>& masses, std::size_t orders
+) {
+    if (pdgs.size() != masses.size() || pdgs.size() < 3) {
+        throw std::invalid_argument(
+            "CSInsertion: the Born needs two incoming particles, an outgoing one and "
+            "a mass for each"
+        );
+    }
+    if (orders == 0) {
+        throw std::invalid_argument("CSInsertion: there has to be a Born order");
+    }
+    auto n = static_cast<int>(pdgs.size());
+    auto b = static_cast<int>(orders);
+    return {
+        {"momenta", batch_four_vec_array(n)},
+        {"color_correlated", Type{DataType::dt_float64, batch_size, {b, n, n}}},
+        {"alpha_s", batch_float},
+        {"ren_scale", batch_float},
+    };
+}
+
+} // namespace
+
+CSInsertion::CSInsertion(
+    const std::vector<int>& pdgs,
+    const std::vector<double>& masses,
+    std::size_t born_orders,
+    double kappa,
+    double alpha_ff,
+    double n_f
+) :
+    FunctionGenerator(
+        "CSInsertion",
+        insertion_arg_types(pdgs, masses, born_orders),
+        {{"insertion", batch_float_array(static_cast<int>(born_orders))},
+         {"poles",
+          Type{DataType::dt_float64, batch_size, {static_cast<int>(born_orders), 2}}}}
+    ),
+    _born_orders(born_orders),
+    _masses(masses),
+    _kappa(kappa),
+    _alpha_ff(alpha_ff),
+    _n_f(n_f) {
+    if (!(alpha_ff > 0. && alpha_ff <= 1.)) {
+        throw std::invalid_argument("CSInsertion: alpha_ff has to be in (0, 1]");
+    }
+    if (!(n_f >= 0.)) {
+        throw std::invalid_argument("CSInsertion: n_f must not be negative");
+    }
+    double gamma_q = 1.5 * CF, gamma_g = 11. / 6. * CA - 2. / 3. * TR * n_f;
+    double k_q = (3.5 - PI * PI / 6.) * CF;
+    double k_g = (67. / 18. - PI * PI / 6.) * CA - 10. / 9. * TR * n_f;
+    for (std::size_t j = 0; j < pdgs.size(); ++j) {
+        int pdg = std::abs(pdgs[j]);
+        bool quark = pdg >= 1 && pdg <= 6, gluon = pdg == 21;
+        if (masses[j] < 0. || (gluon && masses[j] != 0.)) {
+            throw std::invalid_argument("CSInsertion: invalid mass");
+        }
+        if (j < 2 && (quark || gluon) && masses[j] != 0.) {
+            throw std::invalid_argument("CSInsertion: incoming partons are massless");
+        }
+        _casimir.push_back(quark ? CF : gluon ? CA : 0.);
+        _gamma.push_back(quark ? gamma_q : gluon ? gamma_g : 0.);
+        _k_constant.push_back(quark ? k_q : gluon ? k_g : 0.);
+    }
+}
+
+NamedVector<Value> CSInsertion::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    auto [insertion, poles] = fb.cs_insertion(
+        args.at("momenta"),
+        args.at("color_correlated"),
+        args.at("alpha_s"),
+        args.at("ren_scale"),
+        _casimir,
+        _gamma,
+        _k_constant,
+        _masses,
+        std::vector<double>{_kappa, _alpha_ff, _n_f},
+        static_cast<me_int_t>(2)
+    );
+    return {{"insertion", insertion}, {"poles", poles}};
+}
