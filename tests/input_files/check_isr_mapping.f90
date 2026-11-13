@@ -9,9 +9,10 @@ subroutine check_isr_mapping(mode)
        xi => xi_i_fks_ev,y => y_ij_fks_ev,xic => xi_i_fks_cnt, &
        xb => xbjrk_ev,xbc => xbjrk_cnt,xmax => xiimax_ev,xmaxc => xiimax_cnt
   use fks_phase_space, only: generate_FKS_kinematics,invert_fks_radiation, &
-       compute_flux,boost_born_momenta_noevpr
+       compute_flux,boost_born_momenta_noevpr,generate_fks_radiation, &
+       fks_born_point,fks_phase_space_point
   use fks_phase_space_helpers, only: boost_n1_to_lab,boost_n1_to_its_cms
-  use fks_radiation_maps, only: generate_momenta_initial
+  use fks_radiation_maps, only: generate_momenta_initial,generate_momenta_initial_inverse
   implicit none
   include 'genps.inc'
   include 'nexternal.inc'
@@ -89,6 +90,25 @@ subroutine check_isr_mapping(mode)
   angles=[.001d0,.3d0,.7d0,.999d0]
   max_replay=0d0
   max_inverse=0d0
+
+  if(index(mode,'isr_nlops').eq.1)then
+    fixed_order=.false.
+    nlo_ps=.true.
+    FKSISRMapping=0
+    if(mode.eq.'isr_nlops_sampling')then
+      call check_matched_sampling()
+      return
+    elseif(mode.eq.'isr_nlops_integrals')then
+      call check_matched_integrals()
+      return
+    elseif(mode.eq.'isr_nlops_api')then
+      call check_public_mode()
+      return
+    elseif(mode.eq.'isr_nlops_endpoints')then
+      call check_log_endpoints()
+      return
+    endif
+  endif
 
   if(mode.eq.'isr_lower_bound')then
     call check_soft_lower_bound()
@@ -228,7 +248,7 @@ subroutine check_isr_mapping(mode)
             ! the omitted xi and xi-range factors when assembling weights.
             expected_jac=2d0*pi*8d0*x(1)*x(2)/(2d0*(4d0*pi)**3*(2d0*pi)**2*z)
             if(native.eq.0)expected_jac=expected_jac*(1d0-1d-6)*(1d0-5d-7)
-            ! Fixed order samples log(1-xi) uniformly in u=xi_hat at x=1:
+            ! Outer real sampling uses log(1-xi) at fixed order and NLO+PS:
             ! xi_hat=(1-xbar**u)/(1-xbar), u=1d-6+(1-1d-6)*x(1)**2.
             if(native.eq.0.and..not.symmetric_map)expected_jac=expected_jac* &
                  log_xi_weight(1d-6+(1d0-1d-6)*x(1)**2,bx(side))
@@ -337,6 +357,272 @@ subroutine check_isr_mapping(mode)
   enddo
   write(*,*) 'ISR recoil and inverse maximum relative errors',max_replay,max_inverse
 contains
+  subroutine check_public_mode()
+    ! The public phase-space API's explicit mode must select the measure
+    ! even after a caller has evaluated the other kind of contribution.
+    type(fks_born_point) :: input
+    type(fks_phase_space_point) :: point
+    double precision :: measure,expected_xi,expected_jac,u,spread,normal
+    double precision :: good_lab(0:3,nexternal)
+    integer :: requested,global_mode,q
+    logical :: only_born,saved_mode,ok
+    native_mapping=.false.
+    softtest=.false.
+    colltest=.false.
+    bx=[.2d0,.3d0]
+    call set_born()
+    input=fks_born_point()
+    input%valid=.true.
+    input%event_projection=.true.
+    input%p=born
+    input%mass=mb
+    input%stot=stot
+    input%shat=sb
+    input%sqrtshat=mass
+    input%tau=tb
+    input%ycm=yb
+    input%xbjrk=bx
+    normal=2d0*pi*4d0*.3d0*(1d0-5d-7)*(1d0-1d-6)/ &
+         (2d0*(4d0*pi)**3*(2d0*pi)**2)
+    call gauss_legendre(nodes,weights)
+    do side=1,2
+      jfks=side
+      do requested=0,1
+        only_born=requested.eq.1
+        do global_mode=0,1
+          saved_mode=global_mode.eq.1
+          nbody=saved_mode
+          x(1:3)=[.4d0,.3d0,.31d0]
+          u=1d-6+(1d0-1d-6)*x(1)**2
+          expected_xi=(1d0-bx(side))*u
+          expected_jac=normal*2d0*x(1)
+          if(.not.only_born)then
+            expected_xi=1d0-bx(side)**u
+            expected_jac=expected_jac*log_xi_weight(u,bx(side))
+          endif
+          measure=1d0
+          call generate_fks_radiation(input,x(1:3),only_born,measure,point,ok)
+          if(.not.ok.or.(nbody.neqv.saved_mode))error stop 'public ISR mode changed caller state'
+          if(abs(point%event%xi-expected_xi).gt.1d-13.or. &
+               abs(point%counterevent(0)%jacobian/expected_jac-1d0).gt.2d-12) &
+               error stop 'public ISR generation ignored its explicit mode'
+          good_lab=point%p_lab
+          jinv=1d0
+          psinv=1d0
+          call invert_fks_radiation(rad,jinv,psinv,stot,tauinv,yinv,bxinv,good_lab,invborn, &
+               nbody_only=only_born)
+          if(jinv.le.0d0.or.(nbody.neqv.saved_mode).or.maxval(abs(rad-x(1:3))).gt.2d-10) &
+               error stop 'public ISR inverse ignored its explicit mode'
+          sreal=sb/(1d0-point%event%xi)
+          call compute_flux(sreal,sqrt(sreal),0d0,0d0,psinv,jinv)
+          if(abs(jinv/point%weight-1d0).gt.2d-10)error stop 'public ISR inverse measure'
+
+          ! A rejected map must not leak its requested mode into COMMON.
+          input%valid=.false.
+          measure=1d0
+          call generate_fks_radiation(input,x(1:3),only_born,measure,point,ok)
+          if(ok.or.(nbody.neqv.saved_mode))error stop 'invalid public ISR input leaked mode'
+          input%valid=.true.
+          input%bounds(3)=2d0*tb/bx(side)
+          measure=1d0
+          call generate_fks_radiation(input,x(1:3),only_born,measure,point,ok)
+          if(point%valid.or.measure.ge.0d0.or.(nbody.neqv.saved_mode)) &
+               error stop 'empty public ISR domain leaked mode'
+          jinv=1d0
+          psinv=1d0
+          call invert_fks_radiation(rad,jinv,psinv,stot,tauinv,yinv,bxinv,good_lab,invborn, &
+               nbody_only=only_born)
+          if(jinv.ge.0d0.or.(nbody.neqv.saved_mode))error stop 'public ISR inverse rejection leaked mode'
+          input%bounds=0d0
+        enddo
+      enddo
+
+      ! A valid Born-spreading function is two over the first half of
+      ! x(1)^2 and zero elsewhere. Its mean must stay one in the public
+      ! Born measure, including when the legacy global mode says real.
+      do global_mode=0,1
+        saved_mode=global_mode.eq.1
+        nbody=saved_mode
+        spread=0d0
+        do q=1,size(nodes)
+          x(1:3)=[sqrt(.5d0)*(1d0+nodes(q))/2d0,.3d0,.31d0]
+          measure=1d0
+          call generate_fks_radiation(input,x(1:3),.true.,measure,point,ok)
+          if(.not.ok.or.(nbody.neqv.saved_mode))error stop 'public Born spread leaked mode'
+          spread=spread+weights(q)*sqrt(.5d0)*point%counterevent(0)%jacobian/normal
+        enddo
+        if(abs(spread-1d0).gt.2d-12)error stop 'public Born spread is not normalized'
+      enddo
+
+    enddo
+  end subroutine
+
+  subroutine check_log_endpoints()
+    ! At small xbar, a roundoff error in the logarithmic inverse must
+    ! not reject an exactly allowed upper endpoint as u > 1.
+    double precision,parameter :: endpoint(4)=[1d0-1d-8,1d0-1d-10,nearest(1d0,-1d0),1d0]
+    double precision :: lower
+    integer :: threshold,edge
+    native_mapping=.false.
+    nbody=.false.
+    do side=1,2
+      jfks=side
+      bx=.61d0
+      bx(side)=1d-7
+      call set_born()
+      do threshold=1,2
+        bound_tau=0d0
+        lower=0d0
+        if(threshold.eq.2)then
+          lower=.3d0
+          bound_tau=tb/(1d0-lower)
+        endif
+        do edge=1,size(endpoint)
+          x(1:3)=[endpoint(edge),.37d0,.31d0]
+          call generate_slot(-100)
+          if(.not.pass.or.tmp_jac.le.0d0.or.tmp_xi.gt.tmp_xmax.or.tmp_xi.lt.lower)then
+            write(*,*) 'upper endpoint forward',side,threshold,edge,x(1),tmp_xi,tmp_xmax,tmp_jac,pass
+            error stop 'log ISR upper endpoint forward domain'
+          endif
+          call invert_slot()
+          if(.not.ieee_is_finite(jinv).or.jinv.le.0d0.or.rad(1).gt.1d0.or. &
+               maxval(abs(rad-x(1:3))).gt.2d-8) &
+               error stop 'log ISR upper endpoint inverse domain'
+          if(abs(jinv/(2d0*pi*tmp_jac)-1d0).gt.2d-8) &
+               error stop 'log ISR upper endpoint inverse Jacobian'
+        enddo
+      enddo
+    enddo
+  end subroutine
+
+  subroutine check_matched_sampling()
+    ! Independent energy/angle derivatives for light Born systems. Check
+    ! every endpoint as well as the real map: an omitted endpoint factor
+    ! would spoil local FKS and MC-subtraction cancellations.
+    integer,parameter :: slots(4)=[-100,0,1,2]
+    double precision :: u,r,expected_xi,expected_y,energy_jac,angle_jac,stiny,ctiny
+    double precision :: expected_ps,xi_hat_expected,expected_weight
+    integer :: guard,slot
+    do side=1,2
+      jfks=side
+      bx=.61d0
+      bx(side)=1d-7
+      call set_born()
+      do guard=1,5
+        nbody=guard.eq.2
+        native_mapping=guard.eq.3
+        softtest=guard.eq.4
+        colltest=guard.eq.5
+        xi_fix=.13d0
+        y_fix=.42d0
+        stiny=1d-6
+        ctiny=5d-7
+        if(native_mapping.or.softtest.or.colltest)then
+          stiny=0d0
+          ctiny=0d0
+        endif
+        do ir=1,size(radii)
+          x(1:3)=[radii(ir),.37d0,.31d0]
+          u=stiny+(1d0-stiny)*x(1)**2
+          h=1d0-bx(side)
+          r=1d0-h
+          xi_hat_expected=u
+          energy_jac=2d0*x(1)*(1d0-stiny)
+          if(guard.eq.1)then
+            xi_hat_expected=(1d0-r**u)/h
+            energy_jac=energy_jac*log_xi_weight(u,r)
+          elseif(softtest)then
+            energy_jac=1d0
+          endif
+          angle_jac=4d0*x(2)*(1d0-ctiny)
+          if(colltest)angle_jac=1d0
+          do slot=1,size(slots)
+            call generate_slot(slots(slot))
+            if(.not.pass.or.tmp_jac.le.0d0)error stop 'matched ISR sampling rejected'
+            expected_xi=h*xi_hat_expected
+            if(softtest)expected_xi=xi_fix
+            if(slots(slot).eq.0.or.slots(slot).eq.2)expected_xi=0d0
+            expected_y=1d0-2d0*(ctiny+(1d0-ctiny)*x(2)**2)
+            if(colltest)expected_y=y_fix
+            if(slots(slot).eq.1.or.slots(slot).eq.2)expected_y=1d0
+            if(abs(tmp_xi-expected_xi).gt.1d-14.or.abs(tmp_y-expected_y).gt.1d-14) &
+                 error stop 'matched ISR sampling coordinate or guard'
+            expected_weight=energy_jac*angle_jac
+            if(abs(tmp_jac/expected_weight-1d0).gt.2d-12) &
+                 error stop 'matched ISR real or endpoint sampling Jacobian'
+            expected_ps=(sb/(1d0-tmp_xi))/(4d0*pi)**3/(1d0-tmp_xi)
+            if(abs(tmp_ps/expected_ps-1d0).gt.2d-12)error stop 'matched ISR physical measure'
+            ! Without an explicit mode, both maps use the legacy COMMON.
+            if(guard.le.2.and.slots(slot).eq.-100)then
+              call invert_slot()
+              ! At the hard endpoint a 1e-7 incoming fraction gives a
+              ! large lab/recoil boost; allow its Born-mass-scaled roundoff.
+              if(jinv.le.0d0.or.maxval(abs(rad-x(1:3))).gt.2d-8.or. &
+                   maxval(abs(invborn(:,1:4)-born))/mass.gt.1d-7.or. &
+                   maxval(abs(bxinv-bx)).gt.1d-12.or.abs(yinv-yb).gt.1d-12)then
+                write(*,*) 'Light matched ISR inverse',side,ir,jinv,rad-x(1:3), &
+                     maxval(abs(invborn(:,1:4)-born))/mass,bxinv-bx,yinv-yb
+                error stop 'light matched ISR inverse projection'
+              endif
+              if(abs(jinv/(2d0*pi*tmp_jac)-1d0).gt.2d-8.or.abs(psinv/tmp_ps-1d0).gt.2d-12) &
+                   error stop 'light matched ISR inverse sampling measure'
+            endif
+          enddo
+        enddo
+      enddo
+    enddo
+    nbody=.false.
+    native_mapping=.false.
+    softtest=.false.
+    colltest=.false.
+  end subroutine
+
+  subroutine check_matched_integrals()
+    ! For a 1/(1-xi) tail, the logarithmic map makes the weighted density
+    ! proportional to x(1). Also integrate a soft plus distribution with
+    ! F(xi)=1+xi+xi^2, including the actual lower sampling cutoff. These
+    ! checks exercise production phase space AND subtraction prefactors,
+    ! with native_mapping off, unlike the native analytic fixtures below.
+    double precision :: tail,soft,constant,ell,xi_lower,expected_tail,expected_soft
+    double precision :: mc_s,mc_h,mc_ss,mc_sh,mc_cs,mc_ch,mc_scs,mc_sch
+    common/factor_n1body_NLOPS/mc_ss,mc_sh,mc_cs,mc_ch,mc_scs,mc_sch,mc_s,mc_h
+    call gauss_legendre(nodes,weights)
+    native_mapping=.false.
+    do side=1,2
+      jfks=side
+      bx=.61d0
+      bx(side)=1d-7
+      call set_born()
+      h=1d0-bx(side)
+      ell=-log(1d0-h)
+      xiScut_used=1d0
+      xicut_used=h
+      delta_used=deltaS
+      tail=0d0
+      soft=0d0
+      do k=1,size(nodes)
+        x(1:3)=[(1d0+nodes(k))/2d0,.37d0,.31d0]
+        call generate()
+        call compute_prefactors_n1body(1d0,jac)
+        if(mc_s.ne.fr.or.mc_h.ne.fr)error stop 'MC subtraction lost outer sampling measure'
+        constant=2d0*pi*4d0*x(2)*(1d0-5d-7)/(2d0*(4d0*pi)**3*(2d0*pi)**2)
+        integrand=fr*xi*(1d0-y)/constant
+        expected_tail=2d0*x(1)*(1d0-1d-6)*ell
+        if(abs(integrand/expected_tail-1d0).gt.1d-8)error stop 'matched ISR tail remains peaked'
+        tail=tail+weights(k)/2d0*integrand
+        integrand=(fr*(1d0-xi)*(1d0-y)*(1d0+xi+xi**2)-fs*(1d0-y))/constant
+        soft=soft+weights(k)/2d0*integrand
+      enddo
+      expected_tail=(1d0-1d-6)*ell
+      xi_lower=1d0-exp(-ell*1d-6)
+      expected_soft=h+h*h/2d0-xi_lower-xi_lower*xi_lower/2d0
+      if(abs(tail/expected_tail-1d0).gt.1d-9.or.abs(soft-expected_soft).gt.2d-9)then
+        write(*,*) 'Matched ISR finite integrals',side,tail,expected_tail,soft,expected_soft
+        error stop 'matched ISR finite tail or soft integral'
+      endif
+    enddo
+  end subroutine
+
   subroutine check_soft_lower_bound()
     double precision,parameter :: ratios(4)=[.99d0,1d0,1d0+5d-13,1.01d0]
     integer :: mapping,threshold,slot
@@ -433,6 +719,14 @@ contains
     p(:,1:4)=born
     call generate_momenta_initial(slot,ifks,jfks,bx,tb,yb,sb,2d0*pi*x(3),p,x,tmp_s,stot,tmp_sqrt,tmp_tau,tmp_ycm,tmp_xb, &
          tmp_pi,tmp_xmax,tmp_norm,tmp_xi,tmp_y,tmp_hat,tmp_ps,tmp_jac,pass)
+  end subroutine
+
+  subroutine invert_slot()
+    call boost_n1_to_lab(p,plab,-yb)
+    jinv=1d0
+    psinv=1d0
+    call generate_momenta_initial_inverse(plab,tmp_xi,tmp_y,2d0*pi*x(3),invborn,rad, &
+         jinv,psinv,tmp_s,tmp_sqrt,ifks,jfks,stot,tmp_tau,tmp_ycm,tmp_xb,tauinv,yinv,bxinv)
   end subroutine
 
   double precision function symmetric_bound(bx,y,side) result(bound)

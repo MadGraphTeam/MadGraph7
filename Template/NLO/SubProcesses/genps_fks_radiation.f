@@ -34,24 +34,27 @@ c identically for generation, inverse projection and the lepton chart.
       end function use_symmetric_isr_mapping
 
 
-      logical function use_log_isr_xi_sampling()
-c Fixed-order importance sampling of the asymmetric ISR energy for the
-c n+1-body weights, see isr_xi_hat_log. The n-body weights (Born,
-c virtual, integrated counterterms) only need a normalised spread over
-c the radiation variables, and are integrated separately from the n+1
-c ones: they keep xi_hat=x**2, whose spread does not depend on xbar_j.
-c Matched runs keep it too, as the native shower histories and the Born
-c spreading bins rely on it, and so do the tests with fixed xi and y.
+      logical function use_log_isr_xi_sampling(nbody_only)
+c Logarithmic sampling applies to outer n+1-body weights at fixed order
+c and NLO+PS. Born spreading, native shower histories and fixed-xi/y
+c tests retain their quadratic measure. The native history measure is
+c divided out when converting to the outer H-event measure; physical
+c FKS-to-shower Jacobians are unchanged.
       use mc_native_context, only: native_mapping
       implicit none
-      logical fixed_order,nlo_ps
-      common /c_fnlo_nlops/fixed_order,nlo_ps
+      logical,intent(in),optional :: nbody_only
       logical softtest,colltest
       common/sctests/softtest,colltest
       logical nbody
       common/cnbody/nbody
-      use_log_isr_xi_sampling=fixed_order.and..not.nlo_ps.and.
-     &     .not.nbody.and.
+      logical born_measure
+c Explicit stage mode takes precedence over the legacy COMMON fallback.
+      if(present(nbody_only))then
+         born_measure=nbody_only
+      else
+         born_measure=nbody
+      endif
+      use_log_isr_xi_sampling=.not.born_measure.and.
      &     .not.(softtest.or.colltest.or.native_mapping)
       end function use_log_isr_xi_sampling
 
@@ -79,6 +82,8 @@ c 1-exp(-a)=2*exp(-a/2)*sinh(a/2) keeps the soft end accurate; dividing
 c by its value at u=1 makes xi_hat(0)=0 and xi_hat(1)=1 exact.
       norm=2d0*exp(-el/2d0)*sinh(el/2d0)
       xi_hat=2d0*exp(-el*u/2d0)*sinh(el*u/2d0)/norm
+c Retain the normalized range when the hard endpoint rounds upward.
+      if(u.ge.0d0.and.u.le.1d0)xi_hat=min(1d0,max(0d0,xi_hat))
       dxi_hat_du=el*exp(-el*u)/norm
       end subroutine isr_xi_hat_log
 
@@ -88,7 +93,7 @@ c by its value at u=1 makes xi_hat(0)=0 and xi_hat(1)=1 exact.
 c Inverse of isr_xi_hat_log, returning u and dxi_hat/du at that point.
       implicit none
       double precision xi_hat,xiimin,xiimax,u,dxi_hat_du
-      double precision z_lo,z_hi,el,norm,s
+      double precision z_lo,z_hi,el,norm,s,hat,q
       u=xi_hat
       dxi_hat_du=1d0
       z_hi=1d0-xiimin
@@ -97,14 +102,20 @@ c Inverse of isr_xi_hat_log, returning u and dxi_hat/du at that point.
       el=log(z_hi/z_lo)
       if(.not.(el.gt.1d-10))return
       norm=2d0*exp(-el/2d0)*sinh(el/2d0)
-c exp(-el*u)=1-s
-      s=min(1d0,max(0d0,xi_hat))*norm
-      if(s.lt.1d-4)then
+      hat=min(1d0,max(0d0,xi_hat))
+      s=hat*norm
+c q=exp(-el*u). This form preserves the small complement near hat=1.
+      q=(1d0-hat)+hat*exp(-el)
+      if(hat.eq.1d0)then
+         u=1d0
+      elseif(s.lt.1d-4)then
          u=s*(1d0+s*(1d0/2d0+s*(1d0/3d0+s/4d0)))/el
       else
-         u=-log(1d0-s)/el
+         u=-log(q)/el
       endif
-      dxi_hat_du=el*(1d0-s)/norm
+c Clip roundoff at the almost-linear boundary.
+      u=min(1d0,max(0d0,u))
+      dxi_hat_du=el*q/norm
       end subroutine isr_xi_hat_log_inverse
 
 
@@ -1023,25 +1034,27 @@ c nearly antiparallel daughters without subtracting their cosines.
 
 
       subroutine generate_momenta_initial(icountevts,i_fks,j_fks,xbjrk_born,tau_born,ycm_born,shat_born,phi_i_fks,xp,x,
-     $     shat,stot,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass)
+     $     shat,stot,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass,nbody_only)
       implicit none
       integer icountevts,i_fks,j_fks
       double precision xbjrk_born(2),tau_born,ycm_born,shat_born,phi_i_fks,xpswgt,xjac,xiimax,xinorm,xp(0:3,nexternal),
      $     stot,x(2),y_ij_fks,xi_i_hat,xi_i_fks,shat,sqrtshat,tau,ycm,xbjrk(2),p_i_fks(0:3)
       logical pass
+      logical,intent(in),optional :: nbody_only
 c Use the same run-level choice for the event and every counterevent.
       if(use_symmetric_isr_mapping())then
          call generate_momenta_initial_symmetric(icountevts,i_fks,j_fks,xbjrk_born,tau_born,ycm_born,shat_born,phi_i_fks,xp,
      $     x,shat,stot,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass)
       else
          call generate_momenta_initial_asymmetric(icountevts,i_fks,j_fks,xbjrk_born,tau_born,ycm_born,shat_born,phi_i_fks,xp,
-     $     x,shat,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass)
+     $     x,shat,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass,nbody_only)
       endif
       end subroutine generate_momenta_initial
 
 
       subroutine generate_momenta_initial_asymmetric(icountevts,i_fks,j_fks,xbjrk_born,tau_born,ycm_born,shat_born,
-     $     phi_i_fks,xp,x,shat,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass)
+     $     phi_i_fks,xp,x,shat,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,
+     $     pass,nbody_only)
 c Asymmetric initial-state event projection, retained for shower matching.
 c Only the emitting beam changes fraction: x_j=bar{x}_j/(1-xi).
 c All hard final momenta undergo the same light-cone Lorentz map. Its
@@ -1054,6 +1067,7 @@ c soft and emitter-collinear limits leave the underlying Born unchanged.
      $     x(2),y_ij_fks,xi_i_hat,xi_i_fks,shat,sqrtshat,tau,ycm,xbjrk(2),p_i_fks(0:3),xiimin,z,sqrtz,sqrtborn,pplus,
      $     pminus,sintheta,sstiny,cctiny,u,xi_hat_u,dxi_hat_du
       logical pass,softtest,colltest
+      logical,intent(in),optional :: nbody_only
       common/sctests/softtest,colltest
       double precision xi_i_fks_fix,y_ij_fks_fix
       common/cxiyfix/xi_i_fks_fix,y_ij_fks_fix
@@ -1103,7 +1117,7 @@ c The event and its counterevents share x(1), hence xi_hat and its weight.
       u=sstiny+(1d0-sstiny)*x(1)**2
       xi_hat_u=u
       dxi_hat_du=1d0
-      if(use_log_isr_xi_sampling())
+      if(use_log_isr_xi_sampling(nbody_only))
      &     call isr_xi_hat_log(u,xiimin,xiimax,xi_hat_u,dxi_hat_du)
       if(abs(icountevts).eq.2.or.icountevts.eq.0)then
          xi_i_fks=0d0
@@ -1118,6 +1132,10 @@ c These endpoints cannot pass the cuts below the supplied lower bound.
       else
          xi_i_hat=xi_hat_u
          xi_i_fks=xiimin+xinorm*xi_i_hat
+c The convex combination can exceed xiimax by one ulp when xiimin is
+c nonzero. Preserve its physical interval for a valid sampled coordinate.
+         if(xi_i_hat.ge.0d0.and.xi_i_hat.le.1d0)
+     &        xi_i_fks=min(xiimax,max(xiimin,xi_i_fks))
       endif
       if(.not.softtest)xjac=xjac*2d0*x(1)*(1d0-sstiny)*dxi_hat_du
       if(xi_i_fks.lt.0d0.or.xi_i_fks.gt.xiimax.or.
@@ -1483,8 +1501,9 @@ c
 
 
       subroutine generate_momenta_initial_inverse(xp,xi_i_fks,y_ij_fks,phi_i_fks,p_born,x,xjac,xpswgt,shat,sqrtshat,i_fks,
-     $     j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born)
+     $     j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born,nbody_only)
       implicit none
+      logical,intent(in),optional :: nbody_only
       integer i_fks,j_fks
       double precision xjac,x(3),xp(0:3,nexternal),xi_i_fks,y_ij_fks,phi_i_fks,p_born(0:3,-max_branch:nexternal-1),shat,
      $     sqrtshat,xpswgt,stot,tau,ycm,xbjrk(2),tau_born,ycm_born,xbjrk_born(2)
@@ -1494,16 +1513,17 @@ c Use the same run-level choice for the event and every counterevent.
      $     i_fks,j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born)
       else
          call generate_momenta_initial_inverse_asymmetric(xp,xi_i_fks,y_ij_fks,phi_i_fks,p_born,x,xjac,xpswgt,shat,sqrtshat,
-     $     i_fks,j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born)
+     $     i_fks,j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born,nbody_only)
       endif
       end subroutine generate_momenta_initial_inverse
 
 
       subroutine generate_momenta_initial_inverse_asymmetric(xp,xi_i_fks,y_ij_fks,phi_i_fks,p_born,x,xjac,xpswgt,shat,
-     $     sqrtshat,i_fks,j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born)
+     $     sqrtshat,i_fks,j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born,nbody_only)
       use fks_phase_space_data, only: xinorm_ev,xij_aor,xij_kperp
       use mc_native_context, only: native_mapping
       implicit none
+      logical,intent(in),optional :: nbody_only
       integer i_fks,j_fks,idir,i,iborn
       double precision xjac,x(3),xp(0:3,nexternal),xi_i_fks,y_ij_fks,phi_i_fks,p_born(0:3,-max_branch:nexternal-1),shat,
      $     sqrtshat,xpswgt,stot,tau,ycm,xbjrk(2),tau_born,ycm_born,xbjrk_born(2),pred(0:3),z,sqrtborn,xiimax,xiimin,
@@ -1559,7 +1579,7 @@ c Use the same run-level choice for the event and every counterevent.
       xi_hat=(xi_i_fks-xiimin)/xinorm
       u=xi_hat
       dxi_hat_du=1d0
-      if(use_log_isr_xi_sampling())
+      if(use_log_isr_xi_sampling(nbody_only))
      &     call isr_xi_hat_log_inverse(xi_hat,xiimin,xiimax,u,dxi_hat_du)
       x(1)=(u-sstiny)/(1d0-sstiny)
       if(x(1).lt.-1d-12.or.x(1).gt.1d0+1d-12)then
