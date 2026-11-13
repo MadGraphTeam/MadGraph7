@@ -1,0 +1,77 @@
+{
+  "PDF": {
+    "pages": 54,
+    "sha256": "b83867ae75669f12e95015aa51b46e5fe9d8663e5cdc5ba47254bf20079c21ba"
+  },
+  "base": {
+    "pages": 48,
+    "path": "history/report-before-current-source-1/benchmark.pdf",
+    "sha256": "a7cb2798ed7b3de1028d5fe3d8cf4bedb419a1b2ef14e13e58e8fdc6f6868279"
+  },
+  "builder_sha256": "0f1c4d3065235950f21c2d958978d01a494677b27430b7f47c5bfca3dd00bfcc",
+  "campaign": "tirust-9a781998-1",
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "typst 0.15.1 (9dfd3a08)"
+    },
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "compile",
+        "--root",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder",
+        "--creation-timestamp",
+        "1794528000",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/tirust-9a781998-1/report/current-source.typ",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/tirust-9a781998-1/report/current-source-supplement.pdf"
+      ],
+      "returncode": 0,
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "pdfinfo",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/tirust-9a781998-1/report/current-source-supplement.pdf"
+      ],
+      "returncode": 0,
+      "stdout": "Title:           MadLoop with TIRust \u2014 numerical validation and benchmarks\nAuthor:          MadLoop\u2013TIRust development\nCreator:         Typst 0.15.1\nCustom Metadata: no\nMetadata Stream: yes\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           6\nEncrypted:       no\nPage size:       595.276 x 841.89 pts (A4)\nPage rot:        0\nFile size:       669511 bytes\nOptimized:       no\nPDF version:     1.7"
+    },
+    {
+      "argv": [
+        "pdfinfo",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-current-source-1/benchmark.pdf"
+      ],
+      "returncode": 0,
+      "stdout": "Custom Metadata: no\nMetadata Stream: no\nTagged:          no\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           48\nEncrypted:       no\nPage size:       595.276 x 841.89 pts (A4)\nPage rot:        0\nFile size:       2761520 bytes\nOptimized:       no\nPDF version:     1.7"
+    },
+    {
+      "argv": [
+        "pdfunite",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/history/report-before-current-source-1/benchmark.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/tirust-9a781998-1/report/current-source-supplement.pdf",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/benchmark.pdf"
+      ],
+      "returncode": 0,
+      "stdout": ""
+    }
+  ],
+  "inputs": {
+    "campaigns/tirust-9a781998-1/report/current-source.typ": "728784c4aeabca51226899a14c7c2ffd7d2ea69a5e31e49dd27745f9e4e0493c",
+    "campaigns/tirust-9a781998-1/report/report-data.json": "85ee70ce07365e215defd7b88ca3f32cad8134c5bcf3a61bfc55e7e87e82c766",
+    "campaigns/tirust-9a781998-1/stability/stability-raw.pdf": "8f3f7dd1bf70148299248602e993cef872a74c94c42992a983a63ac083183a0c",
+    "campaigns/tirust-9a781998-1/stability/stability-rescued.pdf": "cd8d1cfca5b6550422680f80cf3e71cb70bb1a5f4af714aef55a5c0d706900ed",
+    "style.typ": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+  },
+  "schema": "madloop-tirust-current-source-report-v1",
+  "supplement": {
+    "pages": 6,
+    "path": "campaigns/tirust-9a781998-1/report/current-source-supplement.pdf",
+    "sha256": "98f76c11bf5e11d54310bb2ec9a61314e21c68124c63483fd3a4402fed4db90f"
+  },
+  "typst": "typst 0.15.1 (9dfd3a08)"
+}

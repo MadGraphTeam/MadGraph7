@@ -1,0 +1,1793 @@
+{
+  "campaign": "tirust-9a781998-1",
+  "cases": {
+    "ew_n1_udx_wp": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.06478051,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.060153341,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.043975507,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.908569511240864e-12,
+          "max_symmetric_finite": 9.93724527202984e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.05239966,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.9090079866179385e-12,
+          "max_symmetric_finite": 9.451626401009102e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.03479918,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.907692560486716e-12,
+          "max_symmetric_finite": 9.92169589931243e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.036603667,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.9090079866179385e-12,
+          "max_symmetric_finite": 9.433684817104395e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "u d~ > w+ [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-ew_n1_udx_wp/results.json",
+      "role": "main"
+    },
+    "ew_n2_epem_mupmum": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.510802011,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.38718077,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.334151279,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.30738082924273e-12,
+          "max_symmetric_finite": 4.0219537125714894e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.456890357,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.775316659135798e-12,
+          "max_symmetric_finite": 2.328466039507048e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.310273434,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 4.197684884543614e-12,
+          "max_symmetric_finite": 3.426779506347585e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.325437735,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.707652272263257e-12,
+          "max_symmetric_finite": 2.2669541732214514e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > mu+ mu- [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-ew_n2_epem_mupmum/results.json",
+      "role": "main"
+    },
+    "ew_n3_epem_ttxa": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 17.856616361,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 14.818097571,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 12.08713336,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.2646406636433563e-10,
+          "max_symmetric_finite": 6.323203318616611e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 10.963075795,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 8.841936707629294e-10,
+          "max_symmetric_finite": 4.4209683557691434e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 5.845221611,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.3385447129254e-09,
+          "max_symmetric_finite": 6.692723569106256e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 6.18892127,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 2.285027853811801e-09,
+          "max_symmetric_finite": 1.1425139282112384e-09,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > t t~ a [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-ew_n3_epem_ttxa/results.json",
+      "role": "main"
+    },
+    "ew_n4_epem_mupmumaa": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 299.041807165,
+          "dp": 93,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 7,
+          "status": "complete",
+          "status_counts": {
+            "211": 93,
+            "329": 7
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 283.123344593,
+          "dp": 93,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 7,
+          "status": "complete",
+          "status_counts": {
+            "211": 93,
+            "329": 7
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 89.832996153,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 2.9705208013429e-07,
+          "max_symmetric_finite": 1.1436723327443339e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [
+            14,
+            69,
+            81,
+            85,
+            87
+          ],
+          "target_misses": 12,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 10,
+            "single": 2
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 100.614695272,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 2.287270607482458e-07,
+          "max_symmetric_finite": 1.1436354345314148e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [
+            14,
+            38,
+            81,
+            85,
+            87
+          ],
+          "target_misses": 10,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 2,
+            "finite": 8,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 90.961270803,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.053102849435326e-07,
+          "max_symmetric_finite": 1.1436457495625897e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [
+            14,
+            69,
+            81,
+            85,
+            87
+          ],
+          "target_misses": 14,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 2,
+            "finite": 10,
+            "single": 2
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 127.206955468,
+          "dp": 99,
+          "failures": 0,
+          "max_relative_error": 2.2871524213985242e-07,
+          "max_symmetric_finite": 1.143576341475932e-07,
+          "passed": true,
+          "qp": 1,
+          "status": "complete",
+          "status_counts": {
+            "219": 99,
+            "323": 1
+          },
+          "target_miss_points": [
+            14,
+            81,
+            85,
+            87
+          ],
+          "target_misses": 8,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 8,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > mu+ mu- a a [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-ew_n4_epem_mupmumaa/results.json",
+      "role": "main"
+    },
+    "li_gg_h": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.131824744,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.130638429,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.062403618,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9951712763149096,
+          "max_symmetric_finite": 1.5498248237004234e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.04532129,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.8322175612240899,
+          "max_symmetric_finite": 1.5465100576796894e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.046075783,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9989207251529628,
+          "max_symmetric_finite": 1.5500099544471832e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.026605286,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.0055330962866256,
+          "max_symmetric_finite": 1.5499942183337085e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "g g > h [noborn=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-li_gg_h/results.json",
+      "role": "control"
+    },
+    "li_gg_hh": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 1.867441168,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 2.024620443,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.884556969,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9190694076987012,
+          "max_symmetric_finite": 6.406201065306805e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.532682969,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9553529295070444,
+          "max_symmetric_finite": 4.607213071848314e-09,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.684975535,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.8893510024614215,
+          "max_symmetric_finite": 6.406673252896617e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.246695181,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9448553565084956,
+          "max_symmetric_finite": 6.406886098943664e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "g g > h h [noborn=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-li_gg_hh/results.json",
+      "role": "control"
+    },
+    "mixed_uux_ga": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.485007309,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.461952788,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.250653407,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.219234245632252e-11,
+          "max_symmetric_finite": 2.6096171228842268e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.308276776,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.160307407375114e-11,
+          "max_symmetric_finite": 2.5801537037541288e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.241957252,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.1693268213940634e-11,
+          "max_symmetric_finite": 2.5846634107638366e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.231628751,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.138059519461704e-11,
+          "max_symmetric_finite": 2.5690297597968513e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "u u~ > g a [virt=QCD QED]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-mixed_uux_ga/results.json",
+      "role": "control"
+    },
+    "qcd_n1_uux_z": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.03213697,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.022747871,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.021338246,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.375751743997572e-13,
+          "max_symmetric_finite": 2.6878758719995086e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.021791918,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.1556154226752629e-13,
+          "max_symmetric_finite": 5.778077113376648e-14,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.011002384,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.370615675452354e-13,
+          "max_symmetric_finite": 2.685307837726898e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.009563078,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.0854224858905508e-13,
+          "max_symmetric_finite": 5.427112429453049e-14,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "u u~ > z [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-qcd_n1_uux_z/results.json",
+      "role": "main"
+    },
+    "qcd_n2_gg_ttx": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.648129497,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.335494264,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.256353249,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.150028381599888e-12,
+          "max_symmetric_finite": 2.575014190806575e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.330946096,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 9.166863183211485e-12,
+          "max_symmetric_finite": 4.58343159162675e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.244727753,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.449428933154404e-12,
+          "max_symmetric_finite": 2.7247144665846265e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.266277619,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.583162048476477e-12,
+          "max_symmetric_finite": 2.7915810242460312e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "g g > t t~ [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-qcd_n2_gg_ttx/results.json",
+      "role": "main"
+    },
+    "qcd_n3_uux_zgg": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 16.911836575,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 13.573553033,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 10.875734304,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.61185122112659e-06,
+          "max_symmetric_finite": 2.8059334838039187e-06,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 10.05396271,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.6119780085219845e-06,
+          "max_symmetric_finite": 2.8059968778573777e-06,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 4.826187718,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.612469146107487e-06,
+          "max_symmetric_finite": 2.8062424480283216e-06,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 6.119745113,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.61282554230633e-06,
+          "max_symmetric_finite": 2.8064206471279104e-06,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "u u~ > z g g [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-qcd_n3_uux_zgg/results.json",
+      "role": "main"
+    },
+    "qcd_n4_uux_zzgg": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 1076.912113881,
+          "dp": 88,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 12,
+          "status": "complete",
+          "status_counts": {
+            "211": 88,
+            "329": 12
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 1035.633251689,
+          "dp": 88,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 12,
+          "status": "complete",
+          "status_counts": {
+            "211": 88,
+            "329": 12
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 386.885277305,
+          "dp": 97,
+          "failures": 0,
+          "max_relative_error": 8.258362793805673e-07,
+          "max_symmetric_finite": 4.129183101917442e-07,
+          "passed": true,
+          "qp": 3,
+          "status": "complete",
+          "status_counts": {
+            "216": 97,
+            "328": 3
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            16,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            39,
+            43,
+            44,
+            45,
+            49,
+            51,
+            52,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            87,
+            88,
+            89,
+            91,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 88,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 88,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 232.178499621,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 8.3018197546771e-07,
+          "max_symmetric_finite": 4.150911600344546e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            16,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            43,
+            44,
+            49,
+            51,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            88,
+            91,
+            93,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 80,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 80,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 682.789184389,
+          "dp": 96,
+          "failures": 0,
+          "max_relative_error": 8.258432567588928e-07,
+          "max_symmetric_finite": 4.1292179888378796e-07,
+          "passed": true,
+          "qp": 4,
+          "status": "complete",
+          "status_counts": {
+            "218": 96,
+            "322": 4
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            39,
+            43,
+            44,
+            49,
+            51,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            87,
+            88,
+            91,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 80,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 80,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 189.446808278,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 8.258418854680691e-07,
+          "max_symmetric_finite": 4.1292111323780993e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            16,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            43,
+            44,
+            49,
+            51,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            88,
+            91,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 78,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 78,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "u u~ > z z g g [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/tirust-9a781998-1/experiments/numerical/ordinary-qcd_n4_uux_zzgg/results.json",
+      "role": "main"
+    }
+  },
+  "predecessor": "entry-latch-cache-guard-1"
+}

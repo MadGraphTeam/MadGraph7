@@ -1,0 +1,196 @@
+{
+  "conditions": "Existing O3 export (all MODEL/DHELAS/process/driver objects at -O3), learned filters (48/96 helicities), LoopPoleMode=-1 (both poles), CTModeRun=1 timed stage (no stability test or rescue), 50 points, one CPU (taskset 240), three repetitions in alternating reducer order; TIRust DSO resolved via LD_LIBRARY_PATH",
+  "previous_report": {
+    "NinjaRS_ms": 1450.7,
+    "TIRust_ms": 2260.84,
+    "ratio": 1.55845,
+    "source": "48-page report, DSO d427667a"
+  },
+  "rows": [
+    {
+      "backend": 1,
+      "full_ms": [
+        1021.5,
+        1040.9,
+        1028.5
+      ],
+      "full_ms_median": 1028.450506934896,
+      "initialization_s_median": 32.2,
+      "name": "CutTools"
+    },
+    {
+      "backend": 6,
+      "full_ms": [
+        970.2,
+        968.2,
+        967.2
+      ],
+      "full_ms_median": 968.1901650223881,
+      "initialization_s_median": 12.8,
+      "name": "Ninja"
+    },
+    {
+      "backend": 7,
+      "full_ms": [
+        1183.5,
+        1189.4,
+        1176.3
+      ],
+      "full_ms_median": 1183.5081458557397,
+      "initialization_s_median": 73.5,
+      "name": "COLLIER"
+    },
+    {
+      "backend": 8,
+      "full_ms": [
+        978.2,
+        961.9,
+        958.6
+      ],
+      "full_ms_median": 961.8955938424915,
+      "initialization_s_median": 11.8,
+      "name": "NinjaRS"
+    },
+    {
+      "backend": 9,
+      "full_ms": [
+        1151.1,
+        1126.8,
+        1128.1
+      ],
+      "full_ms_median": 1128.0970669537783,
+      "initialization_s_median": 7.99,
+      "name": "TIRust"
+    }
+  ],
+  "runs": [
+    {
+      "backend": 1,
+      "full_ms_per_point": 1021.5326894819736,
+      "initialization_s": 32.3,
+      "load_average": "219.46 229.73 236.69",
+      "repetition": 1,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 1,
+      "full_ms_per_point": 1040.9229551628232,
+      "initialization_s": 32.2,
+      "load_average": "235.71 228.77 234.70",
+      "repetition": 2,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 1,
+      "full_ms_per_point": 1028.450506934896,
+      "initialization_s": 32.1,
+      "load_average": "239.35 236.69 237.17",
+      "repetition": 3,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 6,
+      "full_ms_per_point": 970.1976428274065,
+      "initialization_s": 12.7,
+      "load_average": "231.38 235.13 239.44",
+      "repetition": 1,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 6,
+      "full_ms_per_point": 968.1901650223881,
+      "initialization_s": 12.8,
+      "load_average": "254.41 240.15 238.06",
+      "repetition": 2,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 6,
+      "full_ms_per_point": 967.1626249141991,
+      "initialization_s": 12.8,
+      "load_average": "236.36 236.90 237.41",
+      "repetition": 3,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 7,
+      "full_ms_per_point": 1183.5081458557397,
+      "initialization_s": 73.1,
+      "load_average": "232.67 237.50 240.86",
+      "repetition": 1,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 7,
+      "full_ms_per_point": 1189.3918196763843,
+      "initialization_s": 73.5,
+      "load_average": "232.82 237.41 237.53",
+      "repetition": 2,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 7,
+      "full_ms_per_point": 1176.2584293913096,
+      "initialization_s": 73.5,
+      "load_average": "237.73 238.41 237.97",
+      "repetition": 3,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 8,
+      "full_ms_per_point": 978.1508290208876,
+      "initialization_s": 11.9,
+      "load_average": "243.20 242.56 243.03",
+      "repetition": 1,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 8,
+      "full_ms_per_point": 961.8955938424915,
+      "initialization_s": 11.8,
+      "load_average": "235.14 236.00 236.93",
+      "repetition": 2,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 8,
+      "full_ms_per_point": 958.6101511120796,
+      "initialization_s": 11.8,
+      "load_average": "243.48 241.42 238.57",
+      "repetition": 3,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 9,
+      "full_ms_per_point": 1151.1362997163087,
+      "initialization_s": 7.99,
+      "load_average": "237.24 242.01 243.00",
+      "repetition": 1,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 9,
+      "full_ms_per_point": 1126.815633252263,
+      "initialization_s": 7.87,
+      "load_average": "233.33 234.97 236.38",
+      "repetition": 2,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    },
+    {
+      "backend": 9,
+      "full_ms_per_point": 1128.0970669537783,
+      "initialization_s": 8.06,
+      "load_average": "234.62 234.82 236.07",
+      "repetition": 3,
+      "tirust_dso": "libmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0"
+    }
+  ],
+  "scope": "Provisional shared-host stock `check profile` of QCD u u~ > z g g g [virt=QCD]; never acceptance",
+  "tirust_dso_sha256": "6c11cfd9eecf7895e6a981615f37863d8c34f904f82099a6018212069619c729",
+  "tirust_over_ninjars_median": 1.1768,
+  "tirust_over_ninjars_per_repetition": [
+    1.1768,
+    1.1715,
+    1.1768
+  ]
+}
