@@ -9915,12 +9915,14 @@ C     fixed points first, so only the legs that must move do
             self.frame_dependent_helicity_legs(matrix_element))
         open(warmup_path, 'w').write(open(warmup_tmpl).read() % rd)
 
-        gauge = 'U'
-        try:
-            if self.proc_characteristic['gauge']:
-                gauge = self.proc_characteristic['gauge']
-        except Exception:
-            pass
+        # The gauge this matrix element is written in: its own in an output
+        # that mixes gauges, else the session's. proc_characteristic only
+        # learns the gauge in finalize (madevent), after this point; reading it
+        # here gave 'U' to an FD output, whose P1N contractions then dropped
+        # the fifth (Goldstone) component of a vector (CombineAmp instead of
+        # CombineAmpFD).
+        gauge = self.gauge_of(matrix_element) or \
+            ('FD' if aloha.unitary_gauge == aloha.GAUGE_VALUES['FD'] else 'U')
 
         # Release the (empty) matrix.f handle the caller opened before overwriting.
         try:

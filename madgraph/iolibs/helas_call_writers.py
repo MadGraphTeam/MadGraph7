@@ -1721,10 +1721,16 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                     call = call + "%(mass)s,"
                 call = call + "NHEL(%(number_external)d),"
             wf_object = self.format_helas_object('W(', '%(me_id)d')
+            # The reference momentum of an R routine goes right before the
+            # output, after the flavor of a fermion:
+            # IXXXXXR(P, FMASS, NHEL, NSF, FLAVOR, R, FI).
             if argument.get('spin') == 2:
                 suffix = ", FLAVOR(%(number_external)d)," + wf_object + ")"
+                axial_suffix = ", FLAVOR(%(number_external)d)," + \
+                               "P(0,%(axial_ref)d)," + wf_object + ")"
             else:
                 suffix = "," + wf_object + ")"
+                axial_suffix = ",P(0,%(axial_ref)d)," + wf_object + ")"
             # Two variants of the NSF/NSV flag: bare, or multiplied by IC so
             # that the caller can flip a leg between the initial and the final
             # state (crossing). Flipping that flag is what crosses the leg:
@@ -1736,7 +1742,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             if axial:
                 axial_call = tuple(
                     call.replace('XXXXX(', 'XXXXXR(', 1) + flag +
-                    ",P(0,%(axial_ref)d)" + suffix for flag in flags)
+                    axial_suffix for flag in flags)
             call = tuple(call + flag + suffix for flag in flags)
 
         if isinstance(call, tuple):
