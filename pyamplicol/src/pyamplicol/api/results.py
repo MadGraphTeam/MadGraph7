@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, TypeAlias, cast
+from typing import Any, Literal, TypeAlias, cast
 
 from pyamplicol.config import (
     BenchmarkConfig,
@@ -303,6 +303,9 @@ class GenerationResult:
     mode: Literal["error", "append", "replace"]
     schema_version: int = 3
     files: tuple[Path, ...] = ()
+    # Known, benign dependency log events of the generation, returned
+    # instead of printed (``ResultWarning``; m-lit ux-besteffort).
+    warnings: tuple[Any, ...] = ()
 
     def __post_init__(self) -> None:
         try:
@@ -390,7 +393,9 @@ class ProcessPhysics:
     reduction: PhysicsReduction
     model_parameters: tuple[ModelParameter, ...]
     selector_capabilities: tuple[str, ...]
-    contribution_kind: Literal["tree", "virtual"] = "tree"
+    # "loop-induced": |A_loop|^2 of a process without a Born (m-lit Q36), with
+    # a virtual's colour metadata (full colour, contracted).
+    contribution_kind: Literal["tree", "virtual", "loop-induced"] = "tree"
     born_anchored_color_components: tuple[BornAnchoredColorComponent, ...] = ()
 
     def __post_init__(self) -> None:
@@ -447,9 +452,10 @@ class ProcessPhysics:
         parameter_names = tuple(parameter.name for parameter in parameters)
         if len(set(parameter_names)) != len(parameter_names):
             raise ValueError("model parameter names must be unique")
-        if self.contribution_kind not in ("tree", "virtual"):
-            raise ValueError("contribution kind must be tree or virtual")
-        virtual_lc = self.contribution_kind == "virtual" and self.color_accuracy == "lc"
+        if self.contribution_kind not in ("tree", "virtual", "loop-induced"):
+            raise ValueError("contribution kind must be tree, virtual or loop-induced")
+        loop = self.contribution_kind != "tree"
+        virtual_lc = loop and self.color_accuracy == "lc"
         if virtual_lc:
             if self.color_kind == "contracted-color":
                 if len(contracted) != 1 or anchors or color_flows:
@@ -478,7 +484,7 @@ class ProcessPhysics:
             raise ValueError(
                 "strict colour metadata reports one component per N_c degree"
             )
-        if self.contribution_kind == "virtual" and color_flows:
+        if loop and color_flows:
             raise ValueError(
                 "virtual colour contributions are not positive colour flows"
             )
@@ -528,10 +534,10 @@ class ProcessPhysics:
     def color_ids(self) -> tuple[str, ...]:
         components: tuple[ColorComponent, ...] = (
             self.born_anchored_color_components
-            if self.contribution_kind == "virtual"
+            if self.contribution_kind != "tree"
             and self.color_kind == "born-anchored-interference"
             else self.contracted_color_components
-            if self.contribution_kind == "virtual"
+            if self.contribution_kind != "tree"
             else self.color_flows
             if self.color_accuracy == "lc"
             else self.contracted_color_components

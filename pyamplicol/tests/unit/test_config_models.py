@@ -10,6 +10,7 @@ from pyamplicol.config import (
     FIELD_REGISTRY,
     Action,
     BenchmarkConfig,
+    CheckConfig,
     ColorAccuracy,
     ColorConfig,
     ColorContraction,
@@ -36,14 +37,109 @@ from pyamplicol.config import (
     ProcessGroupAnalysis,
     R2Strategy,
     RecurrenceEvaluatorConfig,
+    ReductionBackend,
     RelationDiscoveryMode,
     RunConfig,
     SymbolicaConfig,
 )
 
 
+def test_check_arbitrary_digits_is_a_positive_count_of_the_auto_ladder() -> None:
+    """m-lit lit-check (DECISIONS 2026-11-10 00:08): null derives the
+    arbitrary-precision rung's digits per row; an explicit precision has no
+    rung."""
+
+    assert CheckConfig().arbitrary_digits is None
+    assert CheckConfig(arbitrary_digits=50).arbitrary_digits == 50
+    for invalid in (0, -3, 1.5, "50", True):
+        with pytest.raises(ConfigurationError, match=r"check\.arbitrary_digits"):
+            CheckConfig(arbitrary_digits=invalid)
+    for precision in ("double", "double-double"):
+        with pytest.raises(ConfigurationError, match=r"check\.precision must be auto"):
+            CheckConfig(precision=precision, arbitrary_digits=50)
+
+
+def test_check_energy_must_be_a_positive_finite_number() -> None:
+    assert CheckConfig().sqrt_s is None
+    assert CheckConfig(sqrt_s=2500).sqrt_s == 2500.0
+    for invalid in (0.0, -1.0, float("inf"), float("nan"), "1000", True):
+        with pytest.raises(ConfigurationError, match=r"check\.sqrt_s"):
+            CheckConfig(sqrt_s=invalid)
+
+
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 124
+    # 142: lit-ewprep's model.loop_preparation_cache, M-LIT lit-fold's
+    # generation.loop_induced_folding (USER ~22:39), lit-examples' check
+    # section, lit-ew-blocks' check.sqrt_s, lit-check's check.arbitrary_digits
+    # and lit-psimprove's evaluation.kinematics_improvement /
+    # evaluation.kinematics_improvement_binary64; 147: ux-process's
+    # process.squared_coupling_orders, loop.external_widths and the
+    # evaluation.phase_space section (points, seed, sqrt_s); 150: ux-profile's
+    # benchmark.runtime, stability and stability_points (`pyamplicol profile
+    # --runtime / --stability` of loop artifacts).
+    assert len(FIELD_REGISTRY) == 151
+    assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
+    assert FIELD_REGISTRY["loop.external_widths"].default == "model"
+    assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
+    assert FIELD_REGISTRY["benchmark.runtime"].default is False
+    assert FIELD_REGISTRY["benchmark.stability"].default is False
+    assert FIELD_REGISTRY["benchmark.stability_points"].default == 1000
+    assert FIELD_REGISTRY["benchmark.n_core"].default == 10
+    # m-lit lit-examples: `pyamplicol check` (the check action's section).
+    assert FIELD_REGISTRY["check.points"].default == 3
+    assert FIELD_REGISTRY["check.seed"].nullable
+    assert FIELD_REGISTRY["check.seed"].default is None
+    assert FIELD_REGISTRY["check.precision"].choices == (
+        "auto",
+        "double",
+        "double-double",
+    )
+    assert "check" in FIELD_REGISTRY["action"].choices
+    assert FIELD_REGISTRY["check.model"].nullable
+    assert FIELD_REGISTRY["check.model"].default is None
+    # m-lit lit-ew-blocks: the check points' energy override (None: the
+    # generation's validation convention).
+    assert FIELD_REGISTRY["check.sqrt_s"].nullable
+    assert FIELD_REGISTRY["check.sqrt_s"].default is None
+    assert FIELD_REGISTRY["check.sqrt_s"].kind == "float"
+    # m-lit lit-check: the arbitrary-precision rung's digits (None: derived).
+    assert FIELD_REGISTRY["check.arbitrary_digits"].nullable
+    assert FIELD_REGISTRY["check.arbitrary_digits"].default is None
+    assert FIELD_REGISTRY["check.arbitrary_digits"].kind == "int"
+    # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
+    # (off by default).
+    assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False
+    assert FIELD_REGISTRY["evaluation.reduction_unchecked"].kind == "bool"
+    # m-lit lit-psimprove: the kinematics improvement, runtime options (None:
+    # the native defaults, MadLoop's variant above binary64, off in binary64).
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].default is None
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].nullable
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].kind == "str"
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement_binary64"].default is None
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement_binary64"].kind == "bool"
+    # m-lit F3: TIRust's target accuracy, a runtime option (None: 1e-5).
+    assert FIELD_REGISTRY["evaluation.reduction_target"].default is None
+    assert FIELD_REGISTRY["evaluation.reduction_target"].nullable
+    assert FIELD_REGISTRY["evaluation.reduction_target"].kind == "float"
+    # m-lit LIT-API: the reduction backend (Q17 / Q18), a generation default
+    # and its runtime override.
+    assert FIELD_REGISTRY["loop.reduction"].default == "auto"
+    assert FIELD_REGISTRY["loop.reduction"].choices == ("auto", "ninjars", "tirust")
+    assert FIELD_REGISTRY["evaluation.reduction"].default is None
+    assert FIELD_REGISTRY["evaluation.reduction"].nullable
+    assert FIELD_REGISTRY["evaluation.reduction"].choices == (
+        "auto",
+        "ninjars",
+        "tirust",
+    )
+    # m-lit LIT-REQ: loop-induced routing (Q2 (b)).
+    assert FIELD_REGISTRY["process.loop_induced"].default == "auto"
+    assert FIELD_REGISTRY["process.loop_induced"].choices == (
+        "auto",
+        "skip",
+        "only",
+        "include",
+    )
     # Tuning settings (no capability bound): defaults of the former literals.
     assert FIELD_REGISTRY["color.adjoint_dense_max_gluons"].default == 12
     assert FIELD_REGISTRY["color.fused_selector_max_sectors"].default == 128
@@ -65,12 +161,90 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["generation.particle_veto"].default == ()
     assert FIELD_REGISTRY["generation.allow_anomalous_veto"].kind == "bool"
     assert FIELD_REGISTRY["generation.allow_anomalous_veto"].default is False
+    assert FIELD_REGISTRY["generation.allow_failed_probes"].kind == "bool"
+    assert FIELD_REGISTRY["generation.allow_failed_probes"].default is False
+    # m-lit Q12 as ruled 2026-11-08 22:34 (3): the generation-time probes of
+    # loop-induced processes are off by default, enabled by the user.
+    assert FIELD_REGISTRY["generation.loop_induced_probes"].kind == "bool"
+    assert FIELD_REGISTRY["generation.loop_induced_probes"].default is False
+    filter_failure = FIELD_REGISTRY["generation.helicity_filter_failure_probability"]
+    assert filter_failure.kind == "float" and filter_failure.default == 1e-12
+    # M-LIT lit-fold (USER 2026-11-08 ~22:39): F1 folding, on by default.
+    assert FIELD_REGISTRY["generation.loop_induced_folding"].kind == "bool"
+    assert FIELD_REGISTRY["generation.loop_induced_folding"].default is True
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
     assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
     assert FIELD_REGISTRY["evaluation.stability_checks.rescaled"].default is False
     assert FIELD_REGISTRY["loop.preparation"].nullable
+    # lit-ewprep: the persistent cache of one-loop model preparations is on
+    # by default (``loops.preparation_cache``).
+    assert FIELD_REGISTRY["model.loop_preparation_cache"].kind == "bool"
+    assert FIELD_REGISTRY["model.loop_preparation_cache"].default is True
+
+
+def test_loop_preparation_cache_is_a_boolean_model_option() -> None:
+    """lit-ewprep: ``model.loop_preparation_cache`` takes a boolean only;
+    any other value is refused with the one message."""
+
+    assert ModelConfig().loop_preparation_cache is True
+    assert ModelConfig(loop_preparation_cache=False).loop_preparation_cache is False
+    for value in (1, 0, "true", "off", None, 1.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^model\.loop_preparation_cache must be a boolean$",
+        ):
+            ModelConfig(loop_preparation_cache=value)
+
+
+def test_loop_induced_probes_is_an_explicit_boolean_option() -> None:
+    """DECISIONS 2026-11-08 22:34 (3): the loop-induced generation-time
+    probes are off by default and enabled only by a boolean; any other value
+    is refused with the one message."""
+
+    assert GenerationConfig().loop_induced_probes is False
+    assert GenerationConfig(loop_induced_probes=True).loop_induced_probes is True
+    for value in (1, 0, "true", "on", None, 1.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^generation\.loop_induced_probes must be true or false$",
+        ):
+            GenerationConfig(loop_induced_probes=value)
+
+
+def test_loop_induced_folding_is_an_explicit_boolean_option() -> None:
+    """M-LIT lit-fold (USER 2026-11-08 ~22:39, F1): the fold of loop-induced
+    chains is on by default and switched off only by a boolean; any other
+    value is refused with the one message."""
+
+    assert GenerationConfig().loop_induced_folding is True
+    assert GenerationConfig(loop_induced_folding=False).loop_induced_folding is False
+    for value in (1, 0, "false", "off", None, 0.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^generation\.loop_induced_folding must be true or false$",
+        ):
+            GenerationConfig(loop_induced_folding=value)
+
+
+def test_helicity_filter_failure_probability_is_a_probability_below_one() -> None:
+    """m-lit Q10 (LIT-R2): the exact helicity-zero filter's stated failure
+    probability is overridable; 0 drops nothing, 1 and above, negative,
+    non-finite and non-numeric values are refused."""
+
+    assert GenerationConfig().helicity_filter_failure_probability == 1e-12
+    assert (
+        GenerationConfig(
+            helicity_filter_failure_probability=0
+        ).helicity_filter_failure_probability
+        == 0.0
+    )
+    for value in (1, 1.5, -1e-3, float("inf"), float("nan"), True, "1e-9"):
+        with pytest.raises(
+            ConfigurationError, match="helicity_filter_failure_probability"
+        ):
+            GenerationConfig(helicity_filter_failure_probability=value)
 
 
 def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:
@@ -81,12 +255,20 @@ def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:
         ):
             LoopConfig(engine=value)
     assert LoopConfig(r2_strategy="model").r2_strategy is R2Strategy.MODEL
+    assert LoopConfig().reduction is ReductionBackend.AUTO
+    assert LoopConfig(reduction="tirust").reduction is ReductionBackend.TIRUST
+    with pytest.raises(ConfigurationError, match=r"loop\.reduction must be one"):
+        LoopConfig(reduction="engine")
+    assert EvaluationConfig().reduction is None
+    assert EvaluationConfig(reduction="ninjars").reduction is ReductionBackend.NINJARS
+    with pytest.raises(ConfigurationError, match=r"evaluation\.reduction must be"):
+        EvaluationConfig(reduction="fast")
     assert (
         FIELD_REGISTRY["loop.preparation.fixed_parameters"].kind == "map_exact_scalar"
     )
     assert "evaluation.stability" in CONFIG_SECTIONS
     assert FIELD_REGISTRY["evaluation.stability.higher"].kind == "list_str"
-    assert FIELD_REGISTRY["evaluation.on_failure"].default == "raise"
+    assert FIELD_REGISTRY["evaluation.on_failure"].default is None
     assert "generation.umami_grouping" not in FIELD_REGISTRY
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required

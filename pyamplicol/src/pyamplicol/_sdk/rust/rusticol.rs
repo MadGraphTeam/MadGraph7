@@ -4,8 +4,8 @@
 /// Additive binary64 Born–loop interfaces, using the same installed archive.
 pub mod virtual_amplitudes {
     use super::{
-        Error, ErrorKind, Result, checked_cstring, optional_cstring, optional_pointer,
-        path_cstring, read_string_checked,
+        Error, ErrorKind, Result, checked_cstring, cstring_list, optional_cstring,
+        optional_pointer, path_cstring, read_string_checked,
     };
     use std::{
         ffi::{CStr, c_char, c_int, c_void},
@@ -44,6 +44,9 @@ pub mod virtual_amplitudes {
         Rescued,
         Failed,
         AccuracyNotEstablished,
+        /// A point no configured alternative accepted, returned with the
+        /// unchecked reduction's value (never a success; `set_on_failure`).
+        BestEffort,
     }
     /// Owned compact values, with independent order catalogues in runtime metadata.
     /// Resolved axes are point/order/helicity/colour/epsilon; Born omits epsilon.
@@ -52,6 +55,9 @@ pub mod virtual_amplitudes {
         pub requested_point_ids: Vec<u64>,
         pub successful_point_ids: Vec<u64>,
         pub statuses: Vec<PointStatus>,
+        /// Per requested point the relative uncertainty of a best-effort
+        /// point's value (`PointStatus::BestEffort`); NaN otherwise.
+        pub uncertainties: Vec<f64>,
         pub born: Vec<f64>,
         pub virtual_values: Vec<f64>,
         pub diagnostics_json: String,
@@ -60,6 +66,26 @@ pub mod virtual_amplitudes {
         /// API's `Decimal` values; `born`/`virtual_values` hold their nearest
         /// doubles); `null` in binary64.
         pub decimal_json: String,
+        /// `{"helicity_ids", "color_ids"}`: a resolved result's axes in the
+        /// layout's order (a selection's rows, the `amplitude-<t>` anchors);
+        /// empty lists for an ordinary result.
+        pub axes_json: String,
+    }
+    /// The selectors of [`Runtime::evaluate_selected`]
+    /// (`rusticol_virtual_selection`): global helicity IDs (`h<i>` or
+    /// `h:<helicities in leg order>`), per-point zero-based helicity rows
+    /// (one per point; exclusive with the IDs), colour flows (refused for a
+    /// loop-induced process: full colour only; for a Born-interfered one
+    /// served by the Python API's `color_flows=`) and a loop-induced resolved
+    /// evaluation's colour resolution (`"contracted"`, the default, or
+    /// `"amplitude-basis"`). Empty vectors omit a selector.
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    pub struct Selection {
+        pub helicity_ids: Vec<String>,
+        pub color_ids: Vec<String>,
+        pub helicity_by_point: Vec<u32>,
+        pub color_flow_by_point: Vec<u32>,
+        pub color_resolution: Option<String>,
     }
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default)]
@@ -86,6 +112,8 @@ pub mod virtual_amplitudes {
         pub requested_point_ids: Vec<u64>,
         pub successful_point_ids: Vec<u64>,
         pub statuses: Vec<PointStatus>,
+        /// Best-effort uncertainties per requested point; NaN otherwise.
+        pub uncertainties: Vec<f64>,
         pub born: Vec<Complex64>,
         pub virtual_values: Vec<Complex64>,
         pub diagnostics_json: String,
@@ -227,6 +255,128 @@ pub mod virtual_amplitudes {
                 )
             })
         }
+        /// Reduction backend of later evaluations, the Python API's
+        /// `reduction=`: "auto" (default), "ninjars" or "tirust"; an
+        /// unavailable explicit backend is a runtime error (never a silent
+        /// switch). Each result's diagnostics record the choice.
+        pub fn set_reduction(&mut self, reduction: &str) -> Result<()> {
+            let reduction = checked_cstring(reduction, "reduction backend")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_reduction(self.handle.as_ptr(), reduction.as_ptr())
+            })
+        }
+        /// Target accuracy of later evaluations, the Python API's
+        /// `reduction_target=` (default 1e-5 relative per point): TIRust's
+        /// acceptance follows it; a value that is not finite and positive is
+        /// an invalid-argument error.
+        pub fn set_reduction_target(&mut self, target: f64) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_reduction_target(self.handle.as_ptr(), target)
+            })
+        }
+        /// Unchecked setting of later evaluations, the Python API's
+        /// `reduction_unchecked=` (default false): the reduction backends
+        /// without their own acceptance and refusal checks.
+        pub fn set_reduction_unchecked(&mut self, unchecked: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_reduction_unchecked(
+                    self.handle.as_ptr(),
+                    c_int::from(unchecked),
+                )
+            })
+        }
+        /// Failure policy of later evaluations, the Python API's
+        /// `on_failure=`: `"best-effort"` (default: a refused point returns
+        /// the unchecked value with `PointStatus::BestEffort` and its
+        /// uncertainty, no error), `"return"` (such points stay `Failed`) or
+        /// `"raise"` (a call with such a point returns an error).
+        pub fn set_on_failure(&mut self, on_failure: &str) -> Result<()> {
+            let text = checked_cstring(on_failure, "on_failure")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_on_failure(self.handle.as_ptr(), text.as_ptr())
+            })
+        }
+        /// Kinematics improvement of later evaluations, the Python API's
+        /// `kinematics_improvement=`: `"z-shift"` (MadLoop's default),
+        /// `"rescaling"`, `"projection"` or `"off"`; recorded per point in
+        /// the diagnostics (`"kinematics"`). Another value is an
+        /// invalid-argument error.
+        pub fn set_kinematics_improvement(&mut self, setting: &str) -> Result<()> {
+            let setting = checked_cstring(setting, "kinematics improvement")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement(
+                    self.handle.as_ptr(),
+                    setting.as_ptr(),
+                )
+            })
+        }
+        /// Whether later binary64 evaluations are improved too, the Python
+        /// API's `kinematics_improvement_binary64=` (default false).
+        pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement_binary64(
+                    self.handle.as_ptr(),
+                    c_int::from(binary64),
+                )
+            })
+        }
+        /// Stability checks of later evaluations, the Python API's
+        /// `stability_checks=`: `rotation_count` default rotations, or (with
+        /// a count of 0) the rotation specifications `rotations`, the
+        /// reduction-direction check, its rescaled variant and the
+        /// cross-backend check; all off (the default) runs none. Estimates
+        /// are in the diagnostics (`"stability"`).
+        pub fn set_stability_checks(
+            &mut self,
+            rotation_count: u64,
+            rotations: Option<&[&str]>,
+            reduction_direction: bool,
+            rescaled: bool,
+            cross_backend: bool,
+        ) -> Result<()> {
+            let rotations = rotations
+                .map(|specifications| {
+                    let quoted: Vec<String> = specifications
+                        .iter()
+                        .map(|text| {
+                            let mut out = String::from("\"");
+                            for c in text.chars() {
+                                match c {
+                                    '"' => out.push_str("\\\""),
+                                    '\\' => out.push_str("\\\\"),
+                                    c if (c as u32) < 0x20 => {
+                                        out.push_str(&format!("\\u{:04x}", c as u32))
+                                    }
+                                    c => out.push(c),
+                                }
+                            }
+                            out.push('"');
+                            out
+                        })
+                        .collect();
+                    checked_cstring(&format!("[{}]", quoted.join(",")), "rotations")
+                })
+                .transpose()?;
+            // SAFETY: exclusive live handle and owned string (or null).
+            check(unsafe {
+                ffi::rusticol_virtual_set_stability_checks(
+                    self.handle.as_ptr(),
+                    rotation_count,
+                    rotations
+                        .as_ref()
+                        .map_or(std::ptr::null(), |text| text.as_ptr()),
+                    u32::from(reduction_direction),
+                    u32::from(rescaled),
+                    u32::from(cross_backend),
+                )
+            })
+        }
         /// One native bulk call; binary64 inputs are read as their exact values.
         pub fn evaluate(
             &mut self,
@@ -253,6 +403,72 @@ pub mod virtual_amplitudes {
             // SAFETY: buffers and strings remain borrowed for this one bulk call.
             check(unsafe {
                 ffi::rusticol_virtual_evaluate(self.handle.as_ptr(), &request, &mut result)
+            })?;
+            let result = OwnedResult(NonNull::new(result).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidResponse,
+                    "virtual evaluation returned null",
+                )
+            })?);
+            result.copy()
+        }
+        /// `rusticol_virtual_evaluate_selected`: the selected helicity rows
+        /// of a loop-induced process or, at every colour accuracy, of a
+        /// Born-interfered one (lit-fc-hel) (`resolved` false: their sum per
+        /// point, RULED Q39; true: per selected row its colour components in
+        /// the selection's colour resolution, or the accuracy's resolved
+        /// layout); refusals are errors.
+        #[allow(clippy::too_many_arguments)]
+        pub fn evaluate_selected(
+            &mut self,
+            momenta: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+            mu_r2: &[f64],
+            resolved: bool,
+            strategy: Option<&str>,
+            selection: &Selection,
+        ) -> Result<Evaluation> {
+            self.validate_inputs(momenta, point_count, point_ids)?;
+            let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let helicities = cstring_list(&selection.helicity_ids, "helicity ID")?;
+            let colours = cstring_list(&selection.color_ids, "colour-flow ID")?;
+            let helicity_pointers: Vec<*const c_char> =
+                helicities.iter().map(|id| id.as_ptr()).collect();
+            let colour_pointers: Vec<*const c_char> =
+                colours.iter().map(|id| id.as_ptr()).collect();
+            let resolution =
+                optional_cstring(selection.color_resolution.as_deref(), "colour resolution")?;
+            let selectors = ffi::SelectionRequest {
+                helicity_ids: helicity_pointers.as_ptr(),
+                helicity_count: helicity_pointers.len(),
+                color_ids: colour_pointers.as_ptr(),
+                color_count: colour_pointers.len(),
+                helicity_by_point: selection.helicity_by_point.as_ptr(),
+                helicity_by_point_count: selection.helicity_by_point.len(),
+                color_flow_by_point: selection.color_flow_by_point.as_ptr(),
+                color_flow_by_point_count: selection.color_flow_by_point.len(),
+                color_resolution: optional_pointer(&resolution),
+            };
+            let request = ffi::BatchRequest {
+                momenta: momenta.as_ptr(),
+                momentum_count: momenta.len(),
+                point_count,
+                point_ids: point_ids.map_or(ptr::null(), |ids| ids.as_ptr()),
+                mu_r2: mu_r2.as_ptr(),
+                scale_count: mu_r2.len(),
+                resolved: u32::from(resolved),
+                r2_strategy: optional_pointer(&strategy),
+            };
+            let mut result = ptr::null_mut();
+            // SAFETY: buffers and strings remain borrowed for this one bulk call.
+            check(unsafe {
+                ffi::rusticol_virtual_evaluate_selected(
+                    self.handle.as_ptr(),
+                    &request,
+                    &selectors,
+                    &mut result,
+                )
             })?;
             let result = OwnedResult(NonNull::new(result).ok_or_else(|| {
                 Error::new(
@@ -446,6 +662,9 @@ pub mod virtual_amplitudes {
             .into_iter()
             .map(point_status)
             .collect::<Result<Vec<_>>>()?;
+            let uncertainties = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_result_copy_uncertainties(handle, out, len) })?;
             let born = copy_values(shape.born_values, |out, len|
                 // SAFETY: helper allocates len correctly typed writable elements.
                 unsafe { ffi::rusticol_virtual_result_copy_born(handle, out, len) })?;
@@ -464,15 +683,23 @@ pub mod virtual_amplitudes {
                 unsafe { ffi::rusticol_virtual_result_decimal_json(handle, out, len, needed) },
                 check,
             )?;
+            let axes_json = read_string_checked(
+                |out, len, needed|
+                // SAFETY: helper allocates the queried writable string buffer.
+                unsafe { ffi::rusticol_virtual_result_axes_json(handle, out, len, needed) },
+                check,
+            )?;
             Ok(Evaluation {
                 shape,
                 requested_point_ids,
                 successful_point_ids,
                 statuses,
+                uncertainties,
                 born,
                 virtual_values,
                 diagnostics_json,
                 decimal_json,
+                axes_json,
             })
         }
     }
@@ -503,6 +730,9 @@ pub mod virtual_amplitudes {
             .into_iter()
             .map(point_status)
             .collect::<Result<Vec<_>>>()?;
+            let uncertainties = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_correlated_result_copy_uncertainties(handle, out, len) })?;
             let born = copy_values(shape.born_values, |out, len|
                 // SAFETY: helper allocates len correctly typed writable elements.
                 unsafe { ffi::rusticol_virtual_correlated_result_copy_born(handle, out, len) })?;
@@ -549,6 +779,7 @@ pub mod virtual_amplitudes {
                 requested_point_ids,
                 successful_point_ids,
                 statuses,
+                uncertainties,
                 born,
                 virtual_values,
                 diagnostics_json,
@@ -573,6 +804,7 @@ pub mod virtual_amplitudes {
             2 => Ok(PointStatus::Rescued),
             3 => Ok(PointStatus::Failed),
             4 => Ok(PointStatus::AccuracyNotEstablished),
+            5 => Ok(PointStatus::BestEffort),
             _ => Err(Error::new(
                 ErrorKind::InvalidResponse,
                 "unknown virtual point status",
@@ -632,7 +864,31 @@ pub mod virtual_amplitudes {
             pub values: *const ComplexPair,
             pub value_count: usize,
         }
+        #[repr(C)]
+        pub(super) struct SelectionRequest {
+            pub helicity_ids: *const *const c_char,
+            pub helicity_count: usize,
+            pub color_ids: *const *const c_char,
+            pub color_count: usize,
+            pub helicity_by_point: *const u32,
+            pub helicity_by_point_count: usize,
+            pub color_flow_by_point: *const u32,
+            pub color_flow_by_point_count: usize,
+            pub color_resolution: *const c_char,
+        }
         unsafe extern "C" {
+            pub(super) fn rusticol_virtual_evaluate_selected(
+                handle: *mut c_void,
+                request: *const BatchRequest,
+                selection: *const SelectionRequest,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_axes_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
             pub(super) fn rusticol_virtual_evaluate_correlated_with_sources(
                 handle: *mut c_void,
                 request: *const BatchRequest,
@@ -736,6 +992,48 @@ pub mod virtual_amplitudes {
                 handle: *mut c_void,
                 arithmetic: *const c_char,
                 digits: u32,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_reduction(
+                handle: *mut c_void,
+                reduction: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_reduction_target(
+                handle: *mut c_void,
+                target: f64,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_reduction_unchecked(
+                handle: *mut c_void,
+                unchecked: c_int,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_on_failure(
+                handle: *mut c_void,
+                on_failure: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_copy_uncertainties(
+                handle: *const c_void,
+                out: *mut f64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_copy_uncertainties(
+                handle: *const c_void,
+                out: *mut f64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement(
+                handle: *mut c_void,
+                setting: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement_binary64(
+                handle: *mut c_void,
+                binary64: c_int,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_stability_checks(
+                handle: *mut c_void,
+                rotation_count: u64,
+                rotations: *const c_char,
+                reduction_direction: u32,
+                rescaled: u32,
+                cross_backend: u32,
             ) -> c_int;
             pub(super) fn rusticol_virtual_result_decimal_json(
                 handle: *const c_void,
@@ -1983,6 +2281,33 @@ impl Runtime {
         })
     }
 
+    /// Kinematics improvement of later f64 evaluations (m-lit
+    /// lit-psimprove), the Python API's `kinematics_improvement=`:
+    /// `"z-shift"` (MadLoop's default), `"rescaling"`, `"projection"` or
+    /// `"off"`. Every evaluation of this runtime is binary64, so the variant
+    /// runs only with [`Self::set_kinematics_improvement_binary64`]`(true)`;
+    /// the records reach [`Self::take_warnings_json`]. Another value is an
+    /// invalid-argument error.
+    pub fn set_kinematics_improvement(&mut self, setting: &str) -> Result<()> {
+        let setting = checked_cstring(setting, "kinematics improvement")?;
+        // SAFETY: The CString and owning handle remain live for the call.
+        check(unsafe {
+            ffi::runtime_set_kinematics_improvement(self.handle.as_ptr(), setting.as_ptr())
+        })
+    }
+
+    /// Whether later f64 evaluations are improved (default false), the
+    /// Python API's `kinematics_improvement_binary64=`.
+    pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) -> Result<()> {
+        // SAFETY: The owning handle remains live and exclusively borrowed.
+        check(unsafe {
+            ffi::runtime_set_kinematics_improvement_binary64(
+                self.handle.as_ptr(),
+                c_int::from(binary64),
+            )
+        })
+    }
+
     pub fn set_warnings_muted(&mut self, muted: bool) -> Result<()> {
         // SAFETY: The owning handle remains live and exclusively borrowed.
         check(unsafe { ffi::runtime_mute_warnings(self.handle.as_ptr(), c_int::from(muted)) })
@@ -2702,6 +3027,14 @@ mod ffi {
             handle: *mut RuntimeHandle,
             path: *const c_char,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_set_kinematics_improvement(
+            handle: *mut RuntimeHandle,
+            setting: *const c_char,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_set_kinematics_improvement_binary64(
+            handle: *mut RuntimeHandle,
+            binary64: c_int,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_mute_warnings(
             handle: *mut RuntimeHandle,
             muted: c_int,
@@ -2747,6 +3080,8 @@ mod ffi {
     pub(super) use rusticol_runtime_representative_process_key as runtime_representative_process_key;
     pub(super) use rusticol_runtime_resolved_shape as runtime_resolved_shape;
     pub(super) use rusticol_runtime_save as runtime_save;
+    pub(super) use rusticol_runtime_set_kinematics_improvement as runtime_set_kinematics_improvement;
+    pub(super) use rusticol_runtime_set_kinematics_improvement_binary64 as runtime_set_kinematics_improvement_binary64;
     pub(super) use rusticol_runtime_set_model_parameter as runtime_set_model_parameter;
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;
     pub(super) use rusticol_runtime_set_model_parameters_json as runtime_set_model_parameters_json;

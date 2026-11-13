@@ -668,6 +668,17 @@ def _vertex_label(name: str) -> Label:
     return ("leg", int(match.group(1))) if match else ("dummy", name)
 
 
+class BlockColourFlowError(ValueError):
+    """Two blocks of one block current (external mask, field, coupling
+    orders) and one word whose colour flows differ beyond their sign: the
+    word names one colour content of the current, so the seeds cannot read
+    the blocks by it (pure-electroweak u u~ > d d~ s s~ with QCD loops).
+    Generation refuses the request naming the blocks."""
+
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "block-colour-flow"
+
+
 class SeedColour:
     """Generic seed classes of skeleton contents (a ``skeletons.ColourModel``).
 
@@ -746,7 +757,7 @@ class SeedColour:
             if first is not block and replace(first.colour_flow, sign=1) != replace(
                 block.colour_flow, sign=1
             ):
-                raise ValueError(
+                raise BlockColourFlowError(
                     f"blocks {first.id} and {block.id} of word {key.word} and "
                     "field current differ in colour flow"
                 )
@@ -2341,6 +2352,210 @@ def seed_cells(
     return tuple(out)
 
 
+# ------------------------------------------------- amplitude basis (loop-induced)
+
+
+@dataclass(frozen=True)
+class AmplitudeBasis:
+    """The full-colour amplitude basis of a loop-induced request (M-LIT
+    LIT-COL, PLAN §2.a.2 items 1-3).
+
+    With no Born there is no bra to project the loop onto: the loop
+    amplitude is kept as a colour vector. Every seed class expands into
+    literal tensors, kappa_c = sum_t c_{c,t} |t> (``SeedTable.tensor``), and
+
+    * ``tensors`` (T) are the distinct literal tensors of the class
+      expansions (in class order, each class's terms in their canonical
+      order), then those of the counterterm kets not already in T (sorted):
+      the analogue of the Born basis of the Born-interfered path
+      (``assemble._born_tensors``);
+    * ``cells[c]`` lists (t, c_{c,t}) for each t class c carries, by t: the
+      coefficient cells read off the class's own expansion as exact Laurent
+      polynomials in N_c (its 1/sqrt(2) power folded). Nothing is
+      overlapped, projected or inverted;
+    * ``counterterms`` are the elements of T the counterterm kets carry;
+    * ``metric`` is G_{tt'} = <t|t'>, exact in N_c (``BornBasis.gram``: the
+      relabelling-orbit cache over ``contract_colour``).
+
+    Full colour only (RULED Q8): no N_c grade is carried and no metric is
+    truncated; cells and metric are evaluated at N_c = 3 by
+    ``cells_at_three`` / ``metric_at_three``. T may be linearly dependent at
+    N_c = 3, which is harmless for |A|^2 = a^dagger G a because nothing is
+    inverted (DESIGN §7.1); per-component values a_t are therefore not
+    physical, only G-norms and projections G a are.
+    """
+
+    legs: tuple[ColorLeg, ...]
+    tensors: tuple[ColorTensor, ...]
+    cells: tuple[tuple[tuple[int, Laurent], ...], ...]
+    counterterms: tuple[int, ...]
+    metric: tuple[tuple[Laurent, ...], ...]
+
+    def __len__(self) -> int:
+        return len(self.tensors)
+
+    @cached_property
+    def seed_basis(self) -> BornBasis:
+        """T as a seed basis (every element a single literal tensor with
+        coefficient one; no Born orders): the basis of the seeded oracle F2
+        (PLAN §2.a.2 item 7), whose ``gram`` is ``metric``."""
+
+        return _seed_basis(self.legs, self.tensors)
+
+    def cells_at_three(self) -> tuple[_CellsAtThree, ...]:
+        """c_{c,t} at N_c = 3, per class (t, value) by t (zeros dropped)."""
+
+        return tuple(
+            tuple(
+                (t, value) for t, cell in row if (value := project(cell, None, "full"))
+            )
+            for row in self.cells
+        )
+
+    def metric_at_three(self) -> tuple[tuple[ExactColorCoefficient, ...], ...]:
+        """G_{tt'} at N_c = 3, projected once per basis (the basis is frozen
+        and the projection exact: every call returns the same values; an
+        in-memory slice's per-point squaring no longer re-projects it)."""
+
+        return self._metric_at_three
+
+    @cached_property
+    def _metric_at_three(self) -> tuple[tuple[ExactColorCoefficient, ...], ...]:
+        return tuple(
+            tuple(project(cell, None, "full") for cell in row) for row in self.metric
+        )
+
+    @property
+    def colour_zero(self) -> bool:
+        """The exact colour zero of the request (the one exact zero of
+        M-LIT, RULED Q13; ``lit-amp``'s colour-zero record): every coefficient
+        cell c_{c,t} vanishes exactly at N_c = 3 and no counterterm ket
+        carries a colour tensor, so every amplitude component is zero by
+        colour algebra alone (e.g. tr(tau^a) = 0 at h > g a). Anything else
+        is served numerically."""
+
+        return not self.counterterms and not any(self.cells_at_three())
+
+
+_CellsAtThree = tuple[tuple[int, ExactColorCoefficient], ...]
+
+
+def _seed_basis(legs: Sequence[ColorLeg], tensors: Sequence[ColorTensor]) -> BornBasis:
+    legs = tuple(legs)
+    return BornBasis(
+        legs,
+        tuple(range(len(tensors))),
+        tuple(ConnectedColorTensor(legs, (TensorTerm(_ONE, t),)) for t in tensors),
+        tuple(frozenset() for _ in tensors),
+    )
+
+
+def amplitude_kets(
+    legs: Sequence[ColorLeg], kets: Iterable[ColorTensor]
+) -> tuple[ColorTensor, ...]:
+    """The counterterm kets' literal tensors as the basis reads them: on
+    ``legs`` (checked), as connected tensors hold them (a single-letter
+    trace vanishes, an empty one is N_c), distinct and sorted."""
+
+    legs = tuple(legs)
+    found = {
+        term.tensor
+        for ket in kets
+        for term in ConnectedColorTensor(legs, (TensorTerm(_ONE, ket),)).terms
+    }
+    return tuple(sorted(found))
+
+
+def amplitude_basis(
+    table: SeedTable, kets: Iterable[ColorTensor] = ()
+) -> AmplitudeBasis:
+    """The ``AmplitudeBasis`` of ``table``'s classes and the counterterm
+    kets' literal tensors ``kets`` (e.g. ``native_cells.counterterm_tensors``
+    of a slice), on the table's colour legs.
+
+    Runs natively (``native_cells.amplitude_basis``, rusticol-core
+    ``cells::amplitude_basis``) unless the "amplitude" stage is off
+    (``native_cells.native_stages``): this Python stage is its oracle.
+    """
+
+    from . import native_cells
+
+    legs = table.basis.legs
+    kets = amplitude_kets(legs, kets)
+    if "amplitude" in native_cells.NATIVE_STAGES:
+        return native_cells.amplitude_basis(table, kets)
+    return _amplitude_basis(
+        legs, [table.tensor(c) for c in range(len(table.classes))], kets
+    )
+
+
+def _amplitude_basis(
+    legs: Sequence[ColorLeg],
+    classes: Sequence[ConnectedColorTensor],
+    kets: Sequence[ColorTensor],
+) -> AmplitudeBasis:
+    """The Python stage of ``amplitude_basis`` on the class tensors."""
+
+    index: dict[ColorTensor, int] = {}
+
+    def element(tensor: ColorTensor) -> int:
+        return index.setdefault(tensor, len(index))
+
+    cells = []
+    for kappa in classes:
+        power = kappa.normalization_power
+        if power % 2:
+            raise ValueError("a seed class carries an irrational sqrt(2) factor")
+        scale = Fraction(1, 2 ** (power // 2))
+        row: dict[int, dict[int, ExactColorCoefficient]] = {}
+        for term in kappa.terms:
+            cell = row.setdefault(element(term.tensor), {})
+            value = term.coefficient.scaled(scale)
+            cell[term.nc_power] = (
+                cell[term.nc_power] + value if term.nc_power in cell else value
+            )
+        cells.append(
+            tuple(
+                (t, laurent)
+                for t, cell in sorted(row.items())
+                if (laurent := {p: v for p, v in sorted(cell.items()) if v})
+            )
+        )
+    counterterms = tuple(sorted({element(ket) for ket in kets}))
+    tensors = tuple(index)
+    return AmplitudeBasis(
+        tuple(legs),
+        tensors,
+        tuple(cells),
+        counterterms,
+        _seed_basis(legs, tensors).gram,
+    )
+
+
+def amplitude_contraction(policy: str, process: str) -> Literal["direct"]:
+    """The seed contraction of an amplitude-mode (loop-induced) request.
+
+    Its seeds are the coefficient cells c_{c,t} read off the classes, not
+    overlaps with a Born, so the symmetric-group seed FFT (``seed_fourier``,
+    which contracts Born amplitudes over orbits of the Born basis) has
+    nothing to act on: "auto" and "direct" contract directly and a forced
+    "fft" is refused typed (``forced-seed-fft-unserved``).
+    """
+
+    if policy not in ("auto", "direct", "fft"):
+        raise ValueError(f"unknown colour contraction {policy!r}")
+    if policy == "fft":
+        from .refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "forced-seed-fft-unserved",
+            f"{process!r}: a loop-induced amplitude (no Born) has no Born "
+            "amplitudes to contract by the seed FFT; its coefficient cells "
+            "are contracted directly",
+        )
+    return "direct"
+
+
 class _ClassKeys:
     """Table keys of seed classes: (key, scale) with seed = scale x the
     class of that key. Adjoint rings and fundamental traces are keyed by
@@ -3219,6 +3434,7 @@ def certify_leading_colour(
 __all__ = [
     "COMPRESSION_THEOREMS",
     "SYMMETRIC_GROUP_FFT",
+    "BlockColourFlowError",
     "BlockName",
     "BornBasis",
     "ColourNetwork",

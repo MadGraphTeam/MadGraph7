@@ -13,6 +13,7 @@ fn virtual_capability_is_known_without_admitting_scalar_tree_execution() {
     for capability in [
         RuntimeCapability::LoopRuntimeV3.as_str(),
         RuntimeCapability::LoopRuntimeV4.as_str(),
+        RuntimeCapability::LoopRuntimeV5.as_str(),
     ] {
         assert!(validate_runtime_capabilities(&[capability.to_owned()], "loop transport").is_ok());
         assert!(!crate::supported_runtime_capabilities().contains(&capability));
@@ -2072,6 +2073,63 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
     let parsed: ArtifactManifest =
         serde_json::from_value(mixed.manifest.clone()).expect("parse mixed manifest");
     validate_manifest(&parsed).expect("mixed process capability union validates");
+}
+
+/// A v2 loop artifact holds Born-interfered (v4) and loop-induced (v5)
+/// processes in any mix (m-lit lit-amp-b): every process requires exactly one
+/// v2 loop runtime and the artifact no other runtime
+/// (`loop_artifact::is_loop_v2_manifest`, the loaders' admission).
+#[cfg(feature = "symbolica-runtime")]
+#[test]
+fn loop_v2_manifests_admit_born_interfered_and_loop_induced_in_any_mix() {
+    use crate::loop_artifact::{
+        LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY as V5, LOOP_V2_RUNTIME_CAPABILITY as V4,
+        is_loop_v2_manifest,
+    };
+    const OTHER: &str = "symjit.application.complex-f64.v1";
+    let manifest = |processes: &[&[&str]]| {
+        let mut artifact = TestArtifact::new();
+        artifact.manifest["kind"] = json!("pyamplicol-process-set");
+        let template = artifact.manifest["processes"][0].clone();
+        let mut union: Vec<&str> = Vec::new();
+        artifact.manifest["processes"] = json!(
+            processes
+                .iter()
+                .enumerate()
+                .map(|(i, capabilities)| {
+                    let mut process = template.clone();
+                    process["id"] = json!(format!("p{i}"));
+                    process["expression"] = json!(format!("a b > c{i}"));
+                    process["required_runtime_capabilities"] = json!(capabilities);
+                    union.extend_from_slice(capabilities);
+                    process
+                })
+                .collect::<Vec<_>>()
+        );
+        union.sort_unstable();
+        union.dedup();
+        artifact.manifest["runtime"]["required_runtime_capabilities"] = json!(union);
+        let parsed: ArtifactManifest =
+            serde_json::from_value(artifact.manifest.clone()).expect("parse manifest");
+        validate_manifest(&parsed).expect("the capability union validates");
+        parsed
+    };
+    for processes in [
+        &[&[V4][..]][..],
+        &[&[V5][..]],
+        &[&[V4][..], &[V5]],
+        &[&[V5][..], &[V4], &[V5]],
+    ] {
+        assert!(is_loop_v2_manifest(&manifest(processes)), "{processes:?}");
+    }
+    for processes in [
+        // A process requiring both runtimes, or another runtime beside one.
+        &[&[V4, V5][..]][..],
+        &[&[V4][..], &[OTHER]],
+        &[&[OTHER][..]],
+    ] {
+        assert!(!is_loop_v2_manifest(&manifest(processes)), "{processes:?}");
+    }
 }
 
 #[test]

@@ -14,8 +14,172 @@ These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used
 facade. It reads ordinary verified process artifacts and needs no Python process,
 model importer, graph generator or alternate reducer. The existing tree SDK is
 unchanged. All interfaces return physical Born–loop interference, all generated
-squared coupling orders, and finite/single/double poles. Loop amplitudes squared
-and loop-induced production remain unsupported.
+squared coupling orders, and finite/single/double poles.
+
+**Loop-induced processes** (|A_loop|², no Born; m-lit LIT-SDK) are opened by the
+same `rusticol_virtual_open`, with no opt-in, in artifacts of their own or mixed
+with Born-interfered processes: `metadata_json` names `"contribution_kind":
+"loop-induced"` and `"interference": "conj(loop)*loop"`; the shape has zero Born
+orders and Born colour components and every result zero Born values; the
+virtual orders are the loop × loop sectors, each value |A_loop|² per sector and
+epsilon power, full colour (one contracted component), whose computed poles
+vanish up to rounding (a finiteness cross-check). The values are the Python
+API's: binary64 bitwise (the executor's amplitude sum plus the counterterm kets,
+squared by the one native square the Python API calls), double-double and
+arbitrary precision as `Decimal` values (squared in the canonical order). A
+loop-induced process serves the pole selections `"all"` and `"none"`; `"uv"`
+and `"ir"` are refused (`RUSTICOL_VIRTUAL_RUNTIME_ERROR`, the Python API's
+message). Its resolved and correlated outputs are served as the Python API's
+(`evaluate_resolved`, `evaluate_correlated_many`): quadratic forms on the
+point's one amplitude vector, one executor run per call. A resolved call gives
+|A(h)|²/avg per helicity row with one colour-contracted component (`"full"`;
+the rows sum to the ordinary value); the correlated history `"born"` is the
+colour metric itself (|A|², the identity-metric history: there is no Born),
+each declared history its stored matrix M_X on the amplitude basis (real for a
+dipole T_i·T_j, complex otherwise), with zero Born values; a spin source of a
+declared vector leg enters through its projection on the leg's polarisation
+vectors. Binary64 values are bitwise the Python API's (the same Rust code:
+`rusticol_loop_reduction::v2_runtime::induced_outputs`, which the Python API's
+binary64 outputs call), double-double and arbitrary precision equal `Decimal`
+values.
+
+**Selections (loop-induced, F1; Born-interfered, lit-fc-hel).** `rusticol_virtual_evaluate_selected(handle,
+request, selection, &result)` (C++ `evaluate_selected` with a
+`VirtualSelection`, Fortran `evaluate_selected`, the packaged Rust wrapper's
+`evaluate_selected` with a `Selection`, the safe Rust `Runtime::
+evaluate_selected` with a `Selection`; UMAMI: `UMAMI_IN_HELICITY_INDEX` and
+`PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION`) serves the Python API's
+`helicities=` and `color_resolution=` with the tree C ABI's selector
+conventions (global string IDs, per-point zero-based indices, mutually
+exclusive per axis, validated before evaluation, output only on success):
+
+- an ordinary call (`request.resolved = 0`) with helicity IDs (`h<i>` or the
+  tree engine's `h:<helicities in leg order>`) returns per point the sum over
+  the selected rows of |A(h)|²/avg with the total's average (RULED Q39: a
+  complete selection sums to the ordinary value; no parity or Bose row
+  mapping), `helicity_by_point` each point's own row;
+- a resolved call (`request.resolved = 1`) returns the selected rows (every
+  row without IDs) with one colour-contracted component (`"contracted"`, the
+  default) or with the amplitude-basis anchors (`"amplitude-basis"`: per basis
+  element t, `amplitude-<t>`, Re(conj(a_t) (G a)_t)/avg, an explicitly
+  basis-dependent split summing to the row's value); its axes are counted by
+  the result shape and named by `rusticol_virtual_result_axes_json`;
+- only the selected rows are dressed and reduced (the executor's row liveness,
+  the Python API's path), binary64 bitwise the Python API's, double-double and
+  arbitrary precision its `Decimal` values; the handle's poles, arithmetic and
+  reduction backend apply as to every call (the stability monitoring returns
+  `{"estimates": null, "reason": ...}`: the Python API estimates selections);
+- colour flows are refused (full colour only, RULED Q8), and so are an unknown
+  colour resolution or helicity ID, in the Python API's words.
+
+A Born-interfered process selects its Born helicity rows at every colour
+accuracy (lit-fc-hel; the Python API's `evaluate(helicities=...)` and
+`evaluate_resolved(helicities=...)`): an ordinary call returns per point the
+selected rows' value (`helicity_by_point`: each point's own row, points
+sharing a row in one batch), a resolved call the selected rows in the
+accuracy's resolved layout (one contracted component at NLC and full colour,
+one `basis-<b>` component per Born basis element at leading colour). Both run
+the one Rust formation of the Python API's stored path
+(`rusticol_loop_reduction::v2_runtime::template`: the selection template's
+masks, the resolved selection's own columns), so only the selected rows'
+trees, loop links, reduction lanes and resolved columns are formed and
+binary64 values are bitwise the Python API's; double-double and arbitrary
+precision are its `Decimal` values. A colour resolution is refused in the
+Python API's words, colour flows at NLC and full colour in its words, and a
+leading-colour colour-flow selection is the Python API's (`color_flows=`;
+refused typed here, `RUSTICOL_VIRTUAL_RUNTIME_ERROR`). The stability
+monitoring of a selected call returns `{"estimates": null, "reason": ...}` as
+for a loop-induced selection.
+
+The capabilities list the selection (`"helicity_selection"`, true wherever
+the stored observables serve it) and a loop-induced process's colour axes
+(`"color_resolutions"`: the contracted ID and the anchors' IDs).
+
+| Tree-level SDK feature (`rusticol.h`, tree UMAMI) | Loop-induced virtual SDK |
+| --- | --- |
+| Ordinary value | served (`rusticol_virtual_evaluate`) |
+| Per-order partials | served (one value per loop x loop sector) |
+| Helicity-resolved | served (`resolved = 1`) |
+| Colour-resolved | served: the amplitude-basis anchors (`"amplitude-basis"`); colour flows not applicable (full colour, Q8) |
+| Global helicity selection | served (`evaluate_selected`, helicity IDs) |
+| Global colour-flow selection | not applicable (full colour, Q8; refused typed) |
+| Per-point helicity selection | served (`helicity_by_point`; UMAMI `UMAMI_IN_HELICITY_INDEX`) |
+| Per-point colour-flow selection | not applicable (full colour, Q8; refused typed) |
+| Colour-correlated | served (`born` = \|A\|², declared histories) |
+| Colour-correlated with helicity IDs | not served: the Python API refuses helicity selection on correlated evaluations |
+| Spin-correlated | served (declared spin classes) |
+| Carriers (binary64, double-double, arbitrary) | served |
+| UMAMI random helicity / LC colour index | not served (the virtual UMAMI extension samples nothing; full colour) |
+
+**Reduction backend.** `rusticol_virtual_set_reduction(handle, "auto" |
+"ninjars" | "tirust")` (C++ `set_reduction`, Fortran `set_reduction`) selects
+the backend of later evaluations, as the Python API's `reduction=`. `"auto"`
+(the default, or the artifact's `[loop] reduction`) follows the one policy the
+Python API reads (`rusticol_loop_reduction::reduction_policy`): TIRust for a
+loop-induced process (TIRust for both types on a TIR-only artifact), NinjaRS
+for a Born-interfered one, with the reason recorded. The SDKs have no rescue
+stack; under `"auto"` on TIRust a point TIRust refuses, or fails in the
+enabled binary64 monitoring's own evaluations, is evaluated again on NinjaRS
+from its original exact inputs, in the call's own arithmetic, after the TIRust
+call (the per-point fallback; none on a TIR-only artifact); a point NinjaRS
+fails too fails with both reasons. In double-double and arbitrary precision
+every point the fallback serves is guarded (m-lit lit-fallback-guard): a
+rotation re-test (the point and its spin sources rotated exactly by the
+recommended checks' rotation and evaluated again on the fallback;
+`reduction_policy::FALLBACK_CHECK`) of the outputs the call returns (the
+summed |A|^2, or each resolved, correlated or selected output, of the call's
+rows only), in the call's own arithmetic, each output's relative estimate
+against its own magnitude (a vanishing output's against the largest returned
+output), and a point whose estimate exceeds the target below, never below
+1e-5, has status Failed with
+one reason (`reduction_policy::fallback_rejected`: the fallback, TIRust's
+failure, the arithmetic, the estimate and the limit). A binary64 fallback
+point is served unguarded. An explicit `"ninjars"` or
+`"tirust"` has no fallback and no guard. NinjaRS before 71eddb15 (pin
+5b6a8f57) returned finite, badly wrong values with status AccuracyNotEstablished at near-planar
+2 -> 3 points of rank-n pentagon families (all-vector quark loops), in
+binary64 and double-double; a binary64 NinjaRS value without monitoring (an
+explicit `"ninjars"` call's or the `"auto"` fallback's) and every explicit
+double-double or arbitrary-precision NinjaRS call (which the SDKs do not
+monitor) were exposed until NinjaRS's conditioning bound (71eddb15) refuses
+such lanes typed (windows, records and
+the estimates of each check: `docs/user/python-api.md`, "Near-planar NinjaRS
+hazard"). An explicit backend the library is built without (TIRust needs
+the default cargo feature `tir`; without it `"auto"` takes NinjaRS) is refused
+by the setter, one that cannot serve a call's carrier (TIRust serves every
+carrier) by that call, never switched silently. Every result's
+`diagnostics_json` records `"reduction": {"requested", "effective", "reason",
+"fallback", "fallback_points"}` and `"fallbacks"`: per point id the fallback
+evaluated again, the backend that served it (null: it failed on both, or its
+guard rejected it), the reason and `"guard_estimate"` (the guard's relative
+estimate; null where the guard did not run, e.g. in binary64); the capabilities list the backends this library serves, the
+`auto_default` and the target. `rusticol_virtual_set_reduction_target(handle,
+target)` (C++ / Fortran / Rust `set_reduction_target`; default 1e-5, the
+relative accuracy of each point's result) sets the calibrated acceptance of
+TIRust's checked method choice, as the Python API's `reduction_target=`, and
+in double-double and arbitrary precision is the fallback guard's threshold,
+never below 1e-5.
+`rusticol_virtual_set_kinematics_improvement(handle, setting)` (C++ / Fortran
+/ Rust `set_kinematics_improvement`; `"z-shift"` by default, MadLoop's
+default; `"rescaling"`, `"projection"`, `"off"`) and
+`rusticol_virtual_set_kinematics_improvement_binary64(handle, on)` (0 by
+default) improve each call's points to exact conservation and on-shell
+externals in the call's carrier above binary64 (binary64 only with the
+switch) before anything is evaluated, as the Python API's
+`kinematics_improvement=` / `kinematics_improvement_binary64=`; the
+diagnostics record it per point (`"kinematics"`); any other value is an
+invalid argument.
+`rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++ / Fortran
+/ Rust `set_reduction_unchecked`; 0 by default, 1 on) reduces without the
+backends' own acceptance and refusal checks, as the Python API's
+`reduction_unchecked=` (`reduction_policy::UNCHECKED_RECORD`: TIRust's gates
+and method choice as method selection without the acceptance pass, plain PV
+at gate 0 as its last resort; NinjaRS's zero stability thresholds, its box
+mu-expansion's conditioning bound active); `"auto"`
+keeps its backend and per-point fallback; each result records `"unchecked"`
+in its `"reduction"` diagnostics; any other value is an invalid argument. It
+is a timing and benchmark mode with no accuracy certificate (measured
+accuracy per process: `docs/user/python-api.md`, "Unchecked reductions").
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,
@@ -134,8 +298,61 @@ Results store compact successful IDs alongside statuses for **all** requested
 IDs. Failed points have no numerical row. An ordinary success reports accuracy
 not established. The SDK has no verification policy (ABI version 2 dropped
 version 1's `rusticol_virtual_open_with_policy` and the batch request's
-`verification_json`, which plan v4 refused): stability estimates and the
-precision rescue are the Python API's (`stability=` on the native evaluate).
+`verification_json`, which plan v4 refused); the precision rescue is the
+Python API's.
+
+**Stability monitoring** (m-lit LIT-SDK, binary64): `Runtime::set_stability_checks`
+(C `rusticol_virtual_set_stability_checks`, C++ `set_stability_checks`,
+Fortran `set_stability_checks`) takes every field of the Python API's
+`VirtualStabilityChecks`: a count of default rotations (or rotation
+specifications), the reduction-direction check, its rescaled variant and the
+cross-backend check. The default runs none: no estimate and no extra cost. With
+checks, a binary64 ordinary evaluation (of a Born-interfered process with poles
+"all" or "none", of a loop-induced process) returns each successful point's
+estimate in the result's diagnostics (`"stability": {"estimates": [...]}`, one
+record per successful point: the Python API's `VirtualStabilityEstimate`
+fields; a loop-induced call with poles also its `"finiteness"` ratios),
+computed by the same Rust implementation the Python API's binary64 estimates
+call (`rusticol_loop_reduction::v2_stability`), so bitwise equal. The other
+evaluations (double-double, arbitrary precision, resolved and correlated
+outputs) return `"estimates": null` with the reason.
+Point statuses keep their meaning; comparing an estimate with a target is the
+caller's.
+
+**Failure policy** (m-lit ux-besteffort; the Python API's `on_failure=`):
+`Runtime::set_on_failure` (C `rusticol_virtual_set_on_failure`, C++ / Fortran /
+packaged Rust `set_on_failure`). The default, `"best-effort"`, never turns a
+per-point refusal into an error, so a Monte-Carlo run is never interrupted: a
+point that no configured alternative accepts (the backend's own acceptance
+checks, the `"auto"` per-point fallback) is evaluated again from its exact
+inputs without those checks (as `set_reduction_unchecked(true)`) and, where
+that yields a value, returned as a numerical row with status `BestEffort`
+(`RUSTICOL_VIRTUAL_BEST_EFFORT` = 5; never a success). Its relative uncertainty
+is `uncertainties` (`rusticol_virtual_result_copy_uncertainties`; NaN for every
+other point): the binary64 stability estimate of the call's checks together
+with the recommended checks (the first default rotation and the rescaled
+reduction-direction check), run on the refused points alone (at least the
+larger of the two estimates; one rotation alone under-states the error of an
+unchecked TIRust value), else none (NaN, said so in the record). The
+diagnostics carry `"best_effort"` per point id (`refusal`, `uncertainty`,
+`source`: `"stability-and-recommended-checks"` | `"stability-checks"` (the
+call's checks already include the recommended ones) | `"recommended-checks"`
+(the call runs none) | `"none"`, `detail`,
+`reduction`, and the backend's own lane-level measures of the refusal,
+`backend_deviation` (TIRust's largest method-choice deviation relative to the
+term scale) and `gram_conditioning` (its smallest conditioning estimate of a
+refused lane), null where none is stated: the Python API's
+`VirtualBestEffort` fields, returned as data by the native reduction) and
+`"warnings"` (per kind `best-effort` / `failed`: the first
+reason, the count and the point ids; the Python API's `ResultWarning`);
+`"failures"` keeps one message per reason class with the count of the others;
+`"refusal_measures"` gives, per still-failed point whose refused lanes the
+backend states a measure for, its `[kind, value]` pairs
+(`"method-choice-deviation"`, `"gram-conditioning"`).
+Nothing is printed. `"return"` keeps such points `Failed` without the extra
+evaluation; `"raise"` is the opt-in strict mode (a call with such a point is
+an evaluation error). Points the configured alternatives accept are
+evaluated exactly as before.
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
 and colour-component axes before epsilon. Resolved LC components are signed

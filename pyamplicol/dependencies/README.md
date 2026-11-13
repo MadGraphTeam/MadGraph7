@@ -5,12 +5,16 @@ Graphica from symbolica-dev/symbolica's `community` branch `36cbac3a` (main
 `9de26e4e` plus the author's merged commits) with one consolidated upstream
 pull request on top: batched evaluation (`BatchExpressionEvaluator`),
 `DualNumber` component views, saved evaluators that hold only the state
-they reference, correct complex-modulus derivatives in Dual domains and
-deterministic signs of integer polynomial factors
+they reference, correct complex-modulus derivatives in Dual domains,
+deterministic signs of integer polynomial factors, polynomial exponents
+bounded by the i32 conversion range, a journaled conditional cache in the
+direct evaluator translator (no cache copy per `if` arm; the generated
+instructions are unchanged) and native Python `ComplexFloat` operands taken
+at the more precise component's precision
 ([symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163),
-base `community`; its six commits also apply cleanly on `main`). The pinned
+base `community`; its nine commits also apply cleanly on `main`). The pinned
 revision is the PR head
-[`20a9da94`](https://github.com/ValentinHirschi/symbolica/commit/20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc)
+[`dfe6bd97`](https://github.com/ValentinHirschi/symbolica/commit/dfe6bd97b974b1028dc63071ea165136cd2b0ef5)
 (branch `loop_me_pyamplicol` of ValentinHirschi/symbolica).
 Upstream `main` alone does not build the workspace: NinjaRS and
 `rusticol-core` / `loop-reduction` use the batched evaluator, NinjaRS the
@@ -18,12 +22,25 @@ Upstream `main` alone does not build the workspace: NinjaRS and
 complex-modulus fix, and NinjaRS's determinism test the deterministic factor
 signs; the Python Community modules (FeynKit, HepKit) need the `community`
 branch's `symbolica::utils::resources`. The pin moves to upstream once the PR
-is merged. NinjaRS (main `b3a29c85`, PR #14) and
-oneloopmaster (main `128ea664`) pin the same revision; there is no alphal00p
-Symbolica fork in the graph (`cargo tree -i symbolica` lists one source). SymJIT stays 2.28.3. These
+is merged. NinjaRS (main `cf28d8e0`: its scoped Symbolica library licence, on `5fe7f392`, the merge of `71eddb15`: the box mu-expansion's conditioning bound, on main
+`98e223da` = main `b3a29c85`, PR #14, its 0BSD relicence and the re-pins of its
+manifests on this revision and oneloopmaster `bd703d09`) pins the same
+revision, as does oneloopmaster (main `bd703d09`) in its own standalone `[patch]`,
+which only applies when it is the root workspace. There
+is no alphal00p Symbolica fork in the graph (`cargo tree -i symbolica` lists one
+source, and `cargo tree -i oneloop` one oneloop). SymJIT stays 2.28.3. These
 pins are recorded by Cargo. This is a source integration, with Rust 1.96 or
 newer required; the git `[patch]` still fails the published-crate gate, so the
 branch is not publishable until the PR is in a Symbolica release.
+
+TIRust ([huashengshao/TIRust](https://github.com/huashengshao/TIRust), crates
+`iregi-rust` and `iregi-masters`, pinned to a commit of its main after its one
+history rewrite, currently main `bc94b496`, the merge of PR #31) is one more git source, linked by the cargo feature `tir`, a
+default feature of every crate that links it (`--no-default-features` builds
+without it). Its crates require `symbolica = "3.0"` and the oneloop revision
+and features pinned here, so the root `[patch]` and oneloop pin serve them
+(one source each, unchanged feature sets). Like the NinjaRS and oneloopmaster
+pins it is a git source for the publication gate.
 
 The published Python/Community distribution is pinned to **3.0.3**, which the
 author builds from the same `community` branch (without the PR); its
@@ -62,8 +79,8 @@ program's standard output (`pyamplicol self-test --json`).
 
 The development Python kernel is a release build of the Community recipe
 (symbolica-community `39b556c7`, the 3.0.3 recipe, unmodified) with only its
-`[patch]` moved to `20a9da94`: `builds/community-release-python-20a9da94`
-(wheel `builds/community-release-wheels-20a9da94/`, sha256 `42c26b2e…`;
+`[patch]` moved to `dfe6bd97`: `builds/community-release-python-dfe6bd97`
+(wheel `builds/community-release-wheels-dfe6bd97/`, sha256 `872434c3…`;
 recipe in `BUILD-INFO.json`). Native and Python therefore share one Symbolica
 revision.
 
@@ -110,7 +127,7 @@ in both lanes; it is not a core runtime dependency.
 Release-equivalent builds use exact versions. `release-lock.toml` records Rust
 Symbolica 3.0.2 and SymJIT 2.28.3, and `Cargo.lock` records their resolution:
 SymJIT from the registry with its checksum; Symbolica, Numerica and Graphica
-from `20a9da94` (the PR head above) through the root `Cargo.toml`'s
+from `dfe6bd97` (the PR head above) through the root `Cargo.toml`'s
 `[patch.crates-io]`, the source patch that still fails the published-crate gate
 (see above). The ordinary locked Cargo build is the dependency check; no
 release-only source projections are needed.

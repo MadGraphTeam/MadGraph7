@@ -49,15 +49,29 @@ mod links;
 mod live;
 mod packed;
 pub use binary::{read_binary, read_binary_with};
-pub use live::LiveRows;
+pub use live::{KEPT_SHARE, LiveRows};
 use ninjars::fast::tensor_layout::ncoeff;
 pub use packed::{LinkInterner, PackedLinks, SharedLinks};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 use symbolica::domains::rational::Rational;
 
-/// The plan schema version this executor runs.
+/// The plan schema version of the seeded (Born-interfered) plans.
 pub const PLAN_SCHEMA: u32 = 4;
+/// The plan schema of amplitude-mode plans (loop-induced |A_loop|^2, M-LIT
+/// RULED Q42 = (a)): route R1's one-hot columns `(h, t)`, each seeding one
+/// Born helicity row (`column_rows`) with the coefficient cells `c_{c,t}`
+/// of its seed-weight column on unit Born components, and the executor's
+/// native amplitude sum per (loop order, column) instead of the bare
+/// interference. Seeded plans keep schema 4 and their bytes.
+pub const AMPLITUDE_PLAN_SCHEMA: u32 = 5;
+
+/// Whether this executor runs plans of `schema` (4 seeded, 5 amplitude
+/// mode).
+pub fn admitted_schema(schema: u32) -> bool {
+    schema == PLAN_SCHEMA || schema == AMPLITUDE_PLAN_SCHEMA
+}
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 plan: {}", message.into()))
@@ -111,6 +125,75 @@ struct PlanFile {
     /// weight list per column).
     #[serde(default)]
     column_weights: Option<Vec<usize>>,
+    /// Dressed-leg rows (amplitude mode, route R2; M-LIT LIT-R2): every
+    /// leaf seeds one row (a constant seed: the leaf weight), a step's rows
+    /// are the helicities of the legs dressed so far, and a trace step closes
+    /// each of its rows with the amplitude vector of its leaves' seed key
+    /// into the columns of that row (`plan/links.rs`, `closure::trace_rows`).
+    /// Written only as `true`, and only by amplitude-mode plans (schema 5).
+    #[serde(default)]
+    dressed: Option<bool>,
+}
+
+/// A column set's seed records over a plan (`native_observables.SEED_FIELDS`,
+/// the overlay of `with_overlay`): a field the overlay lacks keeps the
+/// plan's, a null one is removed (an optional field becomes absent; a
+/// required one is refused, as the merged plan JSON's load refuses it), and
+/// other keys are not read.
+#[derive(Deserialize)]
+struct SeedOverlayFile {
+    #[serde(default, deserialize_with = "present")]
+    seed_classes: Option<Option<Vec<SeedFile>>>,
+    #[serde(default, deserialize_with = "present")]
+    seeds: Option<Option<Vec<SeedKeyFile>>>,
+    #[serde(default, deserialize_with = "present")]
+    columns: Option<Option<usize>>,
+    #[serde(default, deserialize_with = "present")]
+    column_rows: Option<Option<Vec<Option<Vec<usize>>>>>,
+    #[serde(default, deserialize_with = "present")]
+    column_weights: Option<Option<Vec<usize>>>,
+    #[serde(default, deserialize_with = "present")]
+    born_components: Option<Option<usize>>,
+}
+
+/// A present overlay field: its value, null as None.
+fn present<'de, D, T>(field: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(field).map(Some)
+}
+
+impl PlanFile {
+    /// The plan with a column set's seed records ([`SeedOverlayFile`]).
+    fn overlay_seeds(&mut self, overlay: SeedOverlayFile) -> RusticolResult<()> {
+        fn required<T>(field: &mut T, value: Option<Option<T>>, name: &str) -> RusticolResult<()> {
+            match value {
+                None => Ok(()),
+                Some(Some(value)) => {
+                    *field = value;
+                    Ok(())
+                }
+                Some(None) => Err(invalid(format!("missing field `{name}`"))),
+            }
+        }
+        required(&mut self.seed_classes, overlay.seed_classes, "seed_classes")?;
+        required(&mut self.seeds, overlay.seeds, "seeds")?;
+        required(&mut self.columns, overlay.columns, "columns")?;
+        required(
+            &mut self.born_components,
+            overlay.born_components,
+            "born_components",
+        )?;
+        if let Some(rows) = overlay.column_rows {
+            self.column_rows = rows;
+        }
+        if let Some(weights) = overlay.column_weights {
+            self.column_weights = weights;
+        }
+        Ok(())
+    }
 }
 
 /// One exported kernel term: (constant id, monomial as (input, power)).
@@ -430,6 +513,38 @@ impl Content {
     pub fn factor_row(&self) -> usize {
         self.open.entries().len()
     }
+
+    /// The fused form of an edge of this content: its layout and its cut,
+    /// incoming and outgoing dimensions. A seeded step reads `δ_αβ` seeds
+    /// (cut and open end of dimension 1, output end `α × β'`); an open-loop
+    /// step reads `d_alpha × d_in` per row.
+    pub fn fused_shape(
+        &self,
+        seeded: bool,
+        d_alpha: usize,
+    ) -> (&SegmentLayout, usize, usize, usize) {
+        if seeded {
+            (&self.seeded, 1, 1, self.d_in * self.d_out)
+        } else {
+            (&self.open, d_alpha, self.d_in, self.d_out)
+        }
+    }
+
+    /// The fused segment of an edge of this content on products table
+    /// `products` ([`Self::fused_shape`]) and its layout.
+    pub fn fused_segment<'a>(
+        &'a self,
+        seeded: bool,
+        d_alpha: usize,
+        products: &'a MonomialProductTable,
+        rank_out: usize,
+    ) -> (super::kernels::Segment<'a>, &'a SegmentLayout) {
+        let (layout, cut, incoming, outgoing) = self.fused_shape(seeded, d_alpha);
+        (
+            super::kernels::Segment::new(cut, incoming, 1, outgoing, products, rank_out),
+            layout,
+        )
+    }
 }
 
 /// A seed term `K × conj(A0[component])`, exact: `weight` indexes the
@@ -619,6 +734,17 @@ pub struct SplitPart {
     pub links: SharedLinks,
 }
 
+/// The per-row closure of a trace step of a dressed-row plan
+/// ([`LoopProgramV4::dressed`]): each object row `r` is traced and added,
+/// times the amplitude vector of seed key `key` at the seed-weight column
+/// of each observable column of Born row `rows[r]`, into that column.
+#[derive(Clone, Debug)]
+pub struct RowTrace {
+    pub key: u32,
+    /// Per object row its Born helicity row.
+    pub rows: Vec<u32>,
+}
+
 /// One schedule-B step: a dressed trie node, or one cut species of a
 /// family accumulator (`trace`).
 #[derive(Clone, Debug)]
@@ -661,6 +787,206 @@ pub struct Family {
     pub vertices: Vec<usize>,
     /// Distinct split currents the split steps read, ascending.
     pub currents: Vec<usize>,
+    /// Dressed-row plans: per step its per-row closure (trace steps only);
+    /// empty for seeded plans.
+    pub row_traces: Vec<Option<RowTrace>>,
+    /// Dressed-row plans: the observable columns the family's trace steps
+    /// close into ([`Support`], derived at load and for every row-pruned
+    /// copy, never stored); `None`: every column (seeded plans).
+    pub support: Option<Arc<Support>>,
+    /// What a walk of the family reads besides its steps ([`Walk`]):
+    /// derived from the plan's data by the family's first walk and kept
+    /// (never stored; outside the loader's derivations and their bound).
+    pub walk: WalkCache,
+    /// Dressed-row plans: the stored columns that are exact multiples of
+    /// another of the same accumulator ([`Dependents`], M-LIT lit-fold
+    /// F1d), derived from the plan's exact key vectors by the family's
+    /// first reduction and kept (never stored; as [`Walk`]).
+    pub dependents: DependentsCache,
+}
+
+/// A family's walk data ([`Walk`]), derived by its first walk and kept for
+/// the later ones. Whether it is set is the family's evaluation history, not
+/// its data: its `Debug` form shows nothing of it, so a loaded program's
+/// `Debug` form ([`binary::program_digest`]) is the same before and after
+/// a walk.
+#[derive(Clone, Default)]
+pub struct WalkCache(std::sync::OnceLock<Walk>);
+
+impl WalkCache {
+    /// The walk data, derived by `derive` on the first call.
+    #[inline]
+    pub fn get_or_init(&self, derive: impl FnOnce() -> Walk) -> &Walk {
+        self.0.get_or_init(derive)
+    }
+}
+
+impl std::fmt::Debug for WalkCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WalkCache")
+    }
+}
+
+/// A family's dependent columns ([`Dependents`]), derived by its first
+/// reduction and kept. Whether it is set is the family's evaluation history,
+/// not its data: its `Debug` form shows nothing of it, so a loaded
+/// program's `Debug` form (its digest) is the same before and after a
+/// reduction.
+#[derive(Clone, Default)]
+pub struct DependentsCache(std::sync::OnceLock<Dependents>);
+
+impl DependentsCache {
+    /// The dependent columns, derived by `derive` on the first call.
+    #[inline]
+    pub fn get_or_init(&self, derive: impl FnOnce() -> Dependents) -> &Dependents {
+        self.0.get_or_init(derive)
+    }
+}
+
+impl std::fmt::Debug for DependentsCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DependentsCache")
+    }
+}
+
+/// The dependent columns of a dressed-row family (M-LIT lit-fold F1d): a
+/// stored column `o'` of accumulator `k` is `c` times another stored column
+/// `o` of the same Born row when every trace step closing into `k` closes
+/// the two with key weights in the exact ratio `c` (`U[key][w'] = c
+/// U[key][w]` for each of the accumulator's seed keys, the key vectors
+/// being exact). Folded chains (`fold`) close an orientation pair into
+/// both columns with `U_t + eta U_t'`; the reduction is linear in the
+/// numerator, so `o'` is not reduced: its Laurent integrals (re-test,
+/// term scale) are `c` (`|c|`) times `o`'s, formed after the reduction.
+/// The rule reads the plan's exact key vectors, not the fold: an unfolded
+/// family whose keys weight two columns in one exact ratio (u u~ > d d~ h:
+/// one key whose colour vector has two entries) has them too. Empty for
+/// seeded plans and for a family without such columns (every stored column
+/// reduced, as before).
+#[derive(Clone, Debug, Default)]
+pub struct Dependents {
+    /// Per accumulator, per observable column whether it is dependent (not
+    /// reduced); empty when no accumulator has a dependent column. In
+    /// columns, not slots: it holds for the family's row-pruned copies too
+    /// (a dependency of every trace step holds for any subset of them).
+    pub dependent: Vec<Vec<bool>>,
+    /// Per accumulator `(representative, dependent, c)` sorted by
+    /// representative column, `c` exact `[re, im]`.
+    pub columns: Vec<Vec<(u32, u32, [Rational; 2])>>,
+}
+
+impl Dependents {
+    /// Whether no column of the family is dependent.
+    pub fn is_empty(&self) -> bool {
+        self.dependent.is_empty()
+    }
+
+    /// The positions in `columns[k]` of the dependents of representative
+    /// column `column` of accumulator `k`.
+    pub fn of(&self, k: usize, column: usize) -> std::ops::Range<usize> {
+        let list = &self.columns[k];
+        let start = list.partition_point(|&(rep, _, _)| (rep as usize) < column);
+        let end = list.partition_point(|&(rep, _, _)| (rep as usize) <= column);
+        start..end
+    }
+}
+
+/// What a family walk reads besides its steps (lit-dress: derived from the
+/// plan's data once per family or row-pruned copy, by its first walk, so no
+/// later walk recomputes it): per step the rows its output zeroes
+/// ([`super::dress::written_rows`]) and per trace step the rows it closes
+/// ([`TraceRows`]).
+#[derive(Clone, Debug, Default)]
+pub struct Walk {
+    pub written: Vec<Option<Vec<bool>>>,
+    pub traces: Vec<Option<TraceRows>>,
+}
+
+/// The rows a trace step closes: the traced object rows some link writes,
+/// ascending (every other row's trace is an exact zero, which no closure
+/// adds), and for a fused step whose every edge has a diagonal schedule
+/// (lit-dress lever A) how it forms their diagonals ([`DiagonalLinks`]).
+#[derive(Clone, Debug, Default)]
+pub struct TraceRows {
+    pub closed: Vec<u32>,
+    pub diagonal: Option<DiagonalLinks>,
+}
+
+/// A diagonal trace step's edges and links (lit-dress lever A).
+#[derive(Clone, Debug, Default)]
+pub struct DiagonalLinks {
+    /// Per edge its diagonal schedule ([`LoopProgramV4::diagonal_schedule`]).
+    pub schedules: Vec<u32>,
+    /// Per edge its input and fused factor row lengths, in lane vectors.
+    pub shapes: Vec<(usize, usize)>,
+    /// Per closed row `i` its links `links[starts[i]..starts[i + 1]]`, as
+    /// (edge, link) in edge then link order.
+    pub starts: Vec<u32>,
+    pub links: Vec<(u32, u32)>,
+}
+
+/// The support of a dressed-row family's accumulators (lit-dress lever D):
+/// the observable columns `(Born row, colour class)` some trace step of the
+/// family closes a row with a link into (the non-zero key weights of
+/// [`KeyColumns`] on the Born rows of those rows). Every other column of the
+/// family is an exact zero, so its accumulators store these columns only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Support {
+    /// The stored columns, ascending.
+    pub columns: Vec<u32>,
+    /// Per observable column its slot in `columns`, or `u32::MAX`.
+    pub slots: Vec<u32>,
+}
+
+impl Support {
+    /// The support of `family` in a dressed-row plan of `columns`
+    /// observable columns closing through `key_columns`.
+    pub fn of(family: &Family, key_columns: &[KeyColumns], columns: usize) -> Self {
+        let mut stored = vec![false; columns];
+        for (step, trace) in family.steps.iter().zip(&family.row_traces) {
+            let Some(trace) = trace else {
+                continue;
+            };
+            let mut reached = vec![false; trace.rows.len()];
+            match &step.split {
+                None => {
+                    for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                        if let Some(row) = reached.get_mut(link.output as usize) {
+                            *row = true;
+                        }
+                    }
+                }
+                Some(split) => {
+                    for link in split
+                        .parts
+                        .iter()
+                        .flatten()
+                        .flat_map(|part| part.links.iter())
+                    {
+                        if let Some(row) = reached.get_mut(link.output as usize) {
+                            *row = true;
+                        }
+                    }
+                }
+            }
+            let keys = &key_columns[trace.key as usize];
+            for (&h, _) in trace.rows.iter().zip(&reached).filter(|(_, r)| **r) {
+                for &(o, _) in keys.row(h as usize) {
+                    stored[o as usize] = true;
+                }
+            }
+        }
+        let mut slots = vec![u32::MAX; columns];
+        let mut kept = Vec::new();
+        for (o, _) in stored.iter().enumerate().filter(|(_, s)| **s) {
+            slots[o] = u32::try_from(kept.len()).expect("columns exceed u32");
+            kept.push(u32::try_from(o).expect("columns exceed u32"));
+        }
+        Self {
+            columns: kept,
+            slots,
+        }
+    }
 }
 
 impl Family {
@@ -900,6 +1226,472 @@ pub struct LoopProgramV4 {
     /// The rows of the chunk inputs schedule B reads, when the live-row
     /// pruning restricts them (`plan/live.rs`); `None`: every row.
     pub read_rows: Option<ReadRows>,
+    /// Amplitude mode ([`AMPLITUDE_PLAN_SCHEMA`]): the executor sums the
+    /// families into the loop amplitude per (loop order, column) instead of
+    /// the bare interference (`loop_execution::v2`).
+    pub amplitude: bool,
+    /// Dressed-leg rows (route R2, [`PlanFile::dressed`]): the leaves seed
+    /// one row and one object column, the steps' rows grow with the dressed
+    /// legs, and the trace steps close per row ([`RowTrace`]).
+    pub dressed: bool,
+    /// Dressed-row plans: per seed key its amplitude vector per seed-weight
+    /// column, `Σ_c x_c Σ K[c, ·]` on the one unit Born component (the value
+    /// a route-R1 seed takes on its row); empty for other plans.
+    pub key_vectors: Vec<Vec<[Rational; 2]>>,
+    /// Dressed-row plans: per Born row its observable columns and their
+    /// seed-weight columns `(o, w)` (the route-R1 columns of the row); empty
+    /// for other plans.
+    pub row_columns: Vec<Vec<(usize, usize)>>,
+    /// Dressed-row plans: per seed key, per Born row, the `(o, w)` of
+    /// `row_columns` whose amplitude-vector weight `key_vectors[key][w]` is
+    /// not exactly zero (lit-dress lever C1: the closure skips the exact
+    /// zeros; derived at load from the key vectors, which may hold any
+    /// number of non-zero weights); empty for other plans.
+    pub key_columns: Vec<KeyColumns>,
+    /// The output-stationary schedules of the fused dressing edges
+    /// (derived at load, never stored: [`Gathers`]).
+    pub gathers: Gathers,
+}
+
+/// One seed key's closure columns per Born row ([`LoopProgramV4::key_columns`]),
+/// row major: Born row `h` closes into `pairs[starts[h]..starts[h + 1]]`.
+#[derive(Clone, Debug, Default)]
+pub struct KeyColumns {
+    starts: Vec<u32>,
+    pairs: Vec<(u32, u32)>,
+}
+
+impl KeyColumns {
+    /// The `(o, w)` of `row_columns` with a non-zero weight in `vector`.
+    pub fn new(vector: &[[Rational; 2]], row_columns: &[Vec<(usize, usize)>]) -> Self {
+        let index = |value: usize| u32::try_from(value).expect("closure columns exceed u32");
+        let mut starts = Vec::with_capacity(row_columns.len() + 1);
+        let mut pairs = Vec::new();
+        starts.push(0);
+        for columns in row_columns {
+            for &(o, w) in columns {
+                if !(vector[w][0].is_zero() && vector[w][1].is_zero()) {
+                    pairs.push((index(o), index(w)));
+                }
+            }
+            starts.push(index(pairs.len()));
+        }
+        Self { starts, pairs }
+    }
+
+    /// The closure columns `(o, w)` of Born row `h`.
+    #[inline]
+    pub fn row(&self, h: usize) -> &[(u32, u32)] {
+        &self.pairs[self.starts[h] as usize..self.starts[h + 1] as usize]
+    }
+}
+
+impl LoopProgramV4 {
+    /// The accumulator support of `family` ([`Support`]; `None` outside
+    /// dressed-row plans: every column).
+    pub fn support_of(&self, family: &Family) -> Option<Arc<Support>> {
+        self.dressed
+            .then(|| Arc::new(Support::of(family, &self.key_columns, self.columns)))
+    }
+
+    /// The dependent columns of `family` ([`Dependents`]): from the exact
+    /// key vectors of its trace steps per accumulator, on its support; empty
+    /// outside dressed-row plans.
+    pub fn dependents_of(&self, family: &Family) -> Dependents {
+        let Some(support) = family.support.as_deref().filter(|_| self.dressed) else {
+            return Dependents::default();
+        };
+        let zero = |z: &[Rational; 2]| z[0].is_zero() && z[1].is_zero();
+        let width = self.key_vectors.first().map_or(0, Vec::len);
+        let mut keys: Vec<Vec<u32>> = vec![Vec::new(); family.orders.len()];
+        for (step, trace) in family.steps.iter().zip(&family.row_traces) {
+            if let (Some(k), Some(trace)) = (step.trace, trace) {
+                keys[k].push(trace.key);
+            }
+        }
+        let mut columns = Vec::with_capacity(keys.len());
+        for mut keys in keys {
+            keys.sort_unstable();
+            keys.dedup();
+            // Weight columns grouped by the keys weighting them (a column can
+            // only be a multiple of one with the same keys), in column order.
+            let mut groups: BTreeMap<Vec<u32>, Vec<usize>> = BTreeMap::new();
+            for w in 0..width {
+                let weighting: Vec<u32> = keys
+                    .iter()
+                    .copied()
+                    .filter(|&key| !zero(&self.key_vectors[key as usize][w]))
+                    .collect();
+                if !weighting.is_empty() {
+                    groups.entry(weighting).or_default().push(w);
+                }
+            }
+            let mut representative: Vec<Option<(usize, [Rational; 2])>> = vec![None; width];
+            for (weighting, ws) in &groups {
+                let mut kept: Vec<usize> = Vec::new();
+                for &w in ws {
+                    match kept
+                        .iter()
+                        .find_map(|&r| self.key_ratio(weighting, w, r).map(|c| (r, c)))
+                    {
+                        Some(found) => representative[w] = Some(found),
+                        None => kept.push(w),
+                    }
+                }
+            }
+            let mut found = Vec::new();
+            for row in &self.row_columns {
+                let mut of_weight = vec![usize::MAX; width];
+                for &(o, w) in row {
+                    of_weight[w] = o;
+                }
+                for &(o, w) in row {
+                    let Some((r, c)) = &representative[w] else {
+                        continue;
+                    };
+                    let rep = of_weight[*r];
+                    let stored = |column: usize| support.slots[column] != u32::MAX;
+                    if rep != usize::MAX && stored(rep) && stored(o) {
+                        let index = |v: usize| u32::try_from(v).expect("columns exceed u32");
+                        found.push((index(rep), index(o), c.clone()));
+                    }
+                }
+            }
+            found.sort_by_key(|&(rep, dependent, _)| (rep, dependent));
+            columns.push(found);
+        }
+        if columns.iter().all(Vec::is_empty) {
+            return Dependents::default();
+        }
+        let dependent = columns
+            .iter()
+            .map(|found| {
+                let mut dependent = vec![false; self.columns];
+                for &(_, o, _) in found {
+                    dependent[o as usize] = true;
+                }
+                dependent
+            })
+            .collect();
+        Dependents { dependent, columns }
+    }
+
+    /// `c` with `U[key][w] = c U[key][r]` for every key of `keys` (each
+    /// weighting both columns), exact; `None` when the ratio varies.
+    fn key_ratio(&self, keys: &[u32], w: usize, r: usize) -> Option<[Rational; 2]> {
+        let vector = |key: u32| &self.key_vectors[key as usize];
+        let (first, rest) = keys.split_first()?;
+        let [a, b] = &vector(*first)[w];
+        let [x, y] = &vector(*first)[r];
+        let norm = x.clone() * x + y.clone() * y;
+        let c = [
+            (a.clone() * x + b.clone() * y) / &norm,
+            (b.clone() * x - a.clone() * y) / &norm,
+        ];
+        rest.iter()
+            .all(|&key| {
+                let [a, b] = &vector(key)[w];
+                let [x, y] = &vector(key)[r];
+                *a == c[0].clone() * x - c[1].clone() * y
+                    && *b == c[0].clone() * y + c[1].clone() * x
+            })
+            .then_some(c)
+    }
+
+    /// Derive every family's accumulator support (at load).
+    fn set_supports(&mut self) {
+        let supports: Vec<_> = self.families.iter().map(|f| self.support_of(f)).collect();
+        for (family, support) in self.families.iter_mut().zip(supports) {
+            family.support = support;
+        }
+    }
+
+    /// The walk data of `family` ([`Walk`]): its steps' written rows and
+    /// its trace steps' closed rows, from the plan's data only.
+    pub fn walk_of(&self, family: &Family) -> Walk {
+        let columns = self.object_columns();
+        let index = |value: usize| u32::try_from(value).expect("trace links exceed u32");
+        let traces = family
+            .steps
+            .iter()
+            .enumerate()
+            .map(|(s, step)| {
+                step.trace?;
+                let traced = family
+                    .row_traces
+                    .get(s)
+                    .and_then(Option::as_ref)
+                    .map_or(columns, |trace| trace.rows.len());
+                let mut reached = vec![false; traced];
+                let mut reach = |output: u32| {
+                    if let Some(row) = reached.get_mut(output as usize) {
+                        *row = true;
+                    }
+                };
+                match &step.split {
+                    None => step
+                        .edges
+                        .iter()
+                        .flat_map(|edge| &edge.links)
+                        .for_each(|link| reach(link.output)),
+                    Some(split) => split
+                        .parts
+                        .iter()
+                        .flatten()
+                        .flat_map(|part| part.links.iter())
+                        .for_each(|link| reach(link.output)),
+                }
+                let closed: Vec<u32> = (0..traced).filter(|&r| reached[r]).map(index).collect();
+                let schedules: Option<Vec<u32>> = step
+                    .split
+                    .is_none()
+                    .then(|| {
+                        step.edges
+                            .iter()
+                            .map(|edge| {
+                                (self.contents[edge.content].d_out == step.d_out)
+                                    .then(|| {
+                                        self.gathers.diagonals.get(&(
+                                            edge.content,
+                                            edge.products,
+                                            step.seeded,
+                                            step.d_alpha,
+                                        ))
+                                    })
+                                    .flatten()
+                                    .map(|&id| index(id))
+                            })
+                            .collect()
+                    })
+                    .flatten();
+                let diagonal = schedules.map(|schedules| {
+                    let shapes = step
+                        .edges
+                        .iter()
+                        .map(|edge| {
+                            let content = &self.contents[edge.content];
+                            let (segment, _layout) = content.fused_segment(
+                                step.seeded,
+                                step.d_alpha,
+                                &self.products[edge.products],
+                                step.rank_out,
+                            );
+                            (segment.input_row_len(), content.factor_row())
+                        })
+                        .collect();
+                    // The links into each closed row, in edge then link
+                    // order (the order `fused_edge_gathered` adds them).
+                    let mut slot = vec![u32::MAX; traced];
+                    for (i, &r) in closed.iter().enumerate() {
+                        slot[r as usize] = index(i);
+                    }
+                    let mut starts = vec![0u32; closed.len() + 1];
+                    for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                        if let Some(&i) = slot.get(link.output as usize) {
+                            starts[i as usize + 1] += 1;
+                        }
+                    }
+                    for i in 0..closed.len() {
+                        starts[i + 1] += starts[i];
+                    }
+                    let mut next = starts.clone();
+                    let mut links = vec![(0u32, 0u32); starts[closed.len()] as usize];
+                    for (e, edge) in step.edges.iter().enumerate() {
+                        for (l, link) in edge.links.iter().enumerate() {
+                            if let Some(&i) = slot.get(link.output as usize) {
+                                links[next[i as usize] as usize] = (index(e), index(l));
+                                next[i as usize] += 1;
+                            }
+                        }
+                    }
+                    DiagonalLinks {
+                        schedules,
+                        shapes,
+                        starts,
+                        links,
+                    }
+                });
+                Some(TraceRows { closed, diagonal })
+            })
+            .collect();
+        Walk {
+            written: super::dress::written_rows(family, columns),
+            traces,
+        }
+    }
+
+    /// The diagonal schedule `id` of a [`DiagonalLinks`].
+    #[inline]
+    pub fn diagonal_schedule(&self, id: u32) -> &super::kernels::DiagonalSchedule {
+        &self.gathers.diagonal_schedules[id as usize]
+    }
+
+    /// The observable columns an open-loop object carries per row: one in a
+    /// dressed-row plan (its trace steps spread the rows over the columns),
+    /// else every observable column.
+    pub fn object_columns(&self) -> usize {
+        if self.dressed { 1 } else { self.columns }
+    }
+
+    /// The gather schedule of a fused edge of content `content` on products
+    /// table `products` (`None`: the edge runs [`super::kernels::fused_edge`]).
+    #[inline]
+    pub fn gather(
+        &self,
+        content: usize,
+        products: usize,
+        seeded: bool,
+    ) -> Option<&super::kernels::GatherSchedule> {
+        self.gathers.get(content, products, seeded)
+    }
+
+    /// The diagonal schedule of a fused trace step's edge of content
+    /// `content` on products table `products` with `d_alpha` cut indices
+    /// (lit-dress lever A; `None`: the step forms its whole output).
+    #[inline]
+    pub fn diagonal(
+        &self,
+        content: usize,
+        products: usize,
+        seeded: bool,
+        d_alpha: usize,
+    ) -> Option<&super::kernels::DiagonalSchedule> {
+        self.gathers
+            .diagonals
+            .get(&(content, products, seeded, d_alpha))
+            .map(|&id| &self.gathers.diagonal_schedules[id])
+    }
+}
+
+/// The output-stationary schedules ([`super::kernels::GatherSchedule`]) of
+/// the fused dressing edges a loaded plan runs (schedule B's fused steps,
+/// schedule F's states and schedule M's fused steps), one per distinct
+/// (content, products table, seeded) and only where an output coefficient
+/// receives more than one term: a property of the plan's data, decided once
+/// at load. The schedules change the order of loads and stores only, never a
+/// value; they are derived, so stored plans are unchanged.
+///
+/// The fused trace steps of schedule B also get the diagonal of their
+/// edges' segments ([`super::kernels::DiagonalSchedule`], lit-dress lever
+/// A), one per distinct (content, products table, seeded, cut indices): a
+/// trace step forms only the diagonal its trace reads.
+#[derive(Clone, Debug, Default)]
+pub struct Gathers {
+    products: usize,
+    /// Per `(content * products + table) * 2 + seeded`, the schedule index
+    /// plus one (0: none).
+    index: Vec<u32>,
+    schedules: Vec<super::kernels::GatherSchedule>,
+    /// Per `(content, products table, seeded, d_alpha)` of a fused trace
+    /// step's edge, its index in `diagonal_schedules`. Ordered: the `Debug`
+    /// form of a loaded program ([`binary::program_digest`]) must be a
+    /// function of the plan alone, and a `HashMap` would print its entries
+    /// in its per-instance random order (two loads of one plan, by one
+    /// reader or by both, then digested differently). Read only by
+    /// [`LoopProgramV4::walk_of`], once per family, and by
+    /// [`LoopProgramV4::diagonal`].
+    diagonals: BTreeMap<(usize, usize, bool, usize), usize>,
+    diagonal_schedules: Vec<super::kernels::DiagonalSchedule>,
+}
+
+impl Gathers {
+    /// The schedules of every fused edge of `program`.
+    fn build(program: &LoopProgramV4) -> Self {
+        let products = program.products.len();
+        let mut gathers = Self {
+            products,
+            index: vec![0; program.contents.len() * products * 2],
+            schedules: Vec::new(),
+            diagonals: BTreeMap::new(),
+            diagonal_schedules: Vec::new(),
+        };
+        let mut used = BTreeSet::new();
+        let fused = |step: &Step, used: &mut BTreeSet<(usize, usize, bool)>| {
+            if step.split.is_none() {
+                for edge in &step.edges {
+                    used.insert((edge.content, edge.products, step.seeded));
+                }
+            }
+        };
+        for family in &program.families {
+            for step in &family.steps {
+                fused(step, &mut used);
+            }
+        }
+        if let Some(merged) = &program.merged {
+            for state in &merged.states {
+                fused(&state.step, &mut used);
+            }
+        }
+        for state in program.forward.iter().flatten() {
+            used.insert((state.content, state.products, state.seeded));
+        }
+        for (content, table, seeded) in used {
+            let layout = if seeded {
+                &program.contents[content].seeded
+            } else {
+                &program.contents[content].open
+            };
+            let products = &program.products[table];
+            if let Some(schedule) = super::kernels::GatherSchedule::new(layout, products) {
+                gathers.schedules.push(schedule);
+                let slot = gathers.slot(content, table, seeded);
+                gathers.index[slot] =
+                    u32::try_from(gathers.schedules.len()).expect("gather schedules exceed u32");
+            }
+        }
+        // The diagonals of schedule B's fused trace steps (the row-pruned
+        // copies of `plan/live.rs` keep their steps' edges, so they read
+        // these too).
+        let mut traced = BTreeSet::new();
+        for family in &program.families {
+            for step in family
+                .steps
+                .iter()
+                .filter(|s| s.trace.is_some() && s.split.is_none())
+            {
+                for edge in &step.edges {
+                    traced.insert((edge.content, edge.products, step.seeded, step.d_alpha));
+                }
+            }
+        }
+        for (content, table, seeded, d_alpha) in traced {
+            let content_ = &program.contents[content];
+            let (layout, cut, incoming, _outgoing) = content_.fused_shape(seeded, d_alpha);
+            if let Some(schedule) = super::kernels::DiagonalSchedule::new(
+                layout,
+                &program.products[table],
+                cut,
+                incoming,
+                d_alpha,
+                content_.d_out,
+            ) {
+                gathers.diagonals.insert(
+                    (content, table, seeded, d_alpha),
+                    gathers.diagonal_schedules.len(),
+                );
+                gathers.diagonal_schedules.push(schedule);
+            }
+        }
+        gathers
+    }
+
+    fn slot(&self, content: usize, products: usize, seeded: bool) -> usize {
+        (content * self.products + products) * 2 + usize::from(seeded)
+    }
+
+    #[inline]
+    fn get(
+        &self,
+        content: usize,
+        products: usize,
+        seeded: bool,
+    ) -> Option<&super::kernels::GatherSchedule> {
+        match self.index.get(self.slot(content, products, seeded)) {
+            Some(&id) if id > 0 => Some(&self.schedules[id as usize - 1]),
+            _ => None,
+        }
+    }
 }
 
 /// The rows of the chunk inputs schedule B reads (`plan/live.rs`): the
@@ -951,6 +1743,35 @@ impl Tables {
             self.tables.len() - 1
         })
     }
+}
+
+/// The amplitude vector of a seed key of a dressed-row plan: per
+/// seed-weight column `Σ_c x_c Σ_terms K` (exact; the terms read the one unit
+/// Born component), the value `U0[key]` of a route-R1 column on its row
+/// (`seeds::contract`: `K conj(1)`, then `x_c` times it).
+fn key_vector(
+    key: &SeedKey,
+    classes: &[Seed],
+    weights: &[[Rational; 2]],
+    columns: usize,
+) -> Vec<[Rational; 2]> {
+    (0..columns)
+        .map(|w| {
+            let mut re = Rational::from(0);
+            let mut im = Rational::from(0);
+            for (class, [xr, xi]) in &key.classes {
+                let (mut kr, mut ki) = (Rational::from(0), Rational::from(0));
+                for term in &classes[*class].columns[w] {
+                    let [a, b] = &weights[term.weight as usize];
+                    kr += a;
+                    ki += b;
+                }
+                re += &(xr.clone() * &kr - xi.clone() * &ki);
+                im += &(xr.clone() * &ki + xi.clone() * &kr);
+            }
+            [re, im]
+        })
+        .collect()
 }
 
 /// Row links `(target, source, block)` of one helicity row each, expanded
@@ -1124,6 +1945,8 @@ struct Shared<'a> {
     policy: FormPolicy,
     rows: &'a links::RowSpace,
     content_rows: &'a [HashMap<links::Row, u32>],
+    /// Dressed-row plans: each content's rows in block-row order.
+    dressed: Option<&'a [Vec<links::Row>]>,
 }
 
 /// What the kernel-form choice reads of a step.
@@ -1293,6 +2116,30 @@ impl LoopProgramV4 {
         binary::PlanModel::from_json(data)?.program(policy)
     }
 
+    /// [`Self::load_with`] of a column set's plan: the stored plan (its
+    /// binary member, read within the caller's thread bound as
+    /// [`Self::load_with`] reads it, or a plan JSON) with the set's seed
+    /// records (`overlay`, its JSON; `null`: the plan itself), the program
+    /// [`Self::load_with`] gives for the merged plan JSON
+    /// (`native_observables.with_overlay`) without forming that JSON. The
+    /// derivations are bounded as for a plan JSON (the overlay is JSON).
+    pub fn load_overlaid(data: &[u8], overlay: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
+        let overlay: Option<SeedOverlayFile> = serde_json::from_slice(overlay)
+            .map_err(|error| invalid(format!("column seeds: {error}")))?;
+        let Some(overlay) = overlay else {
+            return Self::load_with(data, policy);
+        };
+        let overlaid = |mut model: binary::PlanModel| {
+            model.overlay_seeds(overlay)?;
+            model.program(policy)
+        };
+        if binary::is_binary(data) {
+            binary::read_bounded(|| overlaid(binary::PlanModel::from_binary(data)?))
+        } else {
+            overlaid(binary::PlanModel::from_json(data)?)
+        }
+    }
+
     /// The derivations of a plan JSON after the bound's refusals, without
     /// the probe of their peak: the address-space measurement of the bound
     /// (`tests/loop_v2_plan_derive_bound.rs`), where the probe would be the
@@ -1303,9 +2150,53 @@ impl LoopProgramV4 {
     }
 
     fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
-        require(file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
+        require(admitted_schema(file.schema), "unsupported plan schema")?;
+        let amplitude = file.schema == AMPLITUDE_PLAN_SCHEMA;
+        if amplitude {
+            // Every column seeds one Born helicity row, or none: a row the
+            // exact helicity-zero filter dropped (an integrand zero).
+            let rows = file
+                .column_rows
+                .as_deref()
+                .ok_or_else(|| invalid("an amplitude-mode plan needs column rows"))?;
+            require(
+                rows.len() == file.columns
+                    && rows
+                        .iter()
+                        .all(|kept| kept.as_ref().is_some_and(|kept| kept.len() <= 1)),
+                "an amplitude-mode column seeds at most one Born helicity row",
+            )?;
+        }
+        let dressed = match file.dressed {
+            None => false,
+            Some(true) => true,
+            Some(false) => return Err(invalid("a plan writes `dressed` only as true")),
+        };
+        if dressed {
+            // Route R2: the columns are route R1's (one Born row and the
+            // seed-weight column of one basis element each); the seeds are
+            // constant and the amplitude vectors close the trace steps.
+            require(
+                amplitude,
+                "dressed rows are an amplitude-mode route (schema 5)",
+            )?;
+            require(
+                file.forward.is_none() && file.merged.is_none(),
+                "a dressed-row plan runs schedule B only",
+            )?;
+            require(
+                file.born_components == 1,
+                "a dressed-row plan seeds one unit Born component",
+            )?;
+        }
         super::bounds::check_legs(file.legs).map_err(invalid)?;
-        require(file.rows > 0 && file.columns > 0, "empty process")?;
+        // An amplitude-mode plan of an exact colour zero (no coefficient
+        // cell and no counterterm ket: an empty amplitude basis, e.g.
+        // h > g a, Tr T^a = 0) has no column: its |A|^2 is 0.
+        require(
+            file.rows > 0 && (file.columns > 0 || amplitude),
+            "empty process",
+        )?;
         require(file.average > 0, "normalisation divisor must be positive")?;
         let columns = file.columns;
         let kernels = file
@@ -1588,12 +2479,25 @@ impl LoopProgramV4 {
         let mut order_count = 0;
         let mut families = Vec::with_capacity(file.families.len());
         let mut split_inputs = SplitInputs::default();
+        let key_vectors = if dressed {
+            seeds
+                .iter()
+                .map(|key| key_vector(key, &seed_classes, &seed_weights, weight_columns))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let rows = links::RowSpace::new(&file)?;
         let content_rows = file
             .contents
             .iter()
             .map(|content| rows.content_rows(content))
             .collect::<RusticolResult<Vec<_>>>()?;
+        let content_lists = if dressed {
+            links::content_lists(&content_rows)
+        } else {
+            Vec::new()
+        };
         let shared = Shared {
             file: &file,
             contents: &contents,
@@ -1602,6 +2506,7 @@ impl LoopProgramV4 {
             policy,
             rows: &rows,
             content_rows: &content_rows,
+            dressed: dressed.then_some(content_lists.as_slice()),
         };
         let mut leaf_weights = LeafWeights::default();
         for f in &file.families {
@@ -1652,10 +2557,36 @@ impl LoopProgramV4 {
             products: tables.tables,
             order_count,
             read_rows: None,
+            amplitude,
+            dressed,
+            key_vectors,
+            row_columns: Vec::new(),
+            key_columns: Vec::new(),
+            gathers: Gathers::default(),
         };
+        if dressed {
+            let mut row_columns = vec![Vec::new(); program.rows];
+            for (o, &w) in program.column_weights.iter().enumerate() {
+                for (h, columns) in row_columns.iter_mut().enumerate() {
+                    if program.column_rows.keeps(h, o) {
+                        columns.push((o, w));
+                    }
+                }
+            }
+            program.key_columns = program
+                .key_vectors
+                .iter()
+                .map(|vector| KeyColumns::new(vector, &row_columns))
+                .collect();
+            program.row_columns = row_columns;
+        }
         // Helicity-resolved and selected columns: the steps keep the rows
-        // their kept Born rows reach (`live`).
+        // their kept Born rows reach (`live`); dressed rows: the trace steps
+        // close the Born rows a column reads (the exact helicity-zero
+        // filter's drops are not dressed).
         program.prune_dead_rows(&mut tables.links);
+        program.set_supports();
+        program.gathers = Gathers::build(&program);
         Ok(program)
     }
 
@@ -1677,7 +2608,7 @@ impl LoopProgramV4 {
             covered |= mask;
         }
         require(covered == full, "family reading does not cover every leg")?;
-        if let Some(refusal) = super::bounds::rank_refusal(f.sequence.len(), f.rank) {
+        if let Some(refusal) = super::bounds::admission_refusal(f.sequence.len(), f.rank) {
             return Err(invalid(format!("family rank: {refusal}")));
         }
         let leaves = f
@@ -1691,7 +2622,13 @@ impl LoopProgramV4 {
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        let derived = links::derive(f, file, shared.rows, shared.content_rows)?;
+        let derived = links::derive(f, file, shared.rows, shared.content_rows, shared.dressed)?;
+        let dressed = shared.dressed.is_some();
+        // A dressed-row plan's objects carry one column; each trace step
+        // closes with the seed key its leaves share (`keys`, per step).
+        let object_columns = if dressed { 1 } else { file.columns };
+        let mut keys: Vec<Option<u32>> = Vec::new();
+        let mut row_traces: Vec<Option<RowTrace>> = Vec::new();
         let mut steps: Vec<Step> = Vec::with_capacity(f.steps.len());
         let mut consumed = vec![false; f.steps.len()];
         let mut factors = BTreeSet::new();
@@ -1708,11 +2645,12 @@ impl LoopProgramV4 {
             if let Some(trace) = trace {
                 require(trace < f.orders.len(), "trace accumulator index")?;
                 require(
-                    rows == 1 && s.d_alpha == s.d_out && s.out == 0,
+                    (dressed || rows == 1) && s.d_alpha == s.d_out && s.out == 0,
                     "trace of an open object",
                 )?;
                 require(rank_out <= f.rank, "a trace step above the family rank")?;
             }
+            let mut step_key: Option<u32> = None;
             let mut edges = Vec::with_capacity(s.edges.len());
             for (e, links) in s.edges.iter().zip(&derived.links[index]) {
                 require(
@@ -1731,7 +2669,8 @@ impl LoopProgramV4 {
                         require(s.seeded, "leaf edge of an open step")?;
                         require((leaf as usize) < leaves.len(), "edge leaf index")?;
                         require(c.d_in == s.d_alpha, "seed does not fit its content")?;
-                        (Source::Leaf(leaf as usize), 0, file.rows)
+                        let seed_rows = if dressed { 1 } else { file.rows };
+                        (Source::Leaf(leaf as usize), 0, seed_rows)
                     }
                     (-1, child) if child >= 0 => {
                         let child = child as usize;
@@ -1750,6 +2689,17 @@ impl LoopProgramV4 {
                     }
                     _ => return Err(invalid("edge needs one leaf or one child")),
                 };
+                if dressed {
+                    let key = match source {
+                        Source::Leaf(leaf) => Some(leaves[leaf].seed),
+                        Source::Step(child) => keys[child],
+                    };
+                    require(
+                        step_key.is_none() || step_key == key,
+                        "a dressed-row step joins leaves of different seed keys",
+                    )?;
+                    step_key = key;
+                }
                 require(source_rank <= s.rank_in, "source rank above step rank")?;
                 for link in links.chunks(3) {
                     require(
@@ -1766,10 +2716,20 @@ impl LoopProgramV4 {
                     content,
                     source_rank,
                     products: tables.get(source_rank, c.degree),
-                    links: expand_links(links, file.columns)?,
+                    links: expand_links(links, object_columns)?,
                 });
             }
             require(!edges.is_empty(), "a step without edges")?;
+            if dressed {
+                keys.push(step_key);
+                row_traces.push(match (trace, &derived.born[index]) {
+                    (Some(_), Some(born)) => Some(RowTrace {
+                        key: step_key.ok_or_else(|| invalid("a dressed trace without a seed"))?,
+                        rows: born.clone(),
+                    }),
+                    _ => None,
+                });
+            }
             let shape = StepShape {
                 seeded: s.seeded,
                 d_alpha: s.d_alpha,
@@ -1813,6 +2773,10 @@ impl LoopProgramV4 {
             factors: factors.into_iter().collect(),
             vertices: instances.into_iter().collect(),
             currents: currents.into_iter().collect(),
+            row_traces,
+            support: None,
+            walk: WalkCache::default(),
+            dependents: DependentsCache::default(),
         })
     }
 
@@ -2166,5 +3130,127 @@ mod tests {
             "contents":[],"factors":[],"seed_classes":[],"seeds":[],"families":[],"forward":null}"#;
         let error = LoopProgramV4::load(text).unwrap_err();
         assert!(error.message().contains("schema"), "{error}");
+    }
+
+    /// The `Debug` form of the derived tables (`binary::program_digest`'s
+    /// input) is a function of their content: the diagonal index prints in
+    /// key order whatever the insertion order (a `HashMap` printed its
+    /// per-instance random order, so two loads of one plan digested
+    /// differently), and a family's walk cache prints the same before and
+    /// after its first walk.
+    #[test]
+    fn derived_tables_debug_canonically() {
+        let keys: Vec<_> = (0..64)
+            .map(|k| (k % 7, k / 7, k % 2 == 0, 1 + k % 3))
+            .collect();
+        let gathers = |order: &mut dyn Iterator<Item = usize>| {
+            let mut gathers = Gathers::default();
+            for id in order {
+                gathers.diagonals.insert(keys[id], id);
+            }
+            format!("{gathers:?}")
+        };
+        assert_eq!(
+            gathers(&mut (0..keys.len())),
+            gathers(&mut (0..keys.len()).rev())
+        );
+        let walk = WalkCache::default();
+        let before = format!("{walk:?}");
+        walk.get_or_init(|| Walk {
+            written: vec![Some(vec![true])],
+            traces: vec![None],
+        });
+        assert_eq!(format!("{walk:?}"), before);
+        let dependents = DependentsCache::default();
+        let before = format!("{dependents:?}");
+        dependents.get_or_init(Dependents::default);
+        assert_eq!(format!("{dependents:?}"), before);
+    }
+
+    /// A dressed-row plan (schema 5) of one bubble family over a leg of two
+    /// helicity rows and three basis elements, whose trace steps close with
+    /// seed keys of class weights `weights` (one key per entry; each its own
+    /// seeded leaf and trace step into accumulator 0).
+    fn dressed(weights: &[[i64; 3]]) -> LoopProgramV4 {
+        use serde_json::json;
+        let term = |row: usize, kernel: usize| {
+            json!({"slots": [], "dimensions": [], "vertex": -1, "split": [],
+                   "rows": [[row, []]],
+                   "bindings": [{"kernel": kernel, "inputs": [], "entries": [0]}]})
+        };
+        let mut steps = Vec::new();
+        let mut leaves = Vec::new();
+        for key in 0..weights.len() {
+            leaves.push(json!({"seed": key, "weight": "3"}));
+            steps.push(json!({"seeded": true, "trace": -1, "out": 2, "d_alpha": 1,
+                "d_out": 1, "degree": 0, "rank_in": 0,
+                "edges": [{"leaf": key, "child": -1, "factor": 0}]}));
+            steps.push(json!({"seeded": false, "trace": 0, "out": 0, "d_alpha": 1,
+                "d_out": 1, "degree": 0, "rank_in": 0,
+                "edges": [{"leaf": -1, "child": 2 * key, "factor": 1}]}));
+        }
+        let classes: Vec<_> = weights
+            .iter()
+            .map(|w| json!({"columns": w.map(|x| json!([[0, x.to_string(), "0"]]))}))
+            .collect();
+        let seeds: Vec<_> = (0..weights.len())
+            .map(|c| json!({"classes": [[c, "1", "0"]]}))
+            .collect();
+        let plan = json!({
+            "schema": 5, "legs": 2, "rows": 2, "helicities": [[0, 1], [0]], "columns": 6,
+            "average": 1, "born_components": 1, "constants": 2, "masses": 1,
+            "block_rows": [],
+            "kernels": [{"inputs": [], "outputs": [[[0, []]]]},
+                        {"inputs": [], "outputs": [[[1, []]]]}],
+            "contents": [
+                {"d_in": 1, "d_out": 1, "degree": 0, "rows": 2, "mask": 1,
+                 "row_helicities": [[0], [1]], "fused": [[0, 0, 0, 0, 0, 0]],
+                 "terms": [term(0, 0), term(1, 1)]},
+                {"d_in": 1, "d_out": 1, "degree": 0, "rows": 1, "mask": 2,
+                 "row_helicities": [[0]], "fused": [[0, 0, 0, 0, 0, 0]],
+                 "terms": [term(0, 1)]}],
+            "factors": [[0, 0], [1, 1]],
+            "seed_classes": classes, "seeds": seeds,
+            "families": [{"sequence": [[1, 0], [2, 0]], "rank": 0, "orders": [0],
+                          "leaves": leaves, "steps": steps}],
+            "forward": null, "merged": null,
+            "column_rows": [[0], [0], [0], [1], [1], [1]],
+            "column_weights": [0, 1, 2, 0, 1, 2], "dressed": true,
+        });
+        LoopProgramV4::load(&serde_json::to_vec(&plan).unwrap()).unwrap()
+    }
+
+    /// M-LIT lit-fold F1d: a stored column is dependent on another of the
+    /// same accumulator and Born row exactly when every key closing into the
+    /// accumulator weights the two in one exact ratio (`c`); a ratio that
+    /// differs between the keys leaves both columns reduced, and a seeded
+    /// plan has none.
+    #[test]
+    fn dressed_columns_in_one_exact_ratio_are_dependent() {
+        let r = |x: i64| [Rational::from(x), Rational::from(0)];
+        let one = dressed(&[[1, 2, -3]]);
+        let found = one.dependents_of(&one.families[0]);
+        assert_eq!(
+            found.columns,
+            [vec![
+                (0, 1, r(2)),
+                (0, 2, r(-3)),
+                (3, 4, r(2)),
+                (3, 5, r(-3))
+            ]]
+        );
+        assert_eq!(
+            found.dependent,
+            [vec![false, true, true, false, true, true]]
+        );
+        assert_eq!(found.of(0, 3), 2..4);
+        assert_eq!(found.of(0, 1), 2..2);
+        // Two keys: t = 1 is twice t = 0 under both, t = 2 is 3 and 5 times.
+        let two = dressed(&[[1, 2, 3], [1, 2, 5]]);
+        let found = two.dependents_of(&two.families[0]);
+        assert_eq!(found.columns, [vec![(0, 1, r(2)), (3, 4, r(2))]]);
+        // One key with one non-zero weight: nothing is dependent.
+        let lone = dressed(&[[0, 7, 0]]);
+        assert!(lone.dependents_of(&lone.families[0]).is_empty());
     }
 }

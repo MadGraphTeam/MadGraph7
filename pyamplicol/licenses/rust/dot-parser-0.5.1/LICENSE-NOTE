@@ -1,0 +1,5 @@
+dot-parser 0.5.1, by Martin Vassor (https://codeberg.org/bromind/dot-parser),
+declares license = "GPL-2.0-or-later". GammaLoop vendors it at revision
+d1904bf2bd5bf4f26969a73b415095e941a55610 under vendor/dot-parser, without a
+license file, as a dependency of its linnet crate. The GNU General Public
+License version 2 is reproduced in COPYING next to this file.

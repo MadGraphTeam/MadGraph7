@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
@@ -33,20 +34,53 @@ def _json_value(value: object) -> object:
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
+        VirtualOrderEvaluation,
     )
 
+    from .partial_evaluation import PartialEvaluation
+
+    if isinstance(value, PartialEvaluation):
+        # An interrupted evaluate: the points done, plus how many of the
+        # requested points they are (data, as the stability run's setup).
+        inner = _json_value(value.result)
+        partial = {
+            "interrupted": True,
+            "requested_points": value.requested,
+            "measured_points": value.measured,
+        }
+        if isinstance(inner, dict):
+            return {**inner, **partial}
+        # A tree evaluation's list keeps its type (the JSON schema only
+        # gains fields); ``write_result`` puts the notice on stderr.
+        return inner
+    if isinstance(value, VirtualOrderEvaluation):
+        # The one evaluation, its order axes and the explicit sums (named:
+        # orders are never summed silently).
+        return {
+            "evaluation": _json_value(value.evaluation),
+            "contribution_kind": value.contribution,
+            "orders": _json_value(value.orders),
+            "born_orders": _json_value(value.born_orders),
+            "sum_orders": _json_value(value.sum_orders()),
+            "sum_born_orders": _json_value(value.sum_born_orders()),
+        }
     if is_dataclass(value) and not isinstance(value, type):
         result = {
             item.name: _json_value(getattr(value, item.name)) for item in fields(value)
         }
         if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
             result.update(
-                contribution_kind="virtual",
+                # "virtual" or "loop-induced" (m-lit Q36: the result's kind).
+                contribution_kind=getattr(value, "contribution", "virtual"),
                 epsilon_powers=list(value.epsilon_powers),
                 coefficient_names=["finite", "single_pole", "double_pole"],
                 normalization="Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)",
                 shape=list(value.shape),
                 born_shape=list(value.born_shape),
+                # Per-point status and the result-level warning metadata
+                # (m-lit ux-besteffort: data for the caller, never printed).
+                statuses=list(value.statuses),
+                warnings=[item.to_json() for item in value.warnings],
             )
         if isinstance(value, TreeOrderEvaluation):
             result.update(
@@ -65,6 +99,9 @@ def _json_value(value: object) -> object:
         return {"real": value.real, "imag": value.imag}
     if isinstance(value, Decimal):
         return str(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        # JSON has no infinity: an estimate on an exact zero is "inf".
+        return str(value)
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     raise TypeError(f"cannot serialize CLI result of type {type(value).__name__}")
@@ -76,6 +113,7 @@ def write_result(
     format: str,
     stream: TextIO,
     color: bool = False,
+    fields_help: bool = False,
 ) -> None:
     if value is None:
         return
@@ -83,7 +121,21 @@ def write_result(
     if format == "json":
         json.dump(plain, stream, indent=2, sort_keys=True, allow_nan=False)
         stream.write("\n")
+        from .partial_evaluation import PartialEvaluation
+
+        if isinstance(value, PartialEvaluation) and not isinstance(plain, dict):
+            sys.stderr.write(f"{value.notice()}\n")
     elif format == "human":
+        from pyamplicol.reporting import palette
+
+        from .partial_evaluation import PartialEvaluation
+
+        notice = None
+        if isinstance(value, PartialEvaluation):
+            notice = palette.paint(
+                value.notice(), palette.RECOVERED, color=color, bold=True
+            )
+            value = value.result
         rendered = render_summary(value, color=color)
         if rendered is None:
             raise RuntimeError(
@@ -91,6 +143,12 @@ def write_result(
                 "machine-readable output"
             )
         stream.write(f"{rendered}\n")
+        if notice is not None:
+            stream.write(f"{notice}\n")
+        if fields_help:
+            from pyamplicol.reporting.descriptions import field_descriptions
+
+            stream.write(f"\n{field_descriptions(value)}\n")
     else:
         raise ValueError(f"unsupported output format {format!r}")
     stream.flush()
@@ -115,6 +173,7 @@ def run_cli(
     input_stream = sys.stdin if stdin is None else stdin
     logging_configured = False
     sink = None
+    config = None
     try:
         invocation = parse_cli(argv)
         if isinstance(invocation, RecurrenceExportInvocation):
@@ -143,6 +202,8 @@ def run_cli(
                     arguments.extend(("--set", override))
                 if invocation.output_format == "json":
                     arguments.append("--json")
+                if invocation.fields_help:
+                    arguments.append("--fields-description-help")
                 arguments.extend(("--color", invocation.output_color))
                 invocation = parse_cli(arguments)
                 assert not isinstance(
@@ -154,13 +215,29 @@ def run_cli(
                     ),
                 )
             else:
-                result = execute_utility(invocation)
+                if (
+                    invocation.kind == "self-test"
+                    and invocation.output_format != "json"
+                ):
+                    sink = progress_sink(
+                        "auto",
+                        stream=diagnostic_stream,
+                        color=_color_enabled(
+                            invocation.output_color, diagnostic_stream
+                        ),
+                    )
+                result = execute_utility(invocation, progress=sink)
+                close_progress_sink(sink)
+                sink = None
                 write_result(
                     result,
                     format=invocation.output_format,
                     stream=output_stream,
                     color=_color_enabled(invocation.output_color, output_stream),
+                    fields_help=invocation.fields_help,
                 )
+                if bool(getattr(result, "interrupted", False)):
+                    return 130
                 if invocation.kind in {"doctor", "self-test"}:
                     return 0 if bool(getattr(result, "ok", False)) else 1
                 return 0
@@ -192,7 +269,9 @@ def run_cli(
         )
         logging_configured = True
         selected_services = (
-            DefaultCliServices(resolution=resolution) if services is None else services
+            DefaultCliServices(resolution=resolution, card=invocation.card)
+            if services is None
+            else services
         )
         if invocation.correlators is not None:
             from pyamplicol.correlators import CorrelatorConfig
@@ -207,7 +286,7 @@ def run_cli(
                 json.loads(invocation.correlators.read_text())
             )
             selected_services = DefaultCliServices(
-                resolution=resolution, correlators=declarations
+                resolution=resolution, correlators=declarations, card=invocation.card
             )
         result = dispatch(
             config,
@@ -224,8 +303,15 @@ def run_cli(
             format=config.output.format,
             stream=output_stream,
             color=color,
+            fields_help=invocation.fields_help,
         )
-        return 130 if bool(getattr(result, "interrupted", False)) else 0
+        if bool(getattr(result, "interrupted", False)):
+            return 130
+        from pyamplicol.loops.v2.checks import CheckReport
+
+        # ``pyamplicol check`` carries its own exit status: 0 iff every
+        # applicable check passed (``CheckReport.exit_code``).
+        return result.exit_code if isinstance(result, CheckReport) else 0
     except (PyAmpliColError, OSError, RuntimeError, TypeError, ValueError) as exc:
         close_progress_sink(sink)
         sink = None
@@ -238,12 +324,16 @@ def run_cli(
     except KeyboardInterrupt:
         close_progress_sink(sink)
         sink = None
-        message = "interrupted before a complete result was available"
-        if logging_configured:
-            get_logger("cli").warning("%s", message)
-        else:
-            diagnostic_stream.write(f"{message}\n")
-            diagnostic_stream.flush()
+        message = "interrupted (Ctrl-C) before a complete result was available"
+        if config is not None and str(config.action) == "generate":
+            # The writer stages the artifact privately and publishes it only
+            # when complete (``artifacts.writer``).
+            message += (
+                f"; nothing was written to {config.generation.output} (an "
+                "artifact appears only when complete)"
+            )
+        diagnostic_stream.write(f"{message}\n")
+        diagnostic_stream.flush()
         return 130
     finally:
         close_progress_sink(sink)

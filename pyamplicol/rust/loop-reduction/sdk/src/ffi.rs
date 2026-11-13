@@ -31,7 +31,11 @@ fn bad(message: impl ToString) -> Error {
     Error(STATUS_INVALID_ARGUMENT, message.to_string())
 }
 thread_local! { static LAST_ERROR: RefCell<CString> = RefCell::new(CString::new("").unwrap()); }
+/// Runs one ABI call: under pyAmpliCol's Symbolica library key on the
+/// calling thread (an unlicensed caller never takes the user's restricted
+/// Symbolica permit), with panics and errors turned into status codes.
 fn guard(f: impl FnOnce() -> Result<()>) -> c_int {
+    let _unlock = pyamplicol::unlock();
     let error = match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(())) => return STATUS_OK,
         Ok(Err(e)) => e,
@@ -133,6 +137,23 @@ pub struct BatchRequest {
     pub scale_count: usize,
     pub resolved: u32,
     pub r2_strategy: *const c_char,
+}
+
+/// The selectors of `rusticol_virtual_evaluate_selected` (additive, ABI
+/// version 2 kept; m-lit lit-sdk-b): global string IDs and per-point
+/// zero-based indices (a zero count omits that selector) and a resolved
+/// evaluation's colour resolution (NULL: "contracted").
+#[repr(C)]
+pub struct SelectionRequest {
+    pub helicity_ids: *const *const c_char,
+    pub helicity_count: usize,
+    pub color_ids: *const *const c_char,
+    pub color_count: usize,
+    pub helicity_by_point: *const u32,
+    pub helicity_by_point_count: usize,
+    pub color_flow_by_point: *const u32,
+    pub color_flow_by_point_count: usize,
+    pub color_resolution: *const c_char,
 }
 
 /// Borrowed source rows, separate from BatchRequest to preserve its ABI.
@@ -265,6 +286,218 @@ pub unsafe extern "C" fn rusticol_virtual_set_arithmetic(
         Ok(())
     })
 }
+/// The reduction backend of the handle's later evaluations, the Python
+/// API's `reduction=`: "auto" (NULL, the default: the process type's
+/// default where it serves the call, else NinjaRS, the reason recorded),
+/// "ninjars" or "tirust". An explicit backend the native library does not
+/// build is refused here, one that cannot serve a later call's carrier or
+/// route by that call (`RUSTICOL_VIRTUAL_RUNTIME_ERROR`, the Python API's
+/// `ReductionUnavailable`); never a silent switch. Each result records the
+/// requested and effective backends and the reason in its diagnostics.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `reduction` is NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_reduction(
+    handle: *mut VirtualHandle,
+    reduction: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        mutable(handle)?
+            .0
+            .set_reduction(text(reduction)?.unwrap_or("auto"))?;
+        Ok(())
+    })
+}
+/// The failure policy of the handle's later evaluations, the Python API's
+/// `on_failure=` (m-lit ux-besteffort; additive, ABI version 2 kept):
+/// `"best-effort"` (the default, also for NULL) returns OK with every point:
+/// a point no configured alternative accepts carries the unchecked
+/// reduction's value as its row with status `RUSTICOL_VIRTUAL_BEST_EFFORT`
+/// (never a success), its refusal (diagnostics "best_effort") and its
+/// uncertainty (`rusticol_virtual_result_copy_uncertainties`); a point
+/// without any value stays `RUSTICOL_VIRTUAL_FAILED`; nothing is printed.
+/// `"return"` keeps such points failed without a best-effort evaluation;
+/// `"raise"` (opt-in strict mode) returns `RUSTICOL_VIRTUAL_RUNTIME_ERROR`
+/// for a call with such a point. Another value is an invalid argument.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `on_failure` is NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_on_failure(
+    handle: *mut VirtualHandle,
+    on_failure: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        let policy = crate::OnFailure::parse(text(on_failure)?.unwrap_or("best-effort"))
+            .map_err(|error| bad(error.to_string()))?;
+        mutable(handle)?.0.set_on_failure(policy);
+        Ok(())
+    })
+}
+/// The target accuracy of the handle's later evaluations, the Python API's
+/// `reduction_target=` (m-lit F3 (a); additive, ABI version 2 kept): the
+/// relative accuracy of each point's result (every squared-order sector
+/// against its own size), 1e-5 by default (`reduction_policy::
+/// DEFAULT_TARGET`). TIRust's
+/// method-choice acceptance follows it (calibrated); NinjaRS has no setting
+/// it drives. A value that is not a finite positive number is
+/// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_reduction_target(
+    handle: *mut VirtualHandle,
+    target: f64,
+) -> c_int {
+    guard(|| unsafe {
+        mutable(handle)?.0.set_reduction_target(target)?;
+        Ok(())
+    })
+}
+/// The unchecked setting of the handle's later evaluations, the Python API's
+/// `reduction_unchecked=` (m-lit lit-unchecked; additive, ABI version 2
+/// kept): 1 reduces without the reduction backends' own acceptance and
+/// refusal checks (TIRust's gates and method choice as method selection
+/// without the acceptance pass, its gate-0 PV last resort; NinjaRS's zero
+/// stability thresholds), 0 (the default) restores them. Any other value is
+/// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` (`reduction_policy::UNCHECKED_REFUSAL`)
+/// and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_reduction_unchecked(
+    handle: *mut VirtualHandle,
+    unchecked: c_int,
+) -> c_int {
+    guard(|| unsafe {
+        let unchecked =
+            reduction_policy::unchecked(i64::from(unchecked)).map_err(|refusal| match refusal {
+                Refusal::Invalid(message) | Refusal::Unavailable(message) => bad(message),
+            })?;
+        mutable(handle)?.0.set_reduction_unchecked(unchecked);
+        Ok(())
+    })
+}
+/// The kinematics improvement of the handle's later evaluations, the Python
+/// API's `kinematics_improvement=` (m-lit lit-psimprove; additive, ABI
+/// version 2 kept): `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's
+/// own fallback to 1, finished by the projection where MadLoop leaves the
+/// point inexact; the default, also for NULL), `"rescaling"`
+/// (ImprovePSPoint 1), `"projection"` (the frame-independent minimal-norm
+/// projection) or `"off"`. Before a double-double or arbitrary-precision
+/// evaluation (and a binary64 one under
+/// `rusticol_virtual_set_kinematics_improvement_binary64`) each point is
+/// moved onto exact energy-momentum conservation and the external shells in
+/// that carrier, from the caller's inputs in the caller's leg order; the
+/// diagnostics record it per point (`"kinematics"`). Another value is
+/// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` (`kinematics_improvement::
+/// SETTING_REFUSAL`) and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `setting` is NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_kinematics_improvement(
+    handle: *mut VirtualHandle,
+    setting: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        let default = kinematics_improvement::DEFAULT_VARIANT.name();
+        mutable(handle)?
+            .0
+            .set_kinematics_improvement(text(setting)?.unwrap_or(default))?;
+        Ok(())
+    })
+}
+/// Whether the handle's later binary64 evaluations are improved too, the
+/// Python API's `kinematics_improvement_binary64=` (m-lit lit-psimprove;
+/// additive, ABI version 2 kept): 1 improves them with the selected variant,
+/// 0 (the default) evaluates them as given (bitwise as without the
+/// improvement). Any other value is `RUSTICOL_VIRTUAL_INVALID_ARGUMENT`
+/// (`kinematics_improvement::BINARY64_REFUSAL`) and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_kinematics_improvement_binary64(
+    handle: *mut VirtualHandle,
+    binary64: c_int,
+) -> c_int {
+    guard(|| unsafe {
+        let binary64 = kinematics_improvement::binary64_switch(i64::from(binary64)).map_err(bad)?;
+        mutable(handle)?
+            .0
+            .set_kinematics_improvement_binary64(binary64);
+        Ok(())
+    })
+}
+/// The stability checks of the handle's later evaluations, the Python API's
+/// `stability_checks=` (`VirtualStabilityChecks`; additive, ABI version 2
+/// kept): `rotation_count` default rotations (the Python API's count), or,
+/// with `rotation_count` 0, the rotations of `rotations`, a JSON array of
+/// rotation specifications (`"<x|y|z>:<cos>:<sin>"`,
+/// `"<ax>,<ay>,<az>:<radians>"`, `"euler:<alpha>,<beta>,<gamma>"`; NULL: none);
+/// `reduction_direction`, `rescaled` and `cross_backend` are 0 or 1. All zero
+/// and NULL (the default) runs no check: no estimate, no extra cost. Checks
+/// the Python API refuses are `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` with its
+/// message, and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `rotations` is NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_stability_checks(
+    handle: *mut VirtualHandle,
+    rotation_count: u64,
+    rotations: *const c_char,
+    reduction_direction: u32,
+    rescaled: u32,
+    cross_backend: u32,
+) -> c_int {
+    guard(|| unsafe {
+        let flag = |value: u32, name: &str| match value {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(bad(format!("{name} must be a boolean (0 or 1)"))),
+        };
+        let rotations = match text(rotations)? {
+            None => (0..rotation_count)
+                .map(crate::default_rotation)
+                .collect::<RusticolResult<Vec<_>>>()?,
+            Some(_) if rotation_count != 0 => {
+                return Err(bad("rotations take a count or rotation records"));
+            }
+            Some(json) => serde_json::from_str::<Vec<String>>(json)
+                .map_err(|e| bad(format!("rotations must be a JSON array of strings: {e}")))?
+                .iter()
+                .map(|specification| Rotation::parse(specification))
+                .collect::<RusticolResult<Vec<_>>>()?,
+        };
+        let checks = StabilityChecks::new(
+            rotations,
+            flag(reduction_direction, "reduction_direction")?,
+            flag(rescaled, "rescaled")?,
+            flag(cross_backend, "cross_backend")?,
+        )?;
+        mutable(handle)?.0.set_stability_checks(checks);
+        Ok(())
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_shape(
     handle: *const VirtualHandle,
@@ -346,6 +579,132 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate(
         Ok(())
     })
 }
+/// String IDs of a selector array (`count` NUL-terminated strings; a zero
+/// count omits the selector).
+unsafe fn selector_ids(
+    ids: *const *const c_char,
+    count: usize,
+    name: &str,
+) -> Result<Option<Vec<String>>> {
+    if count == 0 {
+        return Ok(None);
+    }
+    unsafe { values(ids, count) }
+        .map_err(|_| bad(format!("{name} array is null")))?
+        .iter()
+        .enumerate()
+        .map(|(index, &id)| {
+            unsafe { text(id) }?
+                .map(str::to_owned)
+                .ok_or_else(|| bad(format!("{name}[{index}] is null")))
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
+}
+
+/// Per-point indices (`count` values; a zero count omits the selector).
+unsafe fn per_point(indices: *const u32, count: usize, name: &str) -> Result<Option<Vec<u32>>> {
+    if count == 0 {
+        return Ok(None);
+    }
+    Ok(Some(
+        unsafe { values(indices, count) }
+            .map_err(|_| bad(format!("{name} is null")))?
+            .to_vec(),
+    ))
+}
+
+/// An evaluation with selectors (the Python API's `helicities=` and
+/// `color_resolution=`, the tree C ABI's selector conventions; m-lit
+/// lit-sdk-b): `request.resolved` 0 is the ordinary evaluation of the
+/// selected helicity rows, 1 the resolved evaluation of the selected rows in
+/// the colour resolution. A NULL `selection` selects nothing
+/// (`rusticol_virtual_evaluate`). Every selector is validated before any
+/// evaluation; the result is written only on success.
+///
+/// # Safety
+///
+/// `handle` is a live handle used by no other thread; `request`, `selection`
+/// (NULL or) and `output` follow the ABI's pointer rules: every nonzero
+/// selector count names that many readable entries, each ID a
+/// NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_evaluate_selected(
+    handle: *mut VirtualHandle,
+    request: *const BatchRequest,
+    selection: *const SelectionRequest,
+    output: *mut *mut VirtualResult,
+) -> c_int {
+    guard(|| unsafe {
+        let output = mutable(output)?;
+        *output = ptr::null_mut();
+        let request = reference(request)?;
+        if request.resolved > 1 {
+            return Err(bad("resolved must be zero or one"));
+        }
+        let selection = if selection.is_null() {
+            Selection::default()
+        } else {
+            let selection = reference(selection)?;
+            Selection {
+                helicities: selector_ids(
+                    selection.helicity_ids,
+                    selection.helicity_count,
+                    "helicity ids",
+                )?,
+                color_flows: selector_ids(selection.color_ids, selection.color_count, "color ids")?,
+                helicity_by_point: per_point(
+                    selection.helicity_by_point,
+                    selection.helicity_by_point_count,
+                    "helicity_by_point",
+                )?,
+                color_flow_by_point: per_point(
+                    selection.color_flow_by_point,
+                    selection.color_flow_by_point_count,
+                    "color_flow_by_point",
+                )?,
+                color_resolution: text(selection.color_resolution)?.map(str::to_owned),
+            }
+        };
+        let handle = mutable(handle)?;
+        let ids = request_ids(&handle.0, request)?;
+        let result = handle.0.evaluate_selected(
+            values(request.momenta, request.momentum_count)?,
+            &ids,
+            values(request.mu_r2, request.scale_count)?,
+            request.resolved == 1,
+            text(request.r2_strategy)?,
+            &selection,
+        )?;
+        *output = Box::into_raw(Box::new(VirtualResult(result)));
+        Ok(())
+    })
+}
+
+/// The axes of a result as JSON: `{"helicity_ids": [...], "color_ids":
+/// [...]}` (a resolved result's helicity rows and colour components in its
+/// layout's order; empty for an ordinary result).
+///
+/// # Safety
+///
+/// `result` is a live result; `output`, `capacity` and `needed` follow the
+/// ABI's JSON size-query rules.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_result_axes_json(
+    result: *const VirtualResult,
+    output: *mut c_char,
+    capacity: usize,
+    needed: *mut usize,
+) -> c_int {
+    guard(|| unsafe {
+        let result = &reference(result)?.0;
+        let axes = serde_json::json!({
+            "helicity_ids": result.helicity_ids,
+            "color_ids": result.color_ids,
+        });
+        json_string(&axes.to_string(), output, capacity, needed)
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_result_free(result: *mut VirtualResult) -> c_int {
     guard(|| {
@@ -424,6 +783,54 @@ pub unsafe extern "C" fn rusticol_virtual_result_copy_statuses(
             capacity,
         )
     })
+}
+/// Per requested point the relative uncertainty of a best-effort point's
+/// value (`RUSTICOL_VIRTUAL_BEST_EFFORT`), NaN for every other point and for
+/// a best-effort point without an estimate (m-lit ux-besteffort).
+///
+/// # Safety
+///
+/// `result` is a live result; `output` holds `capacity` doubles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_result_copy_uncertainties(
+    result: *const VirtualResult,
+    output: *mut f64,
+    capacity: usize,
+) -> c_int {
+    guard(|| unsafe {
+        let result = &reference(result)?.0;
+        copy(
+            &uncertainties(&result.uncertainties, result.statuses.len()),
+            output,
+            capacity,
+        )
+    })
+}
+/// [`rusticol_virtual_result_copy_uncertainties`] of a correlated result.
+///
+/// # Safety
+///
+/// `result` is a live result; `output` holds `capacity` doubles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_copy_uncertainties(
+    result: *const CorrelatedResult,
+    output: *mut f64,
+    capacity: usize,
+) -> c_int {
+    guard(|| unsafe {
+        let result = &reference(result)?.0;
+        copy(
+            &uncertainties(&result.uncertainties, result.statuses.len()),
+            output,
+            capacity,
+        )
+    })
+}
+/// One uncertainty per requested point (NaN where none was recorded).
+fn uncertainties(values: &[f64], points: usize) -> Vec<f64> {
+    (0..points)
+        .map(|i| values.get(i).copied().unwrap_or(f64::NAN))
+        .collect()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_result_diagnostics_json(

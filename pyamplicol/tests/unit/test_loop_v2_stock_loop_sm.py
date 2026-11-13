@@ -493,10 +493,9 @@ def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
 @pytest.mark.parametrize(
     "key,expression,restriction,fixed",
     [
-        ("loop-induced", "g g > h h", None, None),
-        # A loop-induced decay (M-FINAL MF-DEC-2: one-loop decays with a
-        # Born are served).
-        ("loop-induced", "h > g g", None, None),
+        # (Loop-induced processes, g g > h h and the decay h > g g, are
+        # generated loop-induced: m-lit LIT-REQ / LIT-AMP,
+        # ``test_loop_v2_induced_request.py``, ``test_loop_v2_induced.py``.)
         ("coloured-width", "g g > t t~", None, {"WZ": "0"}),
     ],
 )
@@ -576,11 +575,12 @@ def test_madloop_syntax_is_the_listed_refusal_naming_the_setting(expression):
 
 @pytest.mark.loop_physics
 def test_madloop_syntax_and_decays_refuse_in_the_cli_dry_run(tmp_path):
-    """``pyamplicol generate --dry-run``: '[QCD]' (a bracket of no particles,
-    found at the model's process expansion) is the plan's unsupported
-    feature; a one-loop 1 -> n decay is admitted (M-FINAL MF-DEC-2: no
-    blocker); a decay chain is refused when the request is parsed (exit 2).
-    Each names its key."""
+    """``pyamplicol generate --dry-run``: '[QCD]' is MG5_aMC syntax the card
+    translates (no blocker); '[qcd]' is an anonymous multiparticle of no
+    particles, found at the model's process expansion: the plan's
+    unsupported feature; a one-loop 1 -> n decay is admitted (M-FINAL
+    MF-DEC-2: no blocker); a decay chain is refused when the request is
+    parsed (exit 2). Each names its key."""
 
     from pyamplicol.cli import run_cli
 
@@ -606,6 +606,9 @@ def test_madloop_syntax_and_decays_refuse_in_the_cli_dry_run(tmp_path):
         return code, stdout.getvalue(), stderr.getvalue()
 
     code, stdout, _ = dry_run("u u~ > d d~ [QCD]")
+    assert code == 0
+    assert not json.loads(stdout)["unsupported_features"]
+    code, stdout, _ = dry_run("u u~ > d d~ [qcd]")
     assert code == 0
     (feature,) = json.loads(stdout)["unsupported_features"]
     assert feature.startswith("madloop-syntax: "), feature

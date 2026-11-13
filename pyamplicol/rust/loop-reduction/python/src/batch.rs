@@ -25,6 +25,7 @@ impl NativeBatch {
         precision: Option<u32>,
         row_ids: Option<Vec<u64>>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         Batch::from_decimal(values, rows, columns, arithmetic, precision, row_ids)
             .map(Self)
             .map_err(error)
@@ -46,19 +47,24 @@ impl NativeBatch {
         self.0.row_ids()
     }
     fn to_decimal(&self, py: Python<'_>) -> Vec<DecimalComplex> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.to_decimal())
     }
     fn nonfinite_rows(&self, py: Python<'_>) -> Vec<u64> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.nonfinite_rows())
     }
     #[pyo3(signature = (indices, row_ids=None))]
     fn take_rows(&self, indices: Vec<usize>, row_ids: Option<Vec<u64>>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         self.0.take_rows(indices, row_ids).map(Self).map_err(error)
     }
     fn take_columns(&self, indices: Vec<usize>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         self.0.take_columns(indices).map(Self).map_err(error)
     }
     fn reshape_rows(&self, rows: usize, columns: usize, row_ids: Vec<u64>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         self.0
             .reshape_rows(rows, columns, row_ids)
             .map(Self)
@@ -66,6 +72,7 @@ impl NativeBatch {
     }
     #[staticmethod]
     fn concat_columns(batches: Vec<PyRef<'_, NativeBatch>>) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         Batch::concat_columns(&batches.iter().map(|b| &b.0).collect::<Vec<_>>())
             .map(Self)
             .map_err(error)
@@ -86,6 +93,7 @@ impl ReductionBatch {
         self.0.values().map(NativeBatch).map_err(error)
     }
     fn successful_values(&self) -> NativeBatch {
+        let _unlock = pyamplicol::unlock();
         NativeBatch(self.0.successful_values())
     }
 }

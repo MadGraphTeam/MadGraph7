@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields, replace
 from decimal import Decimal
 from pathlib import Path
@@ -47,6 +47,8 @@ class CliServices(Protocol):
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object: ...
 
+    def check(self, config: RunConfig, progress: ProgressSink) -> object: ...
+
     def inspect(
         self,
         config: RunConfig,
@@ -75,7 +77,7 @@ def dispatch(
     """Dispatch a typed config without importing a concrete domain backend."""
 
     if config.action != "evaluate" and (
-        config.evaluation.on_failure != "raise"
+        config.evaluation.on_failure is not None
         or config.evaluation.correlated_requests is not None
     ):
         raise ConfigurationError(
@@ -92,6 +94,8 @@ def dispatch(
         return services.evaluate(config, progress)
     if config.action == "benchmark":
         return services.benchmark(config, progress)
+    if config.action == "check":
+        return services.check(config, progress)
     if config.action == "inspect":
         if full_physics:
             return services.inspect(config, progress, full_physics=True)
@@ -164,19 +168,120 @@ def _read_json(
         raise ConfigurationError(f"invalid JSON in {path}: {exc}") from exc
 
 
-def _virtual_artifact_hint(path: Path) -> bool:
-    """Choose CLI ingress only; the native loader checks the artifact itself."""
-    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITY
-    from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
+def _log_process_syntax(resolution: ConfigResolution | None) -> None:
+    """Log what each process entry's MG5_aMC syntax was translated to (the
+    requested configuration keeps the expressions as written;
+    ``processes.mg5_syntax``)."""
 
-    path = path.expanduser().resolve(strict=False)
-    root = path.parent if path.name == MANIFEST_NAME and path.is_file() else path
-    if not (root / MANIFEST_NAME).is_file():
-        return False
-    manifest = load_manifest(root, verify_payloads=False)
-    return LOOP_V2_RUNTIME_CAPABILITY in cast(
-        tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
+    if resolution is None:
+        return
+    from pyamplicol.processes.mg5_syntax import translate_process_expression
+    from pyamplicol.reporting import get_logger
+    from pyamplicol.reporting.logging import notice
+
+    for entry in resolution.requested.process.entries:
+        translation = translate_process_expression(entry.expression)
+        if translation.translated:
+            settings = "; ".join(
+                f"{path.removeprefix('process.')} {_setting_text(value)}"
+                for path, value in translation.settings.items()
+            )
+            notice(
+                get_logger("cli"),
+                "process",
+                "%s  ->  %s%s",
+                translation.source,
+                translation.expression,
+                f"  ({settings})" if settings else "",
+            )
+
+
+def _log_generation_header(config: RunConfig) -> None:
+    """The model and the output directory of a generation, as the CLI's
+    notice lines before its progress display."""
+
+    from pyamplicol.reporting import get_logger
+    from pyamplicol.reporting.logging import notice
+
+    model = config.model
+    source = Path(str(model.source)).name if model.source is not None else "-"
+    restriction = getattr(model, "restriction", None)
+    loop_model = getattr(config.loop, "model", None)
+    scheme = getattr(getattr(loop_model, "scheme", None), "mass_scheme", None)
+    parts = [source]
+    if restriction:
+        parts.append(f"restriction {restriction}")
+    if scheme is not None:
+        parts.append(f"{scheme} scheme")
+    logger = get_logger("cli")
+    notice(logger, "model", "%s", ", ".join(parts))
+    notice(logger, "output", "%s", config.generation.output)
+
+
+def _setting_text(value: object) -> str:
+    if isinstance(value, Mapping):
+        return ", ".join(f"{key} {entry}" for key, entry in value.items())
+    if isinstance(value, (tuple, list)):
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
+def _flat_points(config: RunConfig):
+    """The flat phase-space points of ``[evaluation.phase_space]`` for the
+    configured artifact (``cli.flat_points``)."""
+
+    from .flat_points import draw_flat_points
+
+    assert config.evaluation.artifact is not None
+    space = config.evaluation.phase_space
+    return draw_flat_points(
+        config.evaluation.artifact,
+        process=config.evaluation.process,
+        points=space.points,
+        seed=space.seed,
+        sqrt_s=space.sqrt_s,
     )
+
+
+def _with_evaluation_progress(
+    progress: ProgressSink, points: int, operation: Callable[..., _T]
+) -> Callable[..., _T]:
+    """``operation`` (one evaluation call over every point) reported to
+    ``progress`` as one task with its elapsed time."""
+
+    def run(*args: object, **kwargs: object) -> _T:
+        task = "evaluate-points"
+        started = time.perf_counter()
+        progress.emit(
+            ProgressStart(
+                task,
+                f"Evaluating {points} point(s)",
+                details={"step": f"evaluating {points} point(s)"},
+            )
+        )
+        success = False
+        try:
+            result = operation(*args, **kwargs)
+            success = True
+            return result
+        finally:
+            progress.emit(
+                ProgressEnd(
+                    task,
+                    success=success,
+                    elapsed_seconds=time.perf_counter() - started,
+                )
+            )
+
+    return run
+
+
+def _virtual_artifact_hint(path: Path) -> bool:
+    """Choose CLI ingress only; the native loader checks the artifact itself
+    (``benchmarking.is_virtual_artifact``)."""
+    from pyamplicol.benchmarking import is_virtual_artifact
+
+    return is_virtual_artifact(path)
 
 
 def _load_process_output(
@@ -300,7 +405,7 @@ def _full_physics_inspection(artifact: Path, selector: str | None) -> object:
     physics = runtime.physics
     if not isinstance(physics, ProcessPhysics):
         return physics
-    if physics.contribution_kind == "virtual":
+    if physics.contribution_kind != "tree":
         return {
             **{item.name: getattr(physics, item.name) for item in fields(physics)},
             "virtual": runtime.inspect(),
@@ -360,9 +465,11 @@ class DefaultCliServices:
         *,
         resolution: ConfigResolution | None = None,
         correlators: CorrelatorConfig | None = None,
+        card: Path | None = None,
     ) -> None:
         self._resolution = resolution
         self._correlators = correlators
+        self._card = card
 
     def _generation_config(self, config: RunConfig) -> RunConfig | ConfigResolution:
         if self._resolution is None:
@@ -381,6 +488,8 @@ class DefaultCliServices:
         if config.generation.output is None:
             raise ConfigurationError("generate requires generation.output")
         processes = _process_set(config)
+        _log_process_syntax(self._resolution)
+        _log_generation_header(config)
         return Generator(
             config=self._generation_config(config), progress=progress
         ).generate(
@@ -404,6 +513,7 @@ class DefaultCliServices:
         if not config.process.entries:
             raise ConfigurationError("generate --dry-run requires a process request")
         processes = _process_set(config)
+        _log_process_syntax(self._resolution)
         return Generator(
             config=self._generation_config(config), progress=progress
         ).plan(
@@ -416,8 +526,6 @@ class DefaultCliServices:
 
         if config.evaluation.artifact is None:
             raise ConfigurationError("evaluate requires evaluation.artifact")
-        if config.evaluation.momenta is None:
-            raise ConfigurationError("evaluate requires evaluation.momenta")
         artifact = config.evaluation.artifact
         virtual = _virtual_artifact_hint(artifact)
         evaluation = config.evaluation
@@ -444,12 +552,15 @@ class DefaultCliServices:
             or evaluation.mu_r2 is not None
             or evaluation.mu_r2_file is not None
             or config.loop.r2_strategy != "auto"
-            or evaluation.on_failure != "raise"
+            or evaluation.on_failure not in (None, "best-effort", "raise")
+            or evaluation.reduction is not None
+            or evaluation.reduction_target is not None
+            or evaluation.reduction_unchecked
             or v2_options
         ):
             raise ConfigurationError(
-                "arithmetic, mu_r2, r2_strategy, poles, stability checks and "
-                "on_failure options require a virtual artifact; "
+                "arithmetic, mu_r2, r2_strategy, poles, stability checks, "
+                "reduction and on_failure options require a virtual artifact; "
                 "tree precision is selected with --precision"
             )
         parameters: ModelParameters | None = None
@@ -460,10 +571,19 @@ class DefaultCliServices:
             if not isinstance(raw_parameters, Mapping):
                 raise ConfigurationError("model parameter JSON must be an object")
             parameters = cast("ModelParameters", raw_parameters)
-        momenta = _read_json(config.evaluation.momenta, exact=exact_inputs)
+        flat = None
+        if config.evaluation.momenta is None:
+            # Flat phase-space points ([evaluation.phase_space]).
+            flat = _flat_points(config)
+            momenta: object = flat.as_inputs(exact=exact_inputs)
+        else:
+            momenta = _read_json(config.evaluation.momenta, exact=exact_inputs)
         if not isinstance(momenta, list):
             raise ConfigurationError("momenta JSON must be a point list")
         scales: ScalarInput | list[ScalarInput] | None = evaluation.mu_r2
+        if flat is not None and scales is None and evaluation.mu_r2_file is None:
+            # The flat points' default scale: s of each point.
+            scales = cast("list[ScalarInput]", flat.mu_r2())
         if evaluation.mu_r2_file is not None:
             raw_scales = _read_json(evaluation.mu_r2_file, exact=True)
             if not isinstance(raw_scales, list):
@@ -474,6 +594,14 @@ class DefaultCliServices:
                 "virtual evaluation requires --mu-r2 or --mu-r2-file"
             )
 
+        # The kinematics improvement (m-lit lit-psimprove): load-time
+        # defaults of the runtime, set only when given.
+        kinematics = {
+            name: getattr(evaluation, name)
+            for name in ("kinematics_improvement", "kinematics_improvement_binary64")
+            if getattr(evaluation, name) is not None
+        }
+
         def load_runtime() -> Runtime:
             if virtual:
                 return Runtime.load(
@@ -483,11 +611,28 @@ class DefaultCliServices:
                     arithmetic=evaluation.arithmetic,
                     precision=evaluation.precision,
                     r2_strategy=config.loop.r2_strategy,
+                    **(
+                        {}
+                        if evaluation.reduction is None
+                        else {"reduction": str(evaluation.reduction)}
+                    ),
+                    **(
+                        {}
+                        if evaluation.reduction_target is None
+                        else {"reduction_target": evaluation.reduction_target}
+                    ),
+                    **(
+                        {"reduction_unchecked": True}
+                        if evaluation.reduction_unchecked
+                        else {}
+                    ),
+                    **kinematics,
                 )
             return Runtime.load(
                 artifact,
                 process=evaluation.process,
                 model_parameters=parameters,
+                **kinematics,
             )
 
         runtime = _load_process_output(artifact, progress, load_runtime)
@@ -510,10 +655,22 @@ class DefaultCliServices:
                 arithmetic=evaluation.arithmetic,
             )
         if evaluation.orders:
-            if virtual or requests is not None:
+            if requests is not None:
                 raise ConfigurationError(
-                    "--orders applies to tree evaluation; virtual results already "
-                    "carry their squared-order axes"
+                    "--orders splits an evaluation by squared coupling order; "
+                    "correlated requests carry their own order axes"
+                )
+            if virtual:
+                # One evaluation, viewed per squared-order sector with the
+                # explicit sums (``VirtualOrderEvaluation``).
+                return runtime.evaluate_orders(
+                    cast("Momenta", momenta),
+                    precision=evaluation.precision,
+                    helicities=evaluation.helicity_ids or None,
+                    color_flows=evaluation.color_flow_ids or None,
+                    mu_r2=scales,
+                    on_failure=evaluation.on_failure,
+                    **v2_options,
                 )
             return runtime.evaluate_orders(
                 cast("Momenta", momenta),
@@ -521,25 +678,35 @@ class DefaultCliServices:
                 helicities=evaluation.helicity_ids or None,
                 color_flows=evaluation.color_flow_ids or None,
             )
-        operation = (
-            runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate
-        )
+        options: dict[str, object] = {
+            "precision": evaluation.precision,
+            "helicities": evaluation.helicity_ids or None,
+            "color_flows": evaluation.color_flow_ids or None,
+        }
+        per_point: dict[str, Sequence[object]] = {}
         if virtual:
-            return operation(
-                cast("Momenta", momenta),
-                precision=evaluation.precision,
-                helicities=evaluation.helicity_ids or None,
-                color_flows=evaluation.color_flow_ids or None,
-                mu_r2=scales,
-                on_failure=evaluation.on_failure,
-                **v2_options,
+            options.update(on_failure=evaluation.on_failure, **v2_options)
+            if isinstance(scales, list) and len(scales) == len(momenta):
+                per_point["mu_r2"] = scales
+            else:
+                options["mu_r2"] = scales
+        if evaluation.resolved:
+            operation = _with_evaluation_progress(
+                progress, len(momenta), runtime.evaluate_resolved
             )
-        return operation(
-            cast("Momenta", momenta),
-            precision=evaluation.precision,
-            helicities=evaluation.helicity_ids or None,
-            color_flows=evaluation.color_flow_ids or None,
-        )
+            return operation(cast("Momenta", momenta), **per_point, **options)
+        # On a live progress display, successive calls over the points:
+        # progress per point and, on Ctrl-C, the tables of the points done
+        # (``partial_evaluation``; a few per cent of extra time for the
+        # calls' fixed cost). Otherwise one call, as the Python API.
+        if getattr(progress, "live", False):
+            from .partial_evaluation import evaluate_in_chunks
+
+            return evaluate_in_chunks(
+                progress, runtime.evaluate, momenta, per_point, options
+            )
+        operation = _with_evaluation_progress(progress, len(momenta), runtime.evaluate)
+        return operation(cast("Momenta", momenta), **per_point, **options)
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
         from pyamplicol.api import BenchmarkRunner
@@ -552,9 +719,49 @@ class DefaultCliServices:
             if not isinstance(raw_points, list):
                 raise ConfigurationError("momenta JSON must be a point list")
             points = raw_points
+        if _virtual_artifact_hint(config.evaluation.artifact):
+            # A loop artifact: both reduction backends side by side, the
+            # runtime and/or the stability statistics (``loop_profile``;
+            # without --momenta it draws its own distinct flat points).
+            from pyamplicol.loop_profile import profile_loop
+
+            return profile_loop(
+                config.evaluation.artifact, config, points=points, progress=progress
+            )
+        if points is None:
+            # Flat phase-space points ([evaluation.phase_space]).
+            points = _flat_points(config).as_inputs(exact=False)
         return BenchmarkRunner(config=config, progress=progress).run(
             config.evaluation.artifact,
             points=points,
+        )
+
+    def check(self, config: RunConfig, progress: ProgressSink) -> object:
+        """``pyamplicol check``: the artifact given (``evaluation.artifact``),
+        else the configuration's own request."""
+
+        from pyamplicol.api.services import check
+
+        target: Path | RunConfig | ConfigResolution
+        if config.evaluation.artifact is not None:
+            target = config.evaluation.artifact
+        elif config.process.entries:
+            target = self._generation_config(config)
+        else:
+            raise ConfigurationError(
+                "check requires a one-loop run card (its process entries) or an "
+                "artifact directory"
+            )
+        return check(
+            target,
+            points=config.check.points,
+            seed=config.check.seed,
+            precision=cast(
+                Literal["auto", "double", "double-double"], str(config.check.precision)
+            ),
+            model=config.check.model,
+            source=None if self._card is None else str(self._card),
+            progress=progress,
         )
 
     def inspect(

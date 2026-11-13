@@ -1,5 +1,5 @@
 {
-  "description": "Gate-G1 benchmark processes (tools/loop_benchmark): the required-references specification format of tools/loop_reference/required_processes.json (same 'qcd' scheme, loop_sm-no_b_mass), with the 2->2 control, the 2->3/2->4 QCD processes that the v2 generator of work/v2-slice produces, and the seven-leg rows of MASTER_PLAN \u00a75.7, which the same generator produces since WP3.1 (G-int, integrated at 4e9b5a9e). 'madloop.export' is the MadLoop export built with MG5's production flags, relative to the reference root (--reference-root); 'openloops.unavailable' records why a process has no OpenLoops library. A provider entry with 'matched' could compute the process but has no production-mode timing under HANDOFF \u00a70.1 ('unavailable' gives the reason); 'timing' imports an existing campaign timing (relative to the reference root) instead of running the provider. 'particle_veto' (|PDG| codes) is the request's public particle_veto; 'reference_fixture' names the fixture of tests/fixtures/loop/required the pyAmpliCol run checks its values against when it is not the process's own. The EW row gg_ttxemepg_ew (scheme 'ew-gmu', the G_mu UFO, QCD and QED corrections: the M-SM 2->5 target) is timed and reported, indicative (role 'indicative'; m-sm/PLAN.md \u00a73.2 MS-VALIDATE item 5).",
+  "description": "Gate-G1 benchmark processes (tools/loop_benchmark): the required-references specification format of tools/loop_reference/required_processes.json (same 'qcd' scheme, loop_sm-no_b_mass), with the 2->2 control, the 2->3/2->4 QCD processes that the v2 generator of work/v2-slice produces, and the seven-leg rows of MASTER_PLAN \u00a75.7, which the same generator produces since WP3.1 (G-int, integrated at 4e9b5a9e). 'madloop.export' is the MadLoop export built with MG5's production flags, relative to the reference root (--reference-root); 'openloops.unavailable' records why a process has no OpenLoops library. A provider entry with 'matched' could compute the process but has no production-mode timing under HANDOFF \u00a70.1 ('unavailable' gives the reason); 'timing' imports an existing campaign timing (relative to the reference root) instead of running the provider. 'particle_veto' (|PDG| codes) is the request's public particle_veto; 'reference_fixture' names the fixture of tests/fixtures/loop/required the pyAmpliCol run checks its values against when it is not the process's own. The EW row gg_ttxemepg_ew (scheme 'ew-gmu', the G_mu UFO, QCD and QED corrections: the M-SM 2->5 target) is gated since the final G1 retime (M-LIT-a0, m-final/PLAN.md \u00a72.4 MF-RETIME; at M-SM it was timed and reported with role 'indicative', m-sm/PLAN.md \u00a73.2 MS-VALIDATE item 5). A specification with role 'indicative' is timed and reported without a gate verdict.",
   "schemes": {
     "qcd": {
       "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
@@ -52,6 +52,34 @@
         "WTau": "0"
       },
       "electroweak_inputs": "gmu",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    },
+    "qcd-widths": {
+      "description": "The qcd scheme (MG5 loop_sm-no_b_mass) with the colourless widths at the card values (WZ = 2.441404, WW = 2.0476, WH = 6.38233934e-03; fixed widths in the propagators, real masses elsewhere) and a stable top (WT = 0).",
+      "restriction": "no_b_mass",
+      "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+      "parameters": {
+        "aS": "0.118",
+        "aEWM1": "132.507",
+        "Gf": "0.0000116639",
+        "MZ": "91.188",
+        "MH": "125",
+        "MT": "173",
+        "ymt": "173"
+      },
+      "fixed_parameters": {
+        "MB": "0",
+        "ymb": "0",
+        "MTA": "0",
+        "ymtau": "0",
+        "WT": "0",
+        "WZ": "2.441404",
+        "WW": "2.0476",
+        "WH": "0.00638233934"
+      },
+      "electroweak_inputs": "alpha_fixed",
       "complex_mass_scheme": false,
       "active_flavours": 5,
       "loop_quark_flavours": 6
@@ -578,8 +606,7 @@
       },
       "correction": "EW",
       "scheme": "ew-gmu",
-      "role": "indicative",
-      "scheme_note": "M-SM G1 EW row (m-sm/PLAN.md \u00a73.2 MS-VALIDATE item 5, [U5]): timed and reported, indicative; the EW speed gate binds in M-FINAL after the EW-specific performance work",
+      "scheme_note": "M-SM G1 EW row (m-sm/PLAN.md \u00a73.2 MS-VALIDATE item 5): gated since the final G1 retime (M-LIT-a0; m-final/PLAN.md \u00a72.4 MF-RETIME), indicative at M-SM ([U5])",
       "madloop": {
         "process": "g g > t t~ e- e+ g QCD=3 QED=2 [virt=QCD QED] QCD^2==6 QED^2==6",
         "export": "runs/required/gg_ttxemepg_ew/madloop-export-production-flags"
@@ -591,6 +618,1472 @@
         "process": "21 21 -> 6 -6 11 -11 21",
         "library": "ppllttj_ew"
       }
+    },
+    {
+      "name": "li_gg_hh",
+      "role": "loop-induced",
+      "li_row": "LI-24",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h h [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hh/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H H"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 25",
+        "library": "pphh2"
+      },
+      "points": {
+        "tool": "exact_points.py",
+        "scale_window": [
+          "300",
+          "1500"
+        ]
+      },
+      "analytic_limit": [
+        "gg_hh_let"
+      ],
+      "note": "the gg_hh_let oracle is the m_t -> infinity limit (LI-A7), compared only in an m_t extrapolation",
+      "reference_fixture": "li/li_gg_hh"
+    },
+    {
+      "name": "li_gg_hgg",
+      "role": "loop-induced",
+      "li_row": "LI-32",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h g g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hgg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 21 21",
+        "library": "pphjj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_hgg"
+    },
+    {
+      "name": "li_gg_zzg",
+      "role": "loop-induced",
+      "li_row": "LI-33",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        23,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z z g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_zzg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z Z g"
+      },
+      "openloops": {
+        "process": "21 21 -> 23 23 21",
+        "library": "ppvvj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_zzg"
+    },
+    {
+      "name": "li_gg_hhh",
+      "role": "loop-induced",
+      "li_row": "LI-31",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        25,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 3
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h h h [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hhh/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H H H"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 25 25",
+        "library": "pphhh2"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "regular",
+        "sqrt_s": [
+          "600",
+          "1000",
+          "2000"
+        ]
+      },
+      "note": "three equal masses without massless partners: supplied points (exact_points cannot represent them)",
+      "reference_fixture": "li/li_gg_hhh"
+    },
+    {
+      "name": "li_gg_aag",
+      "role": "loop-induced",
+      "li_row": "LI-33",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        22,
+        22,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > a a g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_aag/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> A A g"
+      },
+      "openloops": {
+        "process": "21 21 -> 22 22 21",
+        "library": "ppvvj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_aag"
+    },
+    {
+      "name": "li_gg_wpwmg",
+      "role": "loop-induced",
+      "li_row": "LI-33",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        24,
+        -24,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > w+ w- g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_wpwmg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> W+ W- g"
+      },
+      "openloops": {
+        "process": "21 21 -> 24 -24 21",
+        "library": "ppvvj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_wpwmg"
+    },
+    {
+      "name": "li_gg_zzz",
+      "role": "loop-induced",
+      "li_row": "LI-34",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        23,
+        23
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 3
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z z z [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_zzz/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z Z Z"
+      },
+      "openloops": {
+        "process": "21 21 -> 23 23 23",
+        "library": "ppvvv2"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "regular",
+        "sqrt_s": [
+          "400",
+          "800",
+          "1500"
+        ]
+      },
+      "note": "three equal masses without massless partners: supplied points",
+      "reference_fixture": "li/li_gg_zzz"
+    },
+    {
+      "name": "li_gg_hzg",
+      "role": "loop-induced",
+      "li_row": "LI-35",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        23,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h z g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hzg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H Z g"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 23 21",
+        "library": "pphzj2"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "regular",
+        "sqrt_s": [
+          "400",
+          "800",
+          "1500"
+        ]
+      },
+      "note": "two unequal masses and one massless partner: supplied points",
+      "reference_fixture": "li/li_gg_hzg"
+    },
+    {
+      "name": "li_gg_agg",
+      "role": "loop-induced",
+      "li_row": "LI-35",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        22,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > a g g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_agg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> A g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 22 21 21",
+        "library": "ppajj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "note": "OpenLoops library ppajj2 (agggg) is not in the designated list: added under the 45-minute rule (PLAN \u00a73.2)",
+      "reference_fixture": "li/li_gg_agg"
+    },
+    {
+      "name": "li_gg_zgg",
+      "role": "loop-induced",
+      "li_row": "LI-35",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z g g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_zgg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z g g"
+      },
+      "openloops": {
+        "unavailable": "no OpenLoops ls library serves g g > z g g: the public channel database of OpenLoops 2.1.5 (proclib/channels_public.rinfo, 2026-11-06) has zgg/zggg (ppvj2) but no zgggg channel; row ML/RC only (PLAN \u00a73.2)"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_zgg"
+    },
+    {
+      "name": "li_uux_hgg",
+      "role": "loop-induced",
+      "li_row": "LI-36",
+      "loop_induced": true,
+      "pdgs": [
+        2,
+        -2,
+        25,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > h g g QED=1 [sqrvirt=QCD]",
+        "export": "runs/li/li_uux_hgg/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> H g g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 25 21 21",
+        "library": "pphjj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_uux_hgg"
+    },
+    {
+      "name": "li_uux_ddxh",
+      "role": "loop-induced",
+      "li_row": "LI-36",
+      "loop_induced": true,
+      "pdgs": [
+        2,
+        -2,
+        1,
+        -1,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > d d~ h QED=1 [sqrvirt=QCD]",
+        "export": "runs/li/li_uux_ddxh/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> d d~ H",
+        "switchoff": [
+          [
+            "H",
+            "Z",
+            "Z"
+          ],
+          [
+            "H",
+            "W+",
+            "W-"
+          ]
+        ]
+      },
+      "openloops": {
+        "process": "2 -2 -> 1 -1 25",
+        "library": "pphjj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "note": "loop-induced by the order limit QED <= 1 (the EW tree u u~ > d d~ h is QED = 3): MadLoop QED=1, OpenLoops uuxddxh (EW=1); Recola has no Born order limit, so its H Z Z and H W+ W- tree vertices are switched off (the only vertices of the EW tree with massless quarks; the gs^4 e loop amplitude has none)",
+      "reference_fixture": "li/li_uux_ddxh"
+    },
+    {
+      "name": "li_emep_ggg",
+      "role": "loop-induced",
+      "li_row": "LI-E4",
+      "loop_induced": true,
+      "pdgs": [
+        -11,
+        11,
+        21,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "e+ e- > g g g [sqrvirt=QCD]",
+        "export": "runs/li/li_emep_ggg/madloop-export"
+      },
+      "recola": {
+        "process": "e+ e- -> g g g"
+      },
+      "openloops": {
+        "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "note": "the lepton current through gamma*/Z into a quark loop with three gluons (PLAN's [QED] label: the EW tier); MadLoop's [sqrvirt=QCD] loop content is that quark loop with the QCD-perturbation R2 vertices; widths zero (the complex-mass variant li_emep_ggg_cms carries the Z width)",
+      "reference_fixture": "li/li_emep_ggg"
+    },
+    {
+      "name": "li_gg_hhgg",
+      "role": "loop-induced",
+      "li_row": "LI-41",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        25,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h h g g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hhgg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H H g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 25 21 21",
+        "library": "pphhjj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "note": "the P15 literature point (1.3033633142042775e-12 GeV^-4) is lit-val's check; these are the campaign's own points",
+      "reference_fixture": "li/li_gg_hhgg"
+    },
+    {
+      "name": "li_gg_hggg",
+      "role": "loop-induced",
+      "li_row": "LI-42",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        21,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 5,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h g g g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hggg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H g g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 21 21 21",
+        "library": "pphjjj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_hggg"
+    },
+    {
+      "name": "li_gg_emepmupmum",
+      "role": "loop-induced",
+      "li_row": "LI-43",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        -11,
+        11,
+        -13,
+        13
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 4
+      },
+      "correction": "QCD",
+      "scheme": "qcd-widths",
+      "madloop": {
+        "process": "g g > e+ e- mu+ mu- [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_emepmupmum/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> e+ e- mu+ mu-",
+        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 5e-5 to 1.1e-3, so the reference fixture excludes its values",
+        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 3.0e-4 to 8.4e-4 at the reference points and 1.3e-4 to 1.0e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (all three agree to 2e-13 under the complex-mass scheme, li_gg_emepmupmum_cms). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+      },
+      "openloops": {
+        "process": "21 21 -> -11 11 -13 13",
+        "library": "ppllll2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "note": "fixed widths in the tree propagators (Z, H; Q7), stable top in the loop",
+      "reference_fixture": "li/li_gg_emepmupmum"
+    },
+    {
+      "name": "li_gg_aagg",
+      "role": "loop-induced",
+      "li_row": "LI-44",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        22,
+        22,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > a a g g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_aagg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> A A g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 22 22 21 21",
+        "library": "ppaajj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "note": "OpenLoops library ppaajj2 (aagggg) is not in the designated list: added under the 45-minute rule (PLAN \u00a73.2)",
+      "reference_fixture": "li/li_gg_aagg"
+    },
+    {
+      "name": "li_gg_zzzz",
+      "role": "loop-induced",
+      "li_row": "LI-44",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        23,
+        23,
+        23
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 4
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z z z z [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_zzzz/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z Z Z Z",
+        "value_exceptions": {
+          "points": [
+            7,
+            13
+          ],
+          "reason": "Recola is numerically unstable at stream points 7 and 13 (sqrt s = 500; a Z pair 6.0 and 0.4 GeV above the ZZ threshold, a Z at pT 12 and 6 GeV): an exact rotation moves its value by +136 % and -24 % and its single pole is 1.1-1.5 times its finite part, so its values there (3.54e-9, 1.39e-7) are no reference; its timing stays valid. MadLoop's values there (1.0930e-10, 1.4241e-8) are COLLIER's alone (the 6|7|1 run falls back to COLLIER there, status 217; MadLoop's own estimates 1.6e-9, 4.3e-11): no second provider validates them. Stream point 3 (= reference point 3) is uncertain at ~1e-4 between the providers (tests/fixtures/loop/required/li/li_gg_zzzz.json l1_caution)"
+        }
+      },
+      "openloops": {
+        "unavailable": "no OpenLoops ls library serves g g > z z z z (public channel database of OpenLoops 2.1.5, 2026-11-06); row ML/RC only (PLAN \u00a73.2)"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "regular",
+        "sqrt_s": [
+          "500",
+          "900",
+          "1500"
+        ]
+      },
+      "note": "four equal masses without massless partners: supplied points",
+      "reference_fixture": "li/li_gg_zzzz"
+    },
+    {
+      "name": "li_gg_emepmupmumg",
+      "role": "loop-induced",
+      "li_row": "LI-51",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        -11,
+        11,
+        -13,
+        13,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 4
+      },
+      "correction": "QCD",
+      "scheme": "qcd-widths",
+      "madloop": {
+        "process": "g g > e+ e- mu+ mu- g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_emepmupmumg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> e+ e- mu+ mu- g",
+        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 5e-5 to 1.1e-3, so the reference fixture excludes its values",
+        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 1.7e-4 to 3.6e-4 at the reference points and 5.1e-5 to 1.1e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (as on LI-43). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+      },
+      "openloops": {
+        "process": "21 21 -> -11 11 -13 13 21",
+        "library": "ppllllj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "note": "2->5 stretch (rank 7, outside TIRust's validated N <= 6, reported only); OpenLoops library ppllllj2 is not in the designated list: added under the 45-minute rule (PLAN \u00a73.2)",
+      "reference_fixture": "li/li_gg_emepmupmumg"
+    },
+    {
+      "name": "li_gg_h",
+      "role": "loop-induced",
+      "li_row": "LI-A1",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_h/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H"
+      },
+      "openloops": {
+        "process": "21 21 -> 25",
+        "library": "pphj2"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "rest"
+      },
+      "analytic": [
+        "gg_h"
+      ],
+      "reference_fixture": "li/li_gg_h"
+    },
+    {
+      "name": "li_h_gg",
+      "role": "loop-induced",
+      "li_row": "LI-A2",
+      "loop_induced": true,
+      "initial": 1,
+      "pdgs": [
+        25,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "h > g g [sqrvirt=QCD]",
+        "export": "runs/li/li_h_gg/madloop-export"
+      },
+      "recola": {
+        "process": "H -> g g"
+      },
+      "openloops": {
+        "unavailable": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+      },
+      "points": {
+        "tool": "decay_points.py"
+      },
+      "analytic": [
+        "h_gg"
+      ],
+      "reference_fixture": "li/li_h_gg"
+    },
+    {
+      "name": "li_h_aa",
+      "role": "loop-induced",
+      "li_row": "LI-A3",
+      "loop_induced": true,
+      "initial": 1,
+      "pdgs": [
+        25,
+        22,
+        22
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 3
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "h > a a [sqrvirt=QED]",
+        "export": "runs/li/li_h_aa/madloop-export"
+      },
+      "recola": {
+        "process": "H -> A A"
+      },
+      "openloops": {
+        "unavailable": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+      },
+      "points": {
+        "tool": "decay_points.py"
+      },
+      "analytic": [
+        "h_aa"
+      ],
+      "reference_fixture": "li/li_h_aa"
+    },
+    {
+      "name": "li_h_za",
+      "role": "loop-induced",
+      "li_row": "LI-A4",
+      "loop_induced": true,
+      "initial": 1,
+      "pdgs": [
+        25,
+        23,
+        22
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 3
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "h > z a [sqrvirt=QED]",
+        "export": "runs/li/li_h_za/madloop-export"
+      },
+      "recola": {
+        "process": "H -> Z A"
+      },
+      "openloops": {
+        "unavailable": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+      },
+      "points": {
+        "tool": "decay_points.py"
+      },
+      "analytic": [
+        "h_za"
+      ],
+      "reference_fixture": "li/li_h_za"
+    },
+    {
+      "name": "li_aa_h",
+      "role": "loop-induced",
+      "li_row": "LI-E2",
+      "loop_induced": true,
+      "pdgs": [
+        22,
+        22,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 3
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "a a > h [sqrvirt=QED]",
+        "export": "runs/li/li_aa_h/madloop-export"
+      },
+      "recola": {
+        "process": "A A -> H"
+      },
+      "openloops": {
+        "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "rest"
+      },
+      "analytic": [
+        "aa_h"
+      ],
+      "reference_fixture": "li/li_aa_h"
+    },
+    {
+      "name": "li_gg_aa",
+      "role": "loop-induced",
+      "li_row": "LI-A5",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        22,
+        22
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > a a [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_aa/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> A A"
+      },
+      "openloops": {
+        "process": "21 21 -> 22 22",
+        "library": "ppvv2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "analytic": [
+        "gg_aa"
+      ],
+      "reference_fixture": "li/li_gg_aa"
+    },
+    {
+      "name": "li_gg_zz",
+      "role": "loop-induced",
+      "li_row": "LI-21",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        23
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z z [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_zz/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z Z"
+      },
+      "openloops": {
+        "process": "21 21 -> 23 23",
+        "library": "ppvv2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_zz"
+    },
+    {
+      "name": "li_gg_wpwm",
+      "role": "loop-induced",
+      "li_row": "LI-22",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        24,
+        -24
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > w+ w- [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_wpwm/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> W+ W-"
+      },
+      "openloops": {
+        "process": "21 21 -> 24 -24",
+        "library": "ppvv2"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "regular",
+        "sqrt_s": [
+          "350",
+          "700",
+          "1500"
+        ]
+      },
+      "reference_fixture": "li/li_gg_wpwm"
+    },
+    {
+      "name": "li_gg_za",
+      "role": "loop-induced",
+      "li_row": "LI-23",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        22
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z a [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_za/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z A"
+      },
+      "openloops": {
+        "process": "21 21 -> 23 22",
+        "library": "ppvv2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_za"
+    },
+    {
+      "name": "li_gg_hz",
+      "role": "loop-induced",
+      "li_row": "LI-25",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        23
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h z [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hz/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H Z"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 23",
+        "library": "pphz2"
+      },
+      "points": {
+        "tool": "supplied_points.py",
+        "family": "regular",
+        "sqrt_s": [
+          "350",
+          "700",
+          "1500"
+        ]
+      },
+      "reference_fixture": "li/li_gg_hz"
+    },
+    {
+      "name": "li_gg_hg",
+      "role": "loop-induced",
+      "li_row": "LI-26",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H g"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 21",
+        "library": "pphj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_hg"
+    },
+    {
+      "name": "li_uux_hg",
+      "role": "loop-induced",
+      "li_row": "LI-26",
+      "loop_induced": true,
+      "pdgs": [
+        2,
+        -2,
+        25,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > h g QED=1 [sqrvirt=QCD]",
+        "export": "runs/li/li_uux_hg/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> H g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 25 21",
+        "library": "pphj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_uux_hg"
+    },
+    {
+      "name": "li_ug_hu",
+      "role": "loop-induced",
+      "li_row": "LI-26",
+      "loop_induced": true,
+      "pdgs": [
+        2,
+        21,
+        25,
+        2
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u g > h u QED=1 [sqrvirt=QCD]",
+        "export": "runs/li/li_ug_hu/madloop-export"
+      },
+      "recola": {
+        "process": "u g -> H u"
+      },
+      "openloops": {
+        "process": "2 21 -> 25 2",
+        "library": "pphj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_ug_hu"
+    },
+    {
+      "name": "li_gg_zg",
+      "role": "loop-induced",
+      "li_row": "LI-27",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_zg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z g"
+      },
+      "openloops": {
+        "process": "21 21 -> 23 21",
+        "library": "ppvj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_zg"
+    },
+    {
+      "name": "li_gg_ag",
+      "role": "loop-induced",
+      "li_row": "LI-27",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        22,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > a g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_ag/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> A g"
+      },
+      "openloops": {
+        "process": "21 21 -> 22 21",
+        "library": "ppvj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_ag"
+    },
+    {
+      "name": "li_emep_ha",
+      "role": "loop-induced",
+      "li_row": "LI-E3",
+      "loop_induced": true,
+      "pdgs": [
+        -11,
+        11,
+        25,
+        22
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 4
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "e+ e- > h a [sqrvirt=QED]",
+        "export": "runs/li/li_emep_ha/madloop-export"
+      },
+      "recola": {
+        "process": "e+ e- -> H A"
+      },
+      "openloops": {
+        "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_emep_ha"
+    },
+    {
+      "name": "li_aa_aa",
+      "role": "loop-induced",
+      "li_row": "LI-A6",
+      "loop_induced": true,
+      "pdgs": [
+        22,
+        22,
+        22,
+        22
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 4
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "a a > a a [sqrvirt=QED]",
+        "export": "runs/li/li_aa_aa/madloop-export"
+      },
+      "recola": {
+        "process": "A A -> A A"
+      },
+      "openloops": {
+        "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "analytic": [
+        "aa_aa"
+      ],
+      "note": "complete [QED] (every charged fermion and the W / Goldstone / ghost loops; Q38 = (a))",
+      "reference_fixture": "li/li_aa_aa"
+    },
+    {
+      "name": "li_aa_zz",
+      "role": "loop-induced",
+      "li_row": "LI-E2",
+      "loop_induced": true,
+      "pdgs": [
+        22,
+        22,
+        23,
+        23
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 4
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "a a > z z [sqrvirt=QED]",
+        "export": "runs/li/li_aa_zz/madloop-export"
+      },
+      "recola": {
+        "process": "A A -> Z Z"
+      },
+      "openloops": {
+        "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_aa_zz"
+    },
+    {
+      "name": "li_aa_hh",
+      "role": "loop-induced",
+      "li_row": "LI-E2",
+      "loop_induced": true,
+      "pdgs": [
+        22,
+        22,
+        25,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 4
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "a a > h h [sqrvirt=QED]",
+        "export": "runs/li/li_aa_hh/madloop-export"
+      },
+      "recola": {
+        "process": "A A -> H H"
+      },
+      "openloops": {
+        "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_aa_hh"
+    },
+    {
+      "name": "li_emep_hh",
+      "role": "loop-induced",
+      "li_row": "LI-E3",
+      "loop_induced": true,
+      "pdgs": [
+        -11,
+        11,
+        25,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 0,
+        "QED": 4
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {
+        "process": "e+ e- > h h [sqrvirt=QED]",
+        "export": "runs/li/li_emep_hh/madloop-export"
+      },
+      "recola": {
+        "process": "e+ e- -> H H"
+      },
+      "openloops": {
+        "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_emep_hh"
+    },
+    {
+      "name": "li_h_ggg",
+      "role": "loop-induced",
+      "li_row": "LI-37",
+      "loop_induced": true,
+      "initial": 1,
+      "pdgs": [
+        25,
+        21,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "h > g g g [sqrvirt=QCD]",
+        "export": "runs/li/li_h_ggg/madloop-export"
+      },
+      "recola": {
+        "process": "H -> g g g"
+      },
+      "openloops": {
+        "unavailable": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+      },
+      "points": {
+        "tool": "decay_points.py"
+      },
+      "reference_fixture": "li/li_h_ggg"
+    },
+    {
+      "name": "li_z_ggg",
+      "role": "loop-induced",
+      "li_row": "LI-37",
+      "loop_induced": true,
+      "initial": 1,
+      "pdgs": [
+        23,
+        21,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "z > g g g [sqrvirt=QCD]",
+        "export": "runs/li/li_z_ggg/madloop-export"
+      },
+      "recola": {
+        "process": "Z -> g g g"
+      },
+      "openloops": {
+        "unavailable": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+      },
+      "points": {
+        "tool": "decay_points.py"
+      },
+      "reference_fixture": "li/li_z_ggg"
     }
   ]
 }

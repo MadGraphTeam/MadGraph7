@@ -164,7 +164,8 @@ deployment-target = "11.0"
 
 [tool.pyamplicol.native-build.sdk]
 package = "rusticol-capi"
-profile = "release"
+# Cargo.toml's [profile.sdk]: release codegen without LTO bitcode in the archive.
+profile = "sdk"
 # Fat LTO folds libstd into referenced static-library objects, which makes the
 # archive impossible to link from a Rust consumer on ELF without duplicate symbols.
 rustc-codegen-arguments = ["-C", "lto=off", "-C", "embed-bitcode=no"]

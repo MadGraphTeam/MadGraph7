@@ -243,6 +243,27 @@ class ScalarFunctionLibrary:
         self.helper_bodies = MappingProxyType(bodies)
         self.helpers = MappingProxyType(self.helpers)
 
+    def rebind(self, raw: Any) -> None:
+        """Hand this library, and every program lowered with it, over to
+        ``raw``: a model whose lowering inputs equal its own model's (its
+        name, its collections and its helper bindings, the only parts of a
+        model ``lower_scalar_program`` and this library read; e.g. the
+        restricted model before and after ``prepare_loop_restrictions``
+        records the fixed zeros in its metadata). Refused for any other
+        model, so that a program never serves another model's scalars."""
+
+        owner = self.raw
+        if raw is not owner and (
+            raw.name != owner.name
+            or any(
+                raw.metadata.get(key) != owner.metadata.get(key)
+                for key in ("function_bindings", "function_binding_scope")
+            )
+            or raw.collections != owner.collections
+        ):
+            raise ValueError("scalar program belongs to another raw model")
+        self.raw = raw
+
     def decided_number(self, expression: Any) -> Fraction | None:
         """The exact real value of ``expression`` when it is decided where it
         is formed: an exact rational number, or this library's predicates
@@ -651,22 +672,40 @@ class ScalarProgram:
 
 
 def require_laurent_scalar(expression: ScalarExpression) -> None:
-    """Reject epsilon hidden in native opaque functions or active diagnostics."""
+    """Reject epsilon hidden in native opaque functions or active diagnostics.
+
+    The walk visits only atoms in which epsilon occurs, and never the
+    arguments of a function: a sub-expression's symbols (function heads
+    included) are among those of every atom containing it, so an atom
+    without epsilon holds no function of epsilon, and a function decides by
+    its own symbols (it is refused when epsilon occurs in it, at any depth).
+    An expression without epsilon (most of a model's declarations) is
+    decided by one native symbol query per part. Exactly the refusals of
+    the full walk of every atom: a function containing epsilon anywhere in
+    the value or the diagnostic, else epsilon in the diagnostic."""
     from symbolica import AtomType
 
     from .model_expressions import epsilon_symbol
 
     epsilon = epsilon_symbol()
-    pending = [expression.value, expression.diagnostic]
+    pending = [
+        part
+        for part in (expression.value, expression.diagnostic)
+        if epsilon in part.get_all_symbols()
+    ]
     while pending:
         atom = pending.pop()
-        if atom.get_type() == AtomType.Fn and epsilon in atom.get_all_symbols():
+        kind = atom.get_type()
+        if kind == AtomType.Fn:
+            # Only atoms containing epsilon are visited.
             raise NotImplementedError(
                 "epsilon-dependent scalar helper or function arguments "
                 "require expansion"
             )
-        if atom.get_type() not in {AtomType.Num, AtomType.Var}:
-            pending.extend(atom)
+        if kind not in {AtomType.Num, AtomType.Var}:
+            pending.extend(
+                child for child in atom if epsilon in child.get_all_symbols()
+            )
     if epsilon in expression.diagnostic.get_all_symbols():
         raise NotImplementedError("epsilon-dependent predicate diagnostic")
 

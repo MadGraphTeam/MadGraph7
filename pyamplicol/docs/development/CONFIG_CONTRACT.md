@@ -16,7 +16,7 @@ overrides in order, then recorded license/resource clamping.
 
 - `schema_version: int = 1`
 - `action: generate | evaluate | benchmark | inspect | model-inspect |
-  model-compile | model-processes | group-processes`
+  model-compile | model-processes | group-processes | check`
 
 ## Model
 
@@ -25,6 +25,8 @@ overrides in order, then recorded license/resource clamping.
 - `simplify: bool = true`
 - `cache: bool = true`
 - `cache_dir: path | null`
+- `loop_preparation_cache: bool = true` (persistent cache of one-loop
+  request-model preparations)
 
 ## Process
 
@@ -42,6 +44,10 @@ overrides in order, then recorded license/resource clamping.
 - `consider_charge_conjugation: bool = true`
 - `only_unit_multiplier: bool = false`
 - `analyze_process_groups: none | numerical = none`
+- `loop_coupling_orders: list[str] | null` (a one-loop request: the corrected
+  coupling orders, e.g. `["QCD"]`)
+- `loop_induced: auto | skip | only | include = auto` (routing of processes
+  without a Born amplitude; `include` serves both kinds of a mixed request)
 
 Model defaults and this explicit table are merged by name. Every model supplies
 `all` for its declaration-ordered valid physical external states; an explicit
@@ -61,6 +67,25 @@ rational factor, restricted to factor 1 by `only_unit_multiplier`.
 cases. The `group-processes` action reads `evaluation.artifact` and these
 fields; its CLI defaults `analyze_process_groups` to `numerical`.
 
+## Loop
+
+One-loop generation settings (used only with `process.loop_coupling_orders`):
+
+- `r2_strategy: auto | model | direct = auto`
+- `reduction: auto | ninjars | tirust = auto` (the generation default recorded
+  in the artifact; `auto` = TIRust for loop-induced, NinjaRS for
+  Born-interfered processes)
+- `external_photons: final | all | none | list[int] = final`
+- `alpha_s_parameter: str | null`, `alpha0_conversion_parameter: str =
+  "eCoup_DGmua0_UV_EW"`, `alpha0_inverse_parameter: str | null`
+- `loop.model.*` (`loop_coupling_orders`, `uv_complete`, `model_r2_complete`,
+  `scheme.{dimensional_regularization, external_states, gamma5,
+  renormalization, mass_scheme, finite_restoration, model_convention}`): the
+  model's loop declaration, all null by default (read from the model)
+- `loop.preparation.{compatibility: str | null, covariant_multiplets:
+  table[str, list[int]] = {}, fixed_parameters: table[str, exact scalar] =
+  {}}`
+
 ## Color
 
 - `accuracy: lc | nlc | full = lc`
@@ -68,6 +93,7 @@ fields; its CLI defaults `analyze_process_groups` to `numerical`.
 - `fft_basis: trace | adjoint = adjoint`
 - `lc_flow_layout: topology-replay | all-flow-union = topology-replay`
 - `adjoint_dense_max_gluons: int >= 0 = 12` (tuning: automatic DDM basis bound)
+- `graded: bool = false`
 - `fused_selector_max_sectors: int >= 0 | null = 128` (tuning: all-colour
   helicity-selector lane bound; null builds it for any sector count)
 
@@ -111,6 +137,13 @@ process has a smaller basis or faster runtime.
 - `mode: error | append | replace = error`
 - `workers: auto | int = auto`
 - `emit_api_bundle: bool = true`
+- `particle_veto: list[str] = []`, `allow_anomalous_veto: bool = false`
+  (particles kept out of one-loop loops)
+- `loop_induced_probes: bool = false`, `allow_failed_probes: bool = false`
+  (generation-time finiteness / Ward / Goldstone probes of loop-induced
+  processes; `pyamplicol check` runs them on demand)
+- `helicity_filter_failure_probability: float = 1e-12`
+- `loop_induced_folding: bool = true`
 
 ### Generation Validation
 
@@ -273,11 +306,46 @@ macOS x86_64, and glibc Linux x86_64. Other targets are rejected explicitly.
 - `artifact: path | null`
 - `process: str | null`
 - `precision: int = 16`
+- `arithmetic: double | double-double | arbitrary | null`
 - `resolved: bool = false`
+- `orders: bool = false`
 - `helicity_ids: list[str] = []`
 - `color_flow_ids: list[str] = []`
 - `model_parameters: path | null`
 - `momenta: path | null`
+
+One-loop evaluation settings:
+
+- `mu_r2: str | null`, `mu_r2_file: path | null`
+- `correlated_requests: path | null`
+- `on_failure: best-effort | return | raise | null = null` (null: the
+  default, `best-effort`; since 1.0.3)
+- `poles: all | none | uv | ir = all` (loop-induced: `all` or `none`)
+- `reduction: auto | ninjars | tirust | null` (null: the artifact's)
+- `reduction_target: float | null` (TIRust's target accuracy; null = 1e-5)
+- `reduction_unchecked: bool = false` (timing mode without the backends'
+  acceptance checks; no accuracy certificate)
+- `kinematics_improvement: z-shift | rescaling | projection | off | null`
+  (null = `z-shift`: MadLoop's default chain, finished by the projection when
+  the produced point is inexact)
+- `kinematics_improvement_binary64: bool | null` (null = false: binary64 inputs
+  are not improved)
+- `stability_checks.{rotations: list[str] = [], rotation_count: int = 0,
+  reduction_direction: bool = false, rescaled: bool = false}` (off by default;
+  the recommended checks are one rotation with the reduction-direction and
+  rescaled checks)
+- `stability.{higher, relative_tolerance, absolute_tolerance,
+  verify_successful}`: removed with the legacy loop engine; a non-default
+  value is refused
+
+## Check
+
+Settings of the `check` action (`pyamplicol check`):
+
+- `points: int = 3`, `seed: int | null`
+- `precision: auto | double | double-double = auto`
+- `model: str | null` (the model source of a UFO-directory artifact)
+- `sqrt_s: float | null`, `arbitrary_digits: int | null`
 
 ## Benchmark
 

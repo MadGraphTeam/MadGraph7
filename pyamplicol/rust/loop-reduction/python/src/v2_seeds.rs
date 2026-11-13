@@ -135,6 +135,7 @@ impl SeedBuilder {
     /// content ids.
     #[new]
     fn new(py: Python<'_>, spec: &str, offsets: &[u8], contents: &[u8]) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let spec: SeedSpec = serde_json::from_str(spec).map_err(error)?;
         let offsets = words::<8>(offsets)?
             .into_iter()
@@ -162,6 +163,7 @@ impl SeedBuilder {
         handle: usize,
         spec: &str,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let spec: SeedSpec = serde_json::from_str(spec).map_err(error)?;
         let retained = generation.get().retained(handle)?;
         let core = py
@@ -177,6 +179,7 @@ impl SeedBuilder {
     /// Combinations of every skeleton; the certificate candidates as
     /// `[(kind, skeletons of the smallest size)]`.
     fn analyse(&mut self, py: Python<'_>) -> PyResult<Vec<(&'static str, Vec<usize>)>> {
+        let _unlock = pyamplicol::unlock();
         let core = &mut self.core;
         let candidates = py.detach(|| core.analyse()).map_err(error)?;
         Ok(candidates
@@ -187,6 +190,7 @@ impl SeedBuilder {
 
     /// The combination of one skeleton: `[(primitive, coefficient id)]`.
     fn combination(&self, skeleton: usize) -> PyResult<Option<Vec<(RawPrimitive, u32)>>> {
+        let _unlock = pyamplicol::unlock();
         let Some(terms) = self.core.combination_of(skeleton) else {
             return Ok(None);
         };
@@ -204,6 +208,7 @@ impl SeedBuilder {
         py: Python<'_>,
         certified: Vec<String>,
     ) -> PyResult<(Vec<RawRing>, Vec<usize>)> {
+        let _unlock = pyamplicol::unlock();
         let kinds = certified
             .iter()
             .map(|name| Kind::from_name(name))
@@ -235,6 +240,7 @@ impl SeedBuilder {
     /// `(inverse sqrt(2) power, terms)`): `(new classes, class orders, rows,
     /// row of each skeleton)`.
     fn complete(&mut self, py: Python<'_>, rings: &str, generics: &str) -> PyResult<RawOutput> {
+        let _unlock = pyamplicol::unlock();
         let parse = |text: &str| -> PyResult<Vec<seeds::Tensor>> {
             let specs: Vec<TensorSpec> = serde_json::from_str(text).map_err(error)?;
             specs
@@ -253,11 +259,13 @@ impl SeedBuilder {
 
     /// The stage's content ids the generic needs read (after `needs`).
     fn generic_contents(&self) -> Vec<u32> {
+        let _unlock = pyamplicol::unlock();
         self.core.generic_contents()
     }
 
     /// Input indices of the exact descriptors of the ring needs.
     fn ring_exact_descriptors(&self) -> PyResult<Vec<u32>> {
+        let _unlock = pyamplicol::unlock();
         self.core.ring_exact_descriptors().map_err(error)
     }
 
@@ -273,6 +281,7 @@ impl SeedBuilder {
         exact: &str,
         contents: &str,
     ) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         let (exact, contents) = (networks(exact)?, factored_networks(contents)?);
         let core = &mut self.core;
         py.detach(|| core.reduce(&ring_legs, &seed_legs, &exact, &contents))
@@ -282,6 +291,7 @@ impl SeedBuilder {
     /// The reduced tensor of ring need `k` (after `reduce`):
     /// `(normalisation, terms)` (`_reduced_primitive`).
     fn ring_tensor(&self, k: usize) -> PyResult<(i64, Vec<RawTerm>)> {
+        let _unlock = pyamplicol::unlock();
         let (rings, _) = self
             .core
             .reduced()
@@ -294,6 +304,7 @@ impl SeedBuilder {
 
     /// The generic seed of generic need `g` (after `reduce`).
     fn generic_tensor(&self, g: usize) -> PyResult<(i64, Vec<RawTerm>)> {
+        let _unlock = pyamplicol::unlock();
         let (_, generics) = self
             .core
             .reduced()
@@ -306,6 +317,7 @@ impl SeedBuilder {
 
     /// `complete` with the natively reduced needs.
     fn complete_reduced(&mut self, py: Python<'_>) -> PyResult<RawOutput> {
+        let _unlock = pyamplicol::unlock();
         let core = &mut self.core;
         let output = py.detach(|| core.complete_reduced()).map_err(error)?;
         self.finish(output)
@@ -313,6 +325,7 @@ impl SeedBuilder {
 
     /// Every interned coefficient as `(re, im)` fraction texts, by id.
     fn coefficients(&self) -> Vec<(String, String)> {
+        let _unlock = pyamplicol::unlock();
         (0..self.core.coefficient_count() as u32)
             .map(|id| self.core.coefficient(id).text())
             .collect()
@@ -320,11 +333,13 @@ impl SeedBuilder {
 
     /// Every order vector by id, names as the caller's ids.
     fn order_vectors(&self) -> Vec<Vec<(u16, i64)>> {
+        let _unlock = pyamplicol::unlock();
         self.core.order_vectors()
     }
 
     /// `Skeleton.orders` of every skeleton, as order ids.
     fn skeleton_orders(&self) -> Vec<u32> {
+        let _unlock = pyamplicol::unlock();
         self.core.skeleton_orders().to_vec()
     }
 
@@ -332,6 +347,7 @@ impl SeedBuilder {
     /// `class_live` flag of each of its orders (as `complete` lists them)
     /// and `keep` of every skeleton.
     fn liveness(&mut self, py: Python<'_>, spec: &str) -> PyResult<(Vec<Vec<bool>>, Vec<bool>)> {
+        let _unlock = pyamplicol::unlock();
         let spec: LivenessSpec = serde_json::from_str(spec).map_err(error)?;
         let output = self
             .output

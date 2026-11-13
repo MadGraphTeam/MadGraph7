@@ -457,6 +457,11 @@ class NativeTrees:
     # container's compressed member (``StoredMember``) instead, which its
     # executors inflate natively (M-FINAL MF-8G-2 item 2).
     container: bytes | StoredMember | None = None
+    # (component, epsilon power, loop orders) of each counterterm ket vector
+    # (``_Counterterms.vectors``; generation only): with ``ket_tensors`` and
+    # the program's ket layout a loop-induced point's native kets project
+    # onto its amplitude basis (``induced.native_kets``).
+    ket_vectors: tuple[tuple[str, int, Orders], ...] = ()
 
     @property
     def is_binary(self) -> bool:
@@ -1153,6 +1158,10 @@ def export_trees(
         counterterms = _counterterm_program(
             slice_, closure_term, whole_term, components, born_orders, ct_terms
         )
+        if not counterterms.record["ket"] and not counterterms.record["entries"]:
+            # No counterterm term and no field insertion reaches the request
+            # (an exact colour zero's program): nothing to evaluate.
+            counterterms = ct = None
     masses = _external_masses(slice_)
     parameters, parameter_evaluator, parameter_outputs = _parameter_program(
         slice_,
@@ -1250,6 +1259,7 @@ def export_trees(
         ),
         () if counterterms is None else counterterms.tensors,
         tuple(sections.items()),
+        ket_vectors=() if counterterms is None else counterterms.vectors,
     )
 
 
@@ -1407,6 +1417,10 @@ class _Counterterms:
     # ``NATIVE_SECTIONS``: the overlap cells' binary section (``record``
     # then omits ``cells``; ``_cell_section``).
     cells: bytes | None = None
+    # (component, epsilon power, loop orders) of each ket vector, in index
+    # order: a loop-induced point's kets project onto its amplitude basis
+    # from them (``induced.native_kets``).
+    vectors: tuple[tuple[str, int, Orders], ...] = ()
 
 
 def _counterterm_program(
@@ -1733,6 +1747,7 @@ def _counterterm_program(
         ),
         tuple(literal),
         cell_section,
+        tuple(vectors),
     )
 
 
@@ -1763,9 +1778,11 @@ def _cell_section(slice_: Any, literal: Sequence[Any]) -> bytes:
         slice_.basis, tensors=tuple(_single(tensor, legs) for tensor in literal[:count])
     )
     kets = [_single(tensor, legs) for tensor in literal]
+    # (A program without ket tensors, e.g. an exact colour zero's, has one
+    # empty table.)
     parts = [
         bytes(NativeCells(basis).table(kets[start : start + _CELL_CHUNK]).section())
-        for start in range(0, len(kets), _CELL_CHUNK)
+        for start in range(0, max(len(kets), 1), _CELL_CHUNK)
     ]
     return parts[0] if len(parts) == 1 else _join_cell_sections(parts)
 
@@ -2317,16 +2334,26 @@ def _parameter_program(
                 lambda v=bound: v.replace_multiple(every_input),
             )
         )
-    # The scalar library's helper functions (e.g. ``cond``, ``reglog``) the
-    # counterterm and field couplings and the CT references call; every plan
-    # shares the library.
+
+    # The scalar library's helper functions (e.g. ``cond``, ``reglog``, the
+    # UFO function library's ``complexconjugate`` and ``re``), each library
+    # registered whole (a body may call another helper): here the libraries
+    # of the plans the counterterm and field couplings read and the CT
+    # references' library. The Born couplings call helpers too (G_mu's re()
+    # through Gfbar, a CKM coupling's complexconjugate), and a program
+    # without counterterm or field slots (the certified-scaleless companion,
+    # exported without counterterms) reads no plan here: the libraries its
+    # outputs call are registered once every output exists, below.
+    def register(library: Any) -> None:
+        for head, body in library._bodies.items():
+            if helpers.setdefault(head, body) != body:
+                raise ValueError(f"the scalar plans define {head!r} differently")
+
     libraries = [plans[p].program.library for p in sorted(used)]
     if counterterm_trees is not None and references.library is not None:
         libraries.append(references.library)
     for library in libraries:
-        for head, body in library._bodies.items():
-            if helpers.setdefault(head, body) != body:
-                raise ValueError(f"the scalar plans define {head!r} differently")
+        register(library)
 
     # Derived model parameters (internal), on the program's inputs.
     derived = {
@@ -2502,6 +2529,23 @@ def _parameter_program(
         ratio = output(("photon-ratio", photons.alpha0_inverse), photon_ratio)
         positive.append(ratio)
         photon_record = [ratio, sorted(int(leg) for leg in photons.legs)]
+    # Every plan library (each distinct one, in plan order) of which an
+    # output calls a helper that is not registered yet (the outputs' symbols,
+    # function heads included): registered whole, under the same rule.
+    # Digest-neutral: a program that compiled without this has no output
+    # calling an unregistered helper (Symbolica refuses one), so no library
+    # qualifies there and its helpers, hence every byte, stay as they were.
+    distinct = {id(plan.program.library): plan.program.library for plan in plans}
+    pending = [
+        library
+        for library in distinct.values()
+        if any(head not in helpers for head in library._bodies)
+    ]
+    if pending:
+        called = {symbol for value in outputs for symbol in value.get_all_symbols(True)}
+        for library in pending:
+            if any(head in called and head not in helpers for head in library._bodies):
+                register(library)
     # The helpers in the order of their names, not the library's (which
     # follows the model's function bindings: a model compiled from its UFO
     # source and the same model read from the cache list them in different

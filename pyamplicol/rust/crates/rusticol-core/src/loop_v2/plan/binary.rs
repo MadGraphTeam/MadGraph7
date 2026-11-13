@@ -130,8 +130,8 @@ pub use json::OMITTED_WHEN_ABSENT;
 use super::{
     BindingFile, ClosureFile, ContentFile, EdgeFile, EntryFile, FamilyFile, FormPolicy,
     ForwardFile, KernelFile, LeafFile, LoopProgramV4, MergedClosureFile, MergedEdgeFile,
-    MergedFile, MergedStateFile, PLAN_SCHEMA, PlanFile, SeedFile, SeedKeyFile, SplitFile,
-    StateFile, StepFile, TermFile, invalid, require,
+    MergedFile, MergedStateFile, PlanFile, SeedFile, SeedKeyFile, SplitFile, StateFile, StepFile,
+    TermFile, invalid, require,
 };
 use crate::RusticolResult;
 use rayon::prelude::*;
@@ -145,6 +145,9 @@ use std::sync::Arc;
 pub const MAGIC: [u8; 8] = *b"LOOPPLAN";
 /// The binary member's format (one version; another is refused). Format 3
 /// adds the plan's `column_weights` (three columns after the column rows).
+/// An amplitude-mode member (plan schema 5) also holds the columns after
+/// [`SEEDED_COLUMNS`] (the dressed-row flag, M-LIT LIT-R2), so a seeded
+/// member's bytes are format 3's (M-LIT RULED Q42).
 pub const FORMAT: u32 = 3;
 
 /// The most bytes of decoded model a member may declare per member byte
@@ -313,11 +316,24 @@ impl PlanModel {
         let mut reader = Reader::new(bytes)?;
         let mut file = PlanFile::fresh();
         visit_plan(&mut reader, &mut file)?;
+        require(
+            file.schema == reader.schema,
+            "binary plan: header schema differs from the plan's",
+        )?;
         reader.finish()?;
         Ok(Self {
             file,
             member: Some(bytes.len() as u64),
         })
+    }
+
+    /// The model with a column set's seed records
+    /// (`LoopProgramV4::load_overlaid`): bounded as a plan JSON's, no longer
+    /// by its member alone.
+    pub(super) fn overlay_seeds(&mut self, overlay: super::SeedOverlayFile) -> RusticolResult<()> {
+        self.file.overlay_seeds(overlay)?;
+        self.member = None;
+        Ok(())
     }
 
     /// The plan JSON, byte-identical to the exporter's.
@@ -333,7 +349,7 @@ impl PlanModel {
         // A plan the bound refuses gets no padding for it: its reader
         // refuses it alike.
         let derived = derive::bound(&self.file).map_or(0, |bound| bound.cost());
-        writer.finish(derived)
+        writer.finish(derived, self.file.schema)
     }
 
     /// An upper bound of what the loader's derivations allocate and iterate
@@ -350,7 +366,10 @@ impl PlanModel {
     /// margin) before deriving (module docs, "Bounded derivation").
     pub fn program(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
         // A plan of another schema is refused as such before its bound.
-        require(self.file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
+        require(
+            super::admitted_schema(self.file.schema),
+            "unsupported plan schema",
+        )?;
         let bound = derive::bound(&self.file)?;
         if let Some(member) = self.member {
             require(
@@ -365,7 +384,10 @@ impl PlanModel {
     /// [`Self::program`] without the probe of the derivations' peak (the
     /// bound's refusals kept): `LoopProgramV4::load_unprobed`.
     pub(super) fn program_unprobed(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
-        require(self.file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
+        require(
+            super::admitted_schema(self.file.schema),
+            "unsupported plan schema",
+        )?;
         derive::bound(&self.file)?;
         LoopProgramV4::from_file(self.file, policy)
     }
@@ -389,9 +411,12 @@ pub fn read_binary_with(member: &[u8], policy: FormPolicy) -> RusticolResult<Loo
 }
 
 /// SHA-256 of a loaded program's validated and derived tables (its `Debug`
-/// form, streamed, every field included): equal tables give equal digests
-/// and any differing value changes it. A test tool for comparing the JSON and
-/// binary loads; no artifact carries it. Not bounded by the member: the
+/// form, streamed, every field included but a family's walk cache, which a
+/// walk fills: [`super::WalkCache`]): equal tables give equal digests and any
+/// differing value changes it. Every derived table prints in an order fixed
+/// by the plan (no hash-ordered map), so the digest is a function of the
+/// plan alone, the same from either reader and on every load. A test tool
+/// for comparing the JSON and binary loads; no artifact carries it. Not bounded by the member: the
 /// `Debug` form writes a multi-precision weight in decimal (GMP's conversion,
 /// through C `malloc`, several times the number's size), so a plan with a
 /// weight of 10^8 digits takes it about 20 s and, under an address-space
@@ -482,6 +507,21 @@ columns! {
     ColumnRowsFlag, ColumnRowsLen, ColumnRowFlag, ColumnRowLen, ColumnRow,
     // column weights
     ColumnWeightsFlag, ColumnWeightsLen, ColumnWeight,
+    // amplitude-mode members only (plan schema 5): dressed rows
+    DressedFlag, Dressed,
+}
+
+/// The columns of a seeded member (plan schema 4): every column before the
+/// first amplitude-mode one.
+const SEEDED_COLUMNS: usize = Col::DressedFlag as usize;
+
+/// The columns a member of plan schema `schema` holds.
+fn column_count(schema: u32) -> usize {
+    if schema == super::AMPLITUDE_PLAN_SCHEMA {
+        COLUMN_NAMES.len()
+    } else {
+        SEEDED_COLUMNS
+    }
 }
 
 // ------------------------------------------------------------------ streams
@@ -935,6 +975,7 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
         merged,
         column_rows,
         column_weights,
+        dressed,
     } = file;
     num(s, Col::Schema, schema)?;
     num(s, Col::Legs, legs)?;
@@ -988,7 +1029,16 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
     })?;
     option(s, Col::ColumnWeightsFlag, column_weights, |s, weights| {
         nums(s, Col::ColumnWeightsLen, Col::ColumnWeight, weights)
-    })
+    })?;
+    // Amplitude-mode members only: a seeded member holds no such column.
+    if *schema == super::AMPLITUDE_PLAN_SCHEMA {
+        option(s, Col::DressedFlag, dressed, |s, dressed| {
+            flag(s, Col::Dressed, dressed)
+        })?;
+    } else if dressed.is_some() {
+        return Err(invalid("binary plan: dressed rows in a seeded plan"));
+    }
+    Ok(())
 }
 
 fn visit_kernel<S: Stream>(s: &mut S, kernel: &mut KernelFile) -> RusticolResult<()> {
@@ -1348,7 +1398,7 @@ impl Writer {
 
     /// The member, padded so that it pays for its decoded size and for its
     /// derivations' bound `derived`.
-    fn finish(mut self, derived: u64) -> RusticolResult<Vec<u8>> {
+    fn finish(mut self, derived: u64, schema: u32) -> RusticolResult<Vec<u8>> {
         let strings = std::mem::take(&mut self.strings);
         let mut decoded = self.decoded;
         let mut charge = |bytes: usize| decoded = decoded.saturating_add(bytes as u64);
@@ -1361,7 +1411,7 @@ impl Writer {
             self.column(Col::StringByte).extend(bytes);
         }
         let mut body = Vec::new();
-        for k in 0..COLUMN_NAMES.len() {
+        for k in 0..column_count(schema) {
             let values = self.columns.get(k).map(Vec::as_slice).unwrap_or(&[]);
             encode_column(&mut body, values);
         }
@@ -1386,8 +1436,10 @@ impl Writer {
         })?;
         out.extend_from_slice(&MAGIC);
         out.extend_from_slice(&FORMAT.to_le_bytes());
-        out.extend_from_slice(&PLAN_SCHEMA.to_le_bytes());
-        out.extend_from_slice(&(COLUMN_NAMES.len() as u32).to_le_bytes());
+        // The plan's own schema (4 seeded, 5 amplitude mode; the header
+        // value of every seeded member is unchanged).
+        out.extend_from_slice(&schema.to_le_bytes());
+        out.extend_from_slice(&(column_count(schema) as u32).to_le_bytes());
         out.extend_from_slice(&0u32.to_le_bytes());
         out.extend_from_slice(&decoded.to_le_bytes());
         out.extend_from_slice(&padding.to_le_bytes());
@@ -1559,6 +1611,8 @@ struct Reader<'a> {
     skip: bool,
     /// The threads the read decodes with ([`read_threads`]).
     threads: usize,
+    /// The header's plan schema (the decoded `schema` must equal it).
+    schema: u32,
 }
 
 /// The decoded size a member declares and the part of it charged so far.
@@ -1631,8 +1685,14 @@ thread_local! {
 /// (M-FINAL MF-8G-1 item 5; the JSON load is sequential too). The model and
 /// its bounds are those of any thread count.
 pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+    read_bounded(|| read_binary_with(member, policy))
+}
+
+/// `read` (a read of a binary member) within the caller's thread bound
+/// ([`read_binary_bounded`]).
+pub(super) fn read_bounded<T>(read: impl FnOnce() -> RusticolResult<T>) -> RusticolResult<T> {
     if rayon::current_thread_index().is_some() {
-        return read_binary_with(member, policy);
+        return read();
     }
     struct Reset;
     impl Drop for Reset {
@@ -1642,7 +1702,7 @@ pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<
     }
     SEQUENTIAL.with(|sequential| sequential.set(true));
     let _reset = Reset;
-    read_binary_with(member, policy)
+    read()
 }
 
 /// Whether the reader found the global thread pool up when it first needed
@@ -1734,12 +1794,11 @@ impl<'a> Reader<'a> {
             u32_at(&mut bytes)? == FORMAT,
             "binary plan: unsupported format",
         )?;
+        let schema = u32_at(&mut bytes)?;
+        require(super::admitted_schema(schema), "unsupported plan schema")?;
+        let columns = column_count(schema);
         require(
-            u32_at(&mut bytes)? == PLAN_SCHEMA,
-            "unsupported plan schema",
-        )?;
-        require(
-            u32_at(&mut bytes)? as usize == COLUMN_NAMES.len(),
+            u32_at(&mut bytes)? as usize == columns,
             "binary plan: column count of another format",
         )?;
         require(
@@ -1757,8 +1816,8 @@ impl<'a> Reader<'a> {
         // (a probe, with its margin), the thread pool being up first.
         let threads = read_threads();
         derive::reserve("binary plan: the decoded model needs", declared)?;
-        let mut cursors = Vec::with_capacity(COLUMN_NAMES.len());
-        for _ in COLUMN_NAMES {
+        let mut cursors = Vec::with_capacity(columns);
+        for _ in 0..columns {
             let head = take(&mut bytes, 8)?;
             let width = usize::from(head[0]);
             require(
@@ -1797,6 +1856,7 @@ impl<'a> Reader<'a> {
             tables: Vec::new(),
             skip: false,
             threads,
+            schema,
         };
         // The string table, charged as the writer charges it; a string takes
         // its bytes from what the byte column still holds.
@@ -1828,7 +1888,13 @@ impl<'a> Reader<'a> {
 
     #[inline]
     fn next(&mut self, col: Col) -> RusticolResult<i64> {
-        self.cursors[col as usize].next().map_err(|short| {
+        let Some(cursor) = self.cursors.get_mut(col as usize) else {
+            return Err(invalid(format!(
+                "binary plan: column {} is not held by a member of plan schema {}",
+                COLUMN_NAMES[col as usize], self.schema
+            )));
+        };
+        cursor.next().map_err(|short| {
             let name = COLUMN_NAMES[col as usize];
             invalid(match short {
                 Short::Exhausted => format!("binary plan: column {name} is exhausted"),
@@ -1935,7 +2001,7 @@ impl<'a> Reader<'a> {
         };
         *items = buffer;
         items.resize_with(len, T::fresh);
-        let (cursors, strings) = (&self.cursors, &self.strings);
+        let (cursors, strings, schema) = (&self.cursors, &self.strings, self.schema);
         let decoded = items
             .par_chunks_mut(chunk)
             .zip(starts.par_windows(2))
@@ -1956,6 +2022,7 @@ impl<'a> Reader<'a> {
                     tables: Vec::new(),
                     skip: false,
                     threads,
+                    schema,
                 };
                 reader.restore(start);
                 for record in records {
@@ -2054,7 +2121,7 @@ fresh_records! {
     PlanFile {
         schema, legs, rows, helicities, columns, average, born_components, constants, masses,
         block_rows, kernels, contents, factors, seed_classes, seeds, families, forward, merged,
-        column_rows, column_weights,
+        column_rows, column_weights, dressed,
     },
     KernelFile { inputs, outputs },
     ContentFile { d_in, d_out, degree, rows, mask, row_helicities, fused, terms },
@@ -2122,11 +2189,13 @@ mod tests {
         assert!(matches!(words.next(), Ok(1)));
     }
 
-    /// The header offset of every column of a member, in member order.
+    /// The header offset of every column of a member, in member order (the
+    /// member's own column count: a seeded member holds fewer columns).
     fn column_offsets(member: &[u8]) -> Vec<usize> {
         let mut at = HEADER;
         let mut offsets = Vec::new();
-        for _ in COLUMN_NAMES {
+        let columns = u32::from_le_bytes(member[16..20].try_into().unwrap()) as usize;
+        for _ in 0..columns {
             offsets.push(at);
             let width = usize::from(member[at]);
             let count = u64::from_le_bytes(member[at + 8..at + 16].try_into().unwrap());
@@ -2142,9 +2211,17 @@ mod tests {
         u64::from_le_bytes(member[at..at + 8].try_into().unwrap())
     }
 
+    /// A fresh plan of the seeded schema (the binary header carries the
+    /// plan's own schema, which the reader admits).
+    fn seeded_fresh() -> PlanFile {
+        let mut file = PlanFile::fresh();
+        file.schema = super::super::PLAN_SCHEMA;
+        file
+    }
+
     fn empty_member() -> Vec<u8> {
         PlanModel {
-            file: PlanFile::fresh(),
+            file: seeded_fresh(),
             member: None,
         }
         .binary()
@@ -2270,7 +2347,7 @@ mod tests {
     #[test]
     fn plans_that_share_beyond_the_bound_are_padded() {
         let (n, m) = (500, 400);
-        let mut file = PlanFile::fresh();
+        let mut file = seeded_fresh();
         file.contents = (0..n)
             .map(|_| {
                 let mut content = ContentFile::fresh();
@@ -2309,7 +2386,7 @@ mod tests {
     /// Every truncation of a member is refused.
     #[test]
     fn truncated_members_are_refused() {
-        let mut file = PlanFile::fresh();
+        let mut file = seeded_fresh();
         file.helicities = vec![vec![-1, 1]; 4];
         file.block_rows = vec![3, 1, 4];
         file.factors = vec![(0, 2), (1, 7)];
@@ -2323,7 +2400,7 @@ mod tests {
     /// A plan whose seed classes, seed keys and families are long enough for
     /// the parallel decode, with strings, nested lists and options.
     fn parallel_plan() -> PlanFile {
-        let mut file = PlanFile::fresh();
+        let mut file = seeded_fresh();
         let weight = |k: usize| format!("{}/{}", k % 7, 1 + k % 5);
         file.seed_classes = (0..600)
             .map(|k| SeedFile {
@@ -2405,6 +2482,68 @@ mod tests {
         }
     }
 
+    /// A column set's seed records on a decoded member give the model of the
+    /// merged plan JSON (`native_observables.with_overlay`: a field the
+    /// overlay lacks keeps the plan's, a null one is removed, other keys
+    /// are not read), and a removed required field is refused as that
+    /// JSON's load refuses it.
+    #[test]
+    fn seed_overlays_equal_the_merged_plan_json() {
+        let mut file = parallel_plan();
+        file.column_rows = Some(vec![Some(vec![0]), None]);
+        let mut model = PlanModel { file, member: None };
+        let member = model.binary().unwrap();
+        let base: serde_json::Value = serde_json::from_slice(&model.json()).unwrap();
+        let merged = |overlay: &serde_json::Value| {
+            let mut merged = base.clone();
+            for key in [
+                "seed_classes",
+                "seeds",
+                "columns",
+                "column_rows",
+                "column_weights",
+                "born_components",
+            ] {
+                match overlay.get(key) {
+                    None => {}
+                    Some(serde_json::Value::Null) => {
+                        merged.as_object_mut().unwrap().remove(key);
+                    }
+                    Some(value) => merged[key] = value.clone(),
+                }
+            }
+            serde_json::to_vec(&merged).unwrap()
+        };
+        let overlaid = |overlay: &serde_json::Value| {
+            let mut decoded = PlanModel::from_binary(&member)?;
+            decoded.overlay_seeds(serde_json::from_value(overlay.clone()).unwrap())?;
+            Ok::<_, crate::RusticolError>(decoded)
+        };
+        for overlay in [
+            serde_json::json!({}),
+            serde_json::json!({
+                "seed_classes": [{"columns": [[[0, "1/2", "0"]], [[1, "3", "-1/4"]]]}],
+                "seeds": [{"classes": [[0, "1", "2/3"]]}],
+                "columns": 2,
+                "column_rows": null,
+                "column_weights": [0, 0],
+                "born_components": 2,
+                "families": [],
+            }),
+            serde_json::json!({"columns": 3, "column_rows": [[1], null, [0]]}),
+        ] {
+            let decoded = overlaid(&overlay).unwrap();
+            assert_eq!(decoded.member, None, "bounded as a plan JSON");
+            let expected = PlanModel::from_json(&merged(&overlay)).unwrap();
+            assert_eq!(decoded.json(), expected.json(), "{overlay}");
+        }
+        for key in ["seed_classes", "seeds", "columns", "born_components"] {
+            let overlay = serde_json::json!({ key: null });
+            assert!(PlanModel::from_json(&merged(&overlay)).is_err(), "{key}");
+            assert!(overlaid(&overlay).is_err(), "{key}");
+        }
+    }
+
     /// The member of `file` padded for its decoded size and for derivations
     /// of `derived` bytes (the writer's padding with another bound).
     fn member_paying(file: &PlanFile, derived: u64) -> Vec<u8> {
@@ -2414,7 +2553,8 @@ mod tests {
             member: None,
         };
         visit_plan(&mut writer, &mut file.file).unwrap();
-        writer.finish(derived).unwrap()
+        let schema = file.file.schema;
+        writer.finish(derived, schema).unwrap()
     }
 
     fn json_copy(file: &PlanFile) -> PlanFile {
@@ -2425,8 +2565,9 @@ mod tests {
     /// `edges` leaf edges into a content on no leg (each edge links every
     /// Born row), `columns` observable columns.
     fn born_rows_plan(legs: usize, edges: usize, columns: usize) -> PlanFile {
-        let mut file = PlanFile::fresh();
-        (file.schema, file.legs, file.rows, file.columns) = (PLAN_SCHEMA, legs, 1 << legs, columns);
+        let mut file = seeded_fresh();
+        (file.schema, file.legs, file.rows, file.columns) =
+            (super::super::PLAN_SCHEMA, legs, 1 << legs, columns);
         file.helicities = vec![vec![-1, 1]; legs];
         let mut content = ContentFile::fresh();
         (content.rows, content.row_helicities) = (1, vec![Vec::new()]);
@@ -2582,7 +2723,7 @@ mod tests {
         assert!(error.contains("exceed the member's bound"), "{error}");
         // The empty plan derives next to nothing, and is no bomb.
         let empty = PlanModel {
-            file: PlanFile::fresh(),
+            file: seeded_fresh(),
             member: None,
         };
         assert!(empty.derive_bound().unwrap().cost() < 1024);

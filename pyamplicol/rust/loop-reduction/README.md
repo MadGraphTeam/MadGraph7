@@ -31,20 +31,37 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS main `b3a29c8577733f384de1c74b48bde5b24c2799d3` (PRs #7-#12 and #14,
-  the Symbolica and oneloopmaster pins below; UV/IR pole selection through
+- NinjaRS `cf28d8e0018e0555256d3fba51e457d4941dcb0e` (main: its scoped Symbolica
+  library licence, a key of its own held only around NinjaRS operations, on
+  5fe7f392, the merge of 71eddb15, the box mu-expansion's conditioning bound: typed refusal of near-planar lanes in every carrier, the
+  binary64 engines deciding a flagged lane a posteriori, on
+  main `98e223da` = main `b3a29c85`, PRs #7-#12 and #14, the 0BSD relicence,
+  and the re-pins on the Symbolica and oneloopmaster revisions below; UV/IR
+  pole selection through
   the master providers, the fast engine's UV residues `fast::tensor_uv`,
   threshold-free light-like spinors).
-- Symbolica, Numerica and Graphica `20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc`:
+- Symbolica, Numerica and Graphica `dfe6bd97b974b1028dc63071ea165136cd2b0ef5`:
   symbolica-dev/symbolica `community` 36cbac3a plus the consolidated upstream
   PR symbolica-dev/symbolica#163 (batched evaluation, `DualNumber` views,
   state-minimal evaluator saves, complex-modulus Dual derivatives,
-  deterministic integer factor signs), branch `loop_me_pyamplicol` of
+  deterministic integer factor signs, polynomial exponents bounded by the
+  i32 conversion range, a journaled conditional cache in the direct evaluator
+  translator, native Python ComplexFloat operands at the more precise
+  component's precision), branch `loop_me_pyamplicol` of
   `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
+- TIRust `bc94b496e94d7b7686fc28adbfe9b42a68200d02` (its main: the merge of
+  PR #31, triangles get the loop-rotation test on the binary64
+  `TensorWorkspace` facade; the `DirectWorkspace` and `TensorStore` this
+  crate calls are unchanged), behind the cargo feature `tir` (below).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
-- oneloopmaster `128ea6645f2811e6179068b98731501292841409` (its main with the
-  same Symbolica pin; per-evaluator `PoleSelection`).
+- oneloopmaster `bd703d09a78f7849a6b86a07096e6f222fc01193` (its main: per-evaluator
+  `PoleSelection`, TIRust's oneloop patches incl. #17/#18, the 0BSD relicence,
+  #19's order-independent massless triangle (trif0) with a hand-written
+  binary64/double-double kernel, and #20's exact bubble reduction of a C0 at a
+  vanishing Källén function on the arbitrary-precision routes), with one
+  feature set in every root build:
+  `generated-evaluators` and `rust-codegen` (the latter only adds modules).
 
 From this crate's directory, using the shared workspace environment:
 
@@ -101,6 +118,23 @@ dimensional-algebra fixture in `tests/fixtures/diphoton_r2.json` to the
 reducer. It preserves rational inputs and verifies the evanescent remainder in
 all three arithmetic modes, including changing batch sizes and epsilon-sector
 assembly. This internal fixture does not enable loop-induced production.
+
+## TIRust (cargo feature `tir`)
+
+TIRust (`https://github.com/huashengshao/TIRust`, crates `iregi-rust` and
+`iregi-masters`), the tensor-integral reduction backend, is an optional
+dependency pinned to a commit of its main and enabled by the cargo feature
+`tir`, a default feature of this crate and of every crate that links it
+(`rusticol-loop-python`, `rusticol-loop-sdk`, `rusticol-python`,
+`rusticol-capi`): developer builds, tests, staged natives, CI, wheels and
+releases have it. TIRust uses this workspace's Symbolica and oneloop sources
+and feature sets, so the feature changes no NinjaRS value.
+`--no-default-features` builds without it (`build_loop_native.py build
+--no-tir`; the CI `tir` job checks that configuration and compares
+`tests/tir_feature.rs`'s NinjaRS lanes bit for bit across the two).
+`rusticol_loop_reduction::tir::available()` (Python:
+`pyamplicol._rusticol._loop.tirust_available()`) reports whether a build links
+it.
 
 ## Native Python bindings
 

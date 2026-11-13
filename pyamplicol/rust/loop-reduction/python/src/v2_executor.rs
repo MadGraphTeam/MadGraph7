@@ -27,11 +27,13 @@ use rusticol_core::loop_execution::v2::{
 use rusticol_core::loop_v2::dipole_correlations::Correlator;
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
+use rusticol_core::loop_v2::prime::Fp;
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::{
     BoundParameters, TREE_FILL_BUDGET, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
 };
-use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
+use rusticol_loop_reduction::runtime::{Reduction, TypedBatch, V2Backends, V2ReductionBackend};
+use rusticol_loop_reduction::v2_runtime::template;
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -101,6 +103,23 @@ impl Exchanged for Float {
                 .iter()
                 .cloned()
                 .map(|z| decimal_complex(z, bits))
+                .collect(),
+        )
+    }
+}
+
+/// The prime-field carrier of the exact helicity-zero filter (M-LIT LIT-R2):
+/// imported from exact rational texts (reduced modulo p), exported as the
+/// residues' decimal texts.
+impl Exchanged for Fp {
+    fn import(values: &Bound<'_, PyAny>, zero: &Self) -> PyResult<Vec<Complex<Self>>> {
+        exact_pairs(values, zero)
+    }
+    fn export(values: &[Complex<Self>], _bits: u32) -> Values {
+        Values::Text(
+            values
+                .iter()
+                .map(|z| [z.re.to_string(), z.im.to_string()])
                 .collect(),
         )
     }
@@ -455,84 +474,10 @@ impl Trees {
 /// The masks of one evaluation call (`V2Executor.evaluate`'s `rows`,
 /// `basis`, `components` and `families`): an evaluation-time selection run
 /// on the executor of a template column set, one program for every
-/// selection (`loops/v2/native_observables.py`; DESIGN §8.5). The kept Born
-/// helicity `rows` seed and interfere (every other row's Born components
-/// vanish, as a spin source's fixed row does); the observable columns'
-/// interferences keep the bra Born `basis` elements only; the seeds' bra
-/// keeps the plan Born `components` only (the others read zero); and only
-/// the plan `families` kept are dressed (the caller's statement that the
-/// others' seeds vanish under these masks; their lanes are absent). None
-/// keeps every one.
-#[derive(Default)]
-struct Selection {
-    rows: Option<Vec<bool>>,
-    basis: Option<Vec<bool>>,
-    components: Option<Vec<bool>>,
-    families: Option<Vec<bool>>,
-}
-
-impl Selection {
-    fn is_empty(&self) -> bool {
-        self.rows.is_none()
-            && self.basis.is_none()
-            && self.components.is_none()
-            && self.families.is_none()
-    }
-
-    /// Each point's sources with the kept rows (and the point's own) and the
-    /// kept basis elements; points without sources get an empty one.
-    fn sources<T>(
-        &self,
-        sources: Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>>,
-        points: usize,
-    ) -> Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>> {
-        if self.rows.is_none() && self.basis.is_none() {
-            return sources;
-        }
-        let mut sources = sources.unwrap_or_else(|| {
-            (0..points)
-                .map(|_| rusticol_core::loop_v2::trees::PointSources {
-                    vectors: Vec::new(),
-                    rows: None,
-                    basis: None,
-                })
-                .collect()
-        });
-        for point in &mut sources {
-            if let Some(kept) = &self.rows {
-                point.rows = Some(match point.rows.take() {
-                    Some(own) => own.iter().zip(kept).map(|(a, b)| *a && *b).collect(),
-                    None => kept.clone(),
-                });
-            }
-            if self.basis.is_some() {
-                point.basis.clone_from(&self.basis);
-            }
-        }
-        Some(sources)
-    }
-
-    /// Zero the plan Born components the seeds' bra does not keep (`born`:
-    /// per point `rows x components`).
-    fn mask_born<T: Real>(&self, born: &mut [Vec<Complex<T>>], zero: &T) -> PyResult<()> {
-        let Some(kept) = &self.components else {
-            return Ok(());
-        };
-        for point in born {
-            if kept.is_empty() || point.len() % kept.len() != 0 {
-                return Err(error("one component flag per plan Born component"));
-            }
-            for row in point.chunks_exact_mut(kept.len()) {
-                for (value, keep) in row.iter_mut().zip(kept) {
-                    if !keep {
-                        *value = Complex::new(zero.clone(), zero.clone());
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-}
+/// selection (`loops/v2/native_observables.py`; DESIGN §8.5): the shared
+/// `rusticol_loop_reduction::v2_runtime::template::CallMasks`, which the
+/// native SDKs' selections apply the same way (lit-fc-hel (G5)).
+type Selection = rusticol_loop_reduction::v2_runtime::template::CallMasks;
 
 /// Per point spin sources (`inputs["sources"]`): per point `(vectors,
 /// rows)`, `vectors` (1-based leg label, four `[re, im]` exact texts) and
@@ -649,7 +594,33 @@ struct Evaluation {
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
     budget: Vec<Option<Vec<Vec<f64>>>>,
+    /// Amplitude-mode plans (loop-induced): per point and (loop order,
+    /// column) slot `order * columns + column` the bare loop amplitude per
+    /// Laurent coefficient (`PointResult::amplitudes`), else None.
+    amplitudes: Option<Vec<Vec<Values>>>,
+    /// Their re-test, when a check ran.
+    amplitude_check: Option<Vec<Vec<Values>>>,
+    /// Per point and slot `Σ_f |ΔΩ_f| / (16π²)` per coefficient (binary64
+    /// reals), when a check ran.
+    amplitude_budget: Option<Vec<Vec<Vec<f64>>>>,
+    /// With `term_scale`, per point and slot the term scale
+    /// `Σ_f Σ_α |N_α| |I_α| / (16π²)` per coefficient (binary64 reals;
+    /// `PointResult::amplitude_scale`), else None.
+    amplitude_scale: Option<Vec<Vec<Vec<f64>>>>,
+    /// Amplitude-mode plans with native trees and counterterms: per point
+    /// the counterterm kets (`TreeInputs::kets`: rows × ket components in
+    /// the counterterm program's layout), else None.
+    counterterm_kets: Option<Vec<Values>>,
+    /// An amplitude-mode row selection (`rows`): the plan rows, ascending,
+    /// whose slots `amplitudes`, their re-test, budget and term scale and
+    /// `counterterm_kets` carry (the layout of every row restricted to
+    /// them: lit-dress (H), the unselected rows are not exported); else
+    /// None (every row).
+    amplitude_rows: Option<Vec<usize>>,
     failures: Vec<Vec<String>>,
+    /// Per point the backend's measures of its refused lanes, `(kind,
+    /// value)` (`PointResult::measures`; m-lit ux-polish item 4).
+    refusal_measures: Vec<Vec<(&'static str, f64)>>,
     report: ReportObject,
 }
 
@@ -689,7 +660,56 @@ fn export_evaluation<T: Exchanged + Real>(
             .collect::<Lanes>()
     };
     let checked = results.iter().any(|r| r.check.is_some());
+    let amplitude = results.iter().any(|r| !r.amplitudes.is_empty());
+    let amplitude_checked = results.iter().any(|r| r.amplitude_check.is_some());
+    let slots = |values: &[Vec<Complex<T>>]| {
+        values
+            .iter()
+            .map(|slot| T::export(slot, bits))
+            .collect::<Vec<_>>()
+    };
+    let amplitudes = amplitude.then(|| results.iter().map(|r| slots(&r.amplitudes)).collect());
+    let amplitude_check = amplitude_checked.then(|| {
+        results
+            .iter()
+            .map(|r| r.amplitude_check.as_deref().map(slots).unwrap_or_default())
+            .collect()
+    });
+    let amplitude_budget = amplitude_checked.then(|| {
+        results
+            .iter()
+            .map(|r| {
+                r.amplitude_budget
+                    .as_ref()
+                    .map(|budget| {
+                        budget
+                            .iter()
+                            .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .collect()
+    });
+    let scaled = results.iter().any(|r| !r.amplitude_scale.is_empty());
+    let amplitude_scale = scaled.then(|| {
+        results
+            .iter()
+            .map(|r| {
+                r.amplitude_scale
+                    .iter()
+                    .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
+                    .collect()
+            })
+            .collect()
+    });
     Evaluation {
+        amplitudes,
+        amplitude_check,
+        amplitude_budget,
+        amplitude_scale,
+        counterterm_kets: None,
+        amplitude_rows: None,
         born,
         loop_born,
         counterterms,
@@ -731,6 +751,15 @@ fn export_evaluation<T: Exchanged + Real>(
                 })
             })
             .collect(),
+        refusal_measures: results
+            .iter()
+            .map(|r| {
+                r.measures
+                    .iter()
+                    .map(|m| (m.kind.name(), m.value))
+                    .collect()
+            })
+            .collect(),
         failures: results.into_iter().map(|r| r.failures).collect(),
         report: ReportObject {
             seconds: report.seconds,
@@ -749,6 +778,9 @@ enum Carriers {
     DoubleDouble,
     Arbitrary(u32),
     Exact,
+    /// The field F_p, p = 2^61 - 1 (numerators only; the exact
+    /// helicity-zero filter, `rusticol_core::loop_v2::prime`).
+    Prime,
 }
 
 /// The native v2 executor of one plan and carrier. `lanes` is the SIMD
@@ -763,51 +795,78 @@ struct V2Executor {
     /// The binary64 reduction engine: `fast` (production) or `generic`
     /// (oracle and cost reference of selected master poles).
     engine: String,
-    backend: Option<V2ReductionBackend>,
+    /// The reduction backends of the carrier, NinjaRS's then TIRust's, each
+    /// built on first use (`backend_of`).
+    backends: [Option<V2Backends>; 2],
     trees: Option<Trees>,
+    /// Whether the plan is TIR-only (a family beyond NinjaRS's rank <= N + 2,
+    /// m-lit lit-eft): NinjaRS then checks the dressed families per call.
+    tir_only: bool,
 }
 
-/// The reduction backend of a carrier, built on first use. A free function
-/// of the backend slot, so an evaluation can borrow the executor alongside.
-/// `engine` is the binary64 reduction engine; the extended carriers always
-/// reduce with the generic engine.
+/// The `reduction` backend of a carrier, built on first use. A free
+/// function of the backend slots, so an evaluation can borrow the executor
+/// alongside. `engine` is NinjaRS's binary64 reduction engine (the extended
+/// carriers always reduce with its generic engine); TIRust's plans are built
+/// from the `plan`'s (propagators, rank) histogram at the default target
+/// accuracy (`V2Backends::tirust`; `V2Executor.prepare_reduction` sets a
+/// call's target).
 fn backend_of<'a>(
-    slot: &'a mut Option<V2ReductionBackend>,
+    slots: &'a mut [Option<V2Backends>; 2],
     carrier: Carriers,
     engine: &str,
-) -> PyResult<&'a mut V2ReductionBackend> {
+    reduction: Reduction,
+    plan: &LoopProgramV4,
+) -> PyResult<&'a mut V2Backends> {
+    if matches!(carrier, Carriers::Exact | Carriers::Prime) {
+        return Err(error("the exact carrier dresses numerators only"));
+    }
+    let slot = &mut slots[reduction as usize];
     if slot.is_none() {
-        let reducer = match carrier {
-            Carriers::Double => runtime::V2Reducer::new("double", None, engine, true),
-            Carriers::DoubleDouble => {
-                runtime::V2Reducer::new("double-double", None, "generic", true)
+        *slot = Some(match reduction {
+            Reduction::NinjaRs => {
+                let reducer = match carrier {
+                    Carriers::Double => runtime::V2Reducer::new("double", None, engine, true),
+                    Carriers::DoubleDouble => {
+                        runtime::V2Reducer::new("double-double", None, "generic", true)
+                    }
+                    Carriers::Arbitrary(digits) => {
+                        runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
+                    }
+                    Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+                }
+                .map_err(error)?;
+                V2Backends::NinjaRs(V2ReductionBackend {
+                    reducer,
+                    masters: v2::master_selection("both")?,
+                })
             }
-            Carriers::Arbitrary(digits) => {
-                runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
-            }
-            Carriers::Exact => {
-                return Err(error("the exact carrier dresses numerators only"));
-            }
-        }
-        .map_err(error)?;
-        *slot = Some(V2ReductionBackend {
-            reducer,
-            masters: v2::master_selection("both")?,
+            Reduction::TiRust => V2Backends::tirust(
+                runtime::plan_histogram(plan),
+                carrier_bits(carrier)?,
+                rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
+            )
+            .map_err(error)?,
         });
     }
     Ok(slot.as_mut().expect("backend"))
 }
 
+/// The bits of a numeric carrier (0 for the exact ones).
+fn carrier_bits(carrier: Carriers) -> PyResult<u32> {
+    Ok(match carrier {
+        Carriers::Double => 53,
+        Carriers::DoubleDouble => 106,
+        Carriers::Arbitrary(digits) => {
+            Float::decimal_digits_to_bits(f64::from(digits)).map_err(error)?
+        }
+        Carriers::Exact | Carriers::Prime => 0,
+    })
+}
+
 impl V2Executor {
     fn bits(&self) -> PyResult<u32> {
-        Ok(match self.carrier {
-            Carriers::Double => 53,
-            Carriers::DoubleDouble => 106,
-            Carriers::Arbitrary(digits) => {
-                Float::decimal_digits_to_bits(f64::from(digits)).map_err(error)?
-            }
-            Carriers::Exact => 0,
-        })
+        carrier_bits(self.carrier)
     }
 }
 
@@ -830,6 +889,67 @@ fn merge_report(total: &mut Option<Report>, part: Report) {
     }
 }
 
+/// The kept rows of an amplitude-mode row selection (`evaluate_with`):
+/// what its export carries (lit-dress (H)). The executor's amplitude slots
+/// are `order * columns + column` with column `row * size + t` (the layout
+/// `induced.read_native` and the SDK read), the counterterm kets
+/// `row * components + j`.
+struct Kept {
+    rows: Vec<usize>,
+    plan_rows: usize,
+    columns: usize,
+}
+
+impl Kept {
+    fn new(rows: &[bool], plan: &rusticol_core::loop_v2::plan::LoopProgramV4) -> PyResult<Self> {
+        if rows.len() != plan.rows || plan.rows == 0 || !plan.columns.is_multiple_of(plan.rows) {
+            return Err(error(
+                "an amplitude-mode row mask needs one flag per plan row and the \
+                 plan's columns row by row",
+            ));
+        }
+        Ok(Self {
+            rows: (0..plan.rows).filter(|&row| rows[row]).collect(),
+            plan_rows: plan.rows,
+            columns: plan.columns,
+        })
+    }
+
+    /// The kept rows' values of `values` (`plan_rows` equal rows of them).
+    fn rows_of<V: Clone>(&self, values: &[V]) -> Vec<V> {
+        let width = values.len() / self.plan_rows;
+        self.rows
+            .iter()
+            .flat_map(|&row| values[row * width..][..width].iter().cloned())
+            .collect()
+    }
+
+    /// The kept rows' slots of `values` (per loop order `columns` slots,
+    /// in turn).
+    fn slots<V: Clone>(&self, values: &mut Vec<V>) {
+        if values.is_empty() {
+            return;
+        }
+        let orders = values.len() / self.columns;
+        *values = (0..orders)
+            .flat_map(|order| self.rows_of(&values[order * self.columns..][..self.columns]))
+            .collect();
+    }
+
+    /// Restrict a point's amplitude slots, their re-test, budget and term
+    /// scale to the kept rows.
+    fn restrict<T: Clone>(&self, result: &mut PointResult<T>) {
+        self.slots(&mut result.amplitudes);
+        if let Some(check) = &mut result.amplitude_check {
+            self.slots(check);
+        }
+        if let Some(budget) = &mut result.amplitude_budget {
+            self.slots(budget);
+        }
+        self.slots(&mut result.amplitude_scale);
+    }
+}
+
 /// Evaluate a batch. With native trees it streams in parts of whole lane
 /// chunks (`Bounds`; `Trees::part_points`): each part's tree fill, then its
 /// dressing and reduction, so the batch's tree states, block rows and Born
@@ -841,7 +961,7 @@ fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier + Send + Sync>(
     py: Python<'_>,
     executor: &Executor,
     trees: Option<&mut Trees>,
-    backend: &mut V2ReductionBackend,
+    backend: &mut V2Backends,
     inputs: &Bound<'_, PyDict>,
     zero: T,
     bits: u32,
@@ -904,8 +1024,20 @@ where
     };
     let started = std::time::Instant::now();
     let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
-    filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
+    // Amplitude mode: the kept rows restrict the dressing and the tree fill
+    // (`live_rows`: the kept rows' trees and counterterm kets); its trees
+    // have no observable columns whose sources read them per point.
+    if !executor.plan().amplitude {
+        filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
+    }
     filling.rows = tree_rows;
+    let tree_counts = trees.program.row_counts(filling.rows.as_ref());
+    // An amplitude-mode row selection exports its kept rows only (their
+    // amplitude slots and counterterm kets; lit-dress (H)).
+    let kept = match (&selection.rows, executor.plan().amplitude) {
+        (Some(rows), true) => Some(Kept::new(rows, executor.plan())?),
+        _ => None,
+    };
     // The report's "trees" stage: the whole native input fill, then its
     // parts (`TreeInputs::seconds`).
     let mut tree_seconds = started.elapsed().as_secs_f64();
@@ -929,6 +1061,7 @@ where
         }
     };
     let (mut born, mut loop_born, mut counterterms) = (None, None, None);
+    let mut kets: Option<Vec<Values>> = None;
     let mut columns: Option<Vec<Vec<Values>>> = None;
     let mut correlations: Option<Vec<Values>> = None;
     let mut results = Vec::with_capacity(points);
@@ -965,6 +1098,18 @@ where
         extend(&mut born, native.born_squared.map(export));
         extend(&mut loop_born, native.loop_born.map(export));
         extend(&mut counterterms, native.counterterms.map(export));
+        extend(
+            &mut kets,
+            native.kets.map(|points| {
+                points
+                    .iter()
+                    .map(|values| match &kept {
+                        Some(kept) => T::export(&kept.rows_of(values), bits),
+                        None => T::export(values, bits),
+                    })
+                    .collect()
+            }),
+        );
         if let Some(correlator) = dipoles {
             // The Born vectors' colour correlations (M-FINAL MF-8G-3), in
             // the report's "trees: dipoles" stage.
@@ -1002,7 +1147,7 @@ where
                         .collect::<Vec<_>>()
                 }));
         }
-        selection.mask_born(&mut sub.born, &zero)?;
+        selection.mask_born(&mut sub.born, &zero).map_err(error)?;
         let families = selection.families.as_deref();
         let (part_results, part_report) = py
             .detach(|| {
@@ -1019,6 +1164,19 @@ where
         report.seconds.insert("row liveness: trees", trees);
     }
     report.seconds.extend(tree_parts);
+    // The tree fill's work: the Born rows whose closures (Born and
+    // counterterm kets) run and the interactions of both programs.
+    report
+        .counts
+        .insert("tree closure rows", tree_counts.0 as u64);
+    report
+        .counts
+        .insert("tree interactions", tree_counts.1 as u64);
+    if let Some(kept) = &kept {
+        for result in &mut results {
+            kept.restrict(result);
+        }
+    }
     let mut evaluation = export_evaluation(
         results,
         report,
@@ -1029,6 +1187,8 @@ where
         columns,
     );
     evaluation.dipoles = correlations;
+    evaluation.counterterm_kets = kets;
+    evaluation.amplitude_rows = kept.map(|kept| kept.rows);
     Ok(evaluation)
 }
 
@@ -1225,6 +1385,7 @@ fn stored_tree_program_section<'py>(
     payload: &[u8],
     section: &str,
 ) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
+    let _unlock = pyamplicol::unlock();
     let found = py
         .detach(|| rusticol_core::loop_artifact::inflate_loop_v2_section(member, payload, section))
         .map_err(error)?;
@@ -1244,7 +1405,7 @@ impl V2Executor {
     /// columns to the tree program and `plan_components` replaces its plan
     /// Born components (an observable column set's plan).
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None, overlay=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         plan: Bound<'_, PyAny>,
@@ -1258,7 +1419,9 @@ impl V2Executor {
         columns: Option<String>,
         plan_components: Option<Vec<Option<usize>>>,
         fourier: Option<String>,
+        overlay: Option<String>,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
         }
@@ -1273,18 +1436,29 @@ impl V2Executor {
             ("double-double", None) => Carriers::DoubleDouble,
             ("arbitrary", Some(digits)) if digits > 0 => Carriers::Arbitrary(digits),
             ("exact", None) => Carriers::Exact,
+            ("prime", None) => Carriers::Prime,
             _ => {
                 return Err(error(
-                    "arithmetic must be double, double-double, exact, or arbitrary with digits",
+                    "arithmetic must be double, double-double, exact, prime, or arbitrary with digits",
                 ));
             }
         };
         // The stored plan: its binary member as bytes (M-FINAL MF-8G-1 item
         // 5), a plan JSON as text, or a stored member of either
-        // (`program_bytes`); `load_with` reads either form.
+        // (`program_bytes`); `load_with` reads either form. With `overlay`
+        // (a column set's seed records, `native_observables.with_overlay`)
+        // the plan with them, without forming the merged plan JSON.
         let plan = {
             let data = program_bytes(&plan)?;
-            Arc::new(LoopProgramV4::load_with(&data, policy).map_err(error)?)
+            Arc::new(
+                match &overlay {
+                    Some(overlay) => {
+                        LoopProgramV4::load_overlaid(&data, overlay.as_bytes(), policy)
+                    }
+                    None => LoopProgramV4::load_with(&data, policy),
+                }
+                .map_err(error)?,
+            )
         };
         // The program's JSON text, a binary tree program (`loop_v2::trees::
         // binary`, M-FINAL MF-8G-1) or a stored member (`program_bytes`).
@@ -1320,17 +1494,20 @@ impl V2Executor {
         if let Some(record) = fourier {
             // The seed FFT needs square roots: the exact carrier contracts
             // directly (`loop_v2::fourier`).
-            if matches!(carrier, Carriers::Exact) {
+            if matches!(carrier, Carriers::Exact | Carriers::Prime) {
                 return Err(error("the exact carrier contracts seeds directly"));
             }
             executor = executor.with_fourier(record.as_bytes()).map_err(error)?;
         }
+        let tir_only =
+            rusticol_core::loop_v2::bounds::tir_only(runtime::plan_histogram(executor.plan()));
         Ok(Self {
             executor,
             carrier,
             engine: engine.to_owned(),
-            backend: None,
+            backends: [None, None],
             trees,
+            tir_only,
         })
     }
 
@@ -1353,6 +1530,7 @@ impl V2Executor {
         trees: bool,
         fourier: bool,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
         }
@@ -1361,9 +1539,10 @@ impl V2Executor {
             ("double-double", None) => Carriers::DoubleDouble,
             ("arbitrary", Some(digits)) if digits > 0 => Carriers::Arbitrary(digits),
             ("exact", None) => Carriers::Exact,
+            ("prime", None) => Carriers::Prime,
             _ => {
                 return Err(error(
-                    "arithmetic must be double, double-double, exact, or arbitrary with digits",
+                    "arithmetic must be double, double-double, exact, prime, or arbitrary with digits",
                 ));
             }
         };
@@ -1373,7 +1552,7 @@ impl V2Executor {
         if fourier && self.executor.fourier().is_none() {
             return Err(error("the executor has no seed Fourier record to share"));
         }
-        if fourier && matches!(carrier, Carriers::Exact) {
+        if fourier && matches!(carrier, Carriers::Exact | Carriers::Prime) {
             return Err(error("the exact carrier contracts seeds directly"));
         }
         let same = std::mem::discriminant(&carrier) == std::mem::discriminant(&self.carrier)
@@ -1399,9 +1578,148 @@ impl V2Executor {
                 .map_err(error)?,
             carrier,
             engine: engine.to_owned(),
-            backend: None,
+            backends: [None, None],
             trees,
+            tir_only: self.tir_only,
         })
+    }
+
+    /// Build the `reduction` backend of this executor's carrier now (TIRust:
+    /// its plans from the plan's (propagators, rank) histogram, so that no
+    /// evaluation builds them; TIRust's typed refusal of a family is raised
+    /// here: the artifact runtime calls it once per call and carrier on
+    /// TIRust). Returns the (propagators, rank) plans TIRust built (empty
+    /// for NinjaRS). `target` is the call's target accuracy (the relative
+    /// accuracy of each point's result; None: `reduction_policy::
+    /// DEFAULT_TARGET`; a `ValueError` unless finite and positive): TIRust's
+    /// method-choice acceptance follows it (`v2_tir::acceptance_of`), and its
+    /// backend is rebuilt when it changes; NinjaRS has no setting it drives.
+    /// For validation, TIRust's keywords `method_choice`,
+    /// `alternative_first`, `acceptance` and `acceptance_frame` (those of
+    /// `V2TirReducer`; omitted,
+    /// the backend's defaults) set its settings: its backend is rebuilt when
+    /// they differ from its current ones. `profile` (a measurement:
+    /// `v2_tir::TirOptions::profile`, TIRust's own stage profile in the
+    /// report's "reduction: TIR ..." seconds) and `store` (a measurement:
+    /// `v2_tir::TirOptions::store`, TIRust's tensor store shared between the
+    /// families of a point chunk; values unchanged) and `masters_census`
+    /// (with `store`: `v2_tir::TirOptions::masters_census`, the bound of a
+    /// canonical masters provider; values unchanged) likewise. NinjaRS
+    /// refuses them. `unchecked` is the call's unchecked setting (both
+    /// backends; None: off, `reduction_policy::DEFAULT_UNCHECKED`; m-lit
+    /// lit-unchecked): set on the built backend like the target (TIRust's
+    /// plans stay); `evaluate`'s `unchecked` sets it per call as well.
+    /// `verified_last_resort` (validation; None: on,
+    /// `v2_tir::TirOptions::verified_last_resort`): False makes the rows
+    /// the method choice refuses fail closed again instead of the verified
+    /// gate-0 last resort (a TIRust setting, NinjaRS refuses it).
+    #[pyo3(signature = (reduction="tirust", *, target=None, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None, unchecked=None, verified_last_resort=None))]
+    #[allow(clippy::too_many_arguments)] // Python keyword arguments
+    fn prepare_reduction(
+        &mut self,
+        reduction: &str,
+        target: Option<f64>,
+        method_choice: Option<bool>,
+        alternative_first: Option<super::v2::Limit>,
+        acceptance: Option<f64>,
+        acceptance_frame: Option<String>,
+        profile: Option<bool>,
+        store: Option<bool>,
+        masters_census: Option<bool>,
+        unchecked: Option<bool>,
+        verified_last_resort: Option<bool>,
+    ) -> PyResult<Vec<(usize, usize)>> {
+        let _unlock = pyamplicol::unlock();
+        let reduction = Reduction::parse(reduction).map_err(error)?;
+        let unchecked =
+            unchecked.unwrap_or(rusticol_loop_reduction::reduction_policy::DEFAULT_UNCHECKED);
+        super::v2::reduction_target(target)?;
+        if reduction != Reduction::TiRust
+            && (super::v2::tir_settings_given(
+                method_choice,
+                &alternative_first,
+                acceptance,
+                &acceptance_frame,
+            ) || profile.is_some()
+                || store.is_some()
+                || masters_census.is_some()
+                || verified_last_resort.is_some())
+        {
+            return Err(error(
+                "method_choice, alternative_first, acceptance, acceptance_frame, profile, store, \
+                 masters_census and verified_last_resort are TIRust's settings",
+            ));
+        }
+        #[cfg(feature = "tir")]
+        if reduction == Reduction::TiRust
+            && !matches!(self.carrier, Carriers::Exact | Carriers::Prime)
+        {
+            let options = rusticol_loop_reduction::v2_tir::TirOptions {
+                profile: profile.unwrap_or(false),
+                store: store.unwrap_or(false),
+                masters_census: masters_census.unwrap_or(false),
+                unchecked,
+                verified_last_resort: verified_last_resort.unwrap_or(
+                    rusticol_loop_reduction::v2_tir::TirOptions::default().verified_last_resort,
+                ),
+                ..super::v2::tir_options_at(
+                    target,
+                    method_choice,
+                    &alternative_first,
+                    acceptance,
+                    &acceptance_frame,
+                )?
+            };
+            let bits = self.bits()?;
+            let slot = &mut self.backends[reduction as usize];
+            let current = match slot {
+                Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
+                _ => None,
+            };
+            let target_only = current.is_some_and(|current| {
+                current != options
+                    && (rusticol_loop_reduction::v2_tir::TirOptions {
+                        acceptance: options.acceptance,
+                        unchecked: options.unchecked,
+                        ..current
+                    }) == options
+            });
+            if let (true, Some(backend)) = (target_only, slot.as_mut()) {
+                // Another target or unchecked setting: the acceptance and
+                // the mode only, the plans stay.
+                backend.set_target_acceptance(options.acceptance);
+                backend.set_unchecked(options.unchecked);
+            } else if current != Some(options) {
+                *slot = Some(
+                    V2Backends::tirust_with(
+                        runtime::plan_histogram(self.executor.plan()),
+                        bits,
+                        options,
+                    )
+                    .map_err(error)?,
+                );
+            }
+        }
+        #[cfg(not(feature = "tir"))]
+        let _ = (
+            method_choice,
+            alternative_first,
+            acceptance,
+            acceptance_frame,
+            profile,
+            store,
+            masters_census,
+            verified_last_resort,
+        );
+        let backend = backend_of(
+            &mut self.backends,
+            self.carrier,
+            &self.engine,
+            reduction,
+            self.executor.plan(),
+        )?;
+        backend.set_unchecked(unchecked);
+        Ok(backend.plans())
     }
 
     /// Whether the executor has a tree program (native inputs).
@@ -1414,6 +1732,7 @@ impl V2Executor {
     /// `(block_rows, born, amplitudes, born_squared, counterterms)`, see
     /// `TreeInputs` (counterterms with poles).
     fn tree_inputs(&mut self, inputs: &Bound<'_, PyDict>) -> PyResult<ExportedTreeInputs> {
+        let _unlock = pyamplicol::unlock();
         let bits = self.bits()?;
         let executor = &self.executor;
         let trees = self
@@ -1428,7 +1747,9 @@ impl V2Executor {
             Carriers::Arbitrary(_) => {
                 tree_inputs_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
             }
-            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier has no native trees"))
+            }
         }
     }
 
@@ -1446,6 +1767,7 @@ impl V2Executor {
         rows: Option<Vec<bool>>,
         basis: Option<Vec<bool>>,
     ) -> PyResult<ExportedColumns> {
+        let _unlock = pyamplicol::unlock();
         let bits = self.bits()?;
         let executor = &self.executor;
         let trees = self
@@ -1476,7 +1798,9 @@ impl V2Executor {
                 bits,
                 selection,
             ),
-            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier has no native trees"))
+            }
         }
     }
 
@@ -1485,6 +1809,7 @@ impl V2Executor {
     /// and per leg (the on-shell invariants, DESIGN §11.1), exact fractions,
     /// and the plan masses' imaginary parts (empty: every plan mass real).
     fn bound_masses(&self, inputs: &Bound<'_, PyDict>) -> PyResult<BoundMasses> {
+        let _unlock = pyamplicol::unlock();
         let trees = self
             .trees
             .as_ref()
@@ -1498,7 +1823,9 @@ impl V2Executor {
             Carriers::Arbitrary(_) => {
                 bound_masses_with(trees, inputs, &scales, &Float::with_val(self.bits()?, 0))
             }
-            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier has no native trees"))
+            }
         }
     }
 
@@ -1569,6 +1896,7 @@ impl V2Executor {
         inputs: &Bound<'_, PyDict>,
         contraction: &str,
     ) -> PyResult<Vec<Vec<Values>>> {
+        let _unlock = pyamplicol::unlock();
         let contraction = match contraction {
             "auto" => Contraction::Auto,
             "direct" => Contraction::Direct,
@@ -1600,7 +1928,9 @@ impl V2Executor {
                 bits,
                 contraction,
             ),
-            Carriers::Exact => Err(error("the exact carrier contracts seeds directly")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier contracts seeds directly"))
+            }
         }
     }
 
@@ -1614,6 +1944,7 @@ impl V2Executor {
         inputs: &Bound<'_, PyDict>,
         schedule: &str,
     ) -> PyResult<ExportedNumerators> {
+        let _unlock = pyamplicol::unlock();
         let schedule = match schedule {
             "B" => Schedule::B,
             "F" => Schedule::F,
@@ -1638,6 +1969,7 @@ impl V2Executor {
             Carriers::Exact => {
                 numerators_with(py, executor, inputs, Rational::from(0), bits, schedule)
             }
+            Carriers::Prime => numerators_with(py, executor, inputs, Fp::new(0), bits, schedule),
         }
     }
 
@@ -1662,8 +1994,22 @@ impl V2Executor {
     /// `dipoles` (a `NativeDipoleCorrelator`, native trees only) adds per
     /// point the Born vectors' colour correlations contracted over the
     /// stored dipole orbits (`"dipoles"`, the native Catani operator's
-    /// input; report stage "trees: dipoles").
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None))]
+    /// input; report stage "trees: dipoles"). An amplitude-mode plan
+    /// (schema 5, loop-induced) returns per point `amplitudes` (per (loop
+    /// order, column) slot the bare loop amplitude `i/(16π²) Σ_f Ω_f`),
+    /// with a check `amplitude_check` and `amplitude_budget`, with
+    /// `term_scale` the slots' term scale `amplitude_scale` (one
+    /// unit-numerator reduction per monomial, family and point); its raw
+    /// lanes only with `raw_lanes`. `reduction` is the reduction backend,
+    /// `"ninjars"` (the default) or `"tirust"` (every carrier; its check frame
+    /// is the relabelling by `rotation`, TIRust's rotation copy, and with
+    /// `rescale` the rotation with the origin shift at rescaled inputs:
+    /// `reverse` and `shift` are NinjaRS's; `v2_tir::tir_frame`); the
+    /// caller (`loops.v2.reduction.resolve`) has chosen it once per call.
+    /// `unchecked` is the call's unchecked setting (m-lit lit-unchecked,
+    /// default off): the backend reduces without its own acceptance and
+    /// refusal checks (`V2Backends::set_unchecked`), fixed for the call.
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1688,7 +2034,13 @@ impl V2Executor {
         components: Option<Vec<bool>>,
         families: Option<Vec<bool>>,
         dipoles: Option<PyRef<'_, NativeDipoleCorrelator>>,
+        raw_lanes: bool,
+        term_scale: bool,
+        reduction: &str,
+        unchecked: bool,
     ) -> PyResult<Evaluation> {
+        let _unlock = pyamplicol::unlock();
+        let reduction = Reduction::parse(reduction).map_err(error)?;
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
             None => V2Options::default().poles,
@@ -1713,6 +2065,8 @@ impl V2Executor {
                 "fft" => Contraction::Fft,
                 _ => return Err(error("contraction must be auto, direct or fft")),
             },
+            raw_lanes,
+            term_scale,
             ..V2Options::default()
         };
         if let Some(chunk) = chunk_families {
@@ -1748,6 +2102,30 @@ impl V2Executor {
                 "selection masks: one flag per plan Born row and per plan Born component",
             ));
         }
+        // NinjaRS refuses a family beyond its rank <= N + 2 among the dressed
+        // ones (a TIR-only plan's, m-lit lit-eft) typed, before dressing.
+        if reduction == Reduction::NinjaRs && self.tir_only {
+            let kept = |index: usize| {
+                selection
+                    .families
+                    .as_ref()
+                    .is_none_or(|kept| kept.get(index).copied().unwrap_or(false))
+            };
+            let dressed = plan
+                .families
+                .iter()
+                .enumerate()
+                .filter(|&(index, _)| kept(index))
+                .map(|(_, family)| (family.propagators(), family.rank));
+            if let Some(refusal) =
+                rusticol_core::loop_v2::bounds::refused_families(Reduction::NinjaRs, dressed)
+            {
+                return Err(error(format!(
+                    "reduction ninjars cannot serve this plan (TIR-only: it admits the reduction \
+                     tirust only): {refusal}"
+                )));
+            }
+        }
         let selection = &selection;
         let bits = self.bits()?;
         let carrier = self.carrier;
@@ -1757,11 +2135,19 @@ impl V2Executor {
         // except lanes the fast engine routes to the generic one at its
         // absolute thresholds, which take the key themselves: `v2_reduce`
         // module docs).
-        let _unlock = (self.engine == "generic" || !matches!(carrier, Carriers::Double))
-            .then(pyamplicol::unlock)
-            .flatten();
-        let backend = backend_of(&mut self.backend, carrier, &self.engine)?;
-        backend.masters = masters;
+        let _unlock = (reduction == Reduction::NinjaRs
+            && (self.engine == "generic" || !matches!(carrier, Carriers::Double)))
+        .then(pyamplicol::unlock)
+        .flatten();
+        let backend = backend_of(
+            &mut self.backends,
+            carrier,
+            &self.engine,
+            reduction,
+            self.executor.plan(),
+        )?;
+        backend.set_masters(masters).map_err(error)?;
+        backend.set_unchecked(unchecked);
         let executor = &self.executor;
         let trees = self.trees.as_mut();
         let dipoles = dipoles.as_ref().map(|d| &*d.correlator);
@@ -1796,7 +2182,9 @@ impl V2Executor {
                 selection,
                 dipoles,
             ),
-            Carriers::Exact => unreachable!("backend_of refuses the exact carrier"),
+            Carriers::Exact | Carriers::Prime => {
+                unreachable!("backend_of refuses the exact carriers")
+            }
         }
     }
 }
@@ -1809,11 +2197,16 @@ impl V2Executor {
 #[pyfunction]
 #[pyo3(signature = (path, process=None))]
 fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
-    use rusticol_core::loop_artifact::{LOOP_V2_RUNTIME_CAPABILITY, open_loop_v2_artifact};
+    let _unlock = pyamplicol::unlock();
+    use rusticol_core::loop_artifact::{loop_v2_capability, open_loop_v2_artifact};
 
     let loaded = py
         .detach(|| open_loop_v2_artifact(path, process))
         .map_err(error)?;
+    // The admitted process's own runtime (v4 Born-interfered, v5
+    // loop-induced): the loader checked it against its contribution.
+    let runtime_capability = loop_v2_capability(&loaded.metadata.contribution_kind)
+        .ok_or_else(|| error("unknown loop contribution kind"))?;
     let program = &loaded.program;
     let buckets: Vec<[usize; 3]> = program
         .buckets()
@@ -1823,7 +2216,7 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
     serde_json::to_string(&serde_json::json!({
         "artifact_id": loaded.artifact_id,
         "process_id": loaded.selection.process.id,
-        "runtime_capability": LOOP_V2_RUNTIME_CAPABILITY,
+        "runtime_capability": runtime_capability,
         "plan_sha256": loaded.plan_sha256,
         "plan_bytes": loaded.plan_json.len(),
         "families": program.families.len(),
@@ -1882,6 +2275,7 @@ fn compile_v2_plane<'py>(
     compress: bool,
     real_points: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, usize, usize)> {
+    let _unlock = pyamplicol::unlock();
     let real_points = real_points.unwrap_or_default();
     let checked = py
         .detach(|| {
@@ -1923,6 +2317,7 @@ fn compile_v2_plane<'py>(
 /// this process (crate `pyamplicol`).
 #[pyfunction]
 fn native_library_key_active() -> bool {
+    let _unlock = pyamplicol::unlock();
     pyamplicol::is_active()
 }
 
@@ -1936,9 +2331,18 @@ type V2ArtifactPoint = (Option<(Vec<f64>, Vec<Vec<f64>>)>, Vec<String>);
 /// physical momenta of every leg (`4 × legs` exact decimal or fraction
 /// strings), `scales` mu_R² per point, `parameters` the caller's model
 /// parameter values (exact strings), `poles` the pole selection ("all",
-/// "none", "uv" or "ir"; True and False are "all" and "none").
+/// "none", "uv" or "ir"; True and False are "all" and "none"; a
+/// loop-induced process serves "all" and "none"), `reduction` the backend
+/// ("ninjars" or "tirust"; by default the one `V2Runtime::open` takes, the
+/// binary64 choice of "auto" (`reduction_policy::resolve`: TIRust for a
+/// loop-induced or TIR-only process where this library serves it, else
+/// NinjaRS) WITHOUT "auto"'s per-point NinjaRS fallback, which the SDK
+/// runtime and the Python API add: here a point TIRust refuses is a failed
+/// point with its reason). A loop-induced process returns an empty Born and
+/// |A_loop|² per declared sector. `unchecked` is the unchecked setting
+/// (`V2Runtime::set_unchecked`; default off).
 #[pyfunction]
-#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None))]
+#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None, reduction=None, unchecked=false))]
 #[allow(clippy::too_many_arguments)]
 fn evaluate_v2_artifact(
     py: Python<'_>,
@@ -1949,8 +2353,15 @@ fn evaluate_v2_artifact(
     parameters: Option<BTreeMap<String, String>>,
     poles: Option<Bound<'_, PyAny>>,
     threads: Option<usize>,
+    reduction: Option<&str>,
+    unchecked: bool,
 ) -> PyResult<Vec<V2ArtifactPoint>> {
+    let _unlock = pyamplicol::unlock();
     use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime};
+    let reduction = reduction
+        .map(rusticol_loop_reduction::runtime::Reduction::parse)
+        .transpose()
+        .map_err(error)?;
 
     let poles = match poles {
         None => V2Poles::All,
@@ -1978,6 +2389,10 @@ fn evaluate_v2_artifact(
     let points = py
         .detach(|| {
             let mut runtime = V2Runtime::open(path, process, threads)?;
+            if let Some(reduction) = reduction {
+                runtime.set_reduction(reduction)?;
+            }
+            runtime.set_unchecked(unchecked);
             if let Some(values) = &parameters {
                 runtime.set_parameters(values.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
             }
@@ -1988,13 +2403,255 @@ fn evaluate_v2_artifact(
         .into_iter()
         .map(|point| match point {
             Ok(values) => (Some(values), Vec::new()),
-            Err(failures) => (None, failures),
+            Err(failures) => (None, failures.reasons),
         })
         .collect())
 }
 
+/// |A|² of binary64 loop-induced amplitude vectors per sector and Laurent
+/// coefficient in the canonical squaring order
+/// (`rusticol_core::loop_v2::interference::square_amplitudes`, the native
+/// binary64 square of RULED Q41; DD and arbitrary precision square the
+/// exported vectors in Python's `Decimal`, `loops/v2/induced.square`).
+/// `amplitudes` per (loop order, row, basis element) slot (`orders` loop
+/// orders) its Laurent coefficients as `[re, im]` pairs; `metric` `G`
+/// row-major; `sectors` per sector its `(l, l')` loop-order slot pairs.
+#[pyfunction]
+#[pyo3(signature = (amplitudes, orders, rows, basis, width, metric, sectors, average))]
+#[allow(clippy::too_many_arguments)]
+fn square_amplitudes(
+    py: Python<'_>,
+    amplitudes: Vec<Vec<[f64; 2]>>,
+    orders: usize,
+    rows: usize,
+    basis: usize,
+    width: usize,
+    metric: Vec<[f64; 2]>,
+    sectors: Vec<Vec<(usize, usize)>>,
+    average: f64,
+) -> PyResult<Vec<Vec<f64>>> {
+    let _unlock = pyamplicol::unlock();
+    let complex = |values: &[[f64; 2]]| {
+        values
+            .iter()
+            .map(|[re, im]| Complex::new(*re, *im))
+            .collect::<Vec<_>>()
+    };
+    let amplitudes: Vec<Vec<Complex<f64>>> = amplitudes.iter().map(|cell| complex(cell)).collect();
+    let metric = complex(&metric);
+    py.detach(|| {
+        rusticol_core::loop_v2::interference::square_amplitudes(
+            &amplitudes,
+            orders,
+            rows,
+            basis,
+            width,
+            &metric,
+            &sectors,
+            &average,
+        )
+    })
+    .map_err(error)
+}
+
+/// The stored records of a Born-interfered process's resolved set
+/// (`native_observables.StoredObservables`) as the formation reads them.
+fn resolved_records<'a>(
+    record: &'a str,
+    overlay: &'a str,
+    companion_overlay: Option<&'a str>,
+    columns: &'a str,
+    plan: &'a str,
+    companion_plan: Option<&'a str>,
+) -> template::ResolvedRecords<'a> {
+    template::ResolvedRecords {
+        record: record.as_bytes(),
+        overlay: overlay.as_bytes(),
+        companion_overlay: companion_overlay.map(str::as_bytes),
+        columns: columns.as_bytes(),
+        plan: plan.as_bytes(),
+        companion_plan: companion_plan.map(str::as_bytes),
+    }
+}
+
+/// A formed set's outputs for Python: per output column its key (JSON),
+/// rows and basis elements, and per (output, sector JSON) its lanes.
+type FormedOutputs = (
+    Vec<(String, Option<Vec<usize>>, Option<Vec<usize>>)>,
+    Vec<(usize, String, usize, usize)>,
+);
+
+fn formed_outputs(set: &template::FormedColumns) -> FormedOutputs {
+    (
+        set.outputs
+            .iter()
+            .map(|column| {
+                (
+                    column.key.to_string(),
+                    column.rows.clone(),
+                    column.basis.clone(),
+                )
+            })
+            .collect(),
+        set.lanes
+            .iter()
+            .map(|(c, sector, direct, swapped)| (*c, sector.to_string(), *direct, *swapped))
+            .collect(),
+    )
+}
+
+/// The selection template of a stored Born-interfered process (lit-fc-hel
+/// (G5): `rusticol_loop_reduction::v2_runtime::template`, the one formation
+/// the native SDKs use): its seed records (`overlay`, `companion_overlay`),
+/// interference programs (`columns`), output columns and lanes
+/// (`outputs`), row classes, and the masks of a selection (`masks`).
+#[pyclass(name = "SelectionTemplate", frozen)]
+struct PySelectionTemplate {
+    inner: template::SelectionTemplate,
+}
+
+#[pymethods]
+impl PySelectionTemplate {
+    #[getter]
+    fn overlay(&self) -> &str {
+        &self.inner.set.overlay
+    }
+
+    #[getter]
+    fn companion_overlay(&self) -> Option<&str> {
+        self.inner.set.companion_overlay.as_deref()
+    }
+
+    #[getter]
+    fn columns(&self) -> &str {
+        &self.inner.set.columns
+    }
+
+    #[getter]
+    fn classes(&self) -> Vec<Vec<usize>> {
+        self.inner.classes.clone()
+    }
+
+    #[getter]
+    fn outputs(&self) -> FormedOutputs {
+        formed_outputs(&self.inner.set)
+    }
+
+    /// The masks of a selection keeping the Born rows `rows` and the basis
+    /// elements `basis` (indices; None keeps every one): (rows, basis, per
+    /// plan the components and families, the wanted template columns).
+    #[allow(clippy::type_complexity)]
+    #[pyo3(signature = (rows=None, basis=None))]
+    fn masks(
+        &self,
+        rows: Option<Vec<usize>>,
+        basis: Option<Vec<usize>>,
+    ) -> PyResult<(
+        Option<Vec<bool>>,
+        Option<Vec<bool>>,
+        Vec<Option<Vec<bool>>>,
+        Vec<Option<Vec<bool>>>,
+        Vec<usize>,
+    )> {
+        let _unlock = pyamplicol::unlock();
+        let rows: Option<std::collections::BTreeSet<usize>> = rows.map(|r| r.into_iter().collect());
+        let basis: Option<std::collections::BTreeSet<usize>> =
+            basis.map(|b| b.into_iter().collect());
+        let masks = self
+            .inner
+            .masks(rows.as_ref(), basis.as_ref())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok((
+            masks.rows,
+            masks.basis,
+            masks.components,
+            masks.families,
+            masks.wanted,
+        ))
+    }
+}
+
+/// Form the selection template of a stored process (`PySelectionTemplate`)
+/// from its observables record (JSON), its resolved set's seed records and
+/// interference programs, and its process (companion) plan JSON.
+#[pyfunction]
+#[pyo3(signature = (record, overlay, companion_overlay, columns, plan, companion_plan))]
+fn selection_template(
+    py: Python<'_>,
+    record: &str,
+    overlay: &str,
+    companion_overlay: Option<&str>,
+    columns: &str,
+    plan: &str,
+    companion_plan: Option<&str>,
+) -> PyResult<PySelectionTemplate> {
+    let _unlock = pyamplicol::unlock();
+    let records = resolved_records(
+        record,
+        overlay,
+        companion_overlay,
+        columns,
+        plan,
+        companion_plan,
+    );
+    let inner = py
+        .detach(|| template::SelectionTemplate::form(&records))
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    Ok(PySelectionTemplate { inner })
+}
+
+/// The stored resolved columns of a resolved selection
+/// (`template::resolved_subset`; the process (companion) plan supplies the
+/// seed records a set does not store): (overlay, companion overlay,
+/// columns, outputs, lanes).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+#[pyfunction]
+#[pyo3(signature = (record, overlay, companion_overlay, columns, plan, companion_plan=None, rows=None, basis=None))]
+fn resolved_subset(
+    record: &str,
+    overlay: &str,
+    companion_overlay: Option<&str>,
+    columns: &str,
+    plan: &str,
+    companion_plan: Option<&str>,
+    rows: Option<Vec<usize>>,
+    basis: Option<Vec<usize>>,
+) -> PyResult<(
+    String,
+    Option<String>,
+    String,
+    Vec<(String, Option<Vec<usize>>, Option<Vec<usize>>)>,
+    Vec<(usize, String, usize, usize)>,
+)> {
+    let _unlock = pyamplicol::unlock();
+    let records = resolved_records(
+        record,
+        overlay,
+        companion_overlay,
+        columns,
+        plan,
+        companion_plan,
+    );
+    let rows: Option<std::collections::BTreeSet<usize>> = rows.map(|r| r.into_iter().collect());
+    let basis: Option<std::collections::BTreeSet<usize>> = basis.map(|b| b.into_iter().collect());
+    let set = template::resolved_subset(&records, rows.as_ref(), basis.as_ref())
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let (outputs, lanes) = formed_outputs(&set);
+    Ok((
+        set.overlay,
+        set.companion_overlay,
+        set.columns,
+        outputs,
+        lanes,
+    ))
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
+    module.add_class::<PySelectionTemplate>()?;
+    module.add_function(wrap_pyfunction!(selection_template, module)?)?;
+    module.add_function(wrap_pyfunction!(resolved_subset, module)?)?;
+    module.add_function(wrap_pyfunction!(square_amplitudes, module)?)?;
     module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
     module.add(
         "PlaneMismatchError",

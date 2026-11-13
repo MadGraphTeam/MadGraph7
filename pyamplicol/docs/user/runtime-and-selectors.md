@@ -636,6 +636,21 @@ integrals to be its squared mass, so a binary64-rounded point gives the same
 finite part and poles in all three, to binary64's accuracy (see
 [Configuration, the v2 loop engine](configuration.md#the-v2-loop-engine)).
 
+**The precision ladder and the input point.** Above binary64 the point is
+first improved in each carrier (`kinematics_improvement`, MadLoop's
+`"z-shift"` by default; binary64 only with `kinematics_improvement_binary64`,
+off by default): binary64 (as given) -> double-double (the point improved in
+double-double) -> arbitrary precision (improved at its working digits). Each
+rescue level and the per-point NinjaRS fallback start from the caller's
+original inputs in their own carrier, never from another level's improved
+point, and the stability rotations rotate the improved point. A tree
+evaluation at a precision other than 16 (an exact executor) and the
+correlated default (`arithmetic="arbitrary"`, any precision, 16 included)
+are improved the same way (the record in `take_warnings`). The value is then
+the value at the improved point of the given inputs: it moves at the level
+of the input's own defect (about 1e-16 relative at regular points); see
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+
 After updating from a version that rounded these definitions during generation,
 regenerate the prepared model and process output: increasing `precision` cannot
 repair coefficients already rounded in an older output. The prepared-model
@@ -698,7 +713,9 @@ For controlled, multi-process comparisons and report generation, use
 ### Virtual (one-loop) artifacts
 
 A one-loop artifact (plan v4 processes of the v2 engine, runtime capability
-`rusticol.loop-runtime.v4`) loads through the same `Runtime.load` entry point.
+`rusticol.loop-runtime.v4`, for Born-interfered virtuals; plan v5 processes,
+`rusticol.loop-runtime.v5`, for loop-induced ones) loads through the same
+`Runtime.load` entry point.
 Directory and direct `artifact.json` paths are accepted. The native loader
 checks the selected process, payloads, coupling orders and declared scheme and
 binds the saved program; no model import or regeneration happens at load. An
@@ -739,8 +756,11 @@ atomic. `mu_r2` is required explicitly; it is the renormalization scale squared.
 `evaluate` also takes `poles` (`"all"`, `"none"` for the finite part only,
 `"uv"`, `"ir"`), `stability_checks` (a `VirtualStabilityChecks`: rotations and
 the reduction-direction and rescaled checks; one estimate per point, none
-without checks) and `on_failure="return"` (a failed point is `None` with its
-reason). Declared colour and spin correlations are served by
+without checks) and `on_failure` (the default `"best-effort"`: a point the
+backend refuses is returned with its best available value, status
+`"best-effort"`, its refusal and an uncertainty; `"return"`: a failed point
+is `None` with its reason; `"raise"`: `EvaluationError` at the first such
+point). Declared colour and spin correlations are served by
 `evaluate_correlated` and `evaluate_correlated_many`, per-helicity and
 per-colour components by `evaluate_resolved`, with the same options. See
 [The v2 loop engine](configuration.md#the-v2-loop-engine) for the generation

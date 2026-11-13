@@ -449,7 +449,7 @@ def test_resolved_pole_parts_follow_the_resolved_axes():
     assert result.for_order((("QCD", 6),)).pole_parts == result.pole_parts
     text = virtual_evaluation_summary(result, prettytable=prettytable)
     assert (
-        "infrared poles of the renormalised virtual" in text
+        "Born-loop interference, IR poles of the renormalised virtual" in text
         and "Pole parts by origin" in text
     )
     assert text.count("uv_external_fields") == 4  # 2 helicities x 2 origins
@@ -540,13 +540,24 @@ def test_slice_request_records_round_trip():
         external_photons=(3,),
         alpha0_conversion="dZe_conversion",
         alpha0_inverse="ainv0",
+        reduction="tirust",
+        squared_orders=("QCD^2<=6", "QED^2<=2"),
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
+    # A loop-induced request is full colour without a selection (m-lit Q8):
+    # its contribution is checked on a request of its own below.
     for item in fields(SliceRequest):
-        if item.name not in ("process", "born_orders"):
+        if item.name not in ("process", "born_orders", "contribution"):
             assert getattr(request, item.name) != getattr(default, item.name), item
+    induced = SliceRequest(
+        "g g > h", {}, {"QCD": 2, "QED": 1}, contribution="loop-induced"
+    )
+    assert request_record(induced)["contribution"] == "loop-induced"
+    assert request_from_record(request_record(induced)) == induced
     record = request_record(request)
-    assert set(record) == {item.name for item in fields(SliceRequest)} | {"correlators"}
+    assert set(record) == {item.name for item in fields(SliceRequest)} - {
+        "contribution"
+    } | {"correlators"}
     assert json.loads(json.dumps(record)) == record
     assert request_from_record(record) == request
     single = request_record(default)
@@ -558,6 +569,9 @@ def test_slice_request_records_round_trip():
         "external_photons",
         "alpha0_conversion",
         "alpha0_inverse",
+        "contribution",
+        "reduction",
+        "squared_orders",
     } & set(single)
     assert request_from_record(single) == default
     with pytest.raises(ArtifactError, match=r"unknown.*future_option"):
@@ -1131,10 +1145,11 @@ def test_correlated_and_resolved_calls_split_the_poles(full_colour):
 
 @pytest.mark.loop_physics
 def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
-    """Undeclared colour histories and spin classes, helicity selectors and
-    direct R2 are refused (a rescue policy outside ``evaluate``:
-    ``test_loop_v2_rescue.py``); the Born metric ("born") and resolved output
-    need no declaration."""
+    """Undeclared colour histories and spin classes, colour-flow selectors
+    (full colour has no flows) and direct R2 are refused (a rescue policy
+    outside ``evaluate``: ``test_loop_v2_rescue.py``); the Born metric
+    ("born"), the resolved output and a helicity selection (every colour
+    accuracy, lit-fc-hel) need no declaration."""
 
     from pyamplicol import Runtime
 
@@ -1151,13 +1166,18 @@ def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
     total = resolved.total()
     for a, b in zip(total.values[0][0], inclusive.values[0][0], strict=True):
         assert abs(a - b) <= 1e-12 * abs(b)
+    # A full-colour helicity selection is served (USER 2026-11-09 ~19:53,
+    # lit-fc-hel): one row is its resolved entry (bitwise up to the sign of
+    # a zero).
+    one = runtime.evaluate([point], mu_r2="1000000", helicities=["h0"])
+    assert list(one.values[0][0]) == list(resolved.values[0][0][0][0])
     with pytest.raises(EvaluationError, match="spin-correlation class was not"):
         runtime.set_spin_correlation_vectors({3: [1, 0, 0, 0]})
     for call in (
         lambda: runtime.evaluate_correlated(
             [point], mu_r2="1000000", color_correlation="T12"
         ),
-        lambda: runtime.evaluate([point], mu_r2="1000000", helicities=["h0"]),
+        lambda: runtime.evaluate([point], mu_r2="1000000", color_flows=["1"]),
         lambda: runtime.evaluate([point], mu_r2="1000000", r2_strategy="direct"),
     ):
         with pytest.raises(CompatibilityError):
@@ -1663,7 +1683,8 @@ def test_cli_generates_and_evaluates_through_v2(
     )
     assert code == 0, stderr.getvalue()
     text = stdout.getvalue()
-    assert "Finite-only evaluation" in text and "Stability estimates" in text
+    assert "Born-loop interference, finite only" in text
+    assert "Stability estimates" in text
     assert "reduction-direction" in text and "absent" in text
     stdout = io.StringIO()
     code = run_cli(
@@ -1688,7 +1709,7 @@ def test_cli_generates_and_evaluates_through_v2(
     )
     assert code == 0, stderr.getvalue()
     text = stdout.getvalue()
-    assert "ultraviolet poles of the bare loop amplitude" in text
+    assert "Born-loop interference, UV poles of the bare loop amplitude" in text
     assert "Pole parts by origin" in text and "uv_external_fields" in text
 
 

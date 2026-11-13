@@ -677,7 +677,7 @@ impl LcResolvedOutputLayout {
 
 impl RecurrenceNativeRuntime {
     #[allow(clippy::too_many_arguments)]
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(super) fn new(
         plan: DirectRecurrencePlan,

@@ -281,6 +281,80 @@ def test_colour_singlet_merges_enter_the_dag_in_one_input_order(
     assert max(merges.values()) == 1
 
 
+def _lo_heft_gluon_fusion(model: CompiledModel, alpha_s: Decimal) -> Decimal:
+    """G_F alpha_s^2 m_H^4 c(r)^2 / (288 sqrt(2) pi^2): g g > H of
+    L = -(C/4) H G^a G^a with C = alpha_s c(r) / (3 pi v), v^2 = 1 / (sqrt(2)
+    G_F), averaged over helicities and colours (sum delta^ab delta^ab =
+    N^2 - 1 = 8), at the model's default G_F, m_H and m_t and its GH factor
+    c(r) = 1 + 7/120 r + 1/168 r^2 + 13/16800 r^3, r = m_H^2 / m_t^2."""
+
+    value = {
+        parameter.name: Decimal(repr(parameter.default_real))
+        for parameter in model.parameters
+        if parameter.name in {"Gf", "MH", "MT"}
+    }
+    with localcontext() as context:
+        context.prec = 50
+        r = value["MH"] ** 2 / value["MT"] ** 2
+        c = 1 + r * 7 / 120 + r**2 / 168 + r**3 * 13 / 16800
+        return (
+            value["Gf"]
+            * alpha_s**2
+            * value["MH"] ** 4
+            * c**2
+            / (288 * Decimal(2).sqrt() * _PI**2)
+        )
+
+
+def _gluon_fusion(tmp_path: Path, accuracy: str, alpha_s: Decimal) -> Decimal:
+    """g g > H at ``accuracy``, 40 digits, at rest (m_H = 125 GeV)."""
+
+    output = tmp_path / f"gg_h_{accuracy}"
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy=accuracy),
+        evaluator=EvaluatorConfig(backend="jit", execution_mode="compiled"),
+        generation=GenerationConfig(workers=1, emit_api_bundle=False),
+        process=ProcessConfig(
+            coupling_order_policy="explicit", max_coupling_orders=_HEFT_ORDERS
+        ),
+    )
+    Generator(config).generate(
+        ProcessSet.from_expressions(("g g > h",), names=("gg_h",)),
+        output,
+        model=ModelSource.built_in_sm_heft(),
+    )
+    half_mass, zero = Decimal("62.5"), Decimal(0)
+    runtime = Runtime.load(
+        output, process="gg_h", model_parameters={"aS": float(alpha_s)}
+    )
+    point = (
+        (half_mass, zero, zero, half_mass),
+        (half_mass, zero, zero, -half_mass),
+        (2 * half_mass, zero, zero, zero),
+    )
+    return Decimal(str(runtime.evaluate((point,), precision=40)[0]))
+
+
+def test_gluon_fusion_heft_tree_is_the_lo_heft_value(
+    tmp_path: Path, compiled_sm_heft: CompiledModel
+) -> None:
+    """Full colour: g g > H is the analytic LO HEFT value (the absolute
+    normalisation every ratio test below divides out). At the tree default
+    ``color.accuracy = "lc"`` the colour factor is the leading N_c power, N^2
+    for two gluons instead of N^2 - 1: exactly N^2 / (N^2 - 1) = 9/8 of it, by
+    the documented convention, so a full-colour reference (MadGraph, an
+    analytic formula, a loop-induced |A|^2) needs ``accuracy = "full"``."""
+
+    alpha_s = Decimal("0.125")
+    expected = _lo_heft_gluon_fusion(compiled_sm_heft, alpha_s)
+    for accuracy, colour in (("full", Decimal(1)), ("lc", Decimal(9) / 8)):
+        value = _gluon_fusion(tmp_path, accuracy, alpha_s)
+        with localcontext() as context:
+            context.prec = 50
+            assert abs(value / (colour * expected) - 1) <= Decimal("1e-30"), accuracy
+
+
 def test_quark_initiated_heft_trees_match_the_effective_lagrangian(
     tmp_path: Path,
 ) -> None:

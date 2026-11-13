@@ -552,6 +552,182 @@ def test_native_loop_blocks_wider_controls(models, text, orders):
     _assert_equal(compiled, model, text, orders)
 
 
+@pytest.fixture(scope="module")
+def ew_models(loop_sm_compiled_model):
+    """``models`` in 't Hooft-Feynman gauge, as an electroweak request runs
+    (``ew_policy.feynman_gauge_model``)."""
+
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model, with_model_gauge
+
+    compiled = with_model_gauge(load_compiled_model(loop_sm_compiled_model), "feynman")
+    return compiled, CompiledUFOModel(compiled)
+
+
+# Two quark lines whose electroweak bosons meet at a colour-singlet vertex:
+# WWA / WWZ / WWH between W-paired lines (the neutral pairing too in
+# u u~ > d d~ e+ e-, neutrinos in u u~ > d d~ ve ve~), three quark lines
+# (u u~ > d d~ s s~), HZZ / ZHZ from a massive quark line, the WWAA contact.
+ELECTROWEAK_SINGLET_MERGES = (
+    pytest.param("u u~ > d d~ a", {"QCD": 0, "QED": 3}, id="uux_ddxa"),
+    pytest.param("u c~ > d s~ e+ e-", {"QCD": 0, "QED": 4}, id="ucx_dsxepem"),
+    pytest.param("u u~ > d d~ ve ve~", {"QCD": 0, "QED": 4}, id="uux_ddxvevex"),
+    pytest.param("u u~ > d d~ s s~", {"QCD": 0, "QED": 4}, id="uux_ddxssx"),
+    pytest.param("u u~ > d d~ e+ e-", {"QCD": 2, "QED": 4}, id="uux_ddxepem"),
+    pytest.param("u u~ > s s~ t t~", {"QCD": 0, "QED": 4}, id="uux_ssxttx"),
+    pytest.param("u u~ > d d~ a a", {"QCD": 0, "QED": 4}, id="uux_ddxaa"),
+)
+
+
+def _coloured_labels(dag, model):
+    return {
+        leg.label
+        for leg in dag.process.legs
+        if model.color_rep(leg.outgoing_pdg) not in (None, 1)
+    }
+
+
+def _singlet_merges_with_coloured_inputs(dag, model):
+    """(left, right, vertex particles) of every merge of two colour-singlet
+    inputs into a colour singlet whose inputs both carry coloured labels in
+    their words (U(1)-projection lines excluded, as in the rule)."""
+
+    from pyamplicol.models.contracts import (
+        U1_IDENTITY_SUFFIX,
+        U1_SUBTRACTION_AUXILIARY_KIND,
+    )
+
+    coloured = _coloured_labels(dag, model)
+    currents = {current.id: current.index for current in dag.currents}
+
+    def singlet(pdg):
+        kind = model.auxiliary_kind(pdg)
+        return model.color_rep(pdg) == 1 and (
+            kind is None
+            or not (
+                kind == U1_SUBTRACTION_AUXILIARY_KIND
+                or kind.endswith(U1_IDENTITY_SUFFIX)
+            )
+        )
+
+    merges = []
+    for interaction in dag.interactions:
+        left = currents[interaction.left_id].ordered_external_labels
+        right = currents[interaction.right_id].ordered_external_labels
+        if (
+            all(singlet(pdg) for pdg in interaction.vertex_particles)
+            and coloured.intersection(left)
+            and coloured.intersection(right)
+        ):
+            merges.append(
+                (
+                    interaction.left_id,
+                    interaction.right_id,
+                    interaction.vertex_particles,
+                )
+            )
+    return merges
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(("text", "orders"), ELECTROWEAK_SINGLET_MERGES)
+def test_native_loop_blocks_keep_one_order_of_electroweak_singlet_merges(
+    ew_models, text, orders
+):
+    """Both lanes keep one input order of a colour-singlet merge whose
+    inputs both carry coloured labels (``ColorEngine.
+    _loop_block_trace_orientation_allowed``): its two orders would give two
+    block words of one colour factor, each holding the vertex's trees, and
+    the loop seeds would count them twice (lit-ew-blocks, F-A)."""
+
+    compiled, model = ew_models
+    python, _native_dag = _assert_equal(compiled, model, text, orders)
+    merges = _singlet_merges_with_coloured_inputs(python, model)
+    assert merges
+    kept = {(left, right, particles) for left, right, particles in merges}
+    for left, right, (a, b, c) in kept:
+        assert (right, left, (b, a, c)) not in kept, (left, right, (a, b, c))
+
+
+def _contact_paths(dag, model):
+    """Every four-point colour-singlet contact derivation of a block current
+    (``generation.dag_color``: a partial merge of legs x, y into the contact
+    auxiliary, the final merge with leg z): the count of each (result
+    current's mask, particle, orders and chirality; auxiliary; {x, y}; z)."""
+
+    from collections import Counter
+
+    def auxiliary(pdg):
+        kind = model.auxiliary_kind(pdg)
+        return kind is not None and kind.startswith("ufo-contact")
+
+    currents = {current.id: current.index for current in dag.currents}
+    partials = {}
+    finals = []
+    for interaction in dag.interactions:
+        a, b, c = interaction.vertex_particles
+        if auxiliary(c):
+            partials.setdefault(interaction.result_id, []).append(
+                (interaction.left_id, interaction.right_id)
+            )
+        elif auxiliary(a) or auxiliary(b):
+            finals.append(interaction)
+    counts = Counter()
+    for final in finals:
+        auxiliary_id, other = (
+            (final.left_id, final.right_id)
+            if auxiliary(final.vertex_particles[0])
+            else (final.right_id, final.left_id)
+        )
+        result = currents[final.result_id]
+        group = (
+            result.external_mask,
+            result.particle_id,
+            result.coupling_orders,
+            result.chirality,
+            currents[auxiliary_id].particle_id,
+        )
+        for x, y in partials[auxiliary_id]:
+            counts[(group, frozenset((x, y)), other)] += 1
+    return counts, currents
+
+
+@pytest.mark.loop_physics
+def test_contact_vertices_enter_each_block_current_once(ew_models):
+    """Each assignment of three sub-currents to the legs of a four-point
+    colour-singlet contact (WWAA, WWZA, ...) enters a block current once,
+    summed over its words: the partial merge into the contact auxiliary and
+    the final merge out of it keep one input order each (both inputs with
+    coloured labels: the smaller first coloured label on the left; one
+    without: ``_singlet_order_allowed``), as the Born counts the whole
+    contact once (``_singlet_contact_orientation_allowed``). Before the rule
+    a merge of two inputs that both carry quark lines (here the final merge
+    of the W A auxiliary with the other W) entered in both orders: two words
+    of one colour factor."""
+
+    compiled, model = ew_models
+    python, native = _assert_equal(
+        compiled, model, "u u~ > d d~ a a", {"QCD": 0, "QED": 4}
+    )
+    coloured = _coloured_labels(python, model)
+    for dag in (python, native.decode()):
+        counts, currents = _contact_paths(dag, model)
+        assert counts
+        assert set(counts.values()) == {1}, [k for k, n in counts.items() if n != 1]
+
+        # The case the rule decides: both inputs of the partial merge, or the
+        # auxiliary and the third leg of the final merge, carry quark lines.
+        def carries(current_id, currents=currents):
+            labels = currents[current_id].ordered_external_labels
+            return bool(coloured.intersection(labels))
+
+        assert any(
+            all(carries(leg) for leg in pair)
+            or (any(carries(leg) for leg in pair) and carries(z))
+            for (_group, pair, z) in counts
+        )
+
+
 @pytest.mark.loop_physics
 def test_native_loop_blocks_with_top_widths_select_full_kernels(models):
     """g g > t t~ g g propagates tops with W_T != 0: the Ward query names

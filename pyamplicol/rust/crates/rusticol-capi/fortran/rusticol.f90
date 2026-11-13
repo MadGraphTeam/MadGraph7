@@ -144,6 +144,9 @@ module rusticol
     procedure, public :: set_model_parameter => rusticol_set_model_parameter
     procedure, public :: set_model_parameters => rusticol_set_model_parameters
     procedure, public :: set_model_parameters_json => rusticol_set_model_parameters_json
+    procedure, public :: set_kinematics_improvement => rusticol_set_kinematics_improvement
+    procedure, public :: set_kinematics_improvement_binary64 => &
+        rusticol_set_kinematics_improvement_binary64
     procedure, public :: mute_warnings => rusticol_mute_warnings
     procedure, public :: unmute_warnings => rusticol_unmute_warnings
     procedure, public :: take_warnings_json => rusticol_take_warnings_json
@@ -521,6 +524,21 @@ module rusticol
       type(c_ptr), value :: handle, path
       integer(c_int) :: status
     end function c_rusticol_runtime_set_model_parameters_json
+
+    function c_rusticol_runtime_set_kinematics_improvement(handle, setting) &
+        bind(C, name="rusticol_runtime_set_kinematics_improvement") result(status)
+      import :: c_ptr, c_int
+      type(c_ptr), value :: handle, setting
+      integer(c_int) :: status
+    end function c_rusticol_runtime_set_kinematics_improvement
+
+    function c_rusticol_runtime_set_kinematics_improvement_binary64(handle, binary64) &
+        bind(C, name="rusticol_runtime_set_kinematics_improvement_binary64") result(status)
+      import :: c_ptr, c_int
+      type(c_ptr), value :: handle
+      integer(c_int), value :: binary64
+      integer(c_int) :: status
+    end function c_rusticol_runtime_set_kinematics_improvement_binary64
 
     function c_rusticol_runtime_mute_warnings(handle, muted) &
         bind(C, name="rusticol_runtime_mute_warnings") result(status)
@@ -1484,6 +1502,34 @@ contains
     status = c_rusticol_runtime_set_model_parameters_json(self%handle, c_loc(path_c(1)))
     if (.not. status_ok(status, ierr)) return
   end subroutine rusticol_set_model_parameters_json
+
+  ! Kinematics improvement (m-lit lit-psimprove): "z-shift" (the default),
+  ! "rescaling", "projection" or "off"; in these binary64 evaluations it runs
+  ! only with set_kinematics_improvement_binary64(.true.).
+  subroutine rusticol_set_kinematics_improvement(self, setting, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    character(len=*), intent(in) :: setting
+    integer(c_int), intent(out), optional :: ierr
+    character(kind=c_char), allocatable, target :: setting_c(:)
+    integer(c_int) :: status
+
+    call build_c_string(setting, setting_c)
+    status = c_rusticol_runtime_set_kinematics_improvement(self%handle, c_loc(setting_c(1)))
+    if (.not. status_ok(status, ierr)) return
+  end subroutine rusticol_set_kinematics_improvement
+
+  subroutine rusticol_set_kinematics_improvement_binary64(self, binary64, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    logical, intent(in) :: binary64
+    integer(c_int), intent(out), optional :: ierr
+    integer(c_int) :: status
+    integer(c_int) :: flag
+
+    flag = 0_c_int
+    if (binary64) flag = 1_c_int
+    status = c_rusticol_runtime_set_kinematics_improvement_binary64(self%handle, flag)
+    if (.not. status_ok(status, ierr)) return
+  end subroutine rusticol_set_kinematics_improvement_binary64
 
   subroutine rusticol_mute_warnings(self, ierr)
     class(rusticol_runtime), intent(inout) :: self

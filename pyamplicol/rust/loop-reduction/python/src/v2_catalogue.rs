@@ -43,6 +43,7 @@ fn loop_catalogue_polynomials(
     header: (String, String),
     threads: Option<usize>,
 ) -> PyResult<Vec<Vec<(Option<CandidateTuple>, Option<RefusalTuple>)>>> {
+    let _unlock = pyamplicol::unlock();
     let header = SignatureHeader {
         abi: header.0,
         contract_kind: header.1,
@@ -115,6 +116,7 @@ fn loop_rename_symbols(
     heads: Vec<(String, String)>,
     threads: Option<usize>,
 ) -> PyResult<Vec<String>> {
+    let _unlock = pyamplicol::unlock();
     py.detach(|| rename_symbols(&texts, &variables, &heads, threads))
         .map_err(error)
 }

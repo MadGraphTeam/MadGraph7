@@ -532,19 +532,20 @@ NC_SCAN_PRECISION = {"double": "double", "double-double": "arbitrary:32"}
 
 def _fc_at_nc(model, name, carrier, values, precision, cache):
     """FC of ``name`` at the ``carrier``'s point and each N_c of ``values``
-    (``loop_nc_scan``, one process each, concurrently): N -> (rescaled
-    interactions, entries)."""
+    (``loop_nc_scan``, one process each, concurrently within its
+    ``run_bounded`` bound): N -> (rescaled interactions, entries)."""
 
     import os
-    import subprocess
     import sys
     from concurrent.futures import ThreadPoolExecutor
+
+    from .loop_nc_scan import run_bounded
 
     root = Path(__file__).resolve().parents[2]
 
     def run(index, n):
         environment = dict(os.environ, PYAMPLICOL_CACHE_DIR=str(cache / f"nc-{index}"))
-        process = subprocess.run(
+        process = run_bounded(
             [
                 sys.executable,
                 "-m",

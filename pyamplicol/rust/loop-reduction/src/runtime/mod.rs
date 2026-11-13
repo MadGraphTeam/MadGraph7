@@ -10,6 +10,7 @@ mod batch;
 mod coefficients;
 mod exact;
 mod fast;
+pub(crate) mod frames;
 mod master_cache;
 
 mod predicates;
@@ -21,16 +22,21 @@ mod v2_seeds;
 pub use batch::{Batch, BatchCarrier, Data, shape};
 pub use coefficients::{CoefficientEvaluator, exact_state};
 pub use exact::decimal_rational;
+#[cfg(feature = "tir")]
+pub(crate) use master_cache::canonicalise as canonical_master_row;
 pub use master_cache::{MasterCache, MasterStatistics};
 pub use ninjars::fast::tensor_layout::monomials as tensor_monomials;
 pub use reduction::{
     DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch, light_mass_needs_invariants,
 };
-pub use v2_execution::{TypedBatch, V2ReductionBackend};
+pub use v2_execution::{
+    Reduction, TIRUST_NOT_BUILT, TypedBatch, V2Backends, V2ReductionBackend, backend_carriers,
+    ninjars_refusal, plan_histogram, rank_refusal,
+};
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
-    V2Output, V2Reducer, fast_engine_threshold, reaches_fast_threshold, shift_coefficients,
-    tensor_rank, true_rank,
+    V2Output, V2Reducer, fast_engine_threshold, fast_options, reaches_fast_threshold,
+    shift_coefficients, tensor_rank, true_rank,
 };
 pub use v2_seeds::V2SeedFourier;
 

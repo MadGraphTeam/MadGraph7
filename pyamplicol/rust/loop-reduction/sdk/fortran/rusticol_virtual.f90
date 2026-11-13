@@ -17,6 +17,9 @@ module rusticol_virtual
   integer(c_int), parameter, public :: VIRTUAL_BUFFER_TOO_SMALL=2, VIRTUAL_RUNTIME_ERROR=3, VIRTUAL_PANIC=4
   integer(c_int32_t), parameter, public :: VIRTUAL_SUCCESS=0, VIRTUAL_VERIFIED=1, VIRTUAL_RESCUED=2
   integer(c_int32_t), parameter, public :: VIRTUAL_FAILED=3, VIRTUAL_ACCURACY_NOT_ESTABLISHED=4
+  ! A point no configured alternative accepted, returned with the unchecked
+  ! reduction's value (never a success; set_on_failure, m-lit ux-besteffort).
+  integer(c_int32_t), parameter, public :: VIRTUAL_BEST_EFFORT=5
 
   type, bind(C), public :: virtual_shape
     integer(c_size_t) :: external_count=0, born_orders=0, virtual_orders=0, helicities=0
@@ -44,6 +47,7 @@ module rusticol_virtual
     complex(c_double), allocatable :: virtual_values(:,:,:,:) ! epsilon, order, history, point
     integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
     integer(c_int32_t), allocatable :: statuses(:)
+    real(c_double), allocatable :: uncertainties(:) ! best-effort points; NaN otherwise
     character(:), allocatable :: diagnostics_json, histories_json, spin_legs_json
     ! Extended precision: [real, imaginary] decimal literals (JSON); "null" in binary64.
     character(:), allocatable :: decimal_json
@@ -70,10 +74,27 @@ module rusticol_virtual
     real(c_double), allocatable :: virtual_values(:,:,:,:,:) ! epsilon, colour, helicity, order, point
     integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
     integer(c_int32_t), allocatable :: statuses(:) ! every requested point
+    ! Per requested point the relative uncertainty of a best-effort point
+    ! (VIRTUAL_BEST_EFFORT); NaN otherwise.
+    real(c_double), allocatable :: uncertainties(:)
     character(:), allocatable :: diagnostics_json
     ! Extended precision: {"arithmetic","digits","born","virtual"} decimal
     ! literals in the C layouts (JSON); "null" in binary64.
     character(:), allocatable :: decimal_json
+    ! {"helicity_ids","color_ids"}: a resolved result's axes in layout order
+    ! (a selection's rows, "amplitude-<t>" anchors); empty for an ordinary one.
+    character(:), allocatable :: axes_json
+  end type
+  type, bind(C) :: c_selection
+    type(c_ptr) :: helicity_ids
+    integer(c_size_t) :: helicity_count
+    type(c_ptr) :: color_ids
+    integer(c_size_t) :: color_count
+    type(c_ptr) :: helicity_by_point
+    integer(c_size_t) :: helicity_by_point_count
+    type(c_ptr) :: color_flow_by_point
+    integer(c_size_t) :: color_flow_by_point_count
+    type(c_ptr) :: color_resolution
   end type
   ! Assignment shares a reference-counted runtime. Calls require exclusive access.
   ! Evaluations own copied arrays and never depend on this runtime's lifetime.
@@ -98,7 +119,15 @@ module rusticol_virtual
     procedure :: update_parameters
     procedure :: set_poles
     procedure :: set_arithmetic
+    procedure :: set_reduction
+    procedure :: set_reduction_target
+    procedure :: set_reduction_unchecked
+    procedure :: set_on_failure
+    procedure :: set_kinematics_improvement
+    procedure :: set_kinematics_improvement_binary64
+    procedure :: set_stability_checks
     procedure :: evaluate
+    procedure :: evaluate_selected
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
     procedure :: spin_correlation_classes_json
@@ -193,11 +222,88 @@ module rusticol_virtual
       type(c_ptr), value :: handle, poles
       integer(c_int) :: value
     end function
+    function c_set_reduction(handle, reduction) bind(C, name="rusticol_virtual_set_reduction") result(value)
+      import
+      type(c_ptr), value :: handle, reduction
+      integer(c_int) :: value
+    end function
+    function c_set_reduction_target(handle, target) bind(C, name="rusticol_virtual_set_reduction_target") &
+        result(value)
+      import
+      type(c_ptr), value :: handle
+      real(c_double), value :: target
+      integer(c_int) :: value
+    end function
+    function c_set_reduction_unchecked(handle, unchecked) &
+        bind(C, name="rusticol_virtual_set_reduction_unchecked") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: unchecked
+      integer(c_int) :: value
+    end function
+    function c_set_on_failure(handle, on_failure) &
+        bind(C, name="rusticol_virtual_set_on_failure") result(value)
+      import
+      type(c_ptr), value :: handle, on_failure
+      integer(c_int) :: value
+    end function
+    function c_result_copy_uncertainties(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_result_copy_uncertainties") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlated_uncertainties(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_correlated_result_copy_uncertainties") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_set_kinematics_improvement(handle, setting) &
+        bind(C, name="rusticol_virtual_set_kinematics_improvement") result(value)
+      import
+      type(c_ptr), value :: handle, setting
+      integer(c_int) :: value
+    end function
+    function c_set_kinematics_improvement_binary64(handle, binary64) &
+        bind(C, name="rusticol_virtual_set_kinematics_improvement_binary64") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: binary64
+      integer(c_int) :: value
+    end function
+    function c_set_stability_checks(handle, rotation_count, rotations, reduction_direction, rescaled, &
+        cross_backend) bind(C, name="rusticol_virtual_set_stability_checks") result(value)
+      import
+      type(c_ptr), value :: handle, rotations
+      integer(c_int64_t), value :: rotation_count
+      integer(c_int32_t), value :: reduction_direction, rescaled, cross_backend
+      integer(c_int) :: value
+    end function
     function c_evaluate(handle, request, output) bind(C, name="rusticol_virtual_evaluate") result(value)
       import
       type(c_ptr), value :: handle
       type(c_batch_request), intent(in) :: request
       type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
+    function c_evaluate_selected(handle, request, selection, output) &
+        bind(C, name="rusticol_virtual_evaluate_selected") result(value)
+      import :: c_ptr, c_int, c_batch_request, c_selection
+      type(c_ptr), value :: handle
+      type(c_batch_request), intent(in) :: request
+      type(c_selection), intent(in) :: selection
+      type(c_ptr), intent(out) :: output
+      integer(c_int) :: value
+    end function
+    function c_result_axes_json(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_result_axes_json") result(value)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t), intent(out) :: needed
       integer(c_int) :: value
     end function
     function c_result_copy_born(handle, output, capacity) bind(C, name="rusticol_virtual_result_copy_born") result(value)
@@ -515,6 +621,8 @@ contains
       status=c_result_decimal_json(handle,c_null_ptr,0_c_size_t,n)
     case(10)
       status=c_correlated_decimal_json(handle,c_null_ptr,0_c_size_t,n)
+    case(11)
+      status=c_result_axes_json(handle,c_null_ptr,0_c_size_t,n)
     end select
     if (status/=VIRTUAL_OK) return
     allocate(buffer(n))
@@ -539,6 +647,8 @@ contains
       status=c_result_decimal_json(handle,c_loc(buffer),n,n)
     case(10)
       status=c_correlated_decimal_json(handle,c_loc(buffer),n,n)
+    case(11)
+      status=c_result_axes_json(handle,c_loc(buffer),n,n)
     end select
     if (status/=VIRTUAL_OK) return
     deallocate(text)
@@ -631,6 +741,116 @@ contains
     call finish(c_set_arithmetic(handle_of(self),c_loc(buffer),count),ierr)
   end subroutine
 
+  ! Reduction backend of later evaluations (the Python API's reduction=):
+  ! "auto" (default), "ninjars" or "tirust"; an unavailable explicit backend
+  ! is refused with a runtime-error status and its message.
+  subroutine set_reduction(self,reduction,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: reduction
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(reduction)
+    call finish(c_set_reduction(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Target accuracy of later evaluations (the Python API's reduction_target=;
+  ! default 1e-5 relative per point): TIRust's acceptance follows it; a value
+  ! that is not finite and positive is refused with an invalid-argument status.
+  subroutine set_reduction_target(self,target,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    real(c_double), intent(in) :: target
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    call finish(c_set_reduction_target(handle_of(self),target),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Unchecked setting of later evaluations (the Python API's
+  ! reduction_unchecked=; default .false.): the reduction backends without
+  ! their own acceptance and refusal checks.
+  subroutine set_reduction_unchecked(self,unchecked,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    logical, intent(in) :: unchecked
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_int) :: flag
+    flag = 0_c_int
+    if (unchecked) flag = 1_c_int
+    call finish(c_set_reduction_unchecked(handle_of(self),flag),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Failure policy of later evaluations (the Python API's on_failure=):
+  ! "best-effort" (default; a refused point returns the unchecked value with
+  ! status VIRTUAL_BEST_EFFORT and its uncertainty, ierr stays 0), "return"
+  ! (such points stay VIRTUAL_FAILED) or "raise" (a call with such a point
+  ! returns a runtime-error status); another value is an invalid argument.
+  subroutine set_on_failure(self,on_failure,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: on_failure
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(on_failure)
+    call finish(c_set_on_failure(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Kinematics improvement of later evaluations (the Python API's
+  ! kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",
+  ! "projection" or "off"; recorded per point in the diagnostics
+  ! ("kinematics"); another value is refused with an invalid-argument status.
+  subroutine set_kinematics_improvement(self,setting,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: setting
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(setting)
+    call finish(c_set_kinematics_improvement(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Whether later binary64 evaluations are improved too (the Python API's
+  ! kinematics_improvement_binary64=; default .false.).
+  subroutine set_kinematics_improvement_binary64(self,binary64,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    logical, intent(in) :: binary64
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_int) :: flag
+    flag = 0_c_int
+    if (binary64) flag = 1_c_int
+    call finish(c_set_kinematics_improvement_binary64(handle_of(self),flag),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Stability checks of later evaluations (the Python API's stability_checks=):
+  ! rotation_count default rotations, or the rotation specifications of
+  ! rotations (a JSON array; rotation_count then 0); all off, the default,
+  ! runs none. Estimates are in the diagnostics ("stability").
+  subroutine set_stability_checks(self,rotation_count,reduction_direction,rescaled,cross_backend, &
+      rotations,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    integer(c_int64_t), intent(in) :: rotation_count
+    logical, intent(in) :: reduction_direction, rescaled, cross_backend
+    character(*), optional, intent(in) :: rotations
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    type(c_ptr) :: specification
+    specification=c_null_ptr
+    if (present(rotations)) then
+      buffer=cstring(rotations)
+      specification=c_loc(buffer)
+    end if
+    call finish(c_set_stability_checks(handle_of(self),rotation_count,specification, &
+      merge(1_c_int32_t,0_c_int32_t,reduction_direction),merge(1_c_int32_t,0_c_int32_t,rescaled), &
+      merge(1_c_int32_t,0_c_int32_t,cross_backend)),ierr,error_message=error_message)
+  end subroutine
+
   subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,ierr,error_message)
     class(virtual_runtime), intent(inout) :: self
     real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
@@ -641,12 +861,11 @@ contains
     integer(c_int), optional, intent(out) :: ierr
     character(:), allocatable, optional, intent(out) :: error_message
     type(c_batch_request) :: request
-    type(c_ptr) :: result_handle, destination
+    type(c_ptr) :: result_handle
     type(virtual_shape) :: axes
-    type(virtual_evaluation), target :: value
     character(c_char), allocatable, target :: strategy(:)
-    integer(c_int) :: status, ignored
-    integer(c_size_t) :: helicities, colors, points
+    integer(c_int) :: status
+    integer(c_size_t) :: points
     axes=self%shape(status)
     if (status/=VIRTUAL_OK) then
       call finish(status,ierr,error_message=error_message); return
@@ -682,6 +901,21 @@ contains
     if (status/=VIRTUAL_OK) then
       call finish(status,ierr,error_message=error_message); return
     end if
+    call read_result(result_handle,output,status)
+    call finish(status,ierr,error_message=error_message)
+  end subroutine
+
+  ! Copy a result's arrays and JSON records into output and free the result
+  ! (the original function status in status).
+  subroutine read_result(result_handle,output,status)
+    type(c_ptr), intent(in) :: result_handle
+    type(virtual_evaluation), intent(inout) :: output
+    integer(c_int), intent(out) :: status
+    type(c_ptr) :: destination
+    type(virtual_shape) :: axes
+    type(virtual_evaluation), target :: value
+    integer(c_int) :: ignored
+    integer(c_size_t) :: helicities, colors, points
     status=c_result_shape(result_handle,value%shape)
     if (status==VIRTUAL_OK) then
       axes=value%shape%axes; points=value%shape%successful_points
@@ -720,8 +954,16 @@ contains
         if (size(value%statuses,kind=c_size_t)>0) destination=c_loc(value%statuses)
         status=c_result_copy_statuses(result_handle,destination,size(value%statuses,kind=c_size_t))
       end if
+      if (status==VIRTUAL_OK) then
+        allocate(value%uncertainties(value%shape%requested_points))
+        destination=c_null_ptr
+        if (size(value%uncertainties,kind=c_size_t)>0) destination=c_loc(value%uncertainties)
+        status=c_result_copy_uncertainties(result_handle,destination, &
+          size(value%uncertainties,kind=c_size_t))
+      end if
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,3,status)
       if (status==VIRTUAL_OK) value%decimal_json=read_json(result_handle,9,status)
+      if (status==VIRTUAL_OK) value%axes_json=read_json(result_handle,11,status)
     end if
     ! Free regardless of copy/query failures; report the original function status.
     ignored=c_result_free(result_handle)
@@ -732,10 +974,125 @@ contains
       call move_alloc(value%requested_ids,output%requested_ids)
       call move_alloc(value%successful_ids,output%successful_ids)
       call move_alloc(value%statuses,output%statuses)
+      call move_alloc(value%uncertainties,output%uncertainties)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
       call move_alloc(value%decimal_json,output%decimal_json)
+      call move_alloc(value%axes_json,output%axes_json)
     end if
+  end subroutine
+
+  ! rusticol_virtual_evaluate_selected: the selected helicity rows of a
+  ! loop-induced process or, at every colour accuracy, of a Born-interfered
+  ! one (lit-fc-hel) (resolved absent/false: their sum per point, RULED Q39;
+  ! resolved: per selected row its colour components). helicity_ids are
+  ! global IDs (trailing blanks ignored), helicity_by_point zero-based rows
+  ! (one per point; exclusive with helicity_ids), color_ids /
+  ! color_flow_by_point colour flows (refused: loop-induced processes have
+  ! none, a Born-interfered one's are the Python API's color_flows=),
+  ! color_resolution "contracted" (absent) or "amplitude-basis" (resolved,
+  ! loop-induced).
+  subroutine evaluate_selected(self,momenta,mu_r2,output,helicity_ids,helicity_by_point, &
+      color_ids,color_flow_by_point,color_resolution,resolved,point_ids,r2_strategy,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
+    type(virtual_evaluation), intent(out) :: output
+    character(*), optional, intent(in) :: helicity_ids(:), color_ids(:)
+    integer(c_int32_t), contiguous, target, optional, intent(in) :: helicity_by_point(:), color_flow_by_point(:)
+    character(*), optional, intent(in) :: color_resolution
+    logical, optional, intent(in) :: resolved
+    integer(c_int64_t), contiguous, target, optional, intent(in) :: point_ids(:)
+    character(*), optional, intent(in) :: r2_strategy
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    type(c_batch_request) :: request
+    type(c_selection) :: selection
+    type(c_ptr) :: result_handle
+    type(virtual_shape) :: axes
+    character(c_char), allocatable, target :: strategy(:), resolution(:)
+    character(c_char), allocatable, target :: helicity_text(:,:), color_text(:,:)
+    type(c_ptr), allocatable, target :: helicity_ptrs(:), color_ptrs(:)
+    integer(c_int) :: status
+    integer(c_size_t) :: points
+    axes=self%shape(status)
+    if (status/=VIRTUAL_OK) then
+      call finish(status,ierr,error_message=error_message); return
+    end if
+    points=size(momenta,3,kind=c_size_t)
+    if (size(momenta,1,kind=c_size_t)/=4 .or. size(momenta,2,kind=c_size_t)/=axes%external_count) then
+      call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'momenta must have shape (4,external_leg,point)',error_message)
+      return
+    end if
+    if (present(point_ids)) then
+      if (size(point_ids,kind=c_size_t)/=points) then
+        call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'point_ids must have one entry per input point',error_message)
+        return
+      end if
+    end if
+    request%momenta=c_null_ptr; request%point_ids=c_null_ptr; request%mu_r2=c_null_ptr
+    request%momentum_count=size(momenta,kind=c_size_t); request%point_count=points
+    request%scale_count=size(mu_r2,kind=c_size_t)
+    if (size(momenta,kind=c_size_t)>0) request%momenta=c_loc(momenta)
+    if (present(point_ids)) then
+      if (size(point_ids,kind=c_size_t)>0) request%point_ids=c_loc(point_ids)
+    end if
+    if (size(mu_r2,kind=c_size_t)>0) request%mu_r2=c_loc(mu_r2)
+    request%resolved=0
+    if (present(resolved)) then
+      if (resolved) request%resolved=1
+    end if
+    request%r2_strategy=c_null_ptr
+    if (present(r2_strategy)) then
+      strategy=cstring(r2_strategy); request%r2_strategy=c_loc(strategy)
+    end if
+    selection%helicity_ids=c_null_ptr; selection%helicity_count=0
+    selection%color_ids=c_null_ptr; selection%color_count=0
+    selection%helicity_by_point=c_null_ptr; selection%helicity_by_point_count=0
+    selection%color_flow_by_point=c_null_ptr; selection%color_flow_by_point_count=0
+    selection%color_resolution=c_null_ptr
+    if (present(helicity_ids)) then
+      call c_strings(helicity_ids,helicity_text,helicity_ptrs)
+      selection%helicity_count=size(helicity_ids,kind=c_size_t)
+      if (selection%helicity_count>0) selection%helicity_ids=c_loc(helicity_ptrs)
+    end if
+    if (present(color_ids)) then
+      call c_strings(color_ids,color_text,color_ptrs)
+      selection%color_count=size(color_ids,kind=c_size_t)
+      if (selection%color_count>0) selection%color_ids=c_loc(color_ptrs)
+    end if
+    if (present(helicity_by_point)) then
+      selection%helicity_by_point_count=size(helicity_by_point,kind=c_size_t)
+      if (selection%helicity_by_point_count>0) selection%helicity_by_point=c_loc(helicity_by_point)
+    end if
+    if (present(color_flow_by_point)) then
+      selection%color_flow_by_point_count=size(color_flow_by_point,kind=c_size_t)
+      if (selection%color_flow_by_point_count>0) selection%color_flow_by_point=c_loc(color_flow_by_point)
+    end if
+    if (present(color_resolution)) then
+      resolution=cstring(color_resolution); selection%color_resolution=c_loc(resolution)
+    end if
+    status=c_evaluate_selected(handle_of(self),request,selection,result_handle)
+    if (status/=VIRTUAL_OK) then
+      call finish(status,ierr,error_message=error_message); return
+    end if
+    call read_result(result_handle,output,status)
     call finish(status,ierr,error_message=error_message)
+  end subroutine
+
+  ! NUL-terminated copies of trimmed strings and their C pointers.
+  subroutine c_strings(names,text,pointers)
+    character(*), intent(in) :: names(:)
+    character(c_char), allocatable, target, intent(out) :: text(:,:)
+    type(c_ptr), allocatable, intent(out) :: pointers(:)
+    integer :: k, i, n
+    allocate(text(len(names)+1,max(size(names),1)),pointers(size(names)))
+    do k=1,size(names)
+      n=len_trim(names(k))
+      do i=1,n
+        text(i,k)=names(k)(i:i)
+      end do
+      text(n+1,k)=c_null_char
+      pointers(k)=c_loc(text(1,k))
+    end do
   end subroutine
   subroutine evaluate_correlated(self,momenta,mu_r2,output,point_ids,r2_strategy, &
       ierr,error_message,spin_legs,spin_vectors)
@@ -843,6 +1200,13 @@ contains
         if (size(value%statuses,kind=c_size_t)>0) destination=c_loc(value%statuses)
         status=c_correlated_statuses(result_handle,destination,size(value%statuses,kind=c_size_t))
       end if
+      if (status==VIRTUAL_OK) then
+        allocate(value%uncertainties(value%shape%requested_points))
+        destination=c_null_ptr
+        if (size(value%uncertainties,kind=c_size_t)>0) destination=c_loc(value%uncertainties)
+        status=c_correlated_uncertainties(result_handle,destination, &
+          size(value%uncertainties,kind=c_size_t))
+      end if
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,6,status)
       if (status==VIRTUAL_OK) value%histories_json=read_json(result_handle,5,status)
       if (status==VIRTUAL_OK) value%spin_legs_json=read_json(result_handle,7,status)
@@ -857,6 +1221,7 @@ contains
       call move_alloc(value%requested_ids,output%requested_ids)
       call move_alloc(value%successful_ids,output%successful_ids)
       call move_alloc(value%statuses,output%statuses)
+      call move_alloc(value%uncertainties,output%uncertainties)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
       call move_alloc(value%histories_json,output%histories_json)
       call move_alloc(value%spin_legs_json,output%spin_legs_json)

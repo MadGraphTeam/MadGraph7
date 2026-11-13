@@ -21,7 +21,10 @@
 //!    `threads` bound of [`V2Runtime::open`]);
 //! 2. the plan's executor dresses and reduces every family
 //!    (`loop_execution::v2::V2Executor`, NinjaRS through
-//!    [`crate::runtime::V2ReductionBackend`]);
+//!    [`crate::runtime::V2ReductionBackend`] by default, or TIRust,
+//!    [`V2Runtime::set_reduction`]; a TIR-only process, whose families go
+//!    beyond NinjaRS's rank <= N + 2 (m-lit lit-eft), reduces with TIRust by
+//!    default and refuses NinjaRS typed);
 //! 3. the components are assembled per sector exactly as
 //!    `loops/v2/assemble._PointEvaluation._assemble` does for the Python
 //!    API's native lane (`plan_export.NativeExecutor(inputs="native")`), in
@@ -87,27 +90,36 @@
 //! single-point evaluation.
 
 mod columns;
+mod induced;
+pub mod induced_outputs;
+mod monitor;
+pub mod template;
+pub use monitor::{Monitored, cross_reduction};
 
-pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE};
+pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE, ResolvedPoints, StoredFlow};
 
 use crate::Complex;
 use crate::runtime::{
-    Carrier as DecimalCarrier, PoleSelection, TypedBatch, V2Reducer, V2ReductionBackend,
-    decimal_complex,
+    Carrier as DecimalCarrier, PoleSelection, Reduction, TypedBatch, V2Backends, V2Reducer,
+    V2ReductionBackend, decimal_complex,
 };
 pub use crate::v2_decimal::{Arith, Binary64, C, Decimal, DecimalArith, cadd, cmul, conj};
 use rusticol_core::VerifiedArtifact;
+pub use rusticol_core::kinematics_improvement;
 use rusticol_core::loop_artifact::{
-    LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact, LoopV2ExecutionMetadata, LoopV2NativeTrees,
-    load_loop_v2_artifact, read_loop_v2_native_inputs, read_loop_v2_observables,
+    LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact,
+    LoopV2ExecutionMetadata, LoopV2NativeTrees, is_loop_v2_manifest, load_loop_v2_artifact,
+    read_loop_v2_native_inputs, read_loop_v2_observables,
 };
 use rusticol_core::loop_execution::v2::{
-    Contraction, LaneKey, PointResult, Poles, V2Executor, V2Options,
+    Contraction, LaneKey, LaneMeasure, MeasureKind, PointResult, Poles, V2Executor, V2Options,
 };
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
-use rusticol_core::loop_v2::plan::LoopProgramV4;
+use rusticol_core::loop_v2::plan::{LiveRows, LoopProgramV4};
+use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::{
-    BoundParameters, PointSources, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
+    BoundParameters, PointSources, TREE_FILL_BUDGET, TreeCarrier, TreeInputs, TreeProgram,
+    TreeRows, TreeRuntime,
 };
 use rusticol_core::{RusticolError, RusticolResult};
 use serde::Deserialize;
@@ -129,7 +141,7 @@ const FIELD_COMPONENT: &str = "uv_external_fields";
 /// Laurent powers in coefficient order (finite, 1/ε, 1/ε²).
 const LAURENT_POWERS: [i32; 3] = [0, -1, -2];
 /// The bare virtual's loop factor denominator (`conventions.LOOP_FACTOR_DENOMINATOR`).
-const LOOP_FACTOR_DENOMINATOR: i64 = 16;
+pub(crate) const LOOP_FACTOR_DENOMINATOR: i64 = 16;
 /// The artifact's model parameter defaults (`generation/artifact_writer.py`):
 /// every external parameter of the model, by name.
 const MODEL_PARAMETERS_PATH: &str = "model/parameters.json";
@@ -138,7 +150,7 @@ fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("plan v4 runtime: {}", message.into()))
 }
 
-type Orders = Vec<(String, i64)>;
+pub type Orders = Vec<(String, i64)>;
 
 /// Coupling orders compared as sets of (name, power) with zero powers dropped.
 fn canonical(orders: &[(String, i64)]) -> Orders {
@@ -188,6 +200,14 @@ struct NativeRecord {
     /// counterterms' UV parts from the tree program at the IR regulator 0.
     #[serde(default)]
     pole_regulators: Option<PoleRegulators>,
+    /// The plan's loop orders (`ExportedPlan.orders`): an amplitude-mode
+    /// plan's executor slots are per loop order and column.
+    #[serde(default)]
+    orders: Vec<Orders>,
+    /// A loop-induced process's amplitude basis
+    /// (`induced.amplitude_record`); none for a Born-interfered one.
+    #[serde(default)]
+    amplitude: Option<induced::AmplitudeRecord>,
     #[serde(flatten)]
     _rest: BTreeMap<String, serde_json::Value>,
 }
@@ -379,7 +399,75 @@ fn model_externals(artifact: &VerifiedArtifact) -> RusticolResult<BTreeSet<Strin
 /// virtual per declared sector, `[finite, 1/ε, 1/ε²]` (finite only without
 /// poles), or the executor's failures; binary64 values by default, Python
 /// `Decimal` values ([`Decimal`]) in double-double and arbitrary precision.
-pub type V2Point<N = f64> = Result<(Vec<N>, Vec<Vec<N>>), Vec<String>>;
+pub type V2Point<N = f64> = Result<(Vec<N>, Vec<Vec<N>>), PointFailure>;
+
+/// A failed point's reasons (one message per failed lane or check, as
+/// before) and, as data next to them, the reduction backend's measures of
+/// its refused lanes (`PointResult::measures`, m-lit ux-polish item 4: a
+/// TIRust method-choice deviation relative to its term scale, TIRust's
+/// conditioning estimate). Dereferences to the reasons.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PointFailure {
+    pub reasons: Vec<String>,
+    pub measures: Vec<LaneMeasure>,
+}
+
+impl PointFailure {
+    /// `reasons` with `measures`.
+    pub fn new(reasons: Vec<String>, measures: Vec<LaneMeasure>) -> Self {
+        Self { reasons, measures }
+    }
+
+    /// Append `other`'s reasons and measures.
+    pub fn absorb(&mut self, other: PointFailure) {
+        self.reasons.extend(other.reasons);
+        self.measures.extend(other.measures);
+    }
+
+    /// The largest method-choice deviation and the smallest conditioning
+    /// estimate among the measures, where stated.
+    pub fn summary(&self) -> (Option<f64>, Option<f64>) {
+        summarise(&self.measures)
+    }
+}
+
+/// The largest method-choice deviation and the smallest conditioning
+/// estimate among `measures`, where stated (NaN ignored).
+pub fn summarise(measures: &[LaneMeasure]) -> (Option<f64>, Option<f64>) {
+    let pick = |kind: MeasureKind, larger: bool| {
+        measures
+            .iter()
+            .filter(|m| m.kind == kind && !m.value.is_nan())
+            .map(|m| m.value)
+            .reduce(|a, b| if (b > a) == larger { b } else { a })
+    };
+    (
+        pick(MeasureKind::MethodChoiceDeviation, true),
+        pick(MeasureKind::GramConditioning, false),
+    )
+}
+
+impl From<Vec<String>> for PointFailure {
+    fn from(reasons: Vec<String>) -> Self {
+        Self {
+            reasons,
+            measures: Vec::new(),
+        }
+    }
+}
+
+impl std::ops::Deref for PointFailure {
+    type Target = Vec<String>;
+    fn deref(&self) -> &Vec<String> {
+        &self.reasons
+    }
+}
+
+impl std::ops::DerefMut for PointFailure {
+    fn deref_mut(&mut self) -> &mut Vec<String> {
+        &mut self.reasons
+    }
+}
 
 /// The pole selection of an evaluation (REQUIREMENTS_ADDENDUM I,
 /// `loops/v2/poles.py`): the renormalised virtual's poles (`All`), the
@@ -397,6 +485,16 @@ pub enum V2Poles {
 }
 
 impl V2Poles {
+    /// The selection's name (`PoleSelection.value`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::None => "none",
+            Self::Uv => "uv",
+            Self::Ir => "ir",
+        }
+    }
+
     pub(crate) fn poles(self) -> bool {
         self != Self::None
     }
@@ -449,6 +547,28 @@ impl V2Precision {
         }
     }
 
+    /// The carrier's name (`reduction_policy::CARRIERS`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Double => "double",
+            Self::DoubleDouble => "double-double",
+            Self::Arbitrary(_) => "arbitrary",
+        }
+    }
+
+    /// `Precision.unit_roundoff`: 2^-53 in binary64, 2^-104 in
+    /// double-double, half a unit of the last of the requested decimal
+    /// digits otherwise (the floor of a stability estimate in the carrier).
+    pub fn unit_roundoff(self) -> f64 {
+        match self {
+            Self::Double => 2.0_f64.powi(-53),
+            Self::DoubleDouble => 2.0_f64.powi(-104),
+            Self::Arbitrary(digits) => {
+                0.5 * crate::v2_stability::py_pow(10.0, 1.0 - f64::from(digits))
+            }
+        }
+    }
+
     /// The native carrier's bits (the executor's `bits`, which its decimal
     /// texts round-trip, `runtime::decimal_complex`).
     pub fn bits(self) -> RusticolResult<u32> {
@@ -475,8 +595,19 @@ impl V2Precision {
         lanes
     }
 
-    /// The reduction backend of the carrier (`v2_executor.backend_of`).
-    fn backend(self) -> RusticolResult<V2ReductionBackend> {
+    /// The `reduction` backend of the carrier (`v2_executor.backend_of`):
+    /// NinjaRS, or TIRust (its plans built for `plan`'s (propagators, rank)
+    /// histogram at the carrier's precision, the other plans' on first use;
+    /// its acceptance from the target accuracy `target`).
+    fn backend(
+        self,
+        reduction: Reduction,
+        plan: &LoopProgramV4,
+        target: f64,
+    ) -> RusticolResult<V2Backends> {
+        if reduction == Reduction::TiRust {
+            return V2Backends::tirust(crate::runtime::plan_histogram(plan), self.bits()?, target);
+        }
         let reducer = match self {
             Self::Double => V2Reducer::new("double", None, "fast", true),
             Self::DoubleDouble => V2Reducer::new("double-double", None, "generic", true),
@@ -485,10 +616,10 @@ impl V2Precision {
             }
         }
         .map_err(|e| invalid(e.to_string()))?;
-        Ok(V2ReductionBackend {
+        Ok(V2Backends::NinjaRs(V2ReductionBackend {
             reducer,
             masters: PoleSelection::BOTH,
-        })
+        }))
     }
 }
 
@@ -600,6 +731,51 @@ impl Runner {
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
+        self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                trees.inputs_with(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    sources,
+                    zero,
+                )
+            },
+        )
+    }
+
+    /// The tree runtime of `precision` (formed once) and the executor of
+    /// `lanes`: the batch's parameters bound, then its tree inputs formed by
+    /// `inputs` (the program, the runtime, the plan, the bound parameters),
+    /// both on the executor's pool ([`Runner::fill`], [`Runner::fill_live`]).
+    fn bind_and_fill<T: Native, F>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        zero: &T,
+        inputs: F,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+        F: FnOnce(
+                &TreeProgram,
+                &mut TreeRuntime<T>,
+                &LoopProgramV4,
+                &BoundParameters<T>,
+            ) -> RusticolResult<TreeInputs<T>>
+            + Send,
+    {
         self.executor(lanes)?;
         if !self.runtimes.contains_key(&precision) {
             let runtime = self.trees.runtime(zero)?;
@@ -614,18 +790,39 @@ impl Runner {
         let trees = &self.trees;
         executor.install(|| -> RusticolResult<_> {
             let bound = trees.bind(runtime, values, scales, zero)?;
-            let inputs = trees.inputs_with(
-                runtime,
-                executor.plan(),
-                &bound.trees,
-                incoming,
-                &bound.constants,
-                poles,
-                sources,
-                zero,
-            )?;
+            let inputs = inputs(trees, runtime, executor.plan(), &bound)?;
             Ok((bound, inputs))
         })
+    }
+
+    /// The squared mass each leg's external state binds at `values` and the
+    /// scale `scale` in the carrier of `zero` (`TreeProgram::bind`'s
+    /// `BoundParameters::leg_masses`, exactly the `V2Batch::leg_masses` an
+    /// evaluation in that carrier binds; m-lit lit-psimprove's targets).
+    pub(crate) fn leg_masses<T: Native>(
+        &mut self,
+        precision: V2Precision,
+        values: &[Rational],
+        scale: &Rational,
+        zero: &T,
+    ) -> RusticolResult<Vec<Option<Rational>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        if !self.runtimes.contains_key(&precision) {
+            let runtime = self.trees.runtime(zero)?;
+            self.runtimes.insert(precision, Box::new(runtime));
+        }
+        let runtime = self
+            .runtimes
+            .get_mut(&precision)
+            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
+            .ok_or_else(|| invalid("a tree runtime of another carrier"))?;
+        let bound = self
+            .trees
+            .bind(runtime, values, std::slice::from_ref(scale), zero)?;
+        Ok(bound.leg_masses)
     }
 
     /// Dress and reduce a batch (`V2Executor::evaluate`).
@@ -634,7 +831,7 @@ impl Runner {
         lanes: usize,
         batch: &V2Batch<T>,
         zero: &T,
-        backend: &mut V2ReductionBackend,
+        backend: &mut V2Backends,
         options: V2Options,
     ) -> RusticolResult<Vec<PointResult<T>>>
     where
@@ -644,6 +841,219 @@ impl Runner {
         let (results, _report) = self
             .executor(lanes)?
             .evaluate(batch, zero, backend, options)?;
+        Ok(results)
+    }
+
+    /// The row liveness of a call keeping the plan's helicity rows `rows`
+    /// (one flag per plan row), as the Python binding's
+    /// `V2Executor.evaluate(rows=...)` forms it (`evaluate_with`): the
+    /// executor's families pruned to the rows the kept rows reach
+    /// (`V2Executor::live_rows`, schedule B) and the tree fill's liveness
+    /// (`TreeProgram::live_rows`: an amplitude-mode program forms the kept
+    /// rows' trees and counterterm kets only). Both None when `rows` drops
+    /// no seeded row.
+    pub(crate) fn row_liveness(
+        &mut self,
+        lanes: usize,
+        rows: &[bool],
+        options: &V2Options,
+    ) -> RusticolResult<RowLiveness> {
+        self.executor(lanes)?;
+        let executor = &self.executors[&lanes];
+        let live = executor.live_rows(rows, None, options.schedule)?;
+        let trees = live
+            .as_deref()
+            .and_then(|live| self.trees.live_rows(executor.plan(), live));
+        Ok(RowLiveness { live, trees })
+    }
+
+    /// [`Runner::fill`] of a call with a row liveness (the Python binding's
+    /// `Trees::fill_part` with `filling.rows`): the tree fill of
+    /// `TreeProgram::inputs_with`, restricted to the live tree rows.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn fill_live<T: Native>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        incoming: &[Vec<Rational>],
+        poles: bool,
+        rows: &RowLiveness,
+        zero: &T,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let Some(tree_rows) = &rows.trees else {
+            return self.fill(
+                precision, lanes, values, scales, incoming, poles, None, zero,
+            );
+        };
+        self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                let chunk = trees.fill_points::<T>(incoming.len(), false, TREE_FILL_BUDGET);
+                trees.inputs_chunked(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    None,
+                    None,
+                    chunk,
+                    Some(tree_rows),
+                    zero,
+                )
+            },
+        )
+    }
+
+    /// [`Runner::evaluate`] of a call with a row liveness
+    /// (`V2Executor::evaluate_families` with the live rows: every family
+    /// pruned to them, as the Python binding's).
+    pub(crate) fn evaluate_live<T: Native>(
+        &mut self,
+        lanes: usize,
+        batch: &V2Batch<T>,
+        zero: &T,
+        backend: &mut V2Backends,
+        options: V2Options,
+        rows: &RowLiveness,
+    ) -> RusticolResult<Vec<PointResult<T>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let (results, _report) = self.executor(lanes)?.evaluate_families(
+            batch,
+            zero,
+            backend,
+            options,
+            None,
+            rows.live.as_deref(),
+        )?;
+        Ok(results)
+    }
+}
+
+/// The row liveness of one call keeping some plan rows
+/// ([`Runner::row_liveness`]).
+pub(crate) struct RowLiveness {
+    live: Option<Arc<LiveRows>>,
+    trees: Option<TreeRows>,
+}
+
+impl RowLiveness {
+    /// No liveness (a call keeping every row).
+    pub(crate) fn none() -> Self {
+        Self {
+            live: None,
+            trees: None,
+        }
+    }
+}
+
+impl Runner {
+    /// [`Runner::fill`] of a call with selection masks
+    /// ([`template::CallMasks`]; lit-fc-hel (G5)), as the Python binding's
+    /// `V2Executor.evaluate(rows=, basis=, components=, families=)` forms it
+    /// (`evaluate_with`): the kept rows' liveness (the families the mask
+    /// keeps, pruned to the rows the kept rows reach, and the tree fill's
+    /// rows), the masked sources (kept rows and bra basis elements) and the
+    /// seeds' kept plan Born components. Without masks this is
+    /// [`Runner::fill`] with no liveness.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn fill_masked<T: Native>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        incoming: &[Vec<Rational>],
+        poles: bool,
+        masks: &template::CallMasks,
+        options: &V2Options,
+        zero: &T,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>, RowLiveness)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let live = match &masks.rows {
+            Some(rows) => {
+                self.executor(lanes)?;
+                let executor = &self.executors[&lanes];
+                let live = executor.live_rows(rows, masks.families.as_deref(), options.schedule)?;
+                let trees = live
+                    .as_deref()
+                    .and_then(|live| self.trees.live_rows(executor.plan(), live));
+                RowLiveness { live, trees }
+            }
+            None => RowLiveness::none(),
+        };
+        let sources = masks.sources::<T>(None, incoming.len());
+        let tree_rows = live.trees.as_ref();
+        let (bound, mut inputs) = self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                let chunk = trees.fill_points::<T>(incoming.len(), false, TREE_FILL_BUDGET);
+                trees.inputs_chunked(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    sources.as_deref(),
+                    None,
+                    chunk,
+                    tree_rows,
+                    zero,
+                )
+            },
+        )?;
+        masks.mask_born(&mut inputs.born, zero)?;
+        Ok((bound, inputs, live))
+    }
+
+    /// [`Runner::evaluate`] of a call with selection masks: the families the
+    /// mask keeps, each pruned to the call's live rows
+    /// (`V2Executor::evaluate_families`, as the Python binding's).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_masked<T: Native>(
+        &mut self,
+        lanes: usize,
+        batch: &V2Batch<T>,
+        zero: &T,
+        backend: &mut V2Backends,
+        options: V2Options,
+        masks: &template::CallMasks,
+        rows: &RowLiveness,
+    ) -> RusticolResult<Vec<PointResult<T>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let (results, _report) = self.executor(lanes)?.evaluate_families(
+            batch,
+            zero,
+            backend,
+            options,
+            masks.families.as_deref(),
+            rows.live.as_deref(),
+        )?;
         Ok(results)
     }
 }
@@ -763,7 +1173,16 @@ pub struct V2Runtime {
     artifact: LoadedLoopV2Artifact,
     record: NativeRecord,
     process: Runner,
-    backends: BTreeMap<V2Precision, V2ReductionBackend>,
+    /// The reduction backend of every evaluation ([`V2Runtime::set_reduction`]).
+    reduction: Reduction,
+    /// The target accuracy of every evaluation ([`V2Runtime::set_target`]).
+    target: f64,
+    /// The unchecked mode of every evaluation ([`V2Runtime::set_unchecked`]).
+    unchecked: bool,
+    backends: BTreeMap<V2Precision, V2Backends>,
+    /// The other backend's, for the stability monitoring's cross-backend
+    /// check (`monitor`), built on first use.
+    cross_backends: BTreeMap<V2Precision, V2Backends>,
     /// The stored companion's tree program (none: the process has no
     /// certified-scaleless families) and, once a split selection ran, the
     /// companion itself.
@@ -784,13 +1203,22 @@ pub struct V2Runtime {
     process_inputs: Arc<LoopV2NativeTrees>,
     /// The stored observable columns, read on first use.
     observables: Option<columns::Observables>,
+    /// A loop-induced process's amplitude assembly (|A_loop|², m-lit
+    /// LIT-SDK); none for a Born-interfered process. Chosen at open: a
+    /// runtime assembles one process type (no per-point branch).
+    induced: Option<Arc<induced::Induced>>,
+    /// A loop-induced process's declared observables, read on first use.
+    induced_observables: Option<induced_outputs::Observables>,
 }
 
-/// Whether the artifact at `path` serves its processes through the plan v4
-/// runtime (every process requires the v2 runtime capability).
+/// Whether the artifact at `path` serves its processes through the v2 loop
+/// runtimes (every process requires one of the v2 loop runtime capabilities,
+/// Born-interfered and loop-induced processes in any mix,
+/// `loop_artifact::is_loop_v2_manifest`); [`V2Runtime::open`] serves both
+/// process types.
 pub fn is_v2_artifact(path: impl AsRef<Path>) -> RusticolResult<bool> {
     let artifact = rusticol_core::VerifiedArtifact::open(path)?;
-    Ok(artifact.manifest().runtime.required_runtime_capabilities == [LOOP_V2_RUNTIME_CAPABILITY])
+    Ok(is_loop_v2_manifest(artifact.manifest()))
 }
 
 impl V2Runtime {
@@ -823,7 +1251,23 @@ impl V2Runtime {
             Some(&native.planes),
             &program,
         )?;
-        if !trees.has_counterterms() {
+        // A loop-induced process (an amplitude-mode plan,
+        // `rusticol.loop-runtime.v5`) reads its amplitude record; its
+        // counterterms are kets on the amplitude basis (`induced`).
+        let loop_induced = artifact.metadata.contribution_kind == "loop-induced";
+        if loop_induced != program.amplitude || loop_induced != record.amplitude.is_some() {
+            return Err(invalid(format!(
+                "process {:?} is {} ({}) but its plan or native record is not",
+                artifact.selection.process.id,
+                artifact.metadata.contribution_kind,
+                if loop_induced {
+                    LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY
+                } else {
+                    LOOP_V2_RUNTIME_CAPABILITY
+                }
+            )));
+        }
+        if !loop_induced && !trees.has_counterterms() {
             return Err(invalid("the tree program has no counterterm components"));
         }
         // The split selections set the IR regulator by name: it must be a
@@ -886,6 +1330,15 @@ impl V2Runtime {
                 "the tree program reads a parameter the model does not declare",
             ));
         }
+        let induced = match &record.amplitude {
+            Some(amplitude) => Some(Arc::new(induced::Induced::new(
+                amplitude.clone(),
+                record.orders.clone(),
+                &record.sectors,
+                program.rows,
+            )?)),
+            None => None,
+        };
         let mut process = Runner::new(program, trees, record.fourier.clone(), threads)?;
         // The binary64 executor, tree runtime and backend (the Python API's,
         // `v2_executor.backend_of`) are built at open.
@@ -894,14 +1347,68 @@ impl V2Runtime {
         process
             .runtimes
             .insert(V2Precision::Double, Box::new(runtime));
+        // The default backend: what "auto" takes for the process type at
+        // binary64 (the one policy, `reduction_policy::resolve`: TIRust for a
+        // loop-induced or a TIR-only process where this library serves it,
+        // else NinjaRS); a TIR-only process in a build without TIRust is
+        // refused typed.
+        let tir_only = crate::runtime::ninjars_refusal(&process.plan).is_err();
+        let admitted = tir_only.then(|| BTreeSet::from(["tirust".to_owned()]));
+        let route = crate::reduction_policy::route(crate::reduction_policy::SUMMED)
+            .expect("the summed route");
+        let (reduction, fallback) = match crate::reduction_policy::resolve(
+            "auto",
+            &artifact.metadata.contribution_kind,
+            "double",
+            &crate::reduction_policy::served(),
+            admitted.as_ref(),
+            &route,
+        ) {
+            Ok(choice) => (
+                Reduction::parse(&choice.effective)?,
+                choice.fallback.is_some(),
+            ),
+            Err(_) if tir_only => {
+                return Err(RusticolError::unsupported_runtime_capability(
+                    "tirust",
+                    format!(
+                        "this process is TIR-only (a family beyond NinjaRS's rank <= N+2) and {}",
+                        crate::runtime::TIRUST_NOT_BUILT
+                    ),
+                ));
+            }
+            Err(crate::reduction_policy::Refusal::Unavailable(message))
+            | Err(crate::reduction_policy::Refusal::Invalid(message)) => {
+                return Err(RusticolError::unsupported_runtime_capability(
+                    "auto", message,
+                ));
+            }
+        };
+        let target = crate::reduction_policy::DEFAULT_TARGET;
         let mut backends = BTreeMap::new();
-        backends.insert(V2Precision::Double, V2Precision::Double.backend()?);
+        match V2Precision::Double.backend(reduction, &process.plan, target) {
+            Ok(backend) => {
+                backends.insert(V2Precision::Double, backend);
+            }
+            // TIRust refuses the plans (its capability query) where "auto"
+            // has the NinjaRS fallback: built on use, each call's refusal
+            // leaves its points to the fallback.
+            Err(error)
+                if fallback
+                    && error.kind()
+                        == rusticol_core::RusticolErrorKind::UnsupportedRuntimeCapability => {}
+            Err(error) => return Err(error),
+        }
         Ok(Self {
             path,
             artifact,
             record,
             process,
+            reduction,
+            target,
+            unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
             backends,
+            cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
             scaleless: None,
             threads,
@@ -915,6 +1422,8 @@ impl V2Runtime {
                 planes: native.planes,
             }),
             observables: None,
+            induced,
+            induced_observables: None,
         })
     }
 
@@ -978,6 +1487,12 @@ impl V2Runtime {
 
     pub fn born_orders(&self) -> usize {
         self.born_index.len()
+    }
+
+    /// Per declared (public) sector its record sector, the sector order of
+    /// a stability estimate's per-sector values.
+    pub fn sector_index(&self) -> &[usize] {
+        &self.sector_index
     }
 
     pub fn sectors(&self) -> usize {
@@ -1105,7 +1620,16 @@ impl V2Runtime {
         mode: V2Poles,
     ) -> RusticolResult<Vec<V2Point>> {
         self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
-            runtime.evaluate_batch(momenta, scales, mode, V2Precision::Double, &0.0, &Binary64)
+            runtime.evaluate_batch::<_, _, false>(
+                momenta,
+                scales,
+                mode,
+                V2Precision::Double,
+                &0.0,
+                &Binary64,
+                None,
+                &mut Vec::new(),
+            )
         })
     }
 
@@ -1127,20 +1651,31 @@ impl V2Runtime {
             V2Precision::Double => Err(invalid("binary64 evaluations are V2Runtime::evaluate's")),
             V2Precision::DoubleDouble => {
                 self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
-                    runtime.evaluate_batch(
+                    runtime.evaluate_batch::<_, _, false>(
                         momenta,
                         scales,
                         mode,
                         precision,
                         &DoubleFloat::from(0.0),
                         &arith,
+                        None,
+                        &mut Vec::new(),
                     )
                 })
             }
             V2Precision::Arbitrary(_) => {
                 let zero = Float::with_val(precision.bits()?, 0);
                 self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
-                    runtime.evaluate_batch(momenta, scales, mode, precision, &zero, &arith)
+                    runtime.evaluate_batch::<_, _, false>(
+                        momenta,
+                        scales,
+                        mode,
+                        precision,
+                        &zero,
+                        &arith,
+                        None,
+                        &mut Vec::new(),
+                    )
                 })
             }
         }
@@ -1148,18 +1683,15 @@ impl V2Runtime {
 
     /// The input checks of a batch and its evaluation, per exact `mu_R²`
     /// where the model needs it (`partitions`).
-    fn partitioned<N>(
+    fn partitioned<P>(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
         mode: V2Poles,
-        mut batch: impl FnMut(
-            &mut Self,
-            &[Vec<Rational>],
-            &[Rational],
-        ) -> RusticolResult<Vec<V2Point<N>>>,
-    ) -> RusticolResult<Vec<V2Point<N>>> {
+        mut batch: impl FnMut(&mut Self, &[Vec<Rational>], &[Rational]) -> RusticolResult<Vec<P>>,
+    ) -> RusticolResult<Vec<P>> {
         self.check_batch(momenta, scales)?;
+        self.check_poles(mode)?;
         if momenta.is_empty() {
             return Ok(Vec::new());
         }
@@ -1177,7 +1709,7 @@ impl V2Runtime {
             });
             parts[part].1.push(index);
         }
-        let mut out: Vec<Option<V2Point<N>>> = (0..momenta.len()).map(|_| None).collect();
+        let mut out: Vec<Option<P>> = (0..momenta.len()).map(|_| None).collect();
         for (scale, indices) in parts {
             let part_momenta: Vec<Vec<Rational>> =
                 indices.iter().map(|&i| momenta[i].clone()).collect();
@@ -1191,6 +1723,68 @@ impl V2Runtime {
             .into_iter()
             .map(|point| point.expect("every point is in one part"))
             .collect())
+    }
+
+    /// The pole selection `mode` is one the process serves (its metadata's
+    /// `poles`: every selection for a Born-interfered process, "all" and
+    /// "none" for a loop-induced one, whose UV and IR parts are not additive
+    /// in |A|², m-lit PLAN §2.a.7), refused typed in the Python API's words
+    /// otherwise (`V2VirtualRuntime.evaluate`'s `CompatibilityError`).
+    pub fn check_poles(&self, mode: V2Poles) -> RusticolResult<()> {
+        let name = mode.name();
+        let served = &self.artifact.metadata.poles;
+        if served.iter().any(|selection| selection == name) {
+            return Ok(());
+        }
+        let listed: Vec<String> = served.iter().map(|s| format!("'{s}'")).collect();
+        Err(RusticolError::compatibility(format!(
+            "the pole selection '{name}' is not served by this {} process (it \
+             serves [{}])",
+            self.artifact.metadata.contribution_kind,
+            listed.join(", ")
+        )))
+    }
+
+    /// Whether the process is loop-induced (|A_loop|², no Born).
+    pub fn loop_induced(&self) -> bool {
+        self.induced.is_some()
+    }
+
+    /// A loop-induced process's colour-zero record (m-lit Q13: the one exact
+    /// zero, by colour algebra alone): whether the whole request is an exact
+    /// colour zero and its exact colour-zero loop orders; none for a
+    /// Born-interfered process.
+    pub fn colour_zero(&self) -> Option<(bool, Vec<Orders>)> {
+        self.induced.as_ref().map(|induced| {
+            (
+                induced.record.colour_zero,
+                induced.record.colour_zero_orders.clone(),
+            )
+        })
+    }
+
+    /// A loop-induced process's fold-zero record (M-LIT lit-fold, USER
+    /// 2026-11-08 ~22:39: an exact zero the exact fold test certifies):
+    /// whether the whole request is an exact fold zero, its fold-zero loop
+    /// orders and the certificate; none without one (and for a
+    /// Born-interfered process).
+    pub fn fold_zero(&self) -> Option<(bool, Vec<Orders>, serde_json::Value)> {
+        let record = self.induced.as_ref()?.record.fold_zero.as_ref()?;
+        Some((
+            record.exact_fold_zero,
+            record.fold_zero_loop_orders.clone(),
+            record.certificate.clone(),
+        ))
+    }
+
+    /// The generation request's reduction backend (`[loop] reduction`, the
+    /// artifact's default of a call that names none; "auto" when absent).
+    pub fn artifact_reduction(&self) -> &str {
+        self.artifact
+            .request
+            .get("reduction")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("auto")
     }
 
     /// One mu_R² per point, `4 × legs` components per point, positive
@@ -1213,6 +1807,92 @@ impl V2Runtime {
         Ok(())
     }
 
+    /// The kinematics improvement of a batch's points in `precision` (m-lit
+    /// lit-psimprove; `rusticol_core::kinematics_improvement`, the one
+    /// implementation): each point's physical momenta (`4 × legs` exact
+    /// rationals, label order, the initial states first) improved in that
+    /// carrier's arithmetic with `variant` (MadLoop's dispatch with
+    /// `fallback`, the public chain) toward the squared masses an evaluation
+    /// in that carrier binds (`TreeProgram::bind`'s leg masses, one source
+    /// with `V2Batch::leg_masses`). Returns the points to evaluate (exact
+    /// rationals of the carrier values; a point no variant improves, or an
+    /// exactly physical one, unchanged) and one record per point. The SDK
+    /// applies it once per call above every evaluation entry (the per-point
+    /// fallback and the stability rotations act on its points), never inside
+    /// `evaluate_batch`, so a rotated point is never improved again.
+    pub fn improve_kinematics(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        precision: V2Precision,
+        variant: kinematics_improvement::Variant,
+        fallback: bool,
+    ) -> RusticolResult<(Vec<Vec<Rational>>, Vec<kinematics_improvement::Record>)> {
+        use kinematics_improvement::{Arithmetic as Carrier, Tolerances, improve_exact};
+        self.check_batch(momenta, scales)?;
+        if momenta.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        // MadLoop's convention: the initial states first (label order).
+        let initial = self
+            .record
+            .legs
+            .iter()
+            .take_while(|&&(_, initial, _)| initial)
+            .count();
+        if self.record.legs[initial..]
+            .iter()
+            .any(|&(_, initial, _)| initial)
+        {
+            return Err(invalid(
+                "the kinematics improvement needs the initial states first",
+            ));
+        }
+        // The legs' bound masses do not depend on mu_R^2 (`TreeProgram::
+        // bind` checks the masses equal at every point): one binding.
+        let values = self.parameter_values()?;
+        let masses = match precision {
+            V2Precision::Double => self
+                .process
+                .leg_masses(precision, &values, &scales[0], &0.0)?,
+            V2Precision::DoubleDouble => {
+                self.process
+                    .leg_masses(precision, &values, &scales[0], &DoubleFloat::from(0.0))?
+            }
+            V2Precision::Arbitrary(_) => {
+                let zero = Float::with_val(precision.bits()?, 0);
+                self.process
+                    .leg_masses(precision, &values, &scales[0], &zero)?
+            }
+        };
+        let carrier = match precision {
+            V2Precision::Double => Carrier::Binary64,
+            V2Precision::DoubleDouble => Carrier::DoubleDouble,
+            V2Precision::Arbitrary(_) => Carrier::Arbitrary(precision.bits()?),
+        };
+        let tolerances = Tolerances::default();
+        let mut points = Vec::with_capacity(momenta.len());
+        let mut records = Vec::with_capacity(momenta.len());
+        for point in momenta {
+            let legs: Vec<[Rational; 4]> = point
+                .chunks_exact(4)
+                .map(|p| [p[0].clone(), p[1].clone(), p[2].clone(), p[3].clone()])
+                .collect();
+            let (out, record) = improve_exact(
+                &legs,
+                initial,
+                &masses,
+                carrier,
+                variant,
+                fallback,
+                &tolerances,
+            );
+            points.push(out.into_iter().flatten().collect());
+            records.push(record);
+        }
+        Ok((points, records))
+    }
+
     /// All-incoming momenta: final legs negated.
     pub(crate) fn incoming(&self, momenta: &[Vec<Rational>]) -> Vec<Vec<Rational>> {
         momenta
@@ -1230,18 +1910,111 @@ impl V2Runtime {
             .collect()
     }
 
-    fn backend(&mut self, precision: V2Precision) -> RusticolResult<&mut V2ReductionBackend> {
+    fn backend(&mut self, precision: V2Precision) -> RusticolResult<&mut V2Backends> {
         if !self.backends.contains_key(&precision) {
-            self.backends.insert(precision, precision.backend()?);
+            let mut backend = precision.backend(self.reduction, &self.process.plan, self.target)?;
+            backend.set_unchecked(self.unchecked);
+            self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
+    }
+
+    /// The reduction backend of the following evaluations: NinjaRS (the
+    /// default; refused typed on a TIR-only process, whose default is
+    /// TIRust) or TIRust (every carrier; a build without it refuses typed,
+    /// a family outside TIRust's capability when a batch would reduce on
+    /// it). The choice
+    /// is the caller's (m-lit PLAN §2.b.4: the SDK has the per-call
+    /// backend, `lit-sdk`), never switched by the runtime.
+    pub fn set_reduction(&mut self, reduction: Reduction) -> RusticolResult<()> {
+        if reduction == Reduction::TiRust && !crate::tir::available() {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "tirust",
+                crate::runtime::TIRUST_NOT_BUILT,
+            ));
+        }
+        if reduction == Reduction::NinjaRs {
+            crate::runtime::ninjars_refusal(&self.process.plan)?;
+        }
+        if reduction != self.reduction {
+            self.reduction = reduction;
+            self.backends.clear();
+            self.cross_backends.clear();
+        }
+        Ok(())
+    }
+
+    /// The reduction backend of the following evaluations.
+    pub fn reduction(&self) -> Reduction {
+        self.reduction
+    }
+
+    /// The target accuracy of the following evaluations (the relative
+    /// accuracy of each point's result, `reduction_policy::DEFAULT_TARGET`
+    /// by default; validated by `reduction_policy::target`): TIRust's
+    /// method-choice acceptance follows it (`v2_tir::acceptance_of`), set on
+    /// the built backends (their plans stay); NinjaRS has no setting it
+    /// drives.
+    pub fn set_target(&mut self, target: f64) -> RusticolResult<()> {
+        let target = crate::reduction_policy::target(target).map_err(|refusal| match refusal {
+            crate::reduction_policy::Refusal::Invalid(message)
+            | crate::reduction_policy::Refusal::Unavailable(message) => invalid(message),
+        })?;
+        if target != self.target {
+            self.target = target;
+            for backend in self
+                .backends
+                .values_mut()
+                .chain(self.cross_backends.values_mut())
+            {
+                backend.set_target(target);
+            }
+        }
+        Ok(())
+    }
+
+    /// The target accuracy of the following evaluations.
+    pub fn target(&self) -> f64 {
+        self.target
+    }
+
+    /// The unchecked mode of the following evaluations (m-lit
+    /// lit-unchecked; `reduction_policy::DEFAULT_UNCHECKED`, off): every
+    /// reduction backend of the runtime (the cross-backend check's and the
+    /// per-point fallback's too) reduces without its own acceptance and
+    /// refusal checks (`V2Backends::set_unchecked`), set on the built
+    /// backends (their plans stay). The runtime's own stability checks are
+    /// separate settings.
+    pub fn set_unchecked(&mut self, unchecked: bool) {
+        if unchecked != self.unchecked {
+            self.unchecked = unchecked;
+            for backend in self
+                .backends
+                .values_mut()
+                .chain(self.cross_backends.values_mut())
+            {
+                backend.set_unchecked(unchecked);
+            }
+        }
+    }
+
+    /// The unchecked mode of the following evaluations.
+    pub fn unchecked(&self) -> bool {
+        self.unchecked
     }
 
     /// One batch through the tree program, the executor and the assembly in
     /// the carrier of `zero` and the arithmetic `arith`
     /// (`plan_export.NativeExecutor.reduce`, `assemble._PointEvaluation.
     /// set_lanes` and `_assemble`, in the same operations and order).
-    fn evaluate_batch<T: Native, A: Lift<T>>(
+    ///
+    /// `check` re-reduces every lane in that frame (the stability checks'
+    /// reduction check); with `COLLECT` (a compile-time choice: an
+    /// evaluation without checks collects nothing) every successful point's
+    /// lanes, re-test lanes, local components and reference values per
+    /// record sector go to `collected` (`monitor`), a failed point's `None`.
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_batch<T: Native, A: Lift<T> + induced::Squaring, const COLLECT: bool>(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
@@ -1249,11 +2022,21 @@ impl V2Runtime {
         precision: V2Precision,
         zero: &T,
         arith: &A,
+        check: Option<ReductionCheck>,
+        collected: &mut Vec<Option<monitor::Collected<A::N>>>,
     ) -> RusticolResult<Vec<V2Point<A::N>>>
     where
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
+        if let Some(induced) = self.induced.clone() {
+            if COLLECT || check.is_some() {
+                return Err(invalid(
+                    "the loop-induced stability checks are the induced monitor's",
+                ));
+            }
+            return self.evaluate_induced(&induced, momenta, scales, mode, precision, zero, arith);
+        }
         let poles = mode.poles();
         let bits = precision.bits()?;
         let lanes = precision.lanes(momenta.len());
@@ -1280,6 +2063,7 @@ impl V2Runtime {
         let options = V2Options {
             poles: mode.lanes(),
             contraction: contraction(&self.artifact.metadata.color_contraction),
+            check,
             ..V2Options::default()
         };
         self.backend(precision)?;
@@ -1359,11 +2143,16 @@ impl V2Runtime {
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);
             let mut failures = result.failures;
+            let mut measures = result.measures;
             if let Some(twin) = twin {
                 failures.extend(twin.failures.iter().cloned());
+                measures.extend(twin.measures.iter().copied());
             }
             if !failures.is_empty() {
-                out.push(Err(failures));
+                if COLLECT {
+                    collected.push(None);
+                }
+                out.push(Err(PointFailure::new(failures, measures)));
                 continue;
             }
             // Per sector the lanes' combined Laurent (and in a split
@@ -1489,9 +2278,109 @@ impl V2Runtime {
                     None => Ok(arith.zero()),
                 })
                 .collect::<RusticolResult<Vec<_>>>()?;
+            if COLLECT {
+                // What the point's stability budgets read
+                // (`_PointEvaluation.families`, `retest_families` and
+                // `result.components`, per record sector).
+                if mode.split() {
+                    return Err(invalid(
+                        "the native stability checks serve the pole selections all and none",
+                    ));
+                }
+                let lift = |lanes: &[(LaneKey, Vec<Complex<T>>)]| {
+                    lanes
+                        .iter()
+                        .map(|(key, value)| {
+                            let lifted = value
+                                .iter()
+                                .map(|z| arith.complex(z, bits))
+                                .collect::<RusticolResult<Vec<_>>>()?;
+                            Ok((*key, key.column, lifted))
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()
+                };
+                let truncated =
+                    |values: [A::N; 3]| -> Vec<A::N> { values.into_iter().take(width).collect() };
+                let components = ["r2", "uv_local", FIELD_COMPONENT]
+                    .map(|name| {
+                        (0..sectors)
+                            .map(|s| truncated(laurent(&local, name, s)))
+                            .collect::<Vec<_>>()
+                    })
+                    .to_vec();
+                let reference = (0..sectors)
+                    .map(|s| {
+                        (0..width)
+                            .map(|k| {
+                                let bare = sums[s]
+                                    .as_ref()
+                                    .map_or_else(|| real_zero.clone(), |terms| bare_of(&terms[k]));
+                                let uv = arith.add(
+                                    &value_of(&local, "uv_local", s, k),
+                                    &value_of(&local, FIELD_COMPONENT, s, k),
+                                );
+                                arith.add(&arith.add(&bare, &uv), &value_of(&local, "r2", s, k))
+                            })
+                            .collect()
+                    })
+                    .collect();
+                collected.push(Some(monitor::Collected {
+                    lanes: lift(&result.families)?,
+                    retest: result.check.as_deref().map(lift).transpose()?,
+                    local: components,
+                    reference,
+                }));
+            }
             out.push(Ok((born_values, virtual_values)));
         }
         Ok(out)
+    }
+}
+
+impl V2Runtime {
+    /// One batch of a loop-induced process (`plan_export.NativeExecutor.
+    /// reduce` of an amplitude-mode plan and `induced.assemble`): the tree
+    /// program's inputs and counterterm kets, the executor's bare loop
+    /// amplitudes per (loop order, row, basis element), and |A|² per sector
+    /// ([`induced::Induced::square_vectors`] with G over every row); no Born
+    /// values (Q36: the Born fields are empty).
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_induced<T: Native, A: Lift<T> + induced::Squaring>(
+        &mut self,
+        induced: &induced::Induced,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &A,
+    ) -> RusticolResult<Vec<V2Point<A::N>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        // `induced.assemble`: G in the carrier, every plan row.
+        let gram = induced.carrier(arith, induced.metric())?;
+        let rows = induced.plan_rows();
+        let average = self.record.average;
+        let sector_index = self.sector_index.clone();
+        self.induced_points(
+            induced,
+            momenta,
+            scales,
+            mode,
+            precision,
+            zero,
+            arith,
+            |_, vectors, width| {
+                let squared =
+                    induced.square_vectors(arith, vectors, &rows, &gram, width, average)?;
+                Ok((
+                    Vec::new(),
+                    sector_index.iter().map(|&s| squared[s].clone()).collect(),
+                ))
+            },
+        )
     }
 }
 

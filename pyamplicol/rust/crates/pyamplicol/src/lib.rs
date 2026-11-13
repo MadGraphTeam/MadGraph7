@@ -13,16 +13,20 @@
 //! `pyamplicol`, is registered here, in the crate of that name, through
 //! Symbolica's documented `set_library_key!` (which binds the key to this
 //! crate), and kept private to this crate as Symbolica asks. pyAmpliCol's
-//! other crates take thread-bound guards from [`unlock`]: every native
-//! operation that reaches Symbolica state (decoding saved evaluators,
-//! registering the scalar primitives, evaluating exact states in DoubleFloat
-//! or arbitrary precision, the DoubleFloat and arbitrary-precision reduction)
-//! holds one on its thread, and the loop executor's worker threads hold one
-//! for their lifetime ([`unlock_thread`]). Binary64 evaluation of stored
-//! SymJIT applications takes none, except the binary64 reduction of a loop
-//! at the fast engine's absolute thresholds, which runs the generic engine
-//! (`rusticol-loop-reduction`, `runtime::reaches_fast_threshold`) under a
-//! guard.
+//! other crates take thread-bound guards from [`unlock`]: every native entry
+//! point holds one on its calling thread (each Python binding of
+//! `_rusticol` and of its `_loop` module, except plain field accessors, and
+//! the `guard` helper every call of the tree C ABI and of the loop SDK ABI
+//! runs through), so generation, check, evaluation and profiling never take
+//! the user's restricted permit. The operations that reach Symbolica state
+//! (decoding saved evaluators, registering the scalar primitives, reading
+//! kernel terms, evaluating exact states in DoubleFloat or arbitrary
+//! precision, the DoubleFloat and arbitrary-precision reduction, the binary64
+//! reduction of a loop at the fast engine's absolute thresholds) hold one
+//! themselves as well, for callers inside the Rust crates, and the worker
+//! threads of pyAmpliCol's pools that touch Symbolica state hold one for
+//! their lifetime ([`unlock_thread`]). Binary64 evaluation of stored SymJIT
+//! applications touches no Symbolica state.
 //!
 //! A user's own licence (`SYMBOLICA_LICENSE`) is used as before; an expired or
 //! rejected key yields inert guards (Symbolica's rule), so the user's licence
@@ -38,9 +42,9 @@ pub const DISABLE_VARIABLE: &str = "PYAMPLICOL_NATIVE_LIBRARY_KEY";
 
 // The key of `pyamplicol/__init__.py`, issued for the package `pyamplicol`.
 const KEY: [&str; 3] = [
-    "SU-419-pyamplicol-2028.01.01-",
-    "KJBO3RLZJ3H5FKU5CL756QLKZCURABBCKRGHZRK5OVIUQXZBCLJTOUQPHXYVTANIX",
-    "SCKI6YTZDWGH2NWHQIBCPDUO5GVW2STVMP3MCQ",
+    "SU-419-pyamplicol-2028.03.01-",
+    "TYDKOSXVRWSMFPFBTI7UZTZD2BA2ZLWJEJYGU7ZC3MED6ZHYT4PYZWALKUUCGIRIN",
+    "HCWHEZIDIRXAHPJWEA65PTHXPEPLJUBUCRCKCQ",
 ];
 
 // Private to this crate (Symbolica: "do not use `pub` scope to prevent key

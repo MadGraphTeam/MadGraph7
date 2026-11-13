@@ -28,6 +28,15 @@
 //! block value on a dropped row no longer reaches a kept one). A plan whose
 //! columns keep every row is left as it is. Schedules F and M keep their own
 //! programs.
+//!
+//! **Dressed rows** (route R2, [`LoopProgramV4::dressed`]): the leaves seed
+//! one constant row, so nothing dies forward; a trace step closes each
+//! object row into the columns of its Born row ([`super::RowTrace`]), so the
+//! backward pass keeps a trace step's object rows whose Born row is kept and
+//! read by a column (`row_columns`): at load the rows no column reads (the
+//! exact helicity-zero filter's drops), per call also the rows a helicity
+//! mask drops (a loop-induced single-helicity selection). The pruned copy
+//! keeps its trace steps' row closures.
 
 use super::super::kernels::RowLink;
 use super::{
@@ -43,13 +52,21 @@ impl LoopProgramV4 {
     /// zeros of the Born rows no column keeps (module docs); the split
     /// parts' shortened link lists are interned in `links`.
     pub(super) fn prune_dead_rows(&mut self, links: &mut LinkInterner) {
-        if !self.column_rows.restricts() {
-            return;
-        }
-        let columns = self.columns;
-        let seeded: Vec<bool> = (0..self.rows * columns)
-            .map(|row| self.column_rows.keeps(row / columns, row % columns))
-            .collect();
+        let (seeded, columns, traced) = if self.dressed {
+            let Some(traced) = self.traced_rows(None) else {
+                return;
+            };
+            (vec![true], self.object_columns(), Some(traced))
+        } else {
+            if !self.column_rows.restricts() {
+                return;
+            }
+            let columns = self.columns;
+            let seeded: Vec<bool> = (0..self.rows * columns)
+                .map(|row| self.column_rows.keeps(row / columns, row % columns))
+                .collect();
+            (seeded, columns, None)
+        };
         for family in &mut self.families {
             (*family, _) = prune_family(
                 family,
@@ -58,6 +75,7 @@ impl LoopProgramV4 {
                 &self.contents,
                 &self.vertices,
                 links,
+                traced.as_deref(),
             );
         }
         // The factor and current rows the kept links read (schedules F and
@@ -65,6 +83,21 @@ impl LoopProgramV4 {
         if self.forward.is_none() && self.merged.is_none() {
             self.read_rows = Some(self.rows_read());
         }
+    }
+
+    /// The Born rows a dressed-row plan's trace steps close: those read by
+    /// a column (`row_columns`) and kept by `mask` (one flag per Born row;
+    /// None keeps all); `None` when that is every row a column reads
+    /// (nothing to prune).
+    fn traced_rows(&self, mask: Option<&[bool]>) -> Option<Vec<bool>> {
+        let read = |h: usize| !self.row_columns[h].is_empty();
+        let traced: Vec<bool> = (0..self.rows)
+            .map(|h| read(h) && mask.is_none_or(|kept| kept[h]))
+            .collect();
+        if traced.iter().all(|&kept| kept) {
+            return None;
+        }
+        Some(traced)
     }
 
     /// The content rows of each fused factor and the term rows of each
@@ -125,14 +158,27 @@ impl LoopProgramV4 {
 ///
 /// Memory: a pruned copy is built fresh at the lengths it keeps (a split
 /// part's list keeping every link stays shared with the template, a shorter
-/// one is packed and interned), and it is kept only when it runs at most
-/// [`KEPT_SHARE`] of its family's row links (it then saves at least the
-/// rest of its dressing): a family keeping more runs whole on the masked
-/// seeds (the template's steps, the unpruned path's values), and a family
-/// left without a step is never dressed. If the kept copies together would
-/// hold more heap than the dressed families themselves (their own lists,
-/// steps, edges, fused links, split groups and parts, and the part lists
-/// they read, each once), every family runs whole. The families are pruned
+/// one is packed and interned). A helicity selection ([`Self::live_rows`],
+/// the selection path of seeded and dressed-row plans alike: lit-dress (H)
+/// for loop-induced, lit-fc-hel (G4) for Born-interfered selections) keeps
+/// a copy whenever it drops a link, so the call dresses, closes, scatters
+/// and reduces exactly the restriction of its kept rows (USER 2026-11-08
+/// ~22:34: a selection evaluates only its rows; a copy is a subset of its
+/// template, the memory a call adds); a family whose every link is reached
+/// runs its template. Each copy keeps a subset of its template's steps,
+/// edges and links, so the copies add at most the sum of the listed
+/// families' own heaps (the report's "row-pruned family bytes" against
+/// "row-liveness dressed bytes"; the call's peak is measured). A copy
+/// derives its walk data (`plan::Walk`: written rows, closed trace rows) on
+/// its first walk, as a loaded family does. A family left without a step is
+/// never dressed. [`Self::live_rows_keeping`] keeps the earlier
+/// seeded-plan rule as an explicit option (no production call takes it): a
+/// copy is kept only when it runs at most a given share of its family's row
+/// links ([`KEPT_SHARE`] before lit-fc-hel), a family keeping more runs
+/// whole on the masked seeds, and if the kept copies together would hold
+/// more heap than the dressed families themselves (their own lists, steps,
+/// edges, fused links, split groups and parts, and the part lists they
+/// read, each once), every family runs whole. The families are pruned
 /// on the calling thread with one link interner, so the copies and the
 /// pruning's scratch sit in one allocator arena and equal shortened lists
 /// are shared across families (a parallel prune spread them over the
@@ -159,10 +205,23 @@ pub struct LiveRows {
     pub read: Arc<ReadRows>,
 }
 
-/// The largest share (numerator, denominator) of its family's row links a
-/// kept pruned copy runs ([`LiveRows`]): a copy costs memory and saves the
-/// dressing of the links it drops, so it must at least halve its family's.
+/// The share (numerator, denominator) of its family's row links a kept
+/// pruned copy of a seeded plan ran at most before lit-fc-hel (G4)
+/// ([`LoopProgramV4::live_rows_keeping`]; the selection path keeps every
+/// copy that drops a link, [`LoopProgramV4::live_rows`]).
 pub const KEPT_SHARE: (usize, usize) = (1, 2);
+
+/// Which pruned copies a row liveness keeps ([`LiveRows`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Keep {
+    /// Every copy that drops a link: the row restriction of the kept rows
+    /// (a helicity selection).
+    Restriction,
+    /// A seeded plan's copy only when it runs at most this share
+    /// (numerator, denominator) of its family's links, and none when the
+    /// copies would hold more heap than their families.
+    Share(usize, usize),
+}
 
 /// The heap of a family's own short lists: sequence, orders, leaves and
 /// inputs.
@@ -173,6 +232,9 @@ fn own_bytes(family: &Family) -> usize {
         + family.leaves.len() * size_of::<super::Leaf>()
         + (family.factors.len() + family.vertices.len() + family.currents.len())
             * size_of::<usize>()
+        + family.support.as_ref().map_or(0, |support| {
+            (support.columns.len() + support.slots.len()) * size_of::<u32>()
+        })
 }
 
 /// The heap of a family's steps that a pruned copy allocates anew: steps,
@@ -277,22 +339,42 @@ impl LiveRows {
 }
 
 impl LoopProgramV4 {
-    /// The row liveness of an evaluation keeping the Born rows `rows` (one
-    /// flag per plan row) and dressing `families` (ascending) by schedule B
-    /// ([`LiveRows`], copies kept up to [`KEPT_SHARE`] of their heap);
-    /// `None` when `rows` drops no row a column seeds (nothing to prune).
-    /// The families are pruned on the calling thread.
+    /// The row liveness of a helicity selection keeping the Born rows
+    /// `rows` (one flag per plan row) and dressing `families` (ascending) by
+    /// schedule B ([`LiveRows`]): seeded and dressed-row plans alike keep
+    /// every family's pruned copy that drops a link, so the call forms
+    /// exactly the restriction of its kept rows (lit-fc-hel (G4); a family
+    /// whose every link is reached runs its template). `None` when `rows`
+    /// drops no row a column seeds (nothing to prune). The families are
+    /// pruned on the calling thread.
     pub fn live_rows(&self, rows: &[bool], families: &[usize]) -> RusticolResult<Option<LiveRows>> {
-        self.live_rows_keeping(rows, families, KEPT_SHARE)
+        self.live_rows_with(rows, families, Keep::Restriction)
     }
 
-    /// [`Self::live_rows`] keeping a pruned copy that runs at most `share`
-    /// (numerator, denominator) of its family's row links.
+    /// [`Self::live_rows`] keeping a seeded plan's pruned copy only when it
+    /// runs at most `share` (numerator, denominator) of its family's row
+    /// links, and no copy when the copies would hold more heap than their
+    /// families (the seeded-plan rule before lit-fc-hel, [`KEPT_SHARE`]); a
+    /// dressed-row plan keeps its copies whenever they drop a link.
     pub fn live_rows_keeping(
         &self,
         rows: &[bool],
         families: &[usize],
         share: (usize, usize),
+    ) -> RusticolResult<Option<LiveRows>> {
+        let keep = if self.dressed {
+            Keep::Restriction
+        } else {
+            Keep::Share(share.0, share.1)
+        };
+        self.live_rows_with(rows, families, keep)
+    }
+
+    fn live_rows_with(
+        &self,
+        rows: &[bool],
+        families: &[usize],
+        keep: Keep,
     ) -> RusticolResult<Option<LiveRows>> {
         super::require(rows.len() == self.rows, "one kept flag per Born row")?;
         super::require(
@@ -300,18 +382,36 @@ impl LoopProgramV4 {
                 && families.last().is_none_or(|&f| f < self.families.len()),
             "ascending plan families",
         )?;
-        let columns = self.columns;
-        let keeps = |row: usize| self.column_rows.keeps(row / columns, row % columns);
-        let seeded: Vec<bool> = (0..self.rows * columns)
-            .map(|row| rows[row / columns] && keeps(row))
-            .collect();
-        if seeded
-            .iter()
-            .enumerate()
-            .all(|(row, &seed)| seed == keeps(row))
-        {
-            return Ok(None);
-        }
+        let (seeded, columns, traced) = if self.dressed {
+            // Dressed rows: the trace steps close the kept Born rows a
+            // column reads (`traced_rows`; the load already dropped the
+            // rows no column reads).
+            let traced = self.traced_rows(Some(rows));
+            let unchanged = match &traced {
+                None => true,
+                Some(traced) => {
+                    (0..self.rows).all(|h| traced[h] == !self.row_columns[h].is_empty())
+                }
+            };
+            if unchanged {
+                return Ok(None);
+            }
+            (vec![true], self.object_columns(), traced)
+        } else {
+            let columns = self.columns;
+            let keeps = |row: usize| self.column_rows.keeps(row / columns, row % columns);
+            let seeded: Vec<bool> = (0..self.rows * columns)
+                .map(|row| rows[row / columns] && keeps(row))
+                .collect();
+            if seeded
+                .iter()
+                .enumerate()
+                .all(|(row, &seed)| seed == keeps(row))
+            {
+                return Ok(None);
+            }
+            (seeded, columns, None)
+        };
         // One link interner: the parts' shortened lists are shared across
         // the families (a list keeping every link stays the template's).
         // Per listed family: the copy (None: it runs whole), the links it
@@ -328,9 +428,22 @@ impl LoopProgramV4 {
                     &self.contents,
                     &self.vertices,
                     &mut interner,
+                    traced.as_deref(),
                 );
+                let mut copy = copy;
+                copy.support = self.support_of(&copy);
                 let (links, whole) = (family_links(&copy), family_links(template));
-                if copy.steps.is_empty() || links * share.1 <= whole * share.0 {
+                // A helicity selection evaluates exactly the restriction of
+                // its kept rows, so a family dressing a link outside it runs
+                // its copy; one whose every link is reached runs its template
+                // (the same links). The share rule keeps a copy up to its
+                // share of the family's links (the masked seeds' zeros run
+                // otherwise).
+                let kept = match keep {
+                    Keep::Restriction => links < whole,
+                    Keep::Share(num, den) => links * den <= whole * num,
+                };
+                if copy.steps.is_empty() || kept {
                     let bytes = own_bytes(&copy) + steps_bytes(&copy) + lists;
                     (Some(copy), links, bytes)
                 } else {
@@ -338,8 +451,10 @@ impl LoopProgramV4 {
                 }
             })
             .collect();
-        // The copies of the call together hold no more than the families
-        // they replace, else every family with a step runs whole.
+        // The share rule: the copies of the call together hold no more than
+        // the families they replace, else every family with a step runs
+        // whole. A selection keeps its copies (each a subset of its
+        // template: the selection's restriction is the requirement).
         let mut seen = HashSet::new();
         let dressed: usize = families
             .iter()
@@ -349,7 +464,7 @@ impl LoopProgramV4 {
             })
             .sum();
         let copies: usize = pruned.iter().map(|&(.., bytes)| bytes).sum();
-        if copies > dressed {
+        if matches!(keep, Keep::Share(..)) && copies > dressed {
             for (&f, entry) in families.iter().zip(&mut pruned) {
                 if entry.0.as_ref().is_some_and(|copy| !copy.steps.is_empty()) {
                     *entry = (None, family_links(&self.families[f]), 0);
@@ -416,6 +531,7 @@ fn prune_family(
     contents: &[Content],
     vertices: &[Vertex],
     interner: &mut LinkInterner,
+    traced: Option<&[bool]>,
 ) -> (Family, usize) {
     let mut lists = 0;
     let steps = &family.steps;
@@ -460,10 +576,16 @@ fn prune_family(
     kept.resize_with(steps.len(), || None);
     for s in (0..steps.len()).rev() {
         let step = &steps[s];
-        let wanted = if step.trace.is_some() {
-            live[s].clone()
-        } else {
-            std::mem::take(&mut read[s])
+        let wanted = match (step.trace, traced, family.row_traces.get(s)) {
+            // A dressed trace step closes the object rows of its traced
+            // Born rows only.
+            (Some(_), Some(traced), Some(Some(trace))) => live[s]
+                .iter()
+                .zip(&trace.rows)
+                .map(|(&live, &row)| live && traced[row as usize])
+                .collect(),
+            (Some(_), ..) => live[s].clone(),
+            (None, ..) => std::mem::take(&mut read[s]),
         };
         let inputs = sources(step, seeded, &live);
         let keep = |link: &RowLink, input: &[bool]| {
@@ -593,10 +715,16 @@ fn prune_family(
     // then has a link left too (every open object feeds one edge).
     let mut index: Vec<Option<usize>> = vec![None; steps.len()];
     let mut pruned: Vec<Step> = Vec::with_capacity(kept.iter().flatten().count());
+    // A dressed-row family's row closures, by kept step (empty for seeded
+    // plans).
+    let mut row_traces = Vec::new();
     for (s, step) in kept.into_iter().enumerate() {
         let Some(mut step) = step else {
             continue;
         };
+        if !family.row_traces.is_empty() {
+            row_traces.push(family.row_traces[s].clone());
+        }
         for edge in &mut step.edges {
             if let Source::Step(child) = edge.source {
                 let child = index[child].expect("the child of a kept edge is kept");
@@ -628,6 +756,10 @@ fn prune_family(
         factors: factors.into_iter().collect(),
         vertices: instances.into_iter().collect(),
         currents: currents.into_iter().collect(),
+        row_traces,
+        support: None,
+        walk: Default::default(),
+        dependents: super::DependentsCache::default(),
     };
     (family, lists)
 }
@@ -676,7 +808,8 @@ fn costs(step: &Step, contents: &[Content], vertices: &[Vertex]) -> (StepCost, O
 
 #[cfg(test)]
 mod tests {
-    use crate::loop_v2::dress::{ChunkInputs, LaneData, Reads, V2Batch};
+    use super::KEPT_SHARE;
+    use crate::loop_v2::dress::{ChunkInputs, LaneData, Reads, V2Batch, Workspaces};
     use crate::loop_v2::plan::{LoopProgramV4, Source};
     use crate::loop_v2::seeds::seeds;
     use crate::loop_v2::trie::{run_family, run_family_on};
@@ -927,6 +1060,7 @@ mod tests {
             &inputs,
             &seeds,
             &data,
+            &Workspaces::new(1, &zero),
         )
         .unwrap();
         assert_eq!(
@@ -965,9 +1099,55 @@ mod tests {
         }
     }
 
-    /// A family whose pruned copy would keep more than [`KEPT_SHARE`] of
-    /// its row links runs whole on the masked seeds: no copy, its links and the
-    /// rows they read counted; values bitwise the row-restricted plan's.
+    /// A helicity selection on a seeded plan (lit-fc-hel (G4)) runs every
+    /// family's pruned copy that drops a link, even one keeping most of its
+    /// links (family 0: 2 of 3), so it dresses exactly the row restriction;
+    /// its numerators equal the row-restricted plan's bitwise.
+    #[test]
+    fn a_selection_runs_every_copy_that_drops_a_link() {
+        let template = plan("null", 1);
+        let restricted = plan("[[0]]", 1);
+        let live = template
+            .live_rows(&[true, false], &[0, 1])
+            .unwrap()
+            .unwrap();
+        let copy = live.family(0).expect("family 0 drops a link");
+        assert!(live.family(1).unwrap().steps.is_empty());
+        assert_eq!(
+            (live.families(), live.links(), live.pruned()),
+            (&[0][..], 2, 2)
+        );
+        let reference: Vec<_> = restricted.families.iter().collect();
+        assert_eq!(links_of(&[copy]), links_of(&reference[..1]));
+        const L: usize = 2;
+        let zero = Rational::from(0);
+        let batch = batch(true);
+        let data = LaneData::<Rational, L>::new(&template, &batch, &[0, 1], &zero).unwrap();
+        let seeds = seeds(&template, &data);
+        let mut inputs = ChunkInputs::new(&template).with_rows(Some(live.read.clone()));
+        let reads = Reads::of_families(std::iter::once(copy));
+        inputs.prepare(&template, &data, &reads, &reads);
+        let run = run_family_on::<Rational, L>(
+            &template,
+            0,
+            copy,
+            &inputs,
+            &seeds,
+            &data,
+            &Workspaces::new(1, &zero),
+        )
+        .unwrap();
+        assert_eq!(
+            run.numerator.accumulators,
+            numerators(&restricted, &batch)[0]
+        );
+    }
+
+    /// The share rule ([`LoopProgramV4::live_rows_keeping`] with
+    /// [`KEPT_SHARE`], the seeded-plan rule before lit-fc-hel): a family
+    /// whose pruned copy would keep more than the share of its row links
+    /// runs whole on the masked seeds: no copy, its links and the rows they
+    /// read counted; values bitwise the row-restricted plan's.
     #[test]
     fn a_family_keeping_most_of_its_links_runs_whole() {
         let template = plan("null", 1);
@@ -975,7 +1155,7 @@ mod tests {
         // Family 0 keeps both steps and 2 of its 3 links (whole); family 1
         // nothing (pruned to no step, not live).
         let live = template
-            .live_rows(&[true, false], &[0, 1])
+            .live_rows_keeping(&[true, false], &[0, 1], KEPT_SHARE)
             .unwrap()
             .unwrap();
         assert!(live.family(0).is_none());
@@ -997,8 +1177,16 @@ mod tests {
         let family = &template.families[0];
         let reads = Reads::of_families(std::iter::once(family));
         inputs.prepare(&template, &data, &reads, &reads);
-        let run =
-            run_family_on::<Rational, L>(&template, 0, family, &inputs, &seeds, &data).unwrap();
+        let run = run_family_on::<Rational, L>(
+            &template,
+            0,
+            family,
+            &inputs,
+            &seeds,
+            &data,
+            &Workspaces::new(1, &zero),
+        )
+        .unwrap();
         assert_eq!(
             run.numerator.accumulators,
             numerators(&restricted, &batch)[0]

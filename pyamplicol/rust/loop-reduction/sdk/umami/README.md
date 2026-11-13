@@ -33,6 +33,15 @@ mappings and per-event coupling overrides are not exposed here. Saved directed
 colour histories use the separate complex operation below.
 No model or process names are used to infer support.
 
+Loop-induced processes (|A_loop|², no Born; the metadata's
+`contribution_kind` is `"loop-induced"` and its `interference`
+`"conj(loop)*loop"`) are opened and evaluated the same way: their Born
+catalogue is empty, so `PYAMPLICOL_UMAMI_V1_OUT_BORN` has zero width (a
+requested Born output is left untouched) and `PYAMPLICOL_UMAMI_V1_OUT_VIRTUAL`
+holds |A_loop|² per loop × loop sector and epsilon power (its computed poles
+vanish up to rounding: a finiteness cross-check). The SDK's reduction setter
+(`rusticol_virtual_set_reduction`) and pole selection apply to the handle.
+
 The extension accepts standard `UMAMI_IN_MOMENTA` and its own namespaced keys:
 
 | Input | Type and shape | Requirement |
@@ -41,6 +50,26 @@ The extension accepts standard `UMAMI_IN_MOMENTA` and its own namespaced keys:
 | `PYAMPLICOL_UMAMI_V1_IN_MU_R2` | `double[stride]` | Exactly one scale input |
 | `PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR` | `double[1]` | Alternative broadcast scale |
 | `PYAMPLICOL_UMAMI_V1_IN_POINT_ID` | `uint64_t[stride]` | Optional; defaults to event indices |
+| `UMAMI_IN_HELICITY_INDEX` | `int[stride]` | Optional, ordinary calls (loop-induced and, at every colour accuracy, Born-interfered processes): the event's zero-based helicity row (the SDK capabilities' `helicity_ids`), as the tree provider's key |
+| `PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION` | `char[]`, NUL-terminated | Optional, resolved calls of a loop-induced process: `"contracted"` (default) or `"amplitude-basis"` |
+
+**Loop-induced selections (F1).** `UMAMI_IN_HELICITY_INDEX` selects one
+helicity row per event: the event's virtual is that row's |A(h)|²/avg with the
+total's average (RULED Q39; only the selected rows are dressed;
+`rusticol_virtual_evaluate_selected`'s `helicity_by_point`, bitwise the Python
+API's `evaluate(helicities=[that row's ID])`). With `options.resolved = 1`,
+`PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION = "amplitude-basis"` returns per
+helicity row the amplitude-basis anchors (C = the basis size, the
+capabilities' `color_resolutions`; Re(conj(a_t) (G a)_t)/avg, an explicitly
+basis-dependent split summing to the row's value); the output capacities are
+then checked against the call's own axes before any write. A loop-induced
+process has no colour flows (full colour only); `UMAMI_IN_RANDOM_HELICITY` and
+random colour selection stay unsupported (this extension samples nothing).
+**Born-interfered selections (lit-fc-hel).** `UMAMI_IN_HELICITY_INDEX` selects
+one Born helicity row per event at every colour accuracy: the event's virtual
+is that row's value (only its rows are evaluated; bitwise the Python API's
+`evaluate(helicities=[that row's ID])`); the colour resolution key is refused
+for a Born-interfered process, as the C ABI does.
 
 Scales are positive real renormalization scales **squared**, distinct from loop
 momentum mu squared. Binary64 values are read as their exact values. Input

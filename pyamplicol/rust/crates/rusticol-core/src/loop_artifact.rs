@@ -16,10 +16,47 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub const LOOP_RUNTIME_CAPABILITY: &str = "rusticol.loop-runtime.v3";
-pub use crate::engine::LOOP_V2_RUNTIME_CAPABILITY;
+pub use crate::engine::{LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY};
 pub const LOOP_RUNTIME_KIND: &str = "pyamplicol-runtime-loop-execution";
 pub const EPSILON_CONVENTION: &str = "Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)";
 pub const ORDINARY_INTERFERENCE: &str = "2*Re(conj(Born)*loop)";
+/// The interference of a loop-induced process (|A_loop|², M-LIT LIT-AMP):
+/// declared with `contribution_kind = "loop-induced"`, an empty Born
+/// catalogue, loop x loop sectors and an amplitude-mode plan (schema 5,
+/// [`LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY`]).
+pub const LOOP_INDUCED_INTERFERENCE: &str = "conj(loop)*loop";
+/// The pole selections of a loop-induced process: its UV and IR parts are
+/// not additive in a square (m-lit PLAN §2.a.7), so "uv" and "ir" are not
+/// served.
+pub const LOOP_INDUCED_POLE_SELECTIONS: [&str; 2] = ["all", "none"];
+
+/// The runtime capability of a process of `contribution_kind`.
+pub fn loop_v2_capability(contribution_kind: &str) -> Option<&'static str> {
+    match contribution_kind {
+        "virtual" => Some(LOOP_V2_RUNTIME_CAPABILITY),
+        "loop-induced" => Some(LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY),
+        _ => None,
+    }
+}
+
+/// Whether `manifest` is a v2 loop artifact: every process requires exactly
+/// one of the v2 loop runtime capabilities ([`LOOP_V2_RUNTIME_CAPABILITY`]
+/// for a Born-interfered process, [`LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY`]
+/// for a loop-induced one), in any mix, and the artifact requires no other
+/// runtime.
+pub fn is_loop_v2_manifest(manifest: &crate::ArtifactManifest) -> bool {
+    let loop_v2 = |capability: &String| {
+        capability == LOOP_V2_RUNTIME_CAPABILITY
+            || capability == LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY
+    };
+    let capabilities = &manifest.runtime.required_runtime_capabilities;
+    !capabilities.is_empty()
+        && capabilities.iter().all(loop_v2)
+        && manifest.processes.iter().all(|p| {
+            p.required_runtime_capabilities.len() == 1
+                && loop_v2(&p.required_runtime_capabilities[0])
+        })
+}
 pub const DIRECTED_INTERFERENCE: &str = "Bdagger K_BL L + Ldagger K_LB B";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -84,7 +121,11 @@ pub struct LoopV2Sector {
 /// `poles` lists the pole selections an evaluation may
 /// request (`PoleSelection`, DESIGN.md §12.4): every pole ("all"), the finite
 /// part only ("none"), and the ultraviolet ("uv") or infrared ("ir") parts:
-/// always all four ([`LOOP_V2_POLE_SELECTIONS`]).
+/// always all four ([`LOOP_V2_POLE_SELECTIONS`]). `reductions` names the
+/// reduction backends a TIR-only process admits (`["tirust"]`: a family
+/// beyond NinjaRS's rank <= N+2, m-lit lit-eft,
+/// `loop_v2::bounds::tir_only`), and is absent otherwise (every backend:
+/// the declarations of other processes keep their bytes).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -114,6 +155,8 @@ pub struct LoopV2ExecutionMetadata {
     pub dimension: String,
     pub interference: String,
     pub scheme_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reductions: Option<Vec<String>>,
 }
 
 /// One external leg of a plan v4 process, in momentum order.
@@ -286,14 +329,14 @@ pub fn load_loop_v2_artifact(
 ) -> RusticolResult<LoadedLoopV2Artifact> {
     use sha2::{Digest, Sha256};
 
+    // A v2 loop artifact holds Born-interfered (v4) and loop-induced (v5)
+    // processes in any mix: every process requires exactly one v2 loop
+    // runtime (the manifest's union, checked by `validate_manifest`, is then
+    // a non-empty subset of them); the selected process's capability is
+    // checked against its contribution below.
     require(
-        artifact.manifest().runtime.required_runtime_capabilities == [LOOP_V2_RUNTIME_CAPABILITY]
-            && artifact
-                .manifest()
-                .processes
-                .iter()
-                .all(|p| p.required_runtime_capabilities == [LOOP_V2_RUNTIME_CAPABILITY]),
-        "plan v4 processes cannot share an artifact with other runtimes",
+        is_loop_v2_manifest(artifact.manifest()),
+        "v2 loop processes (v4/v5) cannot share an artifact with other runtimes",
     )?;
     let selection = artifact.select_process(requested_process)?;
     // A stored process may list permutation aliases: the Python runtime
@@ -323,11 +366,12 @@ pub fn load_loop_v2_artifact(
          no SymJIT plane applications; regenerated-at-load regenerated the \
          process at load); regenerate the artifact",
     )?;
+    let capability = loop_v2_capability(&execution.contribution_kind);
     require(
         execution.schema_version == 4
             && execution.kind == LOOP_RUNTIME_KIND
             && execution.process_id == selection.process.id
-            && execution.contribution_kind == "virtual"
+            && capability.is_some()
             && execution.execution_mode == "loop_recurrence"
             && execution.engine == "v2"
             && execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS
@@ -335,7 +379,8 @@ pub fn load_loop_v2_artifact(
         "unsupported plan v4 execution declaration",
     )?;
     require(
-        execution.required_runtime_capabilities == [LOOP_V2_RUNTIME_CAPABILITY]
+        capability
+            .is_some_and(|capability| execution.required_runtime_capabilities == [capability])
             && selection.process.required_runtime_capabilities
                 == execution.required_runtime_capabilities,
         "execution and process runtime capabilities disagree",
@@ -363,6 +408,10 @@ pub fn load_loop_v2_artifact(
     )?;
     let metadata = &physics.metadata;
     validate_v2_metadata(metadata)?;
+    require(
+        metadata.contribution_kind == execution.contribution_kind,
+        "the execution and physics declarations name different contributions",
+    )?;
     require(
         selection.process.color_accuracy == metadata.color_accuracy,
         "declared colour accuracy differs from the process record",
@@ -421,6 +470,16 @@ pub fn load_loop_v2_artifact(
             .into_iter()
             .map(|((n, r), families)| (n, r, families.len()))
             .collect();
+        // A TIR-only plan (m-lit lit-eft) declares its one backend, any
+        // other plan none.
+        let tir_only = crate::loop_v2::bounds::tir_only(buckets.iter().map(|&(n, r, _)| (n, r)));
+        require(
+            metadata.reductions
+                == tir_only
+                    .then(|| vec![crate::loop_v2::bounds::Reducer::TiRust.name().to_owned()]),
+            "plan v4 families beyond NinjaRS's rank <= N+2 are declared exactly by the \
+             reductions [\"tirust\"] (a TIR-only process)",
+        )?;
         require(
             program.families.len() == metadata.families
                 && buckets == metadata.buckets
@@ -431,7 +490,15 @@ pub fn load_loop_v2_artifact(
                     .all(|leg| *leg <= program.legs)
                 && program.legs == physics.state_legs.len()
                 && program.rows == physics.helicities.len()
-                && program.columns == metadata.sectors.len()
+                // A loop-induced plan (amplitude mode) has one column per
+                // (row, amplitude basis element); a seeded plan one per
+                // sector.
+                && program.amplitude == (metadata.contribution_kind == "loop-induced")
+                && if program.amplitude {
+                    program.columns % program.rows == 0
+                } else {
+                    program.columns == metadata.sectors.len()
+                }
                 && physics
                     .helicities
                     .iter()
@@ -666,14 +733,20 @@ const LOOP_V2_NATIVE_INPUTS_PREFIX: &str = "point-inputs/";
 
 #[cfg(feature = "loop-v2")]
 fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()> {
+    let induced = metadata.contribution_kind == "loop-induced";
     require(
         metadata.engine == "v2"
-            && metadata.contribution_kind == "virtual"
+            && matches!(
+                (
+                    metadata.contribution_kind.as_str(),
+                    metadata.interference.as_str()
+                ),
+                ("virtual", ORDINARY_INTERFERENCE) | ("loop-induced", LOOP_INDUCED_INTERFERENCE)
+            )
             && metadata.execution_mode == "loop_recurrence"
             && metadata.epsilon_powers == [0, -1, -2]
             && metadata.epsilon_convention == EPSILON_CONVENTION
             && metadata.dimension == "D=4-2*epsilon"
-            && metadata.interference == ORDINARY_INTERFERENCE
             && metadata.scheme_status == "declared-not-certified"
             && metadata.schedule == "backward"
             && metadata.accuracy_retest == "reduction-direction"
@@ -685,11 +758,26 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             ),
         "unsupported contribution, convention or feature declaration",
     )?;
-    require(
-        metadata.poles == LOOP_V2_POLE_SELECTIONS,
-        "unsupported pole selections (plan v4 serves all, none, uv and ir): \
-         regenerate the artifact",
-    )?;
+    if induced {
+        // Loop-induced (|A_loop|², M-LIT LIT-AMP): no Born, full colour only
+        // (RULED Q8), poles all or none (PLAN §2.a.7), no colour or spin
+        // correlations yet (LIT-OBS).
+        require(
+            metadata.born_orders.is_empty()
+                && metadata.color_accuracy == "full"
+                && metadata.poles == LOOP_INDUCED_POLE_SELECTIONS
+                && metadata.color_correlations.is_empty()
+                && metadata.spin_correlations.is_empty(),
+            "a loop-induced process declares no Born, full colour, the pole \
+             selections all and none and no correlations",
+        )?;
+    } else {
+        require(
+            metadata.poles == LOOP_V2_POLE_SELECTIONS,
+            "unsupported pole selections (plan v4 serves all, none, uv and ir): \
+             regenerate the artifact",
+        )?;
+    }
     require(
         metadata.arithmetic == ["double", "double-double", "arbitrary"],
         "unsupported arithmetic declaration",
@@ -726,11 +814,13 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             ),
         "colour degrees are declared exactly per sector at LC and NLC",
     )?;
+    // (A loop-induced process has no Born; an exact colour zero of one, e.g.
+    // h > g a, has no family either.)
     require(
-        !metadata.born_orders.is_empty()
+        (induced || !metadata.born_orders.is_empty())
             && !metadata.sectors.is_empty()
             && metadata.sectors.iter().all(|s| !s.pairs.is_empty())
-            && metadata.families > 0
+            && (induced || metadata.families > 0)
             && metadata.buckets.iter().map(|b| b.2).sum::<usize>() == metadata.families,
         "plan v4 needs Born orders, sectors and reduction buckets covering every family",
     )?;

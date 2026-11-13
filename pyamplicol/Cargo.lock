@@ -134,6 +134,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ar_archive_writer"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73cd58deff2140a0a8eae87e417bd01db68a33e148aa93d1e8cd837e55e312b6"
+dependencies = [
+ "object",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -473,7 +482,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -804,7 +813,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -919,7 +928,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1215,7 +1224,7 @@ dependencies = [
 [[package]]
 name = "graphica"
 version = "3.0.1"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc#20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc"
+source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
 dependencies = [
  "ahash",
  "dyn-clone",
@@ -1355,6 +1364,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6928282826c822ad91bf1c9a1cb90a30ba1c26770749929b4656cd6be829cd7c"
 dependencies = [
  "rustversion",
+]
+
+[[package]]
+name = "iregi-masters"
+version = "0.1.0"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=bc94b496e94d7b7686fc28adbfe9b42a68200d02#bc94b496e94d7b7686fc28adbfe9b42a68200d02"
+dependencies = [
+ "oneloop",
+ "symbolica",
+]
+
+[[package]]
+name = "iregi-rust"
+version = "0.1.0"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=bc94b496e94d7b7686fc28adbfe9b42a68200d02#bc94b496e94d7b7686fc28adbfe9b42a68200d02"
+dependencies = [
+ "iregi-masters",
+ "oneloop",
+ "serde",
+ "symbolica",
+ "thiserror",
 ]
 
 [[package]]
@@ -1645,7 +1675,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=b3a29c8577733f384de1c74b48bde5b24c2799d3#b3a29c8577733f384de1c74b48bde5b24c2799d3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=cf28d8e0018e0555256d3fba51e457d4941dcb0e#cf28d8e0018e0555256d3fba51e457d4941dcb0e"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1655,7 +1685,7 @@ dependencies = [
 [[package]]
 name = "ninjars-graph"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=b3a29c8577733f384de1c74b48bde5b24c2799d3#b3a29c8577733f384de1c74b48bde5b24c2799d3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=cf28d8e0018e0555256d3fba51e457d4941dcb0e#cf28d8e0018e0555256d3fba51e457d4941dcb0e"
 dependencies = [
  "feynkit-amplitude",
  "feynkit-generator",
@@ -1674,7 +1704,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=b3a29c8577733f384de1c74b48bde5b24c2799d3#b3a29c8577733f384de1c74b48bde5b24c2799d3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=cf28d8e0018e0555256d3fba51e457d4941dcb0e#cf28d8e0018e0555256d3fba51e457d4941dcb0e"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1683,7 +1713,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=b3a29c8577733f384de1c74b48bde5b24c2799d3#b3a29c8577733f384de1c74b48bde5b24c2799d3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=cf28d8e0018e0555256d3fba51e457d4941dcb0e#cf28d8e0018e0555256d3fba51e457d4941dcb0e"
 dependencies = [
  "ninjars",
  "ninjars-positional",
@@ -1698,7 +1728,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1786,7 +1816,7 @@ dependencies = [
 [[package]]
 name = "numerica"
 version = "3.0.2"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc#20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc"
+source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
 dependencies = [
  "ahash",
  "astro-float",
@@ -1827,6 +1857,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "object"
+version = "0.39.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1841,7 +1880,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "oneloop"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=128ea6645f2811e6179068b98731501292841409#128ea6645f2811e6179068b98731501292841409"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193"
 dependencies = [
  "bincode",
  "symbolica",
@@ -1897,13 +1936,12 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pest"
-version = "2.9.4"
+version = "2.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd47a460a9cbc3b3429c7e22bf0d76653e779319bae45a499ca010c9a990bb23"
+checksum = "a8db75153506001cb36ed924f08cadc862eb3f8c4d0d534139f29074769d7660"
 dependencies = [
  "memchr",
- "psm",
- "stacker",
+ "pest_stack_guard",
  "ucd-trie",
 ]
 
@@ -1937,6 +1975,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b57f92f32b3dbce6598fd8f5cdf1f06a6072570b8103fa21728fa9036923e710"
 dependencies = [
  "pest",
+]
+
+[[package]]
+name = "pest_stack_guard"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ac6154fd4418b8f0b82532c59c26f303f9ca59a64c883e8ce3971fd82733439"
+dependencies = [
+ "psm",
+ "stacker",
 ]
 
 [[package]]
@@ -2022,16 +2070,17 @@ dependencies = [
 
 [[package]]
 name = "psm"
-version = "0.1.24"
+version = "0.1.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "200b9ff220857e53e184257720a14553b2f4aa02577d2ed9842d45d4b9654810"
+checksum = "4dcd034599e63b970727f70d79e02d62390a4a84f7c6b827c27c46d5ac3fa622"
 dependencies = [
+ "ar_archive_writer",
  "cc",
 ]
 
 [[package]]
 name = "pyamplicol"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "symbolica",
 ]
@@ -2316,8 +2365,10 @@ dependencies = [
 
 [[package]]
 name = "rusticol-capi"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
+ "gmp-mpfr-sys",
+ "pyamplicol",
  "rusticol-core",
  "rusticol-loop-sdk",
  "serde_json",
@@ -2325,12 +2376,13 @@ dependencies = [
 
 [[package]]
 name = "rusticol-core"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "base64",
  "bincode",
  "brotli",
  "flate2",
+ "iregi-rust",
  "libc",
  "libloading",
  "ninjars",
@@ -2366,6 +2418,8 @@ name = "rusticol-loop-reduction"
 version = "0.1.0"
 dependencies = [
  "feynkit-kinematics",
+ "iregi-masters",
+ "iregi-rust",
  "ninjars",
  "ninjars-graph",
  "ninjars-symbolica",
@@ -2381,6 +2435,7 @@ dependencies = [
 name = "rusticol-loop-sdk"
 version = "0.1.0"
 dependencies = [
+ "pyamplicol",
  "rusticol-core",
  "rusticol-loop-reduction",
  "serde",
@@ -2390,13 +2445,15 @@ dependencies = [
 
 [[package]]
 name = "rusticol-python"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "flate2",
+ "gmp-mpfr-sys",
  "num-bigint",
  "num-rational",
  "num-traits",
  "numpy",
+ "pyamplicol",
  "pyo3",
  "pyo3-build-config",
  "rusticol-core",
@@ -2415,7 +2472,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2761,7 +2818,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 [[package]]
 name = "symbolica"
 version = "3.0.2"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc#20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc"
+source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
 dependencies = [
  "ahash",
  "append-only-vec",
@@ -2918,7 +2975,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3336,7 +3393,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

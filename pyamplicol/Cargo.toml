@@ -17,7 +17,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "1.0.2"
+version = "1.0.3"
 edition = "2024"
 rust-version = "1.96"
 license = "0BSD"
@@ -31,6 +31,9 @@ repository = "https://github.com/mg5amcnlo/pyamplicol"
 [workspace.dependencies]
 bincode = { version = "2.0", features = ["serde"] }
 flate2 = "1.1"
+# Only the build backend's shared-arithmetic feature names it (to select
+# use-system-libs); rug selects the version and the mpfr/mpc features.
+gmp-mpfr-sys = { version = "1.7", default-features = false }
 libc = "0.2"
 numpy = "0.29"
 num-bigint = "0.4"
@@ -51,15 +54,19 @@ wide = "1.7"
 # built from it, and FeynKit needs its symbolica::utils::resources) with the
 # consolidated upstream PR (batched evaluation, DualNumber component views,
 # saved evaluators that hold only the state they reference, complex-modulus
-# derivatives in Dual domains, deterministic integer factor signs) on top:
+# derivatives in Dual domains, deterministic integer factor signs, polynomial
+# exponents bounded by the i32 conversion range, a journaled conditional cache
+# in the direct evaluator translator, native Python ComplexFloat operands at
+# the more precise component's precision) on top:
 # symbolica-dev/symbolica#163, branch ValentinHirschi/symbolica
-# loop_me_pyamplicol. NinjaRS and oneloopmaster pin the same revision; it
-# moves to upstream once the PR is merged. One revision for the kernel and its
+# loop_me_pyamplicol. NinjaRS and oneloopmaster's own standalone [patch]
+# pin the same revision (only this root's [patch] applies here); it moves
+# to upstream once the PR is merged. One revision for the kernel and its
 # numerical and graph crates.
 [patch.crates-io]
-symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc" }
-numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc" }
-graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc" }
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
 symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
 
 [profile.dev]
@@ -74,3 +81,10 @@ lto = "thin"
 opt-level = 3
 panic = "unwind"
 strip = "debuginfo"
+
+# The C SDK archive (build_backend/sdk.py): the release codegen without LTO, so
+# that no crate of the archive carries LLVM bitcode for the extension's thin
+# LTO (bitcode was ~2/3 of the archive and is unusable by C/C++/Fortran linkers).
+[profile.sdk]
+inherits = "release"
+lto = "off"

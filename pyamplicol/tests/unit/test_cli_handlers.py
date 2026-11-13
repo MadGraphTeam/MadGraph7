@@ -297,6 +297,10 @@ def test_generate_tty_dashboard_preserves_status_lines_and_terminal_width(
             "--json",
             "--progress",
             "tty",
+            # The logger records (developers' level; the default shows only
+            # warnings and the CLI's notices).
+            "--log-level",
+            "info",
             "--color",
             "never",
         ),
@@ -325,6 +329,10 @@ def test_profile_tty_dashboard_closes_between_lifecycle_roots(
             "--json",
             "--progress",
             "tty",
+            # The logger records (developers' level; the default shows only
+            # warnings and the CLI's notices).
+            "--log-level",
+            "info",
             "--color",
             "never",
         ),
@@ -557,7 +565,10 @@ def test_profile_interrupted_before_sampling_exits_without_traceback(
 
     assert status == 130
     assert stdout.getvalue() == ""
-    assert "interrupted before a complete result was available" in stderr.getvalue()
+    assert (
+        "interrupted (Ctrl-C) before a complete result was available"
+        in stderr.getvalue()
+    )
 
 
 def test_partial_profile_prints_result_and_exits_as_interrupted(tmp_path: Path) -> None:

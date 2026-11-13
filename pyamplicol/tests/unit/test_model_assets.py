@@ -6,6 +6,7 @@ import json
 import math
 import re
 import tomllib
+import warnings
 from importlib import resources
 from pathlib import Path, PurePosixPath
 
@@ -267,8 +268,9 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
     records = provenance["files"]
     assert len(records) == 134
     # The UFOmodeldb issue-1 model patch (user rule 2026-10-30 ~12:45) changes
-    # three loop_qcd_qed_sm modules and one loop_qcd_qed_sm_Gmu card.
-    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 78
+    # three loop_qcd_qed_sm modules and one loop_qcd_qed_sm_Gmu card; the
+    # TeX-name escape repair (ufo-texname-escape-v1) one more module.
+    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 77
 
     record_paths = set()
     for entry in records:
@@ -281,6 +283,11 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
         assert re.fullmatch(r"[0-9a-f]{64}", entry["source_sha256"])
         assert re.fullmatch(r"[0-9a-f]{40}", entry["source_blob_oid"])
         assert entry["transformation_id"] in transformations
+        base = entry.get("base_transformation_id")
+        assert (base is not None) == (
+            entry["transformation_id"] == "ufo-texname-escape-v1"
+        )
+        assert base is None or base in transformations
         assert set(entry["license_ids"]).issubset(licenses)
         record_paths.add(relative)
 
@@ -304,8 +311,15 @@ def test_ufo_directories_are_complete_and_syntactically_valid() -> None:
         model_root = ufo_root / model
         actual = {path.name for path in model_root.iterdir() if path.is_file()}
         assert actual == expected
+        # Compile-time warnings are errors: Python >= 3.12 prints a
+        # SyntaxWarning for an invalid escape such as '\\lambda' in a
+        # non-raw literal when the model is first imported (3.11: a hidden
+        # DeprecationWarning).
         for path in model_root.glob("*.py"):
-            compile(path.read_bytes(), path.as_posix(), "exec")
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", SyntaxWarning)
+                warnings.simplefilter("error", DeprecationWarning)
+                compile(path.read_bytes(), path.as_posix(), "exec", dont_inherit=True)
 
 
 def test_all_json_is_parseable_and_models_have_expected_shape() -> None:

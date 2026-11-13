@@ -129,14 +129,20 @@ request's limits, so compare sector by sector.
 
 A request with a multiparticle label generates its concrete processes that
 have a Born amplitude within the coupling-order limits. A member without one
-(`g g > e+ e-` in `p p > e+ e-`) is loop-induced: it is skipped, with a
-typed record (key `loop-induced`) in the dry run
-(`estimated_coverage.skipped_members`) and in the artifact (manifest
-extension `loop_skipped_members`). The stored members' sum is MadLoop's
-Born x virtual; the loop-squared contribution of a skipped member, which
-MadLoop's multiparticle output holds, is not computed. A request none of whose
-members has a Born is refused (`loop-induced`). `p` and `j` are the model's
-massless quarks and gluon; add the photon with `process.multiparticles`.
+(`g g > e+ e-` in `p p > e+ e-`) is loop-induced. By default
+(`process.loop_induced = "auto"`) it is skipped, with a typed record (key
+`loop-induced`) in the dry run (`estimated_coverage.skipped_members`) and in
+the artifact (manifest extension `loop_skipped_members`): the stored members'
+sum is MadLoop's Born x virtual. `process.loop_induced = "include"` also
+serves it, as |A_loop|^2 next to the Born members' Born x virtual, each
+concrete process its own contribution (`contribution = "loop-induced"` or
+`"virtual"` in its results), never summed; this is the loop-squared
+contribution MadLoop's multiparticle output holds. A request none of whose
+members has a Born is routed loop-induced (see
+[Configuration](configuration.md); generated as |A_loop|^2), and refused
+(`loop-induced`) under `process.loop_induced = "skip"`. `p` and `j` are the
+model's massless quarks and gluon; add the photon with
+`process.multiparticles`.
 
 ## Refusals
 
@@ -166,7 +172,7 @@ key with its remedy:
 | `veto-unlabelled-counterterms` | a veto of a loop species of a requested correction on these models |
 | `anomalous-veto` | a veto that breaks an anomaly-free multiplet (`generation.allow_anomalous_veto` overrides) |
 | `colour-declaration-coverage` | LC or NLC without a covering colour declaration |
-| `loop-induced` | no Born amplitude within the limits |
+| `loop-induced` | no Born amplitude within the limits, for a process the request does not serve loop-induced (`process.loop_induced`) |
 | `coloured-width` | a real on-shell request with a coloured particle of a width in a tree current |
 | `electroweak-width` | a real on-shell electroweak request with any particle of a width in a tree current |
 | `mass-scheme` | a `mass_scheme` that is neither `real-on-shell` nor `complex-mass` |
@@ -176,7 +182,7 @@ key with its remedy:
 | `ufo-value-writes` | a UFO that writes declared values after their constructors (e.g. the UFOmodeldb issue-1 patch of `loop_qcd_qed_sm_Gmu` as published; the shipped copy has them folded) |
 | `process-group-analysis` | a numerical process-group analysis of a one-loop request (permutation aliases and exact flavour members are served, see [Process grouping](process-grouping.md#one-loop-virtual-artifacts)) |
 | `direct-r2`, `fft-basis-trace`, `colour-selectors`, `relation-discovery`, `evaluator-backend`, `evaluator-tuning`, `covariant-multiplets` | settings the one-loop engine does not take (each message names the setting) |
-| `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness` | internal: an engine condition met during generation |
+| `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness`, `loop-induced-probe`, `block-colour-flow` | internal: an engine condition met during generation |
 
 A process whose point inputs the native export does not cover is refused
 with the export's key (`NativeExportRefused`, e.g. `plane-mismatch`). See

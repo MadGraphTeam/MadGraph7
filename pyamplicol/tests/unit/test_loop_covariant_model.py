@@ -125,7 +125,7 @@ def test_structural_zero_mass_alias_is_named_zero_under_either_hepkit(
     """The published Community 3.0.2 HepKit classified a mass alias that
     resolves to an exact zero (``t``: ``Zalias = ZERO + 0``) as massless but
     kept its source symbol, where the pinned Symbolica's (the Community build
-    of 20a9da94 and PyPI 3.0.3, as 9cdc2949 before) gives mass 0 and exports
+    of dfe6bd97, b9eaa735 and 20a9da94 and PyPI 3.0.3, as 9cdc2949 before) gives mass 0 and exports
     ZERO. Emulated here on the classification model: the
     structure names ZERO for it, so the native model is byte for byte the one
     of the installed HepKit (the v2 families would otherwise read a derived

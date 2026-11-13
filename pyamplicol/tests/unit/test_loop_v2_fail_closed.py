@@ -140,8 +140,12 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "veto-unlabelled-counterterms",
         # fail-closed-2's restriction guard (``test_loop_v2_restricted_zero.py``).
         "loop-vertex-outside-tree-model",
-        # MQ-MODEL's QCD guards (``test_loop_v2_stock_loop_sm.py``).
+        # MQ-MODEL's QCD guards (``test_loop_v2_stock_loop_sm.py``); m-lit
+        # LIT-REQ's loop-induced routing (``test_loop_v2_induced_request.py``).
         "loop-induced",
+        "born-in-loop-induced-mode",
+        "no-loop-amplitude",
+        "loop-induced-colour-accuracy",
         "coloured-width",
         # M-SM MS-CMS's mass-scheme policy (``test_loop_model_cms.py``).
         "electroweak-width",

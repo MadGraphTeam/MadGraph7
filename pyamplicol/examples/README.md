@@ -70,6 +70,24 @@ These three showcase cards print colorized terminal tables by default. Add
 | `inspect_pp_4j.toml` | Summary of that artifact, including its process-group map |
 | `evaluate_pp_4j_member.toml` | Evaluate the non-generated member `u~ g > u~ g g g` through its representative |
 | `group_pp_4j.toml` | Numerical `group-processes` analysis of the generated representatives |
+| `loop_uux_ttxgg_generate.toml` | One-loop: generate `u u~ > t t~ g g`, NLO QCD virtual (Born-interfered), full colour |
+| `loop_uux_ttxgg_lc_generate.toml` | One-loop: the same at leading colour, for its colour-flow selection (the helicity selection runs at every accuracy) |
+| `loop_uux_ttxgg_check.toml` | One-loop: `pyamplicol check` (Catani poles, Ward identities of both gluons) of its artifact |
+| `loop_uux_ttxgg_evaluate.toml` | One-loop: evaluate with poles and the recommended stability checks |
+| `loop_uux_ttxgg_profile.toml` | One-loop: time per point and per stage (trees, dressing, scatter, reduction, rest) on both reduction backends; `--stability` for the stable-digit statistics |
+| `loop_uux_ddxepem_generate.toml` | One-loop: generate `u u~ > d d~ e+ e-`, NLO QCD+EW at every order, complex-mass scheme |
+| `loop_uux_ddxepem_check.toml` | One-loop: `pyamplicol check` of its artifact (poles against Catani's QCD and QED operators) |
+| `loop_uux_ddxepem_evaluate.toml` | One-loop: evaluate its four squared-order sectors and three Born orders |
+| `loop_uux_ddxepem_orders.toml` | One-loop: partial weights per squared coupling order (`--orders`) with their explicit sums |
+| `loop_uux_ddxepem_profile.toml` | One-loop: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
+| `loop_gg_zgg_generate.toml` | Loop-induced: generate `g g > z g g`, every quark loop (five massless flavours and the top) |
+| `loop_gg_zgg_check.toml` | Loop-induced: `pyamplicol check` (finiteness, Ward identity of the gluons) of its artifact |
+| `loop_gg_zgg_evaluate.toml` | Loop-induced: evaluate on TIRust (the default) with the recommended stability checks |
+| `loop_gg_zgg_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
+| `loop_gg_epemmpmm_generate.toml` | Loop-induced: generate `g g > e+ e- m+ m-` in the complex-mass scheme |
+| `loop_gg_epemmpmm_check.toml` | Loop-induced: `pyamplicol check` of its artifact |
+| `loop_gg_epemmpmm_evaluate.toml` | Loop-induced: evaluate on TIRust with the recommended stability checks |
+| `loop_gg_epemmpmm_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
 | `all_options.toml` | Every current schema field, active and commented |
 
 ## Generate Pure Gluons With Adjoint FFT
@@ -368,6 +386,270 @@ specialization.
 a separate workspace and refuses to merge into a non-empty destination unless
 `--force` is supplied. The public model API accepts filesystem paths, so no
 example relies on an installation directory.
+
+## One-Loop Examples
+
+### The master card: any process, the action on the command line
+
+`loop_generate.toml` is one card for any one-loop process: MG5_aMC's
+`loop_qcd_qed_sm` with its default restriction (QCD and QED corrections), the
+complex-mass scheme, stable external states (`[loop] external_widths =
+"zero"`), and the settings of all four actions. Name the process in MG5_aMC
+syntax with `--process` and the artifact with `--output`:
+
+```console
+pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output
+pyamplicol loop_generate.toml check    --output=./my_loop_output  # poles and Ward identities, regenerated in memory
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points: no momenta file needed
+pyamplicol loop_generate.toml profile  --output=./my_loop_output  # time per point and per stage
+pyamplicol loop_generate.toml profile  --output=./my_loop_output --runtime --stability  # and the stable digits
+```
+
+What each action does:
+
+| Action | What it does | Card section |
+| --- | --- | --- |
+| `generate` | writes the artifact to `--output` (default `generation.output`) | `[model]`, `[process]`, `[loop]`, `[generation]` |
+| `check` | regenerates the artifact's request in memory and checks the poles (Catani; loop-induced: finiteness) and Ward identities at seeded points; exit code 0 iff every check passed | `[check]` |
+| `evaluate` | evaluates the virtual (Born-interfered: 2 Re(B* V) per squared-order sector, with the Born; loop-induced: \|A_loop\|^2) with poles and a rotation stability estimate | `[evaluation]` |
+| `profile` | times batches of points per stage (trees, dressing, scatter, reduction) | `[benchmark]` |
+
+Steering:
+
+* **The process** (`--process`, repeatable; without it the card's entry,
+  the example above): MG5_aMC syntax. `[QCD]`, `[virt=QCD]`, `[QCD QED]` is
+  the one-loop virtual (only the virtual is computed; `[real=QCD]` is
+  refused), `[noborn=QCD]` a loop-induced |A_loop|^2 (`g g > h [noborn=QCD]`;
+  a process without a Born, `g g > h [QCD]`, is served loop-induced too),
+  `QED=2` an amplitude-order limit, `QCD^2<=4` a squared-order sector
+  selection (only the selected sectors are reported and summed), `/ z h` a
+  particle veto. Decay chains, `$` and `@N` are refused.
+  [Command-line guide](../docs/user/command-line-interface.md#mg5_amc-process-syntax).
+* **The artifact** (`--output DIR`): written by `generate`, read by the
+  other three (relative to the working directory).
+* **Any setting** (`--set PATH=VALUE`, repeatable), for example
+  `--set loop.model.scheme.mass_scheme=real-on-shell`,
+  `--set evaluation.reduction=ninjars` or `--set check.points=4`.
+* **Points**: `evaluate` and `profile` draw flat (RAMBO) phase-space points
+  when no momenta file is given: `[evaluation.phase_space] points` (2),
+  `seed` (1; point i from seed + i) and `sqrt_s` (default: the artifact's
+  validation-point energy), with mu_r^2 = s per point; `--momenta FILE`
+  evaluates given points instead. Example:
+  `pyamplicol loop_generate.toml evaluate --output=./my_loop_output --set
+  evaluation.phase_space.points=5 --set evaluation.phase_space.sqrt_s=2000`.
+* **Widths**: an unstable external particle (a top, a Higgs) is stable in the
+  process: its width is fixed to zero by `external_widths = "zero"`; the
+  widths of particles that only propagate stay (complex masses).
+
+The four cards per process below stay as they are; the master card is the
+quickest way to try another process.
+
+Four one-loop walkthroughs, two Born-interfered virtuals and two loop-induced
+processes, each with one pure-QCD and one mixed QCD/electroweak case in the
+complex-mass scheme. Each has a generate, a check, an evaluate and a profile
+card, and `python/loop_walkthrough.py` runs every step from the generate card (to run them
+from a wheel built from a checkout, in a fresh environment, see
+[Build a wheel from a checkout and run the loop examples](../docs/user/installation.md#build-a-wheel-from-a-checkout-and-run-the-loop-examples)):
+
+```console
+pyamplicol loop_gg_zgg_generate.toml        # or: pyamplicol examples run loop_gg_zgg_generate
+pyamplicol check loop_gg_zgg_generate.toml  # the card's request, regenerated in memory
+pyamplicol loop_gg_zgg_check.toml           # the same checks on the generated artifact
+pyamplicol loop_gg_zgg_evaluate.toml        # coloured tables (--color never|always)
+pyamplicol loop_gg_zgg_profile.toml         # runtime of TIRust and NinjaRS side by side
+pyamplicol profile --card loop_gg_zgg_profile.toml --stability            # stable-digit statistics
+pyamplicol profile --card loop_gg_zgg_profile.toml --runtime --stability --stability-points 200 --loop-reduction tirust
+pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --reduction-unchecked
+make -C native loop                         # the native client of the walkthrough
+python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 --regenerate \
+  --native-client native/loop_client
+```
+
+The evaluate cards print coloured tables: the finite part, the single and
+the double pole each in its own colour, the squared-order sectors, the
+carrier and the reduction backend of every point, and the stability verdicts
+(green: success or within the target; yellow: recovered, by a higher-precision
+rescue or the per-point fallback; red: failed, refused or above the target).
+The profile cards compare both reduction backends: `--runtime` (the default)
+times them in the default setup with the ratio between them, `--stability`
+measures over `[benchmark] stability_points` flat points the stable digits of
+pure binary64 against a double-double re-run, at the percentiles 1 per mil,
+1 %, 10 % and 50 % (a point a backend refuses in binary64 is measured with its
+best-effort value at its true digits; only a point with no binary64 value
+counts 0 digits), and
+how well the default rotation estimate predicts them
+([the command-line guide](../docs/user/command-line-interface.md#profile)).
+Every card draws 1000 points (the default), evaluated on 10 worker processes
+(`[benchmark] n_core`, `--n_core`); the progress display shows the estimated
+time to completion (`loop_gg_zgg` is the slow one: NinjaRS's double-double
+reference costs about 30 s per point), and Ctrl-C prints the tables of the
+points evaluated so far. `--stability-points` and `--n_core` change both.
+The tables come alone; `--fields-description-help` adds a plain-words
+description of every table and column.
+
+The walkthrough generates the artifact with the example's correlator
+declaration; `--regenerate` makes it do so even when the card's generation
+above already wrote `artifacts/loop_gg_zgg` without the declaration (without
+`--regenerate` it reuses an existing artifact, whose correlated step then
+refuses the undeclared correlators: generate it with `pyamplicol generate
+--card loop_gg_zgg_generate.toml --correlators data/loop_gg_zgg_correlators.json`
+instead to reuse it).
+
+The walkthrough steps, in order:
+
+1. **`pyamplicol check`** of the card, in its own process (exit code 0 iff
+   every applicable check passed): the Born-interfered poles against
+   Catani's operator of the requested
+   corrections and the Ward identity of every external gluon and photon; the
+   loop-induced finiteness and Ward probes; the Goldstone-equivalence probe
+   where it applies (otherwise its row reads "not applicable" with the
+   reason). A row double-double cannot decide (its residual above the
+   criterion while within ten times its own estimate) is re-run alone in
+   arbitrary precision at the digits derived from the shortfall
+   (`--arbitrary-digits` sets them); one still undecided there reads
+   "undecided" and fails the check (exit 1). The Ward rows of a request with
+   electroweak corrections and an on-shell zero-width external massive quark
+   read "not applicable" (its Ward identity is not guaranteed there; Ward
+   rows are not split by squared-order sector). See [the command-line guide](../docs/user/command-line-interface.md#check).
+2. **Generation** through the typed API (`Generator`, in a child process so
+   that the generation's memory is returned before the evaluation steps),
+   with the example's colour- and spin-correlator declaration (`data/<example>_correlators.json`;
+   on the command line `pyamplicol generate --card <card> --correlators
+   data/<example>_correlators.json`). The loop-induced generation probes are
+   off by default (`[generation] loop_induced_probes = true` or
+   `--loop-induced-probes` enables them); `pyamplicol check` runs the same
+   checks on demand, also for the Born-interfered examples.
+3. **Evaluation** with `reduction = "auto"` (the per-type default: TIRust for a
+   loop-induced process, NinjaRS for a Born-interfered one), poles and the
+   recommended stability checks, then the finite part only, then the other
+   backend explicitly (its deviation from `auto` printed).
+4. **Profile**: the coloured per-stage table (trees, dressing, scatter,
+   reduction, rest, read from the native executor's stage report of the timed
+   calls) for the checked default and for `reduction_unchecked=True`, a timing
+   mode with no accuracy certificate (python-api.md, "Unchecked reductions").
+5. **Correlated evaluation**: `evaluate_correlated_many` with the declared
+   colour histories T_i.T_j and a spin vector (transverse to the leg's
+   momentum) on the declared vector leg.
+6. **Helicity selection**: one helicity (the largest at the first point)
+   against the summed call, at the artifact's colour accuracy (only the
+   selected rows are formed: their trees, loop links and reduction lanes).
+7. **Partial weights per squared coupling order**: `evaluate_orders`, one
+   evaluation viewed per sector and Born order, and its explicit sum checked
+   against the correlated route's `"born"` total at the same settings summed
+   over the orders (a separate call that does not read the partials; bitwise
+   equal where it reads the same contraction as the plain evaluation): the
+   deviation is printed in units of roundoff of the pre-cancellation scale S
+   and must stay within ten times the evaluation's own estimate. The test
+   suite holds the sum against the resolved evaluation to rounding.
+8. **The native SDK** (`make -C native loop`, then `native/loop_client ARTIFACT
+   PROCESS MOMENTA.txt [HELICITY]`, which the walkthrough calls with
+   `SYMBOLICA_LICENSE` unset): open, `auto` and the other backend, the
+   unchecked setting, the correlated call and one helicity against the summed
+   call (loop-induced and Born-interfered processes alike; after one first
+   selected call, which forms a Born-interfered process's selection once). In
+   a source checkout without the
+   wheel's SDK, pass `LOOP_SDK_CFLAGS` and `LOOP_SDK_LIBS` (the Makefile's
+   comment).
+
+Times below: this host (an AMD EPYC server shared with other jobs), 2026-11-09,
+generation through the public CLI card with the probes off (default workers),
+`check` at two points, evaluation per point on one pinned core at a batch of
+8 points (medians of paired rounds), the profile at a batch of 32 points
+(median of three calls); the walkthrough's own wall time at its two points
+and at the CI smoke test's one point.
+
+### `u u~ > t t~ g g`, NLO QCD (Born-interfered)
+
+`loop_sm` with `restriction = "no_b_mass"` and `WT = 0` (the top is an
+external, on-shell state; a coloured particle's width breaks gauge invariance
+in a fixed-width propagator). Full colour by default, whose helicity
+selection keeps some helicity rows with every colour component; the optional
+leading-colour variant `loop_uux_ttxgg_lc_generate.toml` (`--lc-card`) adds
+its colour-flow selection. One squared
+order (QCD^10): its partial is the value. Colour histories T_1.T_5 and
+T_3.T_5 and a spin vector on gluon 5.
+
+Measured (2026-11-09): generation 11.4 s, peak 0.66 GiB (with the correlators
+12.6 s; the leading-colour variant 16.3 s, 0.68 GiB); `check` of the card 12.3
+s at two points (every pole and Ward row passes in binary64). Per point, one
+pinned core, a batch of 8: NinjaRS (`auto`) 22-23 ms checked and unchecked;
+TIRust 26 ms with all 8 points refused (an ill-conditioned Gram matrix, a
+typed refusal: the explicit backend has no fallback) and 47-49 ms unchecked;
+one helicity (h42, the largest at the first point) 12.7 ms against 22.0 ms summed
+(0.58; the reduction, 5.8 ms, is the summed call's: the selected row's seeds
+reduce the same lanes), at leading colour 4.9 ms against 7.5 ms (0.66). The
+whole walkthrough at two points (fresh workspace, both generations included):
+67 s, peak 0.77 GiB; at one point (the CI smoke test): 73 s.
+
+### `u u~ > d d~ e+ e-`, NLO QCD+EW at every order (complex-mass scheme)
+
+`loop_qcd_qed_sm_Gmu` with QCD and QED corrections, massless quarks
+(`MB = 0`, `MTA = 0`; under the complex-mass scheme the masses are fixed and
+the Yukawas follow) and the widths of the unstable particles in the
+propagators. `coupling_order_policy = "explicit"` with QCD <= 2, QED <= 4
+keeps both Born amplitude orders (QCD^2 QED^2 and QED^4; `"minimal"` keeps the
+lowest only): three Born squared orders (QCD^4 QED^4, QCD^2 QED^6, QED^8) and
+four virtual sectors (QCD^6 QED^4, QCD^4 QED^6, QCD^2 QED^8, QED^10), each
+printed apart by `loop_uux_ddxepem_orders.toml` and the walkthrough's step 7.
+The process has no external gluon, photon or massive vector: its Ward and
+Goldstone rows read "not applicable" and `check` decides on the pole check
+alone. Colour correlations only (no vector leg); the helicity selection at
+full colour (an electroweak model runs at full colour, where a selection keeps
+some helicity rows with every colour component): one helicity (h22, the
+largest at the first point) 64.0 ms against 108.2 ms summed per point, one
+pinned core, a batch of 8 (0.59; the reduction, 23 ms, is the summed call's).
+Generation threshold of this example: at most 10 minutes and 8 GiB.
+
+Measured (2026-11-09, on a shared host at load ~160-210): generation
+223-232 s, peak 7.65-8.37 GiB (three runs; the peak varies by run); `check` of the
+card 232 s, 7.64 GiB: every pole row of the four sectors passes in binary64
+at both points. Per point, one pinned core, a batch of 8: NinjaRS (`auto`)
+111-151 ms checked, 145-153 ms unchecked; TIRust 144-152 ms with 2 of 8
+points refused (an ill-conditioned Gram matrix, a typed refusal), 147 ms
+unchecked. At the four points of `data/loop_uux_ddxepem_momenta.json` the
+virtual equals Recola 2.3.0 (the smoke test reads the fixture
+`tests/fixtures/loop/uux-ddxepem-recola-cms.json`): every Born order to
+4e-14, both poles of every sector within the evaluation's estimate, and the
+finite parts within the two codes' complex-mass counterterm prescriptions
+(2e-6 to 5e-4 relative; the difference falls as the widths squared). The
+whole walkthrough at two points: 586 s (`check` 241 s, generation 315 s on
+the loaded host), peak 8.0 GiB; from the 1.0.3 wheel (2026-11-11, the four
+examples side by side): 868 s (`check` 435 s, generation 360 s), peak 19.6 GiB
+in the walkthrough's own process, reached in its evaluation steps 5 to 8.
+
+### `g g > z g g`, loop-induced (every quark loop)
+
+`loop_sm`, `restriction = "no_b_mass"`, `r2_strategy = "model"`, no particle
+veto: the five massless quarks and the top circulate (a top-only loop is not
+gauge invariant with an external Z, the t-b doublet's anomaly); massless tau,
+no fixed widths. A QCD-only request runs in unitary gauge, so the Goldstone
+row reads "not applicable" (the identity needs the Goldstone vertices). This
+is the loop-induced colour-correlation showcase: T_1.T_2, T_1.T_4 and T_4.T_5
+over its four gluons (non-trivial, unlike the two-parton T_1.T_2 = -C_A),
+plus a spin vector on gluon 4. One squared order (QCD^8 QED^2).
+
+Measured (2026-11-09): generation 10.4 s, peak 0.68 GiB (with the correlators
+10.6 s); `check` of the card 19.1 s at two points (finiteness and the Ward
+probe of the gluons pass in binary64). Per point, one pinned core, a batch of
+8: TIRust (`auto`) 187-194 ms checked and 68-73 ms unchecked; NinjaRS 298-315
+ms (unchecked 299-306 ms); one helicity 20 ms against 200 ms summed (0.10).
+The whole walkthrough at two points: 64 s, peak 1.9 GiB; at one point (the
+CI smoke test): 50 s.
+
+### `g g > e+ e- m+ m-`, loop-induced (complex-mass scheme)
+
+`loop_qcd_qed_sm_Gmu` (the shipped muon is `m-` / `m+`) with complex Z, W,
+H and top masses in the propagators and stable external leptons. Its two
+coloured partons make T_1.T_2 = -C_A |A|^2 trivial; it shows the spin vector
+on gluon 1. One squared order.
+
+Measured (2026-11-09, preparation cache cold): generation 129 s, peak
+4.19 GiB, of which 20.0 s is the electroweak request-model preparation;
+`check` of the card 132 s (preparation 20.5 s), 4.23 GiB. Per
+point, one pinned core, a batch of 8: TIRust (`auto`) 3.1 ms checked and
+unchecked; NinjaRS 4.6-4.7 ms; one helicity 1.8 ms against 3.1 ms summed
+(0.58). The whole walkthrough at two points: 266 s, peak 4.4 GiB in the
+generation's child process.
 
 ## Typed Python
 

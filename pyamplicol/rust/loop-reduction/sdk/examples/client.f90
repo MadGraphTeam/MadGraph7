@@ -2,6 +2,7 @@
 ! ./client-fortran ARTIFACT [gg|uudd]
 program client
   use, intrinsic :: iso_c_binding
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use rusticol_virtual
   implicit none
   type :: runtime_box
@@ -78,6 +79,12 @@ program client
   call runtime%evaluate(momenta,scales,partial,ids,resolved=.true.)
   if (partial%shape%successful_points/=2.or.any(partial%successful_ids/=[91_c_int64_t,70_c_int64_t])) stop 1
   if (any(partial%statuses/=[VIRTUAL_SUCCESS,VIRTUAL_FAILED,VIRTUAL_SUCCESS])) stop 1
+  ! Default policy "best-effort": ierr 0; no value for point 2 (NaN uncertainty).
+  if (any(.not.ieee_is_nan(partial%uncertainties))) stop 1
+  call runtime%set_on_failure("raise") ! opt-in strict mode
+  call runtime%evaluate(momenta,scales,empty,ids,resolved=.true.,ierr=status)
+  if (status==VIRTUAL_OK) stop 1
+  call runtime%set_on_failure("best-effort")
   if (len(partial%diagnostics_json)==0) stop 1
   allocate(zero_points(4,4,0),zero_scales(0))
   call runtime%evaluate(zero_points,zero_scales,empty,resolved=.true.)

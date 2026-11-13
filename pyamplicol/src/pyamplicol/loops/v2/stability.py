@@ -22,6 +22,20 @@ Two MadLoop-style checks, individually configurable and combinable:
   determinant) is measured too. Neither the cached re-reduction nor a
   rotation can see it: both keep every invariant, so every master returns
   the same value. It costs the master evaluations of a second pass.
+* **Cross-backend check** (``StabilityChecks(cross_backend=True)``, m-lit
+  PLAN §2.b.6, RULED Q21). The point is evaluated a second time on the
+  other reduction backend (``reduction.cross``: NinjaRS for a call reduced
+  by TIRust, TIRust for one reduced by NinjaRS), in the same carrier and at
+  the same exact inputs; its budget is the reduction lanes' deviation
+  between the two backends (``CROSS``), as a rotation's at the unrotated
+  point. Integrand and tensor-integral reduction round differently
+  everywhere (masters, Gram determinants, contraction), so it samples what
+  a backend's own frames cannot (a TIR frame keeps the PV reference
+  propagators' Gram conditioning). A point the other backend fails or
+  refuses (a capability or conditioning refusal says nothing about the
+  served value) keeps the estimate of the other checks, with the check in
+  ``StabilityEstimate.not_run`` and the reason (DECISIONS 2026-11-07 21:50
+  R6); the check therefore combines with at least one other.
 
 Every check yields an absolute error budget per squared-order sector and
 Laurent coefficient that lets no two contributions cancel (design §10.2):
@@ -91,10 +105,23 @@ FLOOR_UNITS = 16
 ROTATION = "rotation-{}"
 REDUCTION = "reduction-direction"
 RESCALED = "reduction-rescaled"
+CROSS = "cross-backend"
 # The re-reduction frame of each reduction check (``V2Reducer.reduce``).
 FRAMES = {REDUCTION: "reversed", RESCALED: "rescaled"}
+# An input budget: an output's change over the inputs its given input
+# determines only to within a part the output cannot read (a loop-induced
+# spin vector's non-transverse part, ``induced_observables.PointOutputs``).
+# Budgets in FRAMES or ADDITIVE add up (the cross-backend check's as a
+# reduction check's); the rotations' is their largest.
+TRANSVERSE = "spin-transverse"
+ADDITIVE = (*FRAMES, TRANSVERSE, CROSS)
 
 _AXES = {"x": 1, "y": 2, "z": 3}
+# The binary64 estimates of the native executor's Born-interfered points
+# through the one Rust implementation the native SDKs share
+# (``native_estimate``; m-lit LIT-SDK, PLAN §3.5); False forms them with this
+# module's assembly, the oracle, as every other estimate.
+NATIVE_BINARY64 = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +273,64 @@ class Rotation:
 
 
 def default_rotation(index: int) -> Rotation:
+    """The ``index``-th default rotation check (``python_default_rotation``),
+    built by the Rust implementation the native SDKs run
+    (``rusticol_loop_reduction::v2_stability::default_rotation``, the
+    extension's ``stability_default_rotation``; m-lit lit-sdk-b): the exact
+    matrix the Python construction, the oracle, forms (``NATIVE_BINARY64``
+    off: the oracle)."""
+
+    native = _native_rotations() if NATIVE_BINARY64 else None
+    if native is None:
+        return python_default_rotation(index)
+    return _rotation_of(native.stability_default_rotation(int(index)))
+
+
+def native_rotation(specification: str) -> Rotation | None:
+    """The rotation check of a text specification (``api.virtual_results.
+    parse_rotation``'s forms) by the native SDKs' Rust parser (the
+    extension's ``stability_rotation``), or None where it does not apply
+    (``NATIVE_BINARY64`` off, no extension, a specification the parser
+    refuses: the Python parser, the oracle, then forms the rotation or its
+    error)."""
+
+    native = _native_rotations() if NATIVE_BINARY64 else None
+    if native is None:
+        return None
+    try:
+        rows = native.stability_rotation(specification)
+    except ValueError:
+        return None
+    return _rotation_of(rows)
+
+
+def _native_rotations() -> Any:
+    """The native extension when it builds rotations, else None."""
+
+    from pyamplicol.api.errors import DependencyError
+
+    try:
+        from pyamplicol.loops.native import load_loop_native
+
+        native = load_loop_native()
+    except (ImportError, OSError, RuntimeError, DependencyError):
+        return None
+    if not hasattr(native, "stability_default_rotation"):
+        return None
+    return native
+
+
+def _rotation_of(rows: Sequence[Sequence[str]]) -> Rotation:
+    """A rotation of rows of exact rational texts (3x3; ``Rotation``
+    checks the shape and orthogonality)."""
+
+    matrix = [[Fraction(x) for x in row] for row in rows]
+    if len(matrix) != 3 or any(len(row) != 3 for row in matrix):
+        raise ValueError("a rotation is a 3x3 matrix")
+    return Rotation(tuple((row[0], row[1], row[2]) for row in matrix))
+
+
+def python_default_rotation(index: int) -> Rotation:
     """The ``index``-th default rotation check: exact, deterministic, generic.
 
     Axes follow a spherical Fibonacci sequence and angles golden-ratio steps
@@ -277,12 +362,14 @@ def _determinant(m) -> Fraction:
 class StabilityChecks:
     """Which checks an evaluation runs: rotations (any number) and/or one
     reduction check, the reduction-direction check (cached masters) or, with
-    ``rescaled``, its rescaled variant (masters recomputed). The default runs
-    none."""
+    ``rescaled``, its rescaled variant (masters recomputed); and, with
+    ``cross_backend``, the evaluation on the other reduction backend (with
+    at least one other check: module docstring). The default runs none."""
 
     rotations: tuple[Rotation, ...] = ()
     reduction_direction: bool = False
     rescaled: bool = False
+    cross_backend: bool = False
 
     def __post_init__(self) -> None:
         rotations = tuple(self.rotations)
@@ -292,6 +379,13 @@ class StabilityChecks:
             raise ValueError("the identity is no rotation check")
         if self.rescaled and not self.reduction_direction:
             raise ValueError("rescaled is a variant of the reduction-direction check")
+        if self.cross_backend and not (rotations or self.reduction_direction):
+            raise ValueError(
+                "the cross-backend check adds to the estimate of the other "
+                "checks (a point the other backend does not serve keeps "
+                "theirs): combine it with a rotation or the reduction-direction "
+                "check"
+            )
         object.__setattr__(self, "rotations", rotations)
 
     @property
@@ -314,9 +408,28 @@ class StabilityChecks:
 
 # The recommended configuration (DESIGN §10.4) and the O1 rule's estimate:
 # one generic rotation and the rescaled reduction check (module docstring).
-RECOMMENDED_CHECKS = StabilityChecks(
-    (default_rotation(0),), reduction_direction=True, rescaled=True
-)
+# Formed on first use (``__getattr__``): its rotation is the native
+# builder's (``default_rotation``), and importing this module loads no
+# native extension.
+RECOMMENDED_CHECKS: StabilityChecks
+
+
+def __getattr__(name: str) -> Any:
+    # PEP 562: ``RECOMMENDED_CHECKS`` (above) and ``RESCUE_TARGET`` (the
+    # default target accuracy, the native policy's one definition; importable
+    # by name, not listed in ``__all__``), both read on first use.
+    if name == "RECOMMENDED_CHECKS":
+        checks = StabilityChecks(
+            (default_rotation(0),), reduction_direction=True, rescaled=True
+        )
+        globals()[name] = checks
+        return checks
+    if name == "RESCUE_TARGET":
+        from pyamplicol.loops.v2.reduction import default_target
+
+        return default_target()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # The default ladder of the built-in rescue (``api.virtual_results.
 # VirtualRescuePolicy()``, ``loops.v2.rescue``), modelled on gammaloop's
@@ -325,9 +438,12 @@ RECOMMENDED_CHECKS = StabilityChecks(
 # every level adds the rescaled reduction check (rotations keep every master
 # invariant and cannot see a master integral's own rounding, module
 # docstring); the last level is 57 digits (O15's truth carrier) instead of
-# 1000 bits; the target applies to pyAmpliCol's estimate E.
+# 1000 bits; the target applies to pyAmpliCol's estimate E. The levels'
+# default target, ``RESCUE_TARGET``, is the call's default target accuracy
+# (m-lit F3 (a): one definition, the native policy's
+# ``reduction_policy::DEFAULT_TARGET``, 1e-5, read on first use by
+# ``loops.v2.reduction.default_target``; module ``__getattr__`` below).
 RESCUE_ROTATION = "euler:0.1,0.2,0.3"
-RESCUE_TARGET = 1e-5
 DEFAULT_RESCUE: tuple[tuple[str, int | None], ...] = (
     ("double", None),
     ("double-double", None),
@@ -413,7 +529,9 @@ class StabilityEstimate:
     the Laurent vector, without safety factor and floor. ``budgets``
     (absolute, per check and sector) and ``scale`` (the absolute sums S) let
     ``subset`` re-combine fewer checks; ``families`` holds |Omega - Omega'|
-    per reduction lane when the reduction check ran.
+    per reduction lane when the reduction check ran. ``not_run`` names each
+    requested check that did not run at the point with its reason (the
+    cross-backend check where the other backend fails the point).
 
     A relative estimate of order 1 or more says that the value has no
     correct digit: it is then measured against a value that is itself
@@ -429,6 +547,7 @@ class StabilityEstimate:
     scale: Mapping[Any, Budget] = field(repr=False)
     roundoff: float = field(repr=False)
     families: Mapping[Any, Any] | None = field(default=None, repr=False)
+    not_run: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def finite(self) -> float:
@@ -444,23 +563,25 @@ class StabilityEstimate:
         scale: Mapping[Any, Any],
         roundoff: float,
         families: Mapping[Any, Any] | None = None,
+        not_run: Mapping[str, str] | None = None,
     ) -> StabilityEstimate:
-        """Combine the absolute budgets of named checks (``ROTATION`` and
-        ``REDUCTION`` names) for the reference Laurent values per sector;
-        ``scale`` are the absolute sums S and ``roundoff`` the carrier's unit
-        roundoff."""
+        """Combine the absolute budgets of named checks (``ROTATION``,
+        ``REDUCTION`` and ``ADDITIVE`` names) for the reference Laurent values
+        per sector; ``scale`` are the absolute sums S and ``roundoff`` the
+        carrier's unit roundoff; ``not_run`` the requested checks that did
+        not run, with their reasons."""
 
         if not budgets:
             raise ValueError("a stability estimate needs at least one check")
         unknown = [
             name
             for name in budgets
-            if name not in FRAMES and not name.startswith(ROTATION.format(""))
+            if name not in ADDITIVE and not name.startswith(ROTATION.format(""))
         ]
         if unknown:
             raise ValueError(f"unknown stability checks {unknown}")
-        rotations = [b for name, b in budgets.items() if name not in FRAMES]
-        reductions = [b for name, b in budgets.items() if name in FRAMES]
+        rotations = [b for name, b in budgets.items() if name not in ADDITIVE]
+        reductions = [b for name, b in budgets.items() if name in ADDITIVE]
         combined = {}
         for sector, laurent in reference.items():
             width = len(laurent.coefficients)
@@ -488,6 +609,7 @@ class StabilityEstimate:
             scale,
             roundoff,
             families,
+            dict(not_run or {}),
         )
 
     def subset(self, names: Iterable[str]) -> StabilityEstimate:
@@ -503,7 +625,267 @@ class StabilityEstimate:
             scale=self.scale,
             roundoff=self.roundoff,
             families=self.families if set(names) & set(FRAMES) else None,
+            not_run=self.not_run,
         )
+
+
+@dataclass(frozen=True)
+class CrossRuns:
+    """The cross-backend check's evaluations of one batch on the other
+    backend (named ``backend``; ``plan_export.NativeExecutor._cross_runs``):
+    the per-point ``runs``, the ``failures`` per point index, or the
+    ``refusal`` of the whole call (the other backend's typed refusal of the
+    artifact, e.g. a family outside its capability)."""
+
+    backend: str
+    runs: Sequence[Any]
+    failures: Mapping[int, Sequence[str]]
+    refusal: str | None = None
+
+    def of(self, index: int) -> tuple[Any, str]:
+        """(the point's run, "") or (None, why the check did not run)."""
+
+        if self.refusal is not None:
+            return None, f"{self.backend} refused the call: {self.refusal}"
+        reasons = self.failures.get(index)
+        if reasons:
+            return None, f"{self.backend} failed the point: " + "; ".join(reasons)
+        return self.runs[index], ""
+
+    def attach(self, evaluations: Sequence[Any]) -> None:
+        """Set ``cross_run`` (``of``) on each point's reference evaluation."""
+
+        for index, evaluation in enumerate(evaluations):
+            evaluation.cross_run = self.of(index)
+
+
+def cross_check(reference: Any, budgets: dict) -> dict[str, str]:
+    """Add the cross-backend check's budget of one point to ``budgets``:
+    the deviation of ``reference`` (a point evaluation) from its evaluation
+    on the other backend (``reference.cross_run``, ``CrossRuns.of``) as a
+    rotation's at the unrotated point (every lane and local component;
+    loop-induced: lane by lane without a little-group phase,
+    ``induced.cross_budget``). Returns the ``not_run`` record: the check and
+    the reason when the other backend did not serve the point."""
+
+    run, why = reference.cross_run
+    if run is None:
+        return {CROSS: why}
+    if reference.slice.amplitude is not None:
+        from . import induced
+
+        budgets[CROSS] = induced.cross_budget(reference, run)
+    else:
+        budgets[CROSS] = reference.rotation_budget(run)
+    return {}
+
+
+def native_estimate(
+    reference: Any, rotated: Sequence[Any], checks: StabilityChecks, roundoff: float
+) -> StabilityEstimate | None:
+    """The stability estimate of one binary64 Born-interfered point of the
+    native executor (``plan_export.point_estimate``'s) by the Rust
+    implementation the native SDKs run (``rusticol_loop_reduction::
+    v2_stability``, bitwise this module's assembly): the point's reduction
+    lanes and local components, those of its ``rotated`` evaluations, its
+    re-test lanes and its cross-backend run. None where it does not apply
+    (``NATIVE_BINARY64`` off, an extended carrier, a loop-induced point of
+    the Python reference or with raw lanes): the Python assembly forms that
+    estimate. A loop-induced point is the native amplitude sum's
+    (``_native_induced_estimate``)."""
+
+    if not NATIVE_BINARY64 or not reference.numbers.double:
+        return None
+    if reference.slice.amplitude is not None:
+        return _native_induced_estimate(reference, rotated, checks, roundoff)
+    from pyamplicol.loops.native import load_loop_native
+
+    from .assemble import LOCAL_COMPONENTS
+
+    sectors = [sector for sector, _pairs in reference.slice.sectors]
+    index = {sector: k for k, sector in enumerate(sectors)}
+    components = reference.result.components
+    # The local components enter the budgets where the point has them (a
+    # native point without counterterm outputs has the bare part alone).
+    local = (
+        LOCAL_COMPONENTS if all(name in components for name in LOCAL_COMPONENTS) else ()
+    )
+    keys: dict[Any, int] = {}
+
+    def lanes(families: Mapping[Any, Any]) -> list:
+        return [
+            (
+                keys.setdefault(lane, len(keys)),
+                index[lane[2]],
+                [(x.real, x.imag) for x in laurent.coefficients],
+            )
+            for lane, laurent in families.items()
+        ]
+
+    def point(evaluation: Any) -> tuple:
+        found = evaluation.result.components
+        return (
+            lanes(evaluation.families),
+            [
+                [
+                    [float(x) for x in found[name][sector].coefficients]
+                    for sector in sectors
+                ]
+                for name in local
+            ],
+        )
+
+    values = components["virtual"] if "virtual" in components else components["bare"]
+    retest = (
+        None
+        if checks.reduction is None
+        else (checks.reduction, lanes(reference.retest_families))
+    )
+    cross = reason = None
+    if checks.cross_backend:
+        run, why = reference.cross_run
+        if run is None:
+            reason = why
+        else:
+            cross = point(run)
+    found = load_loop_native().stability_born_interfered(
+        (len(sectors), 3 if reference.poles else 1, float(reference.average)),
+        roundoff,
+        [[float(x) for x in values[sector].coefficients] for sector in sectors],
+        point(reference),
+        [point(run) for run in rotated],
+        retest,
+        cross,
+        reason,
+    )
+    relative_, coefficients, relatives, absolute, budgets, scale, not_run = found
+
+    def budget(rows: Sequence[Sequence[float]]) -> dict:
+        return {
+            sector: Budget(tuple(row))
+            for sector, row in zip(sectors, rows, strict=True)
+        }
+
+    return StabilityEstimate(
+        relative_,
+        tuple(coefficients),
+        dict(relatives),
+        budget(absolute),
+        {name: budget(rows) for name, rows in budgets},
+        values,
+        budget(scale),
+        roundoff,
+        reference.family_deviations,
+        dict(not_run),
+    )
+
+
+def _native_induced_estimate(
+    reference: Any, rotated: Sequence[Any], checks: StabilityChecks, roundoff: float
+) -> StabilityEstimate | None:
+    """``native_estimate`` of a loop-induced point of the native amplitude sum
+    (``induced.read_native`` without raw lanes; None otherwise): its
+    amplitude, bare and counterterm-ket vectors, re-test budget and term
+    scale, those of its ``rotated`` evaluations and of its cross-backend
+    run, on the colour metric and the sectors' pairs."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    from . import induced
+
+    runs = [reference, *rotated]
+    if checks.cross_backend:
+        run, _why = reference.cross_run
+        if run is not None:
+            runs.append(run)
+    if any(getattr(run, "native_bare", None) is None or run.families for run in runs):
+        return None
+    size = len(reference.slice.amplitude)
+    width = induced.width_of(reference)
+    rows = induced.rows_of(reference)
+    row_ids = {row: r for r, row in enumerate(rows)}
+    orders: dict[Any, int] = {}
+
+    def key(item: Any) -> tuple[int, int]:
+        order, row = item
+        return orders.setdefault(order, len(orders)), row_ids[row]
+
+    def cells(vectors: Mapping) -> list:
+        return [
+            (key(item), [[(z.real, z.imag) for z in cell] for cell in vector])
+            for item, vector in vectors.items()
+        ]
+
+    def errors(vectors: Mapping | None) -> list | None:
+        if vectors is None:
+            return None
+        return [
+            (key(item), [[float(x) for x in cell] for cell in vector])
+            for item, vector in vectors.items()
+        ]
+
+    def point(evaluation: Any) -> tuple:
+        return (
+            cells(evaluation.amplitude_vectors),
+            cells(evaluation.bare_vectors),
+            cells(evaluation.counterterm_vectors),
+            errors(evaluation.native_budget),
+            errors(evaluation.native_terms),
+        )
+
+    sectors = reference.slice.sectors
+    shape = (
+        size,
+        width,
+        [(complex(x).real, complex(x).imag) for line in reference.gram for x in line],
+        list(range(len(rows))),
+        [
+            [
+                (orders.setdefault(a, len(orders)), orders.setdefault(b, len(orders)))
+                for a, b in sorted(pairs)
+            ]
+            for _sector, pairs in sectors
+        ],
+        float(reference.average),
+    )
+    values = reference.result.components["virtual"]
+    cross = reason = None
+    if checks.cross_backend:
+        run, why = reference.cross_run
+        if run is None:
+            reason = why
+        else:
+            cross = point(run)
+    found = load_loop_native().stability_loop_induced(
+        shape,
+        roundoff,
+        [[float(x) for x in values[sector].coefficients] for sector, _ in sectors],
+        point(reference),
+        [point(run) for run in rotated],
+        checks.reduction,
+        cross,
+        reason,
+    )
+    relative_, coefficients, relatives, absolute, budgets, scale, not_run = found
+    names = [sector for sector, _pairs in sectors]
+
+    def budget(rows_: Sequence[Sequence[float]]) -> dict:
+        return {
+            sector: Budget(tuple(row)) for sector, row in zip(names, rows_, strict=True)
+        }
+
+    return StabilityEstimate(
+        relative_,
+        tuple(coefficients),
+        dict(relatives),
+        budget(absolute),
+        {name: budget(rows_) for name, rows_ in budgets},
+        values,
+        budget(scale),
+        roundoff,
+        reference.family_deviations,
+        dict(not_run),
+    )
 
 
 def _at(budget: Any, k: int) -> float:
@@ -511,23 +893,29 @@ def _at(budget: Any, k: int) -> float:
 
 
 __all__ = [
+    "ADDITIVE",
+    "CROSS",
     "DEFAULT_RESCUE",
     "FLOOR_UNITS",
     "FRAMES",
+    "NATIVE_BINARY64",
     "RECOMMENDED_CHECKS",
     "REDUCTION",
     "RESCALED",
     "RESCUE_ROTATION",
-    "RESCUE_TARGET",
     "ROTATION",
     "SAFETY",
+    "TRANSVERSE",
     "Budget",
+    "CrossRuns",
     "Rotation",
     "StabilityChecks",
     "StabilityEstimate",
+    "cross_check",
     "default_rotation",
     "deviation",
     "differences",
+    "native_estimate",
     "per_coefficient",
     "relative",
 ]

@@ -112,6 +112,15 @@ EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
 # Plan v4 virtual processes of the shared-recursion engine (loops/v2), the
 # only one-loop engine.
 LOOP_V2_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v4"
+# Loop-induced (|A_loop|^2, amplitude-mode plan schema 5) processes of the
+# same engine (M-LIT RULED Q42 = (a)): seeded processes keep the v4
+# capability and their bytes (rusticol-core
+# ``engine::LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY``).
+LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v5"
+# Every runtime capability the v2 virtual runtime serves.
+LOOP_V2_RUNTIME_CAPABILITIES = frozenset(
+    {LOOP_V2_RUNTIME_CAPABILITY, LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY}
+)
 # The format of the removed per-diagram legacy loop engine (user ruling
 # 2026-10-28, M-QCD Q3): recognised only to refuse it with this reason.
 RETIRED_LOOP_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v3"
@@ -128,6 +137,7 @@ KNOWN_EVALUATOR_RUNTIME_CAPABILITIES = EVALUATOR_RUNTIME_CAPABILITIES | frozense
     {
         # Parse/serialize these lanes, without admitting them to scalar Runtime.
         LOOP_V2_RUNTIME_CAPABILITY,
+        LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY,
         # Historical eager plan-v2 artifacts remain parseable for inspection
         # and actionable migration errors, but are not executable capabilities.
         EAGER_DAG_F64_RUNTIME_CAPABILITY,
@@ -1026,7 +1036,7 @@ def verify_native_module(module: Any, *, expected_version: str | None = None) ->
         )
 
 
-def package_version(default: str = "1.0.2") -> str:
+def package_version(default: str = "1.0.3") -> str:
     """Return the wheel/source-runtime version without importing heavy modules."""
 
     if _is_source_checkout(_SOURCE_PACKAGE_ROOT, _SOURCE_ROOT):
@@ -1092,6 +1102,8 @@ __all__ = [
     "EAGER_RUNTIME_LAYOUT_F64_CAPABILITY",
     "EVALUATOR_RUNTIME_CAPABILITIES",
     "KNOWN_EVALUATOR_RUNTIME_CAPABILITIES",
+    "LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY",
+    "LOOP_V2_RUNTIME_CAPABILITIES",
     "LOOP_V2_RUNTIME_CAPABILITY",
     "ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY",
     "ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY",

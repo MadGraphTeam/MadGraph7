@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
+import arithmetic
 import maturin  # type: ignore[import-untyped]
 from candidate_wheel import existing_community_wheel
 from native_build_identity import load_native_build_contract
@@ -36,7 +37,7 @@ from prepared_models import (
     project_release_packaged_prepared_model_store,
     stage_packaged_prepared_models,
 )
-from sdk import build_sdk
+from sdk import build_sdk, host_target
 
 ROOT = Path(__file__).resolve().parents[1]
 _CONTRIBUTOR_LOCK = Path("dependencies/contributor-lock.toml")
@@ -451,24 +452,78 @@ def _build_mode() -> str:
     return value
 
 
+def _consume_boolean_setting(
+    config_settings: Mapping[str, Any] | None, name: str
+) -> tuple[Mapping[str, Any] | None, bool]:
+    if config_settings is None or name not in config_settings:
+        return config_settings, False
+    settings = dict(config_settings)
+    value = settings.pop(name)
+    if value not in ("true", "false"):
+        raise RuntimeError(f"{name} must be 'true' or 'false'")
+    return settings, value == "true"
+
+
 def _consume_host_wheel_setting(
     config_settings: Mapping[str, Any] | None,
 ) -> tuple[Mapping[str, Any] | None, bool]:
     """Remove the backend-only, explicitly opt-in host wheel setting."""
 
-    if config_settings is None or "pyamplicol.host-wheel" not in config_settings:
-        return config_settings, False
-    settings = dict(config_settings)
-    value = settings.pop("pyamplicol.host-wheel")
-    if value not in ("true", "false"):
-        raise RuntimeError("pyamplicol.host-wheel must be 'true' or 'false'")
-    return settings, value == "true"
+    return _consume_boolean_setting(config_settings, "pyamplicol.host-wheel")
+
+
+def _consume_distribution_wheel_setting(
+    config_settings: Mapping[str, Any] | None,
+) -> tuple[Mapping[str, Any] | None, bool]:
+    """Remove the backend-only distribution wheel setting.
+
+    ``pyamplicol.distribution-wheel=true`` (passed by tools/release) builds a
+    wheel for distribution: GMP, MPFR and MPC (LGPL-3.0-or-later) are linked
+    as shared libraries and bundled by Maturin's standard wheel repair
+    (``arithmetic.py``). Other builds (contributor installs, source runtimes,
+    local source builds) keep ``gmp-mpfr-sys``'s static default.
+    """
+
+    return _consume_boolean_setting(config_settings, "pyamplicol.distribution-wheel")
+
+
+def _consume_wheel_settings(
+    config_settings: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    config_settings, _ = _consume_host_wheel_setting(config_settings)
+    config_settings, _ = _consume_distribution_wheel_setting(config_settings)
+    return config_settings
+
+
+def _distribution_wheel_features() -> str:
+    """Return pyproject's Maturin features plus the shared arithmetic runtime.
+
+    A ``--features`` build argument replaces ``[tool.maturin] features``
+    instead of extending it, so the list is repeated here from its one source.
+    """
+
+    try:
+        with (ROOT / "pyproject.toml").open("rb") as stream:
+            features = tomllib.load(stream)["tool"]["maturin"].get("features", [])
+    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError("pyproject.toml has no readable [tool.maturin]") from error
+    if not isinstance(features, list) or not all(
+        isinstance(feature, str) and feature for feature in features
+    ):
+        raise RuntimeError("[tool.maturin] features must be a list of names")
+    return ",".join(dict.fromkeys((*features, arithmetic.CARGO_FEATURE)))
 
 
 def _release_wheel_config_settings(
     config_settings: Mapping[str, Any] | None,
+    *,
+    distribution: bool = False,
 ) -> Mapping[str, Any] | None:
-    """Use release manylinux tags unless a host-only wheel was requested."""
+    """Use release manylinux tags unless a host-only wheel was requested.
+
+    A distribution wheel is always a repaired manylinux wheel on Linux and
+    enables the shared arithmetic runtime.
+    """
 
     if config_settings is not None and (
         "maturin.build-args" in config_settings or "build-args" in config_settings
@@ -478,13 +533,32 @@ def _release_wheel_config_settings(
             "build arguments"
         )
     config_settings, host_wheel = _consume_host_wheel_setting(config_settings)
-    if sys.platform != "linux" or (_build_mode() != "release" and not host_wheel):
+    if host_wheel and distribution:
+        raise RuntimeError(
+            "pyamplicol.host-wheel and pyamplicol.distribution-wheel are exclusive"
+        )
+    arguments: list[str] = []
+    if sys.platform == "linux" and (
+        host_wheel or distribution or _build_mode() == "release"
+    ):
+        arguments.extend(
+            ("--compatibility", "linux" if host_wheel else "manylinux_2_28")
+        )
+    if distribution:
+        # The wheel size limit (tools/release MAX_WHEEL_BYTES) is close: the
+        # strongest deflate level costs seconds and saves about 1 MB.
+        arguments.extend(
+            (
+                "--features",
+                _distribution_wheel_features(),
+                "--compression-level",
+                "9",
+            )
+        )
+    if not arguments:
         return config_settings
     settings = dict(config_settings or {})
-    settings["maturin.build-args"] = [
-        "--compatibility",
-        "linux" if host_wheel else "manylinux_2_28",
-    ]
+    settings["maturin.build-args"] = arguments
     return settings
 
 
@@ -783,7 +857,7 @@ def _stage_runtime_resources(overlay: Path) -> None:
         shutil.copy2(source, target)
 
 
-def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
+def _portable_selftest_contract(source_root: Path) -> Any:
     """Load the dependency-free release contract from the source being built."""
 
     source = source_root / "tools" / "release" / "prepare_selftest_fixture.py"
@@ -795,6 +869,11 @@ def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
         raise RuntimeError("could not load the portable self-test contract")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
+    module = _portable_selftest_contract(source_root)
     artifact_validator = getattr(
         module,
         "validate_portable_artifact_capabilities",
@@ -993,6 +1072,14 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     except (KeyError, OSError, TypeError, json.JSONDecodeError) as error:
         raise RuntimeError(f"invalid self-test artifact manifest: {path}") from error
     manifest["artifact_id"] = _runtime_artifact_id(manifest)
+    # The fixture's UMAMI provider names the artifact identity, which the
+    # retargeting above changed.
+    refresh_umami = getattr(
+        _portable_selftest_contract(overlay), "refresh_umami_artifact_identity", None
+    )
+    if not callable(refresh_umami):
+        raise RuntimeError("portable self-test contract cannot rebind UMAMI providers")
+    refresh_umami(selected / "artifact", manifest)
     path.write_text(
         json.dumps(
             manifest,
@@ -1687,7 +1774,12 @@ def _build_tool_path(inherited: str) -> str:
     tool_search_path = os.pathsep.join(
         [*(str(path) for path in system_directories), inherited]
     )
-    for executable in ("git", "cc", "clang", "ar", "ranlib", "nm"):
+    # make and m4 build GMP, MPFR and MPC (gmp-mpfr-sys or arithmetic.py);
+    # Maturin's Linux wheel repair and arithmetic.py need patchelf.
+    tools = ["git", "cc", "clang", "ar", "ranlib", "nm", "make", "m4"]
+    if sys.platform.startswith("linux"):
+        tools.append("patchelf")
+    for executable in tools:
         located = shutil.which(executable, path=tool_search_path)
         if located is None:
             continue
@@ -1796,8 +1888,13 @@ def _from_overlay(
     validate_prepared_models: bool = False,
     retain_release_build_info: bool = False,
     release_prepared_model_bootstrap_context: str | None = None,
+    distribution: bool = False,
     **kwargs: Any,
 ) -> _Result:
+    # A distribution wheel links the shared arithmetic runtime and ships the
+    # SDK archive xz-compressed (``build_sdk``).
+    if distribution and not with_sdk:
+        raise RuntimeError("the shared arithmetic runtime is built only for wheels")
     with _delegating():
         mode = _build_mode()
         prepared_model_bootstrap = _prepared_model_bootstrap(mode)
@@ -1876,6 +1973,23 @@ def _from_overlay(
                     )
                 )
             environment.update(_macos_native_build_updates())
+            arithmetic_runtime = None
+            if distribution:
+                print(
+                    "* Building the shared GMP, MPFR and MPC libraries...",
+                    flush=True,
+                )
+                arithmetic_runtime = arithmetic.build(
+                    overlay,
+                    target_dir.parent / "arithmetic",
+                    _clean_environment(environment),
+                    target=host_target(overlay),
+                )
+                environment.update(
+                    arithmetic_runtime.cargo_environment(
+                        environment["CARGO_ENCODED_RUSTFLAGS"]
+                    )
+                )
             with _environment(environment), _working_directory(overlay):
                 if validate_prepared_models and not with_sdk:
                     stage_packaged_prepared_models(overlay, mode)
@@ -1897,7 +2011,12 @@ def _from_overlay(
                         "several minutes)...",
                         flush=True,
                     )
-                    sdk = build_sdk(overlay, target_dir)
+                    sdk = build_sdk(
+                        overlay,
+                        target_dir,
+                        arithmetic=arithmetic_runtime,
+                        compress_archive=distribution,
+                    )
                     print("* Native C SDK built.", flush=True)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")
@@ -1916,7 +2035,10 @@ def build_wheel(
     config_settings: Mapping[str, Any] | None = None,
     metadata_directory: str | None = None,
 ) -> str:
-    config_settings = _release_wheel_config_settings(config_settings)
+    config_settings, distribution = _consume_distribution_wheel_setting(config_settings)
+    config_settings = _release_wheel_config_settings(
+        config_settings, distribution=distribution
+    )
     filename = _from_overlay(
         maturin.build_wheel,
         wheel_directory,
@@ -1924,6 +2046,7 @@ def build_wheel(
         metadata_directory,
         with_sdk=True,
         retain_release_build_info=True,
+        distribution=distribution,
     )
     return filename
 
@@ -1936,6 +2059,9 @@ def build_release_prepared_model_bootstrap_wheel(
 ) -> str:
     """Build a release-version wheel usable only to regenerate prepared packs."""
 
+    config_settings, distribution = _consume_distribution_wheel_setting(config_settings)
+    if distribution:
+        raise RuntimeError("a prepared-model bootstrap wheel is never distributed")
     config_settings = _release_wheel_config_settings(config_settings)
     if sys.platform == "linux":
         # This non-publishable wheel runs only on its producer, which need not
@@ -1960,6 +2086,8 @@ def build_sdist(
         raise RuntimeError(
             "candidate builds are wheel-only and cannot produce source distributions"
         )
+    # A frontend building both distributions passes the wheel settings here too.
+    config_settings = _consume_wheel_settings(config_settings)
     return _from_overlay(
         maturin.build_sdist,
         sdist_directory,
@@ -1973,7 +2101,7 @@ def build_sdist(
 def get_requires_for_build_wheel(
     config_settings: Mapping[str, Any] | None = None,
 ) -> list[str]:
-    config_settings, _ = _consume_host_wheel_setting(config_settings)
+    config_settings = _consume_wheel_settings(config_settings)
     return _from_overlay(
         maturin.get_requires_for_build_wheel,
         config_settings,
@@ -1984,6 +2112,7 @@ def get_requires_for_build_wheel(
 def get_requires_for_build_sdist(
     config_settings: Mapping[str, Any] | None = None,
 ) -> list[str]:
+    config_settings = _consume_wheel_settings(config_settings)
     return _from_overlay(
         maturin.get_requires_for_build_sdist,
         config_settings,
@@ -1995,7 +2124,7 @@ def prepare_metadata_for_build_wheel(
     metadata_directory: str,
     config_settings: Mapping[str, Any] | None = None,
 ) -> str:
-    config_settings, _ = _consume_host_wheel_setting(config_settings)
+    config_settings = _consume_wheel_settings(config_settings)
     return _from_overlay(
         maturin.prepare_metadata_for_build_wheel,
         metadata_directory,

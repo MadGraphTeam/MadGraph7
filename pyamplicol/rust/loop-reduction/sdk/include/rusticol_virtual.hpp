@@ -88,6 +88,11 @@ public:
     std::vector<std::uint32_t> statuses() const {
         return copy<std::uint32_t>(shape_.requested_points, rusticol_virtual_result_copy_statuses);
     }
+    // Per requested point the relative uncertainty of a best-effort point
+    // (RUSTICOL_VIRTUAL_BEST_EFFORT); NaN otherwise.
+    std::vector<double> uncertainties() const {
+        return copy<double>(shape_.requested_points, rusticol_virtual_result_copy_uncertainties);
+    }
     std::string diagnostics_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_result_diagnostics_json);
     }
@@ -96,6 +101,28 @@ public:
     std::string decimal_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_result_decimal_json);
     }
+    // {"helicity_ids": [...], "color_ids": [...]}: a resolved result's axes in
+    // layout order (a selection's rows, "amplitude-<t>" anchors); empty lists
+    // for an ordinary result.
+    std::string axes_json() const {
+        return virtual_detail::json(handle_.get(), rusticol_virtual_result_axes_json);
+    }
+};
+
+// The selectors of VirtualRuntime::evaluate_selected (rusticol_virtual_selection):
+// global helicity IDs (h<i> or h:<helicities in leg order>), per-point
+// zero-based helicity rows (one per point), colour flows (refused for
+// loop-induced processes: full colour only; for Born-interfered processes
+// served by the Python API's color_flows=) and a resolved evaluation's
+// colour resolution of a loop-induced process ("contracted", the default, or
+// "amplitude-basis"). Helicity rows are selected for loop-induced and, at
+// every colour accuracy, Born-interfered processes (lit-fc-hel).
+struct VirtualSelection {
+    std::vector<std::string> helicity_ids;
+    std::vector<std::string> color_ids;
+    std::vector<std::uint32_t> helicity_by_point;
+    std::vector<std::uint32_t> color_flow_by_point;
+    std::optional<std::string> color_resolution;
 };
 
 // Complex grouped axes: point/history/order/(epsilon), never positive weights.
@@ -137,6 +164,9 @@ public:
     }
     std::vector<std::uint32_t> statuses() const {
         return copy<std::uint32_t>(shape_.requested_points, rusticol_virtual_correlated_result_copy_statuses);
+    }
+    std::vector<double> uncertainties() const {
+        return copy<double>(shape_.requested_points, rusticol_virtual_correlated_result_copy_uncertainties);
     }
     std::string diagnostics_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_correlated_result_diagnostics_json);
@@ -237,6 +267,58 @@ public:
     void set_arithmetic(const std::string &arithmetic, std::uint32_t digits = 0) {
         virtual_detail::check(rusticol_virtual_set_arithmetic(handle_.get(), arithmetic.c_str(), digits));
     }
+    // "auto" (default), "ninjars" or "tirust" (the Python API's reduction=);
+    // an unavailable explicit backend throws VirtualError.
+    void set_reduction(const std::string &reduction) {
+        virtual_detail::check(rusticol_virtual_set_reduction(handle_.get(), reduction.c_str()));
+    }
+    // Target accuracy of later evaluations (the Python API's reduction_target=;
+    // default 1e-5 relative per point): TIRust's acceptance follows it; a value
+    // that is not finite and positive throws VirtualError.
+    void set_reduction_target(double target) {
+        virtual_detail::check(rusticol_virtual_set_reduction_target(handle_.get(), target));
+    }
+    // Unchecked setting of later evaluations (the Python API's
+    // reduction_unchecked=; default false): the reduction backends without
+    // their own acceptance and refusal checks.
+    void set_reduction_unchecked(bool unchecked) {
+        virtual_detail::check(
+            rusticol_virtual_set_reduction_unchecked(handle_.get(), unchecked ? 1 : 0));
+    }
+    // Failure policy of later evaluations (the Python API's on_failure=):
+    // "best-effort" (default; refused points return the unchecked value with
+    // status RUSTICOL_VIRTUAL_BEST_EFFORT and an uncertainty, nothing thrown),
+    // "return" (they stay failed) or "raise" (a call with such a point throws
+    // VirtualError). A refused value throws VirtualError.
+    void set_on_failure(const std::string &on_failure) {
+        virtual_detail::check(rusticol_virtual_set_on_failure(handle_.get(), on_failure.c_str()));
+    }
+    // Kinematics improvement of later evaluations (the Python API's
+    // kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",
+    // "projection" or "off"; recorded per point in the diagnostics
+    // ("kinematics"). A refused value throws VirtualError.
+    void set_kinematics_improvement(const std::string &setting) {
+        virtual_detail::check(
+            rusticol_virtual_set_kinematics_improvement(handle_.get(), setting.c_str()));
+    }
+    // Whether later binary64 evaluations are improved too (the Python API's
+    // kinematics_improvement_binary64=; default false).
+    void set_kinematics_improvement_binary64(bool binary64) {
+        virtual_detail::check(rusticol_virtual_set_kinematics_improvement_binary64(
+            handle_.get(), binary64 ? 1 : 0));
+    }
+    // Stability checks of later evaluations (the Python API's stability_checks=):
+    // rotation_count default rotations, or the rotation specifications of
+    // `rotations` (a JSON array; rotation_count then 0); all off, the default,
+    // runs none. Estimates are in the diagnostics ("stability"); a refused
+    // configuration throws VirtualError.
+    void set_stability_checks(std::uint64_t rotation_count, bool reduction_direction = false,
+                              bool rescaled = false, bool cross_backend = false,
+                              const std::optional<std::string> &rotations = std::nullopt) {
+        virtual_detail::check(rusticol_virtual_set_stability_checks(
+            handle_.get(), rotation_count, rotations ? rotations->c_str() : nullptr,
+            reduction_direction ? 1u : 0u, rescaled ? 1u : 0u, cross_backend ? 1u : 0u));
+    }
     std::uint64_t update_parameters(const std::string &exact_json) {
         std::uint64_t revision = 0;
         virtual_detail::check(rusticol_virtual_update_parameters(handle_.get(), exact_json.c_str(), &revision));
@@ -255,6 +337,33 @@ public:
             resolved ? 1u : 0u, virtual_detail::optional_string(r2_strategy)};
         rusticol_virtual_result *p = nullptr;
         virtual_detail::check(rusticol_virtual_evaluate(handle_.get(), &request, &p));
+        return VirtualEvaluation(p);
+    }
+    // rusticol_virtual_evaluate_selected: the selected helicity rows of a
+    // loop-induced process (resolved = false: their sum per point, RULED Q39;
+    // resolved = true: per selected row its colour components in the
+    // selection's colour resolution). Refusals throw VirtualError.
+    VirtualEvaluation evaluate_selected(const std::vector<double> &momenta, std::size_t point_count,
+                                        const std::vector<double> &mu_r2,
+                                        const VirtualSelection &selection, bool resolved = false,
+                                        const std::vector<std::uint64_t> &point_ids = {},
+                                        const std::optional<std::string> &r2_strategy = std::nullopt) {
+        if (!point_ids.empty() && point_ids.size() != point_count)
+            throw VirtualError("point_ids must have one entry per input point");
+        std::vector<const char *> helicities, colours;
+        for (const auto &id : selection.helicity_ids) helicities.push_back(id.c_str());
+        for (const auto &id : selection.color_ids) colours.push_back(id.c_str());
+        rusticol_virtual_selection selectors{
+            helicities.data(), helicities.size(), colours.data(), colours.size(),
+            selection.helicity_by_point.data(), selection.helicity_by_point.size(),
+            selection.color_flow_by_point.data(), selection.color_flow_by_point.size(),
+            virtual_detail::optional_string(selection.color_resolution)};
+        rusticol_virtual_batch_request request{
+            momenta.data(), momenta.size(), point_count,
+            point_ids.empty() ? nullptr : point_ids.data(), mu_r2.data(), mu_r2.size(),
+            resolved ? 1u : 0u, virtual_detail::optional_string(r2_strategy)};
+        rusticol_virtual_result *p = nullptr;
+        virtual_detail::check(rusticol_virtual_evaluate_selected(handle_.get(), &request, &selectors, &p));
         return VirtualEvaluation(p);
     }
 };

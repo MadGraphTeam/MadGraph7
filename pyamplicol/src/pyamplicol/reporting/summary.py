@@ -79,6 +79,17 @@ def _evaluation_scalar_text(value: Decimal | float | int) -> str:
 
 
 def _evaluation_value_text(value: complex | Decimal | float | int) -> str:
+    """A table value with an explicit sign ("+" on a positive real part, a
+    space on zero), so that the mantissas of a column align."""
+
+    text = _unsigned_value_text(value)
+    if text.startswith("-"):
+        return text
+    real = value.real if isinstance(value, complex) else value
+    return (" " if real == 0 and not text.endswith("j") else "+") + text
+
+
+def _unsigned_value_text(value: complex | Decimal | float | int) -> str:
     if isinstance(value, complex):
         real = _evaluation_scalar_text(value.real)
         if value.imag == 0.0:
@@ -3338,7 +3349,37 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
     if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
         from .virtual import virtual_evaluation_summary
 
-        return virtual_evaluation_summary(value, prettytable=prettytable)
+        return virtual_evaluation_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.api.virtual_results import VirtualOrderEvaluation
+
+    if isinstance(value, VirtualOrderEvaluation):
+        from .virtual import virtual_order_summary
+
+        return virtual_order_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.loop_profile import LoopProfileReport
+
+    if isinstance(value, LoopProfileReport):
+        from .loop_profile import loop_profile_summary
+
+        return loop_profile_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.benchmarking import VirtualProfileResult
+
+    if isinstance(value, VirtualProfileResult):
+        from .virtual import virtual_profile_summary
+
+        return virtual_profile_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.loops.v2.checks import CheckReport
+
+    if isinstance(value, CheckReport):
+        from .checks import check_report_summary
+
+        return check_report_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
 
     if isinstance(value, Mapping) and value:
         from pyamplicol.correlators import CorrelatedValue
@@ -3369,7 +3410,9 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             )
 
     if isinstance(value, GenerationResult):
-        return _generation_summary(value, prettytable=prettytable, color=color)
+        return _generation_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
     if isinstance(value, ResolvedEvaluation):
         return _resolved_evaluation_summary(
             value,
@@ -3459,3 +3502,13 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
 
 
 __all__ = ["render_summary"]
+
+
+def _captured_line(value: Any, color: bool) -> str:
+    """One dim line naming a result's captured warnings (``warnings``,
+    m-lit ux-besteffort), or nothing."""
+
+    from pyamplicol.api.result_warnings import summary_line
+
+    line = summary_line(tuple(getattr(value, "warnings", ())))
+    return "" if line is None else "\n" + _paint(line, "LIGHTBLACK_EX", enabled=color)

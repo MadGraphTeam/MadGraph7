@@ -7,12 +7,15 @@ import csv
 import hashlib
 import io
 import json
+import lzma
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
 import tomllib
 import zipfile
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -23,6 +26,7 @@ _LOCK = tomllib.loads(
     (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
 )
 _RELEASE_VERSION = str(_LOCK["project"]["version"])
+_CANDIDATE_VERSION = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
 _CONTRIBUTOR_LOCK = tomllib.loads(
     (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
 )
@@ -63,6 +67,20 @@ _LEGAL_FILES = (
     "THIRD_PARTY_NOTICES.md",
     "licenses/Symbolica.txt",
     "licenses/SymJIT.txt",
+    "licenses/NinjaRS.txt",
+    "licenses/oneloopmaster.txt",
+    "licenses/TIRust.txt",
+    "licenses/GammaLoop-crates.txt",
+    # GMP, MPFR and MPC: LGPL-3.0-or-later and the GPL-3.0 text it incorporates,
+    # from the gmp-mpfr-sys release Cargo.lock pins.
+    *(
+        f"licenses/rust/gmp-mpfr-sys-{package['version']}/LICENSE-{kind}.md"
+        for package in tomllib.loads((ROOT / "Cargo.lock").read_text(encoding="utf-8"))[
+            "package"
+        ]
+        if package["name"] == "gmp-mpfr-sys"
+        for kind in ("LGPL", "GPL")
+    ),
 )
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
@@ -453,6 +471,7 @@ def _selftest_files(
     missing_arena_capability: str | None = None,
     missing_symjit_capability: str | None = None,
     direct_codegen_optimization_level: int = 2,
+    umami_artifact_id: str | None = None,
 ) -> dict[str, bytes]:
     payload_path = "processes/smoke/evaluator.symjit"
     payload = b"synthetic trusted SymJIT application"
@@ -673,6 +692,42 @@ def _selftest_files(
         + "\n"
     ).encode()
     manifest["artifact_id"] = hashlib.sha256(canonical).hexdigest()
+    if umami_artifact_id is not None:
+        # A UMAMI provider is an API payload, outside the identity; "bound"
+        # names the artifact's identity, anything else a stale one.
+        bound = (
+            manifest["artifact_id"]
+            if umami_artifact_id == "bound"
+            else umami_artifact_id
+        )
+        umami_payloads = {
+            "API/umami/metadata.json": (
+                json.dumps(
+                    {"provider": {"id": "p0", "artifact_id": bound}},
+                    indent=2,
+                    sort_keys=True,
+                ).encode()
+                + b"\n",
+                "sdk-metadata",
+                "application/json",
+            ),
+            "API/umami/provider_p0.h": (
+                f'#define UMAMI_ARTIFACT_ID "{bound}"\n'.encode(),
+                "api-source",
+                "text/x-chdr",
+            ),
+        }
+        api_payloads.update(umami_payloads)
+        manifest["payloads"].extend(
+            {
+                "path": path,
+                "role": role,
+                "media_type": media_type,
+                "size_bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+            for path, (data, role, media_type) in sorted(umami_payloads.items())
+        )
     prefix = f"pyamplicol/assets/selftest/{rust_target}"
     files = {
         f"{prefix}/expected.json": json.dumps(
@@ -731,8 +786,11 @@ def _wheel(
     selftest_missing_arena_capability: str | None = None,
     selftest_missing_symjit_capability: str | None = None,
     selftest_direct_codegen_optimization_level: int = 2,
+    selftest_umami_artifact_id: str | None = None,
     selftest_fixture_bootstrap: bool = False,
     metadata_description: str = "",
+    sdk_compressed: bool | None = None,
+    sdk_archive: bytes = b"synthetic static archive",
 ) -> Path:
     if requirement is not None and requirements is not None:
         raise ValueError("use requirement or requirements, not both")
@@ -747,7 +805,28 @@ def _wheel(
     )
     declared_legal_files = _LEGAL_FILES if license_files is None else license_files
     dist_info = f"pyamplicol-{version}.dist-info"
-    sdk_archive = b"synthetic static archive"
+    # Distribution (release) wheels ship the SDK archive xz-compressed.
+    if sdk_compressed is None:
+        sdk_compressed = not candidate
+    sdk_metadata: dict[str, object] = {
+        "schema_version": 1,
+        "abi_version": 1,
+        "version": sdk_version or version,
+        "target": rust_target,
+        "archive": "lib/librusticol_capi.a",
+        "rust_source": "rust/rusticol.rs",
+    }
+    sdk_member = "pyamplicol/_sdk/lib/librusticol_capi.a"
+    sdk_member_data = sdk_archive
+    if sdk_compressed:
+        sdk_metadata["archive"] = "lib/librusticol_capi.a.xz"
+        sdk_metadata["archive_compression"] = {
+            "format": "xz",
+            "sha256": hashlib.sha256(sdk_archive).hexdigest(),
+            "size": len(sdk_archive),
+        }
+        sdk_member += ".xz"
+        sdk_member_data = lzma.compress(sdk_archive, format=lzma.FORMAT_XZ)
     files = {
         name: b"synthetic required wheel member\n"
         for name in _REQUIRED_WHEEL_PACKAGE_MEMBERS
@@ -762,17 +841,8 @@ def _wheel(
             "pyamplicol/_sdk/include/rusticol.hpp": b"#pragma once\n",
             "pyamplicol/_sdk/fortran/rusticol.f90": b"module rusticol\nend module\n",
             "pyamplicol/_sdk/rust/rusticol.rs": b"// safe Rust wrapper\n",
-            "pyamplicol/_sdk/lib/librusticol_capi.a": sdk_archive,
-            "pyamplicol/_sdk/metadata.json": json.dumps(
-                {
-                    "schema_version": 1,
-                    "abi_version": 1,
-                    "version": sdk_version or version,
-                    "target": rust_target,
-                    "archive": "lib/librusticol_capi.a",
-                    "rust_source": "rust/rusticol.rs",
-                }
-            ).encode(),
+            sdk_member: sdk_member_data,
+            "pyamplicol/_sdk/metadata.json": json.dumps(sdk_metadata).encode(),
             "pyamplicol/_sdk/link.json": json.dumps(
                 {
                     "schema_version": 1,
@@ -836,6 +906,7 @@ def _wheel(
             direct_codegen_optimization_level=(
                 selftest_direct_codegen_optimization_level
             ),
+            umami_artifact_id=selftest_umami_artifact_id,
         )
     )
     for relative in _LEGAL_FILES:
@@ -893,6 +964,7 @@ def _wheel(
     files[record_name] = record.getvalue().encode()
 
     filename = f"pyamplicol-{version}-cp311-abi3-{platform_tag}.whl"
+    directory.mkdir(parents=True, exist_ok=True)
     path = directory / filename
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, data in files.items():
@@ -1516,17 +1588,565 @@ def test_release_allows_remapped_rust_standard_library_backtrace_paths(
 @pytest.mark.parametrize("marker", [b"__gmpz_init", b"mpfr_set", b"malachite-q"])
 def test_native_scan_rejects_static_arithmetic_runtime_markers(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     marker: bytes,
 ) -> None:
     binary = tmp_path / "native-artifact"
     binary.write_bytes(b"prefix\x00" + marker + b"\x00suffix")
-    with pytest.raises(ArtifactError, match="forbidden static arithmetic runtime"):
+    _fake_nm(monkeypatch)
+    with pytest.raises(ArtifactError, match="arithmetic runtime: "):
         _scan_static_runtime_families(binary, "test artifact")
+
+
+def test_static_runtime_scan_fails_when_no_nm_reads_the_symbols(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Without a symbol table, imports cannot be told from a copy: the audit
+    # fails on that, not on the imported names.
+    binary = tmp_path / "librusticol_capi.a"
+    binary.write_bytes(b"!<arch>\n\0___gmpz_init\0_mpfr_init2\0")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="nm: error: Unknown attribute kind (102)"
+        ),
+    )
+    with pytest.raises(
+        ArtifactError,
+        match=r"^cannot read the symbols of test archive: `nm --no-llvm-bc "
+        r"--defined-only`: nm: error: Unknown attribute kind \(102\); "
+        r"`nm --defined-only`: ",
+    ):
+        _scan_static_runtime_families(binary, "test archive")
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: None)
+    with pytest.raises(ArtifactError, match="test archive: no nm found"):
+        _scan_static_runtime_families(binary, "test archive")
+
+
+_ELF_TOOLS = (
+    sys.platform.startswith("linux")
+    and shutil.which("cc") is not None
+    and shutil.which("nm") is not None
+    and shutil.which("ar") is not None
+)
+
+
+def _compile(tmp_path: Path, name: str, source: str, *arguments: str) -> Path:
+    source_path = tmp_path / f"{name}.c"
+    source_path.write_text(source, encoding="utf-8")
+    output = tmp_path / name
+    subprocess.run(
+        ["cc", "-fPIC", *arguments, str(source_path), "-o", str(output)],
+        check=True,
+        capture_output=True,
+    )
+    return output
+
+
+def test_static_runtime_scan_ignores_the_rust_binding_crate_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binary = tmp_path / "native-artifact"
+    binary.write_bytes(b"gmp_mpfr_sys-0123.gmp_mpfr_sys.4567-cgu.0.rcgu.o/\n")
+    _fake_nm(monkeypatch)
+    _scan_static_runtime_families(binary, "test artifact")
+
+
+@pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
+def test_static_runtime_scan_accepts_imported_arithmetic_symbols(
+    tmp_path: Path,
+) -> None:
+    # A shared arithmetic runtime: the library defines, the consumer imports.
+    runtime = _compile(
+        tmp_path,
+        "libgmp-test.so",
+        "int __gmpz_init(void) { return 1; }\nint mpfr_set(void) { return 2; }\n",
+        "-shared",
+    )
+    consumer = _compile(
+        tmp_path,
+        "_rusticol.abi3.so",
+        "int __gmpz_init(void); int mpfr_set(void);\n"
+        "int consume(void) { return __gmpz_init() + mpfr_set(); }\n",
+        "-shared",
+        f"-L{tmp_path}",
+        "-l:libgmp-test.so",
+    )
+    _scan_static_runtime_families(consumer, "test extension")
+    with pytest.raises(ArtifactError, match="defines __gmpz_init, mpfr_set"):
+        _scan_static_runtime_families(runtime, "test runtime")
+
+
+@pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
+def test_static_runtime_scan_rejects_an_archived_runtime_copy(
+    tmp_path: Path,
+) -> None:
+    importer = _compile(
+        tmp_path,
+        "importer.o",
+        "int mpfr_set(void);\nint use(void) { return mpfr_set(); }\n",
+        "-c",
+    )
+    copy = _compile(tmp_path, "copy.o", "int mpfr_set(void) { return 2; }\n", "-c")
+    shared = tmp_path / "librusticol_shared.a"
+    subprocess.run(["ar", "rcs", str(shared), str(importer)], check=True)
+    _scan_static_runtime_families(shared, "test archive")
+    static = tmp_path / "librusticol_static.a"
+    subprocess.run(["ar", "rcs", str(static), str(importer), str(copy)], check=True)
+    with pytest.raises(ArtifactError, match="defines mpfr_set"):
+        _scan_static_runtime_families(static, "test archive")
+
+
+def test_nm_symbols_reads_bsd_lines_and_darwin_bare_undefined_names() -> None:
+    output = (
+        "\nlibrusticol_capi.a(capi.o):\n"
+        "0000000000000448 T _rusticol_abi_version\n"
+        "                 U __gmpz_init\n"
+        "                 w __cxa_finalize\n"
+        "___gmpz_clear\n"
+        "_mpfr_init2\n"
+        "\n"
+    )
+    assert artifacts._nm_symbols(output) == [
+        ("T", "_rusticol_abi_version"),
+        ("U", "__gmpz_init"),
+        ("w", "__cxa_finalize"),
+        (None, "___gmpz_clear"),
+        (None, "_mpfr_init2"),
+    ]
+
+
+def _fake_nm(
+    monkeypatch: pytest.MonkeyPatch, *, defined: str = "", undefined: str = ""
+) -> None:
+    """``nm`` as Darwin prints a Mach-O file: ``-u`` lists bare names."""
+
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        stdout = undefined if "-u" in command else defined
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(artifacts.subprocess, "run", run)
+
+
+def test_static_runtime_scan_accepts_darwin_bare_name_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A Mach-O extension importing the shared GMP/MPFR keeps their names in
+    # its string table and import (bind / chained-fixup) tables.
+    extension = tmp_path / "_rusticol.abi3.so"
+    extension.write_bytes(
+        b"\xcf\xfa\xed\xfe\0\x40___gmpz_init\0_mpfr_init2\0_PyInit__rusticol\0"
+    )
+    _fake_nm(
+        monkeypatch,
+        defined="0000000000000448 T _PyInit__rusticol\n",
+        undefined="___gmpz_init\n_mpfr_init2\ndyld_stub_binder\n",
+    )
+    _scan_static_runtime_families(extension, "test extension")
+
+
+def test_static_runtime_scan_rejects_a_stripped_darwin_runtime_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # strip -x removed the copy's symbols; its assertion text remains.
+    extension = tmp_path / "_rusticol.abi3.so"
+    extension.write_bytes(
+        b"\xcf\xfa\xed\xfe\0mpfr_get_prec (x) >= MPFR_PREC_MIN\0_PyInit__rusticol\0"
+    )
+    _fake_nm(
+        monkeypatch,
+        defined="0000000000000448 T _PyInit__rusticol\n",
+        undefined="dyld_stub_binder\n",
+    )
+    with pytest.raises(
+        ArtifactError, match=r"forbidden static arithmetic runtime: mpfr_$"
+    ):
+        _scan_static_runtime_families(extension, "test extension")
+
+
+def test_capi_archive_scan_rejects_darwin_bare_name_python_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"synthetic archive")
+    _fake_nm(
+        monkeypatch,
+        undefined="\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_mpfr_init2\n",
+    )
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+    _fake_nm(
+        monkeypatch,
+        undefined="\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_PyErr_SetString\n",
+    )
+    with pytest.raises(ArtifactError, match=r"undefined Python.*_PyErr_SetString"):
+        _scan_capi_archive(archive, allow_local_rustup=False)
+
+
+def test_nm_reads_the_native_symbol_table_before_any_embedded_bitcode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Apple's nm (LLVM's) reads an object's embedded bitcode by default and
+    # fails on bitcode newer than its LLVM; GNU nm rejects --no-llvm-bc.
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"!<arch>\n\0___gmpz_init\0_mpfr_init2\0_rusticol_abi\0")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+    calls: list[list[str]] = []
+
+    def listing(command: list[str]) -> str:
+        if "--defined-only" in command:
+            return "\nlibrusticol_capi.a(capi.o):\n0000000000000448 T _rusticol_abi\n"
+        return "\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_mpfr_init2\n"
+
+    def apple(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        if "--no-llvm-bc" not in command:
+            return subprocess.CompletedProcess(
+                command, 1, stdout="", stderr="error: Unknown attribute kind (102)"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=listing(command))
+
+    monkeypatch.setattr(artifacts.subprocess, "run", apple)
+    _scan_static_runtime_families(archive, "test archive")
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+    assert calls == [
+        ["--no-llvm-bc", "--defined-only"],
+        ["--no-llvm-bc", "-u"],
+        ["--no-llvm-bc", "-u"],
+    ]
+
+    def gnu(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        if "--no-llvm-bc" in command:
+            return subprocess.CompletedProcess(
+                command, 1, stdout="", stderr="nm: unrecognized option '--no-llvm-bc'"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=listing(command))
+
+    calls.clear()
+    monkeypatch.setattr(artifacts.subprocess, "run", gnu)
+    _scan_static_runtime_families(archive, "test archive")
+    assert calls == [
+        ["--no-llvm-bc", "--defined-only"],
+        ["--defined-only"],
+        ["--no-llvm-bc", "-u"],
+        ["-u"],
+    ]
+
+
+def _macho_linker() -> list[str] | None:
+    """A clang driver that links Mach-O dylibs: native on macOS, else lld."""
+
+    if shutil.which("clang") is None:
+        return None
+    if sys.platform == "darwin":
+        return ["clang"]
+    if shutil.which("ld64.lld") is None or shutil.which("llvm-nm") is None:
+        return None
+    return ["clang", "-fuse-ld=lld"]
+
+
+_MACHO_LINKER = _macho_linker()
+_MACHO_RUNTIME = (
+    "int __gmpz_init(void) { return 1; }\nint mpfr_set(void) { return 2; }\n"
+)
+_MACHO_CONSUMER = (
+    "int __gmpz_init(void); int mpfr_set(void);\n"
+    "int consume(void) { return __gmpz_init() + mpfr_set(); }\n"
+)
+_MACHO_COPY = (
+    'static const char *volatile assertion = "mpfr_set (x) >= 0";\n'
+    "int __gmpz_init(void) { return 1; }\n"
+    "int mpfr_set(void) { return 2 + assertion[0]; }\n"
+)
+
+
+def _macho_dylib(
+    tmp_path: Path, name: str, source: str, arch: str, *arguments: str
+) -> Path:
+    source_path = tmp_path / f"{name}.c"
+    source_path.write_text(source, encoding="utf-8")
+    output = tmp_path / name
+    assert _MACHO_LINKER is not None
+    subprocess.run(
+        [
+            *_MACHO_LINKER,
+            "-target",
+            f"{arch}-apple-macos11",
+            "-nostdlib",
+            "-dynamiclib",
+            "-Wl,-undefined,dynamic_lookup",
+            str(source_path),
+            *arguments,
+            "-o",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return output
+
+
+@pytest.mark.skipif(_MACHO_LINKER is None, reason="needs a Mach-O C toolchain")
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_static_runtime_scan_on_macho_imports_and_copies(
+    tmp_path: Path, arch: str
+) -> None:
+    runtime = _macho_dylib(tmp_path, "libgmp-test.dylib", _MACHO_RUNTIME, arch)
+    consumer = _macho_dylib(
+        tmp_path, "_rusticol.abi3.so", _MACHO_CONSUMER, arch, str(runtime)
+    )
+    _scan_static_runtime_families(consumer, "test extension")
+    with pytest.raises(ArtifactError, match="defines ___gmpz_init, _mpfr_set"):
+        _scan_static_runtime_families(runtime, "test runtime")
+    # A linked-in copy with its local symbols stripped (-x, as rustc's
+    # strip=symbols on Apple targets): its assertion text still matches.
+    copy = _macho_dylib(
+        tmp_path,
+        "_rusticol_copy.abi3.so",
+        _MACHO_CONSUMER + _MACHO_COPY,
+        arch,
+        "-Wl,-x",
+        "-Wl,-exported_symbol,_consume",
+    )
+    with pytest.raises(
+        ArtifactError, match="forbidden static arithmetic runtime: mpfr_"
+    ):
+        _scan_static_runtime_families(copy, "test extension")
+
+
+@pytest.mark.skipif(_MACHO_LINKER is None, reason="needs a Mach-O C toolchain")
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_relative_path_scan_skips_macho_code_sections(
+    tmp_path: Path, arch: str
+) -> None:
+    code = _macho_dylib(tmp_path, "code.so", _CODE_SECTION_PATH, arch)
+    assert b"\0../src\0" in code.read_bytes()
+    assert artifacts._machine_code_ranges(code.read_bytes())
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": code.read_bytes()})
+    data = _macho_dylib(
+        tmp_path, "data.so", _CODE_SECTION_PATH + _DATA_SECTION_PATH, arch
+    )
+    with pytest.raises(ArtifactError, match=re.escape("marker '../': ")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/_rusticol.abi3.so": data.read_bytes()}
+        )
+
+
+_STANDARD_LIBRARY_LIKE = "int standard_library_like(int x) { return 3 * x; }\n"
+
+
+def _macho_archive(
+    tmp_path: Path, name: str, sources: dict[str, str], arch: str
+) -> Path:
+    """A Mach-O archive as the macOS C API archive is built.
+
+    The first object stands for the precompiled Rust standard library: it
+    embeds LLVM bitcode, here unreadable, as Rust's newer bitcode is to
+    Apple's ``nm``; its native symbol table is intact. The crate objects
+    (``--profile sdk``: ``-C embed-bitcode=no``) embed none.
+    """
+
+    objects = []
+    for index, (stem, source) in enumerate(
+        {"std": _STANDARD_LIBRARY_LIKE, **sources}.items()
+    ):
+        source_path = tmp_path / f"{stem}.c"
+        source_path.write_text(source, encoding="utf-8")
+        output = tmp_path / f"{stem}.o"
+        subprocess.run(
+            [
+                "clang",
+                "-target",
+                f"{arch}-apple-macos11",
+                *(["-fembed-bitcode"] if index == 0 else []),
+                "-c",
+                str(source_path),
+                "-o",
+                str(output),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        if index == 0:
+            data = bytearray(output.read_bytes())
+            module = data.find(b"\xde\xc0\x17\x0b")  # the Darwin bitcode wrapper
+            if module < 0:
+                module = data.index(b"BC\xc0\xde")
+            data[module + 4 : module + 20] = b"\xff" * 16
+            output.write_bytes(bytes(data))
+        objects.append(str(output))
+    archive = tmp_path / name
+    subprocess.run(
+        ["llvm-ar", "--format=darwin", "rcs", str(archive), *objects], check=True
+    )
+    return archive
+
+
+@pytest.mark.skipif(
+    _MACHO_LINKER is None or shutil.which("llvm-ar") is None,
+    reason="needs a Mach-O C toolchain and llvm-ar",
+)
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_static_runtime_scan_reads_macho_archives_with_unreadable_bitcode(
+    tmp_path: Path, arch: str
+) -> None:
+    shared = _macho_archive(
+        tmp_path, "librusticol_shared.a", {"consumer": _MACHO_CONSUMER}, arch
+    )
+    # The embedded module is what LLVM's nm reads by default.
+    default = subprocess.run(
+        ["llvm-nm", "--defined-only", str(shared)], capture_output=True, text=True
+    )
+    assert default.returncode != 0
+    _scan_static_runtime_families(shared, "test archive")
+    assert _scan_capi_archive(shared, allow_local_rustup=False)
+    static = _macho_archive(
+        tmp_path,
+        "librusticol_static.a",
+        {"consumer": _MACHO_CONSUMER, "copy": _MACHO_RUNTIME},
+        arch,
+    )
+    with pytest.raises(ArtifactError, match="defines ___gmpz_init, _mpfr_set"):
+        _scan_static_runtime_families(static, "test archive")
+
+
+@pytest.mark.parametrize(
+    "needed",
+    ["libc.so.6", "libgcc_s.so.1", "libpthread.so.0", "ld-linux-x86-64.so.2"],
+)
+def test_extension_may_need_target_c_runtime_libraries(needed: str) -> None:
+    artifacts._require_system_or_bundled(needed, "manylinux_2_28_x86_64", {})
+
+
+def test_extension_dependencies_must_be_bundled_otherwise() -> None:
+    bundled = {"pyamplicol.libs": frozenset({"libgmp-pyamplicol-0123abcd.so.10"})}
+    artifacts._require_system_or_bundled(
+        "libgmp-pyamplicol-0123abcd.so.10", "manylinux_2_28_x86_64", bundled
+    )
+    for needed in ("libgmp.so.10", "libmpfr-pyamplicol-0123abcd.so.6"):
+        with pytest.raises(ArtifactError, match="neither a system library"):
+            artifacts._require_system_or_bundled(
+                needed, "manylinux_2_28_x86_64", bundled
+            )
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (["lib/../libgmp.so.10"], "unexpected SDK shared library path"),
+        (["lib/libgmp.so"], "unexpected SDK shared library path"),
+        (["lib/libgmp.10.dylib"], "does not match target"),
+        (["lib/libgmp.so.10", "lib/libgmp.so.10"], "duplicate entries"),
+        (["lib/libmpc.so.3"], "missing SDK shared library"),
+        ("lib/libgmp.so.10", "list of strings"),
+    ],
+)
+def test_sdk_shared_library_metadata_is_confined_and_shipped(
+    value: object, message: str
+) -> None:
+    entries = {"pyamplicol/_sdk/lib/libgmp.so.10": b"\x7fELF"}
+    with pytest.raises(ArtifactError, match=message):
+        artifacts._sdk_shared_library_members(
+            entries,
+            link={"shared_libraries": value},
+            rust_target="x86_64-unknown-linux-gnu",
+        )
+    assert artifacts._sdk_shared_library_members(
+        entries,
+        link={"shared_libraries": ["lib/libgmp.so.10"]},
+        rust_target="x86_64-unknown-linux-gnu",
+    ) == ("pyamplicol/_sdk/lib/libgmp.so.10",)
+
+
+def test_versioned_shared_objects_are_scanned_as_native_members() -> None:
+    with pytest.raises(ArtifactError, match=re.escape("path marker '../'")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol.libs/libmpfr-pyamplicol-0123abcd.so.6": b"../../mpfr-src/x.c"}
+        )
+
+
+@pytest.mark.parametrize(
+    ("text", "marker"),
+    [
+        (b"FR_RNDA\0../../mpfr-src/src/add1.c\0", "../"),
+        (b"\0..\\..\\mpfr-src\\src\\add1.c\0", "..\\\\"),
+        (b'{"source": "..\\\\build\\\\x.c"}', "..\\\\"),
+        (b"assertion failed at ../src/x.c:12\n", "../"),
+        (b"..//src/x.c", "../"),
+        (b"../relative.c", "../"),
+    ],
+)
+def test_relative_paths_in_shared_object_text_are_rejected(
+    text: bytes, marker: str
+) -> None:
+    with pytest.raises(
+        ArtifactError, match=re.escape(f"non-relocatable path marker '{marker}': ")
+    ):
+        artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": text})
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        # x86-64 instructions of Linux release-profile extensions that the
+        # former rule reported as paths: callq rel32 0xff5c2e2e, callq
+        # *0x022f2e2e(%rip), leaq 0x12f2e2e(%rip), movsd 0x22f2e2e(%rip).
+        b"\0\0L\x89\xea\xe8..\\\xffH\x8d\xbc$",
+        b'SH\x89\xfb\xff\x15../\x02\xbf"\0\0',
+        b"\xf67\x01H\x8d=../\x01\xff\x15\x10\x8c",
+        b"W\xd1\xf2\x0f\x10\r../\x02A\xff\xd6\xf2",
+        # Binary data: the marker bytes with no path component after them.
+        b"\0\0\0\0\0\0..\\\0\0\0\x11\0",
+    ],
+)
+def test_relative_marker_bytes_in_binary_data_are_not_paths(data: bytes) -> None:
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": data})
+
+
+# A text-shaped relative path placed in the code section, and the same text
+# as data: only the data is an embedded path.
+_CODE_SECTION_PATH = (
+    '__asm__(".text\\n.globl code_bytes\\ncode_bytes:\\n'
+    '.byte 0x00, 0x2e, 0x2e, 0x2f, 0x73, 0x72, 0x63, 0x00\\n");\n'
+    "int code(void) { return 1; }\n"
+)
+_DATA_SECTION_PATH = (
+    'const char *volatile data_path = "\\0../src/x.c";\n'
+    "int data(void) { return data_path[0]; }\n"
+)
+
+
+@pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
+def test_relative_path_scan_skips_elf_code_sections(tmp_path: Path) -> None:
+    code = _compile(tmp_path, "code.so", _CODE_SECTION_PATH, "-shared")
+    assert b"\0../src\0" in code.read_bytes()
+    assert artifacts._machine_code_ranges(code.read_bytes())
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": code.read_bytes()})
+    data = _compile(
+        tmp_path, "data.so", _CODE_SECTION_PATH + _DATA_SECTION_PATH, "-shared"
+    )
+    with pytest.raises(ArtifactError, match=re.escape("marker '../': ")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/_rusticol.abi3.so": data.read_bytes()}
+        )
 
 
 @pytest.mark.parametrize(
     "symbol",
-    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
+    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc", "__Py_Dealloc"],
 )
 def test_capi_archive_scan_rejects_undefined_python_symbols(
     tmp_path: Path,
@@ -1612,6 +2232,194 @@ def test_record_direct_dependency_and_size_fail_closed(tmp_path: Path) -> None:
         stream.truncate(MAX_WHEEL_BYTES + 1)
     with pytest.raises(ArtifactError, match="limit"):
         audit_wheel(oversized, mode="release", native_scan=False)
+
+
+def test_oversized_wheel_is_audited_in_full_before_the_size_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(artifacts, "MAX_WHEEL_BYTES", 1000)
+    bad_record = _wheel(tmp_path, bad_record=True)
+    with pytest.raises(ArtifactError, match="RECORD hash"):
+        audit_wheel(bad_record, mode="release", native_scan=False)
+
+    bad_record.unlink()
+    wheel = _wheel(tmp_path)
+    size = wheel.stat().st_size
+    with pytest.raises(ArtifactError) as raised:
+        audit_wheel(wheel, mode="release", native_scan=False)
+    message = str(raised.value)
+    assert message.startswith(
+        f"compressed wheel is {size} bytes; limit is 1000 bytes "
+        "(every other wheel check passed); "
+    )
+    assert "compressed bytes: extension " in message
+
+
+def test_wheel_size_summary_splits_the_compressed_bytes(tmp_path: Path) -> None:
+    wheel = _wheel(
+        tmp_path,
+        extra_files={
+            "pyamplicol.dylibs/libgmp.10.dylib": b"g" * 4096,
+            "pyamplicol/_sdk/lib/libmpfr.6.dylib": b"m" * 2048,
+        },
+    )
+    summary = artifacts.wheel_size_summary(wheel)
+    size = wheel.stat().st_size
+    assert summary.startswith(f"{wheel.name} is {size} bytes (limit {MAX_WHEEL_BYTES})")
+    components, archive_sizes = summary.split("compressed bytes: ", 1)[1].split("; ")
+    parts = dict(item.rsplit(" ", 1) for item in components.split(", "))
+    assert list(parts) == [
+        "extension",
+        "SDK archive",
+        "SDK shared libraries",
+        "bundled libraries",
+        "prepared models",
+        "other",
+        "zip metadata",
+    ]
+    assert sum(int(value) for value in parts.values()) == size
+    with zipfile.ZipFile(wheel) as archive:
+        compressed = {info.filename: info.compress_size for info in archive.infolist()}
+    assert (
+        int(parts["bundled libraries"])
+        == compressed["pyamplicol.dylibs/libgmp.10.dylib"]
+    )
+    assert int(parts["extension"]) == compressed["pyamplicol/_rusticol.abi3.so"]
+    assert int(parts["prepared models"]) > 0
+    # The SDK archive ships xz-compressed: stored and unpacked sizes follow.
+    xz_member = "pyamplicol/_sdk/lib/librusticol_capi.a.xz"
+    assert int(parts["SDK archive"]) == compressed[xz_member]
+    with zipfile.ZipFile(wheel) as archive:
+        stored = archive.getinfo(xz_member).file_size
+    unpacked = len(b"synthetic static archive")
+    assert archive_sizes == (
+        f"SDK archive librusticol_capi.a.xz {stored} bytes xz, "
+        f"unpacked {unpacked} bytes"
+    )
+
+    plain = _wheel(tmp_path / "plain", candidate=True, version=_CANDIDATE_VERSION)
+    assert artifacts.wheel_size_summary(plain).endswith(
+        f"; SDK archive librusticol_capi.a {unpacked} bytes uncompressed"
+    )
+
+
+def test_release_wheel_requires_the_xz_compressed_sdk_archive(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ArtifactError, match="must ship the SDK archive xz"):
+        audit_wheel(
+            _wheel(tmp_path, sdk_compressed=False), mode="release", native_scan=False
+        )
+
+
+@pytest.mark.parametrize("compressed", (False, True))
+def test_candidate_wheel_accepts_either_sdk_archive_form(
+    tmp_path: Path, candidate_dependency_provenance: None, compressed: bool
+) -> None:
+    wheel = _wheel(
+        tmp_path,
+        candidate=True,
+        version=_CANDIDATE_VERSION,
+        sdk_compressed=compressed,
+    )
+    report = audit_wheel(wheel, mode="candidate", native_scan=False)
+    assert report.version == _CANDIDATE_VERSION
+
+
+def _rewritten_wheel(tmp_path: Path, edit: Callable[[dict[str, bytes]], None]) -> Path:
+    """A release wheel whose members ``edit`` changes; RECORD is rewritten."""
+
+    source = _wheel(tmp_path / "source")
+    with zipfile.ZipFile(source) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    record_name = next(name for name in files if name.endswith(".dist-info/RECORD"))
+    del files[record_name]
+    edit(files)
+    rows = [
+        [name, _record_hash(data), str(len(data))]
+        for name, data in sorted(files.items())
+    ]
+    rows.append([record_name, "", ""])
+    record = io.StringIO(newline="")
+    csv.writer(record, lineterminator="\n").writerows(rows)
+    files[record_name] = record.getvalue().encode()
+    path = tmp_path / source.name
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, data in files.items():
+            archive.writestr(zipfile.ZipInfo(name, (2025, 1, 1, 0, 0, 0)), data)
+    return path
+
+
+def _sdk_metadata_edit(**changes: object) -> Callable[[dict[str, bytes]], None]:
+    def edit(files: dict[str, bytes]) -> None:
+        metadata = json.loads(files["pyamplicol/_sdk/metadata.json"])
+        compression = dict(metadata["archive_compression"])
+        compression.update(changes)
+        metadata["archive_compression"] = compression
+        files["pyamplicol/_sdk/metadata.json"] = json.dumps(metadata).encode()
+
+    return edit
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    (
+        (_sdk_metadata_edit(sha256="0" * 64), "does not unpack to the recorded"),
+        (_sdk_metadata_edit(size=1), "does not unpack to the recorded"),
+        (_sdk_metadata_edit(format="zstd"), "archive_compression metadata"),
+        (_sdk_metadata_edit(size=True), "archive_compression metadata"),
+        (
+            lambda files: files.update(
+                {"pyamplicol/_sdk/lib/librusticol_capi.a.xz": b"not xz"}
+            ),
+            "is not valid xz",
+        ),
+        (
+            lambda files: files.update(
+                {"pyamplicol/_sdk/lib/librusticol_capi.a": b"archive"}
+            ),
+            "exactly one SDK archive form",
+        ),
+        (
+            lambda files: files.pop("pyamplicol/_sdk/lib/librusticol_capi.a.xz"),
+            "missing the SDK archive",
+        ),
+    ),
+)
+def test_compressed_sdk_archive_is_checked_against_its_metadata(
+    tmp_path: Path,
+    edit: Callable[[dict[str, bytes]], None],
+    message: str,
+) -> None:
+    with pytest.raises(ArtifactError, match=message):
+        audit_wheel(_rewritten_wheel(tmp_path, edit), mode="release", native_scan=False)
+
+
+def test_compressed_sdk_archive_is_scanned_unpacked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A host path inside the archive is invisible in its xz bytes.
+    leaky = b"!<arch>\n" + b"built in /home/builder/rusticol/src/lib.rs\0" * 64
+    wheel = _wheel(tmp_path / "leaky", sdk_archive=leaky)
+    with zipfile.ZipFile(wheel) as archive:
+        assert b"/home/" not in archive.read(
+            "pyamplicol/_sdk/lib/librusticol_capi.a.xz"
+        )
+    with pytest.raises(ArtifactError, match=r"librusticol_capi\.a embeds"):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+    scanned: dict[str, bytes] = {}
+
+    def native_scan(entries, _extension, _target, **_kwargs) -> None:
+        scanned.update(entries)
+
+    monkeypatch.setattr(artifacts, "_host_matches", lambda _target: True)
+    monkeypatch.setattr(artifacts, "_native_scan", native_scan)
+    archive = b"!<arch>\nrelocatable archive\0"
+    audit_wheel(_wheel(tmp_path / "clean", sdk_archive=archive), mode="release")
+    assert scanned["pyamplicol/_sdk/lib/librusticol_capi.a"] == archive
+    assert "pyamplicol/_sdk/lib/librusticol_capi.a.xz" not in scanned
 
 
 def test_wheel_filename_version_must_match_metadata(tmp_path: Path) -> None:
@@ -1829,6 +2637,26 @@ def test_wheel_selftest_requires_the_complete_five_language_api_bundle(
 
     with pytest.raises(ArtifactError, match=r"five-language API.*API/rust"):
         audit_wheel(wheel, mode="release", native_scan=False)
+
+
+def test_wheel_selftest_umami_provider_names_the_artifact_identity(
+    tmp_path: Path,
+) -> None:
+    audit_wheel(
+        _wheel(tmp_path / "bound", selftest_umami_artifact_id="bound"),
+        mode="release",
+        native_scan=False,
+    )
+    stale = _wheel(tmp_path / "stale", selftest_umami_artifact_id="e" * 64)
+
+    with pytest.raises(
+        ArtifactError,
+        match=re.escape(
+            "UMAMI provider does not name the artifact identity: "
+            "API/umami/metadata.json, API/umami/provider_p0.h"
+        ),
+    ):
+        audit_wheel(stale, mode="release", native_scan=False)
 
 
 def test_sdk_link_metadata_is_target_allowlisted(tmp_path: Path) -> None:
@@ -2275,6 +3103,7 @@ def test_sdist_rejects_mismatched_symjit_cargo_source(tmp_path: Path) -> None:
     "missing_member",
     [
         "build_backend/_pyamplicol_build.py",
+        "build_backend/arithmetic.py",
         "build_backend/sdk.py",
         "docs/user/installation.md",
         "examples/data/pp_zjj_momenta.json",

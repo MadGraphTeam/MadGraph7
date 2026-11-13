@@ -18,8 +18,12 @@ from pyamplicol.config import (
     GenerationConfig,
     PoleSelection,
     R2Strategy,
+    ReductionBackend,
     RunConfig,
 )
+from pyamplicol.config.models import ON_FAILURE, reduction_request
+from pyamplicol.config.models import reduction_target as reduction_target_value
+from pyamplicol.config.models import reduction_unchecked as reduction_unchecked_value
 from pyamplicol.reporting import ProgressSink
 
 from .errors import (
@@ -28,6 +32,7 @@ from .errors import (
     DependencyError,
     EvaluationError,
     GenerationError,
+    ModelError,
 )
 from .protocols import (
     BenchmarkBackend,
@@ -55,8 +60,12 @@ from .results import (
     _sum_entries,
 )
 from .virtual_results import (
+    CONTRIBUTIONS as VIRTUAL_CONTRIBUTIONS,
+)
+from .virtual_results import (
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
+    VirtualOrderEvaluation,
     VirtualRescuePolicy,
     VirtualStabilityChecks,
     pole_selection,
@@ -67,6 +76,8 @@ _runtime_loader: RuntimeLoader | None = None
 _benchmark_factory: BenchmarkFactory | None = None
 
 if TYPE_CHECKING:
+    from pyamplicol.benchmarking import VirtualProfileResult
+    from pyamplicol.loops.v2.checks import CheckReport
     from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
 
@@ -140,6 +151,23 @@ def _generation_resource_resolution(
         config,
         state,
     )
+
+
+def _kinematics_options(
+    setting: str | None, binary64: bool | None
+) -> dict[str, object]:
+    """The kinematics improvement options of a load or a call, validated
+    (``pyamplicol.kinematics``: the native policy's values and refusals),
+    forwarded only when set."""
+
+    from pyamplicol import kinematics
+
+    options: dict[str, object] = {}
+    if setting is not None:
+        options["kinematics_improvement"] = kinematics.setting_value(setting)
+    if binary64 is not None:
+        options["kinematics_improvement_binary64"] = kinematics.binary64_value(binary64)
+    return options
 
 
 def _get_runtime_loader() -> RuntimeLoader:
@@ -280,6 +308,26 @@ class Generator:
             self._backend = _get_generator_factory()(self._config, self._progress)
         return self._backend
 
+    def _translate(
+        self,
+        processes: ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str],
+    ) -> ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str]:
+        """MG5_aMC syntax in process strings: the plain expressions, with
+        their settings merged into this generator's configuration
+        (``mg5_syntax.translate_api_request``; a conflict with a setting the
+        configuration states is a typed error)."""
+
+        from pyamplicol.processes.mg5_syntax import translate_api_request
+
+        translated, config = translate_api_request(processes, self._config)
+        if config is not self._config:
+            self._config = config
+            self._backend = None
+        return cast(
+            "ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str]",
+            translated,
+        )
+
     def _resolve_generation_resources(self) -> None:
         resource_config = _generation_resource_resolution(self._config)
         if resource_config != self._config:
@@ -292,8 +340,12 @@ class Generator:
         *,
         model: ModelSource | _pyamplicol.CompiledModel | None = None,
     ) -> GenerationPlan:
-        """Resolve concrete processes and coverage without writing an artifact."""
+        """Resolve concrete processes and coverage without writing an artifact.
+        A process string may use MG5_aMC syntax (``"u u~ > d d~ [QCD]"``,
+        ``processes.mg5_syntax``): its settings merge into the generator's
+        configuration."""
 
+        processes = self._translate(processes)
         process_set = _process_set(processes)
         self._resolve_generation_resources()
         result = self._implementation().plan(process_set, model=model)
@@ -312,10 +364,35 @@ class Generator:
         mode: Literal["error", "append", "replace"] = "error",
         correlators: _pyamplicol.CorrelatorConfig | None = None,
     ) -> GenerationResult:
-        """Generate an artifact in ``error``, ``append``, or ``replace`` mode."""
+        """Generate an artifact in ``error``, ``append``, or ``replace`` mode.
+        A process string may use MG5_aMC syntax, as in :meth:`plan`. The
+        known, benign dependency log events of the generation are returned
+        in the result's ``warnings`` instead of being printed
+        (``_internal.symbolica_log``, m-lit ux-besteffort)."""
 
+        from dataclasses import replace
+
+        from pyamplicol._internal.symbolica_log import capture
+
+        with capture("generate") as captured:
+            result = self._generate(
+                processes, output, model=model, mode=mode, correlators=correlators
+            )
+        found = captured.warnings()
+        return replace(result, warnings=result.warnings + found) if found else result
+
+    def _generate(
+        self,
+        processes: ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str],
+        output: os.PathLike[str] | str,
+        *,
+        model: ModelSource | _pyamplicol.CompiledModel | None = None,
+        mode: Literal["error", "append", "replace"] = "error",
+        correlators: _pyamplicol.CorrelatorConfig | None = None,
+    ) -> GenerationResult:
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
+        processes = self._translate(processes)
         process_set = _process_set(processes)
         destination = Path(os.fspath(output)).expanduser().resolve(strict=False)
         if destination.exists() and not destination.is_dir():
@@ -411,6 +488,11 @@ class Runtime:
         precision: int | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
@@ -427,6 +509,18 @@ class Runtime:
         every call that names neither its own policy nor an arithmetic,
         precision or stability checks, and is refused together with a
         load-time arithmetic or precision (the levels own the carriers).
+        ``reduction`` (``"auto"``, ``"ninjars"`` or ``"tirust"``; v2 virtual
+        runtimes) overrides the artifact's generation default of the
+        reduction backend for every call that names none (m-lit Q17);
+        ``reduction_target`` (a finite positive number; default 1e-5) is the
+        target accuracy of every call that sets none: the relative accuracy
+        of each point's result that TIRust's method-choice acceptance follows
+        (m-lit F3); ``reduction_unchecked`` (a bool; default False) is the
+        unchecked setting of every call that sets none: True reduces without
+        the reduction backends' own acceptance and refusal checks (TIRust's
+        gates and method choice as method selection without the acceptance
+        pass, plain PV at gate 0 as its last resort; NinjaRS with zero
+        stability thresholds; m-lit lit-unchecked).
         """
 
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
@@ -442,6 +536,17 @@ class Runtime:
             if not isinstance(stability, VirtualRescuePolicy):
                 raise TypeError("stability requires a VirtualRescuePolicy")
             options["stability"] = stability
+        if reduction is not None:
+            options["reduction"] = reduction_request(reduction)
+        if reduction_target is not None:
+            options["reduction_target"] = reduction_target_value(reduction_target)
+        if reduction_unchecked is not None:
+            options["reduction_unchecked"] = reduction_unchecked_value(
+                reduction_unchecked
+            )
+        options.update(
+            _kinematics_options(kinematics_improvement, kinematics_improvement_binary64)
+        )
         loader = _get_runtime_loader()
         if options and not _accepts_keyword_arguments(loader, *options):
             raise CompatibilityError(
@@ -517,11 +622,14 @@ class Runtime:
         )
 
     @property
-    def contribution_kind(self) -> Literal["tree", "virtual"]:
+    def contribution_kind(self) -> Literal["tree", "virtual", "loop-induced"]:
         """Observable kind declared by the loaded backend.
 
         Existing injected tree backends may omit this additive capability.
-        The loop execution lane always requires virtual result semantics.
+        The loop execution lane always requires virtual result semantics:
+        "virtual" (the Born-virtual interference) or "loop-induced"
+        (|A_loop|^2 of a process without a Born, m-lit Q36), both returning
+        ``VirtualEvaluation`` results.
         """
         mode = getattr(self._backend, "execution_mode", None)
         kind = getattr(
@@ -529,13 +637,21 @@ class Runtime:
             "contribution_kind",
             "virtual" if mode == "loop_recurrence" else "tree",
         )
-        if kind not in {"tree", "virtual"} or (
-            mode is not None and (mode == "loop_recurrence") != (kind == "virtual")
+        if kind not in {"tree", *VIRTUAL_CONTRIBUTIONS} or (
+            mode is not None
+            and (mode == "loop_recurrence") != (kind in VIRTUAL_CONTRIBUTIONS)
         ):
             raise EvaluationError(
                 "runtime backend has inconsistent contribution metadata"
             )
-        return cast(Literal["tree", "virtual"], kind)
+        return cast(Literal["tree", "virtual", "loop-induced"], kind)
+
+    @property
+    def _virtual(self) -> bool:
+        """Virtual result semantics (a Born-interfered virtual or a
+        loop-induced process: ``VirtualEvaluation`` results, loop options)."""
+
+        return self.contribution_kind in VIRTUAL_CONTRIBUTIONS
 
     def inspect(self) -> Mapping[str, object]:
         """Return compact authenticated runtime metadata and live cache state.
@@ -635,9 +751,14 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -651,7 +772,17 @@ class Runtime:
         evaluator state. Explicit ``arithmetic`` selects double, DoubleFloat or
         arbitrary precision. Virtual runtimes retain their loaded arithmetic
         and R2 defaults when omitted, and accept scalar or per-point positive
-        ``mu_r2``; exact inputs are forwarded unchanged. ``stability`` (a
+        ``mu_r2``; exact inputs are forwarded unchanged, except that an
+        evaluation in a carrier above binary64 (a virtual in double-double or
+        arbitrary precision, at any digit count; a tree at a precision other
+        than 16, and the tree correlated paths in their carrier, by default
+        ``"arbitrary"`` also at 16 digits) first improves each point to exact
+        conservation and on-shell externals in its carrier
+        (``kinematics_improvement``, default MadLoop's ``"z-shift"``;
+        ``kinematics_improvement_binary64`` for binary64 evaluations, default
+        off; docs/user/configuration.md, "Kinematics improvement of the
+        input points") and records it (virtuals per lane, trees in the
+        warnings channel, ``take_warnings``). ``stability`` (a
         ``VirtualRescuePolicy``) runs the built-in stability rescue of a v2
         virtual runtime for this call, replacing a load-time default policy;
         with neither policy there are no hidden precision retries
@@ -667,7 +798,27 @@ class Runtime:
         origins' parts by component in ``VirtualEvaluation.pole_parts``), and
         ``stability_checks`` (rotations and/or the reduction-direction check),
         which add a stability estimate per point; without checks no estimate
-        is returned.
+        is returned. ``reduction`` (``"auto"``, ``"ninjars"`` or ``"tirust"``)
+        overrides the runtime's reduction backend for the call: ``"auto"``
+        takes TIRust for a loop-induced and NinjaRS for a Born-interfered
+        process, falling back to NinjaRS with the reason recorded where TIRust
+        cannot serve the call; on TIRust a point it refuses or fails is
+        evaluated again on NinjaRS (the per-point fallback, m-lit F3); an
+        explicit backend has no fallback, and one that cannot serve the call
+        is refused. ``reduction_target`` (default: the runtime's, else 1e-5)
+        is the call's target accuracy, the relative accuracy of each point's
+        result that TIRust's method-choice acceptance follows.
+        ``reduction_unchecked`` (default: the runtime's, else False) is the
+        call's unchecked setting: True drops the reduction backends' own
+        acceptance and refusal checks (TIRust: its gates and method choice
+        as method selection, no acceptance pass, plain PV at gate 0 for what
+        they refuse; NinjaRS: zero stability thresholds), so only points
+        without a finite value fail; ``"auto"`` keeps its backend choice and
+        its per-point fallback, which then acts only on those; the stability
+        checks stay their own settings. The requested and effective backends,
+        the reason, the fallback, the target and the unchecked setting are
+        in every lane diagnostic (``VirtualLaneDiagnostic.reduction``; a point
+        the fallback served records its own).
         """
 
         helicity_ids = _selector_ids(
@@ -705,7 +856,20 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
-        options.update(self._v2_options(poles, stability_checks))
+        options.update(
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
+            )
+        )
         self._require_evaluation_options(self._backend.evaluate, options)
         if point_helicity_ids is None and point_color_ids is None:
             values = self._backend.evaluate(
@@ -736,8 +900,14 @@ class Runtime:
                 precision=precision,
                 **options,
             )
-        if contribution == "virtual":
-            if not isinstance(values, VirtualEvaluation) or values.correlated:
+        if contribution != "tree":
+            # The result's kind is the runtime's ("virtual" or
+            # "loop-induced", m-lit Q36).
+            if (
+                not isinstance(values, VirtualEvaluation)
+                or values.correlated
+                or values.contribution != contribution
+            ):
                 raise EvaluationError(
                     "virtual runtime backend returned an invalid ordinary "
                     "VirtualEvaluation"
@@ -755,18 +925,24 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None,
         r2_strategy: R2Strategy | str | None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
     ) -> dict[str, object]:
         """Forward explicit options without changing old backend call signatures."""
         options: dict[str, object] = {}
-        if on_failure not in {"raise", "return"}:
-            raise ValueError("on_failure must be 'raise' or 'return'")
-        if on_failure == "return":
-            if self.contribution_kind != "virtual":
-                raise CompatibilityError(
-                    "partial-value return requires a virtual runtime"
+        if on_failure is not None:
+            # None: the virtual runtime's default ("best-effort", m-lit
+            # ux-besteffort); a tree runtime has no per-point failure policy.
+            if on_failure not in ON_FAILURE:
+                raise ValueError(
+                    "on_failure must be 'best-effort', 'return' or 'raise'"
                 )
-            options["on_failure"] = on_failure
+            if not self._virtual:
+                if on_failure != "raise":
+                    raise CompatibilityError(
+                        "partial-value return requires a virtual runtime"
+                    )
+            else:
+                options["on_failure"] = on_failure
         if arithmetic is not None:
             if arithmetic not in {"double", "double-double", "arbitrary"}:
                 raise ValueError("unknown evaluation arithmetic")
@@ -779,7 +955,7 @@ class Runtime:
             if not isinstance(stability, VirtualRescuePolicy):
                 raise TypeError("stability requires a VirtualRescuePolicy")
             options["stability"] = stability
-        if self.contribution_kind != "virtual" and (
+        if not self._virtual and (
             mu_r2 is not None or r2_strategy is not None or stability is not None
         ):
             raise CompatibilityError(
@@ -791,8 +967,12 @@ class Runtime:
         self,
         poles: PoleSelection | str | None,
         checks: VirtualStabilityChecks | None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> dict[str, object]:
-        """Pole-selection and stability-check options, forwarded only when set."""
+        """Pole-selection, stability-check, reduction-backend, target
+        accuracy and unchecked-reduction options, forwarded only when set."""
         options: dict[str, object] = {}
         if poles is not None:
             options["poles"] = pole_selection(poles)
@@ -800,9 +980,29 @@ class Runtime:
             if not isinstance(checks, VirtualStabilityChecks):
                 raise TypeError("stability_checks requires VirtualStabilityChecks")
             options["stability_checks"] = checks
-        if options and self.contribution_kind != "virtual":
-            raise CompatibilityError("poles and stability_checks are virtual options")
+        if reduction is not None:
+            options["reduction"] = reduction_request(reduction)
+        if reduction_target is not None:
+            options["reduction_target"] = reduction_target_value(reduction_target)
+        if reduction_unchecked is not None:
+            options["reduction_unchecked"] = reduction_unchecked_value(
+                reduction_unchecked
+            )
+        if options and not self._virtual:
+            raise CompatibilityError(
+                "poles, stability_checks, reduction_target, reduction_unchecked "
+                "and reduction are virtual options"
+            )
         return options
+
+    @staticmethod
+    def _kinematics_options(
+        setting: str | None, binary64: bool | None
+    ) -> dict[str, object]:
+        """The kinematics improvement options (``pyamplicol.kinematics``),
+        forwarded only when set (tree and virtual runtimes)."""
+
+        return _kinematics_options(setting, binary64)
 
     @staticmethod
     def _require_evaluation_options(
@@ -897,9 +1097,14 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -913,6 +1118,11 @@ class Runtime:
             on_failure=on_failure,
             poles=poles,
             stability_checks=stability_checks,
+            reduction=reduction,
+            reduction_target=reduction_target,
+            reduction_unchecked=reduction_unchecked,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
         )
 
     def evaluate_resolved(
@@ -926,9 +1136,15 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
+        color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
 
@@ -943,6 +1159,11 @@ class Runtime:
         backend has no precision default, as in :meth:`evaluate`.
         ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
         runtimes; the estimates and the pole parts are per resolved entry).
+        ``color_resolution`` is the colour axis of a loop-induced process:
+        ``"contracted"`` (the default, one component per helicity) or
+        ``"amplitude-basis"`` (one basis-dependent anchored part per
+        amplitude-basis element, ``amplitude-<t>``, summing to the
+        helicity's value); other runtimes refuse it.
         """
 
         precision = _validate_precision(
@@ -954,7 +1175,22 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
-        options.update(self._v2_options(poles, stability_checks))
+        options.update(
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
+            )
+        )
+        if color_resolution is not None:
+            options["color_resolution"] = color_resolution
         self._require_evaluation_options(self._backend.evaluate_resolved, options)
         result = self._backend.evaluate_resolved(
             momenta,
@@ -971,7 +1207,7 @@ class Runtime:
             precision=precision,
             **options,
         )
-        if contribution == "virtual":
+        if contribution != "tree":
             if not isinstance(result, ResolvedVirtualEvaluation) or result.correlated:
                 raise EvaluationError(
                     "virtual runtime backend returned an invalid ordinary "
@@ -995,9 +1231,15 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
+        color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
@@ -1011,6 +1253,12 @@ class Runtime:
             on_failure=on_failure,
             poles=poles,
             stability_checks=stability_checks,
+            reduction=reduction,
+            reduction_target=reduction_target,
+            reduction_unchecked=reduction_unchecked,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
+            color_resolution=color_resolution,
         )
 
     def evaluate_orders(
@@ -1020,22 +1268,53 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int | None = None,
-    ) -> TreeOrderEvaluation:
-        """Return tree values split by squared coupling order.
+        **virtual_options: Any,
+    ) -> TreeOrderEvaluation | VirtualOrderEvaluation:
+        """Return values split by squared coupling order.
 
-        Every squared coupling order of the generated amplitude, including
-        vanishing interference, is a separate ``values[point][order]`` column
-        alongside ``total``, which is exactly :meth:`evaluate`'s value for the
-        same global selectors and precision; per-point selectors are not
-        supported. Orders follow the Born order axis of virtual results
-        (:attr:`VirtualEvaluation.born_orders`). Virtual runtimes already
-        return their order axes from :meth:`evaluate`.
+        Tree runtimes: every squared coupling order of the generated
+        amplitude, including vanishing interference, is a separate
+        ``values[point][order]`` column alongside ``total``, which is exactly
+        :meth:`evaluate`'s value for the same global selectors and precision;
+        per-point selectors are not supported. Orders follow the Born order
+        axis of virtual results (:attr:`VirtualEvaluation.born_orders`).
+
+        Virtual runtimes (Born-interfered and loop-induced): ONE
+        :meth:`evaluate` call with the same arguments (``virtual_options``:
+        ``mu_r2``, ``poles``, ``stability_checks``, ``reduction``, ...), returned
+        as its :class:`VirtualOrderEvaluation` view: per squared-order sector
+        its Laurent coefficients, the Born per Born order, and the explicit
+        sums ``sum_orders()`` / ``sum_born_orders()``; nothing is evaluated
+        twice and no order is summed silently.
+
+        Both: ``kinematics_improvement`` / ``kinematics_improvement_binary64``
+        as in :meth:`evaluate` (the tree runtime's points above binary64,
+        or in binary64 under the switch, are improved first).
         """
 
         if self.contribution_kind != "tree":
+            # A virtual runtime's evaluate always returns a VirtualEvaluation
+            # (contribution_kind); the view re-checks it on construction.
+            return VirtualOrderEvaluation(
+                cast(
+                    VirtualEvaluation,
+                    self.evaluate(
+                        momenta,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                        precision=precision,
+                        **virtual_options,
+                    ),
+                )
+            )
+        kinematics_options = self._kinematics_options(
+            virtual_options.pop("kinematics_improvement", None),
+            virtual_options.pop("kinematics_improvement_binary64", None),
+        )
+        if virtual_options:
             raise CompatibilityError(
-                "virtual results already carry Born and virtual order axes; "
-                "use evaluate()"
+                "tree evaluate_orders takes no virtual options: "
+                + ", ".join(sorted(virtual_options))
             )
         operation = getattr(self._backend, "evaluate_orders", None)
         if not callable(operation):
@@ -1060,6 +1339,7 @@ class Runtime:
                 name="color-flow",
             ),
             precision=precision,
+            **kinematics_options,
         )
         if not isinstance(result, TreeOrderEvaluation):
             raise EvaluationError(
@@ -1073,6 +1353,8 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> TreeGradedEvaluation:
         """Return tree values split by power of N_c: ``values[point][degree]``.
 
@@ -1083,7 +1365,8 @@ class Runtime:
         term is evaluated at N_c = 3 and summed over the selected helicities;
         the degrees of a point sum to :meth:`evaluate` up to rounding. The
         same split per helicity is the contracted colour axis of
-        :meth:`evaluate_resolved`. Precision follows :meth:`evaluate`.
+        :meth:`evaluate_resolved`. Precision and the kinematics improvement
+        follow :meth:`evaluate`.
         """
 
         if self.contribution_kind != "tree":
@@ -1097,7 +1380,11 @@ class Runtime:
                 "color.graded and full colour"
             )
         resolved = self.evaluate_resolved(
-            momenta, helicities=helicities, precision=precision
+            momenta,
+            helicities=helicities,
+            precision=precision,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
         )
         if not isinstance(resolved, ResolvedEvaluation):
             raise EvaluationError("tree runtime returned an invalid resolved result")
@@ -1160,7 +1447,7 @@ class Runtime:
         self._backend.set_model_parameters(dict(mapping))
 
     def _correlator_catalogue(self) -> CorrelatorCatalogue:
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             raise CompatibilityError(
                 "public virtual correlation dispatch is not integrated yet"
             )
@@ -1180,7 +1467,7 @@ class Runtime:
         Reads the declared catalogue without loading an amplitude executor.
         Each returned record contains its runtime ID and ordered bra/ket steps.
         """
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             records = self._virtual_correlation_operation(
                 "available_color_correlations"
             )()
@@ -1227,7 +1514,7 @@ class Runtime:
         represents a complex component without a binary64 conversion.
         This affects the correlated evaluation methods, not :meth:`evaluate`.
         """
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             self._virtual_correlation_operation("set_spin_correlation_vectors")(vectors)
             return
         self._correlator_evaluator().set_spin_correlation_vectors(vectors)
@@ -1243,9 +1530,14 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1268,8 +1560,21 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
-        options.update(self._v2_options(poles, stability_checks))
-        if self.contribution_kind == "virtual":
+        options.update(
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
+            )
+        )
+        if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated")
             self._require_evaluation_options(operation, options)
             value = operation(
@@ -1290,15 +1595,41 @@ class Runtime:
                     "virtual correlation backend returned an invalid result"
                 )
             return value
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
         return self._correlator_evaluator().evaluate(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
         )
+
+    def _tree_improved(
+        self,
+        momenta: Momenta,
+        precision: int,
+        arithmetic: str,
+        options: Mapping[str, object],
+    ) -> Momenta:
+        """A tree correlated call's points under the kinematics improvement
+        (m-lit lit-psimprove; its carrier ``arithmetic``, default
+        ``"arbitrary"`` at any precision: DECISIONS 2026-11-10 02:29 (G3),
+        the carrier kind)."""
+
+        improve = getattr(self._backend, "_improved", None)
+        if improve is None:
+            return momenta
+        improved: Momenta = improve(
+            momenta,
+            precision,
+            options.get("kinematics_improvement"),
+            options.get("kinematics_improvement_binary64"),
+            arithmetic,
+        )
+        return improved
 
     def evaluate_correlated_graded(
         self,
@@ -1308,22 +1639,30 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> _pyamplicol.GradedCorrelatedEvaluation:
         """:meth:`evaluate_correlated` split by power of N_c (tree artifacts
         graded by N_c: ``color.accuracy = "strict-lc"`` or ``"strict-nlc"``,
         or full colour with ``color.graded``). ``values[point][degree]`` is
-        the N_c^degree term at N_c = 3; the degrees sum to ``total``."""
+        the N_c^degree term at N_c = 3; the degrees sum to ``total``. The
+        kinematics improvement follows :meth:`evaluate_correlated`."""
 
         if self.contribution_kind != "tree":
             raise CompatibilityError("graded correlations are implemented for trees")
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
+        options = self._kinematics_options(
+            kinematics_improvement, kinematics_improvement_binary64
+        )
         return self._correlator_evaluator().evaluate_graded(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
         )
 
     def evaluate_correlated_many(
@@ -1337,9 +1676,14 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualRescuePolicy | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
+        on_failure: Literal["best-effort", "return", "raise"] | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
+        reduction: ReductionBackend | str | None = None,
+        reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1364,8 +1708,21 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
-        options.update(self._v2_options(poles, stability_checks))
-        if self.contribution_kind == "virtual":
+        options.update(
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
+            )
+        )
+        if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated_many")
             self._require_evaluation_options(operation, options)
             values = operation(
@@ -1393,14 +1750,16 @@ class Runtime:
                     "virtual correlation backend returned invalid grouped results"
                 )
             return cast(dict[str, VirtualEvaluation], values)
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
         return self._correlator_evaluator().evaluate_many(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             requests,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
         )
 
     def clear(self) -> None:
@@ -1497,6 +1856,22 @@ class Runtime:
     def set_model_parameter(self, name: str, value: complex | float | int) -> None:
         self.set_model_parameters({name: value})
 
+    def take_warnings(self) -> tuple[str, ...]:
+        """Consume a tree runtime's pending warnings: the native runtime's
+        not yet emitted ones and the kinematics improvement's record of the
+        most recent improved call (m-lit lit-psimprove: a summary line, e.g.
+        ``"kinematics-improvement: arbitrary at precision 32 (z-shift):
+        z-shift 4"``, and every typed warning, which is also issued as a
+        Python warning), the lines the C ABI's
+        ``rusticol_runtime_take_warnings_json`` returns. Nothing while the
+        warnings are muted; ``()`` for a virtual runtime (its records are in
+        its results)."""
+
+        operation = getattr(self._backend, "take_warnings", None)
+        if self._virtual or not callable(operation):
+            return ()
+        return tuple(operation())
+
     def mute_warnings(self) -> None:
         self._backend.mute_warnings()
 
@@ -1543,9 +1918,22 @@ class BenchmarkRunner:
         target: Runtime | os.PathLike[str] | str,
         *,
         points: Momenta | None = None,
-    ) -> BenchmarkResult:
-        """Profile an artifact path or an already loaded :class:`Runtime`."""
+    ) -> BenchmarkResult | VirtualProfileResult:
+        """Profile an artifact path or an already loaded :class:`Runtime`.
 
+        A loop (v2 virtual) artifact or runtime returns its
+        ``benchmarking.VirtualProfileResult``: the per-point time and the
+        per-stage split of the timed calls (trees, dressing, scatter,
+        reduction, rest) from the native executor's own stage report."""
+
+        from pyamplicol.benchmarking import is_virtual_target, profile_virtual
+
+        if is_virtual_target(target):
+            return profile_virtual(
+                target,
+                self._config if self._config is not None else None,
+                points=points,
+            )
         backend_target: RuntimeBackend | os.PathLike[str] | str
         if isinstance(target, Runtime):
             backend_target = target._backend
@@ -1579,13 +1967,334 @@ def generate(
 load = Runtime.load
 
 
+def check(
+    target: os.PathLike[str] | str | RunConfig | ConfigResolution,
+    *,
+    points: int | None = None,
+    seed: int | None = None,
+    precision: Literal["auto", "double", "double-double"] | None = None,
+    model: ModelSource | os.PathLike[str] | str | None = None,
+    source: str | None = None,
+    progress: ProgressSink | None = None,
+    sqrt_s: float | None = None,
+    arbitrary_digits: int | None = None,
+) -> CheckReport:
+    """:func:`_check`, the known, benign dependency log events it triggers
+    returned in the report's ``warnings`` instead of being printed
+    (``_internal.symbolica_log``, m-lit ux-besteffort)."""
+
+    from dataclasses import replace
+
+    from pyamplicol._internal.symbolica_log import capture
+
+    with capture("check") as captured:
+        report = _check(
+            target,
+            points=points,
+            seed=seed,
+            precision=precision,
+            model=model,
+            source=source,
+            progress=progress,
+            sqrt_s=sqrt_s,
+            arbitrary_digits=arbitrary_digits,
+        )
+    found = captured.warnings()
+    return replace(report, warnings=report.warnings + found) if found else report
+
+
+def _check(
+    target: os.PathLike[str] | str | RunConfig | ConfigResolution,
+    *,
+    points: int | None = None,
+    seed: int | None = None,
+    precision: Literal["auto", "double", "double-double"] | None = None,
+    model: ModelSource | os.PathLike[str] | str | None = None,
+    source: str | None = None,
+    progress: ProgressSink | None = None,
+    sqrt_s: float | None = None,
+    arbitrary_digits: int | None = None,
+) -> CheckReport:
+    """The pole and Ward checks of a one-loop request (``pyamplicol check``):
+    ``target`` is a run card (its generation request), a resolved run
+    configuration, or a generated artifact directory: every process its
+    manifest stores (id and expression), regenerated with the configuration
+    its ``config/effective.toml`` records, from the model the artifact
+    stores (the prepared model's manifest record, content hash included, must
+    match, else ``ArtifactError``). Every process is regenerated in memory
+    through the generation service (nothing is written) on the full tree
+    kernels, widths zeroed outside the complex-mass scheme, and checked at
+    ``points`` seeded phase-space points (``seed``; defaults: the
+    configuration's ``check`` section, the seed falling back to
+    ``generation.validation.seed``): Born-interfered poles against Catani's
+    operator and Ward identities, loop-induced finiteness and Ward probes,
+    Goldstone-equivalence probes where they apply (``loops.v2.checks``).
+    ``precision`` "auto" runs binary64 first, double-double only where
+    binary64 fails, is refused or is out of scope, and arbitrary precision
+    only for a row double-double leaves undecided (its residual above the
+    criterion while within ten times its own estimate), at the digit count
+    derived from the shortfall or ``arbitrary_digits`` (None takes
+    ``check.arbitrary_digits``; it needs "auto"); a row still undecided
+    there fails the check ("undecided", exit code 1). ``model`` replaces the
+    configuration's model source (a ``ModelSource``, or a source as
+    ``model.source`` takes it, with the configuration's restriction; None
+    takes the configuration's ``check.model``, if set): e.g. an artifact
+    generated from a UFO directory, whose ``effective.toml`` keeps only the
+    directory's name. ``sqrt_s`` sets the centre-of-mass energy of a
+    scattering's points (None takes ``check.sqrt_s``; both None: the
+    generation's validation convention, sqrt(s) = max(1000, final threshold
+    + 100) for massless beams).
+    ``source`` is the run card a configuration ``target`` was read from
+    (the report names it). Returns a ``CheckReport`` whose ``exit_code`` is 0 iff every
+    process passed."""
+
+    import time
+
+    from pyamplicol.artifacts.manifest import load_manifest
+    from pyamplicol.config import CheckPrecision
+    from pyamplicol.config.resolver import resolve_config
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.checks import CheckReport
+
+    started = time.perf_counter()
+    kind = "card" if source else "config"
+    label = source or "configuration"
+    stored = None
+    resolution: RunConfig | ConfigResolution
+    if isinstance(target, (RunConfig, ConfigResolution)):
+        resolution = target
+    else:
+        path = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        label = str(path)
+        if path.is_dir():
+            kind = "artifact"
+            stored = load_manifest(path)
+            card = path / "config" / "effective.toml"
+            if not card.is_file():
+                raise ArtifactError(
+                    f"{path} records no generation configuration "
+                    "(config/effective.toml): check regenerates the artifact's "
+                    "processes with it"
+                )
+            resolution = resolve_config(card, action=Action.CHECK)
+        else:
+            kind = "card"
+            resolution = resolve_config(path, action=Action.CHECK)
+    run = (
+        resolution.effective if isinstance(resolution, ConfigResolution) else resolution
+    )
+    if stored is not None:
+        # The artifact's own processes, not its configuration's entries (an
+        # API-generated artifact stores what its call generated).
+        requests = tuple(
+            ProcessRequest.parse(str(process["expression"]), name=str(process["id"]))
+            for process in stored.processes
+        )
+    else:
+        if not run.process.entries:
+            raise GenerationError("check requires the process entries of a request")
+        requests = tuple(
+            ProcessRequest.parse(entry.expression, name=entry.name)
+            for entry in run.process.entries
+        )
+    count = run.check.points if points is None else int(points)
+    if count < 1:
+        raise ValueError("check needs at least one point")
+    first = (
+        seed
+        if seed is not None
+        else run.check.seed
+        if run.check.seed is not None
+        else run.generation.validation.seed
+    )
+    carrier = CheckPrecision(str(precision or run.check.precision))
+    explicit = (
+        None
+        if carrier is CheckPrecision.AUTO
+        else Precision.double()
+        if carrier is CheckPrecision.DOUBLE
+        else Precision.double_double()
+    )
+    digits = (
+        run.check.arbitrary_digits if arbitrary_digits is None else arbitrary_digits
+    )
+    if digits is not None:
+        if isinstance(digits, bool) or not isinstance(digits, int) or digits < 1:
+            raise ValueError("check.arbitrary_digits must be a positive integer")
+        if explicit is not None:
+            raise ValueError(
+                "check.arbitrary_digits sets the arbitrary-precision rung of the "
+                f"auto ladder; precision {str(carrier)!r} runs its carrier alone"
+            )
+    energy = run.check.sqrt_s if sqrt_s is None else float(sqrt_s)
+    if model is None:
+        model = run.check.model
+    if model is None:
+        try:
+            model_source = ModelSource.from_config(run.model)
+        except ModelError as error:
+            if stored is None:
+                raise
+            raise ArtifactError(
+                f"{label}: the model source its config/effective.toml records "
+                f"({run.model.source!r}) cannot be resolved ({error}); give the "
+                "stored model's source (model= / --model)"
+            ) from error
+    elif isinstance(model, ModelSource):
+        model_source = model
+    else:
+        from dataclasses import replace
+
+        model_source = ModelSource.from_config(
+            replace(run.model, source=os.fspath(model))
+        )
+    from pyamplicol.loops.v2.induced import probe_carriers
+
+    generator = Generator(config=resolution, progress=progress)
+    generator._resolve_generation_resources()
+    backend = generator._implementation()
+    operation = getattr(backend, "check", None)
+    if operation is None:
+        raise GenerationError("generator backend does not support check")
+    from pyamplicol.loops.v2.checks import CheckInterrupted, reporting
+
+    interrupted = False
+    with _CheckProgress(progress, requests, count, str(carrier)) as tracker:
+        try:
+            with reporting(tracker.status):
+                checked = operation(
+                    _process_set(requests),
+                    model=model_source,
+                    points=count,
+                    seed=first,
+                    precision=explicit,
+                    stored=stored,
+                    sqrt_s=energy,
+                    arbitrary_digits=digits,
+                )
+        except CheckInterrupted as error:
+            checked = list(error.partial)
+            interrupted = True
+            tracker.interrupted = True
+    return CheckReport(
+        label,
+        kind,
+        count,
+        first,
+        str(carrier),
+        tuple(c.arithmetic for c in probe_carriers(explicit))
+        + (("arbitrary",) if explicit is None else ()),
+        tuple(checked),
+        "in memory through the generation service (nothing written): the "
+        "request on the full tree kernels, widths zeroed outside the "
+        "complex-mass scheme",
+        round(time.perf_counter() - started, 3),
+        interrupted=interrupted,
+    )
+
+
+class _CheckProgress:
+    """``check``'s progress: an introductory notice (what is checked, which
+    checks, how many points), then one task per test the check starts
+    (``loops.v2.checks.status``), each finished when the next starts (in
+    log mode one line per started and per finished test)."""
+
+    def __init__(
+        self, sink: ProgressSink | None, requests: Any, points: int, carrier: str
+    ) -> None:
+        self.sink = sink
+        self.requests = requests
+        self.points = points
+        self.carrier = carrier
+        self.current: tuple[str, float] | None = None
+        self.count = 0
+        self.interrupted = False
+
+    def __enter__(self) -> _CheckProgress:
+        import time
+
+        from pyamplicol.reporting import get_logger
+        from pyamplicol.reporting.logging import notice
+        from pyamplicol.reporting.progress import ProgressStart
+
+        names = ", ".join(str(request.expression) for request in self.requests)
+        notice(
+            get_logger("cli"),
+            "check",
+            "%s: %d point(s), poles (Catani or finiteness), Ward, Goldstone; "
+            "carriers %s",
+            names,
+            self.points,
+            self.carrier,
+        )
+        self.begin = time.perf_counter()
+        if self.sink is not None:
+            self.sink.emit(
+                ProgressStart(
+                    "check",
+                    f"Checking {len(self.requests)} process(es) at "
+                    f"{self.points} point(s)",
+                    details={"step": "regenerating the request in memory"},
+                )
+            )
+        return self
+
+    def status(self, text: str) -> None:
+        import time
+
+        from pyamplicol.reporting.progress import ProgressStart
+
+        self._finish(True)
+        if self.sink is None:
+            return
+        self.count += 1
+        task = f"check-test-{self.count}"
+        self.current = (task, time.perf_counter())
+        self.sink.emit(ProgressStart(task, text, parent_task_id="check"))
+
+    def _finish(self, success: bool) -> None:
+        import time
+
+        from pyamplicol.reporting.progress import ProgressEnd
+
+        if self.current is None or self.sink is None:
+            return
+        task, begin = self.current
+        self.current = None
+        self.sink.emit(
+            ProgressEnd(
+                task,
+                success=success,
+                message=None if success else "interrupted",
+                elapsed_seconds=time.perf_counter() - begin,
+            )
+        )
+
+    def __exit__(self, kind: Any, value: Any, traceback: Any) -> None:
+        import time
+
+        from pyamplicol.reporting.progress import ProgressEnd
+
+        failed = kind is not None or self.interrupted
+        self._finish(not failed)
+        if self.sink is not None:
+            self.sink.emit(
+                ProgressEnd(
+                    "check",
+                    success=not failed,
+                    message="interrupted" if self.interrupted else None,
+                    elapsed_seconds=time.perf_counter() - self.begin,
+                )
+            )
+
+
 def benchmark(
     target: Runtime | os.PathLike[str] | str,
     *,
     points: Momenta | None = None,
     config: BenchmarkConfig | RunConfig | None = None,
     progress: ProgressSink | None = None,
-) -> BenchmarkResult:
+) -> BenchmarkResult | VirtualProfileResult:
     """Profile a generated artifact using a one-shot convenience function."""
 
     return BenchmarkRunner(config=config, progress=progress).run(target, points=points)
@@ -1596,6 +2305,7 @@ __all__ = [
     "Generator",
     "Runtime",
     "benchmark",
+    "check",
     "generate",
     "install_backend_factories",
     "load",

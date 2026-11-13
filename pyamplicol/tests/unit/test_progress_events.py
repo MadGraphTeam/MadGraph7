@@ -103,8 +103,16 @@ def test_log_progress_renders_native_self_rss_samples() -> None:
     assert "self_rss=0.25/0.38 GiB current/peak" in stream.getvalue()
 
 
-def test_auto_progress_uses_logging_for_non_tty_streams() -> None:
-    assert isinstance(progress_sink("auto", stream=io.StringIO()), LoggingProgressSink)
+def test_auto_progress_uses_plain_lines_for_non_tty_streams() -> None:
+    from pyamplicol.reporting.progress import _LineProgressSink
+
+    stream = io.StringIO()
+    sink = progress_sink("auto", stream=stream)
+    # Plain lines on the stream, never in the logger format.
+    assert isinstance(sink, _LineProgressSink)
+    sink.emit(ProgressStart("build", "Building", 3))
+    sink.emit(ProgressEnd("build", elapsed_seconds=1.0))
+    assert stream.getvalue().splitlines() == ["Building (0/3)", "Building done in 1s"]
     assert isinstance(progress_sink("tty", stream=io.StringIO()), TtyProgressSink)
 
 
@@ -164,7 +172,6 @@ def test_logging_progress_colors_typed_benchmark_statistics_without_changing_tex
 def test_log_progress_factory_honors_resolved_color_setting() -> None:
     sink = progress_sink("log", stream=io.StringIO(), color=True)
 
-    assert isinstance(sink, LoggingProgressSink)
     assert sink.color is True
 
 

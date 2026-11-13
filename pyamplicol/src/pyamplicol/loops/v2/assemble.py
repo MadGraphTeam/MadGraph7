@@ -88,7 +88,7 @@ from pyamplicol.color.connections import (
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.config import PoleSelection
 
-from . import ew_policy, generator_input
+from . import ew_policy, generator_input, induced
 from . import reference_executor as rx
 from .blocks import (
     TreeBlocks,
@@ -112,6 +112,7 @@ from .colour import (
     _adjoint_rename,
     _colour_key,
     _relabelled_colour,
+    amplitude_contraction,
     build_seed_table,
     contract_colour,
     extend_seed_table,
@@ -185,7 +186,10 @@ from .poles import (
     strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
+from .reduction import current_target, executor_options
 from .refusals import (
+    LoopRequestUnsupported,
+    LoopRequestUnsupportedValue,
     require_colour_preserving_fermion_lines,
     require_declared_colour_fields,
     require_declared_colour_rules,
@@ -203,8 +207,10 @@ from .skeletons import Skeleton
 from .stability import (
     ROTATION,
     Budget,
+    CrossRuns,
     StabilityChecks,
     StabilityEstimate,
+    cross_check,
     differences,
 )
 
@@ -1053,6 +1059,161 @@ def _field_level_families(
     return generate_families(table, catalogue, selection)
 
 
+def _loop_catalogue(compiled, prepared, data, request) -> ModelLoopCatalogue:
+    """The loop vertex catalogue of a request (``LoopSlice.generate``): the
+    prepared structure's vertices and perturbative species, without the
+    vetoed particles and without the vertices whose couplings vanish
+    identically at the model's restriction (fail-closed-2;
+    ``ct_sites.vanishing_loop_vertices``)."""
+
+    return ModelLoopCatalogue(
+        data,
+        species_orders=prepared.structure.perturbative_species_orders,
+        veto=request.particle_veto,
+        vanishing=vanishing_loop_vertices(
+            compiled,
+            prepared.model.kernels,
+            (rule["name"] for rule in data["vertex_rules"]),
+        ),
+    )
+
+
+class ReachableLoopOrders(NamedTuple):
+    """The exact coupling orders a loop-induced request's one-loop
+    recursion reaches (``reachable_loop_orders``), both reachable (Q4 (a)).
+
+    ``amplitude``: the orders of the closed routings of an admitted or
+    certified-scaleless family. ``colour_zero``: the other orders, each
+    reached only by routings the selection convention drops for a single
+    coloured attachment (``families.selection_rejection``,
+    ``COLOUR_ZERO_REJECTION``): such a loop's colour factor is the trace of
+    one generator (an invariant tensor with one index of a nontrivial
+    irreducible representation), which vanishes exactly in any model, so
+    the amplitude at these orders is an exact colour zero (m-lit PLAN §1.2,
+    RULED Q13: the one exact-zero mechanism; ``h > g a``, ``z > g a``)."""
+
+    amplitude: frozenset[Orders]
+    colour_zero: frozenset[Orders]
+
+    @property
+    def orders(self) -> frozenset[Orders]:
+        return self.amplitude | self.colour_zero
+
+
+# The selection-convention reason of an exact colour zero (Tr T^a = 0).
+COLOUR_ZERO_REJECTION = "single-coloured-attachment"
+
+
+def reachable_loop_orders(
+    compiled: Any,
+    request: SliceRequest,
+    bounds: Mapping[str, int],
+    *,
+    model: RequestModel | None = None,
+    native: Any = None,
+) -> ReachableLoopOrders:
+    """The exact coupling orders of every one-loop amplitude of ``request``'s
+    process that the field-level loop family recursion (design §3.2 item 1,
+    ``_field_level_families``) reaches for its corrections (MadLoop's joint
+    selection, ``LoopEligibility``) within ``bounds`` (m-lit LIT-REQ, Q4
+    (a)), split into the orders with a loop amplitude and the exact colour
+    zeros (``ReachableLoopOrders``). The other rejections of the selection
+    convention (external wave-function corrections, VEV tadpoles) are no
+    loop amplitude. Nothing numerical decides it.
+
+    An order ``bounds`` does not name is bounded by the data: cutting the
+    loop line leaves a tree of n + 2 legs, so its power is at most that of
+    such a tree (``_tree_order_bounds``); the targets are every order of
+    that box (its size is the product of bound + 1 over the orders with a
+    nonzero bound: small for the SM's two; a many-order model would want
+    the recursion's selection in box form, ``LoopOrderSelection`` with its
+    cap alone, a change of the recursion and its native twin). The
+    recursion logs a rejected family without its orders, and
+    an admitted routing of a family drops the family's log, so the colour
+    zeros are found by recursions on the targets without an amplitude
+    order, halved while a group logs a single coloured attachment (one
+    extra run when it logs none, about 2 k log2 T for k colour-zero orders
+    among T targets). A family whose first logged routing at an order has
+    another reason hides a colour-zero routing of that family there
+    (conservative: the order is then not reached). ``model`` is the
+    request's ``prepare_request_model`` (prepared here when None);
+    ``native`` the loop core for the native recursion
+    (``generator_input.NativeGeneration``), None for the Python recursion
+    (its oracle). The request's own loop orders are not read."""
+
+    from pyamplicol.processes.model import build_model_process_ir
+
+    request = resolve_request(compiled, request)
+    if model is None:
+        model = prepare_request_model(compiled, request)
+    data = json.loads(model.prepared.structure.native.to_json())
+    process = build_model_process_ir(
+        request.process, compiled.ir, color_accuracy="full"
+    )
+    names = sorted(
+        {str(name) for entry in data["couplings"] for name, _power in entry["orders"]}
+        | {str(name) for name in bounds}
+    )
+    derived = _tree_order_bounds(data, len(process.legs) + 2, names)
+    box = {
+        name: min(int(bounds.get(name, derived.get(name, 0))), derived.get(name, 0))
+        for name in names
+    }
+    targets = frozenset(
+        add_orders(tuple(zip(names, powers, strict=True)))
+        for powers in product(*(range(box[name] + 1) for name in names))
+        if any(powers)
+    )
+    if not targets or not request.corrections:
+        return ReachableLoopOrders(frozenset(), frozenset())
+    corrections = frozenset(request.corrections)
+    catalogue = _loop_catalogue(compiled, model.prepared, data, request)
+
+    def recursion(orders: Iterable[Orders]) -> FamilySet:
+        return _field_level_families(
+            data,
+            process,
+            catalogue,
+            LoopOrderSelection(corrections, frozenset(orders)),
+            request,
+            native,
+        )
+
+    def reached(families: FamilySet) -> set[Orders]:
+        return {
+            add_orders(*(position.orders for position in families.routing(closure)[1]))
+            for group in (families.families, families.scaleless_families)
+            for family in group.values()
+            for closure in family.closures
+        }
+
+    found = recursion(targets)
+    amplitude = reached(found)
+    colour_zero: set[Orders] = set()
+    rest = tuple(sorted(targets - amplitude))
+    groups: list[tuple[tuple[Orders, ...], FamilySet | None]] = [
+        (rest, None if amplitude else found)
+    ]
+    while groups:
+        group, families = groups.pop()
+        if not group:
+            continue
+        if families is None:
+            families = recursion(group)
+        # A group holds no amplitude order, so it admits no routing.
+        amplitude |= reached(families)
+        if not any(
+            entry.reason == COLOUR_ZERO_REJECTION for entry in families.rejected
+        ):
+            continue
+        if len(group) == 1:
+            colour_zero.update(group)
+            continue
+        half = len(group) // 2
+        groups.extend(((group[half:], None), (group[:half], None)))
+    return ReachableLoopOrders(frozenset(amplitude), frozenset(colour_zero - amplitude))
+
+
 def _born_block_requests(
     table: ModelBlockTable, data, born_orders: Mapping[str, int]
 ) -> frozenset[BlockCurrent]:
@@ -1131,6 +1292,41 @@ _FRAME_MODEL = STRUCTURED
 
 def _frame_policy(rows: Sequence[int]) -> Any:
     return cheapest(generator_input.frame_rows(rows), _FRAME_MODEL)
+
+
+def _layout_rank(plan: LoopSchedules) -> int:
+    """The largest rank a node of ``plan``'s tries forms: the executor
+    bounds a node's rank by its inputs' rank plus the largest degree of its
+    edges (the slice's ``MonomialLayout``)."""
+
+    return max(
+        (
+            node.rank_in + max(segment.q_degree for segment, _ in node.edges)
+            for schedule in plan.schedules.values()
+            for node in schedule.trie.nodes
+        ),
+        # A loop-induced exact colour zero has no family.
+        default=0,
+    )
+
+
+def _check_readings(
+    readings: Iterable[Skeleton], weights: LeafWeights, reading: TreeReading
+) -> None:
+    """Refuse readings whose fermion lines (``LeafWeights.fermion_sign``)
+    or vertices (``TreeReading.conjugate``, the rules of every content seen)
+    the conventions do not cover."""
+
+    for skeleton in readings:
+        weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
+    # The vertices of every reading: those of the distinct contents.
+    rules = {
+        term.vertex.rule
+        for content in weights.contents_seen()
+        for term in content.terms
+    }
+    for rule in sorted(rules):
+        reading.conjugate(rule)  # refuses vertices it cannot read
 
 
 class SectorSeeds:
@@ -1468,6 +1664,9 @@ class PointResult:
     bra against the Born amplitude read on the loop side (where a gluon's
     polarisation is c p_j it vanishes with the tree Ward identity); ``born``
     and ``totals[0]`` stay the physical Born. ``None`` otherwise.
+
+    ``finiteness`` is a loop-induced point's amplitude-level finiteness
+    ratio (``induced.point_finiteness``), ``None`` when not formed.
     """
 
     born: Mapping[Orders, Any]
@@ -1480,6 +1679,11 @@ class PointResult:
     poles: PoleSelection = PoleSelection.ALL
     pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
     loop_born: Mapping[Orders, Any] | None = None
+    # A loop-induced point's amplitude-level finiteness ratio (the largest
+    # ``induced.finiteness`` over loop orders and rows), formed when its
+    # poles and its term scale are (the native executor forms the term scale
+    # with the stability checks); None otherwise.
+    finiteness: float | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -1488,12 +1692,27 @@ class PointResult:
 # --------------------------------------------------------------------- slice
 
 
+# The contributions a slice request serves (m-lit PLAN §1.2, §2.a.10): the
+# Born x virtual interference 2 Re(conj(A0) A1) ("virtual"), or the
+# loop-squared matrix element |A_loop|^2 of a process without a Born
+# amplitude within its coupling-order limits ("loop-induced").
+Contribution = Literal["virtual", "loop-induced"]
+CONTRIBUTIONS: tuple[str, ...] = ("virtual", "loop-induced")
+
+
 @dataclass(frozen=True)
 class SliceRequest:
     """A loop request of the slice: a process, the bounds of its Born coupling
     orders and the exact coupling orders of its loop amplitude, or a sequence
     of several (mixed squared-order sectors, e.g. QCD corrections to QCD and
-    electroweak Born currents)."""
+    electroweak Born currents).
+
+    ``contribution`` = "loop-induced" (m-lit LIT-REQ): the process has no
+    Born amplitude within ``born_orders`` (then the coupling-order limits
+    within which none exists) and the request serves |A_loop|^2 at the exact
+    loop orders ``loop_orders`` (``loop_service.loop_induced_orders``),
+    squared orders l + l' (loop x loop sectors), full colour only (Q8 (a)),
+    generated in amplitude mode (m-lit LIT-AMP, ``induced``)."""
 
     process: str
     born_orders: Mapping[str, int]
@@ -1565,8 +1784,40 @@ class SliceRequest:
     # take neither a rescaling nor a conversion. Recorded only when set.
     alpha0_conversion: str = ew_policy.ALPHA0_CONVERSION
     alpha0_inverse: str | None = None
+    # The contribution served (``Contribution``): the request record names
+    # it only for a loop-induced request (``artifact.OPTIONAL_REQUEST_DEFAULTS``),
+    # so Born-interfered records keep their bytes.
+    contribution: Contribution = "virtual"
+    # The generation default of the reduction backend (``[loop] reduction``,
+    # m-lit Q17; ``reduction``): "auto", "ninjars" or "tirust", recorded only
+    # when not "auto" and read by the runtime as the request of a call that
+    # names none. The generated slice does not depend on it (artifacts are
+    # backend-independent).
+    reduction: str = "auto"
+    # The squared-coupling-order sectors served (``[process]
+    # squared_coupling_orders``, MG5_aMC's ``QCD^2<=4``; canonical texts by
+    # the model's declared names, ``processes.mg5_syntax``): empty (the
+    # default, not recorded) serves every sector; otherwise the slice keeps
+    # the sectors that pass every constraint, and the request's loop orders
+    # are those some kept sector pairs (``loop_service``).
+    squared_orders: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.contribution not in CONTRIBUTIONS:
+            raise ValueError(
+                f"unknown contribution {self.contribution!r}; expected one of "
+                f"{list(CONTRIBUTIONS)}"
+            )
+        from pyamplicol.config.models import reduction_request
+
+        reduction_request(self.reduction)
+        if self.contribution == "loop-induced" and self.accuracy != "full":
+            # Full colour only for loop-induced processes (m-lit Q8 (a)).
+            raise LoopRequestUnsupportedValue(
+                "loop-induced-colour-accuracy",
+                f"{self.process!r} is loop-induced and requests "
+                f"accuracy={self.accuracy!r}",
+            )
         if self.selection is not None and self.accuracy != "lc":
             raise ValueError(
                 "helicity and colour-flow selection is a leading-colour option "
@@ -1607,6 +1858,37 @@ class SliceRequest:
             for name, power in orders.items():
                 bounds[name] = max(bounds.get(name, 0), power)
         return bounds
+
+
+def selected_sectors(
+    sectors: Mapping[Orders, set[tuple[Orders, Orders]]],
+    constraints: Sequence[str],
+    process: str,
+) -> dict[Orders, set[tuple[Orders, Orders]]]:
+    """The squared-order ``sectors`` (order -> its (Born or loop, loop)
+    pairs) that pass every squared-order constraint (``constraints``, texts
+    such as ``QCD^2<=4``); refused (``squared-order-selection``) when none
+    does."""
+
+    from pyamplicol.processes.mg5_syntax import (
+        parse_squared_order_constraint,
+        squared_orders_admit,
+    )
+
+    parsed = [parse_squared_order_constraint(text) for text in constraints]
+    kept = {
+        order: pairs
+        for order, pairs in sectors.items()
+        if squared_orders_admit(parsed, order)
+    }
+    if not kept:
+        raise LoopRequestUnsupported(
+            "squared-order-selection",
+            f"{process!r}: no squared-order sector of "
+            f"{[dict(order) for order in sorted(sectors)]} passes "
+            f"{list(constraints)}",
+        )
+    return kept
 
 
 def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
@@ -1721,7 +2003,9 @@ class RequestModel(NamedTuple):
     alpha_s_parameter: str | None
 
 
-def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
+def prepare_request_model(
+    compiled: Any, request: SliceRequest, *, memo: Any = None
+) -> RequestModel:
     """The model preparation of ``LoopSlice.generate``, before any tree,
     family or loop generation: the source-colour fixed parameters (LC and
     NLC need a colour declaration), the scale and alpha_s parameters,
@@ -1730,7 +2014,13 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     request (``ew_policy.require_loop_gauge``) and the listed refusal of a
     veto of loop species on unlabelled counterterms
     (``refusals.require_labelled_counterterms_for_veto``). The public dry run
-    (``Generator.plan``) runs it alone to report its refusals."""
+    (``Generator.plan``) runs it alone to report its refusals.
+
+    ``memo`` (a generation's ``preparation_cache.PreparationMemo``, None:
+    prepared here) shares the prepared request model between requests of
+    the same recipe (every input of ``prepare_loop_request_model`` and of
+    the colour continuation) and the lowered declarations between all;
+    the parameters and refusals of each request are decided for it."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
 
@@ -1771,22 +2061,43 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         except ValueError:
             if request.alpha_s_parameter is not None:
                 raise
-    prepared = prepare_loop_request_model(
-        compiled,
-        born_order_bounds=dict(request.born_orders),
-        loop_order_bounds=request.loop_order_bounds,
-        fixed_parameters=fixed,
-        compatibility=request.compatibility,
-    )
-    continuation = None
-    if declaration is not None:
+
+    def prepare() -> tuple[Any, Any]:
+        prepared = prepare_loop_request_model(
+            compiled,
+            born_order_bounds=dict(request.born_orders),
+            loop_order_bounds=request.loop_order_bounds,
+            fixed_parameters=fixed,
+            compatibility=request.compatibility,
+            memo=memo,
+        )
+        if declaration is None:
+            return prepared, None
         from pyamplicol.loops.source_color_declaration import (
             prepare_declared_source_color,
         )
 
-        prepared, continuation = prepare_declared_source_color(
+        return prepare_declared_source_color(
             prepared, declaration, scheme=declaration.scheme
         )
+
+    prepared, continuation = (
+        prepare()
+        if memo is None
+        else memo.request_model(
+            compiled,
+            {
+                "born_order_bounds": sorted(request.born_orders.items()),
+                "loop_order_bounds": sorted(request.loop_order_bounds.items()),
+                "fixed_parameters": sorted(fixed.items()),
+                "compatibility": request.compatibility,
+                "colour_declaration": (
+                    None if declaration is None else declaration.to_dict()
+                ),
+            },
+            prepare,
+        )
+    )
     # The gauge scope (WP3.2 EWI-4b, DESIGN §6.8), refused here so that the
     # dry run reports it: loops in which massive vectors can run (an
     # electroweak request, whose gauge ``LoopSlice.generate`` switches, or a
@@ -1863,6 +2174,33 @@ class LoopSlice:
     # point's (alpha(0) / alpha)^n scales every output
     # (``_PointEvaluation.average``), the conversion is a field insertion.
     external_photons: ew_policy.ExternalPhotons | None = None
+    # Loop-induced requests (``request.contribution``, M-LIT LIT-AMP): the
+    # amplitude basis T of the loop amplitude (``colour.AmplitudeBasis``:
+    # coefficient cells c_{c,t} and the full-colour metric), None for a
+    # Born-interfered slice; and the requested loop orders whose amplitude
+    # is an exact colour zero (every loop there has a single coloured
+    # attachment, ``COLOUR_ZERO_REJECTION``, and no counterterm ket; RULED
+    # Q13's one exact mechanism, ``induced``).
+    amplitude: Any = None
+    colour_zero_orders: frozenset[Orders] = frozenset()
+    # Loop-induced: the helicity rows the exact helicity-zero filter drops
+    # (integrand zeros, ``helicity_filter.generation_filter``; M-LIT LIT-R2),
+    # kept as columns without a row by ``plan_export.export_plan``.
+    zero_rows: frozenset = frozenset()
+    # The width policy of a loop-induced request (m-lit Q7,
+    # ``ew_policy.tree_width_policy``: fixed tree widths with widthless loop
+    # propagators, or the complex-mass scheme everywhere), recorded in the
+    # generation record's conventions; None for a Born-interfered slice.
+    width_policy: Mapping[str, Any] | None = None
+    # Loop-induced: the frame choice for route R2's dressed rows
+    # (``_frame_dressed_rows``, ``plan_export.dressed_frames``: seconds,
+    # modelled dressing work before and after, families re-framed).
+    dressed_frames: Mapping[str, Any] | None = None
+    # Loop-induced: the F1 fold of route R2's chains (M-LIT lit-fold,
+    # ``fold.fold_slice``: certified proportional chains dressed once, exact
+    # zero groups dropped), read by ``plan_export.export_plan``; None keeps
+    # every chain (byte-identical plans).
+    fold: Any = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -2002,6 +2340,8 @@ class LoopSlice:
         *,
         prune: bool = True,
         native_inputs: bool = False,
+        aligned_frames: bool = False,
+        memo: Any = None,
     ) -> LoopSlice:
         """Build every generation object of ``request`` (no diagram is listed).
 
@@ -2013,7 +2353,13 @@ class LoopSlice:
         process, ``artifact.generate_process``): a listed feature their export
         does not cover (``native_trees.NATIVE_EXPORT_REFUSALS``) is then refused
         (``NativeExportUnsupported``) as soon as it is known, before the
-        trees are built.
+        trees are built. ``aligned_frames`` (amplitude mode only; a
+        measurement option, off in production) reads every family of a
+        loop-induced slice in an aligned frame (``plan_export.dressed_frames``
+        with ``aligned``, recorded in the slice's ``dressed_frames``).
+        ``memo`` (a generation's ``preparation_cache.PreparationMemo``) shares
+        the model preparation (``prepare_request_model``) with the
+        generation's other requests.
 
         Listed loop-admission refusals (``refusals.LOOP_ADMISSION_REFUSALS``,
         typed ``LoopRequestUnsupported``) are raised before the structures they
@@ -2029,7 +2375,13 @@ class LoopSlice:
         # generation (``generator_input.full_collections_deferred``).
         with generator_input.full_collections_deferred():
             return cls._generate(
-                compiled, request, native, prune=prune, native_inputs=native_inputs
+                compiled,
+                request,
+                native,
+                prune=prune,
+                native_inputs=native_inputs,
+                aligned_frames=aligned_frames,
+                memo=memo,
             )
 
     @classmethod
@@ -2041,6 +2393,8 @@ class LoopSlice:
         *,
         prune: bool,
         native_inputs: bool,
+        aligned_frames: bool = False,
+        memo: Any = None,
     ) -> LoopSlice:
         """``generate`` with full collections deferred."""
 
@@ -2054,7 +2408,7 @@ class LoopSlice:
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
         request = resolve_request(compiled, request)
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
-            prepare_request_model(compiled, request)
+            prepare_request_model(compiled, request, memo=memo)
         )
         declaration = request.colour_declaration
         structure = prepared.structure
@@ -2117,18 +2471,14 @@ class LoopSlice:
         # (fail-closed-2; decided from the coupling values,
         # ``ct_sites.restricted_to_zero``, the counterterm root closure's
         # rule too).
-        loop_catalogue = ModelLoopCatalogue(
-            data,
-            species_orders=structure.perturbative_species_orders,
-            veto=request.particle_veto,
-            vanishing=vanishing_loop_vertices(
-                compiled,
-                prepared.model.kernels,
-                (rule["name"] for rule in data["vertex_rules"]),
-            ),
-        )
+        loop_catalogue = _loop_catalogue(compiled, prepared, data, request)
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
+        # The width policy is decided once per request at generation
+        # (plan-time; ``ew_policy.tree_width_policy``): a loop-induced
+        # request records it, the tree program sets it.
+        loop_induced = request.contribution == "loop-induced"
+        width_policy: list[Any] = [None]
 
         tree_model = CompiledUFOModel(model)
         # The Born DAG's compile arguments (``build_tree_blocks``; its summary
@@ -2155,12 +2505,15 @@ class LoopSlice:
                 # LC and NLC project formal N_c: every block of one grade.
                 u1_grades=request.accuracy != "full",
             )
-            if electroweak:
+            if loop_induced or electroweak:
                 # Widths in the Born or the loop-side trees, before their
                 # kernels (a width takes the full ones, 38 s at g g > t t~
-                # on the G_mu model) and the counterterm lowering
-                # (``ew_policy.require_zero_widths``).
-                ew_policy.require_zero_widths(
+                # on the G_mu model) and the counterterm lowering: refused
+                # in an electroweak Born-interfered request
+                # (``ew_policy.require_zero_widths``), recorded for a
+                # loop-induced one (m-lit Q7: fixed tree widths, or the
+                # complex-mass scheme everywhere; ``tree_width_policy``).
+                width_policy[0] = ew_policy.tree_width_policy(
                     model, request, (blocks.born_dag, blocks.blocks_dag), fixed
                 )
             # Trees that propagate a coloured particle with a width (or a
@@ -2374,9 +2727,15 @@ class LoopSlice:
         _check_declared_loop_species(
             root_sites, _eligible_loop_species(loop_catalogue, selection, data)
         )
+        loop_species = _family_loop_species(families, data)
+        if not loop_species and request.contribution == "loop-induced":
+            # No admitted family (an exact colour zero at every requested
+            # loop order, checked below): the counterterm program's kernels
+            # still need the correction's loop species.
+            loop_species = _eligible_loop_species(loop_catalogue, selection, data)
         catalogue = build_loop_kernel_catalogue(
             compiled,
-            loop_species=_family_loop_species(families, data),
+            loop_species=loop_species,
             counterterm_entries=list({id(e): e for e in entries}.values()),
         )
         closure = SiteClosure(blocks, data, catalogue, conjugates)
@@ -2392,16 +2751,7 @@ class LoopSlice:
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         reading = TreeReading(data)
-        for skeleton in readings:
-            weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
-        # The vertices of every reading: those of the distinct contents.
-        rules = {
-            term.vertex.rule
-            for content in weights.contents_seen()
-            for term in content.terms
-        }
-        for rule in sorted(rules):
-            reading.conjugate(rule)  # refuses vertices it cannot read
+        _check_readings(readings, weights, reading)
         if program is not None:
             # The program's root terms and the Born close the same vertices
             # on blocks of the same words: one colour cache serves both.
@@ -2433,9 +2783,24 @@ class LoopSlice:
         )
         born_orders = blocks.born_orders
         sectors: dict[Orders, set[tuple[Orders, Orders]]] = defaultdict(set)
+        if request.contribution == "loop-induced":
+            if born_orders:
+                raise LoopRequestUnsupported(
+                    "born-in-loop-induced-mode",
+                    f"{request.process!r} has a Born amplitude at "
+                    f"{sorted(born_orders)} within its coupling-order limits",
+                )
+            # Loop x loop sectors (m-lit PLAN §1.3).
+            sectors.update(induced.loop_sectors(selection.loop_orders))
         for a in born_orders:
             for b in selection.loop_orders:
                 sectors[add_orders(a, b)].add((a, b))
+        if request.squared_orders:
+            # The squared-order selection (``SliceRequest.squared_orders``):
+            # the sectors outside it are not served.
+            sectors = defaultdict(
+                set, selected_sectors(sectors, request.squared_orders, request.process)
+            )
         incoming = [leg.pdg for leg in process.legs if leg.is_initial]
         outgoing = [leg.pdg for leg in process.legs if leg.is_final]
         from .fields import field_definitions
@@ -2467,16 +2832,7 @@ class LoopSlice:
                 (sector, frozenset(pairs)) for sector, pairs in sorted(sectors.items())
             ),
             normalisation=Normalisation.of(structure.native, incoming, outgoing),
-            layout=MonomialLayout.native(
-                native,
-                # The executor bounds a node's rank by its inputs' rank plus
-                # the largest degree of its edges.
-                max(
-                    node.rank_in + max(segment.q_degree for segment, _ in node.edges)
-                    for schedule in plan.schedules.values()
-                    for node in schedule.trie.nodes
-                ),
-            ),
+            layout=MonomialLayout.native(native, _layout_rank(plan)),
             native=native,
             reading=reading,
             weights=weights,
@@ -2487,13 +2843,24 @@ class LoopSlice:
             counterterm_program=program,
             cancelled_cells=cancelled,
             external_photons=photons,
+            width_policy=width_policy[0],
         )
         if born_terms is not inclusive_born:
             slice_._refuse_inexact_flows(inclusive_born)
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
+        if request.contribution == "loop-induced":
+            slice_._frame_dressed_rows(aligned_frames)
+            induced.bind(slice_, generation=generation)
         slice_._plan_contraction()
-        slice_.scaleless = slice_._scaleless_companion()
+        # The certified-scaleless companion serves the "uv" and "ir" pole
+        # selections only, which a loop-induced result does not admit (its UV
+        # and IR parts are not additive in |A|^2, m-lit PLAN §2.a.7).
+        slice_.scaleless = (
+            None
+            if request.contribution == "loop-induced"
+            else slice_._scaleless_companion()
+        )
         return slice_
 
     def _scaleless_companion(self, prune: bool | None = None) -> LoopSlice | None:
@@ -2606,12 +2973,57 @@ class LoopSlice:
         )
         return extend_seed_table(empty, {}, self.colour, readings, compress=True)
 
+    def _frame_dressed_rows(self, aligned: bool = False) -> None:
+        """Amplitude mode (loop-induced): every family in the frame chosen for
+        route R2's dressed rows (``plan_export.dressed_frames``; M-LIT
+        DECISIONS 2026-11-06 ~09:00 (3)), instead of the generation's frame
+        priced on seeded rows; the seed table is then that of the new
+        readings (``colour.build_seed_table``), so the amplitude basis T
+        (``induced.bind``) holds the tensors the plan reads. Route R1, the
+        oracle, reads the same frames. The choice is recorded
+        (``dressed_frames``)."""
+
+        from .plan_export import dressed_frames
+
+        frames, record = dressed_frames(self, aligned)
+        self.dressed_frames = record
+        if not record["reframed"]:
+            return
+        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            replaced = self.generation.build_of_plan(self.plan)
+            plan = self.generation.schedules(self.colour, frames=frames)
+            if replaced is not None:
+                # The generation-frame build: no stage reads it any more.
+                self.generation.release(replaced)
+        else:
+
+            def chosen(family, candidates):
+                return next(
+                    trie for frame, trie in candidates if frame == frames[family.key]
+                )
+
+            plan = build_schedules(
+                self.families, self.loop_catalogue, self.colour, policy=chosen
+            )
+        readings = rx.reading_skeletons(plan)
+        _check_readings(readings, self.weights, self.reading)
+        self.plan = plan
+        self.table, self.class_of = build_seed_table(
+            self.colour, readings, self.basis, compress=self.request.compress_colour
+        )
+        self.layout = MonomialLayout.native(self.native, _layout_rank(plan))
+
     def _plan_contraction(self) -> None:
         """Certify the seed FFT's orbits per ``colour_contraction``."""
 
         policy = self.request.colour_contraction
         if policy not in ("auto", "direct", "fft"):
             raise ValueError(f"unknown colour contraction {policy!r}")
+        if not self.blocks.born_orders:
+            # Amplitude mode (loop-induced: no Born at any order): the seeds
+            # are the coefficient cells, contracted directly (M-LIT LIT-COL).
+            amplitude_contraction(policy, self.request.process)
+            return
         if policy == "direct":
             return
         from .refusals import LoopRequestUnsupported
@@ -2803,14 +3215,40 @@ class LoopSlice:
             budgets[ROTATION.format(index)] = reference.rotation_budget(rotated)
         if stability.reduction:
             budgets[stability.reduction] = reference.retest_budget
+        not_run = {}
+        if stability.cross_backend:
+            reference.cross_run = self._cross_run(
+                exact_point, scale, dict(parameters or {}), precision, poles
+            )
+            not_run = cross_check(reference, budgets)
         estimate = StabilityEstimate.from_checks(
             reference.result.components["virtual"],
             budgets,
-            scale=reference.absolute,
+            scale=reference.stability_scale(),
             roundoff=precision.unit_roundoff,
             families=reference.family_deviations,
+            not_run=not_run,
         )
         return replace(reference.result, stability=estimate)
+
+    def _cross_run(self, point, scale, parameters, precision, poles):
+        """The point on the other reduction backend (the cross-backend
+        check, ``stability.CrossRuns.of``): its evaluation, or None with the
+        reason the other backend failed or refused it."""
+
+        from pyamplicol.api.errors import ReductionUnavailable
+
+        from .reduction import NAMES, cross, current, running
+
+        backend = cross(current())
+        try:
+            with running(backend):
+                runs = [
+                    self._evaluate(point, scale, parameters, precision, poles, None)
+                ]
+        except (ReductionUnavailable, ValueError, ArithmeticError) as error:
+            return CrossRuns(NAMES[backend], [None], {0: [str(error)]}).of(0)
+        return CrossRuns(NAMES[backend], runs, {}).of(0)
 
     def _evaluate(self, point, scale, parameters, precision, poles, retest):
         with _Numbers(precision).scope():
@@ -3478,6 +3916,8 @@ class _PointEvaluation:
 
         self.slice = slice_
         self.numbers = numbers
+        # The reduction backend of the point's reductions (``reducer``).
+        self.reduction_backend: str | None = None
         # ``mode`` selects the pole parts (``poles``); ``poles`` says whether
         # any pole column is computed (every mode but finite-only).
         self.mode = pole_mode(poles)
@@ -3572,8 +4012,19 @@ class _PointEvaluation:
                 self.counterterms_uv = twin.counterterms
         return self.counterterms_uv
 
+    def stability_scale(self) -> dict:
+        """The scale S of the stability estimate's floor per sector
+        (``StabilityEstimate.from_checks``): ``absolute``, or a loop-induced
+        point's term floor, formed on first use (``induced.scale``)."""
+        if self.slice.amplitude is not None:
+            return induced.stability_scale(self)
+        return self.absolute
+
     def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""
+        if self.slice.amplitude is not None:
+            # Loop-induced: R1 amplitude seeds, |A|^2 (``induced``).
+            return induced.finish(self, retest)
         self._reduce(self.dress().numerators, retest)
         self._assemble()
         return self
@@ -3998,6 +4449,46 @@ class _PointEvaluation:
 
     # -- reduction -----------------------------------------------------------------
 
+    def reducer(self):
+        """A reducer of the call's reduction backend (``reduction.running``):
+        NinjaRS's ``V2Reducer`` at the evaluation's arithmetic, or TIRust's
+        ``V2TirReducer`` (in the carrier of the lanes it receives: binary64
+        or arbitrary precision) at the call's target accuracy
+        (``reduction.current_target``: its calibrated method-choice
+        acceptance, ``tir_acceptance``; the default target when the call
+        names none). Every reduction of the point takes it (its
+        lanes here, the loop-induced term scale's unit numerators,
+        ``induced._moments``):
+        the backend is read once, at the point's first reduction, so a term
+        scale formed later uses the backend of the point's lanes."""
+        numbers = self.numbers
+        if self.reduction_backend is None:
+            self.reduction_backend = executor_options().get("reduction", "ninjars")
+        backend = self.reduction_backend
+        # The unchecked setting of the call (m-lit lit-unchecked; passed only
+        # when set, so a checked call constructs what it did before).
+        unchecked = {"unchecked": True} if executor_options().get("unchecked") else {}
+        if backend == "tirust":
+            # The call's target (m-lit F3 (a); lit-unchecked, DECISIONS
+            # 2026-11-09 02:02 (c)), passed only when the call names one:
+            # a call at the default target constructs what it did before.
+            target = current_target()
+            acceptance = (
+                None if target is None else self.slice.native.tir_acceptance(target)
+            )
+            tir = (
+                unchecked
+                if acceptance is None
+                else {**unchecked, "acceptance": acceptance}
+            )
+            return self.slice.native.V2TirReducer(**tir)
+        return self.slice.native.V2Reducer(
+            "double" if numbers.double else "arbitrary",
+            None if numbers.double else numbers.precision.digits,
+            "fast" if numbers.double else "generic",
+            **unchecked,
+        )
+
     def _reduce(
         self, numerators, retest: str | None, columns=None, scaleless=None
     ) -> None:
@@ -4010,7 +4501,7 @@ class _PointEvaluation:
         sector columns, or for observable ``columns`` ``scaleless`` =
         (companion slice or None, its seeds of an evaluation;
         ``observables.ColumnPlan``)."""
-        slice_, numbers = self.slice, self.numbers
+        slice_ = self.slice
         split = splits(self.mode)
         lanes, groups = self._groups(numerators, 0, columns)
         twin_lanes: list = []
@@ -4030,12 +4521,7 @@ class _PointEvaluation:
                 dressed.numerators, len(lanes), columns
             )
             groups = groups + twin_groups
-        arithmetic = "double" if numbers.double else "arbitrary"
-        digits = None if numbers.double else numbers.precision.digits
-        reducer = slice_.native.V2Reducer(
-            arithmetic, digits, "fast" if numbers.double else "generic"
-        )
-        direct, check = reducer.reduce(
+        direct, check = self.reducer().reduce(
             groups,
             poles=reducer_poles(self.mode),
             check=retest is not None,
@@ -4207,6 +4693,9 @@ class _PointEvaluation:
         }
 
     def _assemble(self) -> None:
+        if self.slice.amplitude is not None:
+            induced.assemble(self)
+            return
         slice_, numbers = self.slice, self.numbers
         width = 3 if self.poles else 1
         zero = numbers.real(0)
@@ -4341,6 +4830,8 @@ class _PointEvaluation:
         default 28 digits, which put a spurious 1e-28 relative floor under
         every double-double and arbitrary-precision rotation budget."""
 
+        if self.slice.amplitude is not None:
+            return induced.rotation_budget(self, rotated)
         zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
         with self.numbers.scope():
             lanes = {
@@ -4646,7 +5137,19 @@ class _PointEvaluation:
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
         zero = numbers.real(0)
-        gamma_photon = self._photon_gamma(abelian, mass_of) if untagged else None
+        gamma_photon = (
+            self._photon_gamma(
+                abelian,
+                _model_masses(
+                    compiled,
+                    self.parameters,
+                    numbers.precision.working_digits,
+                    pole_masses=True,
+                ),
+            )
+            if untagged
+            else None
+        )
         out = {}
         for sector, _pairs in slice_.sectors:
             prediction = qed_catani_poles(
@@ -4674,7 +5177,12 @@ class _PointEvaluation:
         (``poles.photon_gamma``): -2/3 sum_f N_c^f Q_f^2 over the fermion
         species perturbative in the electromagnetic correction, not vetoed,
         that are massless at this point (a compile-time zero, a value bound
-        to 0, or a runtime value 0), each species once."""
+        to 0, or a runtime value 0), each species once. ``mass_of`` reads
+        pole masses (``_model_masses(..., pole_masses=True)``): the species
+        are internal here, never external states or emitters, so a
+        complex-mass scheme's pole mass (an unstable top with WT != 0) is a
+        massive species, not the ``cms-external-width`` refusal of an
+        unstable external state."""
 
         slice_ = self.slice
         compiled = slice_.compiled
@@ -4702,7 +5210,7 @@ class _PointEvaluation:
             if not (
                 name == ZERO
                 or ew_policy.is_zero(name, parameters, slice_.request.fixed_parameters)
-                or mass_of(name) == 0
+                or _massless_value(mass_of(name))
             ):
                 continue
             light[pdg] = (charge, abs(int(record.color)))
@@ -4770,6 +5278,7 @@ class _NativePoint(_PointEvaluation):
 
         self.slice = slice_
         self.numbers = numbers
+        self.reduction_backend: str | None = None
         # The pole mode is set per batch (``plan_export.NativeExecutor``).
         self.mode = pole_mode(PoleSelection.ALL)
         self.poles = True
@@ -4916,7 +5425,9 @@ class _NativePoint(_PointEvaluation):
         return out or None
 
     def _assemble(self) -> None:
-        if self.native_counterterms:
+        if self.native_counterterms or self.slice.amplitude is not None:
+            # (Loop-induced: the executor's amplitudes and counterterm kets,
+            # ``induced.read_native``.)
             super()._assemble()
             return
         if self.split_lanes is not None:
@@ -4973,8 +5484,12 @@ class _NativePoint(_PointEvaluation):
             self.retest_budget = self._lane_budget(self.family_deviations)
 
     def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
-        if self.native_counterterms:
+        if self.native_counterterms or self.slice.amplitude is not None:
             # Every component: the local ones are rotation invariant too.
+            # (Loop-induced: the row-phase-normalised amplitudes and
+            # counterterm kets, ``induced.rotation_budget``, as in
+            # ``_assemble``; a point without counterterms has no lanes in
+            # ``families``, whose difference would be an empty budget.)
             return super().rotation_budget(rotated)
         zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
         with self.numbers.scope():
@@ -5410,14 +5925,23 @@ def _model_masses(
             )
         value = found[name]
         if isinstance(value, rx.Complex) and not pole_masses:
-            raise ValueError(
+            from pyamplicol.loops.model_cms import ComplexMassSchemeUnsupported
+
+            raise ComplexMassSchemeUnsupported(
+                "cms-external-width",
                 f"the mass {name!r} is a complex pole mass ({value!r}): an "
-                "external state or a Catani emitter of that mass is unstable "
-                "(cms-external-width)"
+                "external state or a Catani emitter of that mass is unstable",
             )
         return value
 
     return mass
+
+
+def _massless_value(value: Any) -> bool:
+    """Whether a ``_model_masses`` value is zero: a complex pole mass has a
+    positive real part (``_model_masses``), so it is never massless."""
+
+    return not isinstance(value, rx.Complex) and value == 0
 
 
 def _squared(value: Any) -> Any:

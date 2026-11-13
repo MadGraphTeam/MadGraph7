@@ -73,6 +73,9 @@ pub struct CorrelatedEvaluation {
     pub history_ids: Vec<String>,
     pub spin_legs: Vec<usize>,
     pub diagnostics_json: String,
+    /// Per requested point the relative uncertainty of a `BestEffort`
+    /// point's value (NaN otherwise; m-lit ux-besteffort).
+    pub uncertainties: Vec<f64>,
     /// Double-double and arbitrary-precision evaluations: the exact values
     /// (the Python API's `Decimal` results) as `[real, imaginary]` decimal
     /// literals in the layout of `born` and `virtual_values` (absent poles
@@ -149,7 +152,10 @@ impl Runtime {
         strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
-        self.evaluate_correlated_inputs(inputs, strategy)
+        let base = self.evaluate_correlated_inputs(&inputs, strategy)?;
+        self.with_policy(base, &inputs, None, |runtime, subset, _| {
+            runtime.evaluate_correlated_inputs(&subset, strategy)
+        })
     }
     /// Additive binary64 source ingress; the old method always uses ordinary states.
     pub fn evaluate_correlated_with_sources(
@@ -185,7 +191,10 @@ impl Runtime {
     ) -> RusticolResult<CorrelatedEvaluation> {
         let mut inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         inputs.spin_sources = sources;
-        self.evaluate_correlated_inputs(inputs, strategy)
+        let base = self.evaluate_correlated_inputs(&inputs, strategy)?;
+        self.with_policy(base, &inputs, None, |runtime, subset, _| {
+            runtime.evaluate_correlated_inputs(&subset, strategy)
+        })
     }
     /// Every stored colour history (`born` first, the declared histories in
     /// their order) in one batch, with the spin sources of `inputs` (one
@@ -194,7 +203,7 @@ impl Runtime {
     /// spin vectors in each, in the runtime's arithmetic and pole selection.
     fn evaluate_correlated_inputs(
         &mut self,
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         if let Some(strategy) = strategy {
@@ -208,6 +217,13 @@ impl Runtime {
             ..self.correlated_shape()
         };
         let (poles, arithmetic) = (self.poles, self.arithmetic);
+        let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
+        let stability = Monitoring {
+            checks: None,
+            requested: self.stability_checks().enabled(),
+        }
+        .not_run_resolved();
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
         let points = inputs.point_ids.len();
         let spin_legs: Vec<usize> = inputs.spin_sources.keys().copied().collect();
@@ -215,27 +231,75 @@ impl Runtime {
         let Engine::V4(native) = &mut self.engine;
         let evaluation = match arithmetic {
             Arithmetic::Double => {
-                let found =
-                    native.evaluate_columns("correlated", &momenta, &scales, &spins, poles.v2())?;
-                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found)?
+                let (found, fallbacks) = with_fallback(
+                    native,
+                    &reduction,
+                    momenta.len(),
+                    arithmetic,
+                    |native, indices| {
+                        native.evaluate_columns(
+                            "correlated",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &pick_rows(&spins, indices),
+                            poles.v2(),
+                        )
+                    },
+                )?;
+                CorrelatedEvaluation::from_columns(
+                    &inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
+                )?
             }
             _ => {
-                let found = native.evaluate_columns_extended(
-                    "correlated",
-                    &momenta,
-                    &scales,
-                    &spins,
-                    poles.v2(),
-                    arithmetic.v2(),
+                let (found, fallbacks) = with_fallback(
+                    native,
+                    &reduction,
+                    momenta.len(),
+                    arithmetic,
+                    // The fallback's points run with the guard's check of
+                    // the call's outputs (m-lit lit-fallback-guard).
+                    |native, indices| match indices {
+                        None => unguarded(native.evaluate_columns_extended(
+                            "correlated",
+                            &momenta,
+                            &scales,
+                            &spins,
+                            poles.v2(),
+                            arithmetic.v2(),
+                        )),
+                        Some(_) => native.evaluate_columns_guarded(
+                            "correlated",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &pick_rows(&spins, indices),
+                            poles.v2(),
+                            arithmetic.v2(),
+                        ),
+                    },
                 )?;
-                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found)?
+                let found = found.into_iter().map(|(point, _)| point).collect();
+                CorrelatedEvaluation::from_columns(
+                    &inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
+                )?
             }
         };
-        Ok(CorrelatedEvaluation {
+        let mut evaluation = CorrelatedEvaluation {
             history_ids: self.history_ids.clone(),
             spin_legs,
             ..evaluation
-        })
+        };
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
+    }
+}
+
+/// The spin rows of the points at `indices` ([`pick`]; none without spin
+/// sources).
+fn pick_rows<'a, T: Clone>(rows: &'a [T], indices: Option<&[usize]>) -> std::borrow::Cow<'a, [T]> {
+    if rows.is_empty() {
+        std::borrow::Cow::Borrowed(rows)
+    } else {
+        pick(rows, indices)
     }
 }
 
@@ -317,11 +381,14 @@ impl Complexes {
 
 impl CorrelatedEvaluation {
     fn from_columns<N: Output>(
-        inputs: LoopInputs,
+        inputs: &LoopInputs,
         shape: CorrelatedShape,
         poles: Poles,
         arithmetic: Arithmetic,
         points: Vec<ColumnPoint<N>>,
+        reduction: &Choice,
+        fallbacks: &Fallbacks,
+        stability: serde_json::Value,
     ) -> RusticolResult<Self> {
         let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
         let mut born = Complexes::default();
@@ -349,6 +416,9 @@ impl CorrelatedEvaluation {
             &failures,
             poles,
             arithmetic,
+            reduction,
+            fallbacks,
+            stability,
         )?;
         let decimal = (arithmetic != Arithmetic::Double).then(|| DecimalComplexValues {
             arithmetic: arithmetic.name(),
@@ -362,7 +432,7 @@ impl CorrelatedEvaluation {
             virtual_values: virtual_values.literals.clone(),
         });
         Ok(Self {
-            requested_point_ids: inputs.point_ids,
+            requested_point_ids: inputs.point_ids.clone(),
             successful_point_ids,
             statuses,
             born: born.values,
@@ -371,6 +441,7 @@ impl CorrelatedEvaluation {
             history_ids: vec![],
             spin_legs: vec![],
             diagnostics_json,
+            uncertainties: Vec::new(),
             decimal,
         })
     }

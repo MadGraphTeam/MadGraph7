@@ -22,7 +22,11 @@
 
 from __future__ import annotations
 
+import ast
+import io
 import shutil
+import tokenize
+import warnings
 from pathlib import Path
 
 import pytest
@@ -122,6 +126,28 @@ def test_loop_sm_has_no_goldstone_flag_defect(loop_sm_ufo):
 # ------------------------------------------------------------------ assets
 
 
+def _same_up_to_literal_spelling(shipped: bytes, reference: bytes) -> bool:
+    """``shipped`` is ``reference`` with only string literals respelled to
+    the same value (the ufo-texname-escape-v1 repair: '\\lambda' ->
+    r'\\lambda'): equal token streams, every differing token a string literal
+    of an equal value."""
+
+    def tokens(data: bytes) -> list[tokenize.TokenInfo]:
+        return list(tokenize.tokenize(io.BytesIO(data).readline))
+
+    def value(literal: str) -> object:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return ast.literal_eval(literal)
+
+    left, right = tokens(shipped), tokens(reference)
+    return len(left) == len(right) and all(
+        a.string == b.string
+        or (a.type == b.type == tokenize.STRING and value(a.string) == value(b.string))
+        for a, b in zip(left, right, strict=True)
+    )
+
+
 def _ufo_files(directory: Path) -> list[str]:
     """The files of a UFO directory a model consists of: its modules and its
     restriction cards (no caches, backups, AppleDouble or hidden files)."""
@@ -159,8 +185,6 @@ def test_shipped_qcd_qed_model_is_the_reference_and_selected_by_name(
     names = _ufo_files(shipped)
     assert names == _ufo_files(reference)
     assert names == sorted(path.name for path in shipped.iterdir() if path.is_file())
-    for file in names:
-        assert (shipped / file).read_bytes() == (reference / file).read_bytes(), file
     provenance = tomllib.loads(
         (shipped.parents[1] / "PROVENANCE.toml").read_text(encoding="utf-8")
     )
@@ -170,12 +194,20 @@ def test_shipped_qcd_qed_model_is_the_reference_and_selected_by_name(
         if f"/ufo/{name}/" in entry["canonical_package_path"]
     }
     assert sorted(records) == names
+    for file in names:
+        ours, theirs = (shipped / file).read_bytes(), (reference / file).read_bytes()
+        if records[file]["transformation_id"] == "ufo-texname-escape-v1":
+            # Only literals respelled, to the same values (ux-clean).
+            assert ours != theirs, file
+            assert _same_up_to_literal_spelling(ours, theirs), file
+        else:
+            assert ours == theirs, file
     # The G_mu modules take the Python-3 conversion, alone or after the
     # UFOmodeldb issue-1 model patch (whose charge appends are folded).
     converted = sorted(
         file
         for file, entry in records.items()
-        if entry["transformation_id"]
+        if entry.get("base_transformation_id", entry["transformation_id"])
         in (
             "ufo-python3-conversion-v1",
             "ufomodeldb-issue-1-patch-python3-v1",

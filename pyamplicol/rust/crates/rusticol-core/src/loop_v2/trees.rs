@@ -1126,7 +1126,7 @@ pub struct TreeProgram {
     weights: Vec<([Rational; 2], i32)>,
     /// The rows the plan's columns keep and the block rows its kept links
     /// read, when they restrict them (`rows::Restriction`): applied by
-    /// `set_columns` (observable columns).
+    /// `set_columns` (observable columns), or at load in amplitude mode.
     restriction: Option<rows::Restriction>,
     /// The Born rows the root closures evaluate (none: every row; set by
     /// the row restriction, `rows`).
@@ -1223,6 +1223,12 @@ pub struct TreeInputs<T> {
     /// interferences, then the counterterm and field ones, these divided by
     /// the average); none without columns.
     pub columns: Option<Vec<Vec<Vec<Complex<T>>>>>,
+    /// Amplitude-mode plans (loop-induced, M-LIT LIT-AMP) with counterterms:
+    /// per point the counterterm kets themselves, `rows × components` values
+    /// in the counterterm program's ket layout ((ket tensor, vector, N_c
+    /// power) per component, `native_trees._counterterm_program`), the loop
+    /// amplitude's counterterm part before any squaring; none otherwise.
+    pub kets: Option<Vec<Vec<Complex<T>>>>,
     /// Wall seconds per stage: the interaction programs (`"trees:
     /// programs"`, with the states), the Born and counterterm root closures
     /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
@@ -1242,6 +1248,7 @@ impl<T> TreeInputs<T> {
         self.block_rows.extend(next.block_rows);
         self.born.extend(next.born);
         self.amplitudes.extend(next.amplitudes);
+        extend(&mut self.kets, next.kets);
         extend(&mut self.born_squared, next.born_squared);
         extend(&mut self.loop_born, next.loop_born);
         extend(&mut self.counterterms, next.counterterms);
@@ -2384,7 +2391,13 @@ impl TreeProgram {
                 )
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        require(born.orders > 0, "Born orders")?;
+        // A loop-induced (amplitude-mode) program has no Born: no orders, no
+        // components and no amplitudes (its rows' unit Born components are
+        // the plan's, `TreeProgram::inputs`).
+        require(
+            born.orders > 0 || (plan.amplitude && born.components == 0),
+            "Born orders",
+        )?;
         let amplitudes = born
             .amplitudes
             .iter()
@@ -2397,7 +2410,11 @@ impl TreeProgram {
                     .collect::<RusticolResult<Vec<_>>>()
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        require(amplitudes.len() % born.orders == 0, "amplitude rows")?;
+        require(
+            amplitudes.len() % born.orders.max(1) == 0
+                && (born.orders > 0 || amplitudes.is_empty()),
+            "amplitude rows",
+        )?;
         for pairs in &born.squared {
             require(
                 pairs
@@ -2406,7 +2423,7 @@ impl TreeProgram {
                 "squared Born orders",
             )?;
         }
-        let basis = amplitudes.len() / born.orders;
+        let basis = amplitudes.len() / born.orders.max(1);
         let metric = born
             .metric
             .map(|entries| {
@@ -2441,7 +2458,7 @@ impl TreeProgram {
                 )
             })
             .transpose()?;
-        Ok(Self {
+        let mut program = Self {
             legs: file.legs,
             initial: file.initial,
             state_size: file.state_size,
@@ -2477,7 +2494,16 @@ impl TreeProgram {
                 }
                 table
             },
-        })
+        };
+        // Amplitude mode (loop-induced) has no observable columns: a plan
+        // keeping some Born rows restricts the program at load (the
+        // dropped rows' counterterm kets stay zero; lit-dress (H)).
+        if plan.amplitude
+            && let Some(restriction) = program.restriction.take()
+        {
+            program.restrict_rows(restriction);
+        }
+        Ok(program)
     }
 
     /// The external parameters a batch supplies per point, in order.
@@ -2593,7 +2619,13 @@ impl TreeProgram {
             .parameters
             .evaluate_batch(&inputs, &mut outputs, points)
             .map_err(|e| invalid(format!("parameter program: {e}")))?;
-        let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
+        // (A program without outputs, e.g. an exact colour zero's tree
+        // program with no coupling, has one empty row per point.)
+        let rows: Vec<&[Complex<T>]> = if program.outputs == 0 {
+            vec![&[]; points]
+        } else {
+            outputs.chunks_exact(program.outputs).collect()
+        };
         // Values a batch shares (Born couplings, kernel constants, masses):
         // equal at every point unless they depend on the scale, which a
         // batch of mixed scales of such a model was refused for above (or,
@@ -3240,9 +3272,12 @@ impl TreeProgram {
                 "loop-side sources run the inclusive outputs, not observable columns",
             )?;
         }
-        // A call's row liveness drops rows only its points' sources zero.
+        // A call's row liveness drops rows only its points' sources zero;
+        // amplitude mode's Born components are the plan's units, so a
+        // dropped row there only loses counterterm kets the call does not
+        // read (`TreeProgram::live_rows`).
         require(
-            rows.is_none() || (sources.is_some() && loop_sources.is_none()),
+            rows.is_none() || (loop_sources.is_none() && (sources.is_some() || plan.amplitude)),
             "a row liveness needs the selection's sources",
         )?;
         if let Some(sources) = sources {
@@ -3443,6 +3478,8 @@ impl TreeProgram {
                 .as_ref()
                 .map(|_| Vec::with_capacity(points)),
             columns: self.columns.as_ref().map(|_| Vec::with_capacity(points)),
+            kets: (plan.amplitude && self.counterterms.is_some())
+                .then(|| Vec::with_capacity(points)),
             seconds: Vec::with_capacity(3),
         };
         out.seconds
@@ -3646,12 +3683,22 @@ impl TreeProgram {
                 );
             }
             let mut born = Vec::with_capacity(self.rows * self.plan_components.len());
-            for row in amplitudes.chunks_exact(self.components) {
-                for component in &self.plan_components {
-                    born.push(component.map_or_else(|| czero.clone(), |j| row[j].clone()));
+            if plan.amplitude {
+                // Amplitude mode (R1): the plan's one unit Born component per
+                // row, the seeds reading c_{c,t} directly.
+                let one = Complex::new(zero.one(), zero.zero());
+                born.resize(self.rows * plan.born_components, one);
+            } else {
+                for row in amplitudes.chunks_exact(self.components) {
+                    for component in &self.plan_components {
+                        born.push(component.map_or_else(|| czero.clone(), |j| row[j].clone()));
+                    }
                 }
             }
             out.born.push(born);
+            if let Some(out) = &mut out.kets {
+                out.push(kets.get(index).cloned().unwrap_or_default());
+            }
             if let Some(squared) = &mut out.born_squared {
                 let metric = runtime.metric.as_ref().expect("a runtime Born metric");
                 squared.push(self.squared(runtime, metric, &amplitudes, &amplitudes, zero));

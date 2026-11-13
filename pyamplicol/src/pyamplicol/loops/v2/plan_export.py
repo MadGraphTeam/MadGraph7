@@ -45,8 +45,10 @@ from __future__ import annotations
 
 import copy
 import json
-from collections import OrderedDict, defaultdict
+import re
+from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -56,16 +58,22 @@ from typing import Any, Literal
 from pyamplicol.color.connections import ExactColorCoefficient
 from pyamplicol.config import PoleSelection
 
+from . import induced
 from . import reference_executor as rx
 from .colour import SYMMETRIC_GROUP_FFT, project
 from .families import FamilyKey, Orders
 from .merged import MergedGraph, merged_graph
 from .native_trees import StoredMember, executor_program
 from .poly_affine import size
+from .reduction import executor_options, prepare, running
 from .refusals import require_formal_nc_tables
-from .schedules import forward_graph
+from .schedules import build_trie, forward_graph
 
 PLAN_SCHEMA = 4
+# Amplitude-mode plans (loop-induced |A_loop|^2, route R1; M-LIT RULED Q42 =
+# (a)): written only for a loop-induced slice; seeded plans keep schema 4
+# and their bytes (``rusticol_core::loop_v2::plan::AMPLITUDE_PLAN_SCHEMA``).
+AMPLITUDE_PLAN_SCHEMA = 5
 # The native report's count of seed-FFT jobs (``loop_execution::v2::
 # FFT_SEED_JOBS``): present exactly when an evaluation ran the FFT.
 FFT_SEED_JOBS = "symmetric-group-fft seed jobs"
@@ -165,6 +173,11 @@ class ExportedPlan:
     # PlanSource``: ``program["families"]`` and ``["contents"]`` are then its
     # read-only views; released to the binary member once stored), else None.
     model: Any = None
+    # Amplitude-mode plans (loop-induced, schema 5): the amplitude basis size
+    # T; the columns are (row, t) (``induced.column_labels``) and the
+    # executor returns per (loop order, column) the bare loop amplitude.
+    # None for seeded plans.
+    amplitude: int | None = None
 
     def json(self) -> str:
         """The plan JSON, ``json.dumps(program, separators=(",", ":"))``,
@@ -279,6 +292,289 @@ def _trace_groups(edges, rank: int, shape) -> list[list]:
     return [groups[key] for key in sorted(groups)]
 
 
+def walk_trie(
+    trie: Any,
+    sequence: Sequence[tuple[int, Any]],
+    rank: int,
+    content: Callable[[int], Any],
+    shape: Callable[[Any], Any],
+    leaf: Callable[[Any, list], Any],
+    step: Callable[[list, int, int, Orders | None], Any],
+) -> None:
+    """Walk one schedule-B suffix trie in its frame (``sequence``: the family
+    key read in it). ``leaf(skeleton, contents)`` makes the object of each
+    oriented skeleton; each node of depth k < N dresses position k of its
+    edges' sources, ``step(edges, out_mask, shift, None)`` with the legs
+    still open as ``out_mask``; an accumulator node (depth N) closes its
+    edges per loop species, in ``_trace_groups`` within ``rank``, by
+    ``step(group, 0, shift, orders)`` with the node's loop orders. The
+    objects are the callbacks' (``_Object`` with ``rows``, ``d_alpha``,
+    ``d_beta`` and ``storage``). One walk serves the exporter's seeded
+    families and dressed class tries (``_Exporter.family``) and the
+    dressed-row frame cost (``dressed_frames``)."""
+
+    before = [0]
+    for mask, _mass in sequence:
+        before.append(before[-1] | mask)
+    full = before[-1]
+    leaf_objects = [
+        leaf(skeleton, [content(segment.label) for segment in ring])
+        for skeleton, ring in trie.leaves
+    ]
+    values: dict[int, Any] = {}
+    for index, node in enumerate(trie.nodes):
+        edges = []
+        for segment, child in node.edges:
+            source = leaf_objects[child] if node.depth == 1 else values.pop(child)
+            edges.append((content(segment.label), source))
+        shift = before[node.depth - 1]
+        if node.depth < len(trie.family):
+            values[index] = step(edges, full ^ before[node.depth], shift, None)
+            continue
+        cuts = defaultdict(list)
+        for segment_content, source in edges:
+            cuts[segment_content.loop_out].append((segment_content, source))
+        for species in sorted(cuts):
+            for group in _trace_groups(cuts[species], rank, shape):
+                step(group, 0, shift, node.orders)
+    if values:
+        raise AssertionError("a trie object without a consumer")
+
+
+def amplitude_vector(combination, cells: Sequence[Any]) -> tuple:
+    """The amplitude vector sum_c x_c c_{c,t} of a seed combination on the
+    coefficient cells ``cells`` (``AmplitudeBasis.cells_at_three``), as its
+    non-zero (t, real, imaginary) entries: skeletons of equal vectors close
+    equally, so they share one class trie (route R2k)."""
+
+    vector: dict[int, ExactColorCoefficient] = {}
+    for c, x in combination:
+        for t, value in cells[c]:
+            term = x * value
+            vector[t] = vector[t] + term if t in vector else term
+    return tuple((t, w.real, w.imag) for t, w in sorted(vector.items()) if w)
+
+
+def vector_groups(
+    oriented: Iterable[tuple[Any, Any]],
+    content: Callable[[int], Any],
+    class_of: Mapping[Any, Any],
+    vector: Callable[[Any], tuple],
+) -> list[list[tuple[Any, Any]]]:
+    """Oriented skeletons (skeleton, ring) grouped by the amplitude vector
+    of their reading's seed combination (``class_of``, ``vector``), in
+    first-seen order: one suffix trie per group (route R2k, M-LIT DECISIONS
+    2026-11-06 ~09:00 (3))."""
+
+    groups: dict[tuple, list[tuple[Any, Any]]] = {}
+    for skeleton, ring in oriented:
+        reading = rx._reading(skeleton, [content(segment.label) for segment in ring])
+        combination = class_of.get(reading)
+        if combination is None:
+            raise KeyError("reading without a seed class")
+        groups.setdefault(vector(combination), []).append((skeleton, ring))
+    return list(groups.values())
+
+
+def catalogue_kinematics(slice_: Any) -> rx.CatalogueKinematics:
+    """The shapes, kernels and block rows of ``slice_``'s contents
+    (``reference_executor.CatalogueKinematics``) that a plan is exported with
+    (``export_plan``) and the dressed-row frames are priced with
+    (``dressed_frames``)."""
+
+    from .assemble import _BlockRows
+
+    return rx.CatalogueKinematics(
+        slice_.catalogue,
+        slice_.compiled.ir.vertex_terms,
+        slice_.data,
+        _BlockRows(slice_, None),
+        (),
+        rx.KernelConstants({}, rx.Carrier.f64()),
+        reading=slice_.reading,
+    )
+
+
+# The modelled work a dressed-row frame is priced by: per step the cheaper of
+# its fused and split forms (``ReferenceExecutor._dress`` counts), and the
+# per-row closures (``_dressed_work``).
+_DRESSED_WORK = ("best/seed", "best/step", "closure")
+
+
+def aligned_frame(key: FamilyKey, frame: Any) -> bool:
+    """Whether ``frame``'s reading of family ``key`` is aligned: its last
+    entry carries the process's highest external leg (the top bit of the
+    union of the key's leg masks; data, not a leg name). Then every
+    propagator's shift mask (``families.shifts``: positions 1..i) is the side
+    of the propagator not holding that leg, the same leg set in every
+    family holding the propagator, and the shift masks of any reading grow
+    by inclusion, so common propagators keep their relative order."""
+
+    reading = frame.apply(key)
+    union = 0
+    for mask, _mass in reading:
+        union |= mask
+    top = 1 << (union.bit_length() - 1)
+    return bool(reading[-1][0] & top)
+
+
+def dressed_frames(
+    slice_: Any, aligned: bool = False
+) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
+    """Frames chosen for dressed rows (amplitude mode, route R2k; M-LIT
+    DECISIONS 2026-11-06 ~09:00 (3)): per family of ``slice_``'s plan, among
+    its frames (``schedules.candidate_tries`` of its skeletons, the reading
+    choice of the generation), the one whose class tries take the least
+    modelled dressing work (``_dressed_work``: the exact dressed rows and
+    links of every step, each step priced at the cheaper of its fused and
+    split forms by the reference executor's counts, plus the per-row
+    closures). A frame's class tries group its readings by amplitude vector
+    (``vector_groups``), so every reading of every frame gets a seed class
+    (``colour.extend_seed_table``; its vectors are taken on the extended
+    table's coefficient cells, ``colour.amplitude_basis``). A tie keeps the
+    family's frame. With ``aligned`` (the aligned family export frame, m-lit
+    lit-cache, PLAN §2.b.3: an opt-in measurement option of the generation,
+    ``LoopSlice.generate(aligned_frames=True)``; seeded plans never read it)
+    the choice is among the family's aligned frames only (``aligned_frame``;
+    every family has one: each rotation of its reading is a candidate), so
+    that a propagator shared by two families has the same shift mask in both
+    and the families list their common propagators in the same order: the
+    frame in which a persistent tensor store (TIRust's ``TensorStore``) meets
+    a parent family's pinched sub-integrals in the other families. Off by
+    default: the frame stays the cheapest one to dress.
+    Returns the frame per family and a record (seconds, modelled work before
+    and after, families re-framed, ``aligned``)."""
+
+    import time
+
+    from .colour import amplitude_basis, extend_seed_table
+    from .schedules import SkeletonView, candidate_tries
+
+    start = time.perf_counter()
+    plan = slice_.plan
+    view = SkeletonView(slice_.loop_catalogue, slice_.colour)
+    candidates = {}
+    readings: dict[Any, None] = {}
+    for key, schedule in plan.schedules.items():
+        viewed = view.select(skeleton for skeleton, _ring in schedule.trie.leaves)
+        tries = candidate_tries(schedule.family, viewed)
+        candidates[key] = (schedule, tries)
+        for _frame, trie in tries:
+            for skeleton, ring in trie.leaves:
+                reading = rx._reading(
+                    skeleton, [view.content(segment.label) for segment in ring]
+                )
+                if reading not in slice_.class_of:
+                    readings.setdefault(reading)
+    table, class_of = extend_seed_table(
+        slice_.table,
+        slice_.class_of,
+        slice_.colour,
+        list(readings),
+        compress=slice_.request.compress_colour,
+    )
+    cells = amplitude_basis(table).cells_at_three()
+    vectors: dict[Any, tuple] = {}
+
+    def vector(combination) -> tuple:
+        found = vectors.get(combination)
+        if found is None:
+            found = vectors[combination] = amplitude_vector(combination, cells)
+        return found
+
+    executor = rx.ReferenceExecutor(catalogue_kinematics(slice_), None, numeric=False)
+    frames: dict[FamilyKey, Any] = {}
+    before = after = 0
+    moved = 0
+    for key, (schedule, tries) in candidates.items():
+        current = schedule.trie.frame
+        work = [
+            (
+                _dressed_work(schedule.family, trie, view, class_of, vector, executor),
+                frame != current,
+                frame,
+            )
+            for frame, trie in tries
+        ]
+        before += next(item[0] for item in work if not item[1])
+        if aligned:
+            work = [item for item in work if aligned_frame(key, item[2])]
+        cost, _moved, frame = min(work, key=lambda item: item[:2])
+        frames[key] = frame
+        after += cost
+        moved += frame != current
+    record = {
+        "seconds": time.perf_counter() - start,
+        "work_before": before,
+        "work": after,
+        "families": len(frames),
+        "reframed": moved,
+        "aligned": aligned,
+    }
+    return frames, record
+
+
+def _dressed_work(family, trie, view, class_of, vector, executor) -> int:
+    """The modelled dressing work of one family frame's class tries
+    (``dressed_frames``): the exporter's walk (``walk_trie``) with dressed
+    rows, each step counted by ``ReferenceExecutor._dress`` (no numerics)
+    and each trace step's per-row closure into its vector's columns."""
+
+    counts: Counter = Counter()
+    shape = executor.kinematics.shape
+    sequence = trie.frame.apply(family.key)
+
+    def leaf(_skeleton, contents) -> _Object:
+        dimension = shape(contents[0]).loop_in
+        return _Object(((),), dimension, dimension, 0, leaf=0)
+
+    for group in vector_groups(trie.leaves, view.content, class_of, vector):
+        skeleton, ring = group[0]
+        reading = rx._reading(
+            skeleton, [view.content(segment.label) for segment in ring]
+        )
+        width = len(vector(class_of[reading]))
+
+        def step(edges, _out_mask, shift, orders, width=width) -> _Object:
+            storage = max(source.storage for _content, source in edges)
+            out = executor._dress(
+                [
+                    (
+                        content,
+                        rx._Payload(
+                            dict.fromkeys(source.rows),
+                            source.d_alpha,
+                            source.d_beta,
+                            source.storage,
+                            source.leaf >= 0,
+                        ),
+                    )
+                    for content, source in edges
+                ],
+                out_mask=None,
+                shift=shift,
+                rank_in=storage,
+                columns=1,
+                counts=counts,
+            )
+            if orders is not None:
+                counts["closure"] += (
+                    out.d_alpha * size(out.rank) * len(out.rows) * width
+                )
+            return _Object(tuple(out.rows), out.d_alpha, out.d_beta, out.rank)
+
+        walk_trie(
+            build_trie(family, trie.frame, group),
+            sequence,
+            trie.rank,
+            view.content,
+            shape,
+            leaf,
+            step,
+        )
+    return sum(counts[name] for name in _DRESSED_WORK)
+
+
 @dataclass
 class _Exporter:
     slice_: Any
@@ -309,6 +605,15 @@ class _Exporter:
     content_count: int = 0
     # Row -> (leg mask, leg count), the content row check's.
     row_masks: dict[Any, tuple[int, int]] = field(default_factory=dict)
+    # Amplitude mode on route R2 (M-LIT LIT-R2): dressed-leg rows, one trie
+    # per seed-key vector inside each family (``family``).
+    dressed: bool = False
+    # Seed combination -> its amplitude vector (``_vector``).
+    vectors: dict[Any, tuple] = field(default_factory=dict)
+    # The class tries of folded dressed-row families (``fold.FoldedDressing``
+    # or a chain-resolved probe, ``fold.ProbeDressing``), else None: every
+    # family's class tries are its amplitude-vector groups.
+    dressing: Any = None
 
     # -- kernels ------------------------------------------------------------
 
@@ -595,58 +900,153 @@ class _Exporter:
         shared = weight_of_column != list(range(len(weight_of_column)))
         return class_records, records, weight_of_column if shared else None
 
+    def amplitude_seed_records(self, size: int) -> tuple[list[dict], list[dict]]:
+        """The seed records of an amplitude-mode plan (loop-induced, route
+        R1; ``induced``): one seed-weight column per amplitude basis element
+        t, whose class record of class c holds c_{c,t} at N_c = 3
+        (``AmplitudeBasis.cells_at_three``) on the one unit Born component;
+        the plan's columns (row, t) seed their own row with weight column t
+        (``column_rows``, ``column_weights``), so column (h0, t) carries the
+        amplitude numerator N_{f,h0,t}. Seed keys combine their classes as
+        for the seeded plans (x_c)."""
+
+        slice_ = self.slice_
+        table = slice_.table
+        cells = slice_.amplitude.cells_at_three()
+        self.born_components.setdefault((0, (), 0), 0)
+        classes: dict[tuple[int, Orders], int] = {}
+        self.class_records = classes
+        class_records: list[dict] = []
+
+        def class_record(c: int, order: Orders) -> int:
+            found = classes.get((c, order))
+            if found is not None:
+                return found
+            if order not in table.orders[c]:
+                raise KeyError(f"seed class {c} is not read at {order}")
+            weights_of: list[list] = [[] for _ in range(size)]
+            for t, value in cells[c]:
+                weights_of[t].append(
+                    [0, _fraction_text(value.real), _fraction_text(value.imag)]
+                )
+            found = classes[(c, order)] = len(class_records)
+            class_records.append({"columns": weights_of})
+            return found
+
+        records = [
+            {
+                "classes": [
+                    [
+                        class_record(c, order),
+                        _fraction_text(x.real),
+                        _fraction_text(x.imag),
+                    ]
+                    for c, x in combination
+                    if x
+                ]
+            }
+            for combination, order in self.seeds
+        ]
+        return class_records, records
+
     # -- schedule B -----------------------------------------------------------
 
     def family(self, key: FamilyKey, schedule) -> dict:
+        """The record of one schedule-B family, walked in its trie frame
+        (``walk_trie``). A seeded plan walks the family trie, each leaf its
+        skeleton's seed on the plan's rows. A dressed-row plan (amplitude
+        mode, route R2k; M-LIT LIT-R2) walks one suffix trie per amplitude
+        vector of its skeletons' seeds (``vector_groups``), each leaf a
+        constant seed (its seed key the group's, its weight the skeleton's)
+        on one empty row; its steps dress rows of the legs dressed so far and
+        each trace step closes its rows with the group's vector (the native
+        ``RowTrace``). The tries' steps follow one another and share the
+        family's accumulators, one per loop orders."""
+
         slice_ = self.slice_
-        plan = slice_.plan
+        view = slice_.plan.view
         trie = schedule.trie
         sequence = trie.frame.apply(key)
-        before = [0]
-        for mask, _mass in sequence:
-            before.append(before[-1] | mask)
-        full = before[-1]
-        leaves, leaf_objects = [], []
-        for skeleton, ring in trie.leaves:
-            contents = [plan.view.content(segment.label) for segment in ring]
-            dimension = self.kinematics.shape(contents[0]).loop_in
-            leaves.append(
-                {
-                    "seed": self.seed(skeleton, contents),
-                    "weight": _fraction_text(slice_.weights(skeleton, contents)),
-                }
-            )
-            leaf_objects.append(
-                _Object(self.rows, dimension, dimension, 0, leaf=len(leaves) - 1)
-            )
-        accumulators: dict[Orders, int] = {}
+        leaves: list[dict] = []
         steps: list[dict] = []
-        values: dict[int, _Object] = {}
-        for index, node in enumerate(trie.nodes):
-            edges = []
-            for segment, child in node.edges:
-                source = leaf_objects[child] if node.depth == 1 else values.pop(child)
-                edges.append((plan.view.content(segment.label), source))
-            shift = before[node.depth - 1]
-            if node.depth < len(trie.family):
-                values[index] = self._step(
-                    steps, edges, full ^ before[node.depth], shift, None
+        accumulators: dict[Orders, int] = {}
+
+        def step(edges, out_mask: int, shift: int, orders: Orders | None):
+            accumulator = (
+                None
+                if orders is None
+                else accumulators.setdefault(orders, len(accumulators))
+            )
+            return self._step(steps, edges, out_mask, shift, accumulator)
+
+        def leaf(seed: int | None, weights: Mapping[Any, Fraction] | None = None):
+            def make(skeleton, contents) -> _Object:
+                dimension = self.kinematics.shape(contents[0]).loop_in
+                weight = (
+                    slice_.weights(skeleton, contents)
+                    if weights is None
+                    else weights[skeleton]
                 )
-                continue
-            accumulator = accumulators.setdefault(node.orders, len(accumulators))
-            cuts = defaultdict(list)
-            for content, source in edges:
-                cuts[content.loop_out].append((content, source))
-            for species in sorted(cuts):
-                for group in _trace_groups(
-                    cuts[species], trie.rank, self.kinematics.shape
-                ):
-                    self._step(steps, group, 0, shift, accumulator)
-        if values:
-            raise AssertionError("a trie object without a consumer")
+                leaves.append(
+                    {
+                        "seed": self.seed(skeleton, contents) if seed is None else seed,
+                        "weight": _fraction_text(weight),
+                    }
+                )
+                rows = self.rows if seed is None else ((),)
+                return _Object(rows, dimension, dimension, 0, leaf=len(leaves) - 1)
+
+            return make
+
+        folded = (
+            None
+            if self.dressing is None or not self.dressed
+            else self.dressing.tries(key)
+        )
+        if folded is not None:
+            # Folded class tries (``fold``): per trie its seed key and its
+            # chains with their exact leaf weights.
+            tries = []
+            for seed_key, chains in folded:
+                seed = self.seeds.setdefault(seed_key, len(self.seeds))
+                group = [(skeleton, ring) for skeleton, ring, _weight in chains]
+                weights = {skeleton: weight for skeleton, _ring, weight in chains}
+                tries.append(
+                    (seed, build_trie(schedule.family, trie.frame, group), weights)
+                )
+        elif self.dressed:
+            tries = []
+            for group in vector_groups(
+                trie.leaves, view.content, slice_.class_of, self._vector
+            ):
+                skeleton, ring = group[0]
+                seed = self.seed(skeleton, [view.content(s.label) for s in ring])
+                tries.append(
+                    (seed, build_trie(schedule.family, trie.frame, group), None)
+                )
+        else:
+            tries = [(None, trie, None)]
+        # A class trie's rings are the family's: within its rank. Folded
+        # class tries keep a subset of the family's chains: the largest of
+        # their own ranks.
+        rank = (
+            trie.rank
+            if folded is None
+            else max((part.rank for _seed, part, _weights in tries), default=0)
+        )
+        for seed, part, weights in tries:
+            walk_trie(
+                part,
+                sequence,
+                rank,
+                view.content,
+                self.kinematics.shape,
+                leaf(seed, weights),
+                step,
+            )
         return {
             "sequence": [[mask, self._mass(mass)] for mask, mass in sequence],
-            "rank": family_rank(trie.rank, steps),
+            "rank": family_rank(rank, steps),
             "orders": [
                 self.orders.setdefault(order, len(self.orders))
                 for order in accumulators
@@ -655,13 +1055,25 @@ class _Exporter:
             "steps": steps,
         }
 
+    def _vector(self, combination) -> tuple:
+        """``amplitude_vector`` of a seed combination on the slice's
+        amplitude basis, cached per combination."""
+
+        found = self.vectors.get(combination)
+        if found is None:
+            found = self.vectors[combination] = amplitude_vector(
+                combination, self.slice_.amplitude.cells_at_three()
+            )
+        return found
+
     def _mass(self, mass) -> int:
         return self.masses.setdefault(mass, len(self.masses))
 
     def _step(self, steps, edges, out_mask, shift, accumulator) -> _Object:
         """One schedule-B step. Its helicity rows and row links follow from
-        the source rows and the contents' rows (``rx.restrict``): written only
-        with ``links``, else the native loader derives them."""
+        the source rows and the contents' rows (``rx.restrict``; with dressed
+        rows each source row joined with every content row, ``rx.merge``):
+        written only with ``links``, else the native loader derives them."""
 
         (d_alpha,) = {source.d_alpha for _content, source in edges}
         seeded = {source.leaf >= 0 for _content, source in edges}
@@ -687,7 +1099,16 @@ class _Exporter:
                 "child": source.step,
                 "factor": self.factor(index, shift),
             }
-            if self.links:
+            if self.links and self.dressed:
+                links = []
+                for position, row in enumerate(source.rows):
+                    for block, block_row in enumerate(shape.rows):
+                        target = targets.setdefault(
+                            rx.merge(row, block_row), len(targets)
+                        )
+                        links += [target, position, block]
+                record["links"] = links
+            elif self.links:
                 block_index = {row: i for i, row in enumerate(shape.rows)}
                 links = []
                 for position, row in enumerate(source.rows):
@@ -1149,6 +1570,8 @@ def export_plan(
     counterterms: bool = True,
     keep_kets: bool = False,
     column_sets: Mapping[str, Sequence[Any]] | None = None,
+    route: Literal["R1", "R2"] | None = None,
+    dressing: Any = None,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -1170,24 +1593,57 @@ def export_plan(
     (``ExportedPlan.column_seeds``; the plan itself is unchanged): a set's
     plan is this plan with its seed records (``native_observables``), at the
     cost of its seed records only.
+
+    ``route`` selects the amplitude-mode route of a loop-induced slice
+    (M-LIT RULED Q14 = (a)): ``"R2"``, the default and production route
+    (schema-5 ``dressed`` plan: dressed-leg rows, one class trie per
+    amplitude vector in each family, ``_Exporter.family``), which runs
+    schedule B only and so refuses ``forward`` and ``merged``; or ``"R1"``,
+    its oracle (one-hot (row, t) columns on the seeded rows). A
+    Born-interfered slice refuses any route.
+
+    ``dressing`` replaces the class tries of route R2's families (M-LIT
+    lit-fold, ``fold``): ``tries(key)`` gives a family's class tries, each
+    its seed key and its chains (skeleton, ring, exact leaf weight), or None
+    for the family's own amplitude-vector groups; a family left without a
+    chain is not exported. A dressing with its own basis (``fold``'s
+    chain-resolved probe, ``amplitude`` its column count) also forms the
+    seed records (``seed_records(exporter, size)``). Without it (the
+    default) the plan is exported as before, byte for byte.
     """
 
-    from .assemble import _BlockRows
     from .refusals import require_nc_exact
+
+    amplitude = getattr(slice_, "amplitude", None)
+    # The amplitude-mode route (M-LIT RULED Q14 = (a)): R2 (dressed-leg rows,
+    # one trie per seed-key vector; production) or R1 (one-hot (row, t)
+    # columns on the seeded rows; lit-amp's route, kept as its oracle).
+    if amplitude is None:
+        if route is not None:
+            raise ValueError("a route is an amplitude-mode (loop-induced) option")
+    elif route is None:
+        route = "R2"
+    elif route not in ("R1", "R2"):
+        raise ValueError(f"unknown amplitude-mode route {route!r}")
+    dressed = route == "R2"
+    if dressing is not None and not dressed:
+        raise ValueError("a folded dressing is a route R2 (dressed-row) option")
+    if dressing is None and dressed:
+        # The slice's fold (``LoopSlice.fold``, ``fold.fold_slice``), as the
+        # filter's dropped rows (``zero_rows``): every route-R2 export of a
+        # folded slice is folded; route R1 (the oracle) never is.
+        dressing = getattr(slice_, "fold", None)
+    if dressed and (forward or merged is not None):
+        raise ValueError(
+            "route R2 (dressed rows) runs schedule B only: export with "
+            "forward=False and no merged graph, or take route 'R1'"
+        )
 
     # LC/NLC seed records, Born components and counterterm projections need
     # N_c-exact tree blocks: the generation refuses others
     # (``LoopSlice.generate``), and no export serves one (``refusals``).
     require_nc_exact(slice_.blocks, slice_.request.accuracy, slice_.request.process)
-    kinematics = rx.CatalogueKinematics(
-        slice_.catalogue,
-        slice_.compiled.ir.vertex_terms,
-        slice_.data,
-        _BlockRows(slice_, None),
-        (),
-        rx.KernelConstants({}, rx.Carrier.f64()),
-        reading=slice_.reading,
-    )
+    kinematics = catalogue_kinematics(slice_)
     helicities = born_helicities(slice_)
     rows = born_rows(slice_)
     from . import native_lowering
@@ -1202,10 +1658,19 @@ def export_plan(
     )
     contents_sink = None if streamed is None else native_lowering.contents_builder()
     exporter = _Exporter(
-        slice_, kinematics, rows, links=links, content_sink=contents_sink
+        slice_,
+        kinematics,
+        rows,
+        links=links,
+        content_sink=contents_sink,
+        dressed=dressed,
+        dressing=dressing,
     )
     families, keys, family_orders = [], [], []
     for key, schedule in slice_.plan.schedules.items():
+        if dressing is not None and dressing.tries(key) == []:
+            # Every chain of the family folded away (an exact zero).
+            continue
         keys.append(key)
         record = exporter.family(key, schedule)
         family_orders.append(record["orders"])
@@ -1233,9 +1698,31 @@ def export_plan(
         else None
     )
     columns_given = columns
-    columns = tuple(sector_columns(slice_) if columns is None else columns)
-    seed_classes, seeds, column_weights = exporter.seed_records(columns)
-    fourier = fourier_record(slice_, exporter, columns)
+    if amplitude is not None:
+        # Loop-induced (route R1): one-hot columns (row, t), each seeding its
+        # own row with the cells of t (``_Exporter.amplitude_seed_records``).
+        if columns is not None or column_sets:
+            raise ValueError(
+                "an amplitude-mode plan has its own (row, t) columns: the "
+                "observables of a loop-induced process are quadratic forms on its "
+                "amplitude vectors (induced_observables), never column sets"
+            )
+        size = len(amplitude)
+        probe = getattr(dressing, "amplitude", None)
+        if probe is not None:
+            size = probe
+        columns = tuple(range(len(rows) * size))
+        seed_classes, seeds = (
+            exporter.amplitude_seed_records(size)
+            if probe is None
+            else dressing.seed_records(exporter, size)
+        )
+        column_weights = [t for _row in rows for t in range(size)]
+        fourier = None
+    else:
+        columns = tuple(sector_columns(slice_) if columns is None else columns)
+        seed_classes, seeds, column_weights = exporter.seed_records(columns)
+        fourier = fourier_record(slice_, exporter, columns)
     native_trees = None
     if trees:
         from .native_trees import export_trees
@@ -1244,14 +1731,16 @@ def export_plan(
             slice_,
             exporter,
             rows,
-            born_squared=born_squared,
+            born_squared=born_squared and amplitude is None,
             with_counterterms=counterterms,
-            keep_kets=keep_kets,
+            # A loop-induced point reads its counterterm kets themselves
+            # (no Born interference keeps them).
+            keep_kets=keep_kets or amplitude is not None,
         )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
     program = {
-        "schema": PLAN_SCHEMA,
+        "schema": PLAN_SCHEMA if amplitude is None else AMPLITUDE_PLAN_SCHEMA,
         "legs": legs,
         "rows": len(rows),
         "helicities": [list(h) for h in helicities],
@@ -1270,7 +1759,19 @@ def export_plan(
         "forward": forward_program,
         "merged": merged_program,
     }
-    if any(column.rows is not None for column in columns):
+    if amplitude is not None:
+        # A row the exact helicity-zero filter dropped (``helicity_filter``,
+        # an integrand zero) keeps its (row, t) columns without a row: they
+        # seed nothing (R1), are never closed into (R2), stay zero and are
+        # not reduced. A probe dressing may keep fewer rows (``fold``'s
+        # exact ratios: the rows its probe reads).
+        zero_rows = slice_.zero_rows | getattr(dressing, "zero_rows", frozenset())
+        program["column_rows"] = [
+            [] if row in zero_rows else [r]
+            for r, row in enumerate(rows)
+            for _t in range(size)
+        ]
+    elif any(column.rows is not None for column in columns):
         program["column_rows"] = [
             None
             if column.rows is None
@@ -1279,6 +1780,9 @@ def export_plan(
         ]
     if column_weights is not None:
         program["column_weights"] = column_weights
+    if dressed:
+        # Route R2: route R1's columns, closed per row (``_Exporter.family``).
+        program["dressed"] = True
     model = None
     if streamed is not None:
         model = native_lowering.PlanSource(
@@ -1349,13 +1853,16 @@ def export_plan(
         masses=tuple(exporter.masses),
         orders=orders,
         families=tuple(keys),
-        columns=tuple(sector for sector, _pairs in slice_.sectors)
+        columns=induced.column_labels(rows, size)
+        if amplitude is not None
+        else tuple(sector for sector, _pairs in slice_.sectors)
         if columns_given is None
         else tuple(range(len(columns))),
         trees=native_trees,
         column_seeds=column_seeds,
         fourier=fourier,
         model=model,
+        amplitude=None if amplitude is None else size,
     )
 
 
@@ -1373,6 +1880,137 @@ class NativeNumerator:
     columns: tuple[tuple[Any, ...], ...]
 
 
+def point_estimate(
+    reference: Any, rotated: Sequence[Any], stability: Any, roundoff: float
+) -> Any:
+    """The stability estimate of one point's result (``NativeExecutor.
+    evaluate``): the rotation checks' budgets of the evaluations at the
+    rotated points ``rotated``, the reduction check's re-test budget, the
+    cross-backend check's budget (``stability.cross_check``), the term
+    scale of the floor and the per-family deviations."""
+
+    from .stability import ROTATION, StabilityEstimate, cross_check, native_estimate
+
+    # Binary64 Born-interfered points: the Rust implementation the native
+    # SDKs share (bitwise this assembly, the oracle).
+    found = native_estimate(reference, rotated, stability, roundoff)
+    if found is not None:
+        return found
+    budgets = {}
+    for k, run in enumerate(rotated):
+        budgets[ROTATION.format(k)] = reference.rotation_budget(run)
+    if stability.reduction:
+        budgets[stability.reduction] = reference.retest_budget
+    not_run = cross_check(reference, budgets) if stability.cross_backend else {}
+    components = reference.result.components
+    return StabilityEstimate.from_checks(
+        components["virtual"] if "virtual" in components else components["bare"],
+        budgets,
+        scale=reference.stability_scale(),
+        roundoff=roundoff,
+        families=reference.family_deviations,
+        not_run=not_run,
+    )
+
+
+# A number in a reason text (an index, a count, a measure): masked to form
+# the reason's class (``bounded_reasons``).
+_NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+
+
+class Refusal(str):
+    """A failure reason that also carries, as data, the reduction backend's
+    measures of the point's refused lanes (m-lit ux-polish item 4): ``(kind,
+    value)`` pairs from the native executor (``PointResult::measures``),
+    kind ``"method-choice-deviation"`` (a TIRust method-choice lane's
+    deviation between its two frames relative to its term scale) or
+    ``"gram-conditioning"`` (TIRust's conditioning estimate of a refused
+    lane: the Gram, Cayley or coordinate-system measure compared with its
+    stability threshold, zero for an exactly singular pivot). The text is
+    the reason as before; the measures are never parsed from it."""
+
+    measures: tuple[tuple[str, float], ...]
+
+    def __new__(cls, text: str, measures: Iterable[tuple[str, float]] = ()):
+        self = super().__new__(cls, text)
+        self.measures = tuple((str(kind), float(value)) for kind, value in measures)
+        return self
+
+    def __reduce__(self):
+        return (Refusal, (str(self), self.measures))
+
+
+def measures_of(reasons: Iterable[str]) -> tuple[tuple[str, float], ...]:
+    """Every measure the ``reasons`` carry (``Refusal``), in order."""
+
+    return tuple(
+        measure for reason in reasons for measure in getattr(reason, "measures", ())
+    )
+
+
+def with_measures(
+    reasons: list[str], measures: Iterable[tuple[str, float]]
+) -> list[str]:
+    """``reasons`` with ``measures`` attached to their first entry
+    (``Refusal``); unchanged when there are none."""
+
+    measures = tuple(measures)
+    if not measures or not reasons:
+        return reasons
+    first = reasons[0]
+    return [Refusal(first, (*measures_of([first]), *measures)), *reasons[1:]]
+
+
+def relabelled(text: str, reason: str) -> str:
+    """``text`` (a reason's relabelled message) keeping ``reason``'s
+    measures."""
+
+    measures = getattr(reason, "measures", ())
+    return Refusal(text, measures) if measures else text
+
+
+def bounded_reasons(reasons: Sequence[str]) -> list[str]:
+    """``reasons`` (one failed point's, one message per failed lane or
+    check) with one message per distinct reason CLASS, the message with its
+    numbers masked (the family, monomial and lane indices, the measured
+    deviations): the first message of each class in first-seen order, with
+    the count of the other messages of that class appended (``" (+N more
+    like this)"``). Generic and size-bounded by the number of distinct
+    reason texts, not by the lane count (m-lit ux-besteffort F6: a refused
+    g g > z g g point had ~11700 lane messages, ~8.8 MB)."""
+
+    first: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for reason in reasons:
+        reason = str(reason)
+        key = _NUMBER.sub("#", reason)
+        if key in first:
+            counts[key] += 1
+        else:
+            first[key] = reason
+            counts[key] = 0
+    bounded = [
+        message if counts[key] == 0 else f"{message} (+{counts[key]} more like this)"
+        for key, message in first.items()
+    ]
+    # The measures of every reason are kept (data, not text).
+    return with_measures(bounded, measures_of(reasons))
+
+
+def point_measures(
+    output: Mapping[str, Any], extra: Mapping[str, Any] | None, index: int
+) -> tuple[tuple[str, float], ...]:
+    """The refused-lane measures of point ``index`` of a native executor
+    output (``"refusal_measures"``) and of its companion's (``extra``)."""
+
+    found: list[tuple[str, float]] = []
+    for part in (output, extra):
+        measures = None if part is None else part.get("refusal_measures")
+        if measures is not None:
+            found.extend(measures[index])
+    return tuple(found)
+
+
 class FailedPoints(ArithmeticError):
     """Some points of a native batch failed (a reduction lane's status, an
     ``ImpreciseResult`` master or a non-finite numerator, also in a rotation
@@ -1386,7 +2024,12 @@ class FailedPoints(ArithmeticError):
 
     def __init__(self, results: list[Any], failures: Mapping[int, list[str]]):
         self.results = results
-        self.failures = dict(failures)
+        # One message per distinct reason class, with the count of the
+        # others (``bounded_reasons``; a refused point can fail thousands of
+        # lanes with one reason each, m-lit ux-besteffort F6).
+        self.failures = {
+            index: bounded_reasons(reasons) for index, reasons in failures.items()
+        }
         super().__init__(
             f"{len(self.failures)} of {len(results)} points failed: {self.failures}"
         )
@@ -1453,6 +2096,11 @@ class NativeExecutor:
     path (``ward``): with native inputs the native trees read each point's
     loop-side vector (``loop_sources``), with Python inputs the Python lane
     forms them (the oracle); the slice needs the full tree kernels.
+
+    ``route`` is the amplitude-mode route of a loop-induced slice
+    (``export_plan``): ``"R2"`` (the default; dressed rows, schedule B only,
+    so ``forward=False`` and no ``merged``) or ``"R1"`` (its oracle); a
+    Born-interfered slice refuses a route.
     """
 
     def __init__(
@@ -1472,6 +2120,7 @@ class NativeExecutor:
         scaleless: tuple[ExportedPlan, str | bytes] | Callable[[], Any] | None = None,
         contraction: Literal["auto", "direct", "fft"] | None = None,
         catani: bool = False,
+        route: Literal["R1", "R2"] | None = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
@@ -1503,6 +2152,7 @@ class NativeExecutor:
             trees=inputs == "native",
             born_squared=born_squared,
             counterterms=counterterms,
+            route=route,
         )
         if inputs == "native" and self.exported.trees is None:
             raise ValueError("native inputs need a plan exported with trees=True")
@@ -1530,6 +2180,24 @@ class NativeExecutor:
         # Point inputs of the latest ``family_numerators`` calls (oracle
         # comparisons run several schedules and carriers on one batch).
         self._point_inputs: OrderedDict[str, Any] = OrderedDict()
+        # Amplitude-mode plans: also return the raw reduction lanes (an
+        # oracle and diagnostic; by default only the amplitudes).
+        self.raw_lanes = False
+        # Amplitude-mode plans: the next ``reduce`` also forms the term scale
+        # (``V2Options::term_scale``; ``evaluate`` sets it for the reference
+        # evaluation of a stability estimate).
+        self.term_scale = False
+        # Amplitude-mode plans: the helicity rows the next calls keep (one
+        # flag per plan row; ``runs(rows=...)``, a loop-induced
+        # single-helicity selection): the native executor evaluates those
+        # rows only (their trees and counterterm kets, dressing, closure,
+        # scatter and reduction lanes: ``plan/live.rs``, ``trees_rows.rs``)
+        # and exports them only; None keeps every row.
+        self.row_mask: tuple[bool, ...] | None = None
+        # The plan families the next calls dress (one flag per plan family;
+        # None dresses every one): a diagnostic selection, e.g. NinjaRS on
+        # the families of a TIR-only plan it reduces (m-lit lit-eft).
+        self.family_mask: tuple[bool, ...] | None = None
 
     def native(
         self,
@@ -1548,9 +2216,12 @@ class NativeExecutor:
             # program and seed FFT of an executor built already
             # (``V2Executor.derive``; one of the same carrier first, whose
             # tree runtime it shares too): each costs its own runtime only.
-            native_trees = self.inputs == "native" and arithmetic != "exact"
+            # The exact carriers (rational, and the prime field of the
+            # helicity-zero filter) dress numerators only.
+            exact = arithmetic in ("exact", "prime")
+            native_trees = self.inputs == "native" and not exact
             fourier = (
-                arithmetic != "exact"
+                not exact
                 and self.contraction != "direct"
                 and self.exported.fourier is not None
             )
@@ -1583,7 +2254,7 @@ class NativeExecutor:
                 # The seed FFT runs in every floating carrier; the exact one
                 # (numerators only) and a direct policy contract directly.
                 fourier=None
-                if arithmetic == "exact" or self.contraction == "direct"
+                if exact or self.contraction == "direct"
                 else self.exported.fourier,
             )
         return found
@@ -1813,6 +2484,10 @@ class NativeExecutor:
             if batch.setdefault("shared", common) != common:
                 raise ValueError(_scale_dependent(exported, batch["shared"], common))
             batch["block_rows"].append(rows)
+            if exported.amplitude is not None:
+                # Amplitude mode (R1): the one unit Born component per row.
+                batch["born"].append([value(1)] * len(exported.rows))
+                continue
             amplitudes = [_born_row(evaluation, row) for row in exported.rows]
             batch["born"].append(
                 [
@@ -1915,8 +2590,104 @@ class NativeExecutor:
         alone: ``FailedPoints`` carries the complete results of the others.
         """
 
+        from .stability import StabilityChecks
+
+        stability = stability or StabilityChecks()
+        precision, evaluations, rotated, failures = self.runs(
+            points,
+            scales,
+            parameters=parameters,
+            precision=precision,
+            poles=poles,
+            stability=stability,
+            schedule=schedule,
+            ward=ward,
+        )
+        out: list[Any] = []
+        for index, reference in enumerate(evaluations):
+            if index in failures:
+                out.append(None)
+                continue
+            if not stability.enabled:
+                out.append(reference.result)
+                continue
+            estimate = point_estimate(
+                reference,
+                [runs[index] for runs in rotated],
+                stability,
+                precision.unit_roundoff,
+            )
+            out.append(replace(reference.result, stability=estimate))
+        if failures:
+            raise FailedPoints(out, failures)
+        return out
+
+    def runs(
+        self,
+        points: Sequence[Sequence[Sequence[Any]]],
+        scales: Sequence[Any],
+        *,
+        parameters: Mapping[str, str] | None = None,
+        precision: Any = None,
+        poles: PoleSelection | str = PoleSelection.ALL,
+        stability: Any = None,
+        schedule: Literal["B", "M"] = "B",
+        ward: Any = None,
+        rows: Iterable[rx.Row] | None = None,
+        reduction: str | None = None,
+    ) -> tuple[Any, list[Any], list[list[Any]], dict[int, list[str]]]:
+        """The point evaluations ``evaluate`` assembles its results from: the
+        precision, the reference evaluation of every point (re-tested in the
+        reduction check's frame), per rotation of the stability checks the
+        evaluations at the rotated points, and the failures per point index
+        (a rotated run's failure names its rotation). The loop-induced
+        observables (``induced_observables``) form their quadratic forms on
+        the same evaluations' amplitude vectors; ``rows`` (amplitude mode)
+        keeps those helicity rows only (``row_mask``: the others' trees,
+        counterterm kets, dressing, closure, scatter and reduction lanes are
+        not formed, nor are their amplitudes exported, assembled or
+        squared). ``reduction`` is the
+        effective backend the call's result records (``VirtualReduction.
+        effective``; None: the current context's, ``reduction.running``): the
+        executor calls of the run reduce on it."""
+
+        with nullcontext() if reduction is None else running(reduction):
+            if rows is None:
+                return self._runs(
+                    points,
+                    scales,
+                    parameters,
+                    precision,
+                    poles,
+                    stability,
+                    schedule,
+                    ward,
+                )
+            if self.exported.amplitude is None:
+                raise ValueError("a row mask needs an amplitude-mode plan")
+            kept = frozenset(rows)
+            self.row_mask = tuple(row in kept for row in self.exported.rows)
+            try:
+                return self._runs(
+                    points,
+                    scales,
+                    parameters,
+                    precision,
+                    poles,
+                    stability,
+                    schedule,
+                    ward,
+                )
+            finally:
+                self.row_mask = None
+
+    def _runs(
+        self, points, scales, parameters, precision, poles, stability, schedule, ward
+    ):
+        """``runs`` on every row the executor keeps."""
+
         from .assemble import _fraction
-        from .stability import ROTATION, StabilityChecks, StabilityEstimate
+        from .stability import ROTATION, StabilityChecks
 
         stability = stability or StabilityChecks()
         wards = None
@@ -1928,17 +2699,23 @@ class NativeExecutor:
                 require_full_kernels(self.slice)
             else:
                 wards = None
-        precision, evaluations, failures = self._evaluated(
-            points,
-            scales,
-            parameters,
-            precision,
-            poles,
-            stability.frame,
-            schedule,
-            wards,
-            catani=self.catani,
-        )
+        # A loop-induced estimate's floor is the term scale (``induced.
+        # scale``), formed by the reference evaluation's executor call.
+        self.term_scale = self.exported.amplitude is not None and stability.enabled
+        try:
+            precision, evaluations, failures = self._evaluated(
+                points,
+                scales,
+                parameters,
+                precision,
+                poles,
+                stability.frame,
+                schedule,
+                wards,
+                catani=self.catani,
+            )
+        finally:
+            self.term_scale = False
         rotated = []
         for k, rotation in enumerate(stability.rotations):
             moved = [
@@ -1956,33 +2733,40 @@ class NativeExecutor:
             rotated.append(runs)
             for index, reasons in failed.items():
                 failures.setdefault(index, []).extend(
-                    f"{ROTATION.format(k)}: {reason}" for reason in reasons
+                    relabelled(f"{ROTATION.format(k)}: {reason}", reason)
+                    for reason in reasons
                 )
-        out: list[Any] = []
-        for index, reference in enumerate(evaluations):
-            if index in failures:
-                out.append(None)
-                continue
-            if not stability.enabled:
-                out.append(reference.result)
-                continue
-            budgets = {}
-            for k, runs in enumerate(rotated):
-                budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
-            if stability.reduction:
-                budgets[stability.reduction] = reference.retest_budget
-            components = reference.result.components
-            estimate = StabilityEstimate.from_checks(
-                components.get("virtual", components["bare"]),
-                budgets,
-                scale=reference.absolute,
-                roundoff=precision.unit_roundoff,
-                families=reference.family_deviations,
-            )
-            out.append(replace(reference.result, stability=estimate))
-        if failures:
-            raise FailedPoints(out, failures)
-        return out
+        if stability.cross_backend:
+            self._cross_runs(
+                points, scales, parameters, precision, poles, schedule, wards
+            ).attach(evaluations)
+        return precision, evaluations, rotated, failures
+
+    def _cross_runs(
+        self, points, scales, parameters, precision, poles, schedule, wards
+    ):
+        """The cross-backend check's evaluations (``stability.CROSS``):
+        every point again on the other reduction backend (``reduction.
+        cross`` of the context's), at the same inputs, without re-test. A
+        point the other backend fails, or every point when it refuses the
+        artifact (``ReductionUnavailable`` of its plans), keeps the reason
+        instead: the check is not run there, the point's own result and
+        failures are unchanged (DECISIONS 2026-11-07 21:50 R6)."""
+
+        from pyamplicol.api.errors import ReductionUnavailable
+
+        from .reduction import NAMES, cross, current
+        from .stability import CrossRuns
+
+        backend = cross(current())
+        try:
+            with running(backend):
+                _, runs, failed = self._evaluated(
+                    points, scales, parameters, precision, poles, None, schedule, wards
+                )
+        except ReductionUnavailable as error:
+            return CrossRuns(NAMES[backend], [None] * len(points), {}, str(error))
+        return CrossRuns(NAMES[backend], runs, failed)
 
     def native_inputs(self, points, scales, parameters=None, precision=None):
         """The executor's native tree inputs of a batch (``inputs="native"``):
@@ -2050,6 +2834,30 @@ class NativeExecutor:
                 for m, i in zip(plan, imaginary, strict=True)
             ]
         return plan, [Fraction(m) for m in legs]
+
+    def leg_masses(self, point, scale, parameters=None, precision=None, points=1):
+        """The legs' squared masses an evaluation of a batch of ``points``
+        points at ``scale`` binds (``V2Batch::leg_masses``, the on-shell
+        invariants, DESIGN §11.1), exact ``Fraction``s in leg order (None: a
+        leg without a bound mass): the targets of the kinematics improvement
+        (m-lit lit-psimprove, ``pyamplicol.kinematics``). With native inputs
+        the executor's own binding at the carrier (``TreeProgram::bind``, on
+        the executor a batch of ``points`` points runs); otherwise the masses
+        the Python inputs hand the executor (``_inputs``)."""
+
+        from .assemble import Precision, _fraction, _leg_masses
+
+        precision = precision or Precision.double()
+        if self.inputs != "native":
+            values = self.slice._point_parameters(
+                dict(parameters or {}), _fraction(scale), precision
+            )
+            return list(_leg_masses(self.slice, values, precision.working_digits))
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points([point], [scale], parameters, precision)
+        native = self.native(arithmetic, digits, points)
+        _, legs, _ = native.bound_masses(self._inputs(evaluations, arithmetic))
+        return [None if m is None else Fraction(m) for m in legs]
 
     def _native_points(self, points, scales, parameters, precision):
         from .assemble import _fraction, _NativePoint, _Numbers
@@ -2170,6 +2978,20 @@ class NativeExecutor:
             "check": retest is not None,
             "rescale": retest == "rescaled",
         }
+        if self.exported.amplitude is not None and self.raw_lanes:
+            # Amplitude mode returns its raw lanes only on request.
+            options["raw_lanes"] = True
+        if self.exported.amplitude is not None and self.term_scale:
+            options["term_scale"] = True
+        if self.exported.amplitude is not None and self.row_mask is not None:
+            options["rows"] = list(self.row_mask)
+        if self.family_mask is not None:
+            options["families"] = list(self.family_mask)
+        # The reduction backend of the call (``reduction.running``; nothing
+        # for NinjaRS, the executor's default), its TIRust plans built before
+        # the first point (``reduction.prepare``).
+        options.update(executor_options())
+        prepare(native)
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
         )
@@ -2221,7 +3043,10 @@ class NativeExecutor:
             if extra is not None and extra["failures"][index]:
                 failures = [*failures, *extra["failures"][index]]
             if failures:
-                failed[index] = [str(failure) for failure in failures]
+                failed[index] = with_measures(
+                    [str(failure) for failure in failures],
+                    point_measures(output, extra, index),
+                )
                 continue
             numbers = evaluation.numbers
 
@@ -2290,6 +3115,15 @@ class NativeExecutor:
                             strict=True,
                         )
                     }
+                if exported.amplitude is not None:
+                    # Loop-induced: the native amplitude sum per (loop order,
+                    # column), its re-test, budget and scale (``induced``).
+                    # A row selection's output carries its kept rows only
+                    # (their amplitudes and counterterm kets): the
+                    # evaluation's rows, the rows it squares.
+                    induced.read_native(
+                        evaluation, output, index, exported, carrier, numbers
+                    )
                 if catani and evaluation.catani:
                     from .dipoles import correlations
 

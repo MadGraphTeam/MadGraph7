@@ -805,7 +805,7 @@ impl VerifiedArtifact {
     /// path; every subsequent failure is reported rather than falling back to
     /// less constrained inputs.
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(crate) fn try_open_recurrence_bootstrap(
         path: impl AsRef<Path>,
@@ -1154,7 +1154,7 @@ impl VerifiedArtifact {
     }
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn validated_payload_declarations(
     manifest: &ArtifactManifest,
@@ -1190,7 +1190,7 @@ fn validated_payload_declarations(
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn read_bounded_recurrence_bootstrap(root: &Path, path: &Path) -> RusticolResult<Option<Vec<u8>>> {
     reject_symlink_chain(path)?;
@@ -1314,7 +1314,7 @@ fn read_bounded_recurrence_bootstrap(root: &Path, path: &Path) -> RusticolResult
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn discover_single_recurrence_bootstrap_process(root: &Path) -> RusticolResult<Option<String>> {
     let processes = root.join("processes");
@@ -1397,7 +1397,7 @@ fn discover_single_recurrence_bootstrap_process(root: &Path) -> RusticolResult<O
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn read_canonical_manifest_artifact_id(path: &Path) -> RusticolResult<String> {
     const PREFIX: &[u8] = b"{\"artifact_id\":\"";
@@ -1461,7 +1461,7 @@ fn read_canonical_manifest_artifact_id(path: &Path) -> RusticolResult<String> {
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn compute_payload_artifact_id(payloads: &[Payload]) -> RusticolResult<String> {
     let mut canonical = String::new();
@@ -1547,7 +1547,7 @@ fn payload_role_name(role: PayloadRole) -> &'static str {
     }
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn validate_recurrence_bootstrap_metadata(
     producer: &Producer,
@@ -1621,7 +1621,7 @@ fn validate_recurrence_bootstrap_metadata(
     validate_portable_runtime_capabilities(&producer.target, &capabilities)
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn validate_recurrence_bootstrap_process(process: &ArtifactProcess) -> RusticolResult<()> {
     validate_public_id(&process.id, "recurrence bootstrap process id")?;
@@ -1684,7 +1684,7 @@ fn validate_recurrence_bootstrap_process(process: &ArtifactProcess) -> RusticolR
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn validate_recurrence_bootstrap_source_payload(
     payloads: &BTreeMap<String, Payload>,
@@ -1872,7 +1872,7 @@ fn load_evaluator_payload_container_extension(
     Ok(Some(Arc::new(reader)))
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn validate_evaluator_payload_container_declaration<'a>(
     extension: &EvaluatorPayloadContainerExtension,
@@ -3247,7 +3247,7 @@ fn metadata_is_executable(metadata: &fs::Metadata) -> bool {
     }
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn read_declared_payload(root: &Path, payload: &Payload) -> RusticolResult<Vec<u8>> {
     validate_payload_declaration(payload)?;
@@ -3340,7 +3340,7 @@ fn validate_payload_declaration(payload: &Payload) -> RusticolResult<()> {
     Ok(())
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn open_checked_payload(root: &Path, payload: &Payload) -> RusticolResult<File> {
     let path = root.join(&payload.path);
@@ -3447,7 +3447,7 @@ fn validate_relative_path(value: &str, description: &str) -> RusticolResult<()> 
     Ok(())
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn reject_symlink_chain(path: &Path) -> RusticolResult<()> {
     let mut ancestors = path.ancestors().collect::<Vec<_>>();
@@ -3650,6 +3650,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::OnTheFlyLcColorV1,
         RuntimeCapability::LoopRuntimeV3,
         RuntimeCapability::LoopRuntimeV4,
+        RuntimeCapability::LoopRuntimeV5,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,

@@ -15,7 +15,21 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
    value is promoted, MASTER_PLAN §2.18); an accepted point is never
    evaluated again;
 3. at the last level a point that evaluates keeps its value with the target
-   marked as not met; a point that failed at every level is a failed lane.
+   marked as not met; a point that failed at every level is a failed lane,
+   or, under ``on_failure="best-effort"``, a best-effort lane when the last
+   level's unchecked reduction gives it a value (only the last level runs
+   the best-effort evaluation, ``reduction.with_fallback``).
+
+A level compares the public estimate's field named by its ``metric`` with
+its target. An integrated zero (a Landau-Yang |A|^2 of a loop-induced
+process, m-lit PLAN §2.a.8; numerical, never declared, RULED Q13) can never
+meet a "relative" or "finite" target, its value being itself rounding: it
+climbs to the last level and is kept there with the target not met. The
+opt-in "scale" metric (``VirtualRescueLevel.metric``: E <= target x S,
+the estimate against the pre-cancellation scale S of its floor,
+``VirtualStabilityEstimate.scale``) accepts it at the first level, where
+its E / S is the floor's FLOOR_UNITS x u (M-LIT LIT-STAB-N, ``tests/unit/
+test_loop_v2_induced_stability.py``).
 
 Escalated levels evaluate one point per call: every lane of a non-binary64
 carrier is a scalar loop that costs as much padded as filled, so a fixed
@@ -59,6 +73,43 @@ RESCUE_OWNS_CARRIER = (
     "stability checks; pass no arithmetic, precision or stability_checks "
     "with stability="
 )
+
+
+def loop_induced_stack() -> VirtualRescuePolicy:
+    """The loop-induced default stack (m-lit F3 (b), USER 2026-11-08 ~15:40,
+    DECISIONS 15:32): the default ladder's binary64 level on TIRust (at the
+    default target, its acceptance calibrated from it), the same level on
+    NinjaRS, then the default ladder's higher levels (``"auto"``)."""
+
+    first, *rest = VirtualRescuePolicy().levels
+    return VirtualRescuePolicy(
+        (replace(first, reduction="tirust"), replace(first, reduction="ninjars"), *rest)
+    )
+
+
+def default_stack(
+    policy: VirtualRescuePolicy | None,
+    contribution: str,
+    requested: str,
+    fallback: str | None,
+) -> VirtualRescuePolicy | None:
+    """The stack a call runs: the loop-induced default stack
+    (``loop_induced_stack``) for the default policy (``VirtualRescuePolicy()``)
+    of a loop-induced call requesting ``"auto"`` whose ``"auto"`` takes
+    TIRust in binary64 with a per-point NinjaRS fallback (``fallback``, the
+    native policy's choice there: none on a TIR-only artifact or in a build
+    without TIRust); any other policy as given. A call naming a backend runs
+    the default ladder on it at every level (its levels are ``"auto"``)."""
+
+    if (
+        policy is None
+        or policy != VirtualRescuePolicy()
+        or contribution != "loop-induced"
+        or requested != "auto"
+        or fallback != "ninjars"
+    ):
+        return policy
+    return loop_induced_stack()
 
 
 def rescue_policy(
@@ -151,16 +202,28 @@ def _attempt(
     evaluation: VirtualEvaluation, lane: int, level: VirtualRescueLevel
 ) -> VirtualRescueAttempt:
     diagnostic = evaluation.diagnostics[lane]
-    if not diagnostic.valid:
+    # The level's reduction backend as its evaluation recorded it
+    # (``VirtualLaneDiagnostic.reduction``: requested, effective, reason).
+    # A best-effort lane (the last level's, ``on_failure="best-effort"``)
+    # is an attempt with a value: its estimate when the level checks.
+    if not diagnostic.has_value:
         return VirtualRescueAttempt(
             diagnostic.arithmetic,
             diagnostic.precision_bits,
             None,
             diagnostic.detail or diagnostic.status,
+            diagnostic.reduction,
+            diagnostic.kinematics,
         )
     estimate = None if evaluation.stability is None else evaluation.stability[lane]
     value = None if estimate is None else float(getattr(estimate, level.metric))
-    return VirtualRescueAttempt(diagnostic.arithmetic, diagnostic.precision_bits, value)
+    return VirtualRescueAttempt(
+        diagnostic.arithmetic,
+        diagnostic.precision_bits,
+        value,
+        reduction=diagnostic.reduction,
+        kinematics=diagnostic.kinematics,
+    )
 
 
 def _detail(record: VirtualRescueRecord, metric: str) -> str:
@@ -206,7 +269,17 @@ def _merged(
             item.met,
             tuple(attempts[index]),
         )
-        if original.valid:
+        if original.status == "best-effort":
+            # Every level refused the point; the last level's best-effort
+            # value is returned, never as a success.
+            diagnostic = replace(
+                original,
+                detail=f"{_detail(record, level.metric)}; {original.detail}",
+                failures=tuple(
+                    replace(failure, point_id=index) for failure in original.failures
+                ),
+            )
+        elif original.valid:
             diagnostic = replace(
                 original,
                 status="success" if item.level == 0 else "rescued",
@@ -257,6 +330,8 @@ def _merged(
         stability=tuple(estimates) if checked else None,
         pole_parts=tuple(parts) if splits_poles(template.poles) else None,
         rescue=tuple(records),
+        # The kind of the levels' results ("virtual" or "loop-induced").
+        contribution=template.contribution,
     )
 
 

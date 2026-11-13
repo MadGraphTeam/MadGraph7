@@ -703,8 +703,8 @@ impl PolynomialPlan {
 
 /// All-lane diagnostics plus compact successful values; failed numbers stay hidden.
 pub struct ReductionBatch {
-    pub(super) values: Batch,
-    pub(super) statuses: Vec<(u64, String)>,
+    pub(crate) values: Batch,
+    pub(crate) statuses: Vec<(u64, String)>,
 }
 impl ReductionBatch {
     pub fn statuses(&self) -> &[(u64, String)] {

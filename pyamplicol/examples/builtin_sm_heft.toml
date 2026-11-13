@@ -30,4 +30,3 @@ backend = "jit"
 
 [output]
 progress = "auto"
-log_level = "info"

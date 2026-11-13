@@ -3422,6 +3422,44 @@ class GenerationBackend:
             self._progress.emit(ProgressEnd(task_id))
         return result
 
+    def check(
+        self,
+        processes: ProcessSet,
+        *,
+        model: ModelSource | CompiledModel | None = None,
+        points: int,
+        seed: int,
+        precision=None,
+        stored=None,
+        sqrt_s=None,
+        arbitrary_digits=None,
+    ):
+        """``pyamplicol check`` of a one-loop request (``loop_service.
+        check_loop_requests``; ``stored``: an artifact input's manifest, the
+        model and processes the regeneration must match; ``sqrt_s``: the
+        points' energy, None the validation convention; ``arbitrary_digits``:
+        the digits of the auto ladder's arbitrary-precision rung, None
+        derived): one ``checks.ProcessCheck`` per process."""
+
+        if not self._loop_execution_enabled:
+            raise GenerationError(
+                "check serves one-loop requests (process.loop_coupling_orders): "
+                "its pole and Ward checks are the one-loop engine's"
+            )
+        from .loop_service import check_loop_requests
+
+        return check_loop_requests(
+            self,
+            processes,
+            model=model,
+            points=points,
+            seed=seed,
+            precision=precision,
+            stored=stored,
+            sqrt_s=sqrt_s,
+            arbitrary_digits=arbitrary_digits,
+        )
+
     def generate(
         self,
         processes: ProcessSet,
@@ -8846,7 +8884,7 @@ def _collapse_flavor_blind_classes(
     conjugated = sum(
         member.conjugated for group in members.values() for member in group
     )
-    _LOGGER.info(
+    _LOGGER.debug(
         "Flavor-blind grouping: %d subprocess%s -> %d generated "
         "representative%s; %d routed member%s (%d by charge conjugation%s); "
         "%d relabelling warning%s",

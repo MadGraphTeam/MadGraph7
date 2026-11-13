@@ -12,6 +12,11 @@ from types import MappingProxyType
 from typing import Any, Literal, NamedTuple, TypeAlias, cast
 
 from pyamplicol.config import PoleSelection, R2Strategy
+from pyamplicol.config.models import (
+    reduction_request,
+    reduction_target,
+    reduction_unchecked,
+)
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
@@ -19,17 +24,22 @@ from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import (
     DEFAULT_RESCUE,
     RESCUE_ROTATION,
-    RESCUE_TARGET,
     Rotation,
     StabilityChecks,
 )
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
 
+from .result_warnings import LaneWarnings
+from .result_warnings import NumericalAccuracyWarning as NumericalAccuracyWarning
+from .result_warnings import ResultWarning as ResultWarning
 from .results import _exact_decimal_sum
 
 VirtualScalar: TypeAlias = float | complex | Decimal | CorrelatedValue
 EPSILON_POWERS = (0, -1, -2)
+# The contributions a virtual result holds: the Born-virtual interference and
+# |A_loop|^2 of a loop-induced process (m-lit Q36).
+CONTRIBUTIONS = ("virtual", "loop-induced")
 
 
 class LaurentCoefficients(NamedTuple):
@@ -130,6 +140,14 @@ def parse_rotation(specification: str) -> Rotation:
 
     if not isinstance(specification, str):
         raise TypeError("a rotation specification is text")
+    # The native SDKs' parser builds the rotation (``stability.
+    # native_rotation``, the same exact matrix); the text below is the
+    # oracle and forms every refusal.
+    from pyamplicol.loops.v2.stability import native_rotation
+
+    native = native_rotation(specification)
+    if native is not None:
+        return native
     parts = specification.split(":")
     if len(parts) == 3 and parts[0] in ("x", "y", "z"):
         return Rotation.about(parts[0], parts[1], parts[2])
@@ -162,12 +180,25 @@ class VirtualStabilityChecks:
     estimate is returned. Escalating the arithmetic is the caller's decision.
     ``VirtualStabilityChecks(1, True, rescaled=True)`` is the recommended
     configuration (``loops.v2.stability.RECOMMENDED_CHECKS``).
+
+    ``cross_backend`` (m-lit PLAN §2.b.6, RULED Q21) evaluates every point a
+    second time on the other reduction backend (NinjaRS for a call reduced
+    by TIRust, TIRust for one reduced by NinjaRS) and adds the deviation of
+    its reduction lanes to the estimate (``checks`` names it
+    ``cross-backend``). It is a runtime option of the call, never declared
+    in an artifact; a native extension or carrier without the other backend
+    refuses it typed (``ReductionUnavailable``) before any point. A point the
+    other backend fails or refuses keeps the estimate of the other checks
+    and names the check with the reason in ``not_run`` of its estimate (a
+    refusal says nothing about the value), so it combines with at least one
+    other check. It costs one more evaluation of every point.
     """
 
     # Normalised to exact ``Rotation`` records by ``__post_init__``.
     rotations: tuple[Rotation | str, ...] | int = ()
     reduction_direction: bool = False
     rescaled: bool = False
+    cross_backend: bool = False
 
     def __post_init__(self) -> None:
         given = self.rotations
@@ -187,11 +218,16 @@ class VirtualStabilityChecks:
             raise TypeError("reduction_direction must be a boolean")
         if type(self.rescaled) is not bool:
             raise TypeError("rescaled must be a boolean")
+        if type(self.cross_backend) is not bool:
+            raise TypeError("cross_backend must be a boolean")
         object.__setattr__(
             self,
             "rotations",
             StabilityChecks(
-                rotations, self.reduction_direction, self.rescaled
+                rotations,
+                self.reduction_direction,
+                self.rescaled,
+                self.cross_backend,
             ).rotations,
         )
 
@@ -204,20 +240,70 @@ class VirtualStabilityChecks:
             cast(tuple[Rotation, ...], self.rotations),
             self.reduction_direction,
             self.rescaled,
+            self.cross_backend,
         )
+
+
+def _nonnegative(value: object, name: str) -> None:
+    if not isinstance(value, float) or math.isnan(value) or value < 0:
+        raise ValueError(f"{name} must be a nonnegative float")
+
+
+def _absolute_axis(
+    value: object, name: str, with_poles: bool
+) -> tuple[LaurentCoefficients, ...]:
+    """Per-sector absolute Laurent floats (``VirtualStabilityEstimate``'s
+    ``absolute`` and ``magnitude``): poles ``None`` exactly when absent."""
+
+    out = []
+    for sector in tuple(cast(Sequence[object], value)):
+        laurent = tuple(cast(Sequence[object], sector))
+        if len(laurent) != 3:
+            raise ValueError(f"{name} holds Laurent triples per sector")
+        _nonnegative(laurent[0], name)
+        for pole in laurent[1:]:
+            if not with_poles:
+                if pole is not None:
+                    raise ValueError(f"{name} has no pole entries without poles")
+                continue
+            _nonnegative(pole, name)
+        out.append(LaurentCoefficients(*cast(tuple[float, float, float], laurent)))
+    return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
 class VirtualStabilityEstimate:
-    """Estimated relative accuracy of one point's virtual.
+    """Estimated accuracy of one point's virtual.
 
     ``relative`` bounds each sector's error relative to that sector's largest
     Laurent coefficient; ``finite``, ``single_pole`` and ``double_pole``
     bound each coefficient's error relative to the coefficient itself (the
     poles are ``None`` in finite-only evaluations; ``inf`` marks an error
     estimate on an exact zero). ``checks`` names every check that ran with
-    its own relative budget (``rotation-<k>``, ``reduction-direction`` or
-    ``reduction-rescaled``).
+    its own relative budget (``rotation-<k>``, ``reduction-direction``,
+    ``reduction-rescaled``, or ``spin-transverse``: a loop-induced spin
+    vector's non-transverse part, which the value does not read).
+
+    The absolute estimate E and the scale S it is measured against (v2 loop
+    runtimes fill them; ``None`` otherwise): ``absolute[s]`` holds E per
+    sector and Laurent coefficient (:class:`LaurentCoefficients` of floats,
+    poles ``None`` when not computed), ``magnitude[s]`` the scale S of the
+    same entries (the absolute sum of the contributions before they cancel;
+    for a loop-induced result the pre-cancellation scale of its amplitudes,
+    m-lit PLAN §2.a.8), and ``scale`` the largest E / S over them: the
+    accuracy against the size of what cancelled (the ``"scale"`` metric of
+    a :class:`VirtualRescueLevel`). A value with ``|value| <= E`` is zero
+    within the estimate (m-lit Q13: zeros are numerical, never declared by
+    a physics rule). For a loop-induced result
+    (``contribution="loop-induced"``) the pole estimates ``single_pole`` and
+    ``double_pole`` are measured against S as well (max over sectors of E /
+    S): its poles vanish, so their own size is no scale (m-lit PLAN §2.a.7,
+    "Pole shape").
+
+    ``not_run`` names each requested check that did not run at this point,
+    with its reason (``cross-backend``: the other reduction backend failed
+    or refused the point, ``VirtualStabilityChecks.cross_backend``); the
+    estimate is then the other checks'.
     """
 
     relative: float
@@ -225,24 +311,249 @@ class VirtualStabilityEstimate:
     single_pole: float | None
     double_pole: float | None
     checks: tuple[tuple[str, float], ...]
+    scale: float | None = None
+    absolute: tuple[LaurentCoefficients, ...] | None = None
+    magnitude: tuple[LaurentCoefficients, ...] | None = None
+    not_run: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
-        for name in ("relative", "finite", "single_pole", "double_pole"):
+        for name in ("relative", "finite", "single_pole", "double_pole", "scale"):
             value = getattr(self, name)
-            if value is None and name in ("single_pole", "double_pole"):
+            if value is None and name in ("single_pole", "double_pole", "scale"):
                 continue
-            if not isinstance(value, float) or math.isnan(value) or value < 0:
-                raise ValueError(f"{name} must be a nonnegative float")
+            _nonnegative(value, name)
         if (self.single_pole is None) != (self.double_pole is None):
             raise ValueError("both pole estimates are present or absent")
         checks = tuple((str(name), float(value)) for name, value in self.checks)
         if not checks or len({name for name, _ in checks}) != len(checks):
             raise ValueError("an estimate names its distinct checks")
         object.__setattr__(self, "checks", checks)
+        skipped = tuple((str(name), str(reason)) for name, reason in self.not_run)
+        names = [name for name, _ in skipped]
+        if len(set(names)) != len(names) or set(names) & {n for n, _ in checks}:
+            raise ValueError("a check that did not run is named once, not as run")
+        if any(not reason for _, reason in skipped):
+            raise ValueError("a check that did not run states its reason")
+        object.__setattr__(self, "not_run", skipped)
+        given = [item is None for item in (self.scale, self.absolute, self.magnitude)]
+        if any(given) != all(given):
+            raise ValueError("scale, absolute and magnitude are given together")
+        if self.absolute is not None:
+            with_poles = self.single_pole is not None
+            absolute = _absolute_axis(self.absolute, "absolute", with_poles)
+            magnitude = _absolute_axis(self.magnitude, "magnitude", with_poles)
+            if len(absolute) != len(magnitude) or not absolute:
+                raise ValueError("absolute and magnitude follow the sectors")
+            object.__setattr__(self, "absolute", absolute)
+            object.__setattr__(self, "magnitude", magnitude)
 
 
 REDUCTION_CHECKS = ("none", "reversed", "rescaled")
-RESCUE_METRICS = ("relative", "finite")
+RESCUE_METRICS = ("relative", "finite", "scale")
+
+
+BEST_EFFORT_SOURCES = (
+    "stability-checks",
+    "stability-and-recommended-checks",
+    "recommended-checks",
+    "none",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualBestEffort:
+    """The best-effort value of one point (``on_failure="best-effort"``):
+    every configured alternative (the call's backend with its acceptance
+    checks, ``"auto"``'s per-point fallback, the rescue levels up to the
+    last) refused or failed the point, and its value is the one the same
+    reduction returns WITHOUT the backends' own acceptance and refusal
+    checks (``reduction_unchecked=True``: TIRust's method choice and last
+    resort as computed, NinjaRS with zero stability thresholds), bitwise.
+    Such a lane has status ``"best-effort"``: never a success, its accuracy
+    not established.
+
+    ``refusal`` holds the reasons of the refusals the value overrides (one
+    message per distinct reason class, with the count of the others).
+    ``uncertainty`` is the relative accuracy estimate of the value (the
+    ``"relative"`` metric of the stability estimate: each squared-order
+    sector against its own magnitude, an output that vanishes against the
+    largest returned output), run on the best-effort points alone, from
+    ``source``: ``"stability-and-recommended-checks"``, the call's own
+    checks together with the recommended checks (the guard's rotation and
+    the rescaled reduction-direction check,
+    ``VirtualStabilityChecks(1, True, rescaled=True)``'s kind), at least the
+    larger of the two estimates (the public result still carries the
+    estimate of the call's own checks); ``"stability-checks"``, the call's
+    own checks when they already include the recommended ones;
+    ``"recommended-checks"``, the recommended checks alone when the call
+    requested none (the public result then carries no estimate, as the call
+    asked). Why the recommended checks always count: one rotation alone
+    under-states the error of an unchecked TIRust value of a Born-interfered
+    process (u u~ > t t~ g g: 220 of 722 best-effort points within a
+    one-rotation estimate; 219 of 219 within the recommended one).
+    ``"none"``: no
+    estimate could be formed (the re-test failed or was not a number), and
+    ``uncertainty`` is None. ``backend_deviation`` and
+    ``gram_conditioning`` are the backend's own lane-level measures where
+    its refused lanes state one (data from the native reduction, never read
+    from the reason text; not the result's accuracy): the largest deviation
+    of a TIRust method-choice lane between its two frames relative to that
+    lane's term scale, and TIRust's smallest conditioning estimate of a
+    refused lane (the Gram, Cayley or coordinate-system measure its
+    stability threshold refused; zero for an exactly singular pivot); None
+    when no refused lane states one (e.g. NinjaRS's thresholds)."""
+
+    refusal: str
+    uncertainty: float | None
+    source: Literal[
+        "stability-checks",
+        "stability-and-recommended-checks",
+        "recommended-checks",
+        "none",
+    ]
+    backend_deviation: float | None = None
+    gram_conditioning: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.refusal, str) or not self.refusal:
+            raise ValueError("a best-effort value states the refusal it overrides")
+        if self.source not in BEST_EFFORT_SOURCES:
+            raise ValueError(f"unknown best-effort uncertainty source {self.source!r}")
+        if (self.uncertainty is None) != (self.source == "none"):
+            raise ValueError(
+                "a best-effort uncertainty is given exactly when its source is "
+                "not 'none'"
+            )
+        for name in ("uncertainty", "backend_deviation", "gram_conditioning"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{name} is a relative estimate (a float)")
+            if math.isnan(value) or value < 0:
+                raise ValueError(f"{name} is a nonnegative number")
+            object.__setattr__(self, name, float(value))
+
+
+def best_effort_detail(record: VirtualBestEffort) -> str:
+    """The lane detail of a best-effort value (``VirtualBestEffort``): what
+    the value is and its uncertainty, or that none could be given."""
+
+    where = {
+        "stability-checks": "call's checks",
+        "stability-and-recommended-checks": "call's and recommended checks",
+        "recommended-checks": "recommended checks",
+    }
+    head = "refused; value of the unchecked reduction (best effort)"
+    if record.uncertainty is None:
+        tail = "no uncertainty could be estimated"
+    else:
+        tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
+    if record.backend_deviation is not None:
+        tail += f"; backend deviation {record.backend_deviation:.2e}"
+    if record.gram_conditioning is not None:
+        tail += f"; Gram conditioning {record.gram_conditioning:.2e}"
+    return f"{head}; {tail}; refusal in failures / --json"
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualReduction:
+    """The reduction backend of one evaluation (m-lit PLAN §2.b.4, RULED
+    Q17 / Q18, F3): the ``requested`` one (``"auto"``, ``"ninjars"`` or
+    ``"tirust"``), the ``effective`` one, and the ``reason`` of the choice.
+    ``"auto"`` takes the per-type default (loop-induced: TIRust;
+    Born-interfered: NinjaRS; TIRust on a TIR-only artifact) and falls back
+    to NinjaRS for the whole call, with the reason, where TIRust cannot serve
+    it; an explicitly requested backend that cannot serve it is refused
+    instead. The choice is made once per call and carrier (no silent
+    switch).
+
+    ``fallback`` is the call's per-point fallback (m-lit F3 (c)): NinjaRS
+    when ``"auto"`` took TIRust and NinjaRS serves the call too, None
+    otherwise (an explicit backend has none). A point TIRust refuses or
+    fails is evaluated again on it, and that point's lane records a
+    ``VirtualReduction`` of its own: ``effective`` the fallback, its
+    ``reason`` the fallback's (with TIRust's failure), ``fallback`` None.
+    ``target`` is the call's (or the rescue level's) target accuracy, the
+    relative accuracy of each point's result that TIRust's acceptance
+    follows (None: the default target, ``loops.v2.reduction.
+    default_target``). ``unchecked`` is the call's unchecked setting (m-lit
+    lit-unchecked; default False): True when the backend (and its per-point
+    fallback) reduced without its own acceptance and refusal checks (TIRust:
+    gates and method choice as method selection, no acceptance pass, plain
+    PV at gate 0 as its last resort, so the target drives nothing; NinjaRS:
+    zero stability thresholds).
+
+    ``guard_estimate`` is set on the record of a point the per-point
+    fallback served in double-double or arbitrary precision (m-lit
+    lit-fallback-guard; USER 2026-11-09 ~11:53: the extended carriers only):
+    the relative estimate (each squared-order sector against its largest
+    Laurent coefficient, the metric of ``target``) of the fallback value's
+    reduction-direction check (every loop numerator reduced a second time in
+    the reversed frame, cached masters;
+    ``VirtualStabilityChecks(reduction_direction=True)`` alone), run at the
+    call's own carrier on every such point. A point whose estimate exceeds
+    the guard's limit, the call's target never below 1e-5 (max(target,
+    1e-5)), or is NaN is a typed failure whose reason (and this record's)
+    names the fallback, TIRust's failure, the carrier, the estimate and the
+    limit; a point within it keeps the fallback's value. None on every other
+    record (the call's own, a point TIRust served, a point the fallback
+    failed, a binary64 fallback point, which is served unguarded). The
+    point's public stability estimate stays the call's checks' own.
+
+    ``best_effort`` is set on the record of a point served by the
+    best-effort evaluation (``on_failure="best-effort"``,
+    :class:`VirtualBestEffort`): ``effective`` is the backend whose
+    unchecked reduction gave the value, ``unchecked`` True and the lane's
+    status ``"best-effort"``; None on every other record."""
+
+    requested: Literal["auto", "ninjars", "tirust"]
+    effective: Literal["ninjars", "tirust"]
+    reason: str
+    fallback: Literal["ninjars", "tirust"] | None = None
+    target: float | None = None
+    unchecked: bool = False
+    guard_estimate: float | None = None
+    best_effort: VirtualBestEffort | None = None
+
+    def __post_init__(self) -> None:
+        # The choices are ``config.ReductionBackend``'s (one definition, one
+        # validator); "auto" is a request, never the effective backend.
+        reduction_request(self.requested)
+        if reduction_request(self.effective) == "auto":
+            raise ValueError("the effective reduction is a backend, never 'auto'")
+        if self.requested not in ("auto", self.effective):
+            raise ValueError("an explicit reduction request is served as requested")
+        if not isinstance(self.reason, str) or not self.reason:
+            raise ValueError("a reduction choice states its reason")
+        if self.fallback is not None:
+            if reduction_request(self.fallback) in ("auto", self.effective):
+                raise ValueError("a per-point fallback is the other backend")
+            if self.requested != "auto":
+                raise ValueError("only an 'auto' request has a per-point fallback")
+        if self.target is not None:
+            object.__setattr__(self, "target", reduction_target(self.target))
+        reduction_unchecked(self.unchecked)
+        if self.guard_estimate is not None:
+            if isinstance(self.guard_estimate, bool) or not isinstance(
+                self.guard_estimate, (int, float)
+            ):
+                raise TypeError("guard_estimate is a relative estimate (a float)")
+            if self.guard_estimate < 0:
+                raise ValueError("guard_estimate is nonnegative")
+            if self.fallback is not None:
+                raise ValueError(
+                    "guard_estimate is a per-point fallback record's, not a call's"
+                )
+            object.__setattr__(self, "guard_estimate", float(self.guard_estimate))
+        if self.best_effort is not None:
+            if not isinstance(self.best_effort, VirtualBestEffort):
+                raise TypeError("best_effort is a VirtualBestEffort record")
+            if self.fallback is not None or not self.unchecked:
+                raise ValueError(
+                    "a best-effort record is a per-point record of an unchecked "
+                    "reduction"
+                )
 
 
 def _carrier_bits(arithmetic: str, precision: int | None) -> int:
@@ -253,6 +564,16 @@ def _carrier_bits(arithmetic: str, precision: int | None) -> int:
     if arithmetic == "double-double":
         return 106
     return math.ceil(cast(int, precision) * math.log2(10))
+
+
+def _default_target() -> float:
+    """A level's default target: the call's default target accuracy (m-lit F3
+    (a), the native policy's one definition, ``loops.v2.reduction.
+    default_target``; read when a level is built, not at import)."""
+
+    from pyamplicol.loops.v2.reduction import default_target
+
+    return default_target()
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,21 +591,52 @@ class VirtualRescueLevel:
     (:class:`VirtualStabilityChecks`). A point is accepted at the level when
     it evaluates and its estimate's ``metric`` (``"relative"``:
     ``VirtualStabilityEstimate.relative``, each sector against its largest
-    Laurent coefficient; ``"finite"``: the finite part against itself) is at
-    most ``target``. A level without any check accepts no point by its
+    Laurent coefficient; ``"finite"``: the finite part against itself;
+    ``"scale"``: ``VirtualStabilityEstimate.scale``, E <= target x S against
+    the scale S of what cancelled, an opt-in acceptance rule for values that
+    may vanish, such as loop-induced zeros, m-lit PLAN §2.a.8) is at most
+    ``target``. A level without any check accepts no point by its
     estimate; it may only be the last level, which keeps every point it
     evaluates.
+
+    ``reduction`` is the level's reduction backend (m-lit PLAN §2.b.4 and
+    §2.b.6, RULED Q17 / Q22, F3 (b)): ``"auto"`` (the default) takes the
+    call's request when the call names a backend (``evaluate(...,
+    reduction=)``, else ``Runtime.load(..., reduction=)``, else the
+    artifact's default), else the per-type default with its fallbacks (on
+    TIRust: the per-point NinjaRS fallback at the level's carrier,
+    ``VirtualReduction.fallback``); ``"ninjars"`` or ``"tirust"`` names the
+    level's own backend, without a fallback (its next level is the
+    fallback). Each level resolves its backend once, for its carrier,
+    before any point is evaluated: an explicit backend (the level's, or the
+    call's inherited by ``"auto"``) that cannot serve the level's carrier is
+    refused typed (``ReductionUnavailable``), never switched; the requested
+    and effective backends and the reason are in every attempt of
+    :class:`VirtualRescueRecord`. TIRust's method-choice acceptance at the
+    level follows the level's ``target`` (calibrated, the call's target
+    accuracy's mapping).
+
+    A level is gammaloop's ``StabilityLevelSetting`` with a backend:
+    ``arithmetic`` / ``precision`` is its ``precision`` (Double, Quad =
+    double-double, Arb), ``rotations`` / ``reduction_check`` how stability
+    is assessed (gammaloop: the rotation of ``StabilitySettings.
+    rotation_axis``), ``target`` with ``metric`` its
+    ``required_precision_for_re`` / ``_im`` (one relative target here),
+    and ``reduction`` the backend gammaloop has no counterpart for.
     """
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision: int | None = None
     rotations: tuple[Rotation | str, ...] | int = (RESCUE_ROTATION,)
     reduction_check: Literal["none", "reversed", "rescaled"] = "rescaled"
-    target: float = RESCUE_TARGET
-    metric: Literal["relative", "finite"] = "relative"
+    target: float = field(default_factory=_default_target)
+    metric: Literal["relative", "finite", "scale"] = "relative"
+    reduction: Literal["auto", "ninjars", "tirust"] = "auto"
 
     def __post_init__(self) -> None:
         VirtualArithmeticSpec(self.arithmetic, self.precision)
+        # The one validator of every reduction request (lit-api).
+        object.__setattr__(self, "reduction", reduction_request(self.reduction))
         if self.reduction_check not in REDUCTION_CHECKS:
             raise ValueError(f"reduction_check must be one of {REDUCTION_CHECKS}")
         if self.metric not in RESCUE_METRICS:
@@ -316,6 +668,12 @@ class VirtualRescueLevel:
     def precision_bits(self) -> int:
         return _carrier_bits(self.arithmetic, self.precision)
 
+    def backend_request(self, call: str) -> str:
+        """The level's reduction request in a call that requests ``call``
+        (``reduction``: its own, or with ``"auto"`` the call's)."""
+
+        return reduction_request(call) if self.reduction == "auto" else self.reduction
+
 
 def _default_levels() -> tuple[VirtualRescueLevel, ...]:
     return tuple(
@@ -327,9 +685,13 @@ def _default_levels() -> tuple[VirtualRescueLevel, ...]:
 @dataclass(frozen=True, slots=True)
 class VirtualRescuePolicy:
     """The built-in stability rescue of a virtual ``evaluate`` (Python API
-    only; off unless passed): an ordered ladder of :class:`VirtualRescueLevel`
-    in strictly increasing precision bits, modelled on gammaloop's stability
-    levels.
+    only; off unless passed): an ordered stack of :class:`VirtualRescueLevel`
+    in non-decreasing precision bits, modelled on gammaloop's stability
+    levels (``runtime.stability.levels``), each naming how stability is
+    assessed, its working precision and its reduction backend (m-lit F3 (b),
+    USER 2026-11-08 ~15:40): two levels at the same precision differ in
+    their backend (a same-precision level on the other backend), and a
+    repeated (precision bits, reduction) pair is refused.
 
     Level 0 evaluates the whole batch. A point that fails (also in one of its
     rotated evaluations) or misses the level's target is evaluated again at
@@ -341,9 +703,16 @@ class VirtualRescuePolicy:
     the level reached and every attempt.
 
     The default ``VirtualRescuePolicy()`` runs binary64, then double-double,
-    then 57-digit arbitrary precision, each with target 1e-5 on the relative
-    estimate, one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
-    check (``loops.v2.stability.DEFAULT_RESCUE``).
+    then 57-digit arbitrary precision, each with the default target accuracy
+    (1e-5, ``loops.v2.reduction.default_target``) on the relative estimate,
+    one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
+    check (``loops.v2.stability.DEFAULT_RESCUE``), every level ``"auto"``.
+    For a loop-induced call whose ``"auto"`` takes TIRust with the NinjaRS
+    fallback (``loops.v2.rescue.default_stack``) it is the loop-induced
+    default stack: TIRust binary64 at the target, then NinjaRS binary64, then
+    the double-double and 57-digit levels (``"auto"``: TIRust with the
+    per-point NinjaRS fallback at their carrier). A call naming a backend
+    runs the default ladder on that backend at every level.
     """
 
     levels: tuple[VirtualRescueLevel, ...] = field(default_factory=_default_levels)
@@ -357,9 +726,15 @@ class VirtualRescuePolicy:
         if any(not isinstance(level, VirtualRescueLevel) for level in levels):
             raise TypeError("rescue levels are VirtualRescueLevel records")
         bits = [level.precision_bits for level in levels]
-        if any(later <= earlier for earlier, later in pairwise(bits)):
+        if any(later < earlier for earlier, later in pairwise(bits)):
             raise ValueError(
-                f"rescue levels need strictly increasing precision bits (got {bits})"
+                f"rescue levels need non-decreasing precision bits (got {bits})"
+            )
+        pairs = [(level.precision_bits, level.reduction) for level in levels]
+        if len(set(pairs)) != len(pairs):
+            raise ValueError(
+                "two rescue levels at the same precision differ in their reduction "
+                f"backend: repeated (precision bits, reduction) pair in {pairs}"
             )
         if any(not level.checks.enabled for level in levels[:-1]):
             raise ValueError(
@@ -369,17 +744,89 @@ class VirtualRescuePolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualKinematics:
+    """The kinematics improvement of one point in one carrier (m-lit
+    lit-psimprove; ``pyamplicol.kinematics``): the requested setting
+    (``"z-shift"``, ``"rescaling"``, ``"projection"`` or ``"off"``), what
+    became of the point (``status``: ``"improved"`` by the variant
+    ``produced``; ``"exact"``, already exactly physical and passed
+    unchanged; ``"not-improved"``, evaluated as given; ``"off"``), every step
+    of the chain with its code (``attempts``: MadLoop's codes, ``1`` the
+    input test IS_PHYSICAL, 100-999 ORIG, 1000-9999 PSMC, 999 IS_CLOSE;
+    10001 the projection's singular system), the produced point's exactness
+    record (its largest shell and conservation defects relative to the
+    point's scale, against the carrier's rounding bounds), the projection's
+    steps, PSMC's scale factor, the largest move, and the typed warning:
+    ``"kinematics-not-improved"`` (evaluated as given) or
+    ``"kinematics-inexact"`` (the produced point misses exactness; it is
+    used). The warnings are records, not failures: the value is returned as
+    computed and they trigger no rescue escalation."""
+
+    requested: str
+    status: Literal["improved", "exact", "not-improved", "off"]
+    produced: str | None = None
+    fallback: bool = True
+    attempts: tuple[tuple[str, int], ...] = ()
+    shell: float | None = None
+    conservation: float | None = None
+    shell_bound: float | None = None
+    conservation_bound: float | None = None
+    exact: bool | None = None
+    iterations: int | None = None
+    scale: float | None = None
+    moved: float = 0.0
+    warning: str | None = None
+    warning_text: str | None = None
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> VirtualKinematics:
+        """From the native record (``kinematics_improvement::Record::to_json``)."""
+
+        exactness = record.get("exactness") or {}
+        return cls(
+            requested=record["requested"],
+            status=record["status"],
+            produced=record.get("produced"),
+            fallback=bool(record.get("fallback", True)),
+            attempts=tuple(
+                (attempt["step"], int(attempt["code"]))
+                for attempt in record.get("attempts", ())
+            ),
+            shell=exactness.get("shell"),
+            conservation=exactness.get("conservation"),
+            shell_bound=exactness.get("shell_bound"),
+            conservation_bound=exactness.get("conservation_bound"),
+            exact=exactness.get("exact"),
+            iterations=record.get("iterations"),
+            scale=record.get("scale"),
+            moved=float(record.get("moved", 0.0)),
+            warning=record.get("warning"),
+            warning_text=record.get("warning_text"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualRescueAttempt:
     """One level's evaluation of one point: its carrier, the value of the
     level's metric (``None`` when the point failed or the level runs no
-    check) or the failure."""
+    check) or the failure, and the level's reduction backend (requested,
+    effective and the reason, ``VirtualRescueLevel.reduction``; ``None``
+    from a runtime that records none)."""
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision_bits: int
     estimate: float | None
     failure: str | None = None
+    reduction: VirtualReduction | None = None
+    # The level's kinematics improvement of the point (m-lit lit-psimprove;
+    # every level improves the original exact inputs in its own carrier).
+    kinematics: VirtualKinematics | None = None
 
     def __post_init__(self) -> None:
+        if self.reduction is not None and not isinstance(
+            self.reduction, VirtualReduction
+        ):
+            raise TypeError("an attempt's reduction is a VirtualReduction record")
         if self.failure is not None:
             if not isinstance(self.failure, str) or self.estimate is not None:
                 raise ValueError("a failed attempt names its failure, no estimate")
@@ -431,6 +878,21 @@ class VirtualRescueRecord:
         """Whether the point failed at every level."""
 
         return self.attempts[-1].failure is not None
+
+    @property
+    def reduction(self) -> VirtualReduction | None:
+        """The reduction backend of the level whose evaluation the point
+        returns (its last attempt's; every level's is in ``attempts``)."""
+
+        return self.attempts[-1].reduction
+
+    @property
+    def best_effort(self) -> bool:
+        """Whether the point returns a best-effort value (every level
+        refused it; its last attempt's reduction record says so)."""
+
+        reduction = self.attempts[-1].reduction
+        return reduction is not None and reduction.best_effort is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -487,10 +949,22 @@ class VirtualVerificationDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class VirtualLaneDiagnostic:
-    """Accuracy is explicit; a finite output is not an accuracy certificate."""
+    """Accuracy is explicit; a finite output is not an accuracy certificate.
+
+    ``"best-effort"`` (``on_failure="best-effort"``) is a lane every
+    configured alternative refused or failed whose value is the unchecked
+    reduction's: it carries that value (``has_value``) but is never
+    ``valid``; its ``reduction.best_effort`` record
+    (:class:`VirtualBestEffort`) holds the overridden refusal and the
+    uncertainty, and ``failures`` the refusals."""
 
     status: Literal[
-        "success", "rescued", "unsupported", "failed", "accuracy-not-established"
+        "success",
+        "rescued",
+        "best-effort",
+        "unsupported",
+        "failed",
+        "accuracy-not-established",
     ]
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision_bits: int
@@ -501,11 +975,30 @@ class VirtualLaneDiagnostic:
     # The initial attempt; rescued evaluations retain their actual later
     # operations in verification.attempts.
     primary_color_contraction: VirtualColorContraction | None = None
+    # The reduction backend of the evaluation (m-lit Q17 / Q18).
+    reduction: VirtualReduction | None = None
+    # A loop-induced point's amplitude-level finiteness ratio (m-lit PLAN
+    # §2.a.7, L3): the largest ||a_{-k}||_G over loop orders, helicity rows
+    # and pole coefficients against the row's pre-cancellation term scale,
+    # of the order of the carrier's unit roundoff for a complete amplitude.
+    # Present exactly when the call computes the poles and requests stability
+    # checks; None otherwise (also with poles="none") and for Born-interfered
+    # results. Its scale is the point's term floor, which needs every
+    # family's tensor moments at the point (one unit-numerator reduction per
+    # family monomial and point on NinjaRS); the checks form it anyway, a call
+    # without them pays nothing for it.
+    finiteness: float | None = None
+    # The kinematics improvement of the point in this carrier (m-lit
+    # lit-psimprove; ``VirtualKinematics``): absent for a binary64
+    # evaluation without the binary64 switch (no improvement, values bitwise
+    # as before), else the record (``"off"`` under the setting "off").
+    kinematics: VirtualKinematics | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {
             "success",
             "rescued",
+            "best-effort",
             "unsupported",
             "failed",
             "accuracy-not-established",
@@ -532,10 +1025,37 @@ class VirtualLaneDiagnostic:
         if self.valid and failures:
             raise ValueError("valid lanes cannot retain unrecovered failures")
         object.__setattr__(self, "failures", failures)
+        if self.reduction is not None and not isinstance(
+            self.reduction, VirtualReduction
+        ):
+            raise TypeError("a lane's reduction is a VirtualReduction record")
+        if (self.status == "best-effort") != (self.best_effort is not None):
+            raise ValueError(
+                "a best-effort lane carries its reduction's best-effort record, "
+                "and only such a lane"
+            )
+        if self.finiteness is not None:
+            _nonnegative(self.finiteness, "finiteness")
+            if not self.has_value:
+                raise ValueError("failed lanes carry no finiteness ratio")
 
     @property
     def valid(self) -> bool:
         return self.status in {"success", "rescued"}
+
+    @property
+    def has_value(self) -> bool:
+        """Whether the lane carries a value: a valid lane, or a best-effort
+        one (never valid)."""
+
+        return self.valid or self.status == "best-effort"
+
+    @property
+    def best_effort(self) -> VirtualBestEffort | None:
+        """The best-effort record of a ``"best-effort"`` lane (its
+        reduction's), else None."""
+
+        return None if self.reduction is None else self.reduction.best_effort
 
 
 def _scalar(value: object, correlated: bool, arithmetic: str) -> VirtualScalar:
@@ -690,7 +1210,7 @@ def _pole_parts(
         raise ValueError("pole parts and diagnostics differ in lane count")
     out: list[VirtualPoleParts | None] = []
     for lane, diagnostic in zip(lanes, diagnostics, strict=True):
-        if not diagnostic.valid:
+        if not diagnostic.has_value:
             if lane is not None:
                 raise ValueError("failed lanes carry no pole parts")
             out.append(None)
@@ -808,11 +1328,21 @@ def _sum(values: tuple[VirtualScalar, ...]) -> VirtualScalar:
 
 
 def _orders(
-    born_orders: Sequence[CouplingOrders], sectors: Sequence[VirtualOrderSector]
+    born_orders: Sequence[CouplingOrders],
+    sectors: Sequence[VirtualOrderSector],
+    contribution: str = "virtual",
 ) -> tuple[tuple[CouplingOrders, ...], tuple[VirtualOrderSector, ...]]:
     born_orders = tuple(canonical_order(order) for order in born_orders)
     sectors = tuple(sectors)
-    if not born_orders or not sectors:
+    if contribution not in CONTRIBUTIONS:
+        raise ValueError(f"unknown contribution {contribution!r}")
+    if contribution == "loop-induced":
+        # |A_loop|^2 (m-lit Q36): no Born, loop x loop sectors.
+        if born_orders:
+            raise ValueError("a loop-induced result has an empty Born catalogue")
+        if not sectors:
+            raise ValueError("virtual results require an interference catalogue")
+    elif not born_orders or not sectors:
         raise ValueError("virtual results require Born and interference catalogues")
     if len(set(born_orders)) != len(born_orders):
         raise ValueError("duplicate Born squared orders")
@@ -846,7 +1376,15 @@ def _common(
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
     object.__setattr__(result, "poles", pole_selection(result.poles))
-    born_orders, sectors = _orders(result.born_orders, result.sectors)
+    contribution = result.contribution
+    born_orders, sectors = _orders(result.born_orders, result.sectors, contribution)
+    if contribution == "loop-induced" and splits_poles(result.poles):
+        # The UV and IR parts of |A_loop|^2 are not additive (m-lit PLAN
+        # §2.a.7): a loop-induced result has every pole or none.
+        raise ValueError(
+            "a loop-induced result has the pole selection 'all' or 'none' "
+            f"(got {result.poles.value!r})"
+        )
     diagnostics = tuple(result.diagnostics)
     if not all(isinstance(item, VirtualLaneDiagnostic) for item in diagnostics):
         raise TypeError("virtual results require per-lane diagnostics")
@@ -866,7 +1404,7 @@ def _common(
     for born, virtual, diagnostic in zip(
         result.born_values, result.values, diagnostics, strict=True
     ):
-        if not diagnostic.valid:
+        if not diagnostic.has_value:
             if born is not None or virtual is not None:
                 raise ValueError("failed lanes must not expose stale numerical values")
             frozen_born.append(None)
@@ -887,10 +1425,13 @@ def _common(
                 computes_poles(result.poles),
             )
         )
-        if any(
-            len(_scalar_kinds(value)) != 1
-            for value in (frozen_born[-1], frozen_values[-1])
-        ):
+        # (A loop-induced result's Born axes have zero length: no container.)
+        checked = (
+            (frozen_values[-1],)
+            if contribution == "loop-induced"
+            else (frozen_born[-1], frozen_values[-1])
+        )
+        if any(len(_scalar_kinds(value)) != 1 for value in checked):
             raise TypeError("a lane must use consistent Born and virtual containers")
     for name, value in (
         ("born_orders", born_orders),
@@ -924,12 +1465,12 @@ def _stability(
         estimates, diagnostics, unchecked, strict=True
     ):
         if estimate is None:
-            if diagnostic.valid and not free:
+            if diagnostic.has_value and not free:
                 raise ValueError("a checked successful lane has an estimate")
             continue
         if not isinstance(estimate, VirtualStabilityEstimate):
             raise TypeError("stability estimates are VirtualStabilityEstimate records")
-        if not diagnostic.valid:
+        if not diagnostic.has_value:
             raise ValueError("failed lanes carry no stability estimate")
         if (estimate.single_pole is not None) != with_poles:
             raise ValueError("pole estimates exist exactly when poles were computed")
@@ -949,18 +1490,20 @@ def _rescue(
     for record, diagnostic in zip(records, diagnostics, strict=True):
         if not isinstance(record, VirtualRescueRecord):
             raise TypeError("rescue records are VirtualRescueRecord records")
-        if record.failed == diagnostic.valid:
+        if record.failed == diagnostic.has_value:
             raise ValueError("a rescue record fails exactly with its lane")
         if (record.arithmetic, record.precision_bits) != (
             diagnostic.arithmetic,
             diagnostic.precision_bits,
         ):
             raise ValueError("a lane's carrier is its rescue level's")
+        if record.reduction != diagnostic.reduction:
+            raise ValueError("a lane's reduction backend is its rescue level's")
     return cast(tuple[VirtualRescueRecord, ...], records)
 
 
 @dataclass(frozen=True, slots=True)
-class VirtualEvaluation:
+class VirtualEvaluation(LaneWarnings):
     """Born [point, order] and interference [point, order, epsilon].
 
     Ordinary interference is real and directed correlations may be complex.
@@ -980,6 +1523,13 @@ class VirtualEvaluation:
     ran a :class:`VirtualRescuePolicy` (``None`` otherwise); each lane's
     values, diagnostic, estimate and pole parts are then those of the level
     that returned it, and ``rescue_counts`` summarises the levels.
+
+    ``contribution`` is ``"virtual"`` (the Born-virtual interference) or
+    ``"loop-induced"`` (|A_loop|^2 of a process without a Born amplitude,
+    m-lit Q36): its Born fields are zeroed (``born_orders`` empty, every
+    per-point Born entry of zero length), its sectors pair loop orders (the
+    pair's ``born`` slot holds the conjugated loop order) and its computed
+    poles vanish up to rounding (a finiteness cross-check).
     """
 
     born_values: OrderCoefficients
@@ -994,6 +1544,7 @@ class VirtualEvaluation:
     stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
     pole_parts: tuple[VirtualPoleParts | None, ...] | None = None
     rescue: tuple[VirtualRescueRecord, ...] | None = None
+    contribution: Literal["virtual", "loop-induced"] = "virtual"
 
     def __post_init__(self) -> None:
         _common(self, (len(self.born_orders),), (len(self.sectors), 3))
@@ -1040,17 +1591,25 @@ class VirtualEvaluation:
     def rescue_counts(self) -> dict[int | str, int] | None:
         """Lanes per rescue level whose estimate met the level's target
         (levels 0 to the highest reached), plus ``"not met"`` (lanes kept
-        at the last level with the target missed) and ``"failed"`` (lanes
-        that failed at every level); ``None`` without a rescue policy."""
+        at the last level with the target missed), ``"best-effort"`` (lanes
+        every level refused, kept at the last level with their best-effort
+        value, ``on_failure="best-effort"``) and ``"failed"`` (lanes that
+        failed at every level); ``None`` without a rescue policy."""
 
         if self.rescue is None:
             return None
         top = max((record.level for record in self.rescue), default=0)
         counts: dict[int | str, int] = dict.fromkeys(range(top + 1), 0)
-        counts["not met"] = counts["failed"] = 0
+        counts["not met"] = counts["best-effort"] = counts["failed"] = 0
         for record in self.rescue:
             key: int | str = (
-                "failed" if record.failed else record.level if record.met else "not met"
+                "failed"
+                if record.failed
+                else "best-effort"
+                if record.best_effort
+                else record.level
+                if record.met
+                else "not met"
             )
             counts[key] += 1
         return counts
@@ -1127,7 +1686,108 @@ class VirtualEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedVirtualEvaluation:
+class VirtualOrderEvaluation:
+    """A virtual result split by squared coupling order
+    (:meth:`pyamplicol.Runtime.evaluate_orders` on a virtual runtime): a view
+    of ONE :class:`VirtualEvaluation` (``evaluation``), nothing evaluated
+    again. Per squared-order sector (``orders``, ``sectors``: each with its
+    contributing (Born, loop) order pairs; loop x loop pairs for a
+    loop-induced result) the Laurent coefficients of every point
+    (:meth:`for_order`), and for a Born-interfered result the Born per Born
+    order (:meth:`born_for_order`). Orders are never summed silently:
+    :meth:`sum_orders` and :meth:`sum_born_orders` are the explicit sums
+    (``None`` for a failed point; a pole of a finite-only evaluation stays
+    ``None``)."""
+
+    evaluation: VirtualEvaluation
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.evaluation, VirtualEvaluation):
+            raise TypeError("a virtual order view wraps one VirtualEvaluation")
+
+    @property
+    def contribution(self) -> str:
+        return self.evaluation.contribution
+
+    @property
+    def orders(self) -> tuple[CouplingOrders, ...]:
+        return tuple(sector.order for sector in self.evaluation.sectors)
+
+    @property
+    def sectors(self) -> tuple[VirtualOrderSector, ...]:
+        return self.evaluation.sectors
+
+    @property
+    def born_orders(self) -> tuple[CouplingOrders, ...]:
+        return self.evaluation.born_orders
+
+    @property
+    def values(self) -> VirtualValues:
+        return self.evaluation.values
+
+    @property
+    def born_values(self) -> OrderCoefficients:
+        return self.evaluation.born_values
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return self.evaluation.shape
+
+    def for_order(
+        self, order: CouplingOrders
+    ) -> tuple[LaurentCoefficients | None, ...]:
+        """Per point the Laurent coefficients of one squared-order sector."""
+
+        index = _order_index(self.orders, order)
+        return tuple(None if point is None else point[index] for point in self.values)
+
+    def born_for_order(self, order: CouplingOrders) -> tuple[VirtualScalar | None, ...]:
+        """Per point the Born of one squared Born order."""
+
+        index = _order_index(self.born_orders, order)
+        return tuple(
+            None if point is None else point[index] for point in self.born_values
+        )
+
+    def sum_orders(self) -> tuple[LaurentCoefficients | None, ...]:
+        """Explicitly sum the virtual's squared-order axis per point and
+        Laurent coefficient (``math.fsum``, exactly for decimals)."""
+
+        def summed(point: tuple[LaurentCoefficients, ...]) -> LaurentCoefficients:
+            # A pole of a finite-only evaluation is explicitly absent.
+            absent = cast(VirtualScalar, None)
+            return LaurentCoefficients(
+                *(
+                    absent
+                    if any(sector[k] is None for sector in point)
+                    else _sum(tuple(sector[k] for sector in point))
+                    for k in range(3)
+                )
+            )
+
+        return tuple(None if point is None else summed(point) for point in self.values)
+
+    def sum_born_orders(self) -> tuple[VirtualScalar | None, ...]:
+        """Explicitly sum the Born's squared-order axis per point (zero for a
+        loop-induced result, which has no Born)."""
+
+        return tuple(
+            None if point is None else _sum(tuple(point)) for point in self.born_values
+        )
+
+
+def _order_index(orders: Sequence[CouplingOrders], order: CouplingOrders) -> int:
+    wanted = canonical_order(order)
+    try:
+        return tuple(orders).index(wanted)
+    except ValueError as error:
+        raise ValueError(
+            f"squared coupling order {wanted!r} is absent from the catalogue"
+        ) from error
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedVirtualEvaluation(LaneWarnings):
     """Interference [point, order, helicity, virtual colour component, epsilon].
 
     Born colour components have their own independent axis. LC components are
@@ -1144,6 +1804,11 @@ class ResolvedVirtualEvaluation:
     requested. An entry that vanishes structurally (a helicity row whose Born
     amplitude is zero) holds rounding noise, so its relative estimate is
     large (e.g. 1e4): compare such entries on the point's scale.
+
+    ``contribution`` follows :class:`VirtualEvaluation`: a loop-induced
+    result (``"loop-induced"``) has no Born colour axis (``born_color_ids``
+    empty, every Born entry of zero length) and its ``virtual_color_ids``
+    resolve the colour-contracted |A_loop|^2 (m-lit Q36).
     """
 
     born_values: ResolvedCoefficients
@@ -1162,18 +1827,25 @@ class ResolvedVirtualEvaluation:
         tuple[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None, ...] | None
     ) = None
     pole_parts: tuple[VirtualPoleParts | None, ...] | None = None
+    contribution: Literal["virtual", "loop-induced"] = "virtual"
 
     def __post_init__(self) -> None:
         if self.color_accuracy not in {"lc", "nlc", "full"}:
             raise ValueError("unknown colour accuracy")
         for name in ("helicity_ids", "born_color_ids", "virtual_color_ids"):
             ids = tuple(getattr(self, name))
+            # A loop-induced result has no Born colour axis (m-lit Q36).
+            empty = name == "born_color_ids" and self.contribution == "loop-induced"
             if (
-                not ids
+                bool(ids) == empty
                 or len(set(ids)) != len(ids)
                 or not all(isinstance(i, str) and i for i in ids)
             ):
-                raise ValueError("resolved axis IDs must be nonempty and unique")
+                raise ValueError(
+                    "a loop-induced result has no Born colour IDs"
+                    if empty
+                    else "resolved axis IDs must be nonempty and unique"
+                )
             object.__setattr__(self, name, ids)
         _common(
             self,
@@ -1210,11 +1882,11 @@ class ResolvedVirtualEvaluation:
         out: list[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None] = []
         for lane, diagnostic in zip(lanes, self.diagnostics, strict=True):
             if lane is None:
-                if diagnostic.valid:
+                if diagnostic.has_value:
                     raise ValueError("a checked successful lane has estimates")
                 out.append(None)
                 continue
-            if not diagnostic.valid:
+            if not diagnostic.has_value:
                 raise ValueError("failed lanes carry no stability estimate")
             rows = tuple(tuple(row) for row in cast(Sequence[Sequence[object]], lane))
             if len(rows) != len(self.helicity_ids) or any(
@@ -1374,4 +2046,5 @@ class ResolvedVirtualEvaluation:
                 None if parts is None else parts.mapped(summed)
                 for parts in self.pole_parts
             ),
+            contribution=self.contribution,
         )

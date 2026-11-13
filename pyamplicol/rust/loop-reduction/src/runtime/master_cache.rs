@@ -102,7 +102,7 @@ fn order_key(value: &C64) -> (u64, u64) {
 /// then the `n` squared masses and the scale. The canonical row is the
 /// lexicographic minimum (on bit patterns) over the dihedral relabellings of
 /// the lines, which for `n = 3` are all permutations.
-fn canonicalise(family: FastMaster, row: &[C64], out: &mut [C64]) {
+pub(crate) fn canonicalise(family: FastMaster, row: &[C64], out: &mut [C64]) {
     let n = match family {
         FastMaster::C0 => 3,
         FastMaster::D0 => 4,

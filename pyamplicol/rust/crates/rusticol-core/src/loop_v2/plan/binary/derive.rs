@@ -63,8 +63,8 @@
 //! - a vertex id at or beyond the number of terms that carry one (the loader
 //!   requires every id up to the largest to be defined by a term);
 //! - a family reading of more entries than legs, or a family rank the
-//!   reducer does not admit (`bounds::rank_refusal`: NinjaRS reduces rank
-//!   <= N+2);
+//!   artifacts do not admit (`bounds::admission_refusal`: NinjaRS reduces
+//!   rank <= N+2, TIRust what its capability query admits);
 //! - a schedule-B step whose output rank `rank_in + degree` exceeds its
 //!   family's rank (a trace step's is checked, and an open step's output
 //!   feeds a later step's input rank); a schedule-M state above the largest
@@ -75,20 +75,21 @@
 //!   `tensor_layout::monomial_index` computes recursively, one call per unit
 //!   of exponent (an exponent of 2^20 overflows the stack before the check,
 //!   and exponents summing to 2^32 wrap the layout's `u32` degree to 0);
-//! - a fused entry of q-degree above the largest rank the reducer admits
-//!   over the plan's legs (`bounds::largest_rank`), whatever its content's
-//!   degree: not implied for a content no step reads, whose degree nothing
-//!   checks, but no plan has one (a content's degree is at most a family's
-//!   rank, the family of a pruned selection's content included, and a family
-//!   has at most one propagator per leg), and the recursion above has no
-//!   other bound;
+//! - a fused entry of q-degree above the largest admitted rank: NinjaRS's
+//!   over the plan's legs (`bounds::largest_rank`), or the plan's largest
+//!   family rank where it is higher (a TIR-only plan's, bounded by TIRust's
+//!   capability query), whatever its content's degree: not implied for a
+//!   content no step reads, whose degree nothing checks, but no plan has one
+//!   (a content's degree is at most a family's rank, the family of a pruned
+//!   selection's content included, and a family has at most one propagator
+//!   per leg), and the recursion above has no other bound;
 //! - a decimal weight whose power of ten is 2^32 or more (numerica panics).
 
 use super::super::links::Row;
 use super::super::{
     Binding, ChunkLayout, Closure, Content, ContentFile, ContentTerm, Edge, EdgeFile, Entry,
-    Family, Kernel, KernelInput, KernelTerm, Leaf, MergedEdgeFile, MergedState, PlanFile, Seed,
-    SeedKey, SeedTerm, SplitGroup, SplitKernel, SplitPart, State, Step, Vertex, VertexEntry,
+    Family, Kernel, KernelInput, KernelTerm, Leaf, MergedEdgeFile, MergedState, PlanFile, RowTrace,
+    Seed, SeedKey, SeedTerm, SplitGroup, SplitKernel, SplitPart, State, Step, Vertex, VertexEntry,
     invalid, require,
 };
 use super::ALLOCATION;
@@ -457,8 +458,9 @@ fn ncoeff(rank: u64) -> u64 {
 const ROW: usize = size_of::<Row>();
 
 /// The (rank, degree) pairs whose monomial tables the derivations build,
-/// tracked for ranks and degrees up to the largest rank the reducer admits
-/// over the plan's legs (the largest any table of a valid plan has).
+/// tracked for ranks and degrees up to NinjaRS's largest rank over the plan's
+/// legs (`bounds::largest_rank`), raised to the plan's largest admitted family
+/// rank (a TIR-only family may exceed it).
 struct Tables {
     /// The tracked ranks and degrees: `0..width`.
     width: usize,
@@ -759,7 +761,13 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         merged: _,
         column_rows: _,
         column_weights: _,
+        dressed: _,
     } = file;
+    // Dressed rows (route R2): a leaf seeds one row, an edge links each
+    // source row to every row of its content, objects carry one column, the
+    // trace steps keep their rows' Born rows, and the plan keeps an amplitude
+    // vector per seed key and the columns of each Born row.
+    let dressed = file.dressed == Some(true);
     // The upper leg boundary only (the leg masks derived below); the loader
     // refuses an empty process itself.
     if file.legs > crate::loop_v2::bounds::MAX_LEGS {
@@ -771,21 +779,22 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         file.helicities.len() == file.legs,
         "plan helicities per leg differ from its legs",
     )?;
-    // The families' readings and ranks (the reducer's admission), and the
+    // The families' readings and ranks (the artifacts' admission), and the
     // largest family rank (merged states); every monomial table and fused
-    // entry is bounded by the largest rank the reducer admits over the legs.
-    let admitted_rank = crate::loop_v2::bounds::largest_rank(file.legs);
+    // entry is bounded by the largest admitted rank: NinjaRS's over the legs,
+    // or the largest family rank of a TIR-only plan where it is higher.
     let mut largest_rank = 0;
     for f in &file.families {
         require(
             f.sequence.len() <= file.legs,
             "a family reading of more entries than legs",
         )?;
-        if let Some(refusal) = crate::loop_v2::bounds::rank_refusal(f.sequence.len(), f.rank) {
+        if let Some(refusal) = crate::loop_v2::bounds::admission_refusal(f.sequence.len(), f.rank) {
             return Err(invalid(format!("family rank: {refusal}")));
         }
         largest_rank = largest_rank.max(f.rank);
     }
+    let admitted_rank = crate::loop_v2::bounds::largest_rank(file.legs).max(largest_rank);
     let mut tally = Tally::default();
     let counts: Vec<u64> = file.helicities.iter().map(|h| h.len() as u64).collect();
     let (rows, columns) = (file.rows as u64, file.columns as u64);
@@ -862,15 +871,45 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         .contents
         .iter()
         .map(|c| c.terms.iter().all(|t| t.vertex >= 0));
+    if dressed {
+        // Each content's rows in block-row order (`links::content_lists`),
+        // held through the families.
+        tally.keep(contents, size_of::<Vec<Row>>());
+        for c in &file.contents {
+            tally.keep(c.row_helicities.len() as u64, ROW);
+        }
+        // Per seed key its vector over the seed-weight columns (at most the
+        // columns), each entry two parsed sums of the key's class weights;
+        // per Born row its columns.
+        let weight_columns = columns;
+        tally.keep(file.seeds.len() as u64, size_of::<Vec<[Rational; 2]>>());
+        tally.keep(
+            (file.seeds.len() as u64).saturating_mul(weight_columns),
+            size_of::<[Rational; 2]>(),
+        );
+        tally.iterate(
+            (file.seeds.len() as u64)
+                .saturating_mul(weight_columns)
+                .saturating_add(seed_terms),
+        );
+        tally.keep(rows, size_of::<Vec<(usize, usize)>>());
+        tally.keep_grown(columns.saturating_mul(rows), size_of::<(usize, usize)>());
+        tally.iterate(columns.saturating_mul(rows));
+    }
+    // Objects carry one column per row with dressed rows.
+    let object_columns = if dressed { 1 } else { columns };
     let mut sizes = Sizes {
         file,
-        columns,
+        columns: object_columns,
         term_rows,
         vertexed: vertexed.collect(),
         multiplicity,
         parts: 0,
     };
     let mut tables = Tables::new(admitted_rank)?;
+    // Every leg (the legs a dressed step's rows cover are those it does not
+    // leave open).
+    let full = u64::MAX >> (64 - file.legs.clamp(1, 64));
 
     // Schedule B. Per family (`links::derive`, temporary for the family):
     // the Born rows, per step its output rows (at most its source rows and
@@ -923,20 +962,31 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
             let edges = s.edges.len() as u64;
             tally.keep(edges, size_of::<Edge>());
             tally.hold(&mut family, edges, size_of::<Vec<u32>>());
+            let seed_rows = if dressed { 1 } else { rows };
             let source = |e: &EdgeFile| match (e.leaf, e.child) {
                 (-1, child) if child >= 0 && (child as usize) < index => outputs[child as usize],
-                _ => (rows, 0),
+                _ => (seed_rows, 0),
             };
             let rank = if s.seeded { 0 } else { s.rank_in };
             let splits = sizes.splits(rank, s.edges.iter().map(|e| (e.factor, source(e).1)));
             let mut parts = 0u64;
             for e in &s.edges {
                 let (source, source_rank) = source(e);
-                targets = targets.saturating_add(source);
-                tally.iterate(source);
-                tally.hold_grown(&mut family, source.saturating_mul(3), size_of::<u32>());
+                // One link per source row, or per (source row, content row)
+                // with dressed rows.
+                let links = if dressed {
+                    let content_rows = sizes
+                        .content(e.factor)
+                        .map_or(0, |(_, c)| c.row_helicities.len() as u64);
+                    source.saturating_mul(content_rows)
+                } else {
+                    source
+                };
+                targets = targets.saturating_add(links);
+                tally.iterate(links);
+                tally.hold_grown(&mut family, links.saturating_mul(3), size_of::<u32>());
                 if let Some((content, c)) = sizes.content(e.factor) {
-                    let expanded = sizes.links(&mut tally, source);
+                    let expanded = sizes.links(&mut tally, links);
                     if splits {
                         let terms = sizes.parts(&mut tally, &mut step, content, expanded);
                         parts = parts.saturating_add(terms);
@@ -954,8 +1004,20 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
             }
             edges_here = edges_here.saturating_add(edges);
             parts_here = parts_here.saturating_add(parts);
-            let out = targets.min(rows_of(&counts, s.out)).min(rows);
+            let open = if dressed { full & !s.out } else { s.out };
+            let out = targets.min(rows_of(&counts, open)).min(rows);
             tally.hold_grown(&mut family, out, ROW);
+            if dressed {
+                // The step's seed key and per-row closure; a trace step's
+                // Born row per row (derived, then kept).
+                tally.keep(1, size_of::<Option<u32>>());
+                tally.keep(1, size_of::<Option<RowTrace>>());
+                if s.trace >= 0 {
+                    tally.hold(&mut family, out, size_of::<u32>());
+                    tally.keep(out, size_of::<u32>());
+                    tally.iterate(out);
+                }
+            }
             let objects = out.saturating_mul(columns);
             object_rows = object_rows.saturating_add(objects);
             most_objects = most_objects.max(objects);
@@ -972,7 +1034,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         tally.keep_grown(parts_here, size_of::<usize>());
         tally.keep_grown(parts_here, size_of::<usize>());
         tally.alive(family.saturating_add(most_map.max(most_step)));
-        if file.column_rows.is_some() {
+        if file.column_rows.is_some() && !dressed {
             // The live-row pruning of the family (`live.rs`, after every
             // family is derived, with the plan's flag per seeded object
             // row): two flags per object row of its steps (live and read)
@@ -999,7 +1061,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
             tally.alive(pruning);
         }
     }
-    if file.column_rows.is_some() && file.forward.is_none() && file.merged.is_none() {
+    if file.column_rows.is_some() && !dressed && file.forward.is_none() && file.merged.is_none() {
         // The rows the kept links read (`plan::ReadRows`, kept): a flag per
         // content row of each fused factor and per term row of each split
         // current (one current per content term at most), then a pass over

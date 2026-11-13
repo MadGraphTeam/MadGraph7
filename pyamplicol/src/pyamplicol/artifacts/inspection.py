@@ -13,7 +13,7 @@ from typing import Any, cast
 
 from pyamplicol._internal.versions import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
-    LOOP_V2_RUNTIME_CAPABILITY,
+    LOOP_V2_RUNTIME_CAPABILITIES,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
@@ -3245,7 +3245,7 @@ def _artifact_process_inspection(
             f"process {process['id']} required runtime capabilities",
         )
     )
-    loop = {LOOP_V2_RUNTIME_CAPABILITY}.intersection(capabilities)
+    loop = LOOP_V2_RUNTIME_CAPABILITIES.intersection(capabilities)
     if loop:
         if len(capabilities) != 1:
             raise ArtifactError(

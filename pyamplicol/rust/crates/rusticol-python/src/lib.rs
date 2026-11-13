@@ -469,9 +469,14 @@ impl ResolvedEvaluation {
     }
 
     fn total(&self, py: Python<'_>) -> Py<PyAny> {
+        let _unlock = pyamplicol::unlock();
         self.totals.clone_ref(py)
     }
 }
+
+/// The binary64 kinematics improvement's improved points (`[point][leg]`)
+/// and one JSON record per point (`Runtime.improve_f64`).
+type ImprovedF64Points = (Vec<Vec<[f64; 4]>>, Vec<String>);
 
 #[pyclass(module = "pyamplicol._rusticol", unsendable)]
 struct Runtime {
@@ -538,6 +543,7 @@ impl Runtime {
         model_parameters: Option<&Bound<'_, PyAny>>,
         mute_warnings: bool,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let path = path_from_python(artifact)?;
         let mut runtime = NativeRuntime::load(path, process, None).map_err(python_error)?;
         if let Some(mapping) = model_parameters {
@@ -560,6 +566,7 @@ impl Runtime {
         model_parameters: Option<&Bound<'_, PyAny>>,
         mute_warnings: bool,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         Self::new(artifact, process, model_parameters, mute_warnings)
     }
 
@@ -597,6 +604,7 @@ impl Runtime {
         py: Python<'_>,
         color_flows: Option<Vec<String>>,
     ) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         let runtime = SameThreadNativeRuntimeBorrow::new(&mut self.runtime);
         py.detach(move || {
             runtime.run(|runtime| runtime.export_recurrence_json(color_flows.as_deref()))
@@ -606,10 +614,12 @@ impl Runtime {
     }
 
     fn metadata_json(&self) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         self.runtime.metadata_json().map_err(python_error)
     }
 
     fn save(&mut self, py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         let path = path_from_python(path)?;
         let runtime = SameThreadNativeRuntimeBorrow::new(&mut self.runtime);
         py.detach(move || runtime.run(|runtime| runtime.save(path)))
@@ -618,6 +628,7 @@ impl Runtime {
     }
 
     fn load_cache(&mut self, py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         let path = path_from_python(path)?;
         let runtime = SameThreadNativeRuntimeBorrow::new(&mut self.runtime);
         py.detach(move || runtime.run(|runtime| runtime.load_cache(path)))
@@ -630,6 +641,7 @@ impl Runtime {
         &self,
         color_flow_ids: Option<Vec<String>>,
     ) -> PyResult<Option<String>> {
+        let _unlock = pyamplicol::unlock();
         self.runtime
             .on_the_fly_benchmark_context_json(color_flow_ids.as_deref())
             .map_err(python_error)
@@ -641,6 +653,7 @@ impl Runtime {
         helicity_ids: Option<Vec<String>>,
         color_flow_ids: Option<Vec<String>>,
     ) -> PyResult<Option<String>> {
+        let _unlock = pyamplicol::unlock();
         self.runtime
             .on_the_fly_selector_ordinals_json(helicity_ids.as_deref(), color_flow_ids.as_deref())
             .map_err(python_error)
@@ -648,6 +661,7 @@ impl Runtime {
 
     /// Private read-only production introspection of retained compact OTF state.
     fn _on_the_fly_runtime_state_census_json(&self) -> PyResult<Option<String>> {
+        let _unlock = pyamplicol::unlock();
         self.runtime
             .on_the_fly_runtime_state_census_json()
             .map_err(python_error)
@@ -663,6 +677,7 @@ impl Runtime {
         progress_callback: Option<Py<PyAny>>,
         n_cores: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         let n_cores = n_cores
             .map(|value| {
                 if value.is_instance_of::<PyBool>() || !value.is_instance_of::<PyInt>() {
@@ -745,10 +760,12 @@ impl Runtime {
     }
 
     fn physics_json(&self) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         self.runtime.physics_json().map_err(python_error)
     }
 
     fn _exact_runtime_state_json(&self) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         self.runtime
             .exact_runtime_state_json()
             .map_err(python_error)
@@ -765,6 +782,7 @@ impl Runtime {
         color_flow_by_point: Option<Vec<u32>>,
         precision: u32,
     ) -> PyResult<Py<PyAny>> {
+        let _unlock = pyamplicol::unlock();
         require_raw_f64_precision(precision).map_err(python_error)?;
         let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
         let point_count = momenta.point_count();
@@ -787,6 +805,7 @@ impl Runtime {
 
     /// Amplitude and squared coupling-order axes as compact JSON.
     fn _amplitude_orders_json(&self) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
         self.runtime.amplitude_orders_json().map_err(python_error)
     }
 
@@ -800,6 +819,7 @@ impl Runtime {
         color_flows: Option<Vec<String>>,
         precision: u32,
     ) -> PyResult<(Vec<f64>, Vec<Vec<f64>>)> {
+        let _unlock = pyamplicol::unlock();
         require_raw_f64_precision(precision).map_err(python_error)?;
         let squared_count = self
             .runtime
@@ -841,6 +861,7 @@ impl Runtime {
         color_flow_by_point: Option<Vec<u32>>,
         precision: u32,
     ) -> PyResult<f64> {
+        let _unlock = pyamplicol::unlock();
         require_raw_f64_precision(precision).map_err(python_error)?;
         let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
         let point_count = momenta.point_count();
@@ -868,6 +889,7 @@ impl Runtime {
         precision: u32,
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
+        let _unlock = pyamplicol::unlock();
         require_raw_f64_precision(precision).map_err(python_error)?;
         let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
         let point_count = momenta.point_count();
@@ -913,6 +935,7 @@ impl Runtime {
         precision: u32,
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
+        let _unlock = pyamplicol::unlock();
         require_raw_f64_precision(precision).map_err(python_error)?;
         let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
         let point_count = momenta.point_count();
@@ -949,6 +972,7 @@ impl Runtime {
         precision: u32,
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
+        let _unlock = pyamplicol::unlock();
         require_raw_f64_precision(precision).map_err(python_error)?;
         let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
         let point_count = momenta.point_count();
@@ -988,6 +1012,7 @@ impl Runtime {
         precision: u32,
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
+        let _unlock = pyamplicol::unlock();
         self.profile(
             py,
             momenta,
@@ -1009,6 +1034,7 @@ impl Runtime {
         color_flows: Option<Vec<String>>,
         precision: u32,
     ) -> PyResult<ResolvedEvaluation> {
+        let _unlock = pyamplicol::unlock();
         require_raw_f64_precision(precision).map_err(python_error)?;
         let accuracy = self.runtime.metadata().color_accuracy;
         let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
@@ -1033,6 +1059,7 @@ impl Runtime {
         momenta: &Bound<'_, PyAny>,
         decimal_digit_precision: u32,
     ) -> PyResult<Py<PyAny>> {
+        let _unlock = pyamplicol::unlock();
         self.evaluate(py, momenta, None, None, None, None, decimal_digit_precision)
     }
 
@@ -1045,6 +1072,7 @@ impl Runtime {
         helicities: Option<Vec<String>>,
         color_flows: Option<Vec<String>>,
     ) -> PyResult<ResolvedEvaluation> {
+        let _unlock = pyamplicol::unlock();
         self.evaluate_resolved(
             py,
             momenta,
@@ -1055,6 +1083,7 @@ impl Runtime {
     }
 
     fn set_model_parameters(&mut self, mapping: &Bound<'_, PyAny>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         let values = parse_model_parameters(mapping)?;
         self.runtime
             .set_model_parameters(&values)
@@ -1062,25 +1091,66 @@ impl Runtime {
     }
 
     fn clear(&mut self) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         self.runtime.clear().map_err(python_error)
     }
 
     fn set_model_parameter(&mut self, name: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
         let value = parse_complex_value(value, name)?;
         self.runtime
             .set_model_parameter(name, value.0, value.1)
             .map_err(python_error)
     }
 
+    /// The binary64 kinematics improvement of ``momenta`` with ``variant``
+    /// and MadLoop's chain (m-lit lit-psimprove; the tree runtime's binary64
+    /// switch, the same native implementation as the tree C ABI's): the
+    /// improved points (``[point][leg][E, px, py, pz]`` floats) and one
+    /// record per point as JSON text.
+    fn improve_f64(
+        &self,
+        momenta: &Bound<'_, PyAny>,
+        variant: &str,
+    ) -> PyResult<ImprovedF64Points> {
+        let _unlock = pyamplicol::unlock();
+        let variant = rusticol_core::kinematics_improvement::setting(variant)
+            .map_err(PyValueError::new_err)?
+            .ok_or_else(|| PyValueError::new_err("the binary64 improvement needs a variant"))?;
+        let external_count = self.runtime.external_count();
+        let momenta = parse_f64_momenta(momenta, external_count)?;
+        let (points, records) = self
+            .runtime
+            .improve_f64_points(momenta.as_slice(), momenta.point_count(), variant)
+            .map_err(python_error)?;
+        let points = points
+            .chunks_exact(4 * external_count)
+            .map(|point| {
+                point
+                    .chunks_exact(4)
+                    .map(|leg| [leg[0], leg[1], leg[2], leg[3]])
+                    .collect()
+            })
+            .collect();
+        let records = records
+            .iter()
+            .map(|record| record.to_json().to_string())
+            .collect();
+        Ok((points, records))
+    }
+
     fn mute_warnings(&mut self) {
+        let _unlock = pyamplicol::unlock();
         self.runtime.mute_warnings();
     }
 
     fn unmute_warnings(&mut self) {
+        let _unlock = pyamplicol::unlock();
         self.runtime.unmute_warnings();
     }
 
     fn take_warnings(&mut self) -> Vec<String> {
+        let _unlock = pyamplicol::unlock();
         self.runtime.take_warnings()
     }
 }
@@ -1686,21 +1756,25 @@ fn runtime_profile_to_python<'py>(
 
 #[pyfunction]
 fn abi_version() -> u32 {
+    let _unlock = pyamplicol::unlock();
     NativeRuntime::ABI_VERSION
 }
 
 #[pyfunction]
 fn package_version() -> &'static str {
+    let _unlock = pyamplicol::unlock();
     option_env!("PYAMPLICOL_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 
 #[pyfunction]
 fn native_build_inputs_sha256() -> &'static str {
+    let _unlock = pyamplicol::unlock();
     option_env!("PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256").unwrap_or("")
 }
 
 #[pyfunction]
 fn target_info() -> TargetInfo {
+    let _unlock = pyamplicol::unlock();
     let target = runtime_target_info();
     TargetInfo {
         triple: target.triple,
@@ -1710,6 +1784,7 @@ fn target_info() -> TargetInfo {
 
 #[pyfunction]
 fn _preflight_eager_kernel_pack(manifest_path: PathBuf, payload_root: PathBuf) -> PyResult<usize> {
+    let _unlock = pyamplicol::unlock();
     preflight_prepared_kernel_pack(&manifest_path, &payload_root).map_err(python_error)
 }
 
@@ -1720,6 +1795,7 @@ fn _eager_direct_descriptor_v1(
     input_complex_count: u32,
     output_complex_count: u32,
 ) -> PyResult<Py<PyBytes>> {
+    let _unlock = pyamplicol::unlock();
     let descriptor = eager_direct_descriptor_for_source_application_bytes(
         source_application,
         input_complex_count,
@@ -1739,6 +1815,7 @@ fn _compile_symjit_plane_application_v2(
     optimization_level: u8,
     compress: bool,
 ) -> PyResult<Py<PyBytes>> {
+    let _unlock = pyamplicol::unlock();
     let application = compile_symbolica_program_to_plane_application_bytes(
         program_repr,
         input_complex_count,
@@ -1762,6 +1839,7 @@ fn _evaluate_symjit_plane_application_v2(
     inputs: Vec<f64>,
     point_count: usize,
 ) -> PyResult<Vec<f64>> {
+    let _unlock = pyamplicol::unlock();
     py.detach(|| {
         evaluate_plane_application_bytes(
             application,
@@ -1779,6 +1857,7 @@ fn _evaluate_symjit_plane_application_v2(
 /// load-time code generation runs here: `(features, supported)`.
 #[pyfunction]
 fn _symjit_host_cpu() -> (Vec<&'static str>, bool) {
+    let _unlock = pyamplicol::unlock();
     symjit_host_cpu()
 }
 
@@ -1789,6 +1868,7 @@ fn _build_recurrence_bootstrap_v1(
     execution_json: &[u8],
     physics_json: &[u8],
 ) -> PyResult<Py<PyBytes>> {
+    let _unlock = pyamplicol::unlock();
     let image = build_recurrence_bootstrap_image_v1(context_json, execution_json, physics_json)
         .map_err(python_error)?;
     Ok(PyBytes::new(py, &image).unbind())
@@ -1800,6 +1880,7 @@ fn _load_eager_reduction_groups_v1(
     artifact_root: PathBuf,
     process_id: String,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let result_process_id = process_id.clone();
     let reduction_groups = py
         .detach(move || NativeRuntime::load_eager_reduction_groups(artifact_root, &process_id))
@@ -1821,6 +1902,7 @@ fn _load_eager_exact_sections_v1(
     artifact_root: PathBuf,
     process_id: String,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let sections = py
         .detach(move || NativeRuntime::load_eager_exact_sections(artifact_root, &process_id))
         .map_err(python_error)?;
@@ -1833,6 +1915,7 @@ fn _load_recurrence_exact_sections_v1(
     artifact_root: PathBuf,
     process_id: String,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let sections = py
         .detach(move || NativeRuntime::load_recurrence_exact_sections(artifact_root, &process_id))
         .map_err(python_error)?;

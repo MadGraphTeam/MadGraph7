@@ -16,7 +16,8 @@ public dry run (m-sm PLAN MS-MODEL item 4).
 * Multiparticle requests (m-sm PLAN Q2 (a)): a member without a Born is
   skipped with a typed ``loop-induced`` record (dry run ``skipped_members``,
   artifact extension ``loop_skipped_members``); a request with no member
-  left is refused.
+  left is refused, or served loop-induced (m-lit Q2 (b),
+  ``test_loop_v2_induced_request.py``).
 """
 
 from __future__ import annotations
@@ -196,8 +197,14 @@ def test_configuration_refusals_fire_in_the_dry_run_and_at_generation(tmp_path, 
             "u u~ > e- e+",
             {"generation": 'particle_veto = ["e-"]'},
         ),
-        # Every member of p p > h h is loop-induced (m-sm Q2 (a)).
-        ("loop-induced", "p p > h h", {"restriction": "no_b_mass"}),
+        # Every member of p p > h h is Born-less: served loop-induced by
+        # default (m-lit Q2 (b)) and refused under process.loop_induced =
+        # "skip".
+        (
+            "loop-induced",
+            "p p > h h",
+            {"restriction": "no_b_mass", "process": 'loop_induced = "skip"'},
+        ),
     ],
 )
 def test_loop_sm_request_refusals_fire_in_the_dry_run(
@@ -409,6 +416,7 @@ def test_internal_and_engine_errors_keep_their_keys():
     from pyamplicol.api.errors import GenerationError
     from pyamplicol.loops.v2.artifact import _not_storable
     from pyamplicol.loops.v2.catalogue import LoopKernelCatalogueError
+    from pyamplicol.loops.v2.colour import BlockColourFlowError
     from pyamplicol.loops.v2.conventions import FermionSignError, ReadingSignError
     from pyamplicol.loops.v2.ct_recursion import (
         AnomalousVetoError,
@@ -416,6 +424,7 @@ def test_internal_and_engine_errors_keep_their_keys():
         UnloweredCountertermError,
     )
     from pyamplicol.loops.v2.ct_sites import CountertermCompletenessError
+    from pyamplicol.loops.v2.induced import ProbeFailure
     from pyamplicol.loops.v2.native_trees import (
         NATIVE_EXPORT_REFUSALS,
         NativeExportUnsupported,
@@ -436,6 +445,8 @@ def test_internal_and_engine_errors_keep_their_keys():
         CountertermCouplingError: "counterterm-coupling",
         LoopKernelCatalogueError: "loop-kernel-catalogue",
         CountertermCompletenessError: "counterterm-completeness",
+        ProbeFailure: "loop-induced-probe",
+        BlockColourFlowError: "block-colour-flow",
     }
     assert sorted(internal.values()) == sorted(listed_internal_keys())
     for cls, key in internal.items():
@@ -458,6 +469,44 @@ def test_internal_and_engine_errors_keep_their_keys():
     )
     assert isinstance(refused, NativeExportRefused)
     assert refused.key == feature and str(refused).startswith(f"{feature}: ")
+
+
+@pytest.mark.loop_physics
+def test_blocks_of_one_word_with_different_colour_flows_refuse_typed(tmp_path):
+    """Pure-electroweak u u~ > d d~ s s~ (QCD = 0, QED = 4) with QCD loops:
+    two blocks of one block current and word differ in colour flow
+    (``colour.SeedColour``), which the seeds cannot read by the word;
+    generation refuses with the listed internal key ``block-colour-flow``
+    (m-lit lit-ew-blocks E7; an untyped ValueError before). About 10 s."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.loops.v2.refusals import LoopEngineRefusal
+
+    text = f"""
+action = "generate"
+[model]
+source = "loop_qcd_qed_sm_Gmu"
+restriction = "default"
+[process]
+entries = [{{expression = "u u~ > d d~ s s~", name = "p"}}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "explicit"
+max_coupling_orders = {{ QCD = 0, QED = 4 }}
+[loop.preparation]
+fixed_parameters = {{MB = "0", MTA = "0", WT = "0", WZ = "0", WW = "0", WH = "0"}}
+[generation]
+output = {json.dumps(str(tmp_path / "out"))}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+    generator = _generator(text, tmp_path / "card.toml")
+    with pytest.raises(GenerationError) as refused:
+        generator.generate(_processes("u u~ > d d~ s s~"), tmp_path / "out")
+    assert isinstance(refused.value, LoopEngineRefusal)
+    assert refused.value.key == "block-colour-flow"
+    assert "differ in colour flow" in str(refused.value)
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.loop_fast

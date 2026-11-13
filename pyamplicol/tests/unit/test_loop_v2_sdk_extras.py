@@ -407,6 +407,9 @@ def _parse(stdout: str) -> dict:
             current[kind] = [_double(token) for token in rest.split()]
         elif kind == "decimal":
             current["decimal"] = json.loads(rest)
+        elif kind == "refused":
+            # A pole selection the process does not serve (loop-induced).
+            current["refused"] = rest
         else:
             raise AssertionError(line)
     return found
@@ -420,6 +423,26 @@ def _decimals(values: list, complex_layout: bool) -> list:
         else:
             out += value if isinstance(value, list) else [value]
     return out
+
+
+# Double-double and arbitrary-precision values of two native libraries agree to the
+# double-double target (ruling R5: 1e-24 relative, measured and recorded), not
+# bitwise: their summation order can differ with the host's CPU and thread count
+# (Tests 42500959743 on a CI runner: 6e-28 relative on loop-induced rows, while a
+# local run was bitwise). Binary64 stays bitwise.
+EXTENDED_TOLERANCE = Decimal("1e-24")
+
+
+def _agree(want: list, got: list) -> bool:
+    """True when every entry of ``got`` is within the double-double target of
+    ``want``, relative to the largest magnitude in ``want`` (a vanishing pole of a
+    loop-induced row is judged against the point's finite part)."""
+    scale = max((abs(Decimal(a)) for a in want if a is not None), default=Decimal(0))
+    return all(
+        (a is None) == (b is None)
+        and (a is None or abs(Decimal(a) - Decimal(b)) <= EXTENDED_TOLERANCE * scale)
+        for a, b in zip(want, got, strict=True)
+    )
 
 
 def _compare(name: str, expected: dict, found: dict) -> None:
@@ -444,18 +467,19 @@ def _compare(name: str, expected: dict, found: dict) -> None:
             else:
                 literals = _decimals(decimal[axis], values["complex"])
                 assert len(literals) == len(want), (name, call, axis)
-                for k, (a, b) in enumerate(zip(want, literals, strict=True)):
-                    if a is None:
-                        assert b is None, (name, call, axis, k)
-                        continue
-                    # The exact value, and its nearest double.
-                    assert Decimal(a) == Decimal(b), (name, call, axis, k, a, b)
-                    assert float(Decimal(a)) == doubles[k], (name, call, axis, k)
+                # The value to the double-double target, and the call's double is the
+                # nearest double of its own literal.
+                assert _agree(want, literals), (name, call, axis, want, literals)
+                for k, b in enumerate(literals):
+                    if b is not None:
+                        assert float(Decimal(b)) == doubles[k], (name, call, axis, k)
 
 
-def _run(client: Path, artifact: Path, name: str, feed: Path) -> dict:
+def _run(
+    client: Path, artifact: Path, name: str, feed: Path, extra: tuple = ()
+) -> dict:
     run = subprocess.run(
-        [str(client), str(artifact), name, str(feed)],
+        [str(client), str(artifact), name, str(feed), *extra],
         capture_output=True,
         text=True,
         timeout=1800,
@@ -479,7 +503,6 @@ def test_sdk_capabilities_list_the_extras(artifacts):
     """The stored observables are announced: resolved and correlated outputs,
     the histories (``born`` first), the spin classes, the helicity rows and
     the three arithmetics; the correlated shape counts every history."""
-
 
     build = _staged_sdk()
     sdk = ctypes.CDLL(str(build / "librusticol_loop_sdk.so"))
@@ -724,7 +747,9 @@ def _sdk_call(sdk, artifact, name, points, poles, arithmetic, digits, resolved):
             born = (ctypes.c_double * shape.born_values)()
             loop = (ctypes.c_double * shape.virtual_values)()
             assert sdk.rusticol_virtual_result_copy_born(result, born, len(born)) == 0
-            assert sdk.rusticol_virtual_result_copy_virtual(result, loop, len(loop)) == 0
+            assert (
+                sdk.rusticol_virtual_result_copy_virtual(result, loop, len(loop)) == 0
+            )
             needed = ctypes.c_size_t()
             get = sdk.rusticol_virtual_result_decimal_json
             assert get(result, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
@@ -862,6 +887,67 @@ def test_sdk_leading_colour_resolved_rows_equal_the_python_api(leading):
     _compare("lc:uugg", expected, found)
 
 
+def test_sdk_leading_colour_selection_is_the_python_apis(leading):
+    """A Born-interfered leading-colour process (lit-fc-hel; m-lit lit-sdk-b
+    before it): the SDK serves its helicity selection with the Python API's
+    values, bitwise in binary64 (one helicity, per point and resolved, one
+    component per Born basis element); its colour-flow selection stays the
+    Python API's (refused typed, RUSTICOL_VIRTUAL_RUNTIME_ERROR, naming
+    ``color_flows=``), and a colour resolution in the Python API's words."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import CompatibilityError
+    from tests.unit.test_loop_v2_sdk_selection import (
+        STATUS_RUNTIME_ERROR,
+        _bitwise,
+        _call,
+        _python_values,
+    )
+
+    runtime = Runtime.load(leading, process="uugg")
+    point = [[float(c) for c in p] for p in LEADING_POINTS[0]]
+    exact = [[[str(Decimal(c)) for c in p] for p in point]]
+    scale = float(SCALES[0])
+    mu = str(Decimal(scale))
+    with pytest.raises(CompatibilityError) as resolution:
+        runtime.evaluate_resolved(exact, mu_r2=mu, color_resolution="amplitude-basis")
+    sdk = _sdk()
+    handle = ctypes.c_void_p()
+    status = sdk.rusticol_virtual_open(
+        str(leading).encode(), b"uugg", None, None, ctypes.byref(handle)
+    )
+    assert status == 0, _error(sdk)
+    try:
+        for selectors, python, resolved in (
+            ({"ids": ["h1"]}, {"helicities": ["h1"]}, False),
+            ({"by_point": [1]}, {"helicities": ["h1"]}, False),
+            (
+                {"resolved": True, "ids": ["h1", "h2"]},
+                {"helicities": ["h1", "h2"]},
+                True,
+            ),
+        ):
+            found = _call(sdk, handle, [point], [scale], **selectors)
+            assert found["status"] == 0, (selectors, found.get("error"))
+            call = runtime.evaluate_resolved if resolved else runtime.evaluate
+            expected = call(exact, mu_r2=mu, **python)
+            assert expected.values[0] is not None
+            assert _bitwise(found["virtual"], _python_values(expected, resolved))
+            if resolved:
+                assert found["axes"]["color_ids"] == list(expected.virtual_color_ids)
+                assert all(i.startswith("basis-") for i in expected.virtual_color_ids)
+        found = _call(sdk, handle, [point], [scale], colours=["1"])
+        assert found["status"] == STATUS_RUNTIME_ERROR
+        assert "color_flows=" in found["error"], found["error"]
+        found = _call(
+            sdk, handle, [point], [scale], resolved=True, resolution="amplitude-basis"
+        )
+        assert found["status"] == STATUS_RUNTIME_ERROR
+        assert str(resolution.value) in found["error"]
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
 def test_sdk_spin_sources_of_another_length_are_refused(artifacts):
     """A spin-source buffer that is neither one row nor one row per point is
     an invalid argument with a message (status 1), never a read past it; one
@@ -885,7 +971,10 @@ def test_sdk_spin_sources_of_another_length_are_refused(artifacts):
             )
             result = ctypes.c_void_p()
             found = sdk.rusticol_virtual_evaluate_correlated_with_sources(
-                handle, ctypes.byref(request), ctypes.byref(sources), ctypes.byref(result)
+                handle,
+                ctypes.byref(request),
+                ctypes.byref(sources),
+                ctypes.byref(result),
             )
             assert found == status, _error(sdk)
             if status:

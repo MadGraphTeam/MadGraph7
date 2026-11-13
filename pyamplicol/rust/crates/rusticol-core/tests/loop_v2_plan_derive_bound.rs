@@ -8,7 +8,7 @@
 //! the bound's `memory` and `allocated` (the reader's fallible probe
 //! excluded). Crafted plans make each kind of list
 //! dominate (fused entries, split vertices, weights, families and edges with
-//! their split candidates); `exported_plans_stay_within_their_bound` takes
+//! their split candidates, helicity-resolved columns, dressed rows); `exported_plans_stay_within_their_bound` takes
 //! exported plan JSONs (plain or gzip) from `LOOP_PLAN_BOUND_PLANS`
 //! (colon-separated), ignored by default.
 
@@ -442,6 +442,167 @@ fn row_restricted_columns_stay_within_the_bound() {
         let name = format!("row-restricted {families} x {helicities} x {columns} x {kept}");
         measure(&name, &text(&plan));
     }
+}
+
+/// A dressed-row plan (amplitude mode, route R2; schema 5) on
+/// [`row_restricted_plan`]'s contents: `families` bubble families, each a
+/// seeded step dressing the first leg (`helicities` rows) from its leaf's
+/// empty row and a trace step dressing the one-row second leg, whose Born
+/// rows close with the one seed key's amplitude vector over `size` basis
+/// elements (`column_weights`); the first `dropped` Born rows are columns
+/// without a row (the exact helicity-zero filter's drops).
+fn dressed_plan(families: usize, helicities: usize, size: usize, dropped: usize) -> Value {
+    let mut plan = row_restricted_plan(families, helicities, 1, 1);
+    plan["schema"] = json!(5);
+    plan["columns"] = json!(helicities * size);
+    let weights: Vec<Value> = (1..=size)
+        .map(|t| json!([[0, t.to_string(), "0"]]))
+        .collect();
+    plan["seed_classes"] = json!([{ "columns": weights }]);
+    plan["column_rows"] = (0..helicities)
+        .flat_map(|r| (0..size).map(move |_| if r < dropped { json!([]) } else { json!([r]) }))
+        .collect();
+    plan["column_weights"] = (0..helicities).flat_map(|_| 0..size).collect();
+    plan["dressed"] = json!(true);
+    plan
+}
+
+#[test]
+fn dressed_rows_stay_within_the_bound() {
+    for (families, helicities, size, dropped) in [
+        (400, 2, 1, 0),
+        (8, 256, 4, 3),
+        (64, 64, 16, 1),
+        (40, 16, 2, 15),
+    ] {
+        let plan = dressed_plan(families, helicities, size, dropped);
+        let name = format!("dressed {families} x {helicities} x {size} - {dropped}");
+        measure(&name, &text(&plan));
+    }
+}
+
+/// Row links a family runs (fused edges and split parts).
+fn family_links(family: &rusticol_core::loop_v2::plan::Family) -> usize {
+    family
+        .steps
+        .iter()
+        .map(|step| match &step.split {
+            None => step
+                .edges
+                .iter()
+                .map(|edge| edge.links.len())
+                .sum::<usize>(),
+            Some(split) => split.parts.iter().flatten().map(|p| p.links.len()).sum(),
+        })
+        .sum()
+}
+
+#[test]
+fn dressed_rows_are_dressed_only_where_a_column_reads_them() {
+    // The load drops the trace links of the exact helicity-zero filter's
+    // rows (no column reads them); a helicity mask of one call drops the
+    // masked rows' too (lit-dress (H): a dressed-row family runs its pruned
+    // copy whenever that drops a link, so a selection dresses its row
+    // restriction only; so do seeded plans since lit-fc-hel (G4)); a mask keeping
+    // every read row prunes nothing.
+    let all = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 0))).unwrap();
+    let dropped = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 1))).unwrap();
+    let whole: usize = all.families.iter().map(family_links).sum();
+    let loaded: usize = dropped.families.iter().map(family_links).sum();
+    assert!(loaded < whole, "{loaded} of {whole} links after the drop");
+    for family in &dropped.families {
+        assert_eq!(family.row_traces.len(), family.steps.len());
+    }
+    let live = dropped
+        .live_rows(&[true, true, false, false], &[0, 1])
+        .unwrap()
+        .expect("a masked row is pruned");
+    assert!(live.links() < loaded, "{} of {loaded} links", live.links());
+    assert_eq!(live.pruned(), 2);
+    // Two of the three read rows keep 8 of the 12 links (more than half):
+    // both families still run their pruned copies, never the masked row's
+    // links (before lit-dress they ran whole).
+    let kept = dropped
+        .live_rows(&[true, true, false, true], &[0, 1])
+        .unwrap()
+        .expect("a masked row is live");
+    assert_eq!((loaded, kept.links(), kept.pruned()), (12, 8, 2));
+    for f in 0..2 {
+        if let Some(copy) = live.family(f) {
+            assert_eq!(copy.row_traces.len(), copy.steps.len());
+        }
+    }
+    assert!(
+        dropped
+            .live_rows(&[false, true, true, true], &[0, 1])
+            .unwrap()
+            .is_none()
+    );
+    assert!(all.live_rows(&[true; 4], &[0, 1]).unwrap().is_none());
+}
+
+/// A change made to a valid dressed-row plan.
+type Mutation = fn(&mut Value);
+
+/// The loader's error for `plan` (JSON), which must fail.
+fn refusal(plan: &Value) -> String {
+    match LoopProgramV4::load(&text(plan)) {
+        Ok(_) => panic!("the plan loads"),
+        Err(error) => error.message().to_string(),
+    }
+}
+
+#[test]
+fn dressed_plans_refuse_what_route_r2_never_writes() {
+    let plan = dressed_plan(2, 4, 2, 1);
+    let program = LoopProgramV4::load(&text(&plan)).unwrap();
+    assert!(program.dressed);
+    let cases: [(&str, Mutation); 6] = [
+        ("`dressed` only as true", |p| p["dressed"] = json!(false)),
+        ("amplitude-mode route", |p| {
+            p["schema"] = json!(4);
+            p["column_rows"] = Value::Null;
+            p["column_weights"] = Value::Null;
+            p["columns"] = json!(1);
+            p["seed_classes"] = json!([{"columns": [[[0, "1", "0"]]]}]);
+        }),
+        ("schedule B only", |p| p["forward"] = json!({"states": []})),
+        ("one unit Born component", |p| {
+            p["born_components"] = json!(2)
+        }),
+        ("leaves of different seed keys", |p| {
+            p["seeds"] = json!([{"classes": [[0, "1", "0"]]}, {"classes": [[0, "2", "0"]]}]);
+            let family = &mut p["families"][0];
+            family["leaves"] = json!([{"seed": 0, "weight": "3"}, {"seed": 1, "weight": "3"}]);
+            family["steps"][0]["edges"] = json!([
+                {"leaf": 0, "child": -1, "factor": 0},
+                {"leaf": 1, "child": -1, "factor": 0},
+            ]);
+        }),
+        ("does not dress the step's legs", |p| {
+            p["families"][0]["steps"][0]["out"] = json!(0);
+        }),
+    ];
+    for (expected, mutate) in cases {
+        let mut variant = plan.clone();
+        mutate(&mut variant);
+        let message = refusal(&variant);
+        assert!(message.contains(expected), "{expected}: {message}");
+    }
+    // A seeded (schema 4) plan's binary member has no dressed-row columns.
+    let mut seeded = plan.clone();
+    seeded["schema"] = json!(4);
+    seeded["column_rows"] = Value::Null;
+    seeded["column_weights"] = Value::Null;
+    seeded["columns"] = json!(1);
+    seeded["seed_classes"] = json!([{"columns": [[[0, "1", "0"]]]}]);
+    let error = PlanModel::from_json(&text(&seeded))
+        .and_then(|mut model| model.binary())
+        .unwrap_err();
+    assert!(
+        error.message().contains("dressed rows in a seeded plan"),
+        "{error}"
+    );
 }
 
 #[test]

@@ -22,7 +22,9 @@ pub struct LoopInputs {
 
 pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
-    use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch, input_vectors};
+    use crate::loop_v2::dress::{
+        Carrier, ChunkInputs, LaneData, Reads, V2Batch, Workspaces, input_vectors,
+    };
     use crate::loop_v2::forward::{forward_factors, run_forward};
     pub use crate::loop_v2::fourier::SeedFourier;
     use crate::loop_v2::fourier::seeds_fourier;
@@ -109,6 +111,22 @@ pub mod v2 {
         /// when read again (`ChunkInputs::prepare_within`; heap limbs of
         /// arbitrary-precision reals excluded).
         pub input_budget: usize,
+        /// Amplitude-mode plans (`LoopProgramV4::amplitude`): also return
+        /// every raw reduction lane ([`PointResult::families`], and the
+        /// re-test's), a diagnostic and oracle; by default a point returns
+        /// only its amplitudes, their re-test and budget (O(rows x basis)
+        /// values per loop order). Seeded plans always return their lanes.
+        pub raw_lanes: bool,
+        /// Amplitude-mode plans: also return each (loop order, column)
+        /// slot's term scale `Σ_f Σ_α |N_{f,α}| |I_{f,α}| / (16π²)` per
+        /// Laurent coefficient ([`PointResult::amplitude_scale`]), the size
+        /// of the amplitude before the reduction's cancellations (the
+        /// finiteness and stability scale of a loop-induced point, m-lit
+        /// DECISIONS 2026-11-06 ~09:00 (1)). `I_{f,α}` is the integral of
+        /// monomial `α` of family `f`: one unit-numerator reduction per
+        /// monomial, family and point, so the option costs `C(R+4, 4)`
+        /// lanes per family and point; refused for seeded plans.
+        pub term_scale: bool,
     }
 
     impl Default for V2Options {
@@ -121,6 +139,8 @@ pub mod v2 {
                 part_chunks: DEFAULT_PART_CHUNKS,
                 contraction: Contraction::Auto,
                 input_budget: DEFAULT_INPUT_BUDGET,
+                raw_lanes: false,
+                term_scale: false,
             }
         }
     }
@@ -187,6 +207,49 @@ pub mod v2 {
         pub counts: Vec<(&'static str, u64)>,
     }
 
+    /// The kind of a refused lane's measure ([`LaneMeasure`]).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum MeasureKind {
+        /// A checked TIRust lane's deviation between its two frames relative
+        /// to its term scale (what TIRust's acceptance bounds): a
+        /// method-choice lane's, or a verified last-resort lane's.
+        MethodChoiceDeviation,
+        /// The reducer's conditioning estimate of a refused lane (TIRust's
+        /// `last_conditions`: the Gram, Cayley or coordinate-system measure
+        /// compared with its stability threshold; zero for an exactly
+        /// singular pivot).
+        GramConditioning,
+    }
+
+    impl MeasureKind {
+        /// The kind's name in the Python and SDK records.
+        pub fn name(self) -> &'static str {
+            match self {
+                Self::MethodChoiceDeviation => "method-choice-deviation",
+                Self::GramConditioning => "gram-conditioning",
+            }
+        }
+    }
+
+    /// The backend's own accuracy measure of a refused lane, as data next
+    /// to its reason text (m-lit ux-polish item 4).
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct LaneMeasure {
+        pub kind: MeasureKind,
+        pub value: f64,
+    }
+
+    /// A refused lane's measure of the last [`V2Backend::reduce`]: lane
+    /// `lane` of group `group`, of the re-test (`check`) or the direct
+    /// outcome.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct MeasuredLane {
+        pub group: usize,
+        pub lane: usize,
+        pub check: bool,
+        pub measure: LaneMeasure,
+    }
+
     /// The reduction side of the v2 path: NinjaRS engines and caches.
     pub trait V2Backend<T> {
         /// Start a chunk of points (master caches hold one chunk's masters).
@@ -201,6 +264,11 @@ pub mod v2 {
         fn take_statistics(&mut self) -> BackendStatistics {
             BackendStatistics::default()
         }
+        /// The measures of the refused lanes of the last `reduce` that the
+        /// backend states one for (none by default; TIRust's).
+        fn take_lane_measures(&mut self) -> Vec<MeasuredLane> {
+            Vec::new()
+        }
     }
 
     /// Modelled kernel work of the chosen forms of `steps` (complex
@@ -214,6 +282,10 @@ pub mod v2 {
             .sum()
     }
 
+    /// Report stage and count of the term scale's unit-numerator reductions
+    /// ([`V2Options::term_scale`]).
+    pub const TERM_SCALE: &str = "term scale";
+    pub const TERM_SCALE_LANES: &str = "term-scale lanes";
     /// Report count of the modelled dressing work (complex MAC per lane).
     const DRESSING_WORK: &str = "dressing work (modelled complex MAC per lane)";
     /// Report count of the chunk inputs dropped while still live (rebuilt
@@ -227,17 +299,41 @@ pub mod v2 {
     /// One point of an evaluation.
     #[derive(Clone)]
     pub struct PointResult<T> {
-        /// Raw Laurent integrals of every reduced lane.
+        /// Raw Laurent integrals of every reduced lane (amplitude-mode
+        /// plans: only with [`V2Options::raw_lanes`]).
         pub families: Vec<(LaneKey, Vec<Complex<T>>)>,
-        /// The re-test integrals, when a check was asked.
+        /// The re-test integrals, when a check was asked (amplitude-mode
+        /// plans: only with [`V2Options::raw_lanes`]).
         pub check: Option<Vec<(LaneKey, Vec<Complex<T>>)>>,
         /// Per observable column, the bare virtual `2 Re(i/(16π² avg) ΣΩ)`
-        /// per Laurent coefficient.
+        /// per Laurent coefficient (empty for amplitude-mode plans).
         pub bare: Vec<Vec<T>>,
-        /// Per observable column, the re-test error budget.
+        /// Per observable column, the re-test error budget (seeded plans).
         pub budget: Option<Vec<Vec<T>>>,
+        /// Amplitude-mode plans (loop-induced, M-LIT LIT-AMP): per loop
+        /// order and column, at `order * columns + column`, the bare loop
+        /// amplitude `a = i/(16π²) Σ_f Ω_f` per Laurent coefficient, the
+        /// families summed in lane order (family, then column); empty for
+        /// seeded plans.
+        pub amplitudes: Vec<Vec<Complex<T>>>,
+        /// The re-test's amplitudes, when a check was asked.
+        pub amplitude_check: Option<Vec<Vec<Complex<T>>>>,
+        /// Per loop order and column `Σ_f |Ω_f − Ω'_f| / (16π²)` per
+        /// coefficient: the amplitude's re-test budget in which no two
+        /// families cancel (the caller forms the quadratic budget of |A|²
+        /// with the counterterm kets and the colour metric).
+        pub amplitude_budget: Option<Vec<Vec<T>>>,
+        /// With [`V2Options::term_scale`], per loop order and column the
+        /// term scale `Σ_f Σ_α |N_{f,α}| |I_{f,α}| / (16π²)` per
+        /// coefficient: the amplitude's size before the reduction's own
+        /// cancellations (the caller forms the per-row term floor with the
+        /// counterterm kets and the colour metric); else empty.
+        pub amplitude_scale: Vec<Vec<T>>,
         /// Numerical failures; a failed point has no values.
         pub failures: Vec<String>,
+        /// The backend's measures of the point's refused lanes, where it
+        /// states one ([`V2Backend::take_lane_measures`]); empty otherwise.
+        pub measures: Vec<LaneMeasure>,
     }
 
     /// Development measurements of one run: seconds per stage, work counts
@@ -653,10 +749,27 @@ pub mod v2 {
             .collect()
     }
 
+    /// The lane vectors an amplitude-mode family's numerator and its
+    /// reduction lanes take in one bucket chunk: per (loop order, column)
+    /// its coefficients twice (the numerator, and the lanes' copy) and the
+    /// lanes' kinematics (`4N` shifts, `N` masses, the scale and the `N²`
+    /// invariants; `lanes_of`), one lane vector each (m-lit PLAN §2.b.3:
+    /// byte-bounded numerator chunks for loop-induced, within
+    /// [`V2Options::input_budget`]).
+    fn numerator_vectors(plan: &LoopProgramV4, family: &Family) -> usize {
+        let n = family.propagators();
+        let per_column = 2 * ninjars::fast::tensor_layout::ncoeff(family.rank) + 5 * n + 1 + n * n;
+        family.orders.len() * plan.columns * per_column
+    }
+
     /// Bucket chunks of `families` (ascending) in bucket order: runs of at
     /// most `size` families of one bucket whose chunk inputs take at most
     /// `vectors` lane vectors (a family alone may take more; `usize::MAX`:
-    /// runs of `size`).
+    /// runs of `size`). In an amplitude-mode plan (loop-induced; decided
+    /// once per plan) a family's numerator and reduction lanes count too
+    /// ([`numerator_vectors`]): its many columns (rows × colour components)
+    /// make them the largest objects of a chunk, so the one budget bounds
+    /// them; seeded plans keep their chunks.
     fn bucket_chunks(
         plan: &LoopProgramV4,
         size: usize,
@@ -702,14 +815,19 @@ pub mod v2 {
                     }
                     total
                 };
-                let mut add = new(&seen, stamp);
+                let numerator = if bounded && plan.amplitude {
+                    numerator_vectors(plan, family)
+                } else {
+                    0
+                };
+                let mut add = new(&seen, stamp) + numerator;
                 if !current.is_empty()
                     && (current.len() >= size.max(1) || held.saturating_add(add) > vectors)
                 {
                     parts.push(std::mem::take(&mut current));
                     stamp += 1;
                     held = 0;
-                    add = new(&seen, stamp);
+                    add = new(&seen, stamp) + numerator;
                 }
                 if bounded {
                     for (store, ids) in ids.iter().enumerate() {
@@ -753,6 +871,7 @@ pub mod v2 {
         report: &mut Report,
         bound: Option<(usize, &ReadChunks, usize)>,
         live: Option<&LiveRows>,
+        workspaces: &Workspaces<T>,
     ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
         let families = &chunk.families;
         let start = Instant::now();
@@ -785,11 +904,25 @@ pub mod v2 {
         let inputs = &*inputs;
         let runs = families
             .par_iter()
-            .map(|&f| run_family_on::<T, L>(plan, f, family_of(plan, live, f), inputs, seeds, data))
+            .map(|&f| {
+                run_family_on::<T, L>(
+                    plan,
+                    f,
+                    family_of(plan, live, f),
+                    inputs,
+                    seeds,
+                    data,
+                    workspaces,
+                )
+            })
             .collect::<RusticolResult<Vec<_>>>()?;
         report.time("dressing", start);
         let peak = runs.iter().map(|run| run.peak_reals).max().unwrap_or(0);
         report.peak("open objects (one family walk)", peak, L);
+        report.count(
+            "closure columns",
+            runs.iter().map(|run| run.closures as u64).sum(),
+        );
         report.count("families", families.len() as u64);
         let steps = || {
             families
@@ -820,6 +953,7 @@ pub mod v2 {
         let mut out: Vec<PointNumerators<T>> = vec![Vec::new(); batch.points()];
         let mut report = Report::default();
         let merged = merged_of(plan, schedule)?;
+        let workspaces = Workspaces::new(rayon::current_num_threads(), zero);
         for points in chunks(batch.points(), L) {
             let data = LaneData::<T, L>::new(plan, batch, &points, zero)?;
             let mut seeds = seeds(plan, &data);
@@ -841,6 +975,7 @@ pub mod v2 {
                         &mut report,
                         None,
                         None,
+                        &workspaces,
                     )?;
                     if let Some(merged) = merged {
                         let parts = parts(merged, DEFAULT_PART_CHUNKS, plan);
@@ -913,24 +1048,39 @@ pub mod v2 {
             s_matrix: Vec::new(),
             coefficients: Vec::new(),
         };
+        // One pass over the accumulators gives every lane's finiteness; the
+        // stored columns (a dressed-row family's support, lit-dress lever D)
+        // are those that can be non-zero, read in column order straight into
+        // the lanes (an all-zero column has no lane, as before). A dependent
+        // column (lit-fold F1d, `plan::Dependents`) has no lane: it is formed
+        // from its representative's after the reduction.
+        let finite = numerator.finite_lanes::<L>();
+        let dependents = family_dependents(plan, family);
         for lane in 0..data.active {
             let point = data.points[lane];
             if !failures[point].is_empty() {
                 continue;
             }
-            if !numerator.finite::<L>(lane) {
+            if !finite[lane] {
                 failures[point].push(format!("family {}: non-finite numerator", numerator.family));
                 continue;
             }
             for (k, &order) in family.orders.iter().enumerate() {
-                for column in 0..plan.columns {
-                    let coefficients = numerator.lane::<L>(k, column, lane);
-                    if coefficients
-                        .iter()
-                        .all(|z| z.re.is_fully_zero() && z.im.is_fully_zero())
+                let skip = dependents.map(|d| d.dependent[k].as_slice());
+                for (slot, column) in numerator.stored() {
+                    if skip.is_some_and(|skip| skip[column]) {
+                        continue;
+                    }
+                    let block = numerator.block::<L>(k, slot);
+                    if block
+                        .chunks_exact(v)
+                        .all(|z| z[lane].is_fully_zero() && z[L + lane].is_fully_zero())
                     {
                         continue;
                     }
+                    let coefficients = block
+                        .chunks_exact(v)
+                        .map(|z| Complex::new(z[lane].clone(), z[L + lane].clone()));
                     lanes.points.push(point);
                     lanes.keys.push(LaneKey {
                         family: numerator.family,
@@ -959,11 +1109,180 @@ pub mod v2 {
         lanes
     }
 
+    /// The dependent columns of a dressed-row family (lit-fold F1d,
+    /// [`crate::loop_v2::plan::Dependents`], derived by its first
+    /// reduction), or `None` when every stored column is reduced (seeded
+    /// plans, families without one).
+    fn family_dependents<'a>(
+        plan: &LoopProgramV4,
+        family: &'a Family,
+    ) -> Option<&'a crate::loop_v2::plan::Dependents> {
+        if !plan.dressed {
+            return None;
+        }
+        let dependents = family.dependents.get_or_init(|| plan.dependents_of(family));
+        (!dependents.is_empty()).then_some(dependents)
+    }
+
+    /// The dependent columns of one family as a reduction forms them
+    /// (lit-fold F1d): the family's [`crate::loop_v2::plan::Dependents`]
+    /// with each exact `c` cast to the carrier once.
+    struct Formed<'a, T> {
+        family: &'a Family,
+        dependents: &'a crate::loop_v2::plan::Dependents,
+        /// Per accumulator, per entry of `dependents.columns[k]`: `c`
+        /// (re, and im unless it is exactly zero) and `|c|`.
+        factors: Vec<Vec<(T, Option<T>, T)>>,
+    }
+
+    impl<'a, T: Carrier + Real> Formed<'a, T> {
+        fn of<const L: usize>(
+            plan: &'a LoopProgramV4,
+            family: usize,
+            data: &LaneData<T, L>,
+        ) -> Option<Self> {
+            let family = &plan.families[family];
+            let dependents = family_dependents(plan, family)?;
+            let factors = dependents
+                .columns
+                .iter()
+                .map(|list| {
+                    list.iter()
+                        .map(|(_, _, [re, im])| {
+                            let (x, y) = (data.cast(re), data.cast(im));
+                            let size = Complex::new(x.clone(), y.clone()).norm().re;
+                            (x, (!im.is_zero()).then_some(y), size)
+                        })
+                        .collect()
+                })
+                .collect();
+            Some(Self {
+                family,
+                dependents,
+                factors,
+            })
+        }
+
+        /// The accumulator of `key`'s loop orders.
+        fn accumulator(&self, key: &LaneKey) -> usize {
+            self.family
+                .orders
+                .iter()
+                .position(|&order| order == key.order)
+                .expect("a lane of the family's loop orders")
+        }
+
+        /// Push the dependents of `key`'s column: `c value` (a real `c`
+        /// scales both parts) under their own keys.
+        fn push(
+            &self,
+            key: &LaneKey,
+            value: &[Complex<T>],
+            out: &mut Vec<(LaneKey, Vec<Complex<T>>)>,
+        ) {
+            let k = self.accumulator(key);
+            for e in self.dependents.of(k, key.column) {
+                let (_, column, _) = &self.dependents.columns[k][e];
+                let (re, im, _) = &self.factors[k][e];
+                let formed = match im {
+                    None => value
+                        .iter()
+                        .map(|z| Complex::new(re.clone() * &z.re, re.clone() * &z.im))
+                        .collect(),
+                    Some(im) => {
+                        let factor = Complex::new(re.clone(), im.clone());
+                        value.iter().map(|z| factor.clone() * z).collect()
+                    }
+                };
+                out.push((
+                    LaneKey {
+                        column: *column as usize,
+                        ..*key
+                    },
+                    formed,
+                ));
+            }
+        }
+
+        /// The dependents of `key`'s column with `|c|`.
+        fn sizes(&self, key: &LaneKey) -> Vec<(usize, T)> {
+            let k = self.accumulator(key);
+            self.dependents
+                .of(k, key.column)
+                .map(|e| {
+                    (
+                        self.dependents.columns[k][e].1 as usize,
+                        self.factors[k][e].2.clone(),
+                    )
+                })
+                .collect()
+        }
+    }
+
     /// What the reductions of one evaluation collect per point.
     struct Lanes<T> {
         failures: Vec<Vec<String>>,
+        /// Per point the backend's measures of its refused lanes.
+        measures: Vec<Vec<LaneMeasure>>,
         families: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
         checks: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
+        /// [`V2Options::term_scale`]: per point and (loop order, column)
+        /// slot `Σ_f Σ_α |N_{f,α}| |I_{f,α}|` per coefficient (without the
+        /// loop factor); empty until a point's first lane is reduced.
+        terms: Vec<Vec<Vec<T>>>,
+    }
+
+    /// The unit-numerator lanes of a family group: per point of the group
+    /// (its lanes are point-major, `lanes_of`) one lane per monomial `α` of
+    /// the family's coefficient layout with numerator `q^α`, at that point's
+    /// kinematics (key column = `α`). Their integrals are the family's
+    /// tensor moments `I_{f,α}` ([`V2Options::term_scale`]).
+    fn unit_lanes<T: Carrier>(group: &FamilyLanes<T>, zero: &T) -> FamilyLanes<T> {
+        let lanes = group.keys.len();
+        let monomials = group.coefficients.len() / lanes.max(1);
+        let n = group.propagators;
+        let one = Complex::new(zero.one(), zero.clone());
+        let nil = Complex::new(zero.clone(), zero.clone());
+        let mut units = FamilyLanes {
+            family: group.family,
+            propagators: n,
+            rank: group.rank,
+            points: Vec::new(),
+            keys: Vec::new(),
+            shifts: Vec::new(),
+            masses: Vec::new(),
+            scales: Vec::new(),
+            s_matrix: Vec::new(),
+            coefficients: Vec::new(),
+        };
+        for lane in 0..lanes {
+            let point = group.points[lane];
+            if lane > 0 && group.points[lane - 1] == point {
+                continue;
+            }
+            for alpha in 0..monomials {
+                units.points.push(point);
+                units.keys.push(LaneKey {
+                    family: group.family,
+                    order: 0,
+                    column: alpha,
+                });
+                units
+                    .shifts
+                    .extend_from_slice(&group.shifts[lane * 4 * n..(lane + 1) * 4 * n]);
+                units
+                    .masses
+                    .extend_from_slice(&group.masses[lane * n..(lane + 1) * n]);
+                units.scales.push(group.scales[lane].clone());
+                units
+                    .s_matrix
+                    .extend_from_slice(&group.s_matrix[lane * n * n..(lane + 1) * n * n]);
+                units.coefficients.extend(
+                    (0..monomials).map(|m| if m == alpha { one.clone() } else { nil.clone() }),
+                );
+            }
+        }
+        units
     }
 
     /// The reduction side of one chunk of lanes: scatters family numerators
@@ -980,7 +1299,7 @@ pub mod v2 {
         sink: &'a mut Lanes<T>,
     }
 
-    impl<T: Carrier, B: V2Backend<T>, const L: usize> Reduction<'_, T, B, L> {
+    impl<T: Carrier + Real, B: V2Backend<T>, const L: usize> Reduction<'_, T, B, L> {
         fn reduce(
             &mut self,
             numerators: &[FamilyNumerator<T>],
@@ -1022,16 +1341,37 @@ pub mod v2 {
                 report.count(name, value);
             }
             let sink = &mut *self.sink;
+            for measured in self.backend.take_lane_measures() {
+                if let Some(&point) = groups
+                    .get(measured.group)
+                    .and_then(|group| group.points.get(measured.lane))
+                {
+                    sink.measures[point].push(measured.measure);
+                }
+            }
             for (index, group) in groups.iter().enumerate() {
+                // A family's dependent columns (lit-fold F1d): `c` times
+                // their representative's integrals, direct and re-test.
+                let dependents = Formed::of(self.plan, group.family, self.data);
                 for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
                     match &direct[index][row] {
-                        Ok(value) => sink.families[point].push((key, value.clone())),
+                        Ok(value) => {
+                            if let Some(formed) = &dependents {
+                                formed.push(&key, value, &mut sink.families[point]);
+                            }
+                            sink.families[point].push((key, value.clone()));
+                        }
                         Err(status) => sink.failures[point]
                             .push(format!("family {} lane {key:?}: {status}", group.family)),
                     }
                     if let Some(check) = &check {
                         match &check[index][row] {
-                            Ok(value) => sink.checks[point].push((key, value.clone())),
+                            Ok(value) => {
+                                if let Some(formed) = &dependents {
+                                    formed.push(&key, value, &mut sink.checks[point]);
+                                }
+                                sink.checks[point].push((key, value.clone()));
+                            }
                             Err(status) => sink.failures[point].push(format!(
                                 "re-test of family {} lane {key:?}: {status}",
                                 group.family
@@ -1040,6 +1380,94 @@ pub mod v2 {
                     }
                 }
             }
+            if self.options.term_scale {
+                self.term_scale(&groups, report)?;
+            }
+            Ok(())
+        }
+
+        /// [`V2Options::term_scale`]: reduce every group's unit-numerator
+        /// lanes ([`unit_lanes`], no re-test) and add, per lane,
+        /// `Σ_α |N_α| |I_α|` per Laurent coefficient to its point's (loop
+        /// order, column) slot.
+        fn term_scale(
+            &mut self,
+            groups: &[FamilyLanes<T>],
+            report: &mut Report,
+        ) -> RusticolResult<()> {
+            let start = Instant::now();
+            let zero = &self.data.zero;
+            let units: Vec<FamilyLanes<T>> =
+                groups.iter().map(|group| unit_lanes(group, zero)).collect();
+            report.count(
+                TERM_SCALE_LANES,
+                units.iter().map(|g| g.keys.len() as u64).sum(),
+            );
+            let (moments, _) = self.backend.reduce(&units, self.options.poles, None)?;
+            let width = self.options.poles.width();
+            let slots = self.plan.order_count * self.plan.columns;
+            let sink = &mut *self.sink;
+            for measured in self.backend.take_lane_measures() {
+                if let Some(&point) = units
+                    .get(measured.group)
+                    .and_then(|unit| unit.points.get(measured.lane))
+                {
+                    sink.measures[point].push(measured.measure);
+                }
+            }
+            for ((group, unit), moments) in groups.iter().zip(&units).zip(&moments) {
+                let monomials = group.coefficients.len() / group.keys.len().max(1);
+                let formed = Formed::of(self.plan, group.family, self.data);
+                let mut first = 0;
+                for (lane, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
+                    if lane > 0 && group.points[lane - 1] != point {
+                        first += monomials;
+                    }
+                    debug_assert_eq!(unit.points[first], point);
+                    let terms = &mut sink.terms[point];
+                    if terms.is_empty() {
+                        *terms = vec![vec![zero.clone(); width]; slots];
+                    }
+                    let slot = &mut terms[key.order * self.plan.columns + key.column];
+                    let numerator = &group.coefficients[lane * monomials..(lane + 1) * monomials];
+                    for (alpha, n) in numerator.iter().enumerate() {
+                        if n.re.is_fully_zero() && n.im.is_fully_zero() {
+                            continue;
+                        }
+                        match &moments[first + alpha] {
+                            Ok(moment) => {
+                                let size = n.clone().norm().re;
+                                for (s, z) in slot.iter_mut().zip(moment) {
+                                    *s += size.clone() * &z.clone().norm().re;
+                                }
+                            }
+                            Err(status) => sink.failures[point].push(format!(
+                                "term scale of family {} monomial {alpha}: {status}",
+                                group.family
+                            )),
+                        }
+                    }
+                    // Dependent columns (lit-fold F1d): |c| times the term
+                    // scale of their representative, in the same terms.
+                    if let Some(formed) = &formed {
+                        for (column, size) in formed.sizes(&key) {
+                            let slot = &mut terms[key.order * self.plan.columns + column];
+                            for (alpha, n) in numerator.iter().enumerate() {
+                                if n.re.is_fully_zero() && n.im.is_fully_zero() {
+                                    continue;
+                                }
+                                if let Ok(moment) = &moments[first + alpha] {
+                                    let n = size.clone() * &n.clone().norm().re;
+                                    for (s, z) in slot.iter_mut().zip(moment) {
+                                        *s += n.clone() * &z.clone().norm().re;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            report.time(TERM_SCALE, start);
             Ok(())
         }
     }
@@ -1122,11 +1550,21 @@ pub mod v2 {
         let merged_parts = merged
             .map(|merged| parts(merged, options.part_chunks, plan))
             .unwrap_or_default();
+        if options.term_scale && !plan.amplitude {
+            return Err(RusticolError::invalid_argument(
+                "the term scale is a diagnostic of amplitude-mode plans (loop-induced)",
+            ));
+        }
         let mut sink = Lanes {
             failures: vec![Vec::new(); points],
+            measures: vec![Vec::new(); points],
             families: vec![Vec::new(); points],
             checks: vec![Vec::new(); points],
+            terms: vec![Vec::new(); points],
         };
+        // The call's buffer pools, kept across its family walks and chunks
+        // (lit-dress lever E).
+        let workspaces = Workspaces::new(rayon::current_num_threads(), zero);
         for chunk in chunks(points, L) {
             backend.begin();
             let start = Instant::now();
@@ -1185,8 +1623,16 @@ pub mod v2 {
                     &mut report,
                     Some((k, &read_chunks, input_budget)),
                     live,
+                    &workspaces,
                 )?;
                 reduction.reduce(&numerators, &mut report)?;
+                let mut pool = workspaces
+                    .numerators
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                for numerator in numerators {
+                    numerator.recycle(&mut pool);
+                }
             }
             if !merged_parts.is_empty() {
                 let stats = run_merged(plan, &merged_parts, &mut inputs, &seeds, &data, |done| {
@@ -1203,8 +1649,10 @@ pub mod v2 {
         }
         let Lanes {
             mut failures,
+            mut measures,
             mut families,
             mut checks,
+            mut terms,
         } = sink;
         let zero = zero.zero();
         let pi = zero.pi();
@@ -1213,15 +1661,58 @@ pub mod v2 {
             zero.one() / (zero.from_usize(16) * &pi * &pi * zero.from_usize(plan.average as usize)),
         );
         let mut results = Vec::with_capacity(points);
+        let failed = |failures: Vec<String>, measures: Vec<LaneMeasure>| PointResult {
+            families: Vec::new(),
+            check: None,
+            bare: Vec::new(),
+            budget: None,
+            amplitudes: Vec::new(),
+            amplitude_check: None,
+            amplitude_budget: None,
+            amplitude_scale: Vec::new(),
+            failures,
+            measures,
+        };
+        if plan.amplitude {
+            // Amplitude-mode plans (decided once per call): the native
+            // amplitude sum per (loop order, column).
+            for point in 0..points {
+                if !failures[point].is_empty() {
+                    results.push(failed(
+                        std::mem::take(&mut failures[point]),
+                        std::mem::take(&mut measures[point]),
+                    ));
+                    continue;
+                }
+                let mut lanes = std::mem::take(&mut families[point]);
+                lanes.sort_by_key(|(key, _)| *key);
+                let tests = options.check.map(|_| {
+                    let mut tests = std::mem::take(&mut checks[point]);
+                    tests.sort_by_key(|(key, _)| *key);
+                    tests
+                });
+                let terms = options
+                    .term_scale
+                    .then(|| std::mem::take(&mut terms[point]));
+                results.push(amplitude_result(
+                    plan,
+                    &zero,
+                    width,
+                    lanes,
+                    tests,
+                    terms,
+                    options.raw_lanes,
+                ));
+            }
+            report.count("points", points as u64);
+            return Ok((results, report));
+        }
         for point in 0..points {
             if !failures[point].is_empty() {
-                results.push(PointResult {
-                    families: Vec::new(),
-                    check: None,
-                    bare: Vec::new(),
-                    budget: None,
-                    failures: std::mem::take(&mut failures[point]),
-                });
+                results.push(failed(
+                    std::mem::take(&mut failures[point]),
+                    std::mem::take(&mut measures[point]),
+                ));
                 continue;
             }
             let mut sums =
@@ -1264,11 +1755,90 @@ pub mod v2 {
                 check,
                 bare,
                 budget,
+                amplitudes: Vec::new(),
+                amplitude_check: None,
+                amplitude_budget: None,
+                amplitude_scale: Vec::new(),
                 failures: Vec::new(),
+                measures: Vec::new(),
             });
         }
         report.count("points", points as u64);
         Ok((results, report))
+    }
+
+    /// The loop amplitude of an amplitude-mode point (M-LIT LIT-AMP, the
+    /// native amplitude sum): per (loop order, column) `i/(16π²) Σ_f Ω_f`
+    /// over the point's lanes sorted by key (families in plan order), the
+    /// re-test's amplitude and the budget `Σ_f |ΔΩ_f| / (16π²)` when a
+    /// check ran, the term scale `Σ_f Σ_α |N_α| |I_α| / (16π²)` when asked
+    /// (`terms`, [`V2Options::term_scale`]); the raw lanes kept only when
+    /// asked (`raw_lanes`).
+    fn amplitude_result<T: Real>(
+        plan: &LoopProgramV4,
+        zero: &T,
+        width: usize,
+        lanes: Vec<(LaneKey, Vec<Complex<T>>)>,
+        tests: Option<Vec<(LaneKey, Vec<Complex<T>>)>>,
+        terms: Option<Vec<Vec<T>>>,
+        raw_lanes: bool,
+    ) -> PointResult<T> {
+        let pi = zero.pi();
+        let scale = zero.one() / (zero.from_usize(16) * &pi * &pi);
+        let factor = Complex::new(zero.clone(), scale.clone());
+        let slots = plan.order_count * plan.columns;
+        let slot = |key: &LaneKey| key.order * plan.columns + key.column;
+        let sum = |lanes: &[(LaneKey, Vec<Complex<T>>)]| {
+            let mut out = vec![vec![Complex::new(zero.clone(), zero.clone()); width]; slots];
+            for (key, value) in lanes {
+                for (s, z) in out[slot(key)].iter_mut().zip(value) {
+                    *s += z;
+                }
+            }
+            for amplitude in &mut out {
+                for z in amplitude.iter_mut() {
+                    *z = factor.clone() * &*z;
+                }
+            }
+            out
+        };
+        let amplitudes = sum(&lanes);
+        // A point none of whose lanes was reduced has no term (all zero).
+        let amplitude_scale = match terms {
+            Some(terms) if terms.is_empty() => vec![vec![zero.clone(); width]; slots],
+            Some(mut terms) => {
+                for z in terms.iter_mut().flatten() {
+                    *z = scale.clone() * &*z;
+                }
+                terms
+            }
+            None => Vec::new(),
+        };
+        let (amplitude_check, amplitude_budget) = match &tests {
+            Some(tests) => {
+                let mut budget = vec![vec![zero.clone(); width]; slots];
+                for ((key, direct), (other, test)) in lanes.iter().zip(tests) {
+                    debug_assert_eq!(key, other);
+                    for (b, d) in budget[slot(key)].iter_mut().zip(deviation(direct, test)) {
+                        *b += scale.clone() * &d;
+                    }
+                }
+                (Some(sum(tests)), Some(budget))
+            }
+            None => (None, None),
+        };
+        PointResult {
+            families: if raw_lanes { lanes } else { Vec::new() },
+            check: tests.filter(|_| raw_lanes),
+            bare: Vec::new(),
+            budget: None,
+            amplitudes,
+            amplitude_check,
+            amplitude_budget,
+            amplitude_scale,
+            failures: Vec::new(),
+            measures: Vec::new(),
+        }
     }
 
     #[cfg(test)]
@@ -1426,6 +1996,52 @@ pub mod v2 {
             assert_eq!(lanes, 0);
             assert!(none[0].families.is_empty() && none[0].failures.is_empty());
             assert!(run(Some(&[true])).is_err());
+        }
+
+        /// In amplitude mode a family's numerator and reduction lanes
+        /// ([`numerator_vectors`]) count against the bucket chunks' lane-
+        /// vector budget: the two families of [`PLAN`] share their one
+        /// factor, so their chunk inputs alone fit one chunk at the first
+        /// family's inputs, and a seeded plan keeps that one chunk; an
+        /// amplitude-mode plan (the flag the chunker reads) splits them where
+        /// the second family's numerator would exceed the budget, and keeps
+        /// them together where both fit or without a budget.
+        #[test]
+        fn amplitude_numerators_count_against_the_chunk_budget() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let mut plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let families = [0usize, 1];
+            let chunks = |plan: &LoopProgramV4, vectors: usize| -> Vec<Vec<usize>> {
+                bucket_chunks(plan, usize::MAX, &families, vectors, None)
+                    .into_iter()
+                    .map(|chunk| chunk.families)
+                    .collect()
+            };
+            let first = &plan.families[0];
+            let inputs: usize = [&first.factors, &first.vertices, &first.currents]
+                .iter()
+                .enumerate()
+                .map(|(store, ids)| {
+                    ids.iter()
+                        .map(|&id| input_vectors(&plan, store, id))
+                        .sum::<usize>()
+                })
+                .sum();
+            assert!(inputs > 0);
+            assert!(!plan.amplitude);
+            assert_eq!(chunks(&plan, inputs), [vec![0, 1]]);
+            assert_eq!(chunks(&plan, usize::MAX), [vec![0, 1]]);
+            plan.amplitude = true;
+            let numerator = numerator_vectors(&plan, &plan.families[0]);
+            // Rank 0, two propagators, one order and one column: the
+            // coefficient twice and 4N + N + 1 + N² kinematics.
+            let coefficients = ninjars::fast::tensor_layout::ncoeff(0);
+            assert_eq!(numerator, 2 * coefficients + 5 * 2 + 1 + 2 * 2);
+            assert_eq!(numerator, numerator_vectors(&plan, &plan.families[1]));
+            assert_eq!(chunks(&plan, inputs), [vec![0], vec![1]]);
+            assert_eq!(chunks(&plan, inputs + numerator), [vec![0], vec![1]]);
+            assert_eq!(chunks(&plan, inputs + 2 * numerator), [vec![0, 1]]);
+            assert_eq!(chunks(&plan, usize::MAX), [vec![0, 1]]);
         }
 
         /// The next bucket chunk reading an input follows the chunks'

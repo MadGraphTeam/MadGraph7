@@ -18,7 +18,8 @@
   runtime's (LC Born per helicity and flow proportional to the tree
   engine's built-in SM values, zeros at the same entries);
 * the public route: a selected artifact equals the inclusive artifact's
-  runtime selection; NLC and full colour keep refusing selectors; requests
+  runtime selection; NLC and full colour refuse colour-flow selectors (their
+  helicity selection: ``test_loop_v2_fc_selection.py``); requests
   without a selection keep their request records (no ``selection`` entry);
 * MadLoop: the helicity IDs are MadLoop's helicity configurations, the
   full-colour rows equal ``SLOOPMATRIXHEL`` (MQ-REF's per-helicity
@@ -155,7 +156,9 @@ def _summed(results) -> list:
 def test_selection_records_catalogue_resolution_and_refusals():
     """Selections normalise and round-trip through the request record, which
     holds them only when set; selectors resolve by tree ID, runtime ID and
-    ordinal and refuse unknown ones; NLC and full colour refuse them."""
+    ordinal and refuse unknown ones; NLC and full colour refuse colour flows
+    (helicity rows are selectable at every accuracy, lit-fc-hel) and
+    generation-time selections."""
 
     from pyamplicol.loops.v2.artifact import request_from_record, request_record
     from pyamplicol.loops.v2.assemble import SliceRequest
@@ -192,11 +195,16 @@ def test_selection_records_catalogue_resolution_and_refusals():
                 accuracy=accuracy,
                 selection=selection,
             )
-        with pytest.raises(CompatibilityError, match="leading colour"):
-            lc.require_leading_colour(accuracy, ["h:-1,-1,+1,+1"], None)
-    with pytest.raises(CompatibilityError, match=r"at next-to-leading colour.*without"):
-        lc.require_leading_colour("nlc", None, ["1"], resolved=True)
-    lc.require_leading_colour("full", None, None)
+        # Colour flows exist at leading colour only (lit-fc-hel: helicity
+        # rows are selectable at every accuracy).
+        with pytest.raises(CompatibilityError, match="has no colour flows"):
+            lc.require_colour_flows(accuracy, ["1"])
+        lc.require_colour_flows(accuracy, None)
+    with pytest.raises(
+        CompatibilityError, match=r"at next-to-leading colour.*selects Born helicity"
+    ):
+        lc.require_colour_flows("nlc", ["flow:2,1,3,5,4"])
+    lc.require_colour_flows("lc", ["1"])
     # What evaluate / evaluate_resolved do not take (the correlated ones).
     with pytest.raises(CompatibilityError, match=r"correlated.*evaluate_resolved"):
         v2_options(helicities=["h:-1,-1,+1,+1"])
@@ -1043,7 +1051,10 @@ def test_single_helicities_equal_madloop_per_helicity(
     equal on h and -h, MadLoop within its own spread on them. The
     leading-colour selection of the same IDs is the leading-colour resolved
     row (the identities above), so this ties single-helicity selections to
-    MadLoop's labels and normalisation."""
+    MadLoop's labels and normalisation; at full colour (lit-fc-hel) the
+    single-helicity selection of the first point's largest-Born helicity
+    and of its parity image is its resolved entry exactly, so it equals
+    MadLoop's row through the selection too."""
 
     import argparse
     import math
@@ -1121,6 +1132,26 @@ def test_single_helicities_equal_madloop_per_helicity(
                 else:
                     error = abs(a - b) / max(abs(a), abs(b))
                     assert error <= 1e-12, (p, ident, keys[c], a, b, error)
+        if i:
+            continue
+        # The full-colour selection (lit-fc-hel): the largest-Born helicity
+        # and its parity image, each its resolved entry exactly.
+        largest = max(ids, key=lambda ident: abs(exact[ident][0]))
+        image = lc.helicity_id(
+            tuple(enumerate(-h for h in madloop[largest]["helicity"]))
+        )
+        for ident in (largest, image):
+            one = runtime.evaluate(
+                [reference["points"][p]],
+                mu_r2=[str(Fraction(reference["mu_r"][p]) ** 2)],
+                arithmetic="double-double",
+                helicities=[ident],
+            )
+            selected = [
+                Decimal(str(one.born_values[0][0])) * average,
+                *(Decimal(str(x)) * average for x in one.values[0][0]),
+            ]
+            assert selected == exact[ident], (p, ident, selected, exact[ident])
 
 
 # ------------------------------------------------------------------ public route
@@ -1308,8 +1339,8 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
 
         (found,) = (
             value
-            for (_kind, column), value in observables._selections.items()
-            if column.key == key
+            for (kind, column), value in observables._selections.items()
+            if kind == lc.SELECTION and column.key == key
         )
         return found
 
@@ -1583,15 +1614,19 @@ def test_selections_are_masks_on_one_template(
                 assert all(x == 0 for x in got[0][column.key].totals)
             # MF-MASKS-ROWS: a call keeping some Born rows dresses the
             # families pruned to the rows they reach (``plan::LiveRows``),
-            # one keeping every row the template's families; one helicity
-            # runs pruned copies (the heap gate keeps them).
+            # one keeping every row the template's families; every
+            # row-restricted call runs exactly the row restriction of its
+            # own column set (lit-fc-hel (G4): every family that drops a
+            # link runs its pruned copy, the same dressing work as the
+            # loader's restriction of the oracle's plan).
             counts = masked.columns.last_report["counts"]
+            work = "dressing work (modelled complex MAC per lane)"
             if len(column.rows or ()) in range(1, len(hel)):
                 assert 0 < counts.get("live-row links", 0)
+                assert counts["row-pruned families"] > 0, selection
+                assert counts[work] == oracle.last_report["counts"][work], selection
             else:
                 assert "live-row links" not in counts
-            if selection.get("helicities") == [single]:
-                assert 0 < counts["row-pruned families"], selection
     assert built["sets"] > 1  # the oracles' own column sets
 
 

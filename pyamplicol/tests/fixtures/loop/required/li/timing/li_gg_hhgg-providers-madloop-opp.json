@@ -1,0 +1,295 @@
+{
+ "kind": "providers",
+ "process": "li_gg_hhgg",
+ "cpu": 133,
+ "host": "itphlies",
+ "points": 16,
+ "timing_scope": "single pinned core; point 1 once untimed, then points 2..n, 1 timed one by one with the driver's own timer",
+ "providers": {
+  "madloop": {
+   "provider": "madloop",
+   "loop_induced": true,
+   "mode": "loop-induced, the export's card (warm-up past the initialisation), production: MLStabThres and the default stability test, MG5 production Fortran flags, COLLIERGlobalCache as in production (below 7 legs)",
+   "version": "MadLoop/MG5_aMC 3.7.0",
+   "export": "${LOOP_REFERENCE_ROOT}/runs/li/li_gg_hhgg/madloop-export",
+   "collier_cache": {
+    "on": true,
+    "collier": "1.2.9",
+    "reason": "below 7 legs"
+   },
+   "madloop_params": {
+    "MLReductionLib": "6|7|1",
+    "COLLIERGlobalCache": "-1",
+    "MLStabThres": "1.000000d-03",
+    "ImprovePSPoint": "2"
+   },
+   "fortran_flags": {
+    "GLOBAL_FLAG": "-O",
+    "ALOHA_FLAG": "",
+    "MATRIX_FLAG": ""
+   },
+   "qp_model_repairs": [
+    "added KIND=16 to 19 CMPLX calls in MP_ functions",
+    "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+   ],
+   "points": 16,
+   "mean_seconds_per_point": 2.516830168125,
+   "median_seconds_per_point": 2.521076375,
+   "min_seconds_per_point": 2.49326961,
+   "max_seconds_per_point": 2.52781612,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 2.0060431307101683e-12,
+     "single_pole": 1.1528058495179517e-23,
+     "double_pole": 3.3095818937719765e-33,
+     "accuracy": 2.863366865355926e-10,
+     "status": 216,
+     "seconds": 2.52412024,
+     "total_all_orders": [
+      0.0,
+      2.0060431307101683e-12,
+      1.1528058495179517e-23,
+      3.3095818937719765e-33
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.3164928138155942e-12,
+     "single_pole": -3.5788466603528637e-23,
+     "double_pole": 4.030231090850304e-31,
+     "accuracy": 1.0801727865500741e-09,
+     "status": 216,
+     "seconds": 2.52283535,
+     "total_all_orders": [
+      0.0,
+      1.3164928138155942e-12,
+      -3.5788466603528637e-23,
+      4.030231090850304e-31
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 3.132203744455065e-11,
+     "single_pole": 1.359649820152862e-22,
+     "double_pole": 1.2891648435089484e-33,
+     "accuracy": 2.7116192881305964e-09,
+     "status": 216,
+     "seconds": 2.51484495,
+     "total_all_orders": [
+      0.0,
+      3.132203744455065e-11,
+      1.359649820152862e-22,
+      1.2891648435089484e-33
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 9.073105843316538e-13,
+     "single_pole": -3.166836815199559e-26,
+     "double_pole": 3.521265840961713e-37,
+     "accuracy": 2.274269357946687e-11,
+     "status": 216,
+     "seconds": 2.51130627,
+     "total_all_orders": [
+      0.0,
+      9.073105843316538e-13,
+      -3.166836815199559e-26,
+      3.521265840961713e-37
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.5465876831878877e-11,
+     "single_pole": 2.9687271043304648e-24,
+     "double_pole": 3.0225505881064627e-34,
+     "accuracy": 2.0066279575334656e-11,
+     "status": 216,
+     "seconds": 2.52521921,
+     "total_all_orders": [
+      0.0,
+      2.5465876831878877e-11,
+      2.9687271043304648e-24,
+      3.0225505881064627e-34
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 5.3068589725257066e-12,
+     "single_pole": -2.923834516473552e-22,
+     "double_pole": 1.7608884912094697e-32,
+     "accuracy": 2.2324873594983353e-07,
+     "status": 216,
+     "seconds": 2.52388643,
+     "total_all_orders": [
+      0.0,
+      5.3068589725257066e-12,
+      -2.923834516473552e-22,
+      1.7608884912094697e-32
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.0980168885673362e-12,
+     "single_pole": -1.092981517153382e-24,
+     "double_pole": 1.3335313195198753e-36,
+     "accuracy": 1.6809544158029974e-10,
+     "status": 216,
+     "seconds": 2.51077134,
+     "total_all_orders": [
+      0.0,
+      2.0980168885673362e-12,
+      -1.092981517153382e-24,
+      1.3335313195198753e-36
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.2928943700602309e-11,
+     "single_pole": 7.536016426235617e-25,
+     "double_pole": 2.515994022467283e-36,
+     "accuracy": 5.6397047198216193e-11,
+     "status": 216,
+     "seconds": 2.51991918,
+     "total_all_orders": [
+      0.0,
+      1.2928943700602309e-11,
+      7.536016426235617e-25,
+      2.515994022467283e-36
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.7190281683932284e-11,
+     "single_pole": 6.177561497490846e-20,
+     "double_pole": 1.401735951451977e-28,
+     "accuracy": 2.2619083087518173e-08,
+     "status": 216,
+     "seconds": 2.52558912,
+     "total_all_orders": [
+      0.0,
+      2.7190281683932284e-11,
+      6.177561497490846e-20,
+      1.401735951451977e-28
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 9.546780531760635e-12,
+     "single_pole": -1.3966054471474444e-22,
+     "double_pole": 1.1114887214533434e-33,
+     "accuracy": 3.4184360066446943e-09,
+     "status": 216,
+     "seconds": 2.49326961,
+     "total_all_orders": [
+      0.0,
+      9.546780531760635e-12,
+      -1.3966054471474444e-22,
+      1.1114887214533434e-33
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 7.394023922880774e-11,
+     "single_pole": 8.68614149223306e-23,
+     "double_pole": 5.2543326857255255e-33,
+     "accuracy": 9.211093148404742e-10,
+     "status": 216,
+     "seconds": 2.52781612,
+     "total_all_orders": [
+      0.0,
+      7.394023922880774e-11,
+      8.68614149223306e-23,
+      5.2543326857255255e-33
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.2088808277816495e-12,
+     "single_pole": -7.854255911139276e-24,
+     "double_pole": 1.9544178728469766e-32,
+     "accuracy": 4.531841416113016e-09,
+     "status": 216,
+     "seconds": 2.52223357,
+     "total_all_orders": [
+      0.0,
+      2.2088808277816495e-12,
+      -7.854255911139276e-24,
+      1.9544178728469766e-32
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.9568111053229832e-12,
+     "single_pole": 2.227684887401681e-19,
+     "double_pole": 1.2591612169350233e-23,
+     "accuracy": 2.7882271940708943e-05,
+     "status": 216,
+     "seconds": 2.52400809,
+     "total_all_orders": [
+      0.0,
+      2.9568111053229832e-12,
+      2.227684887401681e-19,
+      1.2591612169350233e-23
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 5.861960179342917e-13,
+     "single_pole": 2.0543477864891842e-25,
+     "double_pole": 1.2084892772172888e-36,
+     "accuracy": 9.379352788785896e-11,
+     "status": 216,
+     "seconds": 2.50470663,
+     "total_all_orders": [
+      0.0,
+      5.861960179342917e-13,
+      2.0543477864891842e-25,
+      1.2084892772172888e-36
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.314660157489994e-13,
+     "single_pole": -4.9383847595195936e-26,
+     "double_pole": 6.384389426948682e-38,
+     "accuracy": 7.615901932916516e-11,
+     "status": 216,
+     "seconds": 2.5083469,
+     "total_all_orders": [
+      0.0,
+      2.314660157489994e-13,
+      -4.9383847595195936e-26,
+      6.384389426948682e-38
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 3.2170989402441637e-11,
+     "single_pole": 2.3148914004843312e-23,
+     "double_pole": 9.694573169630588e-34,
+     "accuracy": 2.4696988427372727e-11,
+     "status": 216,
+     "seconds": 2.51040968,
+     "total_all_orders": [
+      0.0,
+      3.2170989402441637e-11,
+      2.3148914004843312e-23,
+      9.694573169630588e-34
+     ]
+    }
+   ],
+   "setup": {
+    "split_order_indices": [
+     1,
+     1,
+     1
+    ],
+    "initial_call_seconds": 11.5611955,
+    "initialization_calls": 8
+   },
+   "process_wall_seconds": 51.85129955387674,
+   "harness_wall_seconds": 52.935649369843304
+  }
+ }
+}

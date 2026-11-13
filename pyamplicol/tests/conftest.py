@@ -11,7 +11,9 @@ whether it requests the input as a fixture or at run time
 (``request.getfixturevalue``): a relocated checkout must never pass with its
 loop tests skipped. Other tests skip with the input's name, as do opt-in
 inputs without a default location. Committed provider references under
-``tests/fixtures/loop`` are mandatory.
+``tests/fixtures/loop`` are mandatory. Without ``SYMBOLICA_LICENSE`` the loop
+tests skip, or fail with ``PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE=1`` (licensed
+CI jobs).
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ TESTS = Path(__file__).resolve().parent
 LOOP_REFERENCES = TESTS / "fixtures" / "loop"
 LOOP_MARKERS = ("loop_fast", "loop_physics", "loop_nightly")
 DEFERRED_MARKER = "deferred_direct_r2"
+# Set to 1, a missing SYMBOLICA_LICENSE fails the loop tests (licensed CI).
+REQUIRE_LICENSE = "PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE"
 
 _MG5 = Path("FOR_REFERENCE_ONLY/MG5_aMC_v3_7_0")
 
@@ -298,9 +302,11 @@ def pytest_configure(config):
 
     Unless ``PYAMPLICOL_CACHE_DIR`` is set, it points to a directory of
     pytest's cache in this checkout, one per marker expression (the tier):
-    compiled models and CT-lowered model IR (``models.loading``) are reused
-    across the runs of one tier. The cache keys hold the compiler's code
-    identity, so a code change pays a cold preparation once per tier.
+    compiled models and CT-lowered model IR (``models.loading``) and the
+    lowered one-loop model programs (``loops.preparation_cache``, its
+    ``models/loop-preparations``) are reused across the runs of one tier.
+    The cache keys hold the code identity, so a code change pays a cold
+    preparation once per tier.
     Without pytest's cache provider (``-p no:cacheprovider``) the directory
     is a fresh temporary one, removed when the session ends.
     """
@@ -339,7 +345,8 @@ def pytest_runtest_makereport(item, call):
     at another location whose inputs cannot be derived must not pass with
     its loop tests skipped. Loop tests skipped at collection (no
     ``SYMBOLICA_LICENSE``, ``pytest_collection_modifyitems``) raise pytest's
-    own skip and stay skipped."""
+    own skip and stay skipped (with ``REQUIRE_LICENSE`` they fail instead,
+    ``pytest_runtest_setup``)."""
 
     report = yield
     if (
@@ -352,6 +359,21 @@ def pytest_runtest_makereport(item, call):
     return report
 
 
+def _license_required() -> bool:
+    """Whether a missing ``SYMBOLICA_LICENSE`` fails the loop tests instead of
+    skipping them (``REQUIRE_LICENSE`` = ``1``; unset, empty or ``0``: skip).
+    A licensed CI job sets it, so a missing, rotated or expired secret cannot
+    turn the job green with its loop tests skipped."""
+
+    value = os.environ.get(REQUIRE_LICENSE, "")
+    if value not in ("", "0", "1"):
+        raise pytest.UsageError(f"{REQUIRE_LICENSE}={value!r}: expected 0 or 1")
+    return value == "1"
+
+
+_UNLICENSED = pytest.StashKey[str]()
+
+
 def pytest_collection_modifyitems(config, items):
     expression = config.getoption("markexpr", "") or ""
     if DEFERRED_MARKER not in expression:
@@ -359,11 +381,27 @@ def pytest_collection_modifyitems(config, items):
         if deferred:
             config.hook.pytest_deselected(items=deferred)
             items[:] = [item for item in items if DEFERRED_MARKER not in item.keywords]
+    required = _license_required()
     if os.environ.get("SYMBOLICA_LICENSE"):
         return
     # An unlicensed Symbolica aborts the interpreter on this class of host, so
-    # loop tests are skipped before any of them can touch it.
-    skip = pytest.mark.skip(reason="loop tests require SYMBOLICA_LICENSE")
+    # loop tests are skipped (or, with REQUIRE_LICENSE, failed in
+    # pytest_runtest_setup) before any of them can touch it.
+    reason = "loop tests require SYMBOLICA_LICENSE"
+    skip = pytest.mark.skip(reason=reason)
     for item in items:
         if any(marker in item.keywords for marker in LOOP_MARKERS):
-            item.add_marker(skip)
+            if required:
+                item.stash[_UNLICENSED] = f"{reason} ({REQUIRE_LICENSE}=1)"
+            else:
+                item.add_marker(skip)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """A loop test without ``SYMBOLICA_LICENSE`` under ``REQUIRE_LICENSE``
+    fails before any of its fixtures is set up (so it cannot touch an
+    unlicensed Symbolica)."""
+
+    if (reason := item.stash.get(_UNLICENSED, None)) is not None:
+        pytest.fail(reason, pytrace=False)

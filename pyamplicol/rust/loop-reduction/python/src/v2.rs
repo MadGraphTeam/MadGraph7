@@ -4,7 +4,7 @@
 use super::*;
 use batch::{NativeBatch, ReductionBatch};
 use rusticol_loop_reduction::runtime::{
-    FamilyGroup, MasterStatistics, PoleSelection, Poles, ReduceOptions, ReductionFrame,
+    FamilyGroup, MasterStatistics, PoleSelection, Poles, ReduceOptions, ReductionFrame, V2Output,
 };
 use std::collections::BTreeMap;
 
@@ -16,6 +16,30 @@ type Group<'py> = (
     PyRef<'py, NativeBatch>,
     PyRef<'py, NativeBatch>,
 );
+
+/// The groups of [`V2Reducer::reduce`] and [`V2TirReducer::reduce`] as
+/// `FamilyGroup`s borrowing the Python batches.
+fn family_groups<'a>(groups: &'a [Group<'_>]) -> Vec<FamilyGroup<'a>> {
+    groups
+        .iter()
+        .map(
+            |(propagators, shifts, masses, scales, matrix, coefficients)| FamilyGroup {
+                propagators: *propagators,
+                shifts: &shifts.0,
+                masses_squared: &masses.0,
+                scales_squared: &scales.0,
+                s_matrix: &matrix.0,
+                coefficients: &coefficients.0,
+            },
+        )
+        .collect()
+}
+
+/// A reduction's `(direct, check)` batches as Python batches.
+fn reduction_batches(output: V2Output) -> (Vec<ReductionBatch>, Option<Vec<ReductionBatch>>) {
+    let wrap = |batches: Vec<_>| batches.into_iter().map(ReductionBatch).collect();
+    (wrap(output.direct), output.check.map(wrap))
+}
 
 /// The Laurent columns of a `poles` option: `"all"` (combined poles),
 /// `"none"` (the finite part) or `"split"` (combined poles and each lane's UV
@@ -56,17 +80,23 @@ struct V2Reducer(runtime::V2Reducer);
 
 #[pymethods]
 impl V2Reducer {
+    /// `unchecked`: the unchecked setting (m-lit lit-unchecked,
+    /// `runtime::V2Reducer::set_unchecked`: the fast engine's zero
+    /// stability thresholds; default off).
     #[new]
-    #[pyo3(signature = (arithmetic="double", precision=None, engine="fast", cache_masters=true))]
+    #[pyo3(signature = (arithmetic="double", precision=None, engine="fast", cache_masters=true, *, unchecked=false))]
     fn new(
         arithmetic: &str,
         precision: Option<u32>,
         engine: &str,
         cache_masters: bool,
+        unchecked: bool,
     ) -> PyResult<Self> {
-        runtime::V2Reducer::new(arithmetic, precision, engine, cache_masters)
-            .map(Self)
-            .map_err(error)
+        let _unlock = pyamplicol::unlock();
+        let mut reducer =
+            runtime::V2Reducer::new(arithmetic, precision, engine, cache_masters).map_err(error)?;
+        reducer.set_unchecked(unchecked);
+        Ok(Self(reducer))
     }
     #[getter]
     fn precision_bits(&self) -> u32 {
@@ -77,6 +107,7 @@ impl V2Reducer {
         self.0.cached_masters()
     }
     fn clear_masters(&mut self) {
+        let _unlock = pyamplicol::unlock();
         self.0.clear_masters();
     }
     /// Per master family `{requests, hits, evaluated}` since the last call,
@@ -84,6 +115,7 @@ impl V2Reducer {
     fn take_master_statistics(
         &mut self,
     ) -> Option<BTreeMap<&'static str, BTreeMap<&'static str, u64>>> {
+        let _unlock = pyamplicol::unlock();
         self.0.take_master_statistics().map(|s: MasterStatistics| {
             MasterStatistics::FAMILY_NAMES
                 .iter()
@@ -105,6 +137,7 @@ impl V2Reducer {
     /// last call (inputs at its absolute thresholds; 0 for the generic
     /// engines).
     fn take_exact_lanes(&mut self) -> u64 {
+        let _unlock = pyamplicol::unlock();
         self.0.take_exact_lanes()
     }
     /// Returns `(direct, check)`: one `ReductionBatch` per group, and the
@@ -130,21 +163,10 @@ impl V2Reducer {
         keep_masters: bool,
         master_poles: &str,
     ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
+        let _unlock = pyamplicol::unlock();
         let poles = poles.map_or(Ok(Poles::All), |value| poles_option(&value))?;
         let masters = master_selection(master_poles)?;
-        let batches: Vec<_> = groups
-            .iter()
-            .map(|(n, shifts, masses, scales, matrix, coefficients)| {
-                (
-                    *n,
-                    &shifts.0,
-                    &masses.0,
-                    &scales.0,
-                    &matrix.0,
-                    &coefficients.0,
-                )
-            })
-            .collect();
+        let groups = family_groups(&groups);
         let options = ReduceOptions {
             poles,
             check: check.then_some(ReductionFrame {
@@ -161,26 +183,225 @@ impl V2Reducer {
                 if !keep_masters {
                     reducer.clear_masters();
                 }
-                let groups: Vec<_> = batches
-                    .iter()
-                    .map(
-                        |&(propagators, shifts, masses, scales, matrix, coefficients)| {
-                            FamilyGroup {
-                                propagators,
-                                shifts,
-                                masses_squared: masses,
-                                scales_squared: scales,
-                                s_matrix: matrix,
-                                coefficients,
-                            }
-                        },
-                    )
-                    .collect();
                 reducer.reduce(&groups, options)
             })
             .map_err(error)?;
-        let wrap = |batches: Vec<_>| batches.into_iter().map(ReductionBatch).collect();
-        Ok((wrap(output.direct), output.check.map(wrap)))
+        Ok(reduction_batches(output))
+    }
+}
+
+/// The `alternative_first` keyword of TIRust's validation settings
+/// ([`V2TirReducer`], `V2Executor.prepare_reduction`): a limit, `None` (the
+/// lever off: the expansions first) or `"default"` (the backend's own,
+/// `v2_tir::TirOptions::default`, TIRust's `EXPANSION_TOLERANCE`).
+#[derive(Clone, Debug, PartialEq, FromPyObject)]
+pub(super) enum Limit {
+    Value(f64),
+    Named(String),
+}
+
+impl Limit {
+    /// The keyword's default: the backend's own limit.
+    pub(super) fn default_limit() -> Option<Self> {
+        Some(Self::Named("default".to_owned()))
+    }
+}
+
+/// Whether TIRust's validation keywords differ from their defaults
+/// (`method_choice`, `acceptance` and `acceptance_frame` omitted,
+/// `alternative_first` `"default"`).
+pub(super) fn tir_settings_given(
+    method_choice: Option<bool>,
+    alternative_first: &Option<Limit>,
+    acceptance: Option<f64>,
+    acceptance_frame: &Option<String>,
+) -> bool {
+    method_choice.is_some()
+        || *alternative_first != Limit::default_limit()
+        || acceptance.is_some()
+        || acceptance_frame.is_some()
+}
+
+/// TIRust's settings from the validation keywords of [`V2TirReducer`] and
+/// `V2Executor.prepare_reduction`: `method_choice` (both carrier classes)
+/// and `acceptance` (None: the default), `alternative_first` ([`Limit`]),
+/// `acceptance_frame` (`"rotated"`: rotation by one with the origin shift,
+/// `"rescaled"`: the same rescaled; None: the default); the others the
+/// defaults (`v2_tir::TirOptions`).
+#[cfg(feature = "tir")]
+pub(super) fn tir_options(
+    method_choice: Option<bool>,
+    alternative_first: &Option<Limit>,
+    acceptance: Option<f64>,
+    acceptance_frame: &Option<String>,
+) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
+    tir_options_at(
+        None,
+        method_choice,
+        alternative_first,
+        acceptance,
+        acceptance_frame,
+    )
+}
+
+/// The validated target accuracy of a call (`reduction_policy::target`,
+/// a `ValueError` with its one message), or the default.
+pub(super) fn reduction_target(target: Option<f64>) -> PyResult<f64> {
+    use rusticol_loop_reduction::reduction_policy::{self, Refusal};
+    match target {
+        None => Ok(reduction_policy::DEFAULT_TARGET),
+        Some(value) => reduction_policy::target(value).map_err(|refusal| match refusal {
+            Refusal::Invalid(message) | Refusal::Unavailable(message) => {
+                pyo3::exceptions::PyValueError::new_err(message)
+            }
+        }),
+    }
+}
+
+/// [`tir_options`] at the target accuracy `target` (None: the default):
+/// its calibrated acceptance (`v2_tir::TirOptions::for_target`) unless
+/// `acceptance` overrides it (an expert's validation setting).
+#[cfg(feature = "tir")]
+pub(super) fn tir_options_at(
+    target: Option<f64>,
+    method_choice: Option<bool>,
+    alternative_first: &Option<Limit>,
+    acceptance: Option<f64>,
+    acceptance_frame: &Option<String>,
+) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
+    let defaults =
+        rusticol_loop_reduction::v2_tir::TirOptions::for_target(reduction_target(target)?);
+    let acceptance_frame = match acceptance_frame.as_deref() {
+        None => defaults.acceptance_frame,
+        Some(name @ ("rotated" | "rescaled")) => rusticol_loop_reduction::runtime::ReductionFrame {
+            reverse: false,
+            rotation: 1,
+            shift: true,
+            rescale: name == "rescaled",
+        },
+        Some(other) => {
+            return Err(error(format!(
+                "acceptance_frame must be \"rotated\", \"rescaled\" or None, not {other:?}"
+            )));
+        }
+    };
+    let alternative_first = match alternative_first {
+        None => None,
+        Some(Limit::Value(limit)) => Some(*limit),
+        Some(Limit::Named(name)) if name == "default" => defaults.alternative_first,
+        Some(Limit::Named(other)) => {
+            return Err(error(format!(
+                "alternative_first must be a limit, None or \"default\", not {other:?}"
+            )));
+        }
+    };
+    Ok(rusticol_loop_reduction::v2_tir::TirOptions {
+        method_choice: method_choice.unwrap_or(defaults.method_choice),
+        extended_method_choice: method_choice.unwrap_or(defaults.extended_method_choice),
+        alternative_first,
+        acceptance: acceptance.unwrap_or(defaults.acceptance),
+        acceptance_frame,
+        ..defaults
+    })
+}
+
+/// The TIR backend (`rusticol_loop_reduction::v2_tir`) on the groups of
+/// [`V2Reducer::reduce`] in their carrier (binary64, double-double or
+/// arbitrary precision; the Python reference path's reducer when the call's
+/// reduction backend is TIRust): one family per group, consecutive lanes of
+/// bitwise equal kinematics one moment row. Its check
+/// frame is the relabelling by `rotation` (TIRust's rotation copy, from the
+/// direct pass's own calls), with `rescale` the rotation with the origin
+/// shift at rescaled inputs (`v2_tir::tir_frame`); `reverse` and `shift`
+/// are NinjaRS's and ignored.
+/// The keywords override the backend's settings (`v2_tir::TirOptions`,
+/// whose defaults they keep when omitted; for validation): `method_choice`
+/// (default: on in binary64 with its acceptance check, off in the extended
+/// carriers; False: gate-refused rows fail closed in every carrier; True:
+/// TIRust's method choice and its check in every carrier),
+/// `alternative_first` ([`Limit`]), `acceptance` (the method-choice check's
+/// binary64 tolerance) and `acceptance_frame` (its frame, `"rotated"` or
+/// `"rescaled"`, the default). Refused typed in a build without TIRust.
+#[pyclass]
+struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
+
+#[pymethods]
+impl V2TirReducer {
+    #[new]
+    #[pyo3(signature = (*, method_choice=None, alternative_first=Limit::default_limit(), acceptance=None, acceptance_frame=None, unchecked=false))]
+    fn new(
+        method_choice: Option<bool>,
+        alternative_first: Option<Limit>,
+        acceptance: Option<f64>,
+        acceptance_frame: Option<String>,
+        unchecked: bool,
+    ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
+        #[cfg(feature = "tir")]
+        {
+            let options = rusticol_loop_reduction::v2_tir::TirOptions {
+                unchecked,
+                ..tir_options(
+                    method_choice,
+                    &alternative_first,
+                    acceptance,
+                    &acceptance_frame,
+                )?
+            };
+            rusticol_loop_reduction::runtime::V2Backends::tirust_with([], 53, options)
+                .map(Self)
+                .map_err(error)
+        }
+        #[cfg(not(feature = "tir"))]
+        {
+            let _ = (
+                method_choice,
+                alternative_first,
+                acceptance,
+                acceptance_frame,
+                unchecked,
+            );
+            rusticol_loop_reduction::runtime::V2Backends::tirust(
+                [],
+                53,
+                rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
+            )
+            .map(Self)
+            .map_err(error)
+        }
+    }
+    /// The (propagators, rank) plans built so far.
+    fn plans(&self) -> Vec<(usize, usize)> {
+        let _unlock = pyamplicol::unlock();
+        self.0.plans()
+    }
+    #[pyo3(signature = (groups, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false))]
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    fn reduce(
+        &mut self,
+        py: Python<'_>,
+        groups: Vec<Group<'_>>,
+        poles: Option<Bound<'_, PyAny>>,
+        check: bool,
+        reverse: bool,
+        rotation: usize,
+        shift: bool,
+        rescale: bool,
+    ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
+        let _unlock = pyamplicol::unlock();
+        let poles = poles.map_or(Ok(Poles::All), |value| poles_option(&value))?;
+        let check = check.then_some(rusticol_core::loop_v2::retest::ReductionCheck {
+            reverse,
+            rotation,
+            shift,
+            rescale,
+        });
+        let groups = family_groups(&groups);
+        let backend = &mut self.0;
+        let output = py
+            .detach(|| backend.reduce_family_groups(&groups, poles, check))
+            .map_err(error)?;
+        Ok(reduction_batches(output))
     }
 }
 
@@ -202,6 +423,7 @@ impl V2SeedFourier {
         born_orbits: usize,
         loop_orbits: usize,
     ) -> PyResult<Self> {
+        let _unlock = pyamplicol::unlock();
         let kernels: Vec<Vec<_>> = kernels
             .into_iter()
             .map(|k| {
@@ -219,6 +441,7 @@ impl V2SeedFourier {
         self.0.group_order()
     }
     fn weights(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
+        let _unlock = pyamplicol::unlock();
         py.detach(|| self.0.weights(&input.0))
             .map(NativeBatch)
             .map_err(error)
@@ -229,6 +452,7 @@ impl V2SeedFourier {
 /// tensor numerator, in NinjaRS's storage order.
 #[pyfunction]
 fn v2_tensor_monomials(rank: usize) -> Vec<[u32; 4]> {
+    let _unlock = pyamplicol::unlock();
     rusticol_loop_reduction::runtime::tensor_monomials(rank)
 }
 
@@ -241,6 +465,7 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
         rusticol_loop_reduction::runtime::fast_engine_threshold(),
     )?;
     module.add_class::<V2Reducer>()?;
+    module.add_class::<V2TirReducer>()?;
     module.add_class::<V2SeedFourier>()?;
     module.add_function(wrap_pyfunction!(v2_tensor_monomials, module)?)
 }

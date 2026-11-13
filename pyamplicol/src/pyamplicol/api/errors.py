@@ -25,6 +25,17 @@ class CompatibilityError(ArtifactError):
     """An artifact is incompatible with the active target or ABI."""
 
 
+class ReductionUnavailable(CompatibilityError):
+    """An explicitly requested one-loop reduction backend cannot serve the
+    call: the native extension lacks it, it does not serve the call's
+    carrier, the artifact does not admit it, or the call's output does not
+    run it (``reduction="ninjars"`` / ``"tirust"``; ``"auto"`` falls back
+    with its reason recorded instead). Raised before any point is
+    evaluated; ``key`` is ``"reduction-unavailable"``."""
+
+    key = "reduction-unavailable"
+
+
 class EvaluationError(PyAmpliColError):
     """Runtime loading, selection, or evaluation failed."""
 
@@ -91,4 +102,5 @@ __all__ = [
     "ModelError",
     "NativePlatformError",
     "PyAmpliColError",
+    "ReductionUnavailable",
 ]

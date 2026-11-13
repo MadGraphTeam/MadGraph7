@@ -45,6 +45,18 @@ fn digits(value: &Integer) -> i64 {
     value.to_string().trim_start_matches('-').len() as i64
 }
 
+/// floor(sqrt(n)) of a positive integer (Newton's iteration from above).
+fn isqrt(n: &Integer) -> Integer {
+    let mut x = ten(((digits(n) + 1) / 2) as u64);
+    loop {
+        let y = (&x + &(n / &x)) / &Integer::from(2);
+        if y >= x {
+            return x;
+        }
+        x = y;
+    }
+}
+
 impl Decimal {
     pub fn zero() -> Self {
         Self {
@@ -130,11 +142,60 @@ impl Decimal {
             .expect("a decimal literal")
     }
 
-    fn negated(&self) -> Self {
+    pub(crate) fn negated(&self) -> Self {
         Self {
             neg: !self.neg,
             ..self.clone()
         }
+    }
+
+    /// Whether the value is below zero (`x < 0`; `-0` is not).
+    pub fn is_negative(&self) -> bool {
+        self.neg && !self.is_zero()
+    }
+
+    /// Value comparison (Python's `Decimal` ordering; `-0 == 0`).
+    pub fn cmp_value(&self, other: &Self) -> Ordering {
+        self.compare(other)
+    }
+
+    /// The exact value of a rational whose denominator divides a power of
+    /// ten (`Decimal(str(x))` of a decimal literal read as a fraction, e.g.
+    /// the SDK's exact binary64 inputs); None for any other denominator.
+    pub fn from_rational_exact(value: &symbolica::domains::rational::Rational) -> Option<Self> {
+        let numerator = value.numerator();
+        let mut denominator = value.denominator();
+        let (mut twos, mut fives) = (0_u64, 0_u64);
+        let two = Integer::from(2);
+        let five = Integer::from(5);
+        loop {
+            let (q, r) = denominator.quot_rem(&two);
+            if !r.is_zero() {
+                break;
+            }
+            denominator = q;
+            twos += 1;
+        }
+        loop {
+            let (q, r) = denominator.quot_rem(&five);
+            if !r.is_zero() {
+                break;
+            }
+            denominator = q;
+            fives += 1;
+        }
+        if !denominator.is_one() {
+            return None;
+        }
+        let n = twos.max(fives);
+        // numerator / (2^a 5^b) = numerator * 2^(n-a) 5^(n-b) / 10^n.
+        let scale = two.pow(n - twos) * five.pow(n - fives);
+        let coefficient = numerator.abs() * scale;
+        Some(Self {
+            neg: numerator.is_negative(),
+            coefficient,
+            exponent: -(n as i64),
+        })
     }
 
     /// The signed coefficient at exponent `exponent <= self.exponent`.
@@ -220,8 +281,12 @@ impl DecimalContext {
         self.round(neg, value.abs(), Integer::one(), exponent)
     }
 
-    /// `+x`: `x` rounded to the context.
+    /// `+x`: `x` rounded to the context (Python's `Decimal.__pos__`: a
+    /// zero is `0`, also `-0`).
     pub fn plus(&self, x: &Decimal) -> Decimal {
+        if x.is_zero() {
+            return Decimal::zero();
+        }
         self.round(x.neg, x.coefficient.clone(), Integer::one(), x.exponent)
     }
 
@@ -265,6 +330,80 @@ impl DecimalContext {
             b.coefficient.clone(),
             a.exponent - b.exponent,
         )
+    }
+
+    /// `abs(x)` (Python's `Decimal.__abs__`, rounded to the context).
+    pub fn abs(&self, x: &Decimal) -> Decimal {
+        self.round(false, x.coefficient.clone(), Integer::one(), x.exponent)
+    }
+
+    /// `Decimal(numerator) / Decimal(denominator)` of a fraction (Python's
+    /// `Fraction` read into the context), correctly rounded.
+    pub fn rational(&self, value: &symbolica::domains::rational::Rational) -> Decimal {
+        let numerator = value.numerator();
+        self.round(
+            numerator.is_negative(),
+            numerator.abs(),
+            value.denominator(),
+            0,
+        )
+    }
+
+    /// `x.sqrt()` (Python's `Decimal.sqrt`: the square root correctly
+    /// rounded to the context's digits, half to even; `x >= 0`).
+    pub fn sqrt(&self, x: &Decimal) -> Decimal {
+        assert!(!x.is_negative(), "the square root of a negative decimal");
+        if x.is_zero() {
+            return Decimal::zero();
+        }
+        // x = c 10^e with e even (c scaled by ten otherwise), then
+        // N = c 10^(2s) with floor(sqrt(N)) of at least digits + 2 digits.
+        let (mut coefficient, mut exponent) = (x.coefficient.clone(), x.exponent);
+        if exponent.rem_euclid(2) != 0 {
+            coefficient = &coefficient * &Integer::from(10);
+            exponent -= 1;
+        }
+        let precision = i64::from(self.digits);
+        let shift = (precision + 2 - digits(&coefficient) / 2).max(0);
+        let n = &coefficient * &ten(2 * shift as u64);
+        let root = isqrt(&n);
+        let exact = &root * &root == n;
+        let exponent = exponent / 2 - shift;
+        let excess = digits(&root) - precision;
+        if excess <= 0 {
+            debug_assert!(exact);
+            return Decimal {
+                neg: false,
+                coefficient: root,
+                exponent,
+            };
+        }
+        let unit = ten(excess as u64);
+        let (mut kept, tail) = root.quot_rem(&unit);
+        let half = &unit / &Integer::from(2);
+        let up = match tail.cmp(&half) {
+            Ordering::Greater => true,
+            Ordering::Less => false,
+            Ordering::Equal => {
+                !exact || {
+                    let (_, parity) = kept.quot_rem(&Integer::from(2));
+                    !parity.is_zero()
+                }
+            }
+        };
+        let mut exponent = exponent + excess;
+        if up {
+            kept += Integer::one();
+            if kept == ten(self.digits as u64) {
+                kept = ten(u64::from(self.digits) - 1);
+                exponent += 1;
+            }
+        }
+        Decimal {
+            neg: false,
+            coefficient: kept,
+            exponent,
+        }
     }
 
     /// pi at the context's digits (`assemble._decimal_pi`): Machin's
@@ -435,6 +574,80 @@ impl Arith for DecimalArith {
     }
 }
 
+/// One amplitude vector: per basis element t its Laurent coefficients.
+pub type AmplitudeVector<N> = Vec<Vec<C<N>>>;
+
+/// |A|² of loop-induced amplitude vectors per sector and Laurent
+/// coefficient as the Python API's `loops/v2/induced.square` forms it in
+/// double-double and arbitrary precision, operation for operation (the
+/// canonical squaring order, DESIGN §7.10, of RULED Q41): per sector, per
+/// slot pair `(l, l')` in order (weight 1 for `l == l'`, 2 otherwise), per
+/// helicity row whose two vectors exist (`vectors[l * rows + row]`; `None`
+/// is absent and skipped, as Python's `amplitudes.get`), per coefficient k
+/// `Σ_{i+j=k} Σ_t conj(a_{t,i}) Σ_u G_{tu} b_{u,j}`, its real part times the
+/// weight added to the sector's coefficient; each total divided by the
+/// average. `metric` is `G` row-major (`size²` cells). Binary64 squares with
+/// `rusticol_core::loop_v2::interference::square_amplitudes` (Python's
+/// `induced.native_square`).
+#[allow(clippy::too_many_arguments)]
+pub fn square_amplitudes_python<A: Arith>(
+    arith: &A,
+    vectors: &[Option<AmplitudeVector<A::N>>],
+    rows: usize,
+    size: usize,
+    width: usize,
+    metric: &[C<A::N>],
+    pairs: &[Vec<(usize, usize)>],
+    average: i64,
+) -> Vec<Vec<A::N>> {
+    let zero = C::new(arith.zero(), arith.zero());
+    let real_zero = arith.real_int(0);
+    let divisor = arith.int(average);
+    let mut out = Vec::with_capacity(pairs.len());
+    for sector in pairs {
+        let mut totals = vec![real_zero.clone(); width];
+        for &(left, right) in sector {
+            let weight = arith.int(if left == right { 1 } else { 2 });
+            for row in 0..rows {
+                let (Some(a), Some(b)) =
+                    (&vectors[left * rows + row], &vectors[right * rows + row])
+                else {
+                    continue;
+                };
+                for (k, slot) in totals.iter_mut().enumerate() {
+                    let mut total = zero.clone();
+                    for i in 0..=k {
+                        let j = k - i;
+                        for (t, left_cell) in a.iter().enumerate().take(size) {
+                            let mut inner = zero.clone();
+                            for (u, right_cell) in b.iter().enumerate().take(size) {
+                                inner = cadd(
+                                    arith,
+                                    &inner,
+                                    &cmul(arith, &metric[t * size + u], &right_cell[j]),
+                                );
+                            }
+                            total = cadd(
+                                arith,
+                                &total,
+                                &cmul(arith, &conj(arith, &left_cell[i]), &inner),
+                            );
+                        }
+                    }
+                    *slot = arith.add(slot, &arith.mul(&weight, &total.re));
+                }
+            }
+        }
+        out.push(
+            totals
+                .iter()
+                .map(|value| arith.div(value, &divisor))
+                .collect(),
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,5 +689,88 @@ mod tests {
             let expected = DecimalContext::new(digits).read(pi).unwrap();
             assert_eq!(DecimalContext::new(digits).pi(), expected, "{digits}");
         }
+    }
+
+    /// The Python-order square equals the native binary64 square (the one
+    /// of RULED Q41) bitwise when every vector is present, skips absent
+    /// rows as Python's `amplitudes.get`, and squares in `Decimal` to the
+    /// exact value of exactly representable inputs.
+    #[test]
+    fn the_python_order_square_is_the_native_square() {
+        use symbolica::domains::float::Complex;
+        let c = |re: f64, im: f64| C::new(re, im);
+        // Two loop orders, two rows, a basis of two, three coefficients.
+        let vector = |seed: f64| -> Vec<Vec<C<f64>>> {
+            (0..2)
+                .map(|t| {
+                    (0..3)
+                        .map(|k| {
+                            c(
+                                seed + 0.1 * t as f64 - 0.37 * k as f64,
+                                0.3 - seed * k as f64,
+                            )
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        let vectors: Vec<Option<Vec<Vec<C<f64>>>>> = [0.7, -1.3, 2.1, 0.45]
+            .iter()
+            .map(|s| Some(vector(*s)))
+            .collect();
+        let metric = [
+            c(8.0 / 3.0, 0.0),
+            c(-1.0 / 3.0, 0.0),
+            c(-1.0 / 3.0, 0.0),
+            c(8.0 / 3.0, 0.0),
+        ];
+        let pairs = vec![vec![(0, 0)], vec![(0, 1), (1, 1)]];
+        let python = square_amplitudes_python(&Binary64, &vectors, 2, 2, 3, &metric, &pairs, 256);
+        let dense: Vec<Vec<Complex<f64>>> = vectors
+            .iter()
+            .flat_map(|v| {
+                v.as_ref().unwrap().iter().map(|cell| {
+                    cell.iter()
+                        .map(|z| Complex::new(z.re, z.im))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let native_metric: Vec<Complex<f64>> =
+            metric.iter().map(|z| Complex::new(z.re, z.im)).collect();
+        let native = rusticol_core::loop_v2::interference::square_amplitudes(
+            &dense,
+            2,
+            2,
+            2,
+            3,
+            &native_metric,
+            &pairs,
+            &256.0,
+        )
+        .unwrap();
+        assert_eq!(python, native);
+        // An absent row contributes nothing (not a zero product).
+        let mut absent = vectors.clone();
+        absent[1] = None;
+        let skipped = square_amplitudes_python(&Binary64, &absent, 2, 2, 3, &metric, &pairs, 256);
+        let one_row = square_amplitudes_python(
+            &Binary64,
+            &[vectors[0].clone(), vectors[2].clone()],
+            1,
+            2,
+            3,
+            &metric,
+            &[vec![(0, 0)], vec![(0, 1), (1, 1)]],
+            256,
+        );
+        assert_eq!(skipped[0], one_row[0]);
+        // Decimal: |(1 + i, 2)|_G^2 / 4 with G = [[2, 1], [1, 2]] is 16 / 4.
+        let arith = DecimalArith::new(40);
+        let z = |re: i64, im: i64| C::new(Decimal::integer(re), Decimal::integer(im));
+        let a = Some(vec![vec![z(1, 1)], vec![z(2, 0)]]);
+        let g = [z(2, 0), z(1, 0), z(1, 0), z(2, 0)];
+        let squared = square_amplitudes_python(&arith, &[a], 1, 2, 1, &g, &[vec![(0, 0)]], 4);
+        assert_eq!(squared[0][0], Decimal::integer(4));
     }
 }

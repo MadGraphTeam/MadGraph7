@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -840,6 +841,54 @@ def test_exit_code_is_propagated() -> None:
     assert "command finished exit=23" in completed.stderr
 
 
+def test_guarded_environment_announces_the_tighter_limit() -> None:
+    variable = watchdog.LIMIT_ENVIRONMENT_VARIABLE
+    base = {"PATH": "/bin"}
+
+    assert watchdog.guarded_environment(5 * watchdog.GIB, base) == {
+        "PATH": "/bin",
+        variable: str(5 * watchdog.GIB),
+    }
+    assert base == {"PATH": "/bin"}
+    # A nested watchdog announces the tighter of its own and the enclosing one.
+    for enclosing, announced in ((3, 3), (9, 5)):
+        child = watchdog.guarded_environment(
+            5 * watchdog.GIB, {variable: str(enclosing * watchdog.GIB)}
+        )
+        assert child[variable] == str(announced * watchdog.GIB)
+    for unusable in ("", "0", "-1", "lots"):
+        child = watchdog.guarded_environment(5 * watchdog.GIB, {variable: unusable})
+        assert child[variable] == str(5 * watchdog.GIB)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
+def test_guarded_command_sees_the_limit() -> None:
+    environment = dict(os.environ)
+    environment.pop(watchdog.LIMIT_ENVIRONMENT_VARIABLE, None)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(WATCHDOG),
+            "--limit-mib",
+            "256",
+            "--poll-interval",
+            "0.02",
+            "--",
+            sys.executable,
+            "-c",
+            f"import os; print(os.environ[{watchdog.LIMIT_ENVIRONMENT_VARIABLE!r}])",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=environment,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == str(256 * watchdog.MIB)
+
+
 def _pid_exists(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -858,6 +907,7 @@ def test_low_limit_terminates_child_process_tree(tmp_path: Path) -> None:
     child.write_text(
         """
 import os
+import re
 import signal
 import sys
 import time
@@ -965,6 +1015,24 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     # The installer stages the native runtime within its guarded invocation.
     # Restricted-mode and ordinary integration checks use separate invocations.
     assert workflow.count(guarded) == 8
+    # The licensed loop jobs guard their build, test and tir invocations (the
+    # tir tests: the workspace, then the Python-producer tests in a loop) at
+    # what their 16 GB runner holds, in each job after the licence gate.
+    loop_guarded = "tools/ci/memory_watchdog.py --limit-gib 12 --"
+    assert workflow.count(loop_guarded) == 6
+    head, gate, loop_jobs = workflow.partition("\n  licence:\n")
+    assert gate and loop_guarded not in head and guarded not in loop_jobs
+    jobs = dict(
+        block.split(":\n", 1)
+        for block in re.split(r"\n  (?=[a-z][a-z0-9-]*:\n)", loop_jobs)[1:]
+    )
+    assert {name: body.count(loop_guarded) for name, body in jobs.items()} == {
+        "loop-runtime": 1,
+        "loop-shard": 1,
+        "loop": 0,
+        "loop-induced": 1,
+        "tir": 3,
+    }
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",

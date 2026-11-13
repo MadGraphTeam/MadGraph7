@@ -21,7 +21,9 @@
 //! catalogue terms and numbered model constants. The order of every sum and
 //! product is that of the Python reference executor.
 
-use super::kernels::{RowLink, Segment, clear, fused_edge, lane_vector_len};
+use super::kernels::{
+    GatherSchedule, RowLink, clear, fused_edge, fused_edge_gathered, lane_vector_len,
+};
 use super::plan::{Content, Family, KernelInput, LoopProgramV4, ReadRows};
 use super::poly::MonomialProductTable;
 use crate::{RusticolError, RusticolResult};
@@ -940,7 +942,13 @@ impl<T: Carrier> Scratch<T> {
 
 // ----------------------------------------------------------------------- pool
 
-/// Reused object buffers of one family walk, with the peak of live reals.
+/// Reused object buffers of family walks, with the peak of live reals of the
+/// current walk ([`Self::begin`]). A buffer is handed out zeroed; a pool kept
+/// across family walks and chunks (one per worker thread of a call,
+/// [`Workspaces`]; lit-dress lever E) hands out the buffers it holds again
+/// instead of allocating and freeing them per walk, whose page faults (the
+/// allocator returning freed memory to the system and faulting it in again)
+/// made the dressing time of an executor depend on its allocator state.
 pub struct Pool<T> {
     free: Vec<Vec<T>>,
     zero: T,
@@ -958,16 +966,52 @@ impl<T: Carrier> Pool<T> {
         }
     }
 
-    /// A zeroed buffer of `len` reals.
+    /// Start a family walk: its peak of live reals starts from what is live.
+    pub fn begin(&mut self) {
+        self.peak = self.live;
+    }
+
+    /// A zeroed buffer of `len` reals: the held buffer of the smallest
+    /// capacity that fits (never reallocated), else a new one.
     pub fn take(&mut self, len: usize) -> Vec<T> {
-        let mut buffer = self.free.pop().unwrap_or_default();
-        if buffer.len() >= len {
-            buffer.truncate(len);
-            clear(&mut buffer);
-        } else {
-            clear(&mut buffer);
-            buffer.resize(len, self.zero.clone());
-        }
+        self.take_with(len, |held| clear(held))
+    }
+
+    /// A buffer of `len` reals, `row` reals per row, of which only the rows
+    /// `written` flags are zeroed (the others hold any values: no link reads
+    /// them, [`written_rows`]); a held buffer of the smallest capacity that
+    /// fits, else a new (zero) one.
+    pub fn take_rows(&mut self, len: usize, row: usize, written: &[bool]) -> Vec<T> {
+        self.take_with(len, |held| {
+            for (r, values) in held.chunks_mut(row.max(1)).enumerate() {
+                if written.get(r).copied().unwrap_or(true) {
+                    clear(values);
+                }
+            }
+        })
+    }
+
+    /// A buffer of `len` reals: the held buffer of the smallest capacity
+    /// that fits (never reallocated), its held values (up to `len`) given
+    /// to `zero` and the rest zero, else a new zero one.
+    fn take_with(&mut self, len: usize, zero: impl FnOnce(&mut [T])) -> Vec<T> {
+        let fit = self
+            .free
+            .iter()
+            .enumerate()
+            .filter(|(_, buffer)| buffer.capacity() >= len)
+            .min_by_key(|(_, buffer)| buffer.capacity())
+            .map(|(index, _)| index);
+        let buffer = match fit {
+            Some(index) => {
+                let mut buffer = self.free.swap_remove(index);
+                buffer.truncate(len);
+                zero(&mut buffer);
+                buffer.resize(len, self.zero.clone());
+                buffer
+            }
+            None => vec![self.zero.clone(); len],
+        };
         self.live += len;
         self.peak = self.peak.max(self.live);
         buffer
@@ -979,31 +1023,146 @@ impl<T: Carrier> Pool<T> {
     }
 }
 
+/// Per step of `family`, the object rows its fused links write, where every
+/// link that reads the step's output reads one of them (`None`: the step's
+/// whole output is zeroed). A row-pruned copy (`plan/live.rs`) writes and
+/// reads the rows of the kept Born rows only, so a selection zeroes those
+/// (lit-dress, the run-time helicity selection); the rows no link writes
+/// are never read.
+pub fn written_rows(family: &super::plan::Family, columns: usize) -> Vec<Option<Vec<bool>>> {
+    let steps = &family.steps;
+    let mut written: Vec<Option<Vec<bool>>> = steps
+        .iter()
+        .map(|step| {
+            (step.split.is_none() && step.trace.is_none()).then(|| {
+                let mut rows = vec![false; step.rows * columns];
+                for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                    if let Some(row) = rows.get_mut(link.output as usize) {
+                        *row = true;
+                    }
+                }
+                rows
+            })
+        })
+        .collect();
+    // A consumer link reading a row no link writes keeps its source whole.
+    let mut whole = vec![false; steps.len()];
+    for step in steps {
+        for (e, edge) in step.edges.iter().enumerate() {
+            let super::plan::Source::Step(child) = edge.source else {
+                continue;
+            };
+            let Some(rows) = &written[child] else {
+                continue;
+            };
+            let reads_unwritten = |input: u32| !rows.get(input as usize).copied().unwrap_or(false);
+            whole[child] |= match &step.split {
+                None => edge.links.iter().any(|link| reads_unwritten(link.input)),
+                Some(split) => split.parts[e]
+                    .iter()
+                    .flat_map(|part| part.links.iter())
+                    .any(|link| reads_unwritten(link.input)),
+            };
+        }
+    }
+    for (rows, whole) in written.iter_mut().zip(whole) {
+        if whole {
+            *rows = None;
+        }
+    }
+    written
+}
+
+/// The buffer pools of one evaluation (lit-dress lever E): per worker thread
+/// of the executor's pool its open-object [`Pool`], and one pool of family
+/// accumulator buffers, kept across the family walks and chunks of the call
+/// (their sizes follow the plan; freed with the call).
+pub struct Workspaces<T> {
+    objects: Vec<std::sync::Mutex<Pool<T>>>,
+    pub numerators: std::sync::Mutex<Pool<T>>,
+    zero: T,
+}
+
+impl<T: Carrier> Workspaces<T> {
+    pub fn new(threads: usize, zero: &T) -> Self {
+        Self {
+            objects: (0..threads.max(1))
+                .map(|_| std::sync::Mutex::new(Pool::new(zero)))
+                .collect(),
+            numerators: std::sync::Mutex::new(Pool::new(zero)),
+            zero: zero.zero(),
+        }
+    }
+
+    /// The open-object pool of the calling worker thread (the first one off
+    /// the executor's pool), or a pool of its own where that one is in use
+    /// (a walk never waits for another).
+    pub fn objects(&self) -> Objects<'_, T> {
+        let index = rayon::current_thread_index().unwrap_or(0) % self.objects.len();
+        match self.objects[index].try_lock() {
+            Ok(guard) => Objects::Shared(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                Objects::Shared(poisoned.into_inner())
+            }
+            Err(std::sync::TryLockError::WouldBlock) => Objects::Own(Pool::new(&self.zero)),
+        }
+    }
+}
+
+/// A family walk's open-object pool ([`Workspaces::objects`]).
+pub enum Objects<'a, T> {
+    Shared(std::sync::MutexGuard<'a, Pool<T>>),
+    Own(Pool<T>),
+}
+
+impl<T> std::ops::Deref for Objects<'_, T> {
+    type Target = Pool<T>;
+    fn deref(&self) -> &Pool<T> {
+        match self {
+            Self::Shared(guard) => guard,
+            Self::Own(pool) => pool,
+        }
+    }
+}
+
+impl<T> std::ops::DerefMut for Objects<'_, T> {
+    fn deref_mut(&mut self) -> &mut Pool<T> {
+        match self {
+            Self::Shared(guard) => guard,
+            Self::Own(pool) => pool,
+        }
+    }
+}
+
 // --------------------------------------------------------------------- steps
 
 /// One dressing edge: `output += input · X(J)` over the edge's row links.
 ///
 /// `seeded` inputs hold one lane vector per object row (a seed times
 /// `δ_ab`) and use the content's seeded layout; open-loop inputs hold
-/// `d_alpha × d_in × C(r+4,4)` lane vectors per row.
+/// `d_alpha × d_in × C(r+4,4)` lane vectors per row. `gather` is the
+/// plan's schedule of this (content, products table, seeded)
+/// ([`super::plan::LoopProgramV4::gather`]): the same values in the
+/// output-stationary order.
 #[allow(clippy::too_many_arguments)]
 pub fn dress_edge<T: Carrier, const L: usize>(
     content: &Content,
     seeded: bool,
     d_alpha: usize,
     products: &MonomialProductTable,
+    gather: Option<&GatherSchedule>,
     rank_out: usize,
     input: &[T],
     factor: &[T],
     links: &[RowLink],
     output: &mut [T],
 ) {
-    if seeded {
-        let segment = Segment::new(1, 1, 1, content.d_in * content.d_out, products, rank_out);
-        fused_edge::<T, L>(&segment, &content.seeded, input, factor, links, output);
-    } else {
-        let segment = Segment::new(d_alpha, content.d_in, 1, content.d_out, products, rank_out);
-        fused_edge::<T, L>(&segment, &content.open, input, factor, links, output);
+    let (segment, layout) = content.fused_segment(seeded, d_alpha, products, rank_out);
+    match gather {
+        Some(schedule) => {
+            fused_edge_gathered::<T, L>(&segment, schedule, input, factor, links, output)
+        }
+        None => fused_edge::<T, L>(&segment, layout, input, factor, links, output),
     }
 }
 
