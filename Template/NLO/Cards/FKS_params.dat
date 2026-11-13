@@ -205,6 +205,9 @@
 ! A forced symmetric mapping with shower matching is rejected. The same
 ! choice is used for the real point, its counterevents, inverse projection,
 ! and the lepton recoil chart without event projection.
+! At fixed order the asymmetric mapping samples log(1-xi) for the real and
+! its counterterms, which keeps light systems at small tau (e.g. M=3 GeV
+! at 13 TeV) integrable; this only changes the sampling, not the result.
 #FKSISRMapping
 0
 ! Default :: 0

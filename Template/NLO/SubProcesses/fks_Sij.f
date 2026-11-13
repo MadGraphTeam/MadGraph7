@@ -27,6 +27,12 @@ c
 c 
       Double precision function fks_Sij(p,ii_fks,jj_fks,
      #                                  xi_i_fks,y_ij_fks)
+c The legacy external dot rounds |p.q|<1d-6 GeV^2 to zero. A resolved
+c soft parton (xi_i_fks>tiny) of a light system, e.g. M=3 GeV, has
+c smaller products with the beams, which would put it on the beam axis
+c and set S_ij to one or zero while its soft counterterm keeps the true
+c value. Use the exact product, as eikonal_reduced does.
+      use fks_phase_space_helpers, only: dot
       use fks_phase_space_data,only: shat,p_i_fks_cnt
       implicit none
 
@@ -46,7 +52,7 @@ c      include "fks.inc"
       integer ii_fks,jj_fks
       real*8 xi_i_fks,y_ij_fks
 
-      double precision shattmp,dot
+      double precision shattmp
 
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -363,14 +369,15 @@ c         firsttime=.false.
 
 
       double precision function get_cms_energy(p,ka,kb)
+      use fks_phase_space_helpers, only: dot
       use fks_phase_space_data, only: ybst_til_tocm,shat
 c Given the momentum p in the \tilde{k}_1+\tilde{k}_2 c.m. frame, returns
 c the energy component of p in the k_1+k_2 c.m. frame. Here,
 c ka=\tilde{k}_1, ,kb=\tilde{k}_2
+c The products with a soft p are below the legacy dot cutoff: see fks_Sij.
       implicit none
       real*8 p(0:3),ka(0:3),kb(0:3)
-      double precision dot,xden,xnum,tmp
-      external dot
+      double precision xden,xnum,tmp
 c
       if(ybst_til_tocm.eq.0.d0)then
         tmp=p(0)
@@ -391,17 +398,18 @@ c
 
       subroutine get_cms_costh_fks(p1,p2,ka,kb,E1,E2,xm1,xm2,
      #                             beta1,beta2,costhfks)
+      use fks_phase_space_helpers, only: dot
       use fks_phase_space_data, only: ybst_til_tocm
-c Given the momenta p1 and p2 in the \tilde{k}_1+\tilde{k}_2 c.m. frame, 
+c Given the momenta p1 and p2 in the \tilde{k}_1+\tilde{k}_2 c.m. frame,
 c returns the velocities beta1 and beta2, and the 3-angle between p1 and p2
 c in the k_1+k_2 c.m. frame. Here, ka=\tilde{k}_1, ,kb=\tilde{k}_2
+c The exact dot keeps the angle of a soft p1: see fks_Sij.
       implicit none
       real*8 p1(0:3),p2(0:3),ka(0:3),kb(0:3)
       real*8 E1,E2,xm1,xm2,beta1,beta2,costhfks
-      double precision tmp,costh_fks,get_cms_energy,dot
+      double precision tmp,costh_fks,get_cms_energy
       real*8 tiny
       parameter (tiny=1.d-6)
-      external dot
 c
       if(ybst_til_tocm.eq.0.d0)then
         tmp=costh_fks(p1,p2)
