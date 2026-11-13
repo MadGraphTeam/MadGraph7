@@ -1,8 +1,0 @@
-o0-round PASS      384000         176      383824 trap pairs 8
-o3 PASS      384000         176      383824 trap pairs 8
-o3-round PASS      384000         176      383824 trap pairs 8
-Traceback (most recent call last):
-  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/run_guards.py", line 37, in <module>
-    if build['returncode']!=0:raise RuntimeError(build)
-                              ^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: {'command': ['/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran', '-O3', '-frounding-math', '-fno-automatic', '-fcheck=all', '-ffree-line-length-none', '-J', '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static', '-I', '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static', '/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90', '/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90', '/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90', '-o', '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/guards'], 'returncode': 1, 'stdout': '', 'stderr': '/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90:67:36:\n\n   67 | associate (WORD=>transfer(X,0_int64))\n      |                                    1\nError: SAVE attribute at (1) cannot be specified in a PURE procedure\n'}
