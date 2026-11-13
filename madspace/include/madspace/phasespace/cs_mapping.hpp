@@ -117,6 +117,9 @@ public:
     Family family() const { return _family; }
     /// The Born mapping.
     const PhaseSpaceMapping& born() const { return _born; }
+    /// The masses of the real emission (those of the Born mapping, zero for
+    /// i).
+    const std::vector<double>& real_masses() const { return _real_masses; }
     /**
      * Add the projection of a real emission onto the Born of the dipole to
      * @p fb, the momenta of the dipole term (the inverse map without the Born
@@ -161,6 +164,88 @@ private:
     std::size_t _incoming;
     std::vector<double> _born_masses;
     std::vector<double> _real_masses;
+};
+
+/**
+ * The Catani-Seymour dipoles of a real process at its events: for each
+ * dipole the Born it projects onto (@ref CSMapping::build_projection) and the
+ * weights by which the dipole takes the Born blocks (the instructions
+ * `cs_final_final_dipole`, `cs_final_initial_dipole`,
+ * `cs_initial_final_dipole` and `cs_initial_initial_dipole`),
+ *
+ * @f[ D = -g_s^2\,S \left[ c\,\langle T_j \cdot T_k \rangle
+ *     + s\,\langle T_j \cdot T_k \rangle(k_t) \right], @f]
+ *
+ * with the color-correlated Born of the Born emitter @f$j@f$ and spectator
+ * @f$k@f$ and the same with the real vector @f$k_t@f$ in place of the
+ * polarization vector of a gluon emitter. @f$S@f$ is the symmetry factor of
+ * the dipole (the identical particles of its Born over those of the real).
+ * A dipole vanishes outside the alpha of its family, @f$y < \alpha y_+@f$
+ * (ff), @f$1 - x < \alpha@f$ (fi), @f$u < \alpha@f$ (if), @f$v < \alpha@f$
+ * (ii).
+ *
+ * `batch` is the leading batch dimension, `d` the number of dipoles and `n`
+ * the number of particles of their Borns.
+ *
+ * **Arguments**
+ * - `momenta`, `x1`, `x2` – the outputs of the mappings, the real emission in
+ *   the lab frame.
+ * - the conditions of the mappings (`mirror_index`).
+ *
+ * **Returns**
+ * - `born_momenta` – `float`, shape `(batch, d, n, 4)` – the Born of each
+ *   dipole in the lab frame, in the order of its mapping (the real process
+ *   without i).
+ * - `born_x1`, `born_x2` – `float`, shape `(batch, d)` – their momentum
+ *   fractions.
+ * - `color_weight`, `spin_weight` – `float`, shape `(batch, d)` – @f$S c@f$
+ *   and @f$S s@f$.
+ * - `spin_vector` – `float`, shape `(batch, d, 4)` – @f$k_t@f$.
+ *
+ * **References**
+ * - [1] S. Catani, M. H. Seymour, https://arxiv.org/abs/hep-ph/9605323
+ * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi,
+ *   https://arxiv.org/abs/hep-ph/0201036
+ * - [3] Z. Nagy, https://arxiv.org/abs/hep-ph/0307268 (the alpha parameters)
+ */
+class CSDipoles : public FunctionGenerator {
+public:
+    /// @param mappings  One CSMapping per dipole, all of the same real
+    ///                  process, with Borns of the same number of particles,
+    ///                  beams and conditions.
+    /// @param kernels   The kernel of each dipole: qg, gg or gq for a
+    ///                  final-state emitter, qg, gg, qq or gq for an
+    ///                  incoming one (see madspace.cs).
+    /// @param symmetry  The symmetry factor of each dipole.
+    /// @param alpha_ff, alpha_fi, alpha_if, alpha_ii  The alpha of each
+    ///                  family, in (0, 1].
+    /// @param kappa     kappa of the final-state gluon kernels with a
+    ///                  massive spectator (CDST).
+    CSDipoles(
+        const std::vector<CSMapping>& mappings,
+        const std::vector<std::string>& kernels,
+        const std::vector<double>& symmetry,
+        double alpha_ff = 1.,
+        double alpha_fi = 1.,
+        double alpha_if = 1.,
+        double alpha_ii = 1.,
+        double kappa = 2. / 3.
+    );
+    /// Number of dipoles.
+    std::size_t dipole_count() const { return _mappings.size(); }
+    /// The mappings of the dipoles.
+    const std::vector<CSMapping>& mappings() const { return _mappings; }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    std::vector<CSMapping> _mappings;
+    std::vector<double> _kernels;
+    std::vector<double> _symmetry;
+    double _alpha[4];
+    double _kappa;
 };
 
 } // namespace madspace

@@ -86,6 +86,25 @@ CASES = {
         emitter=2,
         spectator=3,
     ),
+    "CSDipoles": dict(
+        mappings=[
+            ms.CSMapping(
+                ms.PhaseSpaceMapping(
+                    [0.0] * 4, 1000.0, mode=ms.PhaseSpaceMapping.TChannelMode.rambo
+                ),
+                4,
+                2,
+                3,
+            )
+        ],
+        kernels=["qg"],
+        symmetry=[1.0],
+        alpha_ff=1.0,
+        alpha_fi=1.0,
+        alpha_if=1.0,
+        alpha_ii=1.0,
+        kappa=2.0 / 3.0,
+    ),
     "FKSConfigurationMapping": dict(
         born=ms.PhaseSpaceMapping(
             [0.0] * 4,

@@ -1,6 +1,7 @@
 #include "madspace/phasespace/cs_mapping.hpp"
 
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 
 #include "madspace/phasespace/fks_mapping.hpp"
@@ -72,7 +73,7 @@ CSMapping::Family family_of(
     return initial_spectator ? CSMapping::final_initial : CSMapping::final_final;
 }
 
-std::vector<double> real_masses(const PhaseSpaceMapping& born, std::size_t emitted) {
+std::vector<double> masses_of_real(const PhaseSpaceMapping& born, std::size_t emitted) {
     auto masses = born.external_masses();
     masses.insert(masses.begin() + emitted, 0.);
     return masses;
@@ -120,7 +121,7 @@ CSMapping::CSMapping(
     _family(family_of(born, emitted, emitter, spectator)),
     _incoming(incoming_count(born)),
     _born_masses(born.external_masses()),
-    _real_masses(real_masses(born, emitted)) {
+    _real_masses(masses_of_real(born, emitted)) {
     // the masses of emitter and spectator, the same in every permutation of
     // the Born mapping, and massless incoming partons
     for (auto real : {emitter, spectator}) {
@@ -317,4 +318,160 @@ Mapping::Result CSMapping::build_inverse_impl(
         outputs.push_back("discrete", born.at("discrete"));
     }
     return {outputs, fb.mul(born.at("det"), projection.at("det"))};
+}
+
+namespace {
+
+const std::vector<CSMapping>& checked_dipoles(
+    const std::vector<CSMapping>& mappings,
+    const std::vector<std::string>& kernels,
+    const std::vector<double>& symmetry
+) {
+    if (mappings.empty() || kernels.size() != mappings.size() ||
+        symmetry.size() != mappings.size()) {
+        throw std::invalid_argument(
+            "CSDipoles: one kernel and one symmetry factor for each of at least one "
+            "dipole"
+        );
+    }
+    const auto& first = mappings.front();
+    for (const auto& mapping : mappings) {
+        if (mapping.particle_count() != first.particle_count() ||
+            mapping.condition_types().keys() != first.condition_types().keys()) {
+            throw std::invalid_argument(
+                "CSDipoles: the dipoles need the same real process and conditions"
+            );
+        }
+    }
+    return mappings;
+}
+
+double kernel_index(CSMapping::Family family, const std::string& kernel) {
+    bool final_emitter =
+        family == CSMapping::final_final || family == CSMapping::final_initial;
+    std::vector<std::string> names{"qg", "gg", "gq"};
+    if (!final_emitter) {
+        names = {"qg", "gg", "qq", "gq"};
+    }
+    for (std::size_t k = 0; k < names.size(); ++k) {
+        if (names[k] == kernel) {
+            return static_cast<double>(k);
+        }
+    }
+    throw std::invalid_argument("CSDipoles: unknown kernel " + kernel);
+}
+
+NamedVector<Type> dipole_return_types(const std::vector<CSMapping>& mappings) {
+    if (mappings.empty()) {
+        throw std::invalid_argument("CSDipoles: no dipoles");
+    }
+    int d = static_cast<int>(mappings.size());
+    int n = static_cast<int>(mappings.front().particle_count()) - 1;
+    return {
+        {"born_momenta", Type(DataType::dt_float64, batch_size, {d, n, 4})},
+        {"born_x1", batch_float_array(d)},
+        {"born_x2", batch_float_array(d)},
+        {"color_weight", batch_float_array(d)},
+        {"spin_weight", batch_float_array(d)},
+        {"spin_vector", batch_four_vec_array(d)},
+    };
+}
+
+NamedVector<Type> dipole_arg_types(const std::vector<CSMapping>& mappings) {
+    auto types = mappings.front().output_types();
+    const auto& conditions = mappings.front().condition_types();
+    auto names = conditions.keys();
+    for (std::size_t k = 0; k < conditions.size(); ++k) {
+        types.push_back(names.at(k), conditions.at(k));
+    }
+    return types;
+}
+
+} // namespace
+
+CSDipoles::CSDipoles(
+    const std::vector<CSMapping>& mappings,
+    const std::vector<std::string>& kernels,
+    const std::vector<double>& symmetry,
+    double alpha_ff,
+    double alpha_fi,
+    double alpha_if,
+    double alpha_ii,
+    double kappa
+) :
+    FunctionGenerator(
+        "CSDipoles",
+        dipole_arg_types(checked_dipoles(mappings, kernels, symmetry)),
+        dipole_return_types(mappings)
+    ),
+    _mappings(mappings),
+    _symmetry(symmetry),
+    _alpha{alpha_ff, alpha_fi, alpha_if, alpha_ii},
+    _kappa(kappa) {
+    for (double alpha : _alpha) {
+        if (!(alpha > 0. && alpha <= 1.)) {
+            throw std::invalid_argument("CSDipoles: alpha has to be in (0, 1]");
+        }
+    }
+    for (std::size_t d = 0; d < mappings.size(); ++d) {
+        _kernels.push_back(kernel_index(mappings[d].family(), kernels[d]));
+    }
+}
+
+NamedVector<Value> CSDipoles::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    const auto& first = _mappings.front();
+    NamedVector<Value> inputs, conditions;
+    for (const auto& name : first.output_types().keys()) {
+        inputs.push_back(name, args.at(name));
+    }
+    for (const auto& name : first.condition_types().keys()) {
+        conditions.push_back(name, args.at(name));
+    }
+    auto p = fb.unstack(args.at("momenta"));
+    ValueVec born_momenta, x1, x2, color, spin, vectors;
+    for (std::size_t d = 0; d < _mappings.size(); ++d) {
+        const auto& mapping = _mappings[d];
+        auto projection = mapping.build_projection(fb, inputs, conditions);
+        auto born = fb.unstack(projection.at("born_momenta"));
+        auto i = mapping.emitted(), j = mapping.emitter(), k = mapping.spectator();
+        auto bj = j < i ? j : j - 1, bk = k < i ? k : k - 1;
+        const auto& masses = mapping.real_masses();
+        auto family = mapping.family();
+        std::vector<double> options{
+            _kernels[d], _alpha[family], _kappa, masses.at(j), masses.at(k)
+        };
+        std::array<Value, 3> weights;
+        if (family == CSMapping::final_final) {
+            weights = fb.cs_final_final_dipole(
+                p.at(i), p.at(j), p.at(k), born.at(bj), born.at(bk), Value(options)
+            );
+        } else if (family == CSMapping::final_initial) {
+            weights = fb.cs_final_initial_dipole(
+                p.at(i), p.at(j), p.at(k), born.at(bj), born.at(bk), Value(options)
+            );
+        } else if (family == CSMapping::initial_final) {
+            weights = fb.cs_initial_final_dipole(
+                p.at(j), p.at(i), p.at(k), born.at(bj), born.at(bk), Value(options)
+            );
+        } else {
+            weights =
+                fb.cs_initial_initial_dipole(p.at(j), p.at(k), p.at(i), Value(options));
+        }
+        born_momenta.push_back(projection.at("born_momenta"));
+        x1.push_back(projection.at("born_x1"));
+        x2.push_back(projection.at("born_x2"));
+        color.push_back(fb.mul(weights[0], _symmetry[d]));
+        spin.push_back(fb.mul(weights[1], _symmetry[d]));
+        vectors.push_back(weights[2]);
+    }
+    return {
+        {"born_momenta", fb.stack(born_momenta)},
+        {"born_x1", fb.stack(x1)},
+        {"born_x2", fb.stack(x2)},
+        {"color_weight", fb.stack(color)},
+        {"spin_weight", fb.stack(spin)},
+        {"spin_vector", fb.stack(vectors)},
+    };
 }

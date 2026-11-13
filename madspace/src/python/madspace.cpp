@@ -2122,7 +2122,38 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("emitter", &CSMapping::emitter, pydoc::doc("CSMapping::emitter"))
         .def("spectator", &CSMapping::spectator, pydoc::doc("CSMapping::spectator"))
         .def("family", &CSMapping::family, pydoc::doc("CSMapping::family"))
-        .def("born", &CSMapping::born, pydoc::doc("CSMapping::born"));
+        .def("born", &CSMapping::born, pydoc::doc("CSMapping::born"))
+        .def(
+            "real_masses", &CSMapping::real_masses, pydoc::doc("CSMapping::real_masses")
+        );
+
+    py::classh<CSDipoles, FunctionGenerator>(m, "CSDipoles", pydoc::doc("CSDipoles"))
+        .def(
+            py::init<
+                const std::vector<CSMapping>&,
+                const std::vector<std::string>&,
+                const std::vector<double>&,
+                double,
+                double,
+                double,
+                double,
+                double>(),
+            py::arg("mappings"),
+            py::arg("kernels"),
+            py::arg("symmetry"),
+            py::arg("alpha_ff") = 1.,
+            py::arg("alpha_fi") = 1.,
+            py::arg("alpha_if") = 1.,
+            py::arg("alpha_ii") = 1.,
+            py::arg("kappa") = 2. / 3.,
+            pydoc::doc("CSDipoles::CSDipoles")
+        )
+        .def(
+            "dipole_count",
+            &CSDipoles::dipole_count,
+            pydoc::doc("CSDipoles::dipole_count")
+        )
+        .def("mappings", &CSDipoles::mappings, pydoc::doc("CSDipoles::mappings"));
 
     m.def(
         "fks_sqrt_s_hat_min",

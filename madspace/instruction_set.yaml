@@ -4613,6 +4613,128 @@ cs_initial_initial_project:
       desc: "Jacobian of the inverse map"
   desc: "Inverse of @ref cs_initial_initial_radiate, the momenta of the dipole V^ai,b (CS eqs. 5.137-5.143). The Born momentum fraction x_min is x x_real."
 
+cs_final_final_dipole:
+  inputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_j
+      type: [float, 4]
+      desc: "emitter"
+    - name: p_k
+      type: [float, 4]
+      desc: "spectator"
+    - name: born_ij
+      type: [float, 4]
+      desc: "Born emitter, from @ref cs_final_final_project"
+    - name: born_k
+      type: [float, 4]
+      desc: "Born spectator"
+    - name: options
+      type: [float, single, 5]
+      desc: "the kernel (see desc), alpha of the family, kappa of CDST, the masses of the emitter and of the spectator"
+  outputs:
+    - name: color_weight
+      type: [float]
+      desc: "the weight of the color-correlated Born <T_j . T_k>, zero outside alpha"
+    - name: spin_weight
+      type: [float]
+      desc: "the weight of <T_j . T_k>(k_t), zero outside alpha"
+    - name: spin_vector
+      type: [float, 4]
+      desc: "k_t, the vector that replaces the polarization of the Born emitter"
+  desc: "Catani-Seymour dipole with a final-state emitter and spectator, CDST eqs. 5.16-5.18: kernel 0 for q -> q g (j the quark, massive or not), 1 for g -> g g and 2 for g -> q q~ (massless), with kappa for a massive spectator. It vanishes for y >= alpha y_+, y_+ the largest y of CDST eq. 5.12 (one for a massless spectator), over the invariant p_i.p_j. The dipole is -g_s^2 (color_weight <T_j . T_k> + spin_weight <T_j . T_k>(k_t)) with the color-correlated Born of the Born emitter j and spectator k, and <T_j . T_k>(k_t) the same with the real vector k_t in place of the polarization vector of the Born emitter, a gluon. k_t is the vector k~ of the tensor part k~^mu k~^nu of the kernel without its part along the Born emitter (by the Born spectator), which the gauge invariance of the Born leaves out. The weights are the kernel, over the invariant of the dipole and normalized to the Casimir of the Born emitter, zero outside alpha. The momenta are in one frame. See @ref CSDipoles."
+
+cs_final_initial_dipole:
+  inputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_j
+      type: [float, 4]
+      desc: "final-state emitter"
+    - name: p_a
+      type: [float, 4]
+      desc: "incoming spectator"
+    - name: born_ij
+      type: [float, 4]
+      desc: "Born emitter, from @ref cs_initial_final_project"
+    - name: born_a
+      type: [float, 4]
+      desc: "Born incoming spectator, x p_a"
+    - name: options
+      type: [float, single, 5]
+      desc: "the kernel (see desc), alpha of the family, kappa of CDST, the masses of the emitter and of the spectator"
+  outputs:
+    - name: color_weight
+      type: [float]
+      desc: "the weight of the color-correlated Born <T_j . T_k>, zero outside alpha"
+    - name: spin_weight
+      type: [float]
+      desc: "the weight of <T_j . T_k>(k_t), zero outside alpha"
+    - name: spin_vector
+      type: [float, 4]
+      desc: "k_t, the vector that replaces the polarization of the Born emitter"
+  desc: "Catani-Seymour dipole with a final-state emitter and an incoming spectator, CS eqs. 5.65-5.67 and CDST eq. 5.50: kernel 0 for q -> q g (j the quark, massive or not), 1 for g -> g g and 2 for g -> q q~. It vanishes for 1 - x >= alpha, over the invariant x p_i.p_j. The dipole is -g_s^2 (color_weight <T_j . T_k> + spin_weight <T_j . T_k>(k_t)) with the color-correlated Born of the Born emitter j and spectator k, and <T_j . T_k>(k_t) the same with the real vector k_t in place of the polarization vector of the Born emitter, a gluon. k_t is the vector k~ of the tensor part k~^mu k~^nu of the kernel without its part along the Born emitter (by the Born spectator), which the gauge invariance of the Born leaves out. The weights are the kernel, over the invariant of the dipole and normalized to the Casimir of the Born emitter, zero outside alpha. The momenta are in one frame. See @ref CSDipoles."
+
+cs_initial_final_dipole:
+  inputs:
+    - name: p_a
+      type: [float, 4]
+      desc: "incoming emitter"
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_k
+      type: [float, 4]
+      desc: "final-state spectator"
+    - name: born_a
+      type: [float, 4]
+      desc: "Born incoming emitter, x p_a"
+    - name: born_k
+      type: [float, 4]
+      desc: "Born spectator, from @ref cs_initial_final_project"
+    - name: options
+      type: [float, single, 5]
+      desc: "the kernel (see desc), alpha of the family, kappa of CDST, the masses of the emitter and of the spectator"
+  outputs:
+    - name: color_weight
+      type: [float]
+      desc: "the weight of the color-correlated Born <T_j . T_k>, zero outside alpha"
+    - name: spin_weight
+      type: [float]
+      desc: "the weight of <T_j . T_k>(k_t), zero outside alpha"
+    - name: spin_vector
+      type: [float, 4]
+      desc: "k_t, the vector that replaces the polarization of the Born emitter"
+  desc: "Catani-Seymour dipole with an incoming emitter and a final-state spectator, CS eqs. 5.77-5.80 and CDST eqs. 5.79-5.82: kernel 0 for q -> q g (the quark enters the Born), 1 for g -> g g, 2 for g -> q~ q (i the quark, the q~ enters the Born) and 3 for q -> g q (the gluon enters the Born), with the factor kappa_j of a massive spectator in the tensor part. It vanishes for u >= alpha, over the invariant x p_a.p_i. The dipole is -g_s^2 (color_weight <T_j . T_k> + spin_weight <T_j . T_k>(k_t)) with the color-correlated Born of the Born emitter j and spectator k, and <T_j . T_k>(k_t) the same with the real vector k_t in place of the polarization vector of the Born emitter, a gluon. k_t is the vector k~ of the tensor part k~^mu k~^nu of the kernel without its part along the Born emitter (by the Born spectator), which the gauge invariance of the Born leaves out. The weights are the kernel, over the invariant of the dipole and normalized to the Casimir of the Born emitter, zero outside alpha. The momenta are in one frame. See @ref CSDipoles."
+
+cs_initial_initial_dipole:
+  inputs:
+    - name: p_a
+      type: [float, 4]
+      desc: "incoming emitter"
+    - name: p_b
+      type: [float, 4]
+      desc: "incoming spectator"
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: options
+      type: [float, single, 5]
+      desc: "the kernel (see desc), alpha of the family, kappa of CDST, the masses of the emitter and of the spectator"
+  outputs:
+    - name: color_weight
+      type: [float]
+      desc: "the weight of the color-correlated Born <T_j . T_k>, zero outside alpha"
+    - name: spin_weight
+      type: [float]
+      desc: "the weight of <T_j . T_k>(k_t), zero outside alpha"
+    - name: spin_vector
+      type: [float, 4]
+      desc: "k_t, the vector that replaces the polarization of the Born emitter"
+  desc: "Catani-Seymour dipole with an incoming emitter and spectator, CS eqs. 5.145-5.148, with the kernels of @ref cs_initial_final_dipole. It vanishes for v >= alpha, over the invariant x p_a.p_i. k_t is p_i without its parts along p_a and p_b, the same in the frames of the real emission and of its Born. The dipole is -g_s^2 (color_weight <T_j . T_k> + spin_weight <T_j . T_k>(k_t)) with the color-correlated Born of the Born emitter j and spectator k, and <T_j . T_k>(k_t) the same with the real vector k_t in place of the polarization vector of the Born emitter, a gluon. k_t is the vector k~ of the tensor part k~^mu k~^nu of the kernel without its part along the Born emitter (by the Born spectator), which the gauge invariance of the Born leaves out. The weights are the kernel, over the invariant of the dipole and normalized to the Casimir of the Born emitter, zero outside alpha. The momenta are in one frame. See @ref CSDipoles."
+
 ---
 title: Invariants
 

@@ -601,5 +601,275 @@ KERNELSPEC void kernel_cs_initial_initial_project(
     det = 1. / max(cs_initial_initial_det<T>(2. * pab, xv, xmin, rx, rv), EPS2);
 }
 
+// Catani-Seymour dipoles (arXiv:hep-ph/9605323, Sec. 5 and 10; masses:
+// arXiv:hep-ph/0201036, Sec. 5). A dipole is
+//
+//   D = -g_s^2 [color_weight <T_j . T_k> + spin_weight <T_j . T_k>(k_t)]
+//
+// with the color-correlated Born <T_j . T_k> of the Born emitter j and
+// spectator k, and <T_j . T_k>(k_t) the same with k_t in place of the
+// polarization vector of the Born emitter (a gluon), so that the tensor part
+// k~^mu k~^nu of the kernel contracts with the Born through k_t: k_t is the
+// vector k~ of the kernel (z_i p_i - z_j p_j, p_i / u - p_k / (1 - u),
+// p_i - p_i.p_a / p_a.p_b p_b) without its part along the Born emitter, by
+// the Born spectator, which the gauge invariance of the Born leaves out. The
+// weights are the kernels of the papers over the invariant of the dipole
+// (p_i.p_j, x p_i.p_j or x p_a.p_i) and over the Casimir of the Born
+// emitter, zero outside the alpha of the family (y < alpha y_+ for ff,
+// 1 - x < alpha for fi, u < alpha for if, v < alpha for ii). The options are
+// the kernel (see the yaml), alpha and kappa, and the masses of the emitter
+// and the spectator where they can be massive.
+
+constexpr double CS_CA = 3.;
+constexpr double CS_CF = 4. / 3.;
+constexpr double CS_TR = 0.5;
+
+// v - (v.ref / dir.ref) dir
+template <typename T>
+KERNELSPEC FourMom<T> cs_without_along(FourMom<T> v, FourMom<T> dir, FourMom<T> ref) {
+    auto c = ldot<T>(v, ref) /
+        where(ldot<T>(dir, ref) == 0., FVal<T>(1.), ldot<T>(dir, ref));
+    FourMom<T> out;
+    for (int n = 0; n < 4; ++n) {
+        out[n] = v[n] - c * dir[n];
+    }
+    return out;
+}
+
+template <typename T>
+KERNELSPEC void cs_store_dipole(
+    FVal<T> gate,
+    FVal<T> s,
+    FVal<T> a,
+    FVal<T> b,
+    FourMom<T> k_t,
+    FOut<T, 0> color_weight,
+    FOut<T, 0> spin_weight,
+    FOut<T, 1> spin_vector
+) {
+    auto inverse = where(gate > 0., 1. / where(s > 0., s, FVal<T>(1.)), FVal<T>(0.));
+    color_weight = a * inverse;
+    spin_weight = b * inverse;
+    store_mom<T>(spin_vector, k_t);
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_final_final_dipole(
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_j,
+    FIn<T, 1> p_k,
+    FIn<T, 1> born_ij,
+    FIn<T, 1> born_k,
+    FSIn<T, 1> options,
+    FOut<T, 0> color_weight,
+    FOut<T, 0> spin_weight,
+    FOut<T, 1> spin_vector
+) {
+    FVal<T> kernel = options[0], alpha = options[1], kappa = options[2];
+    FVal<T> mj = options[3], mk = options[4];
+    auto pi = load_mom<T>(p_i);
+    auto pj = load_mom<T>(p_j);
+    auto pk = load_mom<T>(p_k);
+    auto pipj = cs_lc_dot<T>(pj, mj, pi);
+    auto pipk = cs_lc_dot<T>(pk, mk, pi);
+    auto pjpk = where(
+        mj == 0.,
+        cs_lc_dot<T>(pk, mk, pj),
+        where(mk == 0., cs_lc_dot<T>(pj, mj, pk), ldot<T>(pj, pk))
+    );
+    auto yv = pipj / max(pipj + pipk + pjpk, EPS2);
+    auto zi = pipk / max(pipk + pjpk, EPS2);
+    auto zj = 1. - zi;
+    auto q2 = mj * mj + mk * mk + 2. * (pipj + pipk + pjpk);
+    auto mj2 = mj * mj / q2, mk2 = mk * mk / q2;
+    auto av = 1. - mj2 - mk2;
+    auto muk = sqrt(mk2);
+    auto y_plus = 1. - 2. * muk * (1. - muk) / av;
+    auto omy = av * (1. - yv);
+    // the velocity of the dipole and that of the Born (CDST eqs. 5.12, 5.14)
+    auto vel =
+        sqrt(max((2. * mk2 + omy) * (2. * mk2 + omy) - 4. * mk2, 0.)) / max(omy, EPS2);
+    auto vel_born = sqrt(max(av * av - 4. * mj2 * mk2, 0.)) / av;
+    auto zz = (zi - 0.5 * (1. - vel)) * (zj - 0.5 * (1. - vel));
+    auto zpm = 0.25 * (1. - vel * vel);
+    // CDST eqs. 5.16-5.18: q -> q g, g -> g g, g -> q q~, with 1 - z_j (1 -
+    // y) = z_i + y z_j and 1 - z_i (1 - y) = z_j + y z_i, which keep their
+    // digits in the soft limit
+    auto soft_i = zi + yv * zj, soft_j = zj + yv * zi;
+    auto a_qg = 2. / soft_i - vel_born / vel * (1. + zj + mj * mj / max(pipj, EPS2));
+    auto a_gg = 2. * (1. / soft_j + 1. / soft_i + (kappa * zpm - 2.) / vel);
+    auto a_gq = CS_TR / CS_CA * (1. - 2. * kappa * zpm) / vel;
+    auto b_gg = 2. / (vel * max(pipj, EPS2));
+    auto b_gq = -CS_TR / CS_CA * b_gg;
+    auto a = where(kernel == 0., a_qg, where(kernel == 1., a_gg, a_gq));
+    auto b = where(kernel == 0., FVal<T>(0.), where(kernel == 1., b_gg, b_gq));
+    FourMom<T> kk;
+    for (int n = 0; n < 4; ++n) {
+        kk[n] = (zi - 0.5 * (1. - vel)) * pi[n] - (zj - 0.5 * (1. - vel)) * pj[n];
+    }
+    auto k_t = cs_without_along<T>(kk, load_mom<T>(born_ij), load_mom<T>(born_k));
+    cs_store_dipole<T>(
+        where(yv < alpha * y_plus, FVal<T>(1.), FVal<T>(0.)),
+        pipj,
+        a,
+        b,
+        k_t,
+        color_weight,
+        spin_weight,
+        spin_vector
+    );
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_final_initial_dipole(
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_j,
+    FIn<T, 1> p_a,
+    FIn<T, 1> born_ij,
+    FIn<T, 1> born_a,
+    FSIn<T, 1> options,
+    FOut<T, 0> color_weight,
+    FOut<T, 0> spin_weight,
+    FOut<T, 1> spin_vector
+) {
+    FVal<T> kernel = options[0], alpha = options[1], mj = options[3];
+    auto pi = load_mom<T>(p_i);
+    auto pj = load_mom<T>(p_j);
+    auto pa = load_mom<T>(p_a);
+    auto pipj = cs_lc_dot<T>(pj, mj, pi);
+    auto pipa = cs_lc_dot<T>(pi, 0., pa);
+    auto pjpa = cs_lc_dot<T>(pj, mj, pa);
+    auto omx = pipj / max(pipa + pjpa, EPS2);
+    auto xv = 1. - omx;
+    auto zi = pipa / max(pipa + pjpa, EPS2);
+    auto zj = 1. - zi;
+    // CS eqs. 5.65-5.67, CDST eq. 5.50: q -> q g, g -> g g, g -> q q~
+    auto a_qg = 2. / (omx + zi) - 1. - zj - mj * mj / max(pipj, EPS2);
+    auto a_gg = 2. * (1. / (zj + omx) + 1. / (zi + omx) - 2.);
+    auto a_gq = FVal<T>(CS_TR / CS_CA);
+    auto b_gg = 2. / max(pipj, EPS2);
+    auto b_gq = -CS_TR / CS_CA * b_gg;
+    auto a = where(kernel == 0., a_qg, where(kernel == 1., a_gg, a_gq));
+    auto b = where(kernel == 0., FVal<T>(0.), where(kernel == 1., b_gg, b_gq));
+    FourMom<T> kk;
+    for (int n = 0; n < 4; ++n) {
+        kk[n] = zi * pi[n] - zj * pj[n];
+    }
+    auto k_t = cs_without_along<T>(kk, load_mom<T>(born_ij), load_mom<T>(born_a));
+    cs_store_dipole<T>(
+        where(omx < alpha, FVal<T>(1.), FVal<T>(0.)),
+        xv * pipj,
+        a,
+        b,
+        k_t,
+        color_weight,
+        spin_weight,
+        spin_vector
+    );
+}
+
+// the kernels of an incoming emitter (CS eqs. 5.77-5.80, 5.145-5.148, CDST
+// eqs. 5.79-5.82): q -> q g, g -> g g, g -> q~ q, q -> g q, with the
+// tensor parts as weights of k~^mu k~^nu, t_k = 2 u (1 - u) / p_i.p_k for an
+// incoming emitter with a final-state spectator and 2 p_a.p_b / (p_i.p_a
+// p_i.p_b) with an incoming one
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>>
+cs_initial_kernels(FVal<T> kernel, FVal<T> x, FVal<T> u, FVal<T> t_k) {
+    auto omx = 1. - x;
+    auto a_qg = 2. / (omx + u) - 1. - x;
+    auto a_gg = 2. * (1. / (omx + u) - 1. + x * omx);
+    auto a_qq = CS_TR / CS_CF * (1. - 2. * x * omx);
+    auto a_gq = CS_CF / CS_CA * x;
+    auto b_gg = omx / x * t_k;
+    auto b_gq = CS_CF / CS_CA * omx / x * t_k;
+    auto a = where(
+        kernel == 0., a_qg, where(kernel == 1., a_gg, where(kernel == 2., a_qq, a_gq))
+    );
+    auto b = where(kernel == 1., b_gg, where(kernel == 3., b_gq, FVal<T>(0.)));
+    return {a, b};
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_initial_final_dipole(
+    FIn<T, 1> p_a,
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_k,
+    FIn<T, 1> born_a,
+    FIn<T, 1> born_k,
+    FSIn<T, 1> options,
+    FOut<T, 0> color_weight,
+    FOut<T, 0> spin_weight,
+    FOut<T, 1> spin_vector
+) {
+    FVal<T> kernel = options[0], alpha = options[1], mk = options[4];
+    auto pa = load_mom<T>(p_a);
+    auto pi = load_mom<T>(p_i);
+    auto pk = load_mom<T>(p_k);
+    auto pipa = cs_lc_dot<T>(pi, 0., pa);
+    auto pkpa = cs_lc_dot<T>(pk, mk, pa);
+    auto pipk = cs_lc_dot<T>(pk, mk, pi);
+    auto omx = pipk / max(pipa + pkpa, EPS2);
+    auto xv = 1. - omx;
+    auto u = pipa / max(pipa + pkpa, EPS2);
+    auto ab = cs_initial_kernels<T>(kernel, xv, u, 2. * u * (1. - u) / max(pipk, EPS2));
+    FourMom<T> kk;
+    auto cu = 1. / max(u, EPS2), cv = 1. / max(1. - u, EPS2);
+    for (int n = 0; n < 4; ++n) {
+        kk[n] = cu * pi[n] - cv * pk[n];
+    }
+    auto k_t = cs_without_along<T>(kk, load_mom<T>(born_a), load_mom<T>(born_k));
+    cs_store_dipole<T>(
+        where(u < alpha, FVal<T>(1.), FVal<T>(0.)),
+        xv * pipa,
+        ab.first,
+        ab.second,
+        k_t,
+        color_weight,
+        spin_weight,
+        spin_vector
+    );
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_initial_initial_dipole(
+    FIn<T, 1> p_a,
+    FIn<T, 1> p_b,
+    FIn<T, 1> p_i,
+    FSIn<T, 1> options,
+    FOut<T, 0> color_weight,
+    FOut<T, 0> spin_weight,
+    FOut<T, 1> spin_vector
+) {
+    FVal<T> kernel = options[0], alpha = options[1];
+    auto pa = load_mom<T>(p_a);
+    auto pb = load_mom<T>(p_b);
+    auto pi = load_mom<T>(p_i);
+    auto pab = cs_lc_dot<T>(pa, 0., pb);
+    auto pia = cs_lc_dot<T>(pi, 0., pa);
+    auto pib = cs_lc_dot<T>(pi, 0., pb);
+    auto omx = (pia + pib) / max(pab, EPS2);
+    auto xv = 1. - omx;
+    auto vv = pia / max(pab, EPS2);
+    auto ab =
+        cs_initial_kernels<T>(kernel, xv, FVal<T>(0.), 2. * pab / max(pia * pib, EPS2));
+    // p_i without its parts along p_a and p_b
+    auto ca = pib / max(pab, EPS2), cb = pia / max(pab, EPS2);
+    FourMom<T> k_t;
+    for (int n = 0; n < 4; ++n) {
+        k_t[n] = pi[n] - ca * pa[n] - cb * pb[n];
+    }
+    cs_store_dipole<T>(
+        where(vv < alpha, FVal<T>(1.), FVal<T>(0.)),
+        xv * pia,
+        ab.first,
+        ab.second,
+        k_t,
+        color_weight,
+        spin_weight,
+        spin_vector
+    );
+}
+
 } // namespace kernels
 } // namespace madspace
