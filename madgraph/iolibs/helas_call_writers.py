@@ -14,6 +14,7 @@
 ################################################################################
 """Classes for writing Helas calls. HelasCallWriter is the base class."""
 from __future__ import absolute_import
+import contextlib
 import re
 import madgraph
 import madgraph.core.base_objects as base_objects
@@ -289,6 +290,24 @@ class HelasCallWriter(base_objects.PhysicsObject):
         # references from the exporters, the Python writer of the checks
         # computes them itself (PythonUFOHelasCallWriter)
         self.fermion_reference = True
+
+    @contextlib.contextmanager
+    def gauge_cache(self, gauge, model):
+        """Write the calls of a matrix element of another gauge (an output
+        whose processes are in two gauges) with this writer: its model and
+        call caches are those of that gauge for the block.  One writer serves
+        both gauges where the output keeps state across matrix elements (the
+        coupling indices of the madmatrix writer)."""
+
+        caches = self.__dict__.setdefault('_gauge_caches', {})
+        saved = (self['model'], self['wavefunctions'], self['amplitudes'])
+        wavefunctions, amplitudes = caches.setdefault(gauge, ({}, {}))
+        self['model'], self['wavefunctions'], self['amplitudes'] = \
+                                            model, wavefunctions, amplitudes
+        try:
+            yield self
+        finally:
+            self['model'], self['wavefunctions'], self['amplitudes'] = saved
 
     def has_axial_gauge_ref(self, wf):
         """Whether this external is written as vxxxxxr, ixxxxxr or oxxxxxr: a

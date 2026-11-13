@@ -891,7 +891,7 @@ c selected physical incoming momentum (and its PDF argument) changes.
       elseif(j_fks.le.nincoming) then
          isolsign=1
          call generate_momenta_initial(icountevts,i_fks,j_fks,xbjrk_born,tau_born,ycm_born,shat_born,phi_i_fks,xp,rad(1:2),
-     $     shat,stot,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass)
+     $     shat,stot,sqrtshat,tau,ycm,xbjrk,p_i_fks,xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,xjac,pass,nbody_only)
          if (.not.pass) goto 112
       else
          write (*,*) 'Error #2 in genps_fks.f',j_fks
@@ -1497,11 +1497,13 @@ c histories only consume momenta and active data, so skip their snapshot.
 
 
       subroutine invert_fks_radiation(xx,xjac0,xpswgt0,
-     $     stot,tau_born,ycm_born,xbjrk_born,p_lab,pb)
+     $     stot,tau_born,ycm_born,xbjrk_born,p_lab,pb,nbody_only)
       use fks_phase_space_data,only: resonance_momentum,resonance_mass2,resonance_recoil,
      $     resonance_members,initial_recoil_leg,p_i_fks_cnt
 ! Input momenta are in the symmetric hadron frame used by generate_momenta.
 ! No Born integration-channel coordinates or Jacobians are recovered.
+! Pass the forward stage's mode to recover its ISR sampling coordinates.
+! Calls without an explicit mode retain the legacy COMMON convention.
       use fks_phase_space_helpers, only: boost_n1_to_its_cms,
      $     boost_n1_to_lab,get_xi_from_p,get_yij_from_p,get_phi_from_p
       implicit none
@@ -1515,6 +1517,7 @@ c histories only consume momenta and active data, so skip their snapshot.
       double precision m_j_fks,xi_i_fks,y_ij_fks,phi_i_fks,xbjrk(2),shat
      $     ,sqrtshat,tau,ycm,y_lab_to_cms,xbar,trial_jac,trial_ps
       logical pass
+      logical,intent(in),optional :: nbody_only
       m_j_fks=pmass(j_fks)
 
       xbjrk(1:2)=p_lab(0,1:2)/(sqrt(stot)/2d0)
@@ -1578,7 +1581,7 @@ c a direct inversion in the lab would use a different transverse basis.
          xbjrk_born(1:2)=xbjrk(1:2)
       else
          call generate_momenta_initial_inverse(p_lab,xi_i_fks,y_ij_fks,phi_i_fks,pb,xx,xjac0,xpswgt0,shat,sqrtshat,i_fks,
-     $     j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born)
+     $     j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born,nbody_only)
       endif
       end subroutine invert_fks_radiation
 

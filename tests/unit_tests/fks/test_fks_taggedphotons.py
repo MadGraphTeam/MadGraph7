@@ -240,6 +240,8 @@ class TestTaggedPhotonStatistics(unittest.TestCase):
         routines = [fortran_routine(template / 'fks_Sij.f', name) for name in
                     ('fks_Sij', 'get_dkl_Sij', 'get_cms_energy',
                      'get_cms_costh_fks', 'costh_fks', 'h_damp')]
+        # The S functions use the exact dot of fks_phase_space_helpers;
+        # other helpers of that module still call the legacy one.
         routines.append(fortran_routine(self.root / 'Template/NLO/Source/kin_functions.f', 'dot'))
         (work / 'partition.f').write_text('\n'.join(routines))
         source = PARTITION_DRIVER.replace('@PHOTONS@', ints(photons))
@@ -256,8 +258,10 @@ class TestTaggedPhotonStatistics(unittest.TestCase):
         result = subprocess.run([
             shutil.which('gfortran'), '-O2', '-std=legacy', '-fcheck=all',
             '-ffixed-line-length-none', '-ffree-line-length-none', '-I', str(work),
-            str(template / 'fks_phase_space_data.f'), str(work / 'partition.f'),
-            str(self.root / 'HELAS/boostx.F'), str(work / 'driver.f90'),
+            str(template / 'fks_phase_space_data.f'),
+            str(template / 'genps_fks_helpers.f'), str(work / 'partition.f'),
+            str(self.root / 'HELAS/boostx.F'), str(self.root / 'HELAS/rotxxx.F'),
+            str(work / 'driver.f90'),
             '-o', str(work / 'check')], cwd=work, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

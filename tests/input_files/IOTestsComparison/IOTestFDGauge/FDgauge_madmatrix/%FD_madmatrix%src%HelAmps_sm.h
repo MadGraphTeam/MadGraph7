@@ -2053,26 +2053,24 @@ namespace madmatrix
     const fptype_sv FDNQ = FDN[0] * FDQ[0].real() - FDN[1] * FDQ[1].real() - FDN[2] * FDQ[2].real() - FDN[3] * FDQ[3].real();
     const int & flv_index1 = F1.flv_index;
     const int & flv_index2 = F2.flv_index;
-    int zero_coup1 = 0;
-    int zero_coup2 = 0;
-    if(flv_index1 != flv_index2 || flv_index1 == -1) {
-      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
-      return;
-    }
     if(flv_index1 == -1 || flv_index2 == -1) {
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    if(MCOUP1.partner1[flv_index1] != flv_index2 || MCOUP1.partner2[flv_index1] != flv_index2) {
-      zero_coup1 = 1;
-      COUP1 = cxzero_sv();
+    int flv_sel1 = -1;
+    if(MCOUP1.partner1[flv_index1] == flv_index2) flv_sel1 = flv_index1;
+    else if(MCOUP1.partner1[flv_index2] == flv_index1) flv_sel1 = flv_index2;
+    int flv_sel2 = -1;
+    if(MCOUP2.partner1[flv_index1] == flv_index2) flv_sel2 = flv_index1;
+    else if(MCOUP2.partner1[flv_index2] == flv_index1) flv_sel2 = flv_index2;
+    if(flv_sel1 == -1 && flv_sel2 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
     }
-    if(MCOUP2.partner1[flv_index1] != flv_index2 || MCOUP2.partner2[flv_index1] != flv_index2) {
-      zero_coup2 = 1;
-      COUP2 = cxzero_sv();
-    }
-    if(zero_coup1 ==0) { COUP1 = C_ACCESS::kernelAccessConst( MCOUP1.value + C_ACCESS::flv_stride*flv_index1 ); }
-    if(zero_coup2 ==0) { COUP2 = C_ACCESS::kernelAccessConst( MCOUP2.value + C_ACCESS::flv_stride*flv_index1 ); }
+    if(flv_sel1 == -1) { COUP1 = cxzero_sv(); }
+    else { COUP1 = C_ACCESS::kernelAccessConst( MCOUP1.value + C_ACCESS::flv_stride*flv_sel1 ); }
+    if(flv_sel2 == -1) { COUP2 = cxzero_sv(); }
+    else { COUP2 = C_ACCESS::kernelAccessConst( MCOUP2.value + C_ACCESS::flv_stride*flv_sel2 ); }
     const cxtype_amp_sv denom1 = madmatrix::denom( Ccoeff1, COUP1, dP3, M3, W3 );
     wV3[0] = wV3[0] + denom1 * ( -cI ) * ( wF2[0] * wF1[2] + wF2[1] * wF1[3] );
     wV3[1] = wV3[1] + denom1 * ( -cI ) * ( wF2[1] * wF1[2] + wF2[0] * wF1[3] );
