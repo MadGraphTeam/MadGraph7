@@ -181,7 +181,7 @@ An explicit FMA is one fused operation. Intrinsic names include their version
 and refer to the formulas in
 `rust/crates/rusticol-core/src/evaluator/recurrence_intrinsic_direct.rs`.
 Changing the operation order of those formulas requires a new execution
-semantics version.
+semantics version; the golden vectors below enforce this.
 
 A vertex first computes `scale = complex_multiply(coupling, factor)`, then
 evaluates the named intrinsic's base result, multiplies that result by
@@ -223,6 +223,55 @@ native interaction rewrites. Use batched `evaluate_resolved_f64` as the
 reference when comparing consumers. Exporting before or after evaluation does
 not change the static program; point counts and tile sizes do not specialize
 its body.
+
+## Golden vectors
+
+`execution_semantics` is a bit-exact contract, and committed golden vectors
+enforce it. `rust/crates/rusticol-core/tests/fixtures/recurrence_export_golden.json`
+records, for the current `execution_semantics`, the inputs and the expected
+output bits of every exported instruction kind that carries arithmetic: each
+vertex and propagator template, every source family and orientation (massless
+and massive, positive and negative energy, the axis and rest branches, and an
+embedded source), `scale`, `copy`, every `scatter` factor shortcut in both
+modes, `closure`, the kernel input projections and output adapter (direct and
+scaled, set and add, current and amplitude destinations), momentum forms with
+and without crossing, reductions, and group factors. f64 values are IEEE-754
+bit patterns written as 16 hexadecimal digits. Instruction cases execute one
+instruction on shared initial arenas and momentum forms over five points, so
+both the paired and the single-point paths are pinned, and list the arena
+slots whose bits change. Kernel cases use identity kernels (`identity-N`
+copies N complex inputs to N complex outputs; `identity-N-to-M` copies the
+first M), so they pin the projections and the adapter rather than any saved
+application.
+
+The Rust test
+`recurrence_export_golden_vectors_pin_the_execution_semantics` replays every
+case from the fixture's own inputs through the export interpreter. A differing
+bit fails with "the execution semantics changed: bump the version string and
+regenerate". A new template, source family, orientation, or instruction kind
+cannot be added without new cases: the generator enumerates them exhaustively.
+After bumping `EXECUTION_SEMANTICS` in
+`rust/crates/rusticol-core/src/engine/recurrence_export.rs`, regenerate the
+vectors with:
+
+```console
+cargo test -p rusticol-core --lib regenerate_recurrence_export_golden_vectors -- --ignored
+```
+
+The generator refuses to change an existing case while the version string is
+unchanged; it may add cases. External runners can replay the same fixture to
+check their implementation.
+
+The pinned arithmetic is binary64 addition, subtraction, multiplication,
+division, square root, sign operations, and the reduction's explicit FMA. These
+are correctly rounded on every IEEE-754 platform; Rust never contracts
+expressions into FMAs, and no transcendental library function is involved.
+Every pinned input and output is finite, so platform-specific NaN payloads do
+not occur. The bits are therefore platform independent, and the test runs
+unrestricted. The fixture was generated on x86_64 Linux, which CI also uses.
+Golden vectors detect formula changes that alter the bits of their inputs. The
+inputs have full mantissas and cover every branch to make an undetected change
+unlikely, but they are samples rather than a proof.
 
 ## Optional reference values
 

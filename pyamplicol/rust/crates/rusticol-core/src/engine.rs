@@ -4961,6 +4961,8 @@ mod recurrence_export_executors;
 mod recurrence_lane;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub use recurrence_export::*;
+#[cfg(all(test, feature = "f64-symjit"))]
+mod recurrence_export_golden;
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 mod recurrence_export_tests;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
