@@ -4053,16 +4053,26 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 for unmerged_chan_index, (chan_info, chan_tags) in enumerate(
                     zip(subproc_info["channels"], diagram_tags)
                 ):
-                    chan_index = len(channels)
-
+                    # each diagram already met in this group (same topology
+                    # tag) goes to the merged channel that holds it. The
+                    # diagrams of one channel may sit in several merged
+                    # channels: a crossed subprocess folded into its base
+                    # (crossed_entries_of) keeps per crossing-table row only
+                    # the diagrams that row needs, so the diagrams of one of
+                    # its channels can be split over several entries. The new
+                    # diagrams go to the merged channel of the first one met,
+                    # or to a new merged channel if none was.
                     same_diags = []
                     for tag in chan_tags:
                         try:
                             index = unique_diagram_tags.index(tag)
-                            chan_index, diag_index = unique_diagrams[index]
-                            same_diags.append(diag_index)
+                            same_diags.append(unique_diagrams[index])
                         except ValueError:
                             same_diags.append(None)
+                    chan_index = next(
+                        (same[0] for same in same_diags if same is not None),
+                        len(channels),
+                    )
 
                     if chan_index == len(channels):
                         channels.append(
@@ -4088,9 +4098,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
                                     "active_flavors": [],
                                 }
                             )
+                            diag_dict = diagrams[diag_index]
                         else:
-                            diag_index = same_diag
-                        diag_dict = diagrams[diag_index]
+                            same_chan, same_index = same_diag
+                            diag_dict = channels[same_chan]["diagrams"][same_index]
                         diag_dict["diagram"][subproc_index_in_group] = diag_info["diagram"]
                         diag_dict["active_flavors"].extend(
                             flavor_offset + flav for flav in diag_info["active_flavors"]

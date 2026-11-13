@@ -1147,3 +1147,63 @@ class MG7LeptonDensityShippingTest(unittest.TestCase):
         os.makedirs(target)
         self.exporter(2, [-11], [11]).copy_lepton_densities()
         self.assertEqual(os.listdir(target), [])
+
+
+#===============================================================================
+# MG7MergedChannelsTest
+#===============================================================================
+class MG7MergedChannelsTest(unittest.TestCase):
+    """get_merged_info when the diagrams of one channel sit in several merged
+    channels.
+
+    A crossed subprocess folded into its base keeps, per crossing-table row,
+    only the diagrams that row needs (export_mg7.crossed_entries_of), so the
+    diagrams of one of its channels can land in two merged channels. A later
+    subprocess whose channel holds both used to take the merged channel of the
+    last match with the diagram index of another one: an IndexError in the
+    output of p p > l+ l- + 0-4 jets, or a diagram filed under the wrong
+    channel.
+    """
+
+    @staticmethod
+    def merged(subprocesses):
+        # get_merged_info only reads merged_subprocesses and process_info;
+        # ProcessExporterMG7.__init__ wants a full set of export arguments
+        exporter = export_cpp.ProcessExporterMG7.__new__(
+            export_cpp.ProcessExporterMG7)
+        exporter.process_info = []
+        group = []
+        for index, channels in enumerate(subprocesses):
+            exporter.process_info.append({
+                'incoming': [21, 21], 'outgoing': [21, 21],
+                'flavors': [{'options': [[21, 21, 21, 21]]}],
+                'channels': [{'diagrams': [
+                    {'diagram': diagram, 'permutation': [0, 1, 2, 3],
+                     'active_flavors': [0]}
+                    for diagram, _ in channel]} for channel in channels]})
+            group.append((index, [[tag for _, tag in channel]
+                                  for channel in channels]))
+        exporter.merged_subprocesses = {'class': group}
+        (info,) = exporter.get_merged_info()
+        return info['channels']
+
+    def test_channel_split_over_two_merged_channels(self):
+        channels = self.merged([
+            # the first subprocess: tags a, b in one channel, c in another
+            [[(1, 'a'), (2, 'b')], [(3, 'c')]],
+            # the second one: b and c together, and a new d
+            [[(10, 'b'), (11, 'c'), (12, 'd')]]])
+        self.assertEqual(len(channels), 2)
+        # each diagram stays in the merged channel that holds its tag
+        self.assertEqual([d['diagram'] for d in channels[0]['diagrams']],
+                         [[1, -1], [2, 10], [-1, 12]])
+        self.assertEqual([d['diagram'] for d in channels[1]['diagrams']],
+                         [[3, 11]])
+        # the flavours of the second subprocess follow the first one's
+        self.assertEqual(channels[0]['diagrams'][1]['active_flavors'], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['active_flavors'], [0, 1])
+
+    def test_new_channel_when_nothing_matches(self):
+        channels = self.merged([[[(1, 'a')]], [[(5, 'z')]]])
+        self.assertEqual([c['subprocess'] for c in channels], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['diagram'], [-1, 5])
