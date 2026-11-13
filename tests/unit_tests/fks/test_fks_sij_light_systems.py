@@ -102,6 +102,8 @@ class TestFKSSijLightSystems(unittest.TestCase):
                          'get_cms_costh_fks', 'costh_fks', 'h_damp')]
             # Only other helpers of fks_phase_space_helpers need the legacy dot.
             routines.append(fortran_routine(ROOT / 'Template/NLO/Source/kin_functions.f', 'dot'))
+            # fks_Sij leaves bound states out of the partition (onia_legs.f); no onia here
+            routines.append(fortran_routine(TEMPLATE / 'onia_legs_dummy.f', 'fks_onia_leg'))
             (work / 'sij.f').write_text('\n'.join(routines))
             (work / 'driver.f90').write_text(DRIVER)
             build = subprocess.run([
