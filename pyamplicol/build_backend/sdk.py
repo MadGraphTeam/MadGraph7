@@ -17,7 +17,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import arithmetic as arithmetic_module
 from native_build_identity import load_native_build_contract
 
 SDK_SOURCES = (
@@ -122,12 +121,6 @@ def _host_target(root: Path) -> str:
     raise RuntimeError("rustc -vV did not report a host target")
 
 
-def host_target(root: Path) -> str:
-    """Return the Rust host target triple (the only SDK target)."""
-
-    return _host_target(root)
-
-
 def _requested_target(host: str) -> str:
     requested = (
         os.environ.get("CARGO_BUILD_TARGET")
@@ -217,18 +210,8 @@ def _native_tokens(stderr: str) -> list[str]:
     return shlex.split(matches[0])
 
 
-def _typed_link_arguments(
-    tokens: list[str],
-    target: str,
-    *,
-    shared_libraries: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """Classify rustc's native link requirements.
-
-    ``shared_libraries`` names the libraries the SDK ships itself (the shared
-    arithmetic runtime of a distribution wheel). They are recorded by name in
-    ``shared`` here; ``build_sdk`` replaces them by the shipped files.
-    """
+def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
+    """Classify rustc's native link requirements."""
 
     libraries = MACOS_LIBRARIES if "apple-darwin" in target else LINUX_LIBRARIES
     result: dict[str, Any] = {
@@ -237,7 +220,6 @@ def _typed_link_arguments(
         "system_libraries": [],
         "frameworks": [],
     }
-    shipped: list[str] = []
     index = 0
     while index < len(tokens):
         token = tokens[index]
@@ -253,11 +235,6 @@ def _typed_link_arguments(
             continue
         if token.startswith("-l") and len(token) > 2:
             library = token[2:]
-            if library in shared_libraries:
-                if library not in shipped:
-                    shipped.append(library)
-                index += 1
-                continue
             if library not in libraries:
                 raise RuntimeError(
                     f"native system library is not allowlisted: {library}"
@@ -276,13 +253,6 @@ def _typed_link_arguments(
         ):
             raise RuntimeError(f"non-relocatable native link token: {token}")
         raise RuntimeError(f"unsupported native link token: {token}")
-    if set(shipped) != set(shared_libraries):
-        raise RuntimeError(
-            "the SDK archive does not link the shared libraries it ships: "
-            f"linked {sorted(shipped)}, shipped {sorted(shared_libraries)}"
-        )
-    if shipped:
-        result["shared"] = shipped
     return result
 
 
@@ -425,17 +395,10 @@ def _c_api_exports(
     return exports
 
 
-def _native_link_flags(
-    link: Mapping[str, Any],
-    target: str,
-    *,
-    shared_files: tuple[Path, ...] = (),
-) -> list[str]:
+def _native_link_flags(link: Mapping[str, Any], target: str) -> list[str]:
     if link.get("target") != target:
         raise RuntimeError("Rusticol native link metadata targets the wrong platform")
-    flags: list[str] = [str(path) for path in shared_files]
-    for directory in dict.fromkeys(path.parent for path in shared_files):
-        flags.append(f"-Wl,-rpath,{directory}")
+    flags: list[str] = []
     # rusticol-config --libs's section garbage collection (rusticol_config.
     # section_gc_flags): the probe links as consumers do.
     if "apple-darwin" in target:
@@ -465,7 +428,6 @@ def _validate_archive_linkage(
     link: Mapping[str, Any],
     target: str,
     virtual_header: Path | None = None,
-    shared_files: tuple[Path, ...] = (),
 ) -> None:
     """Link and execute a probe that references every declared C ABI export."""
 
@@ -504,7 +466,7 @@ int main(void) {{
             *(["-I", str(virtual_header.parent)] if virtual_header is not None else []),
             str(probe_source),
             str(archive),
-            *_native_link_flags(link, target, shared_files=shared_files),
+            *_native_link_flags(link, target),
             "-o",
             str(probe_binary),
         ]
@@ -633,16 +595,13 @@ def build_sdk(
     root: Path,
     target_dir: Path,
     *,
-    arithmetic: arithmetic_module.ArithmeticRuntime | None = None,
     compress_archive: bool = False,
 ) -> Path:
-    """Build the C SDK; with ``arithmetic``, link GMP/MPFR/MPC as shared libraries.
+    """Build the C SDK's static archive (GMP, MPFR and MPC included).
 
-    The shared libraries are then shipped in ``lib/`` next to the archive and
-    listed in ``link.json`` (``shared_libraries``, link order), for
-    ``rusticol-config --libs``. With ``compress_archive`` the validated static
-    archive ships as ``lib/<archive>.xz`` (distribution wheels); metadata.json
-    names it and records the unpacked archive's SHA-256 and size.
+    With ``compress_archive`` the validated static archive ships as
+    ``lib/<archive>.xz`` (distribution wheels); metadata.json names it and
+    records the unpacked archive's SHA-256 and size.
     """
 
     _ensure_sdk_workspace_member(root)
@@ -664,11 +623,6 @@ def build_sdk(
             *profile_arguments,
             "--package",
             str(sdk_contract["package"]),
-            *(
-                ("--features", arithmetic_module.CARGO_FEATURE)
-                if arithmetic is not None
-                else ()
-            ),
             "--target",
             target,
             "--message-format=json-render-diagnostics",
@@ -694,21 +648,9 @@ def build_sdk(
     archive = _static_library(messages)
     if not archive.is_file():
         raise RuntimeError(f"cargo reported a missing static archive: {archive}")
-    link = _typed_link_arguments(
-        _native_tokens(completed.stderr),
-        target,
-        shared_libraries=(
-            arithmetic_module.LINK_ORDER if arithmetic is not None else ()
-        ),
-    )
+    link = _typed_link_arguments(_native_tokens(completed.stderr), target)
     archive = _stripped_archive(
         archive, target_dir.parent / "sdk-archive" / archive.name, target
-    )
-    shipped = tuple(link.pop("shared", ()))
-    shared_files = (
-        tuple(arithmetic.libraries[name] for name in shipped)
-        if arithmetic is not None
-        else ()
     )
     _scan_archive(archive)
     _scan_archive_symbols(archive)
@@ -718,7 +660,6 @@ def build_sdk(
         virtual_header=root / "rust/loop-reduction/sdk/include/rusticol_virtual.h",
         link=link,
         target=target,
-        shared_files=shared_files,
     )
 
     staging = target_dir.parent / "wheel-data" / "_sdk"
@@ -748,17 +689,6 @@ def build_sdk(
         compression = _compressed_archive(archive, library)
     else:
         shutil.copy2(archive, library)
-    if arithmetic is not None:
-        staged = dict(
-            zip(
-                arithmetic_module.LINK_ORDER,
-                arithmetic_module.stage_sdk_libraries(
-                    arithmetic, library.parent, os.environ
-                ),
-                strict=True,
-            )
-        )
-        link["shared_libraries"] = [f"lib/{staged[name]}" for name in shipped]
     (staging / "link.json").write_text(
         json.dumps(link, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

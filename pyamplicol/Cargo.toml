@@ -31,9 +31,6 @@ repository = "https://github.com/mg5amcnlo/pyamplicol"
 [workspace.dependencies]
 bincode = { version = "2.0", features = ["serde"] }
 flate2 = "1.1"
-# Only the build backend's shared-arithmetic feature names it (to select
-# use-system-libs); rug selects the version and the mpfr/mpc features.
-gmp-mpfr-sys = { version = "1.7", default-features = false }
 libc = "0.2"
 numpy = "0.29"
 num-bigint = "0.4"

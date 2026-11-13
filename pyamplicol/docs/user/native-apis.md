@@ -216,27 +216,16 @@ pyamplicol/_sdk/
   umami/pyamplicol_umami_virtual_v1.c
   umami/UMAMI_LICENSE
   lib/librusticol_capi.a.xz         (distribution wheels; a source build ships lib/librusticol_capi.a)
-  lib/libmpc-pyamplicol.so.3        (Linux distribution wheels)
-  lib/libmpfr-pyamplicol.so.6
-  lib/libgmp-pyamplicol.so.10
   config.py
   metadata.json
   link.json
 ```
 
 The archive holds the tree and one-loop C ABIs (`rusticol_virtual.h`
-included). Distribution wheels link GMP, MPFR and MPC dynamically: the three
-shared libraries ship next to the archive (on macOS `libmpc.3.dylib`,
-`libmpfr.6.dylib` and `libgmp.10.dylib` with `@rpath` install names), and
-`link.json` lists them in link order, so `rusticol-config --libs` names them
-by path with a run path to `lib/` (see
-[GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
-The Python extension's own copies, which the wheel repair bundles next to
-`_rusticol` (`pyamplicol.libs/` on Linux, `pyamplicol.dylibs/` on macOS),
-carry the repair tool's file names (on Linux and macOS possibly with a content
-hash in the name) and are not part of the SDK's link line: link only what
-`rusticol-config --libs` names.
-A source build links them statically and ships only the archive.
+included) and, linked in statically, GMP, MPFR and MPC (in every build; see
+[GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)):
+`rusticol-config --libs` names the archive and system libraries only, so a
+consumer has no run-time dependency on the installation.
 
 ### The SDK archive cache
 

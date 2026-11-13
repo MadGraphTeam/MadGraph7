@@ -77,30 +77,25 @@ General Public License version 3 that the Lesser General Public License
 incorporates, and the libraries' own `COPYING` files are in
 `licenses/rust/gmp-mpfr-sys-1.7.1/` and `licenses/rust/rug-1.30.0/`.
 
-The binary wheels link GMP, MPFR and MPC dynamically. They ship them as
-separate shared libraries, built from unmodified sources, that can be replaced
-by any interface-compatible build: in `pyamplicol.libs/` (Linux; the libraries carry
-the sonames `libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6` and
-`libmpc-pyamplicol.so.3` plus the hash suffix of the wheel repair) or
-`pyamplicol.dylibs/` (macOS) for the Python extension, and in
-`pyamplicol/_sdk/lib/` next to the C SDK archive, which contains no copy of
-them and links them by path (`rusticol-config --libs`). The libraries are built
-from the sources bundled in the `gmp-mpfr-sys` 1.7.1 crate
+The binary wheels link GMP, MPFR and MPC statically, like every other build
+of pyAmpliCol: the libraries, with the Rust crates `rug` and `gmp-mpfr-sys`
+that wrap them, are part of the Python extension (`pyamplicol/_rusticol*.so`)
+and of the C SDK archive (`pyamplicol/_sdk/lib/librusticol_capi.a`, shipped
+xz-compressed), and so of every program or library linked against that
+archive (`rusticol-config --libs`). They are compiled by `gmp-mpfr-sys` 1.7.1
+from the unmodified sources it bundles
 (<https://crates.io/crates/gmp-mpfr-sys/1.7.1>; directories `gmp-6.3.0-c`,
-`mpfr-4.2.2-c` and `mpc-1.4.1-c`, also at
-<https://gmplib.org/>, <https://www.mpfr.org/> and
-<https://www.multiprecision.org/mpc/>) with that crate's configure options,
-shared instead of static; `build_backend/arithmetic.py` in pyAmpliCol's source
-distribution is the complete build recipe.
+`mpfr-4.2.2-c` and `mpc-1.4.1-c`, also at <https://gmplib.org/>,
+<https://www.mpfr.org/> and <https://www.multiprecision.org/mpc/>) with that
+crate's configure options.
 
-The Rust crates `rug` and `gmp-mpfr-sys` themselves (the bindings, not the C
-libraries) are statically linked into the extension and the C SDK archive.
-Relinking with modified versions of them is offered under section 4(d)(0) of
-the GNU Lesser General Public License version 3: pyAmpliCol's source
-distribution is the complete Corresponding Application Code (every Rust and
-Python source, `Cargo.toml`, `Cargo.lock` and the build backend), and the
-Minimal Corresponding Source of the two crates is published on crates.io at
-the versions locked in `Cargo.lock`. To produce a modified combined work,
+Relinking with modified versions of the libraries or the crates is offered
+under section 4(d)(0) of the GNU Lesser General Public License version 3:
+pyAmpliCol's source distribution is the complete Corresponding Application
+Code (every Rust and Python source, `Cargo.toml`, `Cargo.lock` and the build
+backend), and the Minimal Corresponding Source of the libraries and the two
+crates is published on crates.io (the `gmp-mpfr-sys` and `rug` crates) at the
+versions locked in `Cargo.lock`. To produce a modified combined work,
 replace the crates in the unpacked source distribution (for example with a
 `[patch.crates-io]` entry in its `Cargo.toml` that names the modified crates,
 then `cargo update -p rug -p gmp-mpfr-sys`) and rebuild and install from it

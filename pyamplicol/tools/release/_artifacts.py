@@ -163,19 +163,6 @@ _FORBIDDEN_CAPI_UNDEFINED_PREFIXES = (
     "python",
     "libpython",
 )
-_FORBIDDEN_STATIC_RUNTIME_MARKERS = (
-    "__gmp",
-    "gmp-mpfr-sys",
-    "malachite-base",
-    "malachite-nz",
-    "malachite-q",
-    "mpfr_",
-)
-# Symbols that only a linked-in copy of the C arithmetic runtime defines
-# (GMP: __gmp*, MPFR: mpfr_* and __gmpfr*, MPC: mpc_*), and Malachite's crates.
-_STATIC_RUNTIME_SYMBOL_PREFIXES = ("mpfr_", "mpc_")
-_BINDING_CRATE = b"gmp_mpfr_sys"
-_STATIC_RUNTIME_SYMBOL_PARTS = ("__gmp", "malachite")
 _UNDEFINED_SYMBOL_TYPES = frozenset({"U", "u", "W", "w", "V", "v"})
 _COMMON_SYSTEM_LIBRARIES = {"c", "dl", "m", "pthread", "resolv", "rt", "util"}
 _SYSTEM_LIBRARIES = {
@@ -250,29 +237,17 @@ _REQUIRED_SELFTEST_API_PAYLOADS = {
 }
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
-# Maturin's wheel repair: auditwheel layout on Linux, delocate layout on macOS.
-_ALLOWED_REPAIR_ROOTS = {"pyamplicol.libs", "pyamplicol.dylibs"}
 # The C API archive: plain (developer builds), or xz-compressed in
 # distribution wheels (USER 2026-11-07), which every release wheel is;
 # metadata.json records the unpacked archive's SHA-256 and size.
 _SDK_ARCHIVE = "pyamplicol/_sdk/lib/librusticol_capi.a"
 _SDK_ARCHIVE_COMPRESSION = "xz"
 _SDK_ARCHIVE_XZ = f"{_SDK_ARCHIVE}.{_SDK_ARCHIVE_COMPRESSION}"
-_SDK_SHARED_LIBRARY = re.compile(
-    r"lib/lib[A-Za-z0-9_+-]+(?:\.so(?:\.[0-9]+)+|(?:\.[0-9]+)*\.dylib)"
-)
 # Wheel size report components by member name (first match; the rest is
 # "other").
 _WHEEL_SIZE_COMPONENTS = (
     ("extension", re.compile(r"pyamplicol/_rusticol(?:\.[^./]+)*\.so")),
     ("SDK archive", re.compile(r"pyamplicol/_sdk/lib/[^/]+\.a(?:\.xz)?")),
-    ("SDK shared libraries", re.compile(r"pyamplicol/_sdk/lib/[^/]+")),
-    (
-        "bundled libraries",
-        re.compile(
-            "(?:" + "|".join(map(re.escape, sorted(_ALLOWED_REPAIR_ROOTS))) + ")/.+"
-        ),
-    ),
     ("prepared models", re.compile(re.escape(_PREPARED_MODEL_WHEEL_PREFIX) + "/.+")),
 )
 _FORBIDDEN_SDIST_MEMBERS = {
@@ -495,15 +470,14 @@ def _validate_wheel_resource_layout(entries: dict[str, bytes]) -> None:
         "pyamplicol",
         "rusticol_config",
         *dist_info_roots,
-        *_ALLOWED_REPAIR_ROOTS,
     }
     misplaced = sorted(
         name for name in entries if PurePosixPath(name).parts[0] not in allowed_roots
     )
     if misplaced:
         raise ArtifactError(
-            "wheel contains members outside pyamplicol, rusticol_config, its "
-            ".dist-info, or an approved repair-library root: " + ", ".join(misplaced)
+            "wheel contains members outside pyamplicol, rusticol_config and its "
+            ".dist-info: " + ", ".join(misplaced)
         )
     sboms = sorted(
         name
@@ -527,7 +501,7 @@ def _validate_wheel_resource_layout(entries: dict[str, bytes]) -> None:
 def _arithmetic_licence_files() -> tuple[str, ...]:
     """GMP, MPFR and MPC licence texts (LGPL-3.0-or-later and the GPL-3.0 it
     incorporates) of the ``gmp-mpfr-sys`` release ``Cargo.lock`` pins; every
-    wheel ships these libraries, as shared libraries in distribution wheels."""
+    wheel links these libraries statically into its extension and SDK archive."""
 
     lock = tomllib.loads((ROOT / "Cargo.lock").read_text(encoding="utf-8"))
     versions = sorted(
@@ -938,6 +912,13 @@ def _sanitized_native_bytes(data: bytes, *, allow_local_rustup: bool) -> bytes:
         b"library/standard-library-backtrace/",
         scanned,
     )
+    # GMP, MPFR and MPC assertion texts name their sources relative to
+    # gmp-mpfr-sys's out-of-tree build directories (``../../mpfr-src/src/``).
+    scanned = re.sub(
+        rb"(?:\.\./)+((?:gmp|mpfr|mpc)-src/)",
+        rb"gmp-mpfr-sys/\1",
+        scanned,
+    )
     scanned = re.sub(
         rb"/(?:Users|home)/runner/work/rust/rust/",
         b"/rust/toolchain-source/",
@@ -1205,7 +1186,11 @@ def _validate_sdk(
             f"libraries={sorted(unexpected_libraries)}, "
             f"frameworks={sorted(unexpected_frameworks)}"
         )
-    _sdk_shared_library_members(entries, link=link, rust_target=rust_target)
+    if "shared_libraries" in link:
+        raise ArtifactError(
+            "SDK link metadata must not name shared libraries: the archive "
+            "links GMP, MPFR and MPC statically"
+        )
     return archive_name, archive_data
 
 
@@ -1279,41 +1264,6 @@ def _unpacked_sdk_entries(
     del unpacked[archive_name]
     unpacked[_SDK_ARCHIVE] = archive_data
     return unpacked
-
-
-def _sdk_shared_library_members(
-    entries: Mapping[str, bytes],
-    *,
-    link: Mapping[str, Any],
-    rust_target: str,
-) -> tuple[str, ...]:
-    """Validate ``link.json``'s shipped shared libraries; return wheel members.
-
-    A distribution wheel's SDK archive links GMP, MPFR and MPC dynamically and
-    ships them next to the archive (``lib/``) in link order.
-    """
-
-    values = link.get("shared_libraries", [])
-    if not isinstance(values, list) or not all(
-        isinstance(value, str) for value in values
-    ):
-        raise ArtifactError("SDK shared_libraries must be a list of strings")
-    if len(values) != len(set(values)):
-        raise ArtifactError("SDK shared_libraries contains duplicate entries")
-    members: list[str] = []
-    for value in values:
-        if _SDK_SHARED_LIBRARY.fullmatch(value) is None:
-            raise ArtifactError(f"unexpected SDK shared library path: {value!r}")
-        dylib = value.endswith(".dylib")
-        if dylib != ("apple-darwin" in rust_target):
-            raise ArtifactError(
-                f"SDK shared library {value!r} does not match target {rust_target}"
-            )
-        member = f"pyamplicol/_sdk/{value}"
-        if member not in entries:
-            raise ArtifactError(f"wheel is missing SDK shared library {member}")
-        members.append(member)
-    return tuple(members)
 
 
 def _validate_selftest_fixture(
@@ -1626,13 +1576,6 @@ def _validate_wheel_inventory(
     expected = set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
     expected.add(extension_name)
     expected.add(sdk_archive_name)
-    expected.update(
-        _sdk_shared_library_members(
-            entries,
-            link=_json_object(entries, "pyamplicol/_sdk/link.json"),
-            rust_target=rust_target,
-        )
-    )
     selftest_root = f"pyamplicol/assets/selftest/{rust_target}/"
     expected.update(name for name in entries if name.startswith(selftest_root))
 
@@ -1649,20 +1592,7 @@ def _validate_wheel_inventory(
         f"{dist_info}licenses/{relative}" for relative in _required_legal_files()
     )
 
-    repair_members: set[str] = set()
-    for name in entries:
-        root = PurePosixPath(name).parts[0]
-        if root not in _ALLOWED_REPAIR_ROOTS:
-            continue
-        basename = PurePosixPath(name).name
-        if not re.search(r"(?:\.dylib|\.dll|\.so(?:\.[0-9]+)*)$", basename):
-            raise ArtifactError(
-                f"wheel repair-library root contains a non-library member: {name}"
-            )
-        repair_members.add(name)
-
-    actual = set(entries) - repair_members
-    missing = sorted(expected - actual)
+    missing = sorted(expected - set(entries))
     if missing:
         raise ArtifactError(
             "wheel is missing required package members: " + ", ".join(missing)
@@ -1753,26 +1683,13 @@ def _nm_runs(path: Path, *arguments: str) -> Iterator[subprocess.CompletedProces
                 return
 
 
-def _nm_failure(runs: list[subprocess.CompletedProcess[str]]) -> str:
-    if not runs:
-        return "no nm found"
-    details = []
-    for completed in runs:
-        command = [Path(str(completed.args[0])).name, *map(str, completed.args[1:-1])]
-        lines = (completed.stderr or completed.stdout).strip().splitlines()
-        reason = lines[0] if lines else f"exit status {completed.returncode}"
-        details.append(f"`{' '.join(command)}`: {reason}")
-    return "; ".join(details)
-
-
 def _scan_capi_archive(path: Path, *, allow_local_rustup: bool) -> bool:
     """Validate relocation paths and authoritative undefined-symbol linkage.
 
     The archive link probe and ``nm -u`` inspection own the Python-linkage
     invariant. Searching arbitrary compressed archive bytes for short strings
     such as ``pyo3`` can match unrelated binary data and reject a valid wheel.
-    Returns whether an ``nm`` read the archive; the static-runtime scan of the
-    same archive fails if none can.
+    Returns whether an ``nm`` read the archive.
     """
 
     archive = path.read_bytes()
@@ -1852,22 +1769,8 @@ int main(void) {{
     link = _json_object(entries, "pyamplicol/_sdk/link.json")
     if link.get("target") != rust_target:
         raise ArtifactError("wheel SDK link metadata targets the wrong platform")
-    # The shipped shared libraries keep their member names (sonames, install
-    # names) in one directory, linked by path with a run path as
-    # rusticol-config --libs does.
-    shared_directory = directory / "sdk-lib"
-    shared_directory.mkdir()
-    flags: list[str] = []
-    for member in _sdk_shared_library_members(
-        entries, link=link, rust_target=rust_target
-    ):
-        shared = shared_directory / PurePosixPath(member).name
-        shared.write_bytes(entries[member])
-        shared.chmod(0o755)
-        flags.append(str(shared))
-    if flags:
-        flags.append(f"-Wl,-rpath,{shared_directory}")
     # The section garbage collection rusticol-config --libs adds.
+    flags: list[str] = []
     if "apple-darwin" in rust_target:
         flags.append("-Wl,-dead_strip")
     elif "-linux-" in rust_target:
@@ -1910,106 +1813,10 @@ int main(void) {{
         raise ArtifactError("wheel Rusticol archive failed the C ABI execution probe")
 
 
-def _symbol_names(path: Path, description: str, *arguments: str) -> set[str]:
-    """Return the ``nm`` symbol names of *path*; fail if no ``nm`` reads it."""
-
-    path = path.resolve()
-    runs = list(_nm_runs(path, *arguments))
-    if not runs or runs[-1].returncode != 0:
-        raise ArtifactError(
-            f"cannot read the symbols of {description}: {_nm_failure(runs)}"
-        )
-    return {name for _kind, name in _nm_symbols(runs[-1].stdout)}
-
-
-def _runtime_symbol(name: str) -> bool:
-    return name.lstrip("_").startswith(_STATIC_RUNTIME_SYMBOL_PREFIXES) or any(
-        part in name.lower() for part in _STATIC_RUNTIME_SYMBOL_PARTS
-    )
-
-
-def _marker_outside_symbol_names(
-    data: bytes, lowered: bytes, marker: bytes, names: set[bytes]
-) -> bool:
-    """Whether ``marker`` occurs other than inside one of the file's symbol names.
-
-    Symbol and section names are NUL-terminated strings; a name may be stored
-    as the tail of a longer string (``.text.<name>``, string-table suffix
-    sharing), so an occurrence is covered when a suffix of its string that
-    starts at or before it is a known name.
-    """
-
-    offset = 0
-    while (index := lowered.find(marker, offset)) >= 0:
-        offset = index + 1
-        start = data.rfind(b"\0", 0, index) + 1
-        end = data.find(b"\0", index)
-        end = len(data) if end < 0 else end
-        if not any(data[cut:end] in names for cut in range(start, index + 1)):
-            return True
-    return False
-
-
-def _scan_static_runtime_families(path: Path, description: str) -> None:
-    """Reject a linked-in copy of GMP, MPFR, MPC or Malachite.
-
-    Distribution wheels link GMP, MPFR and MPC (LGPL-3.0-or-later) as shared
-    libraries a user can replace, so the extension and the C SDK archive may
-    import their symbols but must contain no copy of them: no symbol of theirs
-    may be defined, and no runtime marker may remain once the file's own
-    symbol names (imports, and the Rust binding crate ``gmp_mpfr_sys``'s
-    mangled names) are taken out of its bytes. A stripped binary keeps no
-    symbol of a linked-in copy, but its strings (assertion texts, source
-    paths) still match. Telling imports from copies needs the symbol table:
-    a file no ``nm`` reads fails the audit.
-    """
-
-    data = path.read_bytes()
-    elf_shared_object = data[:4] == b"\x7fELF" and data[16:18] in {b"\x03\x00"}
-    defined = _symbol_names(path, description, "--defined-only")
-    if elf_shared_object:
-        defined |= _symbol_names(path, description, "-D", "--defined-only")
-    copied = sorted(name for name in defined if _runtime_symbol(name))
-    if copied:
-        raise ArtifactError(
-            f"{description} contains a forbidden static arithmetic runtime: "
-            "defines " + ", ".join(copied[:8])
-        )
-    undefined = _symbol_names(path, description, "-u")
-    if elf_shared_object:
-        undefined |= _symbol_names(path, description, "-D", "-u")
-    names = {name.encode() for name in undefined | defined}
-    # The Rust FFI binding crate gmp_mpfr_sys (its object and symbol names)
-    # is linked like every Rust crate; its identifier is not the C runtime.
-    # Masked at equal length so that offsets into ``data`` stay valid.
-    lowered = data.lower().replace(_BINDING_CRATE, b"\0" * len(_BINDING_CRATE))
-    found = [
-        marker
-        for marker in _FORBIDDEN_STATIC_RUNTIME_MARKERS
-        if _marker_outside_symbol_names(data, lowered, marker.encode(), names)
-    ]
-    if found:
-        raise ArtifactError(
-            f"{description} contains a forbidden static arithmetic runtime: "
-            + ", ".join(found)
-        )
-
-
 def _allowed_runtime_path(value: str) -> bool:
     return value.startswith(
         ("$ORIGIN", "@loader_path", "@rpath", "/usr/lib/", "/System/Library/", "/lib/")
     )
-
-
-def _bundled_libraries(entries: Mapping[str, bytes]) -> dict[str, frozenset[str]]:
-    """Return the repaired libraries per approved repair root."""
-
-    bundled: dict[str, set[str]] = {root: set() for root in _ALLOWED_REPAIR_ROOTS}
-    for name in entries:
-        parts = PurePosixPath(name).parts
-        if len(parts) == 2 and parts[0] in bundled:
-            bundled[parts[0]].add(parts[1])
-    return {root: frozenset(names) for root, names in bundled.items()}
 
 
 def _system_library(name: str, rust_target: str) -> bool:
@@ -2021,28 +1828,7 @@ def _system_library(name: str, rust_target: str) -> bool:
     return match is not None and match.group(1) in _SYSTEM_LIBRARIES[rust_target]
 
 
-def _require_system_or_bundled(
-    needed: str, target: str, bundled: Mapping[str, frozenset[str]]
-) -> None:
-    """An ELF dependency is a target C runtime library or a bundled library."""
-
-    if _system_library(needed, RELEASE_TARGETS[target]) or needed in bundled.get(
-        "pyamplicol.libs", frozenset()
-    ):
-        return
-    raise ArtifactError(
-        "extension needs a library that is neither a system library nor "
-        f"bundled in pyamplicol.libs: {needed}"
-    )
-
-
-def _scan_extension(
-    path: Path,
-    target: str,
-    *,
-    bundled: Mapping[str, frozenset[str]] | None = None,
-) -> None:
-    bundled = {} if bundled is None else bundled
+def _scan_extension(path: Path, target: str) -> None:
     file_output = _command_output(["file", str(path)], cwd=path.parent).lower()
     if target.endswith("arm64") and not any(
         marker in file_output for marker in ("arm64", "aarch64")
@@ -2063,18 +1849,6 @@ def _scan_extension(
                 raise ArtifactError(f"extension links a non-system path: {dependency}")
             if "python" in dependency.lower():
                 raise ArtifactError(f"extension links Python directly: {dependency}")
-            if dependency.startswith("@loader_path/"):
-                relative = PurePosixPath(dependency.removeprefix("@loader_path/"))
-                if (
-                    len(relative.parts) != 3
-                    or relative.parts[0] != ".."
-                    or relative.parts[2]
-                    not in bundled.get(relative.parts[1], frozenset())
-                ):
-                    raise ArtifactError(
-                        f"extension links a library the wheel does not bundle: "
-                        f"{dependency}"
-                    )
         load_commands = _command_output(["otool", "-l", str(path)], cwd=path.parent)
         lines = load_commands.splitlines()
         for index, line in enumerate(lines):
@@ -2106,8 +1880,11 @@ def _scan_extension(
                 raise ArtifactError(
                     f"extension has a forbidden dynamic dependency: {match.group(1)}"
                 )
-            if match:
-                _require_system_or_bundled(match.group(1), target, bundled)
+            if match and not _system_library(match.group(1), RELEASE_TARGETS[target]):
+                raise ArtifactError(
+                    "extension needs a library that is not a system library: "
+                    f"{match.group(1)}"
+                )
     _reject_native_paths(
         dynamic.replace(str(path), "<extension>"), "extension dynamic metadata"
     )
@@ -2125,7 +1902,7 @@ def _native_scan(
         archive_path = temporary / "librusticol_capi.a"
         extension_path.write_bytes(entries[extension])
         archive_path.write_bytes(entries[_SDK_ARCHIVE])
-        _scan_extension(extension_path, target, bundled=_bundled_libraries(entries))
+        _scan_extension(extension_path, target)
         _scan_capi_archive(archive_path, allow_local_rustup=allow_local_rustup)
         link = _json_object(entries, "pyamplicol/_sdk/link.json")
         rust_target = str(link.get("target", ""))
@@ -2135,8 +1912,6 @@ def _native_scan(
             directory=temporary,
             rust_target=rust_target,
         )
-        _scan_static_runtime_families(extension_path, "Rusticol Python extension")
-        _scan_static_runtime_families(archive_path, "Rusticol C API archive")
 
 
 def wheel_size_summary(path: Path) -> str:
