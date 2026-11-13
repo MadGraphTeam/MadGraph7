@@ -23,15 +23,9 @@ tir = ["rusticol-loop-python/tir"]
 extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy"]
 on-the-fly-test-support = ["rusticol-core/on-the-fly-test-support"]
-# Link GMP, MPFR and MPC as shared libraries instead of building them into
-# the binary (gmp-mpfr-sys use-system-libs). The build backend enables it
-# for distributable wheels and supplies the libraries
-# (build_backend/arithmetic.py); developer builds keep the static default.
-shared-arithmetic = ["dep:gmp-mpfr-sys", "gmp-mpfr-sys/use-system-libs"]
 
 [dependencies]
 flate2.workspace = true
-gmp-mpfr-sys = { workspace = true, optional = true }
 numpy = { workspace = true, optional = true }
 num-bigint.workspace = true
 num-rational.workspace = true

@@ -216,27 +216,16 @@ pyamplicol/_sdk/
   umami/pyamplicol_umami_virtual_v1.c
   umami/UMAMI_LICENSE
   lib/librusticol_capi.a.xz         (distribution wheels; a source build ships lib/librusticol_capi.a)
-  lib/libmpc-pyamplicol.so.3        (Linux distribution wheels)
-  lib/libmpfr-pyamplicol.so.6
-  lib/libgmp-pyamplicol.so.10
   config.py
   metadata.json
   link.json
 ```
 
 The archive holds the tree and one-loop C ABIs (`rusticol_virtual.h`
-included). Distribution wheels link GMP, MPFR and MPC dynamically: the three
-shared libraries ship next to the archive (on macOS `libmpc.3.dylib`,
-`libmpfr.6.dylib` and `libgmp.10.dylib` with `@rpath` install names), and
-`link.json` lists them in link order, so `rusticol-config --libs` names them
-by path with a run path to `lib/` (see
-[GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
-The Python extension's own copies, which the wheel repair bundles next to
-`_rusticol` (`pyamplicol.libs/` on Linux, `pyamplicol.dylibs/` on macOS),
-carry the repair tool's file names (on Linux and macOS possibly with a content
-hash in the name) and are not part of the SDK's link line: link only what
-`rusticol-config --libs` names.
-A source build links them statically and ships only the archive.
+included) and, linked in statically, GMP, MPFR and MPC (in every build; see
+[GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)):
+`rusticol-config --libs` names the archive and system libraries only, so a
+consumer has no run-time dependency on the installation.
 
 ### The SDK archive cache
 
@@ -314,6 +303,20 @@ environment or put its `bin` directory on `PATH`. An explicit
 In the source workflow, generated drivers below a checkout can find the nearest
 `.venv/bin/rusticol-config` created by `just dev-install`. This is a
 development convenience, not an embedded build-machine path.
+
+### Linking the SDK
+
+The archive is linked one object file per Rust crate. `--libs` (and
+`--rustflags`) therefore also ask the linker to remove unreferenced sections:
+`-Wl,--gc-sections` on Linux, `-Wl,-dead_strip` on macOS, the flags Rust
+links its own binaries with. Without them a consumer keeps every function of
+each crate it touches; a tree-level consumer, which calls no one-loop entry
+point, then also carries most of the one-loop engine (the selftest artifact's
+UMAMI provider on Linux x86-64: 78 MB without, 49 MB with section removal).
+The flags apply to the whole link: exported, referenced and constructor code
+stays, and unreferenced functions of the consumer's own objects go as well. A
+consumer that relies on otherwise unreferenced sections can append
+`-Wl,--no-gc-sections` after the SDK flags (GNU ld, gold, lld).
 
 `--cflags`, `--libs`, and `--rustflags` emit shell-escaped argument streams.
 By contrast, `--cargo-rustflags` emits the same linker arguments using Cargo's

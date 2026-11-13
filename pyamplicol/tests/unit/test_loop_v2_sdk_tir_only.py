@@ -86,6 +86,12 @@ def test_the_sdk_serves_a_tir_only_artifact_as_the_python_api(
         == 0
     ), _error(sdk)
     try:
+        # The Python side runs on_failure="return": the same policy here (the
+        # SDK's default best-effort serves refused points with status
+        # BEST_EFFORT, test_loop_v2_best_effort).
+        assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0, _error(
+            sdk
+        )
         capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
         summary = runtime.inspect()["reduction"]
         assert capabilities["reduction"]["auto_default"] == "tirust"

@@ -21,7 +21,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
-import arithmetic
 import maturin  # type: ignore[import-untyped]
 from candidate_wheel import existing_community_wheel
 from native_build_identity import load_native_build_contract
@@ -37,7 +36,7 @@ from prepared_models import (
     project_release_packaged_prepared_model_store,
     stage_packaged_prepared_models,
 )
-from sdk import build_sdk, host_target
+from sdk import build_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
 _CONTRIBUTOR_LOCK = Path("dependencies/contributor-lock.toml")
@@ -447,10 +446,9 @@ def _consume_distribution_wheel_setting(
     """Remove the backend-only distribution wheel setting.
 
     ``pyamplicol.distribution-wheel=true`` (passed by tools/release) builds a
-    wheel for distribution: GMP, MPFR and MPC (LGPL-3.0-or-later) are linked
-    as shared libraries and bundled by Maturin's standard wheel repair
-    (``arithmetic.py``). Other builds (contributor installs, source runtimes,
-    local source builds) keep ``gmp-mpfr-sys``'s static default.
+    wheel for distribution: a repaired manylinux wheel on Linux, the strongest
+    deflate level, and the C SDK archive xz-compressed. GMP, MPFR and MPC are
+    linked statically, as in every other build (``gmp-mpfr-sys``'s default).
     """
 
     return _consume_boolean_setting(config_settings, "pyamplicol.distribution-wheel")
@@ -464,25 +462,6 @@ def _consume_wheel_settings(
     return config_settings
 
 
-def _distribution_wheel_features() -> str:
-    """Return pyproject's Maturin features plus the shared arithmetic runtime.
-
-    A ``--features`` build argument replaces ``[tool.maturin] features``
-    instead of extending it, so the list is repeated here from its one source.
-    """
-
-    try:
-        with (ROOT / "pyproject.toml").open("rb") as stream:
-            features = tomllib.load(stream)["tool"]["maturin"].get("features", [])
-    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
-        raise RuntimeError("pyproject.toml has no readable [tool.maturin]") from error
-    if not isinstance(features, list) or not all(
-        isinstance(feature, str) and feature for feature in features
-    ):
-        raise RuntimeError("[tool.maturin] features must be a list of names")
-    return ",".join(dict.fromkeys((*features, arithmetic.CARGO_FEATURE)))
-
-
 def _release_wheel_config_settings(
     config_settings: Mapping[str, Any] | None,
     *,
@@ -490,8 +469,7 @@ def _release_wheel_config_settings(
 ) -> Mapping[str, Any] | None:
     """Use release manylinux tags unless a host-only wheel was requested.
 
-    A distribution wheel is always a repaired manylinux wheel on Linux and
-    enables the shared arithmetic runtime.
+    A distribution wheel is always a repaired manylinux wheel on Linux.
     """
 
     if config_settings is not None and (
@@ -516,14 +494,7 @@ def _release_wheel_config_settings(
     if distribution:
         # The wheel size limit (tools/release MAX_WHEEL_BYTES) is close: the
         # strongest deflate level costs seconds and saves about 1 MB.
-        arguments.extend(
-            (
-                "--features",
-                _distribution_wheel_features(),
-                "--compression-level",
-                "9",
-            )
-        )
+        arguments.extend(("--compression-level", "9"))
     if not arguments:
         return config_settings
     settings = dict(config_settings or {})
@@ -1684,8 +1655,8 @@ def _build_tool_path(inherited: str) -> str:
     tool_search_path = os.pathsep.join(
         [*(str(path) for path in system_directories), inherited]
     )
-    # make and m4 build GMP, MPFR and MPC (gmp-mpfr-sys or arithmetic.py);
-    # Maturin's Linux wheel repair and arithmetic.py need patchelf.
+    # make and m4 build GMP, MPFR and MPC (gmp-mpfr-sys); Maturin's Linux
+    # wheel repair needs patchelf.
     tools = ["git", "cc", "clang", "ar", "ranlib", "nm", "make", "m4"]
     if sys.platform.startswith("linux"):
         tools.append("patchelf")
@@ -1804,10 +1775,9 @@ def _from_overlay(
     distribution: bool = False,
     **kwargs: Any,
 ) -> _Result:
-    # A distribution wheel links the shared arithmetic runtime and ships the
-    # SDK archive xz-compressed (``build_sdk``).
+    # A distribution wheel ships the SDK archive xz-compressed (``build_sdk``).
     if distribution and not with_sdk:
-        raise RuntimeError("the shared arithmetic runtime is built only for wheels")
+        raise RuntimeError("a distribution build is a wheel build")
     with _delegating():
         mode = _build_mode()
         prepared_model_bootstrap = _prepared_model_bootstrap(mode)
@@ -1889,23 +1859,6 @@ def _from_overlay(
                     )
                 )
             environment.update(_macos_native_build_updates())
-            arithmetic_runtime = None
-            if distribution:
-                print(
-                    "* Building the shared GMP, MPFR and MPC libraries...",
-                    flush=True,
-                )
-                arithmetic_runtime = arithmetic.build(
-                    overlay,
-                    target_dir.parent / "arithmetic",
-                    _clean_environment(environment),
-                    target=host_target(overlay),
-                )
-                environment.update(
-                    arithmetic_runtime.cargo_environment(
-                        environment["CARGO_ENCODED_RUSTFLAGS"]
-                    )
-                )
             with _environment(environment), _working_directory(overlay):
                 if validate_prepared_models and not with_sdk:
                     stage_packaged_prepared_models(overlay, mode)
@@ -1927,12 +1880,7 @@ def _from_overlay(
                         "several minutes)...",
                         flush=True,
                     )
-                    sdk = build_sdk(
-                        overlay,
-                        target_dir,
-                        arithmetic=arithmetic_runtime,
-                        compress_archive=distribution,
-                    )
+                    sdk = build_sdk(overlay, target_dir, compress_archive=distribution)
                     print("* Native C SDK built.", flush=True)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")

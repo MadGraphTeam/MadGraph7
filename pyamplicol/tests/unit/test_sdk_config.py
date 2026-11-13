@@ -71,6 +71,7 @@ def test_sdk_info_returns_a_complete_native_link_line(
     assert info.rust_source == root / "rust" / "rusticol.rs"
     assert info.link_flags == (
         str(root / "lib" / "librusticol_capi.a"),
+        "-Wl,-dead_strip",
         "-lSystem",
         "-lm",
         "-framework",
@@ -84,39 +85,6 @@ def test_sdk_info_returns_a_complete_native_link_line(
     assert info.to_json()["rust_flags"] == list(info.rust_flags)
     assert info.to_json()["rust_source"] == str(info.rust_source)
     assert info.cargo_encoded_rust_flags.split("\x1f") == list(info.rust_flags)
-
-
-def test_shipped_shared_libraries_are_linked_by_path_with_a_run_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    root = _sdk(tmp_path)
-    names = ("libmpc.3.dylib", "libmpfr.6.dylib", "libgmp.10.dylib")
-    for name in names:
-        (root / "lib" / name).write_bytes(b"dylib")
-    link = json.loads((root / "link.json").read_text(encoding="utf-8"))
-    link["shared_libraries"] = [f"lib/{name}" for name in names]
-    (root / "link.json").write_text(json.dumps(link), encoding="utf-8")
-    monkeypatch.setattr(config, "_resource_root", lambda: root)
-    monkeypatch.setattr(config, "_package_version", lambda: "0.1.0")
-
-    info = config.load_sdk_info()
-    lib = root / "lib"
-    assert info.link_flags == (
-        str(lib / "librusticol_capi.a"),
-        *(str(lib / name) for name in names),
-        f"-Wl,-rpath,{lib}",
-        "-lSystem",
-        "-lm",
-        "-framework",
-        "Security",
-    )
-    assert info.to_json()["shared_libraries"] == [str(lib / name) for name in names]
-
-    link["shared_libraries"] = ["../../outside.dylib"]
-    (root / "link.json").write_text(json.dumps(link), encoding="utf-8")
-    with pytest.raises(config.SdkUnavailableError, match="escapes"):
-        config.load_sdk_info()
 
 
 def test_rustflags_cli_emits_shell_safe_rustc_arguments(
@@ -139,6 +107,39 @@ def test_rustflags_cli_emits_shell_safe_rustc_arguments(
     assert config.main(["--cargo-rustflags"]) == 0
     encoded = capsys.readouterr().out.rstrip("\n")
     assert encoded.split("\x1f") == list(config.load_sdk_info().rust_flags)
+
+
+@pytest.mark.parametrize(
+    ("target", "flags"),
+    (
+        ("aarch64-apple-darwin", ("-Wl,-dead_strip",)),
+        ("x86_64-apple-darwin", ("-Wl,-dead_strip",)),
+        ("x86_64-unknown-linux-gnu", ("-Wl,--gc-sections",)),
+        ("aarch64-unknown-linux-gnu", ("-Wl,--gc-sections",)),
+        ("x86_64-pc-windows-msvc", ()),
+    ),
+)
+def test_link_line_removes_unused_sections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    flags: tuple[str, ...],
+) -> None:
+    # A tree-level consumer must not keep the one-loop engine's code: the
+    # archive is linked one object per crate, so the link line asks the
+    # linker to drop unreferenced sections (MadGraph7#452 review).
+    root = _sdk(tmp_path)
+    for name in ("metadata.json", "link.json"):
+        payload = json.loads((root / name).read_text(encoding="utf-8"))
+        payload["target"] = target
+        (root / name).write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(config, "_resource_root", lambda: root)
+    monkeypatch.setattr(config, "_package_version", lambda: "0.1.0")
+
+    info = config.load_sdk_info()
+    assert config.section_gc_flags(target) == flags
+    assert info.link_flags[1 : 1 + len(flags)] == flags
+    assert info.to_json()["link_flags"] == list(info.link_flags)
 
 
 @pytest.mark.parametrize("field", ("archive", "rust_source"))
@@ -240,6 +241,7 @@ def test_standalone_sdk_query_does_not_initialize_numerical_packages(
     assert payload["library"] == str(package / "_sdk/lib/librusticol_capi.a")
     assert payload["link_flags"] == [
         payload["library"],
+        "-Wl,-dead_strip",
         "-lSystem",
         "-lm",
         "-framework",
