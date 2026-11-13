@@ -14762,7 +14762,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if self._curr_exporter.exporter == 'v4':
                 self._curr_exporter.gauge_writers = dict(
                     (gauge, helas_call_writers.FortranUFOHelasCallWriter(
-                                    self.model_for_gauge(gauge), options=options))
+                                    self.model_for_gauge(gauge)))
                     for gauge in self._curr_exporter.gauge_libraries)
             else:
                 self._curr_exporter.gauge_models = dict(
@@ -14785,8 +14785,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     assert self._me_curr_exporter.exporter == 'v4'
                     self._me_curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
                 else:                    
-                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                             options=options)
+                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
 
         version = [arg[10:] for arg in args if arg.startswith('--version=')]
         if version:

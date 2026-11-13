@@ -2612,7 +2612,7 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
             return commandline
         out = []
         for command in commandline.split(';'):
-            if command.strip().startswith('add process') and '[' not in command:
+            if command.split()[:2] == ['add', 'process'] and '[' not in command:
                 command = command.rstrip() + xflag + ' '
             out.append(command)
         return ';'.join(out)
