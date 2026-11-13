@@ -1567,16 +1567,17 @@ c An exactly soft point can straddle threshold by an incoming-energy ulp.
          xjac=-102d0
          return
       endif
-      tau_born=tau*z
-      ycm_born=ycm+idir*log(z)/2d0
-      sqrtborn=sqrt(shat*z)
       xbjrk_born=xbjrk
-      xbjrk_born(j_fks)=z*xbjrk(j_fks)
       if(one_body)then
          tau_born=pmass(hard_leg)**2/stot
          sqrtborn=pmass(hard_leg)
          xbjrk_born(j_fks)=tau_born/xbjrk(3-j_fks)
          ycm_born=log(xbjrk_born(1)/xbjrk_born(2))/2d0
+      else
+         tau_born=tau*z
+         sqrtborn=sqrt(shat*z)
+         xbjrk_born(j_fks)=z*xbjrk(j_fks)
+         ycm_born=ycm+idir*log(z)/2d0
       endif
 
       x(2)=((1d0-y_ij_fks)/2d0-cctiny)/(1d0-cctiny)
@@ -1608,38 +1609,38 @@ c An exactly soft point can straddle threshold by an incoming-energy ulp.
       if(.not.softtest)xjac=xjac*2d0*x(1)*(1d0-sstiny)*dxi_hat_du
       x(3)=phi_i_fks/(2d0*pi)
       xjac=xjac*2d0*pi
-c Undo the common laboratory boost, then the light-cone recoil. Work
-c with light-cone components to retain the smaller beam at large y.
-      exp_y=exp(ycm_born)
-      call prepare_isr_recoil_boost(xi_i_fks,y_ij_fks,phi_i_fks,
-     &     recoil_boost)
       if(one_body)then
 c The single hard Born momentum is exactly at rest in its own CM.
          p_born(:,nincoming+1)=0d0
          p_born(0,nincoming+1)=sqrtborn
       else
-      do i=3,nexternal
-         if(i.eq.i_fks)cycle
-         iborn=i
-         if(i.gt.i_fks)iborn=i-1
-         pplus=xp(0,i)+xp(3,i)
-         pminus=xp(0,i)-xp(3,i)
+c Undo the common laboratory boost, then the light-cone recoil. Work
+c with light-cone components to retain the smaller beam at large y.
+         exp_y=exp(ycm_born)
+         call prepare_isr_recoil_boost(xi_i_fks,y_ij_fks,phi_i_fks,
+     &        recoil_boost)
+         do i=3,nexternal
+            if(i.eq.i_fks)cycle
+            iborn=i
+            if(i.gt.i_fks)iborn=i-1
+            pplus=xp(0,i)+xp(3,i)
+            pminus=xp(0,i)-xp(3,i)
 c Do not amplify cancellation in a nearly beam-collinear lab momentum
 c when undoing a large Born rapidity. Its mass is supplied by the model.
-         transverse_mass2=pmass(i)**2+sum(xp(1:2,i)**2)
-         if(pplus.gt.pminus)then
-            pminus=transverse_mass2/pplus
-         elseif(pminus.gt.0d0)then
-            pplus=transverse_mass2/pminus
-         endif
-         pplus=pplus/exp_y
-         pminus=pminus*exp_y
-         pred(0)=(pplus+pminus)/2d0
-         pred(1:2)=xp(1:2,i)
-         pred(3)=(pplus-pminus)/2d0
-         call apply_isr_recoil_boost(pred,p_born(0,iborn),
-     &        recoil_boost,idir,.true.,pmass(i)**2)
-      enddo
+            transverse_mass2=pmass(i)**2+sum(xp(1:2,i)**2)
+            if(pplus.gt.pminus)then
+               pminus=transverse_mass2/pplus
+            elseif(pminus.gt.0d0)then
+               pplus=transverse_mass2/pminus
+            endif
+            pplus=pplus/exp_y
+            pminus=pminus*exp_y
+            pred(0)=(pplus+pminus)/2d0
+            pred(1:2)=xp(1:2,i)
+            pred(3)=(pplus-pminus)/2d0
+            call apply_isr_recoil_boost(pred,p_born(0,iborn),
+     &           recoil_boost,idir,.true.,pmass(i)**2)
+         enddo
       endif
       p_born(0,1:2)=sqrtborn/2d0
       p_born(1:2,1:2)=0d0

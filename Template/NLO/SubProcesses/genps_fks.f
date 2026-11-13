@@ -1555,17 +1555,7 @@ c a direct inversion in the lab would use a different transverse basis.
       tau=xbjrk(1)*xbjrk(2)
       shat=tau*stot
       sqrtshat=sqrt(shat)
-c A one-particle Born with massless radiation fixes (p1+p2-k)^2 to its
-c model mass. For hard ISR recover the small 1-xi from this invariant;
-c soft radiation retains its energy, avoiding subtraction near xi=0.
       xi_i_fks=get_xi_from_p(i_fks,p_cms)
-      hard_leg=nincoming+1
-      if(hard_leg.eq.i_fks)hard_leg=hard_leg+1
-      if(j_fks.le.nincoming.and.nexternal.eq.nincoming+2.and.
-     $     pmass(hard_leg).gt.0d0.and.pmass(i_fks).eq.0d0)then
-         if(pmass(hard_leg)**2.lt.shat/2d0)
-     $        xi_i_fks=1d0-pmass(hard_leg)**2/shat
-      endif
       y_ij_fks=get_yij_from_p(i_fks,j_fks,p_cms,
      $     p_i_fks_cnt(:,0))
       phi_i_fks=get_phi_from_p(i_fks,j_fks,p_cms)
@@ -1590,6 +1580,13 @@ c soft radiation retains its energy, avoiding subtraction near xi=0.
          ycm_born=ycm
          xbjrk_born(1:2)=xbjrk(1:2)
       else
+c For hard ISR with a one-particle Born, recover 1-xi from its model
+c mass. Soft radiation keeps its energy to avoid subtraction near xi=0.
+         hard_leg=nincoming+1
+         if(hard_leg.eq.i_fks)hard_leg=hard_leg+1
+         if(nexternal.eq.nincoming+2.and.pmass(i_fks).eq.0d0.and.
+     $        pmass(hard_leg).gt.0d0.and.pmass(hard_leg)**2.lt.shat/2d0)
+     $        xi_i_fks=1d0-pmass(hard_leg)**2/shat
          call generate_momenta_initial_inverse(p_lab,xi_i_fks,y_ij_fks,phi_i_fks,pb,xx,xjac0,xpswgt0,shat,sqrtshat,i_fks,
      $     j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born,nbody_only)
       endif
