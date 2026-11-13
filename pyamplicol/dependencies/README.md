@@ -35,7 +35,7 @@ branch is not publishable until the PR is in a Symbolica release.
 
 TIRust ([huashengshao/TIRust](https://github.com/huashengshao/TIRust), crates
 `iregi-rust` and `iregi-masters`, pinned to a commit of its main after its one
-history rewrite, currently main `bc94b496`, the merge of PR #31) is one more git source, linked by the cargo feature `tir`, a
+history rewrite, currently main `de60dc48`: PR #31 plus TIRust's scoped Symbolica library key for `iregi_rust`) is one more git source, linked by the cargo feature `tir`, a
 default feature of every crate that links it (`--no-default-features` builds
 without it). Its crates require `symbolica = "3.0"` and the oneloop revision
 and features pinned here, so the root `[patch]` and oneloop pin serve them

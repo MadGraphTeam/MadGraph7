@@ -49,10 +49,12 @@ aligns Symbolica with the application's shared core and uses:
   translator, native Python ComplexFloat operands at the more precise
   component's precision), branch `loop_me_pyamplicol` of
   `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
-- TIRust `bc94b496e94d7b7686fc28adbfe9b42a68200d02` (its main: the merge of
-  PR #31, triangles get the loop-rotation test on the binary64
-  `TensorWorkspace` facade; the `DirectWorkspace` and `TensorStore` this
-  crate calls are unchanged), behind the cargo feature `tir` (below).
+- TIRust `de60dc480fec6475d2373a533c64d1c40ce23b2e` (its main: PR #31's
+  triangle loop-rotation test on the binary64 `TensorWorkspace` facade, then
+  TIRust's own scoped Symbolica library key: its core operations hold a guard
+  of a key issued for `iregi_rust`, beside pyAmpliCol's own; the
+  `DirectWorkspace` and `TensorStore` this crate calls are numerically
+  unchanged), behind the cargo feature `tir` (below).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
 - oneloopmaster `bd703d09a78f7849a6b86a07096e6f222fc01193` (its main: per-evaluator
