@@ -2185,6 +2185,38 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("CSInsertion::born_order_count")
         );
 
+    py::classh<CSCollinear, FunctionGenerator>(
+        m, "CSCollinear", pydoc::doc("CSCollinear")
+    )
+        .def(
+            py::init<
+                const std::vector<int>&,
+                const std::vector<double>&,
+                std::size_t,
+                double,
+                double,
+                double,
+                double>(),
+            py::arg("pdgs"),
+            py::arg("masses"),
+            py::arg("born_orders") = 1,
+            py::arg("alpha_fi") = 1.,
+            py::arg("alpha_if") = 1.,
+            py::arg("alpha_ii") = 1.,
+            py::arg("n_f") = 5.,
+            pydoc::doc("CSCollinear::CSCollinear")
+        )
+        .def(
+            "particle_count",
+            &CSCollinear::particle_count,
+            pydoc::doc("CSCollinear::particle_count")
+        )
+        .def(
+            "born_order_count",
+            &CSCollinear::born_order_count,
+            pydoc::doc("CSCollinear::born_order_count")
+        );
+
     m.def(
         "fks_sqrt_s_hat_min",
         &fks_sqrt_s_hat_min,

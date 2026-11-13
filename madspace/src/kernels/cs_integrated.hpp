@@ -256,5 +256,307 @@ KERNELSPEC void kernel_cs_insertion(
     }
 }
 
+// the kinds of a splitting of a parton a of the hadron into the parton a' of
+// the Born: q -> q, g -> g, g -> q (a' a quark) and q -> g (a' a gluon), the
+// order of P^{aa'} of CS
+constexpr int CS_QQ = 0, CS_GG = 1, CS_GQ = 2, CS_QG = 3;
+
+// P^{aa'}(x) without its plus distribution and delta(1 - x) (CS eq. 10.12)
+template <typename T>
+KERNELSPEC FVal<T> cs_p_regular(int kind, FVal<T> x) {
+    FVal<T> omx = 1. - x;
+    switch (kind) {
+    case CS_QQ:
+        return -CS_CF * (1. + x);
+    case CS_GG:
+        return 2. * CS_CA * (omx / x - 1. + x * omx);
+    case CS_GQ:
+        return CS_TR * (x * x + omx * omx);
+    default:
+        return CS_CF * (1. + omx * omx) / x;
+    }
+}
+
+// P^{aa'}(x) at x < 1 (the four-dimensional Altarelli-Parisi kernel)
+template <typename T>
+KERNELSPEC FVal<T> cs_p_full(int kind, FVal<T> x) {
+    FVal<T> omx = 1. - x;
+    switch (kind) {
+    case CS_QQ:
+        return CS_CF * (1. + x * x) / omx;
+    case CS_GG:
+        return 2. * CS_CA * (x / omx + omx / x + x * omx);
+    case CS_GQ:
+        return CS_TR * (x * x + omx * omx);
+    default:
+        return CS_CF * (1. + omx * omx) / x;
+    }
+}
+
+// What alpha_fi removes from the final-state emitter j (a quark of mass m or a
+// massless gluon) with the incoming spectator: the dipoles over 1 - x > alpha,
+// at x per unit <T_j . T_a> / T_j^2, with the invariant s = 2 p_j p_a of the
+// real emission
+template <typename T>
+KERNELSPEC FVal<T> cs_removed_final_initial(
+    bool gluon, FVal<T> x, FVal<T> s, FVal<T> m, FVal<T> alpha, FVal<T> gamma_g
+) {
+    FVal<T> omx = 1. - x;
+    if (!(omx > alpha)) {
+        return 0.;
+    }
+    if (gluon) {
+        return (2. * CS_CA * log((1. + omx) / omx) - gamma_g) / omx;
+    }
+    FVal<T> mu2 = m * m / s, zp = omx / (omx + mu2);
+    return CS_CF / omx *
+        (2. * log((omx + zp) / omx) - 2. * zp + 0.5 * zp * zp - 2. * mu2 * zp / omx);
+}
+
+// What alpha_if removes from the incoming emitter a with the final-state
+// spectator j of mass m: the dipoles over u > alpha, at x per unit <T_j . T_a>
+// / T_a^2, with s = 2 p_j p_a of the real emission
+template <typename T>
+KERNELSPEC FVal<T>
+cs_removed_initial_final(int kind, FVal<T> x, FVal<T> s, FVal<T> m, FVal<T> alpha) {
+    FVal<T> omx = 1. - x, mu2 = m * m / s, zp = omx / (omx + mu2);
+    if (!(zp > alpha)) {
+        return 0.;
+    }
+    FVal<T> l_u = log(zp / alpha);
+    FVal<T> e = log(zp * (omx + alpha) / (alpha * (omx + zp))) / omx;
+    FVal<T> l_m =
+        m > 0. ? mu2 * log((1. - alpha) * (omx + mu2) / mu2) / x : FVal<T>(0.);
+    switch (kind) {
+    case CS_QQ:
+        return CS_CF * (2. * e - (1. + x) * l_u);
+    case CS_GQ:
+        return CS_TR * (x * x + omx * omx) * l_u;
+    case CS_QG:
+        return CS_CF * ((x + 2. * omx / x) * l_u - 2. * l_m);
+    default:
+        return 2. * CS_CA * (e + (-1. + x * omx + omx / x) * l_u - l_m);
+    }
+}
+
+// The convolution of a distribution in x with the luminosity g(x) of a beam,
+// int_0^1 dx [term](x) g(x), estimated at one point z = eta + (1 - eta) r of
+// weight jac = 1 - eta, with g(x) = 0 below the momentum fraction eta of the
+// Born: weight of g(z) and of g(1)
+template <typename T>
+struct CSConvolution {
+    FVal<T> z, jac, l_eta, at_z, at_one;
+    // f(x) regular at x = 1
+    KERNELSPEC void regular(FVal<T> coef, FVal<T> f_z) {
+        at_z = at_z + coef * f_z * jac;
+    }
+    // [f(x)]_+ with f_z = f(z) inside the convolution, f_end = f(z) at the
+    // kinematics of the end point and integral = int_0^eta f
+    KERNELSPEC void plus(FVal<T> coef, FVal<T> f_z, FVal<T> f_end, FVal<T> integral) {
+        at_z = at_z + coef * f_z * jac;
+        at_one = at_one - coef * (f_end * jac + integral);
+    }
+    // [1 / (1 - x)]_+ h(x) with h_z = h(z) and h_one = h(1)
+    KERNELSPEC void plus_times(FVal<T> coef, FVal<T> h_z, FVal<T> h_one) {
+        at_z = at_z + coef * h_z / (1. - z) * jac;
+        at_one = at_one + coef * h_one * (l_eta - jac / (1. - z));
+    }
+    // delta(1 - x) h
+    KERNELSPEC void delta(FVal<T> coef, FVal<T> h) { at_one = at_one + coef * h; }
+};
+
+// The terms of a massive final-state quark j of CDST eqs. 6.55-6.62, -<T_j .
+// T_a'> K_j^{a,a'}(x; s, m) and the mass terms of the collinear part, per
+// coefficient coef = <T_j . T_a'> B, with s = 2 p_j p~_a' of the Born (s / z
+// inside the convolution)
+template <typename T>
+KERNELSPEC void cs_massive_spectator(
+    CSConvolution<T>& conv,
+    int kind,
+    FVal<T> coef,
+    FVal<T> t2,
+    FVal<T> gamma_a,
+    FVal<T> s,
+    FVal<T> m
+) {
+    FVal<T> z = conv.z, omz = 1. - z, m2 = m * m;
+    FVal<T> s_z = s / z, mu2 = m2 / s, mu2_z = m2 / s_z;
+    bool same = kind == CS_QQ || kind == CS_GG;
+    if (same) {
+        FVal<T> l_omz = log(omz), l_eta = conv.l_eta, u = conv.jac;
+        conv.plus(-2. * coef, l_omz / omz, l_omz / omz, -0.5 * l_eta * l_eta);
+        conv.regular(-coef, -2. * log(2. - z) / omz);
+        // [(1 - x) / (2 (1 - x + mu^2)^2) - 2 (1 + log(1 - x + mu^2)) / (1 - x)]_+
+        FVal<T> f_z = omz / (2. * (omz + mu2_z) * (omz + mu2_z)) -
+            2. * (1. + log(omz + mu2_z)) / omz;
+        FVal<T> f_end =
+            omz / (2. * (omz + mu2) * (omz + mu2)) - 2. * (1. + log(omz + mu2)) / omz;
+        FVal<T> integral =
+            0.5 * (log((1. + mu2) / (u + mu2)) + mu2 / (1. + mu2) - mu2 / (u + mu2)) +
+            2. * l_eta +
+            2. * (log(mu2) * l_eta + fks_dilog<T>(-1. / mu2) - fks_dilog<T>(-u / mu2));
+        conv.plus(-coef, f_z, f_end, integral);
+        conv.plus_times(-2. * coef, log(2. + mu2_z - z), log(1. + mu2));
+        conv.plus_times(-2. * coef, log((2. - z) / (2. - z + mu2_z)), -log(1. + mu2));
+        conv.delta(-coef, -1.5 + mu2 * log(mu2 / (1. + mu2)) + 0.5 * mu2 / (1. + mu2));
+        FVal<T> rq = sqrt(s + m2);
+        conv.delta(
+            -coef * gamma_a / t2,
+            log((s - 2. * m * rq + 2. * m2) / s) + 2. * m / (rq + m)
+        );
+    }
+    if (kind == CS_QG || kind == CS_GG) {
+        FVal<T> factor = kind == CS_GG ? CS_CA / CS_CF : 1.;
+        conv.regular(
+            -coef * factor, 2. * CS_CF / CS_CA * mu2_z / z * log(mu2_z / (omz + mu2_z))
+        );
+    }
+    conv.regular(
+        -coef / t2, cs_p_regular<T>(kind, z) * log(omz * s_z / (omz * s_z + m2))
+    );
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_collinear(
+    FIn<T, 2> momenta,
+    FIn<T, 1> born,
+    FIn<T, 3> color_correlated,
+    FIn<T, 0> alpha_s,
+    FIn<T, 0> fact_scale1,
+    FIn<T, 0> fact_scale2,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> r,
+    FIn<T, 1> casimir,
+    FIn<T, 1> gamma,
+    FIn<T, 1> masses,
+    FIn<T, 1> options,
+    FOut<T, 1> z,
+    FOut<T, 3> weights
+) {
+    constexpr double pi2 = CS_PI2;
+    FVal<T> alpha_fi = options[0], alpha_if = options[1], alpha_ii = options[2];
+    FVal<T> n_f = options[3];
+    FVal<T> gamma_g = 11. / 6. * CS_CA - 2. / 3. * CS_TR * n_f;
+    FVal<T> a = FVal<T>(alpha_s) / (2. * 3.14159265358979323846);
+    std::size_t n = momenta.size();
+    for (std::size_t l = 0; l < 2; ++l) {
+        FVal<T> eta = l == 0 ? FVal<T>(x1) : FVal<T>(x2);
+        FVal<T> mu_f = l == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
+        FVal<T> rv = r, zl = eta + (1. - eta) * rv;
+        z[l] = zl;
+        FVal<T> t2 = casimir[l];
+        for (std::size_t b = 0; b < weights.size(); ++b) {
+            for (std::size_t c = 0; c < 3; ++c) {
+                weights[b][l][c] = 0.;
+            }
+        }
+        if (t2 == 0.) {
+            continue;
+        }
+        bool gluon = t2 == CS_CA;
+        int same = gluon ? CS_GG : CS_QQ, other = gluon ? CS_QG : CS_GQ;
+        FVal<T> omz = 1. - zl, l_omz = log(omz), l_eta = log(1. - eta);
+        FVal<T> l_ratio = log(omz / zl);
+        auto p_l = load_mom<T>(momenta[l]);
+        std::size_t o = 1 - l;
+        for (std::size_t b = 0; b < weights.size(); ++b) {
+            CSConvolution<T> conv_same{zl, 1. - eta, l_eta, 0., 0.};
+            CSConvolution<T> conv_other{zl, 1. - eta, l_eta, 0., 0.};
+            FVal<T> born_b = born[b];
+            // P: (1 / T_a'^2) sum_j <T_j . T_a'> log(mu_F^2 / s_ja') P^{aa'}
+            FVal<T> coef_p = 0.;
+            for (std::size_t j = 0; j < n; ++j) {
+                if (j == l || FVal<T>(casimir[j]) == 0.) {
+                    continue;
+                }
+                FVal<T> s = 2. * ldot<T>(p_l, load_mom<T>(momenta[j]));
+                coef_p =
+                    coef_p + FVal<T>(color_correlated[b][j][l]) * log(mu_f * mu_f / s);
+            }
+            coef_p = coef_p / t2;
+            conv_same.regular(coef_p, cs_p_regular<T>(same, zl));
+            conv_same.plus(2. * coef_p * t2, 1. / omz, 1. / omz, -l_eta);
+            conv_same.delta(coef_p, gluon ? gamma_g : FVal<T>(1.5 * CS_CF));
+            conv_other.regular(coef_p, cs_p_regular<T>(other, zl));
+            // Kbar of CS eqs. 10.27-10.28 times the Born
+            FVal<T> int_ratio =
+                -0.5 * l_eta * l_eta - fks_dilog<T>(1. - eta) + pi2 / 6.;
+            if (gluon) {
+                conv_same.regular(born_b, cs_p_regular<T>(CS_GG, zl) * l_ratio);
+                conv_same.plus(
+                    2. * CS_CA * born_b, l_ratio / omz, l_ratio / omz, int_ratio
+                );
+                conv_same.delta(
+                    -born_b, (50. / 9. - pi2) * CS_CA - 16. / 9. * CS_TR * n_f
+                );
+                conv_other.regular(
+                    born_b, cs_p_regular<T>(CS_QG, zl) * l_ratio + CS_CF * zl
+                );
+            } else {
+                conv_same.regular(born_b, CS_CF * (-(1. + zl) * l_ratio + omz));
+                conv_same.plus(
+                    2. * CS_CF * born_b, l_ratio / omz, l_ratio / omz, int_ratio
+                );
+                conv_same.delta(-born_b, CS_CF * (5. - pi2));
+                conv_other.regular(
+                    born_b, cs_p_regular<T>(CS_GQ, zl) * l_ratio + 2. * CS_TR * zl * omz
+                );
+            }
+            // Ktilde of CS eq. 10.29 with the other incoming parton, and what
+            // alpha_ii removes
+            if (FVal<T>(casimir[o]) != 0.) {
+                FVal<T> coef = -FVal<T>(color_correlated[b][o][l]) / t2;
+                conv_same.regular(coef, cs_p_regular<T>(same, zl) * l_omz);
+                conv_same.plus(
+                    2. * t2 * coef, l_omz / omz, l_omz / omz, -0.5 * l_eta * l_eta
+                );
+                conv_same.delta(coef, -t2 * pi2 / 3.);
+                conv_other.regular(coef, cs_p_regular<T>(other, zl) * l_omz);
+                if (omz > alpha_ii) {
+                    FVal<T> l_alpha = log(omz / alpha_ii);
+                    conv_same.regular(-coef, cs_p_full<T>(same, zl) * l_alpha);
+                    conv_other.regular(-coef, cs_p_full<T>(other, zl) * l_alpha);
+                }
+            }
+            // the final-state partons j as emitters with the spectator a' and as
+            // spectators of a'
+            for (std::size_t j = 2; j < n; ++j) {
+                FVal<T> cj = casimir[j];
+                if (cj == 0.) {
+                    continue;
+                }
+                FVal<T> cc = color_correlated[b][j][l];
+                FVal<T> mj = masses[j];
+                FVal<T> s = 2. * ldot<T>(p_l, load_mom<T>(momenta[j]));
+                if (mj == 0.) {
+                    FVal<T> coef = cc * FVal<T>(gamma[j]) / cj;
+                    conv_same.plus(coef, 1. / omz, 1. / omz, -l_eta);
+                    conv_same.delta(coef, 1.);
+                } else {
+                    cs_massive_spectator<T>(conv_same, same, cc, t2, gamma[l], s, mj);
+                    cs_massive_spectator<T>(conv_other, other, cc, t2, gamma[l], s, mj);
+                }
+                conv_same.regular(
+                    cc / cj,
+                    cs_removed_final_initial<T>(
+                        cj == CS_CA, zl, s / zl, mj, alpha_fi, gamma_g
+                    )
+                );
+                conv_same.regular(
+                    cc / t2, cs_removed_initial_final<T>(same, zl, s / zl, mj, alpha_if)
+                );
+                conv_other.regular(
+                    cc / t2,
+                    cs_removed_initial_final<T>(other, zl, s / zl, mj, alpha_if)
+                );
+            }
+            weights[b][l][0] = a * conv_same.at_z;
+            weights[b][l][1] = a * conv_other.at_z;
+            weights[b][l][2] = a * (conv_same.at_one + conv_other.at_one);
+        }
+    }
+}
+
 } // namespace kernels
 } // namespace madspace

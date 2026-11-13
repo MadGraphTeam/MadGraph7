@@ -4777,6 +4777,57 @@ cs_insertion:
   vectorized: False
   desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). See @ref CSInsertion."
 
+cs_collinear:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "momenta of the Born, in any frame"
+    - name: born
+      type: [float, b]
+      desc: "the Born per Born order"
+    - name: color_correlated
+      type: [float, b, n, n]
+      desc: "color-correlated Borns <T_j . T_k> B of the particles j, k of the Born per Born order"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: fact_scale1
+      type: [float]
+      desc: "factorization scale of the first beam"
+    - name: fact_scale2
+      type: [float]
+      desc: "factorization scale of the second beam"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of the first incoming parton of the Born"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of the second incoming parton of the Born"
+    - name: r
+      type: [float]
+      desc: "random number of the convolution, the same for both beams"
+    - name: casimir
+      type: [float, single, n]
+      desc: "T_j^2 of each particle of the Born: C_F for a quark, C_A for a gluon, zero for a colorless particle"
+    - name: gamma
+      type: [float, single, n]
+      desc: "gamma_j of each particle of the Born (CS eq. 7.13), with n_f light flavors for a gluon"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle of the Born, zero for the incoming ones and for gluons"
+    - name: options
+      type: [float, single, 4]
+      desc: "alpha of the final-initial, initial-final and initial-initial dipoles and n_f"
+  outputs:
+    - name: z
+      type: [float, 2]
+      desc: "the point z = x_i + (1 - x_i) r of the convolution of each beam"
+    - name: weights
+      type: [float, b, 2, 3]
+      desc: "per Born order and beam the weights of the luminosity f_a'(x_i / z) / z of the parton a' of the Born, of the luminosity of the partons a that split into a' (the gluon for a quark, the quarks and antiquarks for a gluon) and of the luminosity f_a'(x_i) of the Born"
+  vectorized: False
+  desc: "The K and P operators of the Catani-Seymour dipoles of each beam, CS eqs. 10.24-10.29 with the terms of massive final-state quarks of CDST eqs. 6.55-6.62, as weights of the luminosities of the beam at one point z = x_i + (1 - x_i) r of their convolution int_0^1 dx [K + P](x) f_a(x_i / x) / x, whose mean over r is the convolution: f(z) (1 - x_i) for a regular f, [f(z) - f(1)] (1 - x_i) - int_0^(x_i) f for a plus distribution, with the invariants s_ja = 2 p_j p_a of the real emission (s_ja' / z) inside it and those of the Born at its end point. P has log(mu_F^2 / s_ja') with the factorization scale of the beam. alpha < 1 adds what the gates of the dipoles of the families remove, a regular function of z (see @ref cs_final_initial_dipole, @ref cs_initial_final_dipole, @ref cs_initial_initial_dipole). Times alpha_s / (2 pi). See @ref CSCollinear."
+
 ---
 title: Invariants
 
