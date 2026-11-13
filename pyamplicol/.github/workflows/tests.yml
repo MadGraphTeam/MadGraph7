@@ -170,6 +170,8 @@ jobs:
             tests/unit/test_recurrence_numerical_current_warmup.py \
             tests/unit/test_recurrence_exact_contracted_color.py \
             tests/unit/test_recurrence_direct_intrinsics.py \
+            tests/unit/test_recurrence_export.py \
+            tests/unit/test_run_cargo.py \
             tests/unit/test_config_models.py \
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \
