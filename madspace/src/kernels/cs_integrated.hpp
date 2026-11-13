@@ -93,14 +93,45 @@ KERNELSPEC FVal<T> cs_v_nonsingular(
         mk / qmk + 2. * mk * (2. * mk - q) / s + CS_PI2 / 2.;
 }
 
+// An antiderivative of log|u + c| / u for real c that stays well conditioned
+// for |c| << |u|: 1/2 log^2|u| + Li2(-c/u) for |u| >= |c| and log|c| log|u| -
+// Li2(-u/c) - 1/2 log^2|c| - K otherwise, with the constant K = pi^2/6 for u/c >
+// 0 and -pi^2/3 for u/c < 0 that joins the two (u does not cross zero)
+template <typename T>
+KERNELSPEC FVal<T> cs_log_over_primitive(FVal<T> u, FVal<T> c) {
+    FVal<T> l_u = log(fabs(u));
+    if (c == 0.) {
+        return 0.5 * l_u * l_u;
+    }
+    if (fabs(u) >= fabs(c)) {
+        return 0.5 * l_u * l_u + fks_dilog<T>(-c / u);
+    }
+    FVal<T> l_c = log(fabs(c));
+    FVal<T> k = u / c > 0. ? FVal<T>(CS_PI2 / 6.) : FVal<T>(-CS_PI2 / 3.);
+    return l_c * l_u - fks_dilog<T>(-u / c) - 0.5 * l_c * l_c - k;
+}
+
+// int_u0^u1 du log|u + c| / u
+template <typename T>
+KERNELSPEC FVal<T> cs_log_over(FVal<T> u0, FVal<T> u1, FVal<T> c) {
+    return cs_log_over_primitive<T>(u1, c) - cs_log_over_primitive<T>(u0, c);
+}
+
 // What the gate y < alpha y_+ of the final-final dipoles of the emitter j
 // with the spectator k removes from their integral at alpha = 1: the
 // dipoles over alpha y_+ < y < y_+ in four dimensions, per unit <T_j . T_k> /
 // T_j^2 and alpha_s / (2 pi), of q -> q g for a quark j and of g -> g g (with
-// the symmetry factor 1/2) and n_f g -> q q~ for a gluon j. The z integral is
-// done in closed form, the y integral on 32 Gauss-Legendre nodes in t with
-// y = alpha y_+ (1 / alpha)^(1 - (1 - t)^2), which keeps the sqrt(y_+ - y) of
-// the velocity of a massive spectator out of the integrand.
+// the symmetry factor 1/2) and n_f g -> q q~ for a gluon j, in closed form.
+// With the masses mu_n^2 = m_n^2 / Q^2, D = 1 - mu_j^2 - mu_k^2 and the
+// velocity v of the dipole (CDST eqs. 5.12-5.14), the z integral of the
+// kernels leaves (2 / y) log R(y) with R = (y + z_+ (1 - y)) / (y + z_- (1 - y))
+// for both emitters, and rational functions of y and of v^2 = 1 - 4 mu_k^2 y /
+// (D (1 - y)^2). With a massive spectator, (1 - y) D + 2 mu_k^2 = mu_k (t + 1 /
+// t) makes v rational: R = (t - mu_k) / (t (1 - mu_k t)) and y = -mu_k (t -
+// t_+) (t - t_-) / (D t) with t_+- = (1 - mu_j^2 + mu_k^2 +- sqrt(lambda(1,
+// mu_j^2, mu_k^2))) / (2 mu_k), and y from alpha y_+ to y_+ is t from t_alpha
+// to 1. int dy / y log R then is a sum of int dt log|t - a| / (t - b), of
+// logarithms and dilogarithms.
 template <typename T>
 KERNELSPEC FVal<T> cs_removed_final_final(
     bool gluon,
@@ -111,82 +142,76 @@ KERNELSPEC FVal<T> cs_removed_final_final(
     FVal<T> kappa,
     FVal<T> n_f
 ) {
-    constexpr double nodes[16] = {
-        0.52415383284386918,
-        0.57223598079139826,
-        0.61964368112606849,
-        0.66593430114106389,
-        0.71067563806531764,
-        0.75344995446611462,
-        0.79385787862038115,
-        0.83152213346510762,
-        0.86609105937014486,
-        0.89724189798397114,
-        0.92468380686628504,
-        0.94816057788302599,
-        0.96745303796886983,
-        0.98238112779375319,
-        0.99280575577263419,
-        0.99863193092474078,
-    };
-    constexpr double weights[16] = {
-        0.04827004425736383,
-        0.047819360039637354,
-        0.046922199540402255,
-        0.04558693934788189,
-        0.043826046502201892,
-        0.041655962113473353,
-        0.039096947893535114,
-        0.036172897054424169,
-        0.032911111388180841,
-        0.029342046739267783,
-        0.025499029631188046,
-        0.021417949011113418,
-        0.017136931456510882,
-        0.012696032654631012,
-        0.0081371973654528716,
-        0.0035093050047352529,
-    };
     if (alpha >= 1.) {
         return 0.;
     }
     FVal<T> q2 = s + mj * mj + mk * mk;
     FVal<T> muj2 = mj * mj / q2, muk2 = mk * mk / q2, muk = sqrt(muk2);
     FVal<T> av = 1. - muj2 - muk2;
-    // the velocity of the Born and the upper end of y (CDST eqs. 5.12, 5.14)
-    FVal<T> vel_born = sqrt(max(av * av - 4. * muj2 * muk2, 0.)) / av;
-    FVal<T> y_plus = 1. - 2. * muk * (1. - muk) / av;
-    FVal<T> l_alpha = -log(alpha);
-    FVal<T> total = 0.;
-    for (int n = 0; n < 32; ++n) {
-        double t = n < 16 ? 1. - nodes[15 - n] : nodes[n - 16];
-        double w = n < 16 ? weights[15 - n] : weights[n - 16];
-        double u = 1. - t;
-        FVal<T> y = alpha * y_plus * exp(l_alpha * (1. - u * u));
-        FVal<T> jac = y * l_alpha * 2. * u * w;
-        FVal<T> omy = 1. - y;
-        FVal<T> vel =
-            sqrt(max((2. * muk2 + av * omy) * (2. * muk2 + av * omy) - 4. * muk2, 0.)) /
-            (av * omy);
-        FVal<T> z0 = gluon ? FVal<T>(0.5) : av * y / (2. * (muj2 + av * y));
-        FVal<T> zp = z0 * (1. + vel), zm = z0 * (1. - vel);
-        FVal<T> dz = 2. * z0, z1 = 2. * z0 * z0;
-        // int dz_i / (1 - z_j (1 - y)) and int dz_i / (1 - z_i (1 - y))
-        FVal<T> l_j = log1p((zp - zm) * omy / (y + zm * omy)) / omy;
-        FVal<T> value;
-        if (gluon) {
-            FVal<T> l_i = log1p((zp - zm) * omy / (1. - zp * omy)) / omy;
-            FVal<T> zz = z1 - z0 * z0 * z0 * (2. + 2. * vel * vel / 3.);
-            FVal<T> zpm = z0 * z0 * (1. - vel * vel);
-            value = CS_CA * (l_i + l_j + zz - ((1. - kappa) * zpm + 2.) * dz) +
-                n_f * CS_TR * (dz - 2. * (zz - (1. - kappa) * zpm * dz));
-        } else {
-            value = CS_CF *
-                (2. * l_j - vel_born * (2. * dz - z1 + dz * 2. * muj2 / (av * y)));
+    FVal<T> lam = sqrt(max(av * av - 4. * muj2 * muk2, 0.));
+    // the velocity of the Born and the ends of y (CDST eqs. 5.12, 5.14)
+    FVal<T> vel_born = lam / av;
+    FVal<T> omy_plus = 2. * muk * (1. - muk) / av, y_plus = 1. - omy_plus;
+    FVal<T> y_alpha = alpha * y_plus;
+    FVal<T> l_alpha = log(alpha);
+    // J = int dy (2 / y) log R(y)
+    FVal<T> j_log;
+    if (mk == 0.) {
+        // R = 1 / (mu_j^2 + D y) and y_+ = 1
+        j_log = mj == 0.
+            ? l_alpha * l_alpha
+            : -2. * (-log(av) * l_alpha + cs_log_over<T>(y_alpha, y_plus, muj2 / av));
+    } else {
+        FVal<T> b_one = 1. - muj2 + muk2, b_alpha = b_one - y_alpha * av;
+        FVal<T> s_alpha = sqrt(max(b_alpha * b_alpha - 4. * muk2, 0.));
+        FVal<T> t_plus = (b_one + lam) / (2. * muk), t_minus = 1. / t_plus;
+        FVal<T> t_alpha = (b_alpha + s_alpha) / (2. * muk);
+        // t_+ - t_alpha, t_+ - 1 / mu_k and t_- - mu_k without cancellations
+        FVal<T> delta =
+            y_alpha * av * (1. + (b_one + b_alpha) / (lam + s_alpha)) / (2. * muk);
+        FVal<T> c_plus = -2. * muj2 / (muk * (lam + 1. + muj2 - muk2));
+        FVal<T> c_minus = 2. * muj2 * muk / (av + lam);
+        // log R = log(t - mu_k) - log t - log(1 / mu_k - t) - log mu_k and
+        // d log y / dt = 1 / (t - t_+) + 1 / (t - t_-) - 1 / t
+        FVal<T> logs[3] = {muk, 0., 1. / muk};
+        double log_signs[3] = {1., -1., -1.};
+        FVal<T> poles[3] = {t_plus, t_minus, 0.};
+        double pole_signs[3] = {1., 1., -1.};
+        FVal<T> u_alpha[3] = {-delta, t_alpha - t_minus, t_alpha};
+        FVal<T> u_one[3] = {1. - t_plus, 1. - t_minus, 1.};
+        j_log = log(muk) * l_alpha;
+        for (int b = 0; b < 3; ++b) {
+            for (int a = 0; a < 3; ++a) {
+                FVal<T> c = b == 0 && a == 2 ? c_plus
+                    : b == 1 && a == 0
+                    ? c_minus
+                    : poles[b] - logs[a];
+                j_log = j_log +
+                    log_signs[a] * pole_signs[b] *
+                        cs_log_over<T>(u_alpha[b], u_one[b], c);
+            }
         }
-        total = total + jac * omy * value / (vel_born * y);
+        j_log = 2. * j_log;
     }
-    return total;
+    // int dy (1 - y) / y
+    FVal<T> a_0 = -l_alpha - y_plus * (1. - alpha);
+    if (gluon) {
+        // with (1 - y) (1 - v^2) / y = 4 mu_k^2 / (D (1 - y))
+        FVal<T> gamma_g = 11. / 6. * CS_CA - 2. / 3. * CS_TR * n_f;
+        FVal<T> c_v = CS_CA * (1. / 12. - 0.25 * (1. - kappa)) +
+            n_f * CS_TR * (0.5 * (1. - kappa) - 1. / 6.);
+        FVal<T> x_1 =
+            mk == 0. ? FVal<T>(0.) : 4. * muk2 / av * log((1. - y_alpha) / omy_plus);
+        return CS_CA * j_log - gamma_g * a_0 + c_v * x_1;
+    }
+    // int dy (1 - y) z_1 / y with z_1 = 2 z_0^2 = D^2 y^2 / (2 (mu_j^2 + D y)^2)
+    // in u = mu_j^2 + D y
+    FVal<T> e = 1. - muk2, u_plus = muj2 + av * y_plus, u_alpha = muj2 + av * y_alpha;
+    FVal<T> z_1 =
+        (u_alpha - u_plus + (e + muj2) * log(u_plus / u_alpha) +
+         e * muj2 * (1. / u_plus - 1. / u_alpha)) /
+        (2. * av);
+    return CS_CF * (j_log / vel_born - 2. * a_0 + z_1);
 }
 
 template <typename T>

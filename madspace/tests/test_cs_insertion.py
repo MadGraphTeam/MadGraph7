@@ -191,7 +191,15 @@ class Dipole:
         t = (x + 1) / 2
         r1 = 1 - (1 - r1_low) * t * t
         w1 = (1 - r1_low) * 2 * t * w / 2
-        r2, w2 = (x + 1) / 2, w / 2
+        # r_2 on intervals that shrink towards both ends, where the soft
+        # limits of i and (for g -> g g) of j leave peaks of the width of y
+        ends = [0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 0.5, 0.9, 0.99, 0.999, 0.9999]
+        ends += [0.99999, 0.999999, 1.0]
+        x2, v2 = np.polynomial.legendre.leggauss(16)
+        r2 = np.concatenate(
+            [a + (b - a) * (x2 + 1) / 2 for a, b in zip(ends[:-1], ends[1:])]
+        )
+        w2 = np.concatenate([(b - a) * v2 / 2 for a, b in zip(ends[:-1], ends[1:])])
         phi = (np.arange(4) + 0.5) / 4
         g1, g2, g3 = np.meshgrid(r1, r2, phi, indexing="ij")
         weight = (w1[:, None, None] * w2[None, :, None] / 4 + 0 * g3).ravel()
@@ -231,11 +239,17 @@ FINAL_FINAL = {
     "Q K": ([0.0, 0.0, TOP, TOP], [-11, 11, 6, -6], {"qg": 1.0}),
     "g": ([0.0] * 4, [-11, 11, 21, -1], {"gg": 0.5, "gq": 5.0}),
     "g K": ([0.0, 0.0, 0.0, TOP], [-11, 11, 21, -6], {"gg": 0.5, "gq": 5.0}),
+    # a light massive spectator, near the massless limit of the closed form
+    "Q b": ([0.0, 0.0, TOP, 4.7], [-11, 11, 6, -5], {"qg": 1.0}),
+    "q b": ([0.0, 0.0, 0.0, 4.7], [-11, 11, 1, -5], {"qg": 1.0}),
+    "g b": ([0.0, 0.0, 0.0, 4.7], [-11, 11, 21, -5], {"gg": 0.5, "gq": 5.0}),
 }
 
 
 @pytest.mark.parametrize("case", sorted(FINAL_FINAL))
-@pytest.mark.parametrize("alpha_ff, kappa", [(0.3, 2.0 / 3.0), (0.03, 0.0)])
+@pytest.mark.parametrize(
+    "alpha_ff, kappa", [(0.3, 2.0 / 3.0), (0.03, 0.0), (1e-4, 2.0 / 3.0)]
+)
 def test_alpha_final_final(case, alpha_ff, kappa):
     """What alpha_ff removes from <I> is the integral of the dipoles over
     alpha_ff y_+ < y < y_+ (r_1 > sqrt(alpha_ff) in CSMapping), here for the
@@ -253,8 +267,35 @@ def test_alpha_final_final(case, alpha_ff, kappa):
     finite_alpha, _ = insertion(
         pdgs, masses, momenta, colors, 100.0, kappa=kappa, alpha_ff=alpha_ff
     )
-    # <I> loses the integral of the dipoles
-    np.testing.assert_allclose(finite_alpha - finite, -removed, rtol=1e-11)
+    # <I> loses the integral of the dipoles, whose integral by quadrature
+    # loses digits at small alpha, where a gluon j is soft
+    rtol = 1e-11 if alpha_ff > 1e-3 else 1e-9
+    np.testing.assert_allclose(finite_alpha - finite, -removed, rtol=rtol)
+
+
+@pytest.mark.parametrize("alpha_ff", [0.9, 0.1, 1e-3, 1e-6])
+def test_alpha_massless(alpha_ff):
+    """Without masses alpha_ff removes C_F [log^2 alpha + 3/2 (log alpha + 1
+    - alpha)] for a quark and C_A log^2 alpha - gamma_g (log(1 / alpha) - 1 +
+    alpha) for a gluon (Nagy), per unit a <T_j . T_k> / T_j^2."""
+    momenta = Dipole([0.0] * 4, "qg").born_momenta()
+    colors = pair_colors(4, 2, 3)
+    l = math.log(alpha_ff)
+    gamma_g = 11 / 6 * CA - 2 / 3 * TR * 5
+    expected = {
+        1: CF * (l * l + 1.5 * (l + 1 - alpha_ff)),
+        21: CA * l * l - gamma_g * (-l - 1 + alpha_ff),
+    }
+    for pdg, removed in expected.items():
+        pdgs = [-11, 11, pdg, -1]
+        finite, _ = insertion(pdgs, [0.0] * 4, momenta, colors, 100.0)
+        finite_alpha, _ = insertion(
+            pdgs, [0.0] * 4, momenta, colors, 100.0, alpha_ff=alpha_ff
+        )
+        t2 = CA if pdg == 21 else CF
+        np.testing.assert_allclose(
+            finite_alpha - finite, A * removed / t2, rtol=1e-13, atol=1e-16
+        )
 
 
 @pytest.mark.parametrize("case", ["q", "Q K", "g", "g K"])
