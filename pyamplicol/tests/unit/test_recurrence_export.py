@@ -587,3 +587,29 @@ def test_cli_help_says_colour_flow_ids_are_per_process() -> None:
     text = " ".join(parser.format_help().split())
     assert "Flow IDs are per process" in text
     assert "combine this with --process" in text
+
+
+@pytest.mark.parametrize("kind", ("virtual", "loop-induced"))
+def test_one_loop_runtime_refuses_export_with_the_supported_scope(kind: str) -> None:
+    def unexpected_export(**options: object) -> None:
+        pytest.fail("a one-loop runtime must be refused before its backend is asked")
+
+    backend = SimpleNamespace(
+        execution_mode="loop_recurrence",
+        contribution_kind=kind,
+        export_recurrence=unexpected_export,
+        physics=None,
+        evaluate=None,
+        evaluate_resolved=None,
+        set_model_parameters=None,
+        clear=None,
+        mute_warnings=None,
+        unmute_warnings=None,
+    )
+    with pytest.raises(CompatibilityError) as refused:
+        Runtime(backend).export_recurrence()
+    message = str(refused.value)
+    assert f"one-loop ({kind}) runtime has no leading-colour recurrence export" in (
+        message
+    )
+    assert "tree-level LC recurrence artifacts" in message

@@ -688,6 +688,13 @@ class Runtime:
         program. The default export does not execute any phase-space points.
         """
 
+        if self._virtual:
+            raise CompatibilityError(
+                f"a one-loop ({self.contribution_kind}) runtime has no leading-colour "
+                "recurrence export: recurrence export supports tree-level LC "
+                "recurrence artifacts (execution mode 'recurrence') with JIT or "
+                "built-in intrinsic executors"
+            )
         operation = getattr(self._backend, "export_recurrence", None)
         if not callable(operation):
             raise CompatibilityError(
