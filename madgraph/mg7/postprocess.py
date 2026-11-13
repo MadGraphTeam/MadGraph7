@@ -338,10 +338,12 @@ def _run_systematics(lhe_path, cfg, log):
                                  log=lambda x: log.info(str(x)))
 
 
-def run_lhe_postprocessing(process) -> None:
+def run_lhe_postprocessing(process, native_weight_count=None) -> None:
     """Run the LHE-level post-processings configured in the run_card
     [postprocessing] section on the generated event file (displaced-vertex
-    time-of-flight and systematics). Only applies when an LHE file exists."""
+    time-of-flight and systematics). Only applies when an LHE file exists.
+    ``native_weight_count``: the madspace scale/PDF weights of the events, by
+    default those of process.systematics."""
     lhe_path = _find_event_file(process.run_path)
     if lhe_path is None:
         return
@@ -358,8 +360,10 @@ def run_lhe_postprocessing(process) -> None:
         # and it is not free: MadSpin reruns the launcher for every pool refill.
         log.info("decay mode: skipping systematics (no beams to vary)")
     elif cfg.get('systematics'):
-        native = getattr(process, 'systematics', None)
-        if native is not None and native.weight_count > 0:
+        if native_weight_count is None:
+            native = getattr(process, 'systematics', None)
+            native_weight_count = 0 if native is None else native.weight_count
+        if native_weight_count > 0:
             log.warning("[postprocessing] systematics is ignored: the scale/PDF "
                         "weights were already computed by madspace ([systematics] "
                         "section); set systematics.enable = false to use the legacy "
