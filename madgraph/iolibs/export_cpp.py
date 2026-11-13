@@ -16,6 +16,7 @@
 and C++ Standalone format."""
 
 from __future__ import absolute_import
+import contextlib
 import copy
 import fractions
 import glob
@@ -50,6 +51,7 @@ import madgraph.iolibs.export_v4 as export_v4
 from madgraph.iolibs.export_v4 import VirtualExporter, ProcessExporterFortran
 import madgraph.various.misc as misc
 
+import aloha
 import aloha.create_aloha as create_aloha
 import aloha.aloha_writers as aloha_writers
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
@@ -2733,6 +2735,28 @@ class ProcessExporterCPP(VirtualExporter):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
+    # the other gauges of an output whose processes are in two gauges and
+    # their models, set by the interface (see export_processes_in_gauge)
+    gauge_libraries = {}
+    gauge_models = {}
+
+    def export_processes_in_gauge(self, matrix_element, writer):
+        """(writer, scope) of a matrix element: the session writer, used in
+        the gauge of the matrix element (aloha.gauge_scope, and the writer's
+        model and caches of that gauge, HelasCallWriter.gauge_cache)."""
+
+        if isinstance(matrix_element, group_subprocs.SubProcessGroup):
+            me = matrix_element.get('matrix_elements')[0]
+        else:
+            me = matrix_element
+        gauge = me.get('processes')[0].get_gauge()
+        if gauge not in self.gauge_models:
+            return writer, aloha.gauge_scope('')
+        scope = contextlib.ExitStack()
+        scope.enter_context(aloha.gauge_scope(gauge))
+        scope.enter_context(writer.gauge_cache(gauge, self.gauge_models[gauge]))
+        return writer, scope
+
     grouped_mode = False
     exporter = 'cpp'
 
@@ -3607,6 +3631,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # NB: this must come *before* create_run_card: it is what fills in
         # self.proc_characteristic, and the run_card defaults are derived from
         # it (e.g. ninitial == 1 -> a decay, which gets no cuts at all).
+        # the gauge of the generation (unitary, FD, ...), as the madevent
+        # output records it: the FD gauge may have been chosen automatically
+        mg5options = args[0] if args else kwargs.get('mg5options')
+        if mg5options and 'gauge' in mg5options:
+            self.proc_characteristic['gauge'] = mg5options['gauge']
         self.create_proc_characteristics(matrix_elements)
 
         # Generate Cards/run_card.toml from the template, filling in

@@ -461,6 +461,10 @@ class MG5_UFO_Runner(MG5Runner):
         else:
             v5_string = "import model %s \n" %  model
         v5_string += "set automatic_html_opening False\n"
+        # the reference values were produced in the unitary gauge; a purely
+        # electroweak process picks the FD gauge by default, which differs at
+        # the width level (and off resonance for a decay chain)
+        v5_string += "set gauge unitary\n"
         couplings = MERunner.get_coupling_definitions(orders)
 
         for i, proc in enumerate(proc_list):

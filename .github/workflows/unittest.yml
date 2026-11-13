@@ -170,7 +170,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_fd_gauge_import test_get_symmetric_color test_get_symmetric_lorentz test_merge_iden_couplings_with_minus test_remove_interactions2 test_remove_interactions3 test_reshape_FFV_coeff test_reshape_FFV_coeff_gamma5_and_vector test_reshape_FFV_coeff_unknown_structure_ignored test_read_feynman_diagram_count test_read_feynman_diagram_count_missing_file -t0
+            ./tests/test_manager.py test_fd_gauge_import test_fd_gauge_unverified_tag test_get_symmetric_color test_get_symmetric_lorentz test_merge_iden_couplings_with_minus test_remove_interactions2 test_remove_interactions3 test_reshape_FFV_coeff test_reshape_FFV_coeff_gamma5_and_vector test_reshape_FFV_coeff_unknown_structure_ignored test_read_feynman_diagram_count test_read_feynman_diagram_count_missing_file -t0
 
       # ---- unittest_33 ----
       # Uncovered unit tests in tests/unit_tests/fks/test_ewsudakov.py
@@ -595,7 +595,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_default_switch test_history_recording test_interference_syntax test_mg7_systematics_summary test_reweight_card_input test_tutorials TestNoFileOutsideOutputDir CheckDisplayWithoutProcessTest DisplayInertCouplingOrderTest NeglectedMassAdviceTest RequiredSChannelErrorTest TestHepToolsInstallTarget test_display_processes TestDelphesFusion TestLhapdfInfoPatch TestSharedPdfsetsDir test_generate_propagator_only_polarisation test_propagator_polarisation_round_trip test_dynamical_scale_choice_ht -e TestOneImplementation -e TestRealRunNumbers -t0
+            ./tests/test_manager.py test_default_switch test_history_recording test_interference_syntax test_mg7_systematics_summary test_reweight_card_input test_tutorials TestNoFileOutsideOutputDir CheckDisplayWithoutProcessTest DisplayInertCouplingOrderTest NeglectedMassAdviceTest RequiredSChannelErrorTest TestHepToolsInstallTarget test_display_processes TestDelphesFusion TestLhapdfInfoPatch TestSharedPdfsetsDir test_generate_propagator_only_polarisation test_propagator_polarisation_round_trip test_dynamical_scale_choice_ht TestAutomaticGauge TestAutomaticGaugeOutput TestProcessGauge TestProcessGaugeOutput TestProcCardOneGauge TestGaugeHelpers -e TestOneImplementation -e TestRealRunNumbers -t0
 
       - name: "unittest_iolibs_uncovered"
         if: ${{ !cancelled() }}
