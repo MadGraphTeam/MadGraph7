@@ -1556,6 +1556,7 @@ runtime-and-selectors
 native-apis
 artifacts-and-portability
 umami-api
+../reference/recurrence-export
 ../correlators
 ../correlator-conventions
 ```
