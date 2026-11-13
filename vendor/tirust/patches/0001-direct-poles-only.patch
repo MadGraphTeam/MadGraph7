@@ -648,7 +648,7 @@
      pub(crate) fn new(boost: u16) -> Self {
          let mut boosts = vec![boost.min(FIRST_BOOST), boost];
          boosts.dedup();
-@@ -897,7 +897,7 @@
+@@ -973,7 +973,7 @@
      Some(if sign(i, k) == sign(j, l) { csub(&czero(&value.re), &value) } else { value })
  }
  
@@ -657,24 +657,13 @@
  where
      Complex<T>: EvaluationDomain,
  {
-@@ -1049,7 +1049,7 @@
-                             .base_plan
-                             .auxiliary(self.subset_settings(size, rank), boost.max(1))
-                             .map_err(|e| e.to_string())?;
--                        let mut executor = DirectExecutor::<T>::new(
-+                        let mut executor = DirectExecutor::<T, POLES>::new(
-                             aux,
-                             self.prototype.clone(),
-                             DirectMasters::Native,
-@@ -1081,9 +1081,14 @@
-                         entry.insert(executor)
-                     }
+@@ -1155,9 +1155,12 @@
+                         )?),
+                     },
                  };
 +                // A cached auxiliary follows subsequent precision/gate updates.
 +                executor.set_input_precision(self.input_bits);
-+                executor.set_stability_threshold(
-+                    gram.aux_threshold.clone().unwrap_or_else(|| self.stability_threshold.clone() * &self.stability_threshold),
-+                );
++                executor.set_stability_threshold(aux_threshold.clone());
                  let values = self.subset_row(&subset.members, |z| z.clone());
 -                // Nested expansions of the auxiliary box share too.
 -                executor.set_shared_subsets(self.shared.clone());
@@ -683,7 +672,7 @@
                  executor.gram_wanted_ranks = None;
                  let result = executor
                      .reduce_batch(&KinematicsBatch { rows: 1, components: 1, values })
-@@ -1275,7 +1280,7 @@
+@@ -1385,7 +1388,7 @@
                          for i in 0..nm {
                              let at = if i > 0 { grading.plus(lower, i) } else { lower };
                              let term = spz.at(at as usize).ok_or("small-Gram expansion: shifted C0 missing")?;
@@ -692,7 +681,7 @@
                                  acc[slot] = csub(&acc[slot], &term[slot]);
                              }
                          }
-@@ -1294,10 +1299,10 @@
+@@ -1404,10 +1407,10 @@
                      let kappa = grading.key(index).1;
                      let Some(c0) = spz.at(index) else { continue };
                      for m in 0..nm {
@@ -705,7 +694,7 @@
                                  out[slot] = cadd(&out[slot], &source[slot]);
                              }
                          }
-@@ -1353,7 +1358,7 @@
+@@ -1463,7 +1466,7 @@
          // stay +0 bit for bit either way.
          let full = !self.ir_free;
          let fma = |acc: &mut L4<T>, factor: &C<T>, value: &L4<T>| {
@@ -714,7 +703,7 @@
          };
          // The recursion's scalar factors, by multiplicity, built once by the
          // operations each key used to repeat (so the same bits).
-@@ -1369,7 +1374,7 @@
+@@ -1479,7 +1482,7 @@
          // Divisor (a - 2 eps) of the metric keys, a = 2 (lambda + |kappa|) + 4 - N,
          // by lambda + |kappa| - 1 (lambda >= 1).
          let dims: Vec<[T; 3]> = (1..=top)
@@ -723,7 +712,7 @@
              .collect();
          // Only the coefficients the results depend on.
          let structure: Vec<(usize, usize)> = pairs.iter().map(|&(a, b, _)| (a, b)).collect();
-@@ -1427,8 +1432,8 @@
+@@ -1537,8 +1540,8 @@
                          }
                          fma(&mut acc, neg_w, &bracket);
                      }
@@ -734,7 +723,7 @@
                      cur.insert_at(&grading, index, out, &zero);
                  }
              }
-@@ -1452,7 +1457,7 @@
+@@ -1562,7 +1565,7 @@
                      if let Some(prev) = prev {
                          fma(&mut acc, &neg_delta, prev.need_at(grading.plus(here, j), || (0, add(kappa, j)), what)?);
                      }
@@ -743,7 +732,7 @@
                      cur.insert_at(&grading, index, out, &zero);
                  }
              }
-@@ -1508,7 +1513,7 @@
+@@ -1618,7 +1621,7 @@
                  for index in grading.range(r) {
                      let Some(value) = latest.at(index) else { continue };
                      let sum = next.at_mut(index).ok_or("small-Gram expansion: coefficient missing")?;
@@ -752,7 +741,7 @@
                          sum[slot] = cadd(&sum[slot], &value[slot]);
                          diff = diff.max(cnorm2(&value[slot]).to_f64().sqrt());
                          size = size.max(cnorm2(&sum[slot]).to_f64().sqrt());
-@@ -1622,12 +1627,12 @@
+@@ -1732,12 +1735,12 @@
                          for n1 in 0..nm {
                              fma(&mut acc, &csub(&zero, &xt0(n1)), &rhs[n1]);
                          }
@@ -768,7 +757,7 @@
                              let mut bracket = lzero(&zero);
                              fma(&mut bracket, &real(2), &metric);
                              fma(&mut bracket, &csub(&zero, &real(1)), c0);
-@@ -1638,7 +1643,7 @@
+@@ -1748,7 +1751,7 @@
                                  for n1 in 0..nm {
                                      fma(&mut acc, &xtm[i][n1], &rhs[n1]);
                                  }
@@ -777,7 +766,7 @@
                                  cur.insert(&grading, (0, add(kappa, i)), out, &zero)?;
                              }
                          }
-@@ -1691,7 +1696,7 @@
+@@ -1801,7 +1804,7 @@
                  for index in grading.range(r) {
                      let Some(value) = expansion.at(index) else { continue };
                      let Some(other) = alternative.at(index) else { return expansion.clone() };
@@ -786,7 +775,7 @@
                          diff = diff.max(cnorm2(&csub(&value[slot], &other[slot])).to_f64().sqrt());
                          size = size.max(cnorm2(&value[slot]).to_f64().sqrt());
                      }
-@@ -1843,7 +1848,7 @@
+@@ -1953,7 +1956,7 @@
                                  }
                              }
                              let divisor = &gc_divisor[usize::from(kappa[l])];
@@ -795,7 +784,7 @@
                              cur.insert_at(&grading, here as usize, out, &zero);
                          }
                      }
-@@ -1860,7 +1865,7 @@
+@@ -1970,7 +1973,7 @@
                              continue;
                          }
                          let mut metric = cur.need_at(metric_at, || (1, kappa), "small-Gram/Cayley expansion")?.clone();
@@ -804,7 +793,7 @@
                          let mut bracket = lzero(&zero);
                          fma(&mut bracket, &gc_two, &metric);
                          if prev.is_none() {
-@@ -1882,7 +1887,7 @@
+@@ -1992,7 +1995,7 @@
                          if let Some(prev) = prev {
                              fma(&mut acc, &y0gj, prev.need_at(grading.plus(here, gi), || (0, add(kappa, gi)), "small-Gram/Cayley expansion")?);
                          }
@@ -813,7 +802,7 @@
                          let here = grading.index(0, &kappa).ok_or_else(|| {
                              format!("small-Gram expansion: coefficient {:?} outside the expansion ranks", (0u16, kappa))
                          })?;
-@@ -1928,7 +1933,7 @@
+@@ -2038,7 +2041,7 @@
                          for index in grading.range(r) {
                              let Some(value) = latest.at(index) else { continue };
                              let Some(sum) = next.at_mut(index) else { continue };
