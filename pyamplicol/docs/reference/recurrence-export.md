@@ -4,7 +4,11 @@
 batched f64 program of an LC recurrence artifact. It does not evaluate a
 phase-space point. By default the command exports every stored process,
 alias, and process-group member, with every public colour flow. Select subsets
-with repeated `--process ID` or `--color-flow ID` options.
+with repeated `--process ID` or `--color-flow ID` options. Colour-flow IDs are
+per process (they name leg permutations of that process), and `--color-flow`
+applies to every selected process: on a multi-process artifact, combine it with
+`--process`. An ID that a selected process lacks is refused with an error that
+names the process and lists its flow IDs.
 
 The CLI writes compact JSON by default. `--indent 2` enables readable output
 for inspection. Schema 2 replaces schema 1 directly: consumers should update

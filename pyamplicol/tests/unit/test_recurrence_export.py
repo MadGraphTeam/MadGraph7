@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import argparse
 import io
 import json
 from pathlib import Path
@@ -576,3 +577,13 @@ def test_cli_rejects_inconsistent_exports_before_replacing_output(
     )
     assert "differs for 'p1'" in errors.getvalue()
     assert destination.read_text(encoding="utf-8") == "previous capture\n"
+
+
+def test_cli_help_says_colour_flow_ids_are_per_process() -> None:
+    from pyamplicol.cli.recurrence_export import add_export_options
+
+    parser = argparse.ArgumentParser(prog="export-recurrence")
+    add_export_options(parser)
+    text = " ".join(parser.format_help().split())
+    assert "Flow IDs are per process" in text
+    assert "combine this with --process" in text

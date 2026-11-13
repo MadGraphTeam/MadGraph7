@@ -190,10 +190,20 @@ impl NativeRuntime {
                     .any(|component| component.id() == colour)
                 {
                     return Err(RusticolError::selector(format!(
-                        "unknown recurrence export colour {colour:?}"
+                        "unknown recurrence export colour {colour:?} for process {:?} ({}); \
+                         colour-flow IDs are per process, this process has: {available}",
+                        self.process_key, self.process
                     )));
                 }
             }
+                    // Colour-flow IDs name leg permutations of one process,
+                    // so the same ID can be absent from another process.
+                    let available = physics
+                        .color_components
+                        .iter()
+                        .map(|component| component.id())
+                        .collect::<Vec<_>>()
+                        .join(", ");
         }
         let parameters = self
             .runtime

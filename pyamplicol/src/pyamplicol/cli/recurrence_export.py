@@ -95,7 +95,11 @@ def add_export_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=None,
         metavar="ID",
-        help="Export a stable colour-flow ID; repeat (default: all provider flows).",
+        help=(
+            "Export a stable colour-flow ID; repeat (default: all provider flows). "
+            "Flow IDs are per process and apply to every selected process, so "
+            "combine this with --process on a multi-process artifact."
+        ),
     )
     parser.add_argument(
         "--model-parameters",

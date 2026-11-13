@@ -2566,6 +2566,13 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
     selected = runtime.export_recurrence(color_flows=[physics.color_flows[0].id])
     assert selected["programs"] == [changed["programs"][0]]
 
+    # Flow IDs are per process: an unknown one names the process and its flows.
+    with pytest.raises(EvaluationError) as refused:
+        runtime.export_recurrence(color_flows=["flow:not-of-this-process"])
+    message = str(refused.value)
+    assert '"flow:not-of-this-process"' in message
+    assert f'process "{physics.process_id}"' in message
+    assert all(flow.id in message for flow in physics.color_flows)
     with_references = runtime.export_recurrence(reference_momenta=points[:1])
     expected = runtime.evaluate_resolved(points[:2])
     for program in with_references["programs"]:
