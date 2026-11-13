@@ -661,8 +661,10 @@ PETRELLI_GG = {
 }
 # the n_f-independent part of eq. (133); BinothLHA_onia adds -10/9 n_f T_F
 PETRELLI_QQ_3S18 = _CF * (-8 + 2 * _PI2 / 3) + _CA * (50. / 9 + 2. / 3 * _LOG2 - _PI2 / 4)
-# Borns that vanish identically, by initial state and (L, S, J, colour)
-_ZERO_GG = set([(0, 1, 1, 1), (0, 1, 1, 8), (1, 1, 1, 1), (1, 1, 1, 8), (1, 0, 1, 1), (1, 0, 1, 8)])
+# Borns that vanish identically, by initial state and (L, S, J, colour);
+# g g -> 1P1[8] does not (HELAC-Onia: an LO process), and has no built-in
+# virtual
+_ZERO_GG = set([(0, 1, 1, 1), (0, 1, 1, 8), (1, 1, 1, 1), (1, 1, 1, 8), (1, 0, 1, 1)])
 _ZERO_QQ = set([(0, 0, 0, 1), (0, 0, 0, 8), (0, 1, 1, 1), (1, 0, 1, 1), (1, 0, 1, 8)]
                + [(1, 1, j, c) for j in (0, 1, 2) for c in (1, 8)])
 

@@ -128,6 +128,7 @@ class TestFKSOniaGeneration(unittest.TestCase):
                  'u u~ > tata(1|3S1) [QCD]': (4, 0.),
                  'u u~ > chic0(1|3P01) [QCD]': (5, 0.),
                  'g g > hc(1|1P11) [QCD]': (5, 0.),
+                 'g g > etac(1|1P18) [QCD]': (0, 0.),
                  'g g > etac(1|1S01) g [QCD]': (0, 0.)}
         for line, (case, bconst) in cases.items():
             borns = self.generate(line)

@@ -59,16 +59,24 @@ c**************************************************************************
       x=onia_dot(pk,pl)
       ek=pk(0)
       el=pl(0)
-      bl=dsqrt(max(0d0,1d0-ml2/el**2))
+      bl=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)/el
       if (dabs(mk2).lt.1d-10*ek**2) then
 c        massless k
          ml=dsqrt(ml2)
          b=bl
+         p2(0:3)=pk(0:3)/(2d0*x)
+         p1(0:3)=(1d0-dlog(x/(ek*ml))-ll/2d0)/x*pk(0:3)-pl(0:3)/ml2
+         if (b.lt.3d-6) then
+c           l (nearly) at rest, as the onium of a 2 -> 1 Born: the limit
+c           b -> 0, independent of the direction (the closed form below
+c           loses ~1d-16/b^2; the limit is off by O(b))
+            fin(0:3)=(2d0-pi**2/12d0-ll+ll**2/4d0)/x*pk(0:3)
+     &           +(ll-2d0)/ml2*pl(0:3)
+            return
+         endif
          a=ek*el*(1d0-b)
          c=ek*el*(1d0+b)
          lbb=dlog((1d0+b)/(1d0-b))
-         p2(0:3)=pk(0:3)/(2d0*x)
-         p1(0:3)=(1d0-dlog(x/(ek*ml))-ll/2d0)/x*pk(0:3)-pl(0:3)/ml2
          t1=-pi**2/12d0-ll+ll**2/4d0+dlog(x/(ek*ml))*ll
      &        -dlog(x/a)+dlog(x/a)**2/2d0-lbb**2/4d0
      &        +ddilog(1d0-x/a)-ddilog(1d0-c/x)
