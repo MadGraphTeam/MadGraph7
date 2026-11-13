@@ -22,7 +22,7 @@ logger = logging.getLogger('madgraph.tirust_install')
 CONFIG_NAME = 'tirust-config.json'
 ABI_VERSION = 1
 UPSTREAM_URL = "https://github.com/huashengshao/TIRust"
-UPSTREAM_REVISION = "10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1"
+UPSTREAM_REVISION = "d774a952b12b886a1c1537612dede6658fb9d15d"
 RUNTIME_ARTIFACTS = ("libmadloop_tirust.so",)
 QUALIFIED_ARTIFACTS = ('libtirust.a', 'mtirust.mod') + RUNTIME_ARTIFACTS
 

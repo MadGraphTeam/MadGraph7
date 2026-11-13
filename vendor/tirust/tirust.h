@@ -22,15 +22,17 @@ int32_t ml_tirust_register_plan(ml_tirust_context *context, int32_t n, int32_t r
 /* Pure capability query; the qualified v1 range is n=1..6 and rank=0..6. */
 int32_t ml_tirust_supports(int32_t n, int32_t rank, int32_t compute_finite);
 /* bytes >= 0; zero disables insertion. Default total numerical cache budget:
- * 256 MiB. Half is reserved for QP whole-tensor results. The remainder is
- * shared equally by full and pole-only DP stores when poles are supported;
- * otherwise the full DP store receives the remainder.
+ * 256 MiB. Half is reserved for QP whole-tensor results and a quarter for the
+ * primary full-DP subintegral store. The last quarter is split between the
+ * pole-only DP store (half of it, when poles are supported), the check-pass
+ * subintegral store and the repeated DP whole-tensor cache.
  * Changing the budget clears numerical entries; setting the same value is a no-op. */
 int32_t ml_tirust_set_cache_budget(ml_tirust_context *context, int64_t bytes);
 /* count must equal nine. Statistics are unsigned counters, in order:
  * subsets_reused, subsets_computed, masters_reused, masters_computed,
- * moments_reused, moments_computed, entries, bytes, not_stored. The last five
- * include QP whole-tensor hits, misses, entries, bytes and refused insertions. */
+ * moments_reused, moments_computed, entries, bytes, not_stored, summed over
+ * the primary and check-pass stores. The last five also include the QP and
+ * repeated-DP whole-tensor hits, misses, entries, bytes and refused insertions. */
 int32_t ml_tirust_cache_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
 /* count must equal six. QP whole-tensor counters, in order:
  * hits, misses, entries, bytes, not_stored, bypassed.
@@ -47,7 +49,8 @@ int32_t ml_tirust_qp_cache_statistics(ml_tirust_context *context, uint64_t *coun
  * Accepted routes require successful finite DP output; attempts include failed
  * tiers. Public argument-validation failures are outside these counters.
  * Successful queries preserve the existing thread-local last error.
- * Cache clears preserve counters. Tier106 is DD; Tier256/512 evaluate
+ * Cache clears preserve counters. A repeated-DP whole-tensor hit is not an
+ * execution and changes no counter. Tier106 is DD; Tier256/512 evaluate
  * binary64 inputs with a DP numerator. None is genuine binary128-input QP. */
 int32_t ml_tirust_dp_route_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
 
@@ -67,7 +70,11 @@ int32_t ml_tirust_dp_route_statistics(ml_tirust_context *context, uint64_t *coun
  * callers must ignore it, never interpret it as a physical vanishing result.
  * MadLoop's user-facing partial-result diagnostic marks that slot NaN.
  * compute_finite, check_pass and cache_enabled are booleans encoded as 0/1.
- * A check pass uses independent retained integral values.
+ * A check pass never reads the primary pass's retained values: check passes
+ * share subintegrals only with each other (bit-identical to unshared
+ * evaluation). An exact repeat of a primary full-DP request within a point
+ * (identical input bits, dimensions and pole selection) returns the stored
+ * whole tensor.
  *
  * All lengths must match exactly. Buffers must remain valid and mutually
  * disjoint throughout the call. Failed calls leave outputs unchanged. No

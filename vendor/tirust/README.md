@@ -77,32 +77,51 @@ its caches. Call `tirust_finalize` before retrying; the next request creates a
 fresh context. Full-DP primary and independent-check workspaces share one
 immutable reduction plan per `(N,rank)`, while retaining separate structural
 variants and scratch buffers. Check passes still recompute the numerical
-results. A failed full-DP reduction clears its numerical store. Ordinary
-numerical refusals retain warmed structural workspaces; a Rust reduction error
-or invalid lane discards both directional owners while retaining the immutable
-plan. Every accepted route other than `Direct` also clears numerical entries,
-so intermediate results from an earlier refused pass cannot survive a retry.
+results. A failed full-DP reduction clears its numerical stores and its
+repeated-tensor cache. Ordinary numerical refusals retain warmed structural
+workspaces; a Rust reduction error or invalid lane discards both directional
+owners while retaining the immutable plan. Entries computed on any accepted
+route (direct, method choice or a precision tier) stay in the store: every
+entry is a pure function of its exact key (method, settings and input bits),
+so TIRust returns the same bits with or without it, and a later integral or
+retry receives exactly what it would compute itself.
 The separate pole-only evaluator retains its existing failure cleanup.
+
+DP precision tiers start a refused lane at the lowest tier whose own gate
+admits its binary64 conditioning estimate (`tier_margin_bits = 0`): a lane
+the double-double gate accepts is not sent to 256 bits on a pessimistic
+margin. Each tier's gate bounds the amplification of its rounding by 2^-40,
+so accepted values agree with the 256-bit ones to binary64 rounding.
 
 Register each `(N,rank)` plan before reducing a point. Clear numerical caches at
 the end of each phase-space point while retaining plans/workspaces. Full and
-pole-only DP workspaces have separate subintegral stores. QP calls have a bounded
+pole-only DP workspaces have separate subintegral stores. MadLoop requests each
+loop group's tensor once per helicity while it learns its helicity filters;
+an exact repeat of a primary full-DP request (identical input bits, `(N,rank)`
+and pole selection) within the phase-space point returns the stored complete
+tensor. QP calls have a bounded
 cache of complete tensor results keyed by the exact input records, `(N,rank)`,
 pole selection, finite-term mode, and input/working precision. Full and pole-only
 QP results cannot share an entry. Failed evaluations are never retained.
 
 The default total numerical cache budget is 256 MiB. Half is reserved for QP
-tensor results; the remainder is divided equally between the full and pole-only
-DP stores when poles are supported, or assigned to the full DP store otherwise.
+tensor results and a quarter for the primary full-DP subintegral store. The last
+quarter is split between the pole-only DP store (half of it, when poles are
+supported), the independent-check subintegral store and the repeated-tensor
+cache.
 Setting the same budget is a no-op; changing it clears numerical entries. A full
 QP cache refuses further insertions without evicting existing entries. Accounted
 QP bytes include retained payloads and estimated entry metadata, excluding
 plans/workspaces; this counter does not measure process resident memory.
 
-Independent stability passes and calls with caching disabled bypass numerical
-caches completely. `tirust_cache_statistics` returns nine aggregate counters;
-its final five include QP tensor hits, misses, entries, bytes and refused
-insertions. `tirust_qp_cache_statistics` exposes the six QP counters separately:
+Independent stability passes never read entries of the primary pass: they
+share subintegrals only with each other, in their own store (bit-identical to
+unshared evaluation), and never use the repeated-tensor cache. Calls with
+caching disabled bypass numerical caches completely. `tirust_cache_statistics`
+returns nine aggregate counters over the primary and check stores; its final
+five also include the complete-tensor hits, misses, entries, bytes and refused
+insertions of the QP and repeated-DP-tensor caches. A repeated-tensor hit is not
+a bridge execution and does not change the route counters. `tirust_qp_cache_statistics` exposes the six QP counters separately:
 `[hits, misses, entries, bytes, not_stored, bypassed]`. A bypass increments only
 the final QP counter, leaving cache hits and misses unchanged. Hits and misses
 count complete tensor requests, including misses that later fail evaluation.

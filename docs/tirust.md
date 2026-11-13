@@ -73,7 +73,10 @@ filter policy is described below.
 
 Numerical caches clear at MadLoop's phase-space boundary and reuse integrals
 across helicities and split orders. Full and partial results and DP/QP stores
-remain separate. Independent stability checks bypass cached numerical results.
+remain separate. Independent stability checks never read the primary pass's
+cached results: they share sub-integrals only with each other. Exact repeats of
+a tensor request within a point (one per helicity while MadLoop learns its
+filters) return the stored tensor.
 Numerical failures propagate to MadLoop's existing rescue logic.
 
 ## Profile a backend

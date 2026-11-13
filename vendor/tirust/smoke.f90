@@ -49,8 +49,9 @@ program smoke
   call require_success('independent check pass')
   call tirust_dp_route_statistics(route_counts,status)
   call require_success('independent tensor-route statistics')
-  if (route_counts(1) /= 2_c_int64_t .or. route_counts(11) /= 1_c_int64_t .or. &
-      sum(route_counts) /= 3_c_int64_t) stop 44
+  ! The exact repeat returned the stored complete tensor: not an execution.
+  if (route_counts(1) /= 1_c_int64_t .or. route_counts(11) /= 1_c_int64_t .or. &
+      sum(route_counts) /= 2_c_int64_t) stop 44
   if (any(abs(r-reference)>1e-12_KI_TIR)) stop 4
   call tirust_tensor_evaluate(1,0,p,s,m,4.0_KI_TIR,r,status,cache_enabled=.false.)
   call require_success('uncached DP tadpole')
@@ -62,8 +63,8 @@ program smoke
   call require_success('clear cache')
   call tirust_dp_route_statistics(route_counts,status)
   call require_success('tensor routes survive event cache clear')
-  if (route_counts(1) /= 3_c_int64_t .or. route_counts(11) /= 1_c_int64_t .or. &
-      sum(route_counts) /= 4_c_int64_t) stop 45
+  if (route_counts(1) /= 2_c_int64_t .or. route_counts(11) /= 1_c_int64_t .or. &
+      sum(route_counts) /= 3_c_int64_t) stop 45
   if (tirust_context_generation() /= first_generation) stop 29
   call tirust_set_cache_budget(0_c_int64_t,status)
   call require_success('disable cache insertion')

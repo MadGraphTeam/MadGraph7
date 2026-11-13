@@ -19,12 +19,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
     {
         let key = (6usize, 5u16);
@@ -44,12 +45,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
     {
         let key = (4usize, 4u16);
@@ -69,12 +71,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
     {
         let key = (5usize, 5u16);
@@ -94,12 +97,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
     {
         let key = (5usize, 4u16);
@@ -119,12 +123,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
     {
         let key = (6usize, 5u16);
@@ -144,12 +149,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
     {
         let key = (4usize, 4u16);
@@ -169,12 +175,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
     {
         let key = (5usize, 5u16);
@@ -194,12 +201,13 @@ fn saved_zggg_failures_replay_recover_and_report_actual_tiers() {
         let offset = usize::from(check) * DP_ROUTE_FIELDS;
         assert_eq!(state.dp_routes[offset + 2..offset + 5].iter().sum::<u64>(), 1);
         assert!(state.dp_routes[offset + 7..offset + 10].iter().sum::<u64>() >= 1);
-        assert_eq!(state.store.statistics().entries, 0);
+        // A rescued success keeps the store: its entries are exact pure functions of their keys.
+        let retained = state.store.statistics().entries;
         let other = usize::from(!check) * DP_ROUTE_FIELDS;
         assert!(state.dp_routes[other..other+DP_ROUTE_FIELDS].iter().all(|&x| x==0));
         let second = state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap();
         assert_eq!(second, first);
-        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(state.store.statistics().entries, retained);
     }
 }
 #[test]

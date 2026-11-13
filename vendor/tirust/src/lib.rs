@@ -48,6 +48,12 @@ struct State {
     dp: HashMap<(Key, bool), TensorWorkspace<f64>>,
     mp: HashMap<Key, DirectWorkspace<Float>>,
     store: TensorStore,
+    /// Subintegral store of MadLoop's independent direction checks. It never
+    /// shares an entry with the primary store, so a check recomputes every
+    /// integral it compares; entries are exact pure functions of their keys,
+    /// so check values are bit-identical to an unshared evaluation.
+    check_store: TensorStore,
+    dp_cache: DpCache,
     qp_cache: QpCache,
     dp_routes: [u64; DP_ROUTE_STATS_COUNT],
     last_dp_route: Option<usize>,
@@ -71,15 +77,20 @@ impl State {
             dp_routes: [0; DP_ROUTE_STATS_COUNT],
             last_dp_route: None,
             store: TensorStore::with_options(TensorStoreOptions {
-                byte_budget: Some(store_budget(DEFAULT_BUDGET)),
+                byte_budget: Some(budgets(DEFAULT_BUDGET).primary),
                 ..Default::default()
             }),
+            check_store: TensorStore::with_options(TensorStoreOptions {
+                byte_budget: Some(budgets(DEFAULT_BUDGET).check),
+                ..Default::default()
+            }),
+            dp_cache: DpCache::new(budgets(DEFAULT_BUDGET).results),
             #[cfg(feature = "poles-only")]
             pole_dp: HashMap::new(),
             #[cfg(feature = "poles-only")]
             pole_mp: HashMap::new(),
             #[cfg(feature = "poles-only")]
-            pole_store: PoleTensorStore::new(Some(store_budget(DEFAULT_BUDGET))),
+            pole_store: PoleTensorStore::new(Some(budgets(DEFAULT_BUDGET).poles)),
         }
     }
 
@@ -87,6 +98,7 @@ impl State {
         if !self.plans.contains_key(&key) {
             let plan = DirectReductionPlan::new(settings(key)).map_err(|e| e.to_string())?;
             self.store.register(&plan);
+            self.check_store.register(&plan);
             #[cfg(feature = "poles-only")]
             self.pole_store.register(&plan);
             self.plans.insert(key, plan);
@@ -115,13 +127,18 @@ impl State {
             };
             let workspace = TensorWorkspace::new_embedded(
                 plan, 0.0f64,
-                EmbedderOptions { precision_tiers: true, ..EmbedderOptions::default() },
+                // A lane starts at the lowest tier whose own gate admits its
+                // binary64 estimate (no skipping margin): each tier's gate
+                // bounds the error amplification, so near-limit lanes get
+                // double-double instead of 256-bit evaluations.
+                EmbedderOptions { precision_tiers: true, tier_margin_bits: 0, ..EmbedderOptions::default() },
             ).map_err(|e| e.to_string())?;
             self.dp.insert(workspace_key, workspace);
         }
         // check_view() may alias the primary when no master provider exists.
-        // MadLoop's independent direction checks must recompute every entry.
-        let store = (mode.cache && !mode.check).then(|| self.store.clone());
+        // MadLoop's independent direction checks must recompute every entry
+        // of the primary pass: they share subintegrals only with each other.
+        let store = mode.cache.then(|| if mode.check { self.check_store.clone() } else { self.store.clone() });
         let workspace = self.dp.get_mut(&workspace_key).unwrap();
         workspace.set_tensor_store(store.as_ref());
         let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
@@ -159,6 +176,19 @@ impl State {
         batch: KinematicsBatch<f64>,
         mode: Mode,
     ) -> Result<(i32, Vec<C64>)> {
+        // MadLoop requests the same tensor integral once per helicity while it
+        // learns its filters. A primary result is a pure function of its exact
+        // inputs (bit-identical with or without store sharing), so an exact
+        // repeat within the phase-space point returns the stored tensor.
+        let cache_key = (mode.finite && mode.cache && !mode.check).then(|| dp_cache_key(key, &batch, mode.poles));
+        if let Some(cache_key) = &cache_key {
+            if let Some(values) = self.dp_cache.entries.get(cache_key) {
+                self.dp_cache.hits += 1;
+                self.last_dp_route = None;
+                return Ok((SUCCESS, values.to_vec()));
+            }
+            self.dp_cache.misses += 1;
+        }
         let mut result = self.dp(key, batch, mode);
         if let Ok((SUCCESS, values)) = &result {
             if values
@@ -178,10 +208,15 @@ impl State {
                 Err(_) => 6,
             };
             self.dp_routes[offset + final_route] += 1;
-            // A successful retry may follow a refused primary/method pass.
-            // Discard numerical entries from every non-Direct route.
-            if failed || self.last_dp_route != Some(0) {
+            // Store entries are exact pure functions of their keys (method,
+            // settings and input bits), so entries computed on any route stay
+            // valid for every later integral. Only a failure discards them.
+            if failed {
                 self.store.clear();
+                self.check_store.clear();
+                self.dp_cache.clear();
+            } else if let (Some(cache_key), Ok((SUCCESS, values))) = (cache_key, &result) {
+                self.dp_cache.insert(cache_key, values);
             }
             // Retain structural preparation after ordinary numerical refusals.
             if failed && !matches!(&result, Ok((UNSTABLE, _))) {
@@ -315,11 +350,23 @@ impl State {
     }
 }
 
-fn store_budget(total: u64) -> u64 {
+/// Byte budgets of the numerical stores for a total budget. Half belongs to
+/// QP tensor results ([`QpCache`]); of the binary64 half, the primary
+/// subintegral store keeps a quarter of the total and the rest goes to the
+/// pole-only store (when built), the check-pass store and the exact-result
+/// cache.
+struct Budgets {
+    primary: u64,
+    check: u64,
+    results: u64,
+    #[cfg_attr(not(feature = "poles-only"), allow(dead_code))]
+    poles: u64,
+}
+fn budgets(total: u64) -> Budgets {
     if cfg!(feature = "poles-only") {
-        total / 4
+        Budgets { primary: total / 4, poles: total / 8, check: total / 16, results: total / 16 }
     } else {
-        total / 2
+        Budgets { primary: total / 4, poles: 0, check: total / 8, results: total / 8 }
     }
 }
 
@@ -372,6 +419,43 @@ impl QpCache {
             self.bypassed,
         ]
     }
+}
+/// Exact-input full-tensor binary64 results of the current phase-space point
+/// (primary passes only). Keys hold the bits of every input value, the
+/// dimensions and the pole selection of the packed output.
+struct DpCache {
+    entries: HashMap<Box<[u64]>, Box<[C64]>>,
+    budget: u64,
+    bytes: u64,
+    hits: u64,
+    misses: u64,
+    not_stored: u64,
+}
+impl DpCache {
+    fn new(budget: u64) -> Self {
+        Self { entries: HashMap::new(), budget, bytes: 0, hits: 0, misses: 0, not_stored: 0 }
+    }
+    fn clear(&mut self) {
+        *self = Self::new(self.budget);
+    }
+    fn insert(&mut self, key: Box<[u64]>, values: &[C64]) {
+        let cost = (8 * key.len() + std::mem::size_of_val(values) + 64) as u64;
+        if cost > self.budget.saturating_sub(self.bytes) {
+            self.not_stored += 1;
+            return;
+        }
+        self.entries.insert(key, values.into());
+        self.bytes += cost;
+    }
+}
+fn dp_cache_key(key: Key, batch: &KinematicsBatch<f64>, poles: i32) -> Box<[u64]> {
+    let mut words = Vec::with_capacity(1 + 2 * batch.values.len());
+    words.push((key.0 as u64) | (u64::from(key.1) << 8) | ((poles as u64) << 24));
+    for z in &batch.values {
+        words.push(z.re.to_bits());
+        words.push(z.im.to_bits());
+    }
+    words.into()
 }
 fn qp_cache_key(key: Key, records: [&[u8]; 4], mode: Mode) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(16 + records.iter().map(|x| x.len()).sum::<usize>());
@@ -705,6 +789,8 @@ pub unsafe extern "C" fn ml_tirust_clear_cache(handle: *mut Context) -> i32 {
             .lock()
             .map_err(|_| "TIRust context poisoned")?;
         state.store.clear();
+        state.check_store.clear();
+        state.dp_cache.clear();
         state.qp_cache.clear();
         #[cfg(feature = "poles-only")]
         state.pole_store.clear();
@@ -725,13 +811,17 @@ pub unsafe extern "C" fn ml_tirust_set_cache_budget(handle: *mut Context, bytes:
             .map_err(|_| "TIRust context poisoned")?;
         let bytes = bytes as u64;
         if state.budget != bytes {
+            let budget = budgets(bytes);
             state.store.clear();
-            state.store.set_byte_budget(Some(store_budget(bytes)));
+            state.store.set_byte_budget(Some(budget.primary));
+            state.check_store.clear();
+            state.check_store.set_byte_budget(Some(budget.check));
+            state.dp_cache = DpCache::new(budget.results);
             state.qp_cache = QpCache::new(bytes / 2);
             #[cfg(feature = "poles-only")]
             {
                 state.pole_store.clear();
-                state.pole_store.set_byte_budget(Some(store_budget(bytes)));
+                state.pole_store.set_byte_budget(Some(budget.poles));
             }
             state.budget = bytes;
         }
@@ -766,11 +856,18 @@ pub unsafe extern "C" fn ml_tirust_cache_statistics(
             s.bytes,
             s.not_stored,
         ];
-        counts[4] += state.qp_cache.hits;
-        counts[5] += state.qp_cache.misses;
-        counts[6] += state.qp_cache.entries.len() as u64;
-        counts[7] += state.qp_cache.bytes;
-        counts[8] += state.qp_cache.not_stored;
+        let c = state.check_store.statistics();
+        for (a, b) in counts.iter_mut().zip([
+            c.subsets_reused, c.subsets_computed, c.masters_reused, c.masters_computed,
+            c.moments_reused, c.moments_computed, c.entries, c.bytes, c.not_stored,
+        ]) {
+            *a += b;
+        }
+        counts[4] += state.qp_cache.hits + state.dp_cache.hits;
+        counts[5] += state.qp_cache.misses + state.dp_cache.misses;
+        counts[6] += (state.qp_cache.entries.len() + state.dp_cache.entries.len()) as u64;
+        counts[7] += state.qp_cache.bytes + state.dp_cache.bytes;
+        counts[8] += state.qp_cache.not_stored + state.dp_cache.not_stored;
         #[cfg(feature = "poles-only")]
         {
             let p = state.pole_store.statistics();
@@ -1175,6 +1272,52 @@ mod tests {
         unsafe {
             ml_tirust_context_destroy(c);
         }
+    }
+    #[test]
+    fn exact_primary_repeats_reuse_the_tensor_and_checks_never_do() {
+        let key = (3, 2);
+        let mass = 91.188;
+        let shifts = [0., 0., 0., 0., 300., 120., -40., 250., 520., -60., 110., 400.];
+        let batch = || {
+            let p: Vec<f64> = shifts.to_vec();
+            let mut s = vec![0.; 9];
+            for i in 0..3 {
+                for j in 0..3 {
+                    let d: Vec<f64> = (0..4).map(|a| p[4 * i + a] - p[4 * j + a]).collect();
+                    s[i + 3 * j] = d[0] * d[0] - d[1] * d[1] - d[2] * d[2] - d[3] * d[3];
+                }
+            }
+            let m = [C64 { re: mass * mass, im: -mass * 2.4 }; 3];
+            dp_batch(3, &p, &s, &m, 1e6).unwrap()
+        };
+        let mode = Mode { poles: 0, finite: true, check: false, cache: true };
+        let mut state = State::new();
+        let first = state.dp_checked(key, batch(), mode).unwrap();
+        assert_eq!(first.0, SUCCESS);
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses, state.dp_cache.entries.len()), (0, 1, 1));
+        let routes = state.dp_routes;
+        // An exact repeat returns the stored tensor without a reduction.
+        assert_eq!(state.dp_checked(key, batch(), mode).unwrap(), first);
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses), (1, 1));
+        assert_eq!(state.dp_routes, routes);
+        // It equals a fresh, unshared evaluation bit for bit.
+        assert_eq!(State::new().dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap(), first);
+        // Checks and cache-disabled calls neither read nor fill it.
+        let check = state.dp_checked(key, batch(), Mode { check: true, ..mode }).unwrap();
+        assert_eq!(check.0, SUCCESS);
+        assert_eq!(state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap(), first);
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses, state.dp_cache.entries.len()), (1, 1, 1));
+        // Checks share subintegrals in their own store, never the primary one.
+        assert!(state.check_store.statistics().entries > 0);
+        // Another pole selection is another entry; the point boundary empties it.
+        let ir = state.dp_checked(key, batch(), Mode { poles: 2, ..mode }).unwrap();
+        assert_eq!(ir.0, SUCCESS);
+        assert_eq!(state.dp_cache.entries.len(), 2);
+        let c = Box::into_raw(Box::new(Context { state: Mutex::new(state) }));
+        assert_eq!(unsafe { ml_tirust_clear_cache(c) }, SUCCESS);
+        let state = unsafe { Box::from_raw(c) }.state.into_inner().unwrap();
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses, state.dp_cache.entries.len()), (0, 0, 0));
+        assert_eq!(state.check_store.statistics().entries, 0);
     }
     #[test]
     fn failed_dp_reduction_discards_intermediate_cache_values() {
