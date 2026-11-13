@@ -49,12 +49,15 @@ aligns Symbolica with the application's shared core and uses:
   translator, native Python ComplexFloat operands at the more precise
   component's precision), branch `loop_me_pyamplicol` of
   `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
-- TIRust `de60dc480fec6475d2373a533c64d1c40ce23b2e` (its main: PR #31's
+- TIRust `49dc836e4b3fb0785dba3646a8a9a9c9de19cc5f` (its main: PR #31's
   triangle loop-rotation test on the binary64 `TensorWorkspace` facade, then
   TIRust's own scoped Symbolica library key: its core operations hold a guard
-  of a key issued for `iregi_rust`, beside pyAmpliCol's own; the
-  `DirectWorkspace` and `TensorStore` this crate calls are numerically
-  unchanged), behind the cargo feature `tir` (below).
+  of a key issued for `iregi_rust`, beside pyAmpliCol's own; then a
+  direct-engine fix: a plan variant for affinely dependent propagators with
+  a non-zero constant relation, i.e. exactly degenerate kinematics, now
+  evaluates the master families (A0/B0) its base plan never created, which
+  before kept a previous lane's values or zero and were returned as a wrong
+  `Success`, e.g. a gg -> HH top-loop box at threshold), behind the cargo feature `tir` (below).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
 - oneloopmaster `bd703d09a78f7849a6b86a07096e6f222fc01193` (its main: per-evaluator
