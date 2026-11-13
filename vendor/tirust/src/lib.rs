@@ -130,8 +130,11 @@ impl State {
                 // A lane starts at the lowest tier whose own gate admits its
                 // binary64 estimate (no skipping margin): each tier's gate
                 // bounds the error amplification, so near-limit lanes get
-                // double-double instead of 256-bit evaluations.
-                EmbedderOptions { precision_tiers: true, tier_margin_bits: 0, ..EmbedderOptions::default() },
+                // double-double instead of 256-bit evaluations. The double-double
+                // tier accepts conditioning down to 2^-80 (26 bits of headroom):
+                // on MadLoop's Zggg its results round to the 256-bit binary64
+                // values, at a fifth of their cost.
+                EmbedderOptions { precision_tiers: true, tier_margin_bits: 0, double_double_headroom_bits: 26, ..EmbedderOptions::default() },
             ).map_err(|e| e.to_string())?;
             self.dp.insert(workspace_key, workspace);
         }

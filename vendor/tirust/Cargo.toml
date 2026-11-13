@@ -18,7 +18,7 @@ default = []
 poles-only = []
 
 [dependencies]
-iregi-rust = { git = "https://github.com/huashengshao/TIRust", rev = "6e4bf348fe18758282bc1fc875ca198162053151" }
+iregi-rust = { git = "https://github.com/huashengshao/TIRust", rev = "9a781998e54a39fb06d3621de3cd458da09d2a52" }
 symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "serde", "tracing_max_level_info"] }
 
 [patch.crates-io]

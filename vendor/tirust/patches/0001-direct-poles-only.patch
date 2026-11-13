@@ -239,10 +239,10 @@
      evaluators: [Option<MasterEvaluator<T>>; 4],
      native: [Option<oneloop::NativeEvaluator<T>>; 4],
 +    pole_masters: [Option<madloop_pole_kernels::ScalarPoleEvaluator<T>>; 4],
-     native_input: Vec<C<T>>,
-     native_output: Vec<C<T>>,
-     /// Key of the current double-double master in the shared store: family,
-@@ -317,7 +318,7 @@
+     /// How the workspace evaluates masters; a plan variant that needs a
+     /// family its base plan has not gets that family's evaluator on first use.
+     master_mode: DirectMasters,
+@@ -320,7 +321,7 @@
      normalization: C<T>,
  }
  
@@ -251,7 +251,7 @@
  where
      Complex<T>: EvaluationDomain,
  {
-@@ -327,6 +328,9 @@
+@@ -330,6 +331,9 @@
          masters: DirectMasters,
      ) -> Result<Self, ReductionError> {
          let _oem_license = crate::license::unlock();
@@ -261,12 +261,12 @@
          let zero = czero(&prototype);
          let one = C::new(prototype.one(), prototype.zero());
          let constants: Arc<Vec<T>> = Arc::new(
-@@ -343,10 +347,16 @@
-         ];
+@@ -340,10 +344,16 @@
+         );
          let mut evaluators: [Option<MasterEvaluator<T>>; 4] = Default::default();
          let mut native: [Option<oneloop::NativeEvaluator<T>>; 4] = Default::default();
 +        let mut pole_masters: [Option<madloop_pole_kernels::ScalarPoleEvaluator<T>>; 4] = Default::default();
-         for (family_index, family) in families.into_iter().enumerate() {
+         for (family_index, family) in MASTER_FAMILIES.into_iter().enumerate() {
              if plan.masters[family_index].is_empty() {
                  continue;
              }
@@ -277,8 +277,8 @@
 +            }
              match masters {
                  DirectMasters::Native => {
-                     let mut evaluator = oneloop::NativeEvaluator::with_binary_precision(
-@@ -375,9 +385,11 @@
+                     native[family_index] = Some(
+@@ -367,9 +377,11 @@
          }
          let pi = prototype.pi();
          let a = prototype.euler() + &pi.log();
@@ -293,26 +293,41 @@
          let mut pi_power = prototype.one();
          for _ in 0..2 + i32::from(plan.settings.dimension_shift) {
              pi_power *= &pi;
-@@ -473,6 +485,7 @@
+@@ -465,6 +477,7 @@
              native_output: vec![zero.clone(); 3],
              master_key: Vec::with_capacity(25),
              native,
 +            pole_masters,
+             master_mode: masters,
              master_inputs: Default::default(),
              master_values: Vec::new(),
-             master_errors: Vec::new(),
-@@ -855,9 +868,7 @@
-         // The embedder's binary64 masters on a miss (sharing on or off).
-         let provider = self.shared.as_ref().filter(|store| store.provider().is_some()).cloned();
-         for family in 0..4 {
+@@ -851,7 +864,14 @@
+             if plan.masters[family].is_empty() {
+                 continue;
+             }
+-            if self.native[family].is_none() {
++            if POLES {
++                // A plan variant can need a family its base plan has not
++                // (as for the full evaluators below).
++                if self.pole_masters[family].is_none() {
++                    self.pole_masters[family] = Some(madloop_pole_kernels::ScalarPoleEvaluator::with_binary_precision(
++                        MASTER_FAMILIES[family], self.prototype.get_precision())?);
++                }
++            } else if self.native[family].is_none() {
+                 // A plan variant (a relation variant) can need a family its
+                 // base plan has not: its masters must be evaluated, never
+                 // left at the previous lane's values.
+@@ -863,9 +883,6 @@
+                 }
+                 self.native[family] = Some(native_evaluator(family, self.prototype.get_precision())?);
+             }
 -            let Some(evaluator) = self.native[family].as_mut() else {
 -                continue;
 -            };
-+            if plan.masters[family].is_empty() { continue; }
              for &(subset, index) in &plan.masters[family] {
                  let members = &plan.subsets[subset].members;
                  let d = |i: usize, j: usize| self.distances[members[i] * n + members[j]].clone();
-@@ -922,7 +933,14 @@
+@@ -930,7 +947,14 @@
                          provided_master(shared, family, &input[..arity + 1], &mut self.native_output, &self.prototype)
                      });
                      if !provided {
@@ -328,7 +343,7 @@
                      }
                      if let (true, Some(store)) = (dd_key, dd_store) {
                          if let Some(value) = read_dd_master(&self.native_output) {
-@@ -1129,7 +1147,7 @@
+@@ -1137,7 +1161,7 @@
      /// Laurent slots a gather computes: all four, or the UV and finite ones
      /// of an IR-free lane (the others are then zero times the scale).
      const fn gather_slots<const FULL: bool>() -> &'static [usize] {
@@ -337,7 +352,7 @@
      }
  
      /// Exact key of a gather's Cartesian moments: everything the gather
-@@ -1199,7 +1217,7 @@
+@@ -1207,7 +1231,7 @@
          let count = plan.coefficient_counts[id] as usize;
          let mut largest = 0.0f64;
          for value in &self.values[start as usize..start as usize + count] {
@@ -346,7 +361,7 @@
                  if !(z.re.is_finite() && z.im.is_finite()) {
                      return false;
                  }
-@@ -1256,7 +1274,7 @@
+@@ -1264,7 +1288,7 @@
                      std::collections::hash_map::Entry::Vacant(entry) => {
                          let small = DirectPlanData::new(self.subset_settings(size, rank))
                              .map_err(|e| e.to_string())?;
@@ -355,7 +370,7 @@
                              .map_err(|e| e.to_string())?;
                          // It evaluates this lane's inputs, at their precision.
                          executor.set_input_precision(self.input_bits);
-@@ -1265,6 +1283,9 @@
+@@ -1273,6 +1297,9 @@
                          entry.insert(executor)
                      }
                  };
@@ -365,7 +380,7 @@
                  let values = self.subset_row(&subset.members, |z| {
                      Complex::new(DoubleFloat::from(z.re.to_f64()), DoubleFloat::from(z.im.to_f64()))
                  });
-@@ -2023,8 +2044,8 @@
+@@ -2031,8 +2058,8 @@
              // L[n] = int_0^1 x^n log(a + b x) dx, n <= max_k.
              l_values.clear();
              l_values.resize(max_k + 1, self.zero.clone());
@@ -376,7 +391,7 @@
              } else if b_zero {
                  let log_a = log(&a);
                  for (n, value) in l_values.iter_mut().enumerate() {
-@@ -2092,7 +2113,7 @@
+@@ -2100,7 +2127,7 @@
                      *value = csub(&cscale(&log_end, &inverse), &cscale(&cmul(&b, &m_values[n + 1]), &inverse));
                  }
              }
@@ -385,7 +400,7 @@
              for &(lambda, k, index) in entries {
                  let mut value = lzero(&self.zero);
                  if a_zero && b_zero {
-@@ -2121,20 +2142,22 @@
+@@ -2129,20 +2156,22 @@
                          );
                          let inverse = self.prototype.one() / &self.prototype.from_usize(n + 1);
                          i0 = cadd(&i0, &cscale(&weight, &inverse));
@@ -412,7 +427,7 @@
                  }
                  self.values[index as usize] = value;
              }
-@@ -2384,8 +2407,8 @@
+@@ -2392,8 +2421,8 @@
          let w = powers - ibp_unit(bits, l);
          let base = self.ibp(w)?;
          let mut common = base;
@@ -423,7 +438,7 @@
          let mut result = lzero(&self.zero);
          let size = active.len();
          for (local_i, &i) in active.iter().enumerate() {
-@@ -2397,12 +2420,12 @@
+@@ -2405,12 +2434,12 @@
                  }
                  let child = w - ibp_unit(bits, i) + ibp_unit(bits, j);
                  let value = self.ibp(child)?;
@@ -439,7 +454,7 @@
          self.ibp_memo.insert(powers, result.clone());
          Ok(result)
      }
-@@ -2481,13 +2504,13 @@
+@@ -2489,13 +2518,13 @@
                          } else {
                              &self.values_jet[b - 1][src]
                          };
@@ -455,7 +470,7 @@
                  }
              }
              let dst = instruction.dst as usize;
-@@ -2567,9 +2590,9 @@
+@@ -2575,9 +2604,9 @@
                  let src = term.src as usize;
                  if term.geometry == NO_GEOMETRY {
                      let factor = C::new(constant.clone(), self.prototype.zero());
@@ -467,7 +482,7 @@
                      }
                      continue;
                  }
-@@ -2580,16 +2603,16 @@
+@@ -2588,16 +2617,16 @@
                          continue;
                      }
                      let factor = if term.constant == 0 { ga.clone() } else { cscale(ga, constant) };
@@ -487,7 +502,7 @@
                  }
              }
              let dst = instruction.dst as usize;
-@@ -2747,12 +2770,12 @@
+@@ -2755,12 +2784,12 @@
                              cscale(geometry, &constants[term.constant as usize])
                          }
                      };
@@ -502,7 +517,7 @@
                      }
                  }
                  values[instruction.dst as usize] = accumulator;
-@@ -3283,11 +3306,11 @@
+@@ -3291,11 +3320,11 @@
                      if real {
                          for (local, product) in &self.sparse_real[from as usize..to as usize] {
                              let total = &mut self.g_buffer[block_start + *local as usize];
@@ -516,7 +531,7 @@
                          }
                      }
                  }
-@@ -3302,14 +3325,14 @@
+@@ -3310,14 +3339,14 @@
                          continue;
                      }
                      let value = &self.g_buffer[usize::from(lambda) * stride + src as usize];
@@ -534,7 +549,7 @@
                      *slot = cscale(slot, &self.gather_scale);
                  }
                  self.values[moment_base + e] = total;
-@@ -3336,7 +3359,7 @@
+@@ -3344,7 +3373,7 @@
                          let mut total = self.values[moment_base + line[j] as usize].clone();
                          for k in 0..j {
                              let factor = cscale(&self.tpow[j - k], &self.binomials[j][k]);
@@ -543,7 +558,7 @@
                          }
                          self.values[moment_base + line[j] as usize] = total;
                      }
-@@ -3384,7 +3407,7 @@
+@@ -3392,7 +3421,7 @@
          }
          self.profile = DirectProfile::default();
          self.master_rows = 0;
@@ -552,7 +567,7 @@
          if batched_masters {
              let started = self.timer();
              self.evaluate_masters(batch)?;
-@@ -3504,7 +3527,7 @@
+@@ -3512,7 +3541,7 @@
                      continue;
                  }
              }
@@ -561,7 +576,7 @@
                  let started = self.timer();
                  if let Err(error) = self.geometry_jets() {
                      statuses.push(LaneStatus::Unstable(error));
-@@ -3535,7 +3558,7 @@
+@@ -3543,7 +3572,7 @@
                      continue;
                  }
              }
@@ -570,7 +585,7 @@
                  self.values[unit as usize] = [self.zero.clone(), self.zero.clone(), self.zero.clone(), self.one.clone()];
              }
              self.detect_ir_free(&plan);
-@@ -3604,7 +3627,7 @@
+@@ -3612,7 +3641,7 @@
                      Convention::MadLoop => {
                          let mut out = [uv, v[1].clone(), v[2].clone(), v[3].clone()];
                          if flags.odd {
@@ -579,7 +594,7 @@
                                  *slot = csub(&self.zero, slot);
                              }
                          }
-@@ -3612,20 +3635,26 @@
+@@ -3620,20 +3649,26 @@
                      }
                      Convention::IregiNative => {
                          let single_ir = csub(&v[1], &cscale(&v[2], &constants.a));
@@ -612,7 +627,7 @@
                      finite &= entry.re.is_finite() && entry.im.is_finite();
                      lane_out[4 * index + slot] = entry;
                  }
-@@ -3968,4 +3997,13 @@
+@@ -3995,4 +4030,13 @@
          assert_native_c0_is_handwritten(0.0f64);
          assert_native_c0_is_handwritten(DoubleFloat::from(0.0));
      }
