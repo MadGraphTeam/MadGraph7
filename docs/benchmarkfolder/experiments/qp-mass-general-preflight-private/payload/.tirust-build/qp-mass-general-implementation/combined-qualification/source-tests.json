@@ -1,9 +1,0 @@
-{
-  "scope": "Pure Python controller tests; every bounded process call replaced by in-memory stub",
-  "tests_run": 8,
-  "failures": 0,
-  "errors": 0,
-  "compiler_launched": false,
-  "native_launched": false,
-  "output": "test_expected_sigfpe_is_explicit_and_retained (combined_control_source_tests.ControlChecks.test_expected_sigfpe_is_explicit_and_retained) ... ok\ntest_fixture_subset_requires_identities (combined_control_source_tests.ControlChecks.test_fixture_subset_requires_identities) ... ok\ntest_immutable_parent_sources_bound (combined_control_source_tests.ControlChecks.test_immutable_parent_sources_bound) ... ok\ntest_launch_error_never_accepted (combined_control_source_tests.ControlChecks.test_launch_error_never_accepted) ... ok\ntest_runtime_exact (combined_control_source_tests.ControlChecks.test_runtime_exact) ... ok\ntest_sigfpe_normal_case_fails (combined_control_source_tests.ControlChecks.test_sigfpe_normal_case_fails) ... ok\ntest_timeout_never_accepted (combined_control_source_tests.ControlChecks.test_timeout_never_accepted) ... ok\ntest_wrong_interpreter_refused (combined_control_source_tests.ControlChecks.test_wrong_interpreter_refused) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.006s\n\nOK\n"
-}

@@ -1,8 +1,0 @@
-{
-  "command": "source tools/tirust_env.sh; python3 -B docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-proposal-1/test_analyze.py",
-  "exit_code": 0,
-  "native_launched": false,
-  "scope": "Ten synthetic analyzer tests; no loader, compiler, bridge, numerical worker, lock, or timing execution",
-  "tests_passed": 10,
-  "tool_observed_elapsed_test_seconds": 0.223
-}

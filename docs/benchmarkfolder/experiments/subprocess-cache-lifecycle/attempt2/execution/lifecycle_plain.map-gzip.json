@@ -1,7 +1,0 @@
-{
-  "raw_sha256": "62f2e2b80445f1299d6cbe8eed44c3265480b4ce058247d12dce267cb80e0171",
-  "raw_bytes": 30594809,
-  "gzip_sha256": "bb1c8c40d1b73401c3de9a885167d7b9f6ddc4188a6ce6ab3ce220d07e541631",
-  "gzip_bytes": 1715526,
-  "source": "attempt2-retained/lifecycle_plain.map remains unchanged in private work tree"
-}

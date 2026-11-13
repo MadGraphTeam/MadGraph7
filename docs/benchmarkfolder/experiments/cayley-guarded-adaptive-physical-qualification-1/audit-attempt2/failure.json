@@ -1,9 +1,0 @@
-{
-  "schema": "guarded-portable-audit-harness-failure-v2",
-  "exit_code": 1,
-  "failure": "optional open-policy hook rejected Python stdlib __future__ cache and relative directory-descriptor cleanup opens",
-  "native_or_loader_executed": false,
-  "numerical_runtime_or_captured_evidence_modified": false,
-  "superseded_by": "ordinary clean-directory relocated verifier; no further custom hook iteration",
-  "index_sha256_used": "11596bfef5c9f2c57c516abab384d3ab74b8dc3f8632ef5bffba2188dd1e91fc"
-}

@@ -1,8 +1,0 @@
-{
-  "exception": "TimeoutError('Lock wait expired before execution')",
-  "exit_code": 1,
-  "kind": "root-reported-tool-terminal-observation",
-  "observed_utc": "2026-11-10T12:56:26Z",
-  "session_id": 29078,
-  "source": "Parent root reported actual tools terminal observation; no synthetic machine transcript."
-}

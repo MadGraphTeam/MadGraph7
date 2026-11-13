@@ -1,7 +1,0 @@
-{
-  "schema": "audit-only-historical-status-correction-v1",
-  "initial_audit_source_sha256": "dd6a26803e6669216bb3e35f0a62def2156511167f4163d670a9c79baddce554",
-  "initial_attempt": "exit1 at GEN3 historical result-status assertion after all raw numerical/runtime/closure checks passed",
-  "reason": "GEN3 terminal is passed, while immutable generation result correctly says generated_pending_source_review. Subsequent exact source review and selected-unit BUILD were separate. Corrected audit preserves this historical distinction; no source/evidence/threshold change or native execution.",
-  "new_native_calls": 0
-}

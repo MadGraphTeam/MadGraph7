@@ -1,5 +1,0 @@
-{
-  "error": "Refusing a numerical-object build in diagnostic clone",
-  "error_type": "ValueError",
-  "performance_acceptance_eligible": false
-}

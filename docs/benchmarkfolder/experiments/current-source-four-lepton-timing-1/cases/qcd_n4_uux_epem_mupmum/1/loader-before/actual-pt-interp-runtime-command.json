@@ -1,9 +1,0 @@
-{
-  "argv": [
-    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
-    "--list",
-    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-four-lepton-timing-work-1/clones/1/outputs/candidate/qcd_n4_uux_epem_mupmum/SubProcesses/P0_uux_epemmupmum/check"
-  ],
-  "executable_sha256": "d4cb524fc16ed65f855555d021f70c80466082bf15f8489bdba7bb3129a44b95",
-  "invokes_fortran_main": false
-}

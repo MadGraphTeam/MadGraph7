@@ -1,5 +1,0 @@
-{"case": "qcd_n2_gg_ttx", "backend": 8, "status": "unchecked-qp-diagnostic"}
-{"case": "qcd_n3_uux_zgg", "backend": 9, "status": "failed"}
-{"case": "qcd_n4_uux_zzgg", "backend": 9, "status": "timeout"}
-{"case": "ew_n3_epem_ttxa", "backend": 8, "status": "unchecked-qp-diagnostic"}
-{"case": "ew_n3_epem_ttxa", "backend": 9, "status": "unchecked-qp-diagnostic"}

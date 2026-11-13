@@ -1,6 +1,0 @@
-/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m1-g059.dat
-/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m1-g061.dat
-/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m2-g059.dat
-/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m2-g061.dat
-/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m3-g059.dat
-/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m3-g061.dat

@@ -1,9 +1,0 @@
-{
-  "points": 21,
-  "matrix_entries": 1008,
-  "decimal_precision": 80,
-  "all_repaired_external_shells_and_adjacent_matrix_entries_checked": true,
-  "maximum_physical_t_relative_error_at_osthres_1e_minus24": "5.1477031518958000357700106733618311119737771007314095087850550565255514004125342E-16",
-  "stability_certified": false,
-  "performance_eligible": false
-}

@@ -1,9 +1,0 @@
-{
-  "argv": [
-    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
-    "-print-file-name=libstdc++.a"
-  ],
-  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
-  "started_utc": "2026-11-11T11:44:04.892012+00:00",
-  "timeout_seconds": 30.0
-}

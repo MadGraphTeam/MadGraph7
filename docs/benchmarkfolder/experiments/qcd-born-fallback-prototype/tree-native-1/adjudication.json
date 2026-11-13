@@ -1,6 +1,0 @@
-{
-  "qualified": false,
-  "failure": "Test fixture used GC_4=1e100, appearing in only one vertex, so the QP Born stayed within DP range. STOP52 correctly rejected the test premise, not a demonstrated fallback failure.",
-  "prior_checks": "147 ordinary bit/flag cases, 25 same-input stress rescues, caller invalid flag preservation and invalid QP rejection completed. Trap and timing phases not reached.",
-  "correction": "Use GC_4=1e200 for a finite QP Born above binary64 range; retain this attempt and retry in a new namespace."
-}

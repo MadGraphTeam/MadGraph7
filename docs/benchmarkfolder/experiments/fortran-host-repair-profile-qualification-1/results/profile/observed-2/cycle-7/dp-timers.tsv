@@ -1,8 +1,0 @@
-# schema host-repair-profile-v1
-# mode 2
-# clock_rate 1000000000
-# fields stage begin_count end_count ticks nested_count direct_count
-1 12800 12800 76796245 0 12800
-2 12800 12800 71148771 12800 0
-3 0 0 0 0 0
-# active 0 0 0

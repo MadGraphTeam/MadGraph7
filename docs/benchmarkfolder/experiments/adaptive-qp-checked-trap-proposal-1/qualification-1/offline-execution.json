@@ -1,7 +1,0 @@
-{
-  "analysis_source": "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/qualification-1/analyze.py",
-  "elapsed_seconds_administrative": 15.613586928229779,
-  "native_executed": false,
-  "passed": true,
-  "scope": "Pure frozen Python replay/stream audit only; no native rerun"
-}

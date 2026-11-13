@@ -1,8 +1,0 @@
-{
-  "original_native_installations_removed": false,
-  "outputs_moved": [
-    "standalone",
-    "nlo"
-  ],
-  "source_prefixes_removed": true
-}

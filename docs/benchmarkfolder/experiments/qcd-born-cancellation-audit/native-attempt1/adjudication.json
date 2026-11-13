@@ -1,6 +1,0 @@
-{
-  "status": "invalid diagnostic; noBorn evaluation",
-  "cause": "Modelreader stopped with exit0 becauseident_card.dat absentbesideprivateparamcard",
-  "record_limit": "Originalexecution completeTrue meantprocess exited0, notcompletionofBornrecords; supersededbyexplicitrow-countchecks",
-  "recovery": "Copyunchangedident_card.dat toprivateprefix; rebuild/runfresh; retainthisattempt"
-}

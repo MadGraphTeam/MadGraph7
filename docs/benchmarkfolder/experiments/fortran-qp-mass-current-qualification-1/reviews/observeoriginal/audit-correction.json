@@ -1,4 +1,0 @@
-{
-  "initial_attempt": "The independent audit assumed MODELDP also contains MU_R; actual source layout contains only MB/MT, so first-group extra scale oracle access raised IndexError after strict parser/provenance/host-parity replay.",
-  "correction": "Remove unsupported MU_R model-join claim; retain all3016 finite native scale records and full argument pairing. No native/source/journal bytes changed."
-}

@@ -1,7 +1,0 @@
-{
-  "error": {
-    "type": "ProtocolError",
-    "message": "Worker protocol timeout; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n4_uux_zzgg/candidate-9-auto/stdout.txt"
-  },
-  "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-5/runs/qcd_n4_uux_zzgg/candidate-9-auto/stdout.txt"
-}

@@ -1,7 +1,0 @@
-{
-  "scope": "Corrected attempt2; attempt1 remains immutable",
-  "attempt1_source_index_sha256": "7ea41eb03dadf35707920b291962c22a2bcbc638c244f8655da26407e9696a39",
-  "attempt1_build_evidence_index_sha256": "1022483fe0d72b3fe818e3bff100369ce6c83e4d726a4469ed110ee730a92a6d",
-  "attempt1_build_returncode": 101,
-  "authorized_change": "Relocate unsafe MPFR FFI to bridge, pass a safe fn()->u32 callback, and explicitly refuse unavailable flag-reader comparisons."
-}

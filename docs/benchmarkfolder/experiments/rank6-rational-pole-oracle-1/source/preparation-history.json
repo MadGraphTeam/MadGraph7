@@ -1,7 +1,0 @@
-{
-  "compiler_calls": 0,
-  "corrected_preparation": "Copied the four exact inputs with the correct historical index path; no historical file changes.",
-  "first_preparation_failed": "Incorrect historical runtime index basename evidence-index.json; correct basename is index.json. Three copied inputs remained identical, analyzer did not exist and no algebra/native evaluation launched in that failed preparation.",
-  "native_calls": 0,
-  "preseal_replay_failure": "Tuple/list mismatch in Python vs serialized JSON coordinates, before source seal. Corrected returned powers to JSON-native lists. Stored mathematical results and inputs unchanged; no native work."
-}

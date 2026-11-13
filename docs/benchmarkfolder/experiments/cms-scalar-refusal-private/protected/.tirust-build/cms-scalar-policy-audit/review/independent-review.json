@@ -1,8 +1,0 @@
-{
-  "citation_correction": "Zero-input box assignment and return require avh_olo.f90 lines22484\u201322488; old README cites22481\u201322486. Frozen README remains unchanged.",
-  "conclusion": "No substantive source errors; global setter/default-mode distinction and additive per-call/refusal proposal accurate; separate from Rust oneloopmaster",
-  "parent_index_sha256": "e1099050b74c12f438006609a5775bf85c15cfd4b6f96dc9b7a387d012309ed9",
-  "reviewer": "/root/reference_libraries/cache_audit",
-  "scope": "read-only; no edits, native or compiler",
-  "source_bindings_verified": 9
-}

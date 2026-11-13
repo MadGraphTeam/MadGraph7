@@ -1,2 +1,0 @@
-make: /bin/bash: No such file or directory
-make: *** [lifecycle.mk:14: lifecycle-link-info] Error 127

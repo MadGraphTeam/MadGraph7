@@ -1,5 +1,0 @@
-{
-  "recorded_unix": 1794274644.8103502,
-  "host_loadavg": "2460.34 8652.40 5298.87 235/60354 13",
-  "root_resource_clearance": "CPU10/11 each0%busy/0%iowait over1s; memory/IOpressure zero; runnable239/59889, downfrom8682. Historical load remains elevated after a burst. CPU9 has an existing campaign. Four CPU10 nativeworkers authorized under sharedlock and original180s caps. No timing acceptance claim."
-}

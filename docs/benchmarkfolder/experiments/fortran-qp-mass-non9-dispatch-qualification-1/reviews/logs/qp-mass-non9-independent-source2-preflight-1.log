@@ -1,1 +1,0 @@
-{"caps": {"build": 180.0, "run": 180.0}, "cleanup": 60, "compiler_calls": 0, "cpu_reservation": false, "limits": {"address_space_bytes": 4294967296, "core_bytes": 0, "file_bytes": 268435456}, "native_calls": 0, "source": "4de119d2c61ab208f6f32b950920fb1ef992bb1a69506c852fe0b836c3ba2fd1", "status": "source-only-preflight-passed"}

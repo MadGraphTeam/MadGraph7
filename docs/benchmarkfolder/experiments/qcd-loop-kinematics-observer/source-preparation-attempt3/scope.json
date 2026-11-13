@@ -1,4 +1,0 @@
-{
-  "native_executed": false,
-  "reason": "Retained source pass before adding independent-review requested historical external-source and frozen-card fail-closed assertions; no generated arithmetic changes."
-}

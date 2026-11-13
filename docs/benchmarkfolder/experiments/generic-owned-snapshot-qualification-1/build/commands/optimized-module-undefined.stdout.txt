@@ -1,2 +1,0 @@
-                 U memcpy
-                 U memset

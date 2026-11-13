@@ -1,3 +1,0 @@
- HEADER           1
- INITIAL          -1                   -1           0
-CARD 1 nominal/param_card.dat 4056CC083126E979           -1           -1           -1           -1            0

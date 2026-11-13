@@ -1,6 +1,0 @@
-{
-  "terminal_session": 80949,
-  "exit_code": 1,
-  "class": "PermissionError",
-  "reason": "Guard harness omitted preloading stdlib textwrap; external Python stdlib read correctly rejected; no capsule mismatch/native/mutation"
-}

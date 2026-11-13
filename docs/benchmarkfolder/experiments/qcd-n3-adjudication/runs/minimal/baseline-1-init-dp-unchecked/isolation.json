@@ -1,9 +1,0 @@
-{
-  "compilation_sha256": "c90b5de1975b12bcc1acfd20c2fb394eaa6c7f2eac31609f65b8713c00653f5e",
-  "copy": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-adjudication/minimal/1-init-dp-unchecked/outputs/baseline/qcd_n3_uux_zgg",
-  "executable_sha256": "6bca649e21aecb7283de19531d22be725fd4a6bde138679bb7bd196c68ff721f",
-  "link_inputs_unchanged": true,
-  "mutations": "Numerical cards and filter files in isolated copy only; no compilation",
-  "original": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/baseline/qcd_n3_uux_zgg",
-  "source_inventory_unchanged": true
-}

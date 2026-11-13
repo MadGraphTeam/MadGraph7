@@ -1,9 +1,0 @@
-{
-  "scope": "One bounded QCDn4 fixed-QP replay. Current trace-capable ordinary driver is adapted to permit exactly120 as a steady code, plus valid T3 initialization aliases. Helper changes forcing toFALSE. H4,U0,T4 and all other steady codes are rejected immediately. Numerical objects and libraries remain unchanged.",
-  "ordinary_trace_template_sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9",
-  "files": {
-    "trace-worker.f": "e937fe5a3a97feb4f259ed5421e703a894f255bb7511cfa2b4703edb211de50e",
-    "trace-runner.py": "827e6664a71f46eb9892ef182a2f460c2612aafbaf3961c0059ff7c7ffe3e874",
-    "traced-unchecked-helper.py": "c2e462e679f7a97362249a84bd3fe0c94e92212cab41a0d9fcbdcdce7790ddda"
-  }
-}

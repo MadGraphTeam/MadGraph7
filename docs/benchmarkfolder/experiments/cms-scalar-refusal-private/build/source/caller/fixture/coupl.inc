@@ -1,2 +1,0 @@
-      REAL*8 MU_R
-      COMMON/FX_MODEL/MU_R

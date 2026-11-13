@@ -1,7 +1,0 @@
-{
-  "performance_acceptance_eligible": false,
-  "reason": "Prepared CPU2 overlaps the known installer compiler affinity CPUs2-5; switch to CPU9 before any native measurement, as directed by parent coordination.",
-  "status": "prepared",
-  "unlaunched_predecessor_label": "historical-c91-qcd-n2-chain-1",
-  "utc": "2026-11-09T22:19:13.007818+00:00"
-}

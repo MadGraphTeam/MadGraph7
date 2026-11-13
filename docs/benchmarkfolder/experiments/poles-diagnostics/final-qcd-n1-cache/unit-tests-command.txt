@@ -1,2 +1,0 @@
-source tools/tirust_env.sh
-python3 -m unittest tests.unit_tests.loop.test_tirust_benchmark_cache

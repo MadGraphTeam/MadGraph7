@@ -1,1 +1,0 @@
-Compile-only evidence. All commands exited0; sources, link inputs and binary hashes were rechecked. No loader, executable or reduction call was run. Compiled binaries remain only in the private build directory. Maps are lossless gzip text with raw-byte hashes. Native qualification remains separately held.

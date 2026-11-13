@@ -1,8 +1,0 @@
-{
-  "matched-comparison.json": "results/matched-comparison.json",
-  "policy_note": "science/PROPOSAL.md",
-  "prior-candidate-word-parity.json": "results/prior-candidate-word-parity.json",
-  "root-run-review.json": "results/root-run-review.json",
-  "run-closure.json": "results/run-closure.json",
-  "scientific_index": "science/index.json"
-}

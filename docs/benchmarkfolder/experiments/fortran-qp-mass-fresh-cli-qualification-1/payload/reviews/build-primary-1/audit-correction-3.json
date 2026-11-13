@@ -1,7 +1,0 @@
-{
-  "schema": "audit-only-command-shape-correction-v1",
-  "initial_audit_source_sha256": "ab5c652bf5801da9a8819a081735664d05120bc53ca52bbcb26ff5aebb99db45",
-  "initial_attempt": "exit1 at overly broad SHELL argument assertion after actual70command/7compile verification",
-  "reason": "Frozen inherited policy captures are three make dry-run queries and one compiler version query per edge, with unchanged before/after recipes; only separately expanded-check explicitly passes pinned SHELL=. Corrected audit checks actual exact before/after policy argv and continues original compiler-policy signature gates. No qualification source/command/evidence altered.",
-  "new_native_calls": 0
-}

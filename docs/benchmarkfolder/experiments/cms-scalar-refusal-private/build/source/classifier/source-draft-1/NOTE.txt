@@ -1,1 +1,0 @@
-Source-only draft retained before adding finite native-output publication checks, derived-metric finite checks and bitwise mock assertions. No compile or native execution occurred.

@@ -1,1 +1,0 @@
-The initial attempt stopped at the exclusive nonblocking numerical lock with BlockingIOError. No reducer subprocess was launched, no native output exists, and protected inputs remained unchanged. The normal runner and its180-second native bound are unchanged. This setup/admission failure is retained separately before a coordinated retry.

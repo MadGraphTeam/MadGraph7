@@ -1,7 +1,0 @@
-{
-  "output": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/fortran-scratch/adapter-scratch-build",
-  "changed_objects": [
-    "TIRUST_interface.o"
-  ],
-  "executable_sha256": "1bc5e2d4b0863304bbcfa8cf05a40d78ca15af541c88baa958b407ad29b429ae"
-}

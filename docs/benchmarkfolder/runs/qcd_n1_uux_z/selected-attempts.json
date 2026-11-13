@@ -1,9 +1,0 @@
-{
-  "tirust-first": {
-    "directory": "tirust-first-attempt-3",
-    "label": "tirust-first",
-    "previous_directory": "tirust-first-attempt-2",
-    "reason": "Both prior attempts had batches below0.95s after substantial shared-host calibration drift. Use a conservative2s calibration target; retain all earlier measurements and actual batch durations.",
-    "utc": "2026-11-09T20:35:58.041430+00:00"
-  }
-}

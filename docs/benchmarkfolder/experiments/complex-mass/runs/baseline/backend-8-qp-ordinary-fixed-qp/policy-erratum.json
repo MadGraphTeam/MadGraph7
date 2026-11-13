@@ -1,9 +1,0 @@
-{
-  "scope": "Erratum to failed diagnostic request metadata only; original files are unchanged.",
-  "finding": "This failed fixed-QP attempt inherited OSThres=1e-24 from the preceding tagged diagnostic; the null alternate_onshell_threshold in its specification is inaccurate. It did not test the default OSThres policy.",
-  "resolved_onshell_threshold": 1e-24,
-  "raw_values_available": false,
-  "inputs_sha256": "3ac58744e83c84032ac9be19f2d8de44a3ce976f3df386e3ad52a54883b6ca8b",
-  "effect_on_qualified_results": "None. The attempt timed out before READY and produced no accepted coefficient rows. All completed primary observations use OSThres=1e-8.",
-  "prevention": "The runner now explicitly resets OSThres=1e-8 before applying any tagged diagnostic override and verifies resolved numerical policy before comparing retained rows."
-}

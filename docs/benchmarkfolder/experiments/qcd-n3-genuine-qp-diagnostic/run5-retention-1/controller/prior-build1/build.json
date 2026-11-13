@@ -1,9 +1,0 @@
-{
-  "elapsed_seconds": 0.24690570123493671,
-  "failure": {
-    "message": "command-1 returned -11",
-    "type": "RuntimeError"
-  },
-  "passed": false,
-  "source_index_sha256": "bf2cd097369d1a3c6a74ff4041bfda9be6dc18bc10d6db48b656943dffb332bc"
-}

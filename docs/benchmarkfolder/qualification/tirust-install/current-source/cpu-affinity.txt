@@ -1,3 +1,0 @@
-pid 537506's current affinity list: 0-383
-pid 537506's new affinity list: 2-5
-pid 537506's current affinity list: 2-5

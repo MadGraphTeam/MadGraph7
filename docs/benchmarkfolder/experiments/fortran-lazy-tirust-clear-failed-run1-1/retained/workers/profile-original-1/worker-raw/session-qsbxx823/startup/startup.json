@@ -1,7 +1,0 @@
-{
-  "error": {
-    "type": "ProtocolError",
-    "message": "Worker exited (0) before reply; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-lazy-tirust-clear-1/workers/profile-original-1/stdout.txt"
-  },
-  "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-lazy-tirust-clear-1/workers/profile-original-1/stdout.txt"
-}

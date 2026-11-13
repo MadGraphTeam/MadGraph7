@@ -1,8 +1,0 @@
-name                                 type              encoding         emb sub uni object ID
------------------------------------- ----------------- ---------------- --- --- --- ---------
-BJOFBZ+LibertinusSerif-Bold-Identity-H CID Type 0C       Identity-H       yes yes yes    221  0
-TDVMHC+LibertinusSerif-Regular-Identity-H CID Type 0C       Identity-H       yes yes yes    224  0
-JQYPRL+DejaVuSansMono                CID TrueType      Identity-H       yes yes yes    227  0
-ZILQNS+DejaVuSans-Bold               CID TrueType      Identity-H       yes yes yes    230  0
-YMCFGJ+DejaVuSans                    CID TrueType      Identity-H       yes yes yes    233  0
-AGHTAY+NewCMMath-Book-Identity-H     CID Type 0C       Identity-H       yes yes yes    236  0

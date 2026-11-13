@@ -1,7 +1,0 @@
-{
-  "status": "rejected-source-drift",
-  "reason": "Validator hardening changed generator source while QCD n3 exported; no numerical claims are made from this attempt.",
-  "original_work": ".tirust-build/dp-terminal-production",
-  "retained_work": ".tirust-build/dp-terminal-production-initial-proof-hardening",
-  "runner_sha256": "49538fd9cea833f09022eaaac61481fe02002b907d15aa7e6a2fac16f41fa8b1"
-}

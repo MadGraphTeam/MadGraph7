@@ -1,6 +1,0 @@
-gmu 238 units 364 roots 4 complete False known 141
-windows [('64', True, None), ('128', True, None)]
-model functions 18 32 initialization [('COUP', False), ('UPDATE_AS_PARAM', False), ('MP_UPDATE_AS_PARAM', False)]
-loop_sm 164 units 344 roots 6 complete False known 165
-windows [('64', True, None), ('128', True, None)]
-model functions 16 30 initialization [('COUP', False), ('UPDATE_AS_PARAM', False), ('MP_UPDATE_AS_PARAM', False)]

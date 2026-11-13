@@ -1,3 +1,0 @@
-/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c check_sa.f -o check_sa.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib
-make: /bin/bash: No such file or directory
-make: *** [makefile:113: check_sa.o] Error 127

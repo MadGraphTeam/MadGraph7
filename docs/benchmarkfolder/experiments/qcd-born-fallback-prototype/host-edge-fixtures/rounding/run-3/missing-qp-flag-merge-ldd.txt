@@ -1,6 +1,0 @@
-	linux-vdso.so.1 (0x0000783f579a8000)
-	libgfortran.so.5 => /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5 (0x0000783f5763d000)
-	libm.so.6 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6 (0x0000783f57555000)
-	libgcc_s.so.1 => /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1 (0x0000783f57528000)
-	libc.so.6 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6 (0x0000783f5731a000)
-	/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2 => /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2 (0x0000783f579aa000)

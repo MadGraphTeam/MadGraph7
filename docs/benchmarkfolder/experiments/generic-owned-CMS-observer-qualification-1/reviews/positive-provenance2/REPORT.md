@@ -1,9 +1,0 @@
-# Retained CMS positive provenance
-
-Both critical fixtures20/21 contain four actual group3 frames: DP modes1/2 and QP modes4/5. Each has two ordered class2 vetoes, pairs(2,4)/(4,2), all14 reached-stage bits and true observed exact-equality/final-certificate returns. The full materialized Q words equal their consumed words, and original DIFFSQ, built/consumed raw, direct selection and native input agree bit for bit. These checks use integer/hex equality only.
-
-The36 DP and36 QP producer records per point form24 actual prepare/normal-return/commit triplets. Last H13 commits feed H17 consumers across label300 only. QP commits follow recorded MP-entry31 and reset32 in the same retry epoch; full16 complex point pairs, every mask and kind-selected current/refs match. DP eligibility true is the typed sentinel, with actual consumer MP flag false; only width128 modes4/5 carry actual genuine-QP true. No DP promotion was used.
-
-Per point, four actual source-upper native entries(2,4) change from legacy all-zero words to finite, strictly negative nonzero candidate words; mirrored(4,2) entries change too. Point20 DP is BE90C6F7A0B5EC03 and QP BFE90C6F7A0B5EC0317054E6819DDCC8. Point21 DP is BDBB7CDFD9D7BDBC and QP BFDBB7CDFD9D7BDBC2D6956F008C43CB. All protected class0/1 entries remain unchanged and unselected.
-
-Candidate final code323 identifies TIRust QP; legacy code420 remains an expected failed numerical control with no precision alias invented. The orchestration passed, but all_requests_numerically_valid remains false. This is not independent finite truth, generic caller/numerator lifetime or final-dot IEEE lowering qualification, production activation, or a performance result. No q/dot/certificate was recomputed, no analyzer or project was imported, and no native code or test was run by this review.

@@ -1,1 +1,0 @@
-{"nonzero_exact_gram_minors": 56, "passed": true, "rows": 30, "scope": "source-only exact arithmetic and driver transformation"}

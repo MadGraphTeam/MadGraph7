@@ -1,9 +1,0 @@
-{
-  "matching_live_owned_processes": [],
-  "no_native_invocation": true,
-  "observed_process_identities": 661,
-  "schema": "current-trace-build-postterminal-ownership-v1",
-  "shared_lock_nonblocking_acquire_release": true,
-  "terminal_exit_code": 0,
-  "terminal_session_id": 8969
-}

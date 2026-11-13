@@ -1,9 +1,0 @@
-{
-  "compiler_executions": 0,
-  "exit_code": 0,
-  "native_executions": 0,
-  "output": "........................................................................ [ 58%]\n...................................................                      [100%]\n123 passed in 0.48s\n",
-  "python": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
-  "schema": "madloop-tirust-bulk-physical-source-tests-v1",
-  "subprocess_process_native_apis_blocked": true
-}

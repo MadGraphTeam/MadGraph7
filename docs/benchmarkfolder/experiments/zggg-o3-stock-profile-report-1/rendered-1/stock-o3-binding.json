@@ -1,9 +1,0 @@
-{
-  "date": "2026-11-13",
-  "packet": "experiments/zggg-o3-stock-profile-1",
-  "packet_index_sha256": "b70fc34521bce42d0ba37356b0832b4bd9097078ab093fcb93162e93542fd843",
-  "schema": "madloop-stock-o3-zggg-report-binding-v1",
-  "source_mg_revision": "cda704e28d634e893fabc3ac358d9a27789f93aa",
-  "source_scope": "actual stock check profile; generated O3; normal learned filters; configured backend and unchecked RETCODE110; one retained common endpoint only",
-  "verifier_sha256": "314bd21ccb7dd88808782f74b498f7f76a82678cf42caa6bb99a99f6a060ab40"
-}

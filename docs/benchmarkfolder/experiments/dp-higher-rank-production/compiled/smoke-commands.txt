@@ -1,6 +1,0 @@
-Both smoke invocations ran from the repository root after sourcing tools/tirust_env.sh.
-Attempt 1 failed at Python parse time; attempt 2 passed after fixing the missing parenthesis.
-
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. taskset -c 10 python3 -m unittest -v tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_higher_rank_dimensions_inactive_tails_and_active_endpoints tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_actual_caller_capture_and_create_merge_preserve_coefficients tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_off_diagonal_inexact_requires_preexisting_flag > docs/benchmarkfolder/experiments/dp-higher-rank-production/compiled/attempt1-smoke.log 2>&1
-
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. taskset -c 10 python3 -m unittest -v tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_higher_rank_dimensions_inactive_tails_and_active_endpoints tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_actual_caller_capture_and_create_merge_preserve_coefficients tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_off_diagonal_inexact_requires_preexisting_flag > docs/benchmarkfolder/experiments/dp-higher-rank-production/compiled/attempt2-smoke.log 2>&1

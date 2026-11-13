@@ -1,6 +1,0 @@
-{
-  "elapsed_seconds": 4.61008516093716,
-  "error": "Worker exited (0) before reply; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-lazy-tirust-clear-1/workers/profile-original-1/stdout.txt",
-  "returncode": 1,
-  "type": "ProtocolError"
-}

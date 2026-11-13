@@ -1,3 +1,0 @@
-Could not link /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adapter-export/native-internal/Cards/param_card.dat at position: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adapter-export/native-internal/SubProcesses/MadLoop5_resources
-Could not link /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adapter-export/native-internal/Cards/ident_card.dat at position: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adapter-export/native-internal/SubProcesses/MadLoop5_resources
-The iregi reduction library could not be found with PATH: specified in mg7_configuration.txt. It will not be available.

@@ -1,8 +1,0 @@
-{
-  "scope": "Unsealed pure-source development only; no native execution",
-  "initial_calculator_sha256": "f98e608066f382fb045b88f0856ea209a77b3bb51f098ec562c5f59566c308a0",
-  "first_pure_attempt_exit_code": 1,
-  "tool_terminal_cell": "aa50eb",
-  "error": "KeyError: passed",
-  "cause": "Terminal closure records qualification under stage, not at the top level. No numerical input or formula was changed."
-}

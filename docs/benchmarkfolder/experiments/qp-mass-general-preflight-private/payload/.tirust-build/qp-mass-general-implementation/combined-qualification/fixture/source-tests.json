@@ -1,9 +1,0 @@
-{
-  "commands_sha256": "138b8de86543c74b8310fd6c89ae37023795e87a841740ebda11f7e43a2d1709",
-  "no_compiler_or_native_execution": true,
-  "parser_sha256": "c0bf0e8278ee4d873f885cd79f2795463dfc4284cacf142880eca41a090626f1",
-  "schema": "qp-mass-fixture-source-tests-v1",
-  "scope": "Python generation/parser validation using synthetic expected journal strings only",
-  "test_sha256": "971e2ebfa040e879582d52cf7c54b30c2c44bec51e5277decd2a960d42650e83",
-  "tests_passed": 11
-}

@@ -1,7 +1,0 @@
-family,case,iterations,full_ns,poles_ns,speedup
-A0,massive,20000,42.783,13.397,3.193
-B0,massive,20000,158.757,16.901,9.393
-C0,massless,20000,48.563,72.901,0.666
-C0,massive,20000,2376.855,31.944,74.407
-D0,massless,20000,54.910,128.775,0.426
-D0,soft,20000,294.838,160.371,1.838

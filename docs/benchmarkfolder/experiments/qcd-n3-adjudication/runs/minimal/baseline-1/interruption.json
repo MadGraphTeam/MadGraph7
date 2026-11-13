@@ -1,7 +1,0 @@
-{
-  "classification": "Administrative initialization interruption; not a numerical accuracy failure",
-  "reason": "No READY within five minutes of isolated CTModeInit=4 initialization; preserve attempt and use original DP initialization with fixed genuine QP evaluation for follow-up.",
-  "elapsed_since_preparation_seconds": 302.58628153800964,
-  "utc": "2026-11-09T20:43:05.297895+00:00",
-  "shutdown": "Own worker FIFO receives an explicit AUDIT_ABORT; Worker protocol-error cleanup terminates its own child process group and restores isolated state."
-}

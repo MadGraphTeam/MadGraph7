@@ -1,5 +1,0 @@
-{
-  "source_only": true,
-  "native_started": false,
-  "reason": "Preparation asserted 25 inherited objects; frozen link recipe contains 24. Corrected assertion. No scientific source changed."
-}

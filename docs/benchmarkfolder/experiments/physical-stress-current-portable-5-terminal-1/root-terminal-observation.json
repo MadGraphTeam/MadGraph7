@@ -1,8 +1,0 @@
-{
-  "exit_code": 0,
-  "inherited_checkpoint_sha256": "0c4157c988bdd0371e9c0cfba54e784b3f7a730cf7a631b8aca5c27814636d5a",
-  "kind": "root-reported-tool-terminal-observation",
-  "observed_utc": "2026-11-10T14:50:08Z",
-  "session_id": 7248,
-  "source_index_sha256": "5eded3d276bea030e9b8cce598f6422f10a789dc1eaa9ff6588275c2e594b931"
-}

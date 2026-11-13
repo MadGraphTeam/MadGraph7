@@ -1,6 +1,0 @@
-rustc 1.97.1 (8bab26f4f 2026-07-14) (built from a source tarball)
-cargo 1.97.0 (c980f4866 2026-06-30)
-GNU Fortran (GCC) 15.2.0
-Python 3.13.12
-Linux itphlies 6.18.45 #1-NixOS SMP PREEMPT_DYNAMIC Wed Aug 19 16:18:21 UTC 2026 x86_64 GNU/Linux
-pid 2's current affinity list: 0-383

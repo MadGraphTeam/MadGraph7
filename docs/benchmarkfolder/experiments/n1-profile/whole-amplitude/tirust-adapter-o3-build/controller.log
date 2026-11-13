@@ -1,7 +1,0 @@
-{
-  "output": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/whole-amplitude/tirust-adapter-o3-build",
-  "changed_objects": [
-    "TIRUST_interface.o"
-  ],
-  "executable_sha256": "90b96b5333a438501656a66c1268e1e2ed8623a92b578834ca57aa939c1841e2"
-}

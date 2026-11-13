@@ -1,9 +1,0 @@
-{
-  "build2_executable_sha256": "ed6a51fff0312b06a45cd97a409aafa7d2447eef5ae7800579b44c0c904b8474",
-  "build2_json_sha256": "c3d2d2568814b0f0efef8a8d465db561e129473eefe55e3fbaa4b785a1ded322",
-  "build2_link_map_sha256": "28baebd869a17b26e08a35f3f331679703c0f80ce0f244f0af46adc2b93401f2",
-  "compiler_support_pin_timing": "Link map support inputs first hashed after original link; no claim of pre-link pinning",
-  "schema": "exact-build2-reuse-v1",
-  "scope": "Existing successful source2 build2, no compiler/linker stage in source3",
-  "source2_index_sha256": "44039ba25e451910d1ab7c264ac1f397437ce41f965d8e381b539dd9baf44046"
-}

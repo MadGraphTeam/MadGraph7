@@ -1,5 +1,0 @@
-set automatic_html_opening False --no_save
-set auto_update 0 --no_save
-set nb_core 4 --no_save
-install tirust --jobs=4
-quit

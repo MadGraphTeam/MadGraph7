@@ -1,6 +1,0 @@
-5f4ad114e000-5f4ad121b000 r--p 00000000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
-5f4ad121b000-5f4ad4e16000 r-xp 000cd000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
-5f4ad4e16000-5f4ad5567000 r--p 03cc8000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
-5f4ad5567000-5f4ad560f000 rw-p 04419000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
-7fff8c867000-7fff8c88a000 rwxp 00000000 00:00 0                          [stack]
-ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

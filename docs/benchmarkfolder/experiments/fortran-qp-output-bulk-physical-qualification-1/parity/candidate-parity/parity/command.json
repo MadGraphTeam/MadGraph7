@@ -1,8 +1,0 @@
-{
-  "before_utc": "2026-11-11T13:23:25.729417+00:00",
-  "command": "PARITY 1",
-  "expected_response": [
-    "PARITYDONE",
-    "1"
-  ]
-}

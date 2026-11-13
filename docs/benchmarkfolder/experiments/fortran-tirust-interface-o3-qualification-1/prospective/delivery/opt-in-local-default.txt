@@ -1,8 +1,0 @@
-PRIVATE_RECIPE_ONLY_NO_COMPILER -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -O3  -c polynomial.f -o polynomial.o 
-PRIVATE_RECIPE_ONLY_NO_COMPILER -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS  -c TIRUST_interface.f -o TIRUST_interface.o 
-PRIVATE_RECIPE_ONLY_NO_COMPILER -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c TIR_interface.f -o TIR_interface.o 
-PRIVATE_RECIPE_ONLY_NO_COMPILER -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c CT_interface.f -o CT_interface.o 
-PRIVATE_RECIPE_ONLY_NO_COMPILER -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c COLLIER_interface.f -o COLLIER_interface.o 
-PRIVATE_RECIPE_ONLY_NO_COMPILER -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c GOLEM_interface.f -o GOLEM_interface.o 
-PRIVATE_RECIPE_ONLY_NO_COMPILER -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c loop_matrix.f -o loop_matrix.o 
-make: 'polynomial.o' is up to date.

@@ -1,8 +1,0 @@
-test_complete_literal_table_and_last_consumed_row (__main__.CombinationTableProof.test_complete_literal_table_and_last_consumed_row) ... ok
-test_mutated_table_extent_value_and_counts_rejected (__main__.CombinationTableProof.test_mutated_table_extent_value_and_counts_rejected) ... ok
-test_writes_aliases_shadowing_and_argument_escapes_rejected (__main__.CombinationTableProof.test_writes_aliases_shadowing_and_argument_escapes_rejected) ... ok
-
-----------------------------------------------------------------------
-Ran 3 tests in 0.019s
-
-OK

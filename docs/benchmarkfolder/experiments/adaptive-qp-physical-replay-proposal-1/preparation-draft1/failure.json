@@ -1,9 +1,0 @@
-{
-  "controller_sha256": "17741aed9ab5e870db96ef528e30d8fcbf9143447b5a7032fafa4a3be53aee91",
-  "correction": "Correct literal closure count15includingloader,14copiedDSOs; no runtime or scientific scope change",
-  "error": "AssertionError at len(runtime)==16: actual frozen closure contains15objects",
-  "loader_launched": false,
-  "native_launched": false,
-  "stage": "pure source_prepare before spec publication",
-  "work_attempt_created": false
-}

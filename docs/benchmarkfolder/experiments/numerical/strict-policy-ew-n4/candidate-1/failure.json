@@ -1,7 +1,0 @@
-{
-  "backend": 1,
-  "error": "RuntimeError('Worker template differs from compilation')",
-  "performance_eligible": false,
-  "source": "candidate",
-  "status": "failed"
-}

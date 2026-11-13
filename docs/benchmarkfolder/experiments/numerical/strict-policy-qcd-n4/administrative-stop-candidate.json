@@ -1,7 +1,0 @@
-{
-  "reason": "Stop the second queued original-template worker before running the new warmup diagnostics. No numerical failure inferred.",
-  "time_utc": "2026-11-09T20:53:18.963537+00:00",
-  "fifos": [
-    ".benchmark-work/tirust/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/worker-protocol.fifo"
-  ]
-}

@@ -1,6 +1,0 @@
-{
-  "limitation": "Post-EXIT buffered or unread FIFO evidence was not refused; source2 adds bounded refusal. No numerical RUN executed.",
-  "preflight_status": "source-only guard passed0 forbidden",
-  "source_index_sha256": "060b86feeba9a7dd44a5d522e96ef7c22b1207a3af378e11d3e448447d05136a",
-  "status": "retained-not-native-admitted"
-}

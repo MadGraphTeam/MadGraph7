@@ -1,10 +1,10 @@
 # TIRust OEM signing and rebuild
 
 Upstream signed revision: `10ce34ed8ad5b6f5f989a0e220eb3a244a71d1a1`.
-MadGraph build inputs and observations: [qualification summary](qualification/tirust-oem-signing-1/summary.json).
+MadGraph build inputs and observations: [qualification summary](https://github.com/MadGraphTeam/MadGraph7/tree/madloop_tirust-evidence-2026-11-13/docs/benchmarkfolder/qualification/tirust-oem-signing-1/summary.json).
 Signed MadGraph qualification: **passed**. Scoped activation is also published
 on [TIRust main](https://github.com/huashengshao/TIRust/commit/de60dc480fec6475d2373a533c64d1c40ce23b2e),
-following its [separate completed functional validation](qualification/tirust-oem-main-publication-1/README.md).
+following its [separate completed functional validation](https://github.com/MadGraphTeam/MadGraph7/tree/madloop_tirust-evidence-2026-11-13/docs/benchmarkfolder/qualification/tirust-oem-main-publication-1/README.md).
 
 TIRust's core crate, `iregi_rust`, embeds the Symbolica library activation
 issued for it. The signed offline expiry is 1 March 2028. Private RAII guards
@@ -59,7 +59,7 @@ recorded sources. This publication leaves the current PDF, ledger and historical
 evidence unchanged.
 Physical-stress accuracy failures, broader experimental qualifications and the
 formal eight-process runtime gates remain open. Hua-Sheng can use the new
-[signed-source local handoff](campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
+[signed-source local handoff](https://github.com/MadGraphTeam/MadGraph7/tree/madloop_tirust-evidence-2026-11-13/docs/benchmarkfolder/campaigns/tirust-oem-signed-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
 for local installation, fresh numerical qualification, paired timings and report
 generation. Its eleven cases, 66 numerical lanes and eight main runtime gates
 are registered with all results pending. The predecessor's frozen local TODO

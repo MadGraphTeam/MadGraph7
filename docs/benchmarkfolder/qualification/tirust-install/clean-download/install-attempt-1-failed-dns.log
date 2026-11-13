@@ -1,5 +1,0 @@
-
-$ git init --quiet
-
-$ git fetch --depth=1 https://github.com/huashengshao/TIRust 854b79dcb7fffcb35e92b4a8a3dd443369b798c4
-fatal: unable to access 'https://github.com/huashengshao/TIRust/': Could not resolve host: github.com

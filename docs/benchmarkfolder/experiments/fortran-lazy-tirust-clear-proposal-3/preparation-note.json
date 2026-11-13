@@ -1,4 +1,0 @@
-{
-  "native_commands_executed": false,
-  "initial_pure_preparation_assertion": "Expected 21 process objects, observed 18. Verified all 19 actual object files; 18 numerical/helper objects excluding check_sa.o. Corrected proposal count before any source seal or native execution."
-}

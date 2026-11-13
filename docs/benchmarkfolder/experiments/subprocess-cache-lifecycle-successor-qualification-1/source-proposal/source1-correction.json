@@ -1,6 +1,0 @@
-{
-  "source1_index_sha256": "62b2af837f5192555a2258035a352a2e65e4d37dce4fe13b8935ed451fd39779",
-  "source1_not_executed": true,
-  "reason": "New key13 CT2/5 applies SWITCH_ORDER to N3 inputs. Source2 uses N1/rank0 key1 for bypass and following repeat14, preserving exact inputs and output parity.",
-  "native_execution": false
-}

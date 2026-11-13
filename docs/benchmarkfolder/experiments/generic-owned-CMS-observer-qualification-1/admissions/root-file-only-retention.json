@@ -1,9 +1,0 @@
-{
-  "admitted_utc": "2026-11-11T22:50:24.249782+00:00",
-  "scope": "File-only private portable retention of closed source/BUILD and failed partial RUN1. Retain actual three legacy results, partial candidate evidence, own-plain references, protocols/maps and independent reviews. No fabricated success-result, native action, new scientific claim, publication or Git mutation.",
-  "source_index_sha256": "2333cb5216b178da1d77083de30ee4c72226d2b82ec6753d0ddc1fd6459b9e29",
-  "reviewed_build_terminal_sha256": "c04a37845f1e5fd9a02cea25375d4f6a8e523071829b19fcb853ae27c73025fd",
-  "run_terminal_sha256": "6bd9c810016f56594320043c30e3cd3b79b71517508b6b578eb6ffd24d6d1a33",
-  "run_review_sha256": "a477572d395057ad39c3eecb3a7dfcd4cb3b76e967faa54f6a57ebb893572f7c",
-  "scientific_qualification": false
-}

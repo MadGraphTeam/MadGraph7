@@ -1,7 +1,0 @@
-test_callback_never_reads_unindexed_or_noncanonical_map (__main__.PortableGuards.test_callback_never_reads_unindexed_or_noncanonical_map) ... ok
-test_default_reader_rejects_file_and_ancestor_symlinks (__main__.PortableGuards.test_default_reader_rejects_file_and_ancestor_symlinks) ... ok
-
-----------------------------------------------------------------------
-Ran 2 tests in 0.003s
-
-OK

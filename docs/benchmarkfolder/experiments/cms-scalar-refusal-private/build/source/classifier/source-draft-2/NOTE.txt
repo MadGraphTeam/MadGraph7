@@ -1,1 +1,0 @@
-Source-only draft retained before underflowed-metric observation and additional boundary/norm/subnormal fixtures. No compiler or native process executed.

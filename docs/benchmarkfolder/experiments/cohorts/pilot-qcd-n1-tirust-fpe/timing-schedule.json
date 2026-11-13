@@ -1,7 +1,0 @@
-{
-  "loops": {
-    "dp": 114
-  },
-  "order": "alternate forward/reverse cohort order; cohorts frozen before calibration",
-  "repetitions": 7
-}

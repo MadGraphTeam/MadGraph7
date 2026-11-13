@@ -1,8 +1,0 @@
-FIXED_QP_TRANSPORT_ONLY_UNCHECKED
- BOOTSTRAP         120
- WARMUP           1           1         120
- WARMUP           2           2         120
-READY_DIAGNOSTIC_ONLY
- OBSERVED           1         120
- OBSERVED           2         120
-COMPLETE_DIAGNOSTIC_ONLY
