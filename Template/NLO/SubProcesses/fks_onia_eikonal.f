@@ -36,8 +36,8 @@ c**************************************************************************
       double precision pk(0:3),pl(0:3),shat,qes2,xicut
       logical lself
       double precision p2(0:3),p1(0:3),fin(0:3)
-      double precision onia_dot,onia_ja,ddilog,pi
-      external onia_dot,onia_ja,ddilog
+      double precision onia_dot,onia_ja,ddilog,pi,onia_gself
+      external onia_dot,onia_ja,ddilog,onia_gself
       parameter (pi=3.1415926535897932385d0)
       double precision d0(0:3),bl,el,ek,x,mk2,ml2,ml,al,lam,nu,v,lv,w
       double precision a,c,lbb,t1,t2,t3,b,lb,e,m2,bk,ja,jb,pre,aek
@@ -48,11 +48,10 @@ c**************************************************************************
       if (lself) then
          m2=onia_dot(pl,pl)
          e=pl(0)
-         b=dsqrt(1d0-m2/e**2)
-         lb=dlog((1d0+b)/(1d0-b))
+         b=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)/e
          p1(0:3)=-pl(0:3)/m2
-         fin(0:3)=(lb-2d0*b-3d0*lb*b**2+2d0*ll*b**3)/(2d0*b**3*m2)
-     &        *pl(0:3)+(-lb+2d0*b+lb*b**2)/(2d0*b**3*e)*d0(0:3)
+         fin(0:3)=(onia_gself(1,b)+2d0*ll)/(2d0*m2)*pl(0:3)
+     &        +onia_gself(2,b)/(2d0*e)*d0(0:3)
          return
       endif
       mk2=onia_dot(pk,pk)
@@ -136,24 +135,20 @@ c     E-bar^{mu nu}({2,2},{k,k}), k massive (no 1/eps^2 pole)
 c**************************************************************************
       implicit none
       double precision pk(0:3),shat,qes2,xicut,p1(0:3,0:3),fin(0:3,0:3)
-      double precision onia_dot
-      external onia_dot
-      double precision m2,e,b,lb,ll,c1,c2,c3,c4,g(0:3),d0(0:3)
+      double precision onia_dot,onia_gself
+      external onia_dot,onia_gself
+      double precision m2,e,b,ll,c1,c2,c3,c4,g(0:3),d0(0:3)
       integer mu,nu
       data g /1d0,-1d0,-1d0,-1d0/
       data d0 /1d0,0d0,0d0,0d0/
       ll=dlog(xicut**2*shat/qes2)
       m2=onia_dot(pk,pk)
       e=pk(0)
-      b=dsqrt(1d0-m2/e**2)
-      lb=dlog((1d0+b)/(1d0-b))
-      c1=(1d0-b**2)*(-3d0*lb+6d0*b+3d0*lb*b**2-4d0*b**3)
-     &     /(6d0*b**5*m2)
-      c2=(-lb+2d0*b+3d0*lb*b**2-2d0*ll*b**3)/(6d0*b**3*m2)
-      c3=(3d0*lb-6d0*b-6d0*lb*b**2+10d0*b**3+3d0*lb*b**4)
-     &     /(6d0*b**5*e*m2)
-      c4=(-3d0*lb+6d0*b+10d0*lb*b**2-18d0*b**3-15d0*lb*b**4
-     &     +8d0*ll*b**5)/(6d0*b**5*m2**2)
+      b=dsqrt(pk(1)**2+pk(2)**2+pk(3)**2)/e
+      c1=(1d0-b**2)*onia_gself(3,b)/(6d0*m2)
+      c2=(onia_gself(4,b)-2d0*ll)/(6d0*m2)
+      c3=onia_gself(5,b)/(6d0*e*m2)
+      c4=(onia_gself(6,b)+8d0*ll)/(6d0*m2**2)
       do mu=0,3
          do nu=0,3
             p1(mu,nu)=-4d0*pk(mu)*pk(nu)/(3d0*m2**2)
@@ -165,4 +160,63 @@ c**************************************************************************
             endif
          enddo
       enddo
+      end
+
+
+      double precision function onia_gself(ig,b)
+c**************************************************************************
+c     The velocity functions of the massive self-eikonal integrals, with
+c     lb = log((1+b)/(1-b)), b the velocity of the onium:
+c       1  (lb - 2b - 3 lb b^2)/b^3
+c       2  (-lb + 2b + lb b^2)/b^3
+c       3  (-3 lb + 6b + 3 lb b^2 - 4b^3)/b^5
+c       4  (-lb + 2b + 3 lb b^2)/b^3
+c       5  (3 lb - 6b - 6 lb b^2 + 10b^3 + 3 lb b^4)/b^5
+c       6  (-3 lb + 6b + 10 lb b^2 - 18b^3 - 15 lb b^4)/b^5
+c     For b < 0.2 (an onium at rest in 2 -> 1 Borns: b = 0) the exact
+c     series in b^2 from lb = 2 sum b^(2k+1)/(2k+1), 14 terms (< 1d-20);
+c     above, the closed forms (cancellation < 1d-16/b^5).
+c**************************************************************************
+      implicit none
+      integer ig,n
+      double precision b,lb,b2,bn,t
+      if (b.lt.0.2d0) then
+         b2=b**2
+         bn=1d0
+         onia_gself=0d0
+         do n=0,13
+            if (ig.eq.1) then
+               t=2d0/(2*n+3)-6d0/(2*n+1)
+            elseif (ig.eq.2) then
+               t=-2d0/(2*n+3)+2d0/(2*n+1)
+            elseif (ig.eq.3) then
+               t=-6d0/(2*n+5)+6d0/(2*n+3)
+            elseif (ig.eq.4) then
+               t=-2d0/(2*n+3)+6d0/(2*n+1)
+            elseif (ig.eq.5) then
+               t=6d0/(2*n+5)-12d0/(2*n+3)+6d0/(2*n+1)
+            else
+               t=-6d0/(2*n+5)+20d0/(2*n+3)-30d0/(2*n+1)
+            endif
+            onia_gself=onia_gself+t*bn
+            bn=bn*b2
+         enddo
+         return
+      endif
+      lb=dlog((1d0+b)/(1d0-b))
+      if (ig.eq.1) then
+         onia_gself=(lb-2d0*b-3d0*lb*b**2)/b**3
+      elseif (ig.eq.2) then
+         onia_gself=(-lb+2d0*b+lb*b**2)/b**3
+      elseif (ig.eq.3) then
+         onia_gself=(-3d0*lb+6d0*b+3d0*lb*b**2-4d0*b**3)/b**5
+      elseif (ig.eq.4) then
+         onia_gself=(-lb+2d0*b+3d0*lb*b**2)/b**3
+      elseif (ig.eq.5) then
+         onia_gself=(3d0*lb-6d0*b-6d0*lb*b**2+10d0*b**3+3d0*lb*b**4)
+     &        /b**5
+      else
+         onia_gself=(-3d0*lb+6d0*b+10d0*lb*b**2-18d0*b**3
+     &        -15d0*lb*b**4)/b**5
+      endif
       end
