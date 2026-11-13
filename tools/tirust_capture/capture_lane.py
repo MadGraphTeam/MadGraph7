@@ -3,8 +3,10 @@
 
 The worker, cards, points and warm-up stream are exactly those of
 `tirust_benchmark_numerical.py --warmup-only` (the same `start_worker` call);
-only LD_PRELOAD and the shim's TIRUST_TRACE* variables are added to the worker
-environment. The lane's warm-up values are written next to the trace so they can
+only LD_PRELOAD and the shim's TIRUST_TRACE* variables are added, and only to the
+MadLoop worker process (compiler/make probes run without the shim). Build the
+shim with the executables' GCC driver so it binds to their glibc:
+`gfortran -O2 -fPIC -shared shim.c -o libtirust_capture.so`. The lane's warm-up values are written next to the trace so they can
 be compared bit for bit with the campaign lane. Nothing in the campaign report
 is modified.
 
@@ -31,30 +33,33 @@ import tirust_trace  # noqa: E402
 def capture(campaign, case_id, shim, out, cpu, backend=9, source="candidate", mp_inputs=False, timeout=None):
     from tirust_benchmark_campaign import activate_campaign
     from tirust_benchmark_warmup import parse_warmup
+    import tirust_benchmark_worker as worker_module
     activate_campaign(bench, campaign)
     config = bench.load_config()
     case = next(c for c in config["cases"] if c["id"] == case_id)
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=False)
     shim = Path(shim).resolve()
-    base_environment = bench.environment
+    extra = {"LD_PRELOAD": str(shim), "TIRUST_TRACE": str(out / "trace"), "TIRUST_TRACE_INPUTS": "1",
+             "TIRUST_SUMMARY": str(out / "summary")}
+    if mp_inputs:
+        extra["TIRUST_TRACE_MP_INPUTS"] = "1"
+    base_worker = worker_module.Worker
 
-    def environment():
-        env = base_environment()
-        env.update(LD_PRELOAD=str(shim), TIRUST_TRACE=str(out / "trace"), TIRUST_TRACE_INPUTS="1",
-                   TIRUST_SUMMARY=str(out / "summary"))
-        if mp_inputs:
-            env["TIRUST_TRACE_MP_INPUTS"] = "1"
-        return env
+    class CaptureWorker(base_worker):
+        """start_worker imports Worker at call time; only this process gets the shim."""
+        def __init__(self, command, directory, log, env=None, timeout=3600.):
+            super().__init__(command, directory, log, env=dict(env or os.environ, **extra), timeout=timeout)
 
-    bench.environment = environment
+    worker_module.Worker = CaptureWorker
     run = out / "run"
     run.mkdir()
     timeout = bench.case_worker_timeout(case) if timeout is None else timeout
     try:
         with ExitStack() as stack:
-            lock = stack.enter_context((ROOT / ".tirust-build/numerical-tests.lock").open("a"))
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            if backend == 8:  # unlicensed Symbolica (NinjaRS) only; TIRust is OEM-licensed
+                lock = stack.enter_context((ROOT / ".tirust-build/numerical-tests.lock").open("a"))
+                fcntl.flock(lock, fcntl.LOCK_EX)
             worker, _ = bench.start_worker(stack, source, case, [backend], config, cpu, run, timeout=timeout)
             raw = run / "raw"
             raw.mkdir()
@@ -65,7 +70,7 @@ def capture(campaign, case_id, shim, out, cpu, backend=9, source="candidate", mp
             observation = parse_warmup(raw, [backend], config["points_per_case"], ready)
             bench.dump(raw / "observation.json", observation)
     finally:
-        bench.environment = base_environment
+        worker_module.Worker = base_worker
     # Helper processes (make, compilers) also load the shim; keep only traces with calls.
     traces = []
     for path in sorted(out.glob("trace.*")):

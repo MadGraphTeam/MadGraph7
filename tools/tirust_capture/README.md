@@ -25,7 +25,8 @@ readable.
 Run from the MadGraph root with `source tools/tirust_env.sh`.
 
 ```bash
-cc -O2 -fPIC -shared tools/tirust_capture/shim.c -o $W/libtirust_capture.so -ldl
+# Use the executables' GCC driver so the shim binds to their glibc (dlsym is in libc).
+gfortran -O2 -fPIC -shared tools/tirust_capture/shim.c -o $W/libtirust_capture.so
 # 1. Capture: the campaign's candidate-9 lane, all warm-up calls with exact inputs.
 python3 -B tools/tirust_capture/capture_lane.py --campaign $C --case qcd_n3_uux_zgg \
   --shim $W/libtirust_capture.so --out $W/capture/qcd_n3_uux_zgg --cpu $CPU

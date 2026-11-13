@@ -10,7 +10,8 @@
 //   TIRUST_TRACE_MP_INPUTS=1   record QP calls with their exact ASCII input/output records (kind 5)
 //   TIRUST_SUMMARY=<prefix>    write a one-line call/time summary to <prefix>.<pid>
 //
-// Build: cc -O2 -fPIC -shared shim.c -o libtirust_capture.so -ldl
+// Build with the MadLoop executables' GCC driver so the shim binds to their glibc
+// (dlsym lives in libc since glibc 2.34): gfortran -O2 -fPIC -shared shim.c -o libtirust_capture.so
 //
 // Records (little endian, no file header), one byte kind followed by:
 //   kind 1 (DP evaluation): i32 n, rank, poles, finite, check, cache, status; f64 seconds;

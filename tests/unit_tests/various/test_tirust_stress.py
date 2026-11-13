@@ -104,6 +104,19 @@ class TestStressDriver(unittest.TestCase):
             stress.render(stress.DRIVER.read_text(), {"prefix": "STUB_", "nexternal": 3, "nborn": 1}, "")
 
 
+class TestPointFiles(unittest.TestCase):
+    def test_points_split_into_per_point_blocks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "p.dat"
+            path.write_text("2\n1 0 0 1\n1 0 0 -1\n2 0 0 0\n3 0 0 1\n3 0 0 -1\n6 0 0 0\n")
+            blocks = stress.split_points(path)
+            self.assertEqual(len(blocks), 2)
+            self.assertEqual(blocks[1], ["3 0 0 1", "3 0 0 -1", "6 0 0 0"])
+            path.write_text("2\n1 0 0 1\n1 0 0 -1\n2 0 0 0\n")
+            with self.assertRaises(ValueError):
+                stress.split_points(path)
+
+
 class TestStressClassification(unittest.TestCase):
     def lane(self, accepted, passed=None, status="complete"):
         lane = {"status": status, "accepted": accepted}
@@ -121,6 +134,8 @@ class TestStressClassification(unittest.TestCase):
         self.assertEqual(stress.classify(self.lane(None), [9, 6, 7, 1], reference), "unrescued")
         self.assertEqual(stress.classify(self.lane([9, "DP"]), [9], None), "accepted-unreferenced")
         self.assertEqual(stress.classify(self.lane(None, status="timeout"), [9], None), "driver-timeout")
+        stopped = dict(self.lane(None), stopped=True)
+        self.assertEqual(stress.classify(stopped, [9, 6, 7, 1], None), "unrescued (process STOP)")
 
     def test_nonfinite_or_flagged_results_are_never_accepted(self):
         row = {"point": 1, "order": 0, "status": 219, "finite": True, "fpe_dp": False, "fpe_qp": False,

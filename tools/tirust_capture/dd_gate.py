@@ -67,6 +67,8 @@ def analyse(production, references, flag=1e-12, fail=1e-9, keep=50):
         if call["rec_status"] == 0 and call["delta"][DD] > 0:
             labels[call["i"]] = (call["seg"], call["n"], call["rank"], call["check"])
             dd_by_key[f"n{call['n']}:r{call['rank']}:check{call['check']}"] += 1
+    if sanity["calls"] == 0:
+        raise ValueError(f"{production}: no replayed DP calls; nothing can be qualified")
     result = {"production": str(production), "flag": flag, "fail": fail, "production_replay": sanity,
               "dd_calls": len(labels), "dd_calls_by_key": dict(sorted(dd_by_key.items())), "references": {}}
     qualified = sanity["non_identical"] == 0 and sanity["status_mismatch"] == 0

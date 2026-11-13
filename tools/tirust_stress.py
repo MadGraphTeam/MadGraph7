@@ -22,6 +22,8 @@ Outputs: <campaign report>/experiments/stress/<case>/<lane>-<mode>/result.json
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
+import fcntl
 import json
 import math
 from pathlib import Path
@@ -39,7 +41,14 @@ DRIVER = ROOT / "tools/tirust_stress_driver.f"
 LANES = {"baseline-1": ("baseline", [1]), **{f"candidate-{b}": ("candidate", [b]) for b in (1, 6, 7, 8, 9)},
          "chain-9671": ("candidate", [9, 6, 7, 1])}
 QP_BACKENDS = (1, 6, 8, 9)
+# Stress-only cases outside the registered ordinary matrix (built by tirust_cms_stress.py);
+# their warm-up and stress points live in <report>/stress-points/.
+EXTRA_CASES = {"cms_ew_n2_epem_mupmum": {"id": "cms_ew_n2_epem_mupmum", "model": "loop_qcd_qed_sm_Gmu",
+                                         "process": "e+ e- > mu+ mu- [virt=QED]", "nfinal": 2,
+                                         "role": "complex-mass-stress", "complex_mass_scheme": True}}
 REFERENCES = ("candidate-1-qp", "candidate-6-qp")
+# Weaker fallback: stability-checked values accepted by independent (non-TIRust) reducers.
+ACCEPTED_REFERENCES = ("candidate-1-auto", "candidate-6-auto", "candidate-7-auto", "candidate-8-auto")
 
 
 def route_hooks(prefix, enabled):
@@ -101,67 +110,128 @@ def parse_routes(path):
     return routes
 
 
-def run(campaign, case_id, lane, mode, cpu, timeout=7200.):
-    from tirust_benchmark_campaign import activate_campaign
-    activate_campaign(bench, campaign)
-    config = bench.load_config()
-    case = next(c for c in config["cases"] if c["id"] == case_id)
+OUTPUTS = ("warm.dat", "stress-values.dat", "stress-routes.dat", "stress-timing.dat", "dimensions.dat")
+
+
+def split_points(path):
+    """Header count and the per-point line blocks of a points file."""
+    lines = [line for line in Path(path).read_text().splitlines() if line.strip()]
+    count = int(lines[0])
+    if count <= 0 or (len(lines) - 1) % count:
+        raise ValueError(f"Malformed points file {path}")
+    legs = (len(lines) - 1) // count
+    return [lines[1 + i * legs:1 + (i + 1) * legs] for i in range(count)]
+
+
+def run_driver(campaign, config, case, lane, cpu, points, report, workspace, options, checked=True,
+               timeout=7200., extra=None):
+    """Clone the campaign export for one lane, render the stress driver and evaluate every point.
+
+    Some reducers end the whole program with a Fortran STOP on a pathological point
+    (CutTools: momentum-conservation flag CT692) and exit 0. The driver prints
+    STRESS-DONE only after its last point; when it is missing, the next point is
+    recorded as stopping the process and the remaining points run in a fresh process.
+    """
     source, chain = LANES[lane]
-    if mode not in ("auto", "qp") or (mode == "qp" and (len(chain) != 1 or chain[0] not in QP_BACKENDS)):
-        raise ValueError("Forced QP needs a single QP-capable backend (1, 6, 8 or 9)")
-    stress = bench.REPORT / "points" / f"{case_id}-stress.dat"
-    warm = bench.REPORT / "points" / f"{case_id}.dat"
-    metadata = json.loads(stress.with_suffix(".json").read_text())
-    if bench.digest(stress) != metadata["sha256"]:
-        raise ValueError("Stress point stream changed")
-    label = f"{lane}-{mode}"
-    report = bench.REPORT / "experiments/stress" / case_id / label
+    warm = (extra or {}).get("warm") or bench.REPORT / "points" / f"{case['id']}.dat"
     report.mkdir(parents=True, exist_ok=False)
-    workspace = bench.WORK / "stress" / case_id / label
     if workspace.exists():
         shutil.rmtree(workspace)
-    output = workspace / "outputs" / source / case_id
+    output = workspace / "outputs" / source / case["id"]
     env = bench.environment()
-    record = {"campaign": campaign, "case": case, "lane": lane, "mode": mode, "chain": chain, "source": source,
-              "cpu": cpu, "created_utc": bench.utc_now(), "performance_eligible": False,
-              "stress_points": [{"index": i + 1, "id": p["id"], "kind": p.get("kind")}
-                                for i, p in enumerate(metadata["points"])],
-              "points_sha256": metadata["sha256"], "warm_points_sha256": bench.digest(warm),
-              "driver_sha256": bench.digest(DRIVER), "runner_sha256": bench.digest(Path(__file__))}
+    record = {"campaign": campaign, "case": case, "lane": lane, "chain": chain, "source": source, "cpu": cpu,
+              "created_utc": bench.utc_now(), "performance_eligible": False,
+              "points_sha256": bench.digest(points), "warm_points_sha256": bench.digest(warm),
+              "driver_sha256": bench.digest(DRIVER), "runner_sha256": bench.digest(Path(__file__)),
+              **{k: v for k, v in (extra or {}).items() if k != "warm"}}
+    blocks = split_points(points)
     try:
-        directory, compilation = cohort.build_clone(bench.output_dir(source, case), output, report, env,
-                                                    routes=9 in chain, template=DRIVER, renderer=render)
-        options = json.loads(json.dumps(config))
-        if mode == "qp":
-            options["madloop_parameters"].update(CTModeRun=4, CTModeInit=4)
-        record["settings"] = cohort.configure_clone(workspace, source, case, chain, options)
-        if mode == "auto":
-            bench.validate_worker_modes(record["settings"])
-        record["runtime"] = bench.runtime_identity(directory)
-        for name in ("warm.dat", "stress-values.dat", "stress-routes.dat", "stress-timing.dat", "dimensions.dat"):
-            (directory / name).unlink(missing_ok=True)
-        command = ["taskset", "-c", str(cpu), "./check", str(warm), str(stress),
-                   "checked" if mode == "auto" else "unchecked"]
-        with (report / "driver.log").open("w") as log:
-            completed = subprocess.run(command, cwd=directory, env=env, stdout=log, stderr=subprocess.STDOUT,
-                                       timeout=timeout)
-        record["exit_code"] = completed.returncode
-        for name in ("warm.dat", "stress-values.dat", "stress-routes.dat", "stress-timing.dat", "dimensions.dat"):
-            if (directory / name).is_file():
-                shutil.copy2(directory / name, report / name)
-        ndim = int((report / "dimensions.dat").read_text().split()[0])
-        record["warm_calls"] = len((report / "warm.dat").read_text().splitlines())
-        record["rows"] = parse_values(report / "stress-values.dat", ndim)
-        if (report / "stress-routes.dat").is_file():
-            record["routes"] = parse_routes(report / "stress-routes.dat")
-        record["status"] = "complete" if completed.returncode == 0 else "driver-failed"
+        with ExitStack() as stack:
+            if 8 in chain:
+                # Unlicensed Symbolica (NinjaRS) allows one restricted instance per lock directory.
+                # TIRust's scoped OEM activation does not take that lock, so TIRust-only runs overlap.
+                lock = stack.enter_context((ROOT / ".tirust-build/numerical-tests.lock").open("a"))
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            directory, _ = cohort.build_clone(bench.output_dir(source, case), output, report, env,
+                                              routes=9 in chain, template=DRIVER, renderer=render)
+            record["settings"] = cohort.configure_clone(workspace, source, case, chain, options)
+            if checked:
+                bench.validate_worker_modes(record["settings"])
+            record["runtime"] = bench.runtime_identity(directory)
+            remaining = list(range(1, len(blocks) + 1))
+            rows, routes, stops, invocations = [], {}, [], 0
+            while remaining:
+                invocations += 1
+                subset = report / f"points-run{invocations}.dat"
+                subset.write_text(f"{len(remaining)}\n" + "".join("\n".join(blocks[i - 1]) + "\n" for i in remaining))
+                for name in OUTPUTS:
+                    (directory / name).unlink(missing_ok=True)
+                command = ["taskset", "-c", str(cpu), "./check", str(warm), str(subset),
+                           "checked" if checked else "unchecked"]
+                log_path = report / f"driver-run{invocations}.log"
+                with log_path.open("w") as log:
+                    completed = subprocess.run(command, cwd=directory, env=env, stdout=log,
+                                               stderr=subprocess.STDOUT, timeout=timeout)
+                for name in OUTPUTS:
+                    if (directory / name).is_file():
+                        shutil.copy2(directory / name, report / (name if invocations == 1 else f"run{invocations}-{name}"))
+                ndim = int((directory / "dimensions.dat").read_text().split()[0])
+                if invocations == 1:
+                    record["warm_calls"] = len((directory / "warm.dat").read_text().splitlines())
+                done = parse_values(directory / "stress-values.dat", ndim) if (directory / "stress-values.dat").is_file() else []
+                for row in done:
+                    row["point"] = remaining[row["point"] - 1]
+                rows += done
+                if (directory / "stress-routes.dat").is_file():
+                    for k, route in parse_routes(directory / "stress-routes.dat").items():
+                        routes[remaining[k - 1]] = route
+                finished = sorted({row["point"] for row in done})
+                if completed.returncode == 0 and "STRESS-DONE" in log_path.read_text():
+                    break
+                culprit = remaining[len(finished)] if len(finished) < len(remaining) else None
+                tail = log_path.read_text().splitlines()[-3:]
+                stops.append({"point": culprit, "exit_code": completed.returncode, "log_tail": tail})
+                if culprit is None:
+                    break
+                remaining = remaining[len(finished) + 1:]
+            rows.sort(key=lambda r: (r["point"], r["order"]))
+            record.update(rows=rows, routes=routes, stopped_points=stops, invocations=invocations,
+                          status="complete")
     except subprocess.TimeoutExpired as error:
         record.update(status="timeout", error=repr(error))
     except Exception as error:
         record.update(status="failed", error=repr(error))
     record["finished_utc"] = bench.utc_now()
     bench.dump(report / "result.json", record)
+    return record
+
+
+def run(campaign, case_id, lane, mode, cpu, timeout=7200.):
+    from tirust_benchmark_campaign import activate_campaign
+    activate_campaign(bench, campaign)
+    config = bench.load_config()
+    case = next((c for c in config["cases"] if c["id"] == case_id), EXTRA_CASES.get(case_id))
+    if case is None:
+        raise ValueError(f"Unknown case {case_id}")
+    source, chain = LANES[lane]
+    if mode not in ("auto", "qp") or (mode == "qp" and (len(chain) != 1 or chain[0] not in QP_BACKENDS)):
+        raise ValueError("Forced QP needs a single QP-capable backend (1, 6, 8 or 9)")
+    point_dir = bench.REPORT / ("stress-points" if case_id in EXTRA_CASES else "points")
+    stress = point_dir / f"{case_id}-stress.dat"
+    metadata = json.loads(stress.with_suffix(".json").read_text())
+    if bench.digest(stress) != metadata["sha256"]:
+        raise ValueError("Stress point stream changed")
+    label = f"{lane}-{mode}"
+    options = json.loads(json.dumps(config))
+    if mode == "qp":
+        options["madloop_parameters"].update(CTModeRun=4, CTModeInit=4)
+    record = run_driver(campaign, config, case, lane, cpu, stress, bench.REPORT / "experiments/stress" / case_id / label,
+                        bench.WORK / "stress" / case_id / label, options, checked=mode == "auto", timeout=timeout,
+                        extra={"mode": mode, "warm": point_dir / f"{case_id}.dat",
+                               "stress_points": [{"index": i + 1, "id": p["id"], "kind": p.get("kind")}
+                                                 for i, p in enumerate(metadata["points"])]})
     print(json.dumps({"case": case_id, "lane": label, "status": record["status"],
+                      "stops": [s["point"] for s in record.get("stopped_points", [])],
                       "codes": sorted({r["status"] for r in record.get("rows", [])})}), flush=True)
     return record
 
@@ -217,10 +287,20 @@ def summarize(campaign):
                 entry["reference_agreement"] = agreement
                 reference = refs[0] if agreement["passed"] else None
             entry["reference"] = "QP CutTools = QP Ninja" if reference else "unavailable or disputed"
+            if reference is None:
+                accepted = [(label, point_rows(results[label], index)) for label in ACCEPTED_REFERENCES
+                            if label in results and results[label]["status"] == "complete"
+                            and accepted_backend(point_rows(results[label], index), results[label]["chain"])]
+                if accepted and all(compare(accepted[0][1], rows, tolerance)["passed"] for _, rows in accepted[1:]):
+                    reference = accepted[0][1]
+                    entry["reference"] = "checked: " + " = ".join(label.split("-")[1] for label, _ in accepted)
+                elif accepted:
+                    entry["reference"] = "checked results disagree"
             for label, result in sorted(results.items()):
                 rows = point_rows(result, index)
                 lane = {"status": result["status"], "codes": sorted({r["status"] for r in rows}),
-                        "accuracy": rows[0]["accuracy"] if rows else None}
+                        "accuracy": rows[0]["accuracy"] if rows else None,
+                        "stopped": any(stop["point"] == index for stop in result.get("stopped_points", []))}
                 if result["mode"] == "auto":
                     accepted = accepted_backend(rows, result["chain"]) if result["status"] == "complete" else None
                     lane["accepted"] = list(accepted) if accepted else None
@@ -248,7 +328,8 @@ def classify(lane, chain, reference):
     if lane["status"] != "complete":
         return "driver-" + lane["status"]
     if not lane["accepted"]:
-        return "refused" if chain == [9] else "unrescued"
+        verb = "refused" if chain == [9] else "unrescued"
+        return verb + (" (process STOP)" if lane.get("stopped") else "")
     backend = lane["accepted"][0]
     label = "accepted" if backend == 9 else f"rescued-by-{backend}"
     if reference is None or "vs_reference" not in lane:
