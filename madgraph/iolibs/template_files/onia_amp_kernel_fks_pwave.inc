@@ -58,14 +58,19 @@ C
       REAL*8 STENCIL(6), SWEIGHT(6)
       DATA STENCIL /-3D0, -2D0, -1D0, 1D0, 2D0, 3D0/
       DATA SWEIGHT /-1D0, 9D0, -45D0, 45D0, -9D0, 1D0/
-      COMPLEX*16 AMP(NGRAPHS), PROJ, CA(3,NONIA), COEF
-      COMPLEX*16 D(NGRAPHS)
+      COMPLEX*16 AMP(NGRAPHS), PROJ
       type(aloha) W(NWAVEFUNCS), EPS_L
       REAL*8 P_ONIA(0:3,NEXTERNAL+NONIA), ONIA_MS(NEXTERNAL+NONIA)
       REAL*8 PMASS_ONIA(NEXTERNAL+NONIA), PMASS_RESH(NEXTERNAL)
       INTEGER NHEL_ONIA(NEXTERNAL+NONIA), IC_ONIA(NEXTERNAL+NONIA)
       INTEGER FLAVOR_ONIA(NEXTERNAL+NONIA)
-      COMPLEX*16 PROJ_SAVED(NONIA,-1:1,-1:1)
+C     the S_z combinations with a non-zero Clebsch-Gordan weight
+      INTEGER    NSZMAX
+      PARAMETER (NSZMAX=3**NONIA)
+      INTEGER NGOOD, IGS, SZS(NONIA,NSZMAX)
+      REAL*8 CGS(NSZMAX)
+      COMPLEX*16 CAS(3,NONIA,NSZMAX), COEFS(NSZMAX), PRJ
+      COMPLEX*16 PROJ_SAVED(NONIA,-1:1,-1:1,NSZMAX)
       INTEGER HELQ(2)
       DATA HELQ/-1, 1/
       INCLUDE 'coupl.inc'
@@ -114,11 +119,16 @@ C     the frame of P)
         ENDIF
       ENDDO
       AMP_OUT(:) = (0D0,0D0)
-C     the combinations of S_z of the onia (ISZ codes them)
+C     the combinations of S_z of the onia (ISZ codes them) with a non-zero
+C     Clebsch-Gordan weight, and for each P wave eps*(L_z) = sum_a CA(a) e_a,
+C     L_z = J_z - S_z. The diagrams do not depend on S_z: they are evaluated
+C     once per stencil point and constituent helicities, with the projectors
+C     summed over S_z.
       NSZ = 1
       DO I = 1, NONIA
         NSZ = NSZ*NSZ_ONIA(I)
       ENDDO
+      NGOOD = 0
       DO ISZ = 1, NSZ
         K = ISZ-1
         CG = 1D0
@@ -130,57 +140,69 @@ C     the combinations of S_z of the onia (ISZ codes them)
           CG = CG*WEIGHT
         ENDDO
         IF (CG.EQ.0D0) CYCLE
-C       eps*(L_z) = sum_a CA(a) e_a for each P wave, L_z = J_z - S_z
+        NGOOD = NGOOD+1
+        CGS(NGOOD) = CG
         DO I = 1, NONIA
+          SZS(I,NGOOD) = SZ(I)
           IF (L_ONIA(I).NE.1) CYCLE
           QQ = ONIA(I)
           CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),1,EPS_L)
           DO A = 1, 3
-            CA(A,I) = -(EPS_L%%W(1)*E3(0,A,I)-EPS_L%%W(2)*E3(1,A,I)
-     &        -EPS_L%%W(3)*E3(2,A,I)-EPS_L%%W(4)*E3(3,A,I))
+            CAS(A,I,NGOOD) = -(EPS_L%%W(1)*E3(0,A,I)
+     &        -EPS_L%%W(2)*E3(1,A,I)-EPS_L%%W(3)*E3(2,A,I)
+     &        -EPS_L%%W(4)*E3(3,A,I))
           ENDDO
         ENDDO
-C       the derivatives: the directions and stencil points of every P wave
-        NPT = 18**NPWAVE
-        DO IPT = 1, NPT
-          K = IPT-1
-          COEF = DCMPLX(CG, 0D0)
+      ENDDO
+      IF (NGOOD.EQ.0) RETURN
+C     the derivatives: the directions and stencil points of every P wave
+      NPT = 18**NPWAVE
+      DO IPT = 1, NPT
+        K = IPT-1
+        DO I = 1, NONIA
+          Q(:,I) = 0D0
+          IF (L_ONIA(I).NE.1) CYCLE
+          STEP(I) = MOD(K,6)+1
+          K = K/6
+          DIR(I) = MOD(K,3)+1
+          K = K/3
+          Q(:,I) = STENCIL(STEP(I))*H(I)*E3(:,DIR(I),I)
+        ENDDO
+        DO IGS = 1, NGOOD
+          COEFS(IGS) = DCMPLX(CGS(IGS)*SQRT(NORM), 0D0)
           DO I = 1, NONIA
-            Q(:,I) = 0D0
             IF (L_ONIA(I).NE.1) CYCLE
-            STEP(I) = MOD(K,6)+1
-            K = K/6
-            DIR(I) = MOD(K,3)+1
-            K = K/3
-            Q(:,I) = STENCIL(STEP(I))*H(I)*E3(:,DIR(I),I)
-            COEF = COEF*CA(DIR(I),I)*SWEIGHT(STEP(I))/(60D0*H(I))
+            COEFS(IGS) = COEFS(IGS)*CAS(DIR(I),I,IGS)
+     &        *SWEIGHT(STEP(I))/(60D0*H(I))
           ENDDO
-C         the constituent momenta and spin projectors at these q:
-C         k_i = m_i/M K +- q, which conserves momentum exactly, with
-C         k_i**2 = m_i**2 + q**2. The constituents are given this mass,
-C         ONIA_MS(i) = sqrt(m_i**2 + q**2), in their wave functions, in the
-C         spin projector and in the propagators of a constituent line next
-C         to the emission of one gluon (get_onia_kernel), so that such a
-C         propagator is 2 k_i.k_g exactly near the soft limit of a real
-C         emission. The shift is even in q and leaves the derivative
-C         unchanged. (On-shell constituents with k_1 + k_2 /= K would break
-C         momentum conservation at O(h**2) instead, and with it the
-C         propagators near the soft limit built from the other side of a
-C         diagram.)
-          DO I = 1, NEXTERNAL+NONIA
-            ONIA_MS(I) = PMASS_ONIA(I)
-            IF (PAIRS(I).NE.0) THEN
-              J = FINDLOC(PAIRS,-PAIRS(I),DIM=1)
-              KP = ABS(PAIRS(I))
-              QSQ = Q(0,KP)**2-Q(1,KP)**2-Q(2,KP)**2-Q(3,KP)**2
-              FRAC = PMASS_ONIA(I)/(PMASS_ONIA(I)+PMASS_ONIA(J))
-              ONIA_MS(I) = SQRT(PMASS_ONIA(I)**2+QSQ)
-              P_ONIA(:,I) = FRAC*P(:,MAPPING(I))
-     &          +SIGN(1,PAIRS(I))*Q(:,KP)
-            ELSE
-              P_ONIA(:,I) = P(:,MAPPING(I))
-            ENDIF
-          ENDDO
+        ENDDO
+C       the constituent momenta and spin projectors at these q:
+C       k_i = m_i/M K +- q, which conserves momentum exactly, with
+C       k_i**2 = m_i**2 + q**2. The constituents are given this mass,
+C       ONIA_MS(i) = sqrt(m_i**2 + q**2), in their wave functions, in the
+C       spin projector and in the propagators of a constituent line next
+C       to the emission of one gluon (get_onia_kernel), so that such a
+C       propagator is 2 k_i.k_g exactly near the soft limit of a real
+C       emission. The shift is even in q and leaves the derivative
+C       unchanged. (On-shell constituents with k_1 + k_2 /= K would break
+C       momentum conservation at O(h**2) instead, and with it the
+C       propagators near the soft limit built from the other side of a
+C       diagram.)
+        DO I = 1, NEXTERNAL+NONIA
+          ONIA_MS(I) = PMASS_ONIA(I)
+          IF (PAIRS(I).NE.0) THEN
+            J = FINDLOC(PAIRS,-PAIRS(I),DIM=1)
+            KP = ABS(PAIRS(I))
+            QSQ = Q(0,KP)**2-Q(1,KP)**2-Q(2,KP)**2-Q(3,KP)**2
+            FRAC = PMASS_ONIA(I)/(PMASS_ONIA(I)+PMASS_ONIA(J))
+            ONIA_MS(I) = SQRT(PMASS_ONIA(I)**2+QSQ)
+            P_ONIA(:,I) = FRAC*P(:,MAPPING(I))
+     &        +SIGN(1,PAIRS(I))*Q(:,KP)
+          ELSE
+            P_ONIA(:,I) = P(:,MAPPING(I))
+          ENDIF
+        ENDDO
+        DO IGS = 1, NGOOD
           DO I = 1, NONIA
             QQ = ONIA(I)
             Q1 = FINDLOC(PAIRS, I, DIM=1)
@@ -189,27 +211,33 @@ C         diagram.)
               DO A = 1, 2
                 CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
      &            P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
-     &            PMASS_RESH(QQ),SZ(I),S_ONIA(I),PROJ)
-                PROJ_SAVED(I,HELQ(J),HELQ(A)) = PROJ
+     &            PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                PROJ_SAVED(I,HELQ(J),HELQ(A),IGS) = PROJ
               ENDDO
             ENDDO
           ENDDO
-          D(:) = (0D0,0D0)
-          DO J = 1, 4**NONIA
-            PROJ = SQRT(NORM)
+        ENDDO
+        DO J = 1, 4**NONIA
+          DO I = 1, NONIA
+            Q1 = FINDLOC(PAIRS, I, DIM=1)
+            Q2 = FINDLOC(PAIRS,-I, DIM=1)
+            NHEL_ONIA(Q1) = HELQ(IBITS(J-1,2*I-2,1)+1)
+            NHEL_ONIA(Q2) = HELQ(IBITS(J-1,2*I-1,1)+1)
+          ENDDO
+          PROJ = (0D0,0D0)
+          DO IGS = 1, NGOOD
+            PRJ = COEFS(IGS)
             DO I = 1, NONIA
               Q1 = FINDLOC(PAIRS, I, DIM=1)
               Q2 = FINDLOC(PAIRS,-I, DIM=1)
-              NHEL_ONIA(Q1) = HELQ(IBITS(J-1,2*I-2,1)+1)
-              NHEL_ONIA(Q2) = HELQ(IBITS(J-1,2*I-1,1)+1)
-              PROJ = PROJ*PROJ_SAVED(I,NHEL_ONIA(Q1),NHEL_ONIA(Q2))
+              PRJ = PRJ*PROJ_SAVED(I,NHEL_ONIA(Q1),NHEL_ONIA(Q2),IGS)
             ENDDO
-            IF (PROJ.NE.(0D0,0D0)) THEN
-%(helas_calls)s
-              D(:) = D(:)+AMP(:)*PROJ
-            ENDIF
+            PROJ = PROJ+PRJ
           ENDDO
-          AMP_OUT(:) = AMP_OUT(:)+COEF*D(:)
+          IF (PROJ.NE.(0D0,0D0)) THEN
+%(helas_calls)s
+            AMP_OUT(:) = AMP_OUT(:)+AMP(:)*PROJ
+          ENDIF
         ENDDO
       ENDDO
       END
