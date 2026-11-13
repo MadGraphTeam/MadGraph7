@@ -22,3 +22,14 @@ c**************************************************************************
       wgt=0d0
       return
       end
+
+
+      subroutine getpoles_onia(single)
+c**************************************************************************
+c     No P-wave quarkonium: no pole beyond the colour-linked Borns.
+c**************************************************************************
+      implicit none
+      double precision single
+      single=0d0
+      return
+      end

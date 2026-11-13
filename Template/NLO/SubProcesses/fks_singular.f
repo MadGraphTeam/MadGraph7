@@ -7488,6 +7488,9 @@ c      include "fks.inc"
       COMMON/c_nFKSprocess/nFKSprocess
       logical need_color_links_used, need_charge_links_used
       double precision soft_fact
+      double precision single_onia
+      integer ord_onia(nsplitorders),orders_to_amp_split_pos
+      external orders_to_amp_split_pos
 
       include "pmass.inc"
 
@@ -7611,6 +7614,10 @@ C the following call to born is to setup the goodhel(nfksprocess)
           do j=1,i
             m=fks_j_from_i(i_fks,i)
             n=fks_j_from_i(i_fks,j)
+c Bound states: no colour link to a colour-singlet P-wave onium (its
+c poles are getpoles_onia's), as in bornsoftvirtual
+            if (need_color_links .and. (abs(particle_type(m)).eq.1
+     &           .or. abs(particle_type(n)).eq.1)) cycle
             if( m.ne.n .and. n.ne.i_fks .and. m.ne.i_fks )then
 C wgt includes the gs/w^2 factor
               call sborn_sf_frame(p_born,m,n,wgt)
@@ -7653,6 +7660,17 @@ c The factor -2 compensate for that missing in sborn_sf
 C restore need_color/charge_links
       nFKSprocess = nFKSprocess_save
       call fks_inc_chooser()
+
+c Bound states: the poles of a P-wave quarkonium beyond the colour-linked
+c Borns (fks_onia_soft.f; 0 otherwise), at the Born orders + g^2
+      call getpoles_onia(single_onia)
+      if (single_onia.ne.0d0) then
+         single=single+single_onia
+         ord_onia(1:nsplitorders)=born_orders(1:nsplitorders)
+         ord_onia(qcd_pos)=ord_onia(qcd_pos)+2
+         k=orders_to_amp_split_pos(ord_onia)
+         amp_split_poles_FKS(k,1)=amp_split_poles_FKS(k,1)+single_onia
+      endif
 
       if(.not.fksprefact)single=single+double*dlog(xmu2/QES2)
 c

@@ -207,3 +207,88 @@ c the 1P1 remnant and the LDME counterterms
       wgt=g**2/(8d0*pi**2)*contr
       return
       end
+
+
+      subroutine getpoles_onia(single)
+c**************************************************************************
+c     The single pole of the virtual of a P-wave quarkonium Born beyond the
+c     colour-linked Borns of getpoles (arXiv:2402.19221, appendix B), in
+c     the normalisation of getpoles: the coefficient of 1/eps in front of
+c     (alpha_s/2 pi) (4 pi)^eps/Gamma(1-eps) (mu^2/Q_ES^2)^eps, times
+c     alpha_s/(2 pi),
+c
+c       sum_k k_mu VEC^mu(k)/(P.k)                        (k massless)
+c     + sum_k k_mu VEC^mu(k)/(P.k) m_k^2 P^2/(2 v_k^3 (P.k)^2)
+c             [2 v_k/(1-v_k^2) - log((1+v_k)/(1-v_k))]   (k massive)
+c     - 2/(3 P^2) g_mu nu TEN^{mu nu}
+c     - 8/(m_Q m_Qbar) sum_S' c_S' M(r_S')
+c
+c     with v_k = sqrt(1 - m_k^2 P^2/(P.k)^2), the sums over the Born legs
+c     but the onium, and VEC, TEN, M(r_S') and c_S' as in bsv_onia. For
+c     1P1 the self term equals the paper's 2/P^2 C_eff M(r_S'), since
+c     -g_mu nu M^{mu nu} = 3 M(r_S'). There is no double pole. These are
+c     minus the poles of the integrated soft and LDME counterterms of
+c     bsv_onia (K_mu VEC^mu = K_mu TEN^{mu nu} = 0). Born momenta p_born.
+c**************************************************************************
+      use fks_phase_space_data, only: p_born
+      implicit none
+      include "nexternal.inc"
+      include "coupl.inc"
+      double precision single
+      integer naux_max
+      parameter (naux_max=2)
+      double precision pi,nc,cf,bf
+      parameter (pi=3.1415926535897932385d0,nc=3d0,cf=4d0/3d0,
+     &     bf=5d0/12d0)
+      double precision vec(0:3,nexternal-1),baux(naux_max)
+      double complex ten(0:3,0:3)
+      integer ionium,kb,mu,a,naux,spin,jtot
+      character*2 label(naux_max)
+      double precision ceff(naux_max),mq,mqb,ponium(0:3),pk(0:3)
+      double precision contr,metric(0:3),onia_dot,ktot2,pkk,mk2,v,mr
+      double precision cldme
+      external onia_dot
+      data metric /1d0,-1d0,-1d0,-1d0/
+
+      single=0d0
+      call born_onia_soft(p_born,vec,ten,baux,ionium)
+      call born_onia_info(naux,spin,jtot,label,ceff,mq,mqb)
+      ponium(0:3)=p_born(0:3,ionium)
+      ktot2=onia_dot(ponium,ponium)
+      contr=0d0
+c the cross vectors
+      do kb=1,nexternal-1
+         if (kb.eq.ionium) cycle
+         if (all(vec(0:3,kb).eq.0d0)) cycle
+         pk(0:3)=p_born(0:3,kb)
+         pkk=onia_dot(ponium,pk)
+         mk2=onia_dot(pk,pk)
+         if (abs(mk2).lt.1d-8*pk(0)**2) then
+            contr=contr+onia_dot(pk,vec(0,kb))/pkk
+         else
+            v=dsqrt(1d0-mk2*ktot2/pkk**2)
+            contr=contr+onia_dot(pk,vec(0,kb))/pkk
+     &           *mk2*ktot2/(2d0*v**3*pkk**2)
+     &           *(2d0*v/(1d0-v**2)-dlog((1d0+v)/(1d0-v)))
+         endif
+      enddo
+c the self term
+      do mu=0,3
+         contr=contr-2d0/(3d0*ktot2)*metric(mu)*dble(ten(mu,mu))
+      enddo
+c the LDME counterterms
+      do a=1,naux
+         mr=baux(a)*dble(2*spin+1)/dble(2*jtot+1)
+         if (label(a).eq.'18') then
+            cldme=1d0/(2d0*nc)
+         elseif (label(a).eq.'81') then
+            cldme=cf
+         else
+            cldme=bf
+         endif
+         if (spin.eq.1) cldme=cldme*dble(2*jtot+1)/9d0
+         contr=contr-8d0/(mq*mqb)*cldme*mr
+      enddo
+      single=g**2/(8d0*pi**2)*contr
+      return
+      end
