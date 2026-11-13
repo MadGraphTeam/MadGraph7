@@ -147,6 +147,12 @@ class TestUnfinishedRun(unittest.TestCase):
         self.make_run(2, 'done')
         self.assertIsNone(self.run.find_unfinished_run(cluster_run.card_hash()))
 
+    def test_runs_sorted_by_number(self):
+        self.make_run(99, 'done')
+        unfinished = self.make_run(100, 'deploy')
+        self.assertEqual(self.run.find_unfinished_run(cluster_run.card_hash()),
+                         unfinished)
+
     def test_changed_cards(self):
         self.make_run(1, 'train', digest='other')
         self.assertIsNone(self.run.find_unfinished_run(cluster_run.card_hash()))

@@ -143,7 +143,8 @@ class ClusterRun:
         """The newest run directory of this run name, when it was left
         unfinished by a run with the same cards."""
         prefix = os.path.join("Events", self.card["run"]["run_name"] + "_")
-        runs = sorted(d for d in glob.glob(prefix + "*") if d[len(prefix):].isnumeric())
+        runs = sorted((d for d in glob.glob(prefix + "*") if d[len(prefix):].isnumeric()),
+                      key=lambda d: int(d[len(prefix):]))
         if not runs:
             return None
         state_path = os.path.join(runs[-1], STATE_FILE)
