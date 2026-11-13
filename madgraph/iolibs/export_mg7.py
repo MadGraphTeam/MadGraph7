@@ -63,6 +63,16 @@ class IdentifySGTopologyTag(IdentifySGConfigTag):
 class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
     def __init__(self, matrix_element, cpp_helas_call_writer, merge_same_topologies=True):
+        if isinstance(matrix_element, helas_objects.HelasMultiProcess):
+            matrix_element = matrix_element.get('matrix_elements')
+        if isinstance(matrix_element, helas_objects.HelasMatrixElementList) and len(matrix_element) == 1:
+            matrix_element = matrix_element[0]
+        # The diagrams, color flows and helicity tables describe one ME; a
+        # mirror reuses it. Reject other inputs before CPP renumbers them.
+        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
+            raise MadGraph5Error(
+                'MG7 requires exactly one HelasMatrixElement per subprocess '
+                'directory; export multiple matrix elements in separate directories.')
         super().__init__(matrix_element, cpp_helas_call_writer)
         self.init_subprocess_metadata(matrix_element, merge_same_topologies)
 
