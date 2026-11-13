@@ -126,6 +126,32 @@ class TestCombineCluster(unittest.TestCase):
         with open(self.path("out/events.weights.json")) as f:
             self.assertAlmostEqual(json.load(f)["scale"]["max"], 11.5 * 1.2)
 
+    def test_histograms_and_invalid_counts(self):
+        def hist(value, error):
+            return {"name": "pt", "min": 0., "max": 1., "bin_count": 1,
+                    "bin_values": [value, 0.], "bin_errors": [error, 0.],
+                    "weights": [{"id": 1, "bin_values": [2 * value, 0.],
+                                 "bin_errors": [error, 0.]}],
+                    "scale_envelope": {"low": [value, 0.], "high": [3 * value, 0.]}}
+        infos = []
+        for count, value, error, invalid in ((100, 1., 0.1, 2), (300, 3., 0.2, 5)):
+            infos.append({"process": status(count, 10., 1.,
+                                            count_invalid_step_values=invalid),
+                          "channels": [], "seed": 1,
+                          "run_times": {}, "histograms": [hist(value, error)],
+                          "event_histograms": [hist(value, error)]})
+        info = combine.combine_info(infos)
+        self.assertEqual(info["process"]["count_invalid_step_values"], 7)
+        for key in ("histograms", "event_histograms"):
+            h = info[key][0]
+            self.assertEqual(h["name"], "pt")
+            self.assertAlmostEqual(h["bin_values"][0], 2.5)
+            self.assertAlmostEqual(
+                h["bin_errors"][0], math.sqrt((100 * .1) ** 2 + (300 * .2) ** 2) / 400)
+            self.assertAlmostEqual(h["weights"][0]["bin_values"][0], 5.)
+            self.assertEqual(h["weights"][0]["id"], 1)
+            self.assertAlmostEqual(h["scale_envelope"]["high"][0], 7.5)
+
     def test_lhe_is_concatenated_with_the_combined_init(self):
         combine.combine_runs(
             self.jobs("lhe", [dict(count=2, mean=10., error=1.),

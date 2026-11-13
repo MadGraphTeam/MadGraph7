@@ -26,7 +26,7 @@ import numpy as np
 
 # status entries that are counts of the jobs and add up
 _SUMMED = ("count", "count_after_cuts", "count_after_cuts_opt", "count_opt",
-           "count_target", "count_unweighted")
+           "count_target", "count_unweighted", "count_invalid_step_values")
 # status entries that are weighted means over the jobs
 _AVERAGED = ("mean", "mean_abs", "rel_std_dev")
 # of the systematics summary: the cross sections and bands, averaged over the
@@ -57,7 +57,8 @@ def combine_status(statuses: list) -> dict:
     total = sum(counts)
     combined = dict(statuses[0])
     for key in _SUMMED:
-        combined[key] = sum(s[key] for s in statuses)
+        if key in combined:
+            combined[key] = sum(s[key] for s in statuses)
     for key in _AVERAGED:
         combined[key] = weighted_mean([s[key] for s in statuses], counts)
     for key in ("error", "error_abs"):
@@ -96,6 +97,36 @@ def combine_summaries(summaries: list, counts: list):
     return first
 
 
+def combine_histograms(entries: list, counts: list):
+    """The histograms of info.json ("histograms", "event_histograms") of the
+    combined sample: the bin values (and bands) are means over the jobs
+    weighted with their events, the errors are added like those of the cross
+    section."""
+    total = sum(counts)
+    first = entries[0]
+    if isinstance(first, dict):
+        combined = dict(first)
+        for key, value in first.items():
+            values = [e[key] for e in entries]
+            if key == "bin_errors":
+                combined[key] = [
+                    (sum((n * e) ** 2 for n, e in zip(counts, errors)) ** 0.5 / total
+                     if total > 0 else sum(e ** 2 for e in errors) ** 0.5 / len(errors))
+                    for errors in zip(*values)
+                ]
+            elif isinstance(value, (list, dict)):
+                combined[key] = combine_histograms(values, counts)
+        return combined
+    if isinstance(first, list):
+        if any(len(e) != len(first) for e in entries):
+            raise CombineError("the histograms of the jobs differ")
+        if first and all(isinstance(v, (int, float)) for v in first):
+            return [weighted_mean(values, counts) for values in zip(*entries)]
+        return [combine_histograms([e[i] for e in entries], counts)
+                for i in range(len(first))]
+    return first
+
+
 def combine_info(infos: list) -> dict:
     """info.json of the combined run from those of the jobs."""
     combined = dict(infos[0])
@@ -110,6 +141,12 @@ def combine_info(infos: list) -> dict:
     if "systematics" in infos[0]:
         combined["systematics"] = combine_summaries(
             [i["systematics"] for i in infos], counts)
+    for key in ("histograms", "event_histograms"):
+        if key in infos[0]:
+            # a job without events has no bin values: it adds nothing
+            jobs = [(i[key], n) for i, n in zip(infos, counts) if n > 0] \
+                or [(i[key], n) for i, n in zip(infos, counts)]
+            combined[key] = combine_histograms([h for h, _ in jobs], [n for _, n in jobs])
     combined["run_times"] = {
         step: {key: sum(i["run_times"][step][key] for i in infos)
                for key in infos[0]["run_times"][step]}
