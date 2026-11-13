@@ -354,6 +354,8 @@ jobs:
       # in source-contracts: they are loop tests, which skip without a
       # Symbolica that accepts the package key, and source-contracts installs
       # no Symbolica.
+      # The last seven files are the fastest of the restored one-loop engine
+      # tests (about 70 s together).
       - name: Run the light one-loop tests without SYMBOLICA_LICENSE (30 GiB RSS limit)
         env:
           PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
@@ -409,6 +411,13 @@ jobs:
             tests/unit/test_unlicensed_generation.py::test_every_native_entry_point_holds_the_library_key \
             tests/unit/test_symbolica_thread_license.py \
             tests/unit/test_loop_packed_payloads.py \
+            tests/unit/test_loop_v2_oracles.py \
+            tests/unit/test_loop_v2_levi_civita.py \
+            tests/unit/test_model_levi_civita_kernels.py \
+            tests/unit/test_loop_njet_reference_fixture.py \
+            tests/unit/test_loop_model_compatibility.py \
+            tests/unit/test_loop_v2_colour.py \
+            tests/unit/test_loop_v2_ct_recursion.py \
             --deselect tests/unit/test_loop_adjoint_scalar_counterterms.py::test_np_zero_is_exact_source_selection_not_particle_or_arity_pruning \
             --deselect tests/unit/test_loop_v2_observables_fast.py::test_canonical_stages_do_not_depend_on_the_process_history \
             -q -rs
