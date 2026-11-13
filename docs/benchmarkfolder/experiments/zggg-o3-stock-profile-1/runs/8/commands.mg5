@@ -1,0 +1,15 @@
+set automatic_html_opening False --no_save
+set auto_update 0 --no_save
+set nb_core 2 --no_save
+set loop_optimized_output True --no_save
+set output_dependencies external --no_save
+set complex_mass_scheme False --no_save
+set fortran_compiler /nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran --no_save
+set cpp_compiler /nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/c++ --no_save
+set ninja /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib --no_save
+set collier /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier --no_save
+set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib --no_save
+set tirust /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-native-tiers-final-1/HEPTools/tirust/lib --no_save
+import model loop_sm
+check profile -reuse 1 u u~ > z g g g [virt=QCD] --reduction=8 --loop_pole_mode=-1 --split_orders=-1 --energy=1000 --seed=20261112
+quit

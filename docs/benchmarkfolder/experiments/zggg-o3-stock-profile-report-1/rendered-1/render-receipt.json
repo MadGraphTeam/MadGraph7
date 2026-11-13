@@ -1,0 +1,79 @@
+{
+  "PDF": {
+    "bytes": 86982,
+    "sha256": "188d05fe366b42f0f003810f2b64f9ddd012a532731a9dcb4adcb48cd10ef24c"
+  },
+  "closed": true,
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "--version"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "typst 0.15.1 (9dfd3a08)\n"
+    },
+    {
+      "argv": [
+        "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst",
+        "compile",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/zggg-o3-stock-profile-report-1/rendered-1/stock-o3-profile.typ",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/zggg-o3-stock-profile-report-1/rendered-1/stock-o3-profile-supplement.pdf",
+        "--creation-timestamp",
+        "1794528000",
+        "--font-path",
+        "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+        "--font-path",
+        "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    }
+  ],
+  "font_paths": [
+    "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts",
+    "/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts"
+  ],
+  "inputs": {
+    "derive_stock_o3_profile.py": {
+      "bytes": 7902,
+      "sha256": "26431a321ea12ddf0670518c7a967b18f7912503de0e6dc5ed4e68fb800de8e2"
+    },
+    "stock-o3-binding.json": {
+      "bytes": 549,
+      "sha256": "07b06aa612f3844bd5a13513c338a5917e6a7fff3891c341d1dc2a2d8baf5a98"
+    },
+    "stock-o3-data.json": {
+      "bytes": 5635,
+      "sha256": "3294517928b6f93e93ec37244731227dbb2bd0b728e3d76f2f369d4032752da6"
+    },
+    "stock-o3-profile.typ": {
+      "bytes": 3936,
+      "sha256": "ff4917b7793cddf3cb4e231012cc3fde68c7ad317399839a0394ec2ddec61353"
+    },
+    "stock-o3-selection.json": {
+      "bytes": 463,
+      "sha256": "d84d413655e92c5de571a3a20b8dbaac15f05d481b4423858a61f409036b0257"
+    },
+    "stock-o3-timings.csv": {
+      "bytes": 1380,
+      "sha256": "f69d06ea4a6a504f527f769479e9d0fe616fc10499eddbd35548190a1b1c83d6"
+    },
+    "style-provenance.json": {
+      "bytes": 732,
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "new_native_physics_evaluations": 0,
+  "page_count": 1,
+  "schema": "madloop-tirust-stock-o3-profile-tail-render-v1",
+  "tool_paths": {
+    "typst": "/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin/typst"
+  }
+}

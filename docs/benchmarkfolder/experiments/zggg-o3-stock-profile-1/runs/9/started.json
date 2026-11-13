@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/zggg-o3-stock-profile-1/mg/bin/madgraph",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/zggg-o3-stock-profile-1/runs/9/commands.mg5"
+  ],
+  "identity": {
+    "parent_pid": 3525618,
+    "pid": 3527675,
+    "process_group": 3527675,
+    "session": 3527675,
+    "start_time_ticks": 256116786,
+    "state": "R"
+  },
+  "pid": 3527675
+}

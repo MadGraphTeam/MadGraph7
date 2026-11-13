@@ -1,0 +1,883 @@
+{
+  "all_1e8_ordinary_target_passed": true,
+  "all_3e6_criterion_passed": true,
+  "all_PS_and_normalization_words_identical": true,
+  "comparisons": {
+    "1:6": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 1.7534368919708774e-09,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912409067,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.8711191957556,
+          "relative_error": 1.7534368919708774e-09,
+          "symmetric_relative_error": 8.76718446754074e-10
+        },
+        {
+          "candidate": -50.57873390282809,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177117264118,
+          "reference": -50.57873390282889,
+          "relative_error": 1.573404082395986e-14,
+          "symmetric_relative_error": 7.867020411979991e-15
+        },
+        {
+          "candidate": -11.66666666666653,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.2854501392728716,
+          "reference": -11.66666666666657,
+          "relative_error": 3.501960626246237e-15,
+          "symmetric_relative_error": 1.7509803131231215e-15
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "1:7": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 1.7591068225331133e-09,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912385893,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.8711191957556,
+          "relative_error": 1.7591068225331133e-09,
+          "symmetric_relative_error": 8.795534120401709e-10
+        },
+        {
+          "candidate": -50.57873390284384,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177117267775,
+          "reference": -50.57873390282889,
+          "relative_error": 2.955751954785871e-13,
+          "symmetric_relative_error": 1.4778759773931538e-13
+        },
+        {
+          "candidate": -11.66666666667912,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.28545013927317864,
+          "reference": -11.66666666666657,
+          "relative_error": 1.075710948887089e-12,
+          "symmetric_relative_error": 5.378554744438338e-13
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "1:8": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 1.753992515263847e-09,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912406796,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.8711191957556,
+          "relative_error": 1.753992515263847e-09,
+          "symmetric_relative_error": 8.769962584010459e-10
+        },
+        {
+          "candidate": -50.57873390282828,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177117264118,
+          "reference": -50.57873390282889,
+          "relative_error": 1.1941013125326677e-14,
+          "symmetric_relative_error": 5.970506562663374e-15
+        },
+        {
+          "candidate": -11.66666666666662,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.28545013927287277,
+          "reference": -11.66666666666657,
+          "relative_error": 4.263256414560618e-15,
+          "symmetric_relative_error": 2.1316282072803135e-15
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "1:9": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 1.7537548628728928e-09,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912407767,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.8711191957556,
+          "relative_error": 1.7537548628728928e-09,
+          "symmetric_relative_error": 8.768774322053605e-10
+        },
+        {
+          "candidate": -50.57873390282477,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177117264118,
+          "reference": -50.57873390282889,
+          "relative_error": 8.133937175957819e-14,
+          "symmetric_relative_error": 4.0669685879790755e-14
+        },
+        {
+          "candidate": -11.66666666666564,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.2854501392728716,
+          "reference": -11.66666666666657,
+          "relative_error": 7.978379861534906e-14,
+          "symmetric_relative_error": 3.989189930767612e-14
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "6:7": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 5.669930572177718e-12,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912385893,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.87111912409067,
+          "relative_error": 5.669930572177718e-12,
+          "symmetric_relative_error": 2.834965286096896e-12
+        },
+        {
+          "candidate": -50.57873390284384,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177138966866,
+          "reference": -50.57873390282809,
+          "relative_error": 3.113092363025423e-13,
+          "symmetric_relative_error": 1.5565461815129538e-13
+        },
+        {
+          "candidate": -11.66666666667912,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.28545013977369743,
+          "reference": -11.66666666666653,
+          "relative_error": 1.0792129095133316e-12,
+          "symmetric_relative_error": 5.39606454756957e-13
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "6:8": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 5.556232939437047e-13,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912406796,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.87111912409067,
+          "relative_error": 5.556232939437047e-13,
+          "symmetric_relative_error": 2.7781164697192957e-13
+        },
+        {
+          "candidate": -50.57873390282828,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.237517713896306,
+          "reference": -50.57873390282809,
+          "relative_error": 3.7930276986332256e-15,
+          "symmetric_relative_error": 1.896513849316616e-15
+        },
+        {
+          "candidate": -11.66666666666662,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.2854501397733916,
+          "reference": -11.66666666666653,
+          "relative_error": 7.76521704080684e-15,
+          "symmetric_relative_error": 3.882608520403435e-15
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "6:9": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 3.1797090257291487e-13,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912407767,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.87111912409067,
+          "relative_error": 3.1797090257291487e-13,
+          "symmetric_relative_error": 1.589854512864827e-13
+        },
+        {
+          "candidate": -50.57873390282477,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177138963014,
+          "reference": -50.57873390282809,
+          "relative_error": 6.560533093561937e-14,
+          "symmetric_relative_error": 3.2802665467810764e-14
+        },
+        {
+          "candidate": -11.66666666666564,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.2854501397733894,
+          "reference": -11.66666666666653,
+          "relative_error": 7.628183798910308e-14,
+          "symmetric_relative_error": 3.814091899455299e-14
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "7:8": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 5.1143072782368546e-12,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912406796,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.87111912385893,
+          "relative_error": 5.1143072782368546e-12,
+          "symmetric_relative_error": 2.5571536391249664e-12
+        },
+        {
+          "candidate": -50.57873390282828,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177138973743,
+          "reference": -50.57873390284384,
+          "relative_error": 3.0751620860391027e-13,
+          "symmetric_relative_error": 1.5375810430197876e-13
+        },
+        {
+          "candidate": -11.66666666666662,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.285450139773856,
+          "reference": -11.66666666667912,
+          "relative_error": 1.0714476924725332e-12,
+          "symmetric_relative_error": 5.357238462365536e-13
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "7:9": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 5.3519596696065045e-12,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912407767,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.87111912385893,
+          "relative_error": 5.3519596696065045e-12,
+          "symmetric_relative_error": 2.6759798348104133e-12
+        },
+        {
+          "candidate": -50.57873390282477,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.23751771389708,
+          "reference": -50.57873390284384,
+          "relative_error": 3.7691456723814125e-13,
+          "symmetric_relative_error": 1.8845728361910617e-13
+        },
+        {
+          "candidate": -11.66666666666564,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.2854501397737882,
+          "reference": -11.66666666667912,
+          "relative_error": 1.1554947475023524e-12,
+          "symmetric_relative_error": 5.777473737515099e-13
+        }
+      ],
+      "tolerance": 3e-06
+    },
+    "8:9": {
+      "criterion": "LoopMEComparator: abs(a-b)/abs(a+b)<tolerance, or pole magnitude/finite maximum<tolerance",
+      "failures": [],
+      "maximum_relative_error": 2.376523913708654e-13,
+      "ordinary_target_passed": true,
+      "ordinary_target_tolerance": 1e-08,
+      "passed": true,
+      "relative_error_metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero is zero",
+      "residuals": [
+        {
+          "candidate": 6.81184777088957e-08,
+          "column": 0,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": 6.81184777088957e-08,
+          "relative_error": 0.0,
+          "symmetric_relative_error": 0.0
+        },
+        {
+          "candidate": -40.87111912407767,
+          "column": 1,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": null,
+          "reference": -40.87111912406796,
+          "relative_error": 2.376523913708654e-13,
+          "symmetric_relative_error": 1.1882619568544681e-13
+        },
+        {
+          "candidate": -50.57873390282477,
+          "column": 2,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 1.2375177138966997,
+          "reference": -50.57873390282828,
+          "relative_error": 6.939835863425234e-14,
+          "symmetric_relative_error": 3.4699179317127375e-14
+        },
+        {
+          "candidate": -11.66666666666564,
+          "column": 3,
+          "order": 0,
+          "passed": true,
+          "point": 1,
+          "pole_to_finite": 0.2854501397734824,
+          "reference": -11.66666666666662,
+          "relative_error": 8.404705502990933e-14,
+          "symmetric_relative_error": 4.202352751495643e-14
+        }
+      ],
+      "tolerance": 3e-06
+    }
+  },
+  "criterion_function_sha256": "0a9fffd567bfc98ecf2cff6b8dafb3c333096d990291a666508db73ac8b3b47e",
+  "maximum_relative_error": 1.7591068225331133e-09,
+  "records": {
+    "1": {
+      "PS_words": [
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "5.000000000000000E+002"
+        ],
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "-5.000000000000000E+002"
+        ],
+        [
+          "1.687075303313954E+002",
+          "-6.509999263811237E+001",
+          "7.145903125611854E+001",
+          "-1.039354475478579E+002"
+        ],
+        [
+          "3.724809296712333E+002",
+          "1.103416018349897E+002",
+          "-8.387047612416484E+001",
+          "3.457347496389982E+002"
+        ],
+        [
+          "3.259193128484966E+002",
+          "-8.998767822431455E+001",
+          "-9.994759748766288E+001",
+          "-2.968772372747320E+002"
+        ],
+        [
+          "1.328922271488749E+002",
+          "4.474606902743728E+001",
+          "1.123590423557092E+002",
+          "5.507793518359164E+001"
+        ]
+      ],
+      "coefficients": {
+        "1EPS": -50.57873390282889,
+        "2EPS": -11.66666666666657,
+        "BORN": 6.81184777088957e-08,
+        "FIN": -40.8711191957556
+      },
+      "normalization_words": {
+        "ASO2PI": [
+          "1.878028328484365E-002"
+        ],
+        "EXP": [
+          "-4"
+        ],
+        "Export_Format": [
+          "Default"
+        ]
+      },
+      "raw_output_freshness_verified": false,
+      "raw_snapshot_sha256": "4515ff845db27674bc8adfd85072bcaa0b97100487f98bfd933e9c5466ce495b",
+      "retained_returncode_words": [
+        "110"
+      ]
+    },
+    "6": {
+      "PS_words": [
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "5.000000000000000E+002"
+        ],
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "-5.000000000000000E+002"
+        ],
+        [
+          "1.687075303313954E+002",
+          "-6.509999263811237E+001",
+          "7.145903125611854E+001",
+          "-1.039354475478579E+002"
+        ],
+        [
+          "3.724809296712333E+002",
+          "1.103416018349897E+002",
+          "-8.387047612416484E+001",
+          "3.457347496389982E+002"
+        ],
+        [
+          "3.259193128484966E+002",
+          "-8.998767822431455E+001",
+          "-9.994759748766288E+001",
+          "-2.968772372747320E+002"
+        ],
+        [
+          "1.328922271488749E+002",
+          "4.474606902743728E+001",
+          "1.123590423557092E+002",
+          "5.507793518359164E+001"
+        ]
+      ],
+      "coefficients": {
+        "1EPS": -50.57873390282809,
+        "2EPS": -11.66666666666653,
+        "BORN": 6.81184777088957e-08,
+        "FIN": -40.87111912409067
+      },
+      "normalization_words": {
+        "ASO2PI": [
+          "1.878028328484365E-002"
+        ],
+        "EXP": [
+          "-4"
+        ],
+        "Export_Format": [
+          "Default"
+        ]
+      },
+      "raw_output_freshness_verified": false,
+      "raw_snapshot_sha256": "913c52b434cc2d8b688cd6a8e5ce4797916552506337eb3a7f76ec568e83d0f2",
+      "retained_returncode_words": [
+        "110"
+      ]
+    },
+    "7": {
+      "PS_words": [
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "5.000000000000000E+002"
+        ],
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "-5.000000000000000E+002"
+        ],
+        [
+          "1.687075303313954E+002",
+          "-6.509999263811237E+001",
+          "7.145903125611854E+001",
+          "-1.039354475478579E+002"
+        ],
+        [
+          "3.724809296712333E+002",
+          "1.103416018349897E+002",
+          "-8.387047612416484E+001",
+          "3.457347496389982E+002"
+        ],
+        [
+          "3.259193128484966E+002",
+          "-8.998767822431455E+001",
+          "-9.994759748766288E+001",
+          "-2.968772372747320E+002"
+        ],
+        [
+          "1.328922271488749E+002",
+          "4.474606902743728E+001",
+          "1.123590423557092E+002",
+          "5.507793518359164E+001"
+        ]
+      ],
+      "coefficients": {
+        "1EPS": -50.57873390284384,
+        "2EPS": -11.66666666667912,
+        "BORN": 6.81184777088957e-08,
+        "FIN": -40.87111912385893
+      },
+      "normalization_words": {
+        "ASO2PI": [
+          "1.878028328484365E-002"
+        ],
+        "EXP": [
+          "-4"
+        ],
+        "Export_Format": [
+          "Default"
+        ]
+      },
+      "raw_output_freshness_verified": false,
+      "raw_snapshot_sha256": "906d749e8b8898d1bdfaeea6d75e953c28b87a66613f9f8811a904f0a448a185",
+      "retained_returncode_words": [
+        "110"
+      ]
+    },
+    "8": {
+      "PS_words": [
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "5.000000000000000E+002"
+        ],
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "-5.000000000000000E+002"
+        ],
+        [
+          "1.687075303313954E+002",
+          "-6.509999263811237E+001",
+          "7.145903125611854E+001",
+          "-1.039354475478579E+002"
+        ],
+        [
+          "3.724809296712333E+002",
+          "1.103416018349897E+002",
+          "-8.387047612416484E+001",
+          "3.457347496389982E+002"
+        ],
+        [
+          "3.259193128484966E+002",
+          "-8.998767822431455E+001",
+          "-9.994759748766288E+001",
+          "-2.968772372747320E+002"
+        ],
+        [
+          "1.328922271488749E+002",
+          "4.474606902743728E+001",
+          "1.123590423557092E+002",
+          "5.507793518359164E+001"
+        ]
+      ],
+      "coefficients": {
+        "1EPS": -50.57873390282828,
+        "2EPS": -11.66666666666662,
+        "BORN": 6.81184777088957e-08,
+        "FIN": -40.87111912406796
+      },
+      "normalization_words": {
+        "ASO2PI": [
+          "1.878028328484365E-002"
+        ],
+        "EXP": [
+          "-4"
+        ],
+        "Export_Format": [
+          "Default"
+        ]
+      },
+      "raw_output_freshness_verified": false,
+      "raw_snapshot_sha256": "c983465de294fa7aa5bf26500875cd5d1036e107f74623b8d2173f2914be3ec7",
+      "retained_returncode_words": [
+        "110"
+      ]
+    },
+    "9": {
+      "PS_words": [
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "5.000000000000000E+002"
+        ],
+        [
+          "5.000000000000000E+002",
+          "0.000000000000000E+000",
+          "0.000000000000000E+000",
+          "-5.000000000000000E+002"
+        ],
+        [
+          "1.687075303313954E+002",
+          "-6.509999263811237E+001",
+          "7.145903125611854E+001",
+          "-1.039354475478579E+002"
+        ],
+        [
+          "3.724809296712333E+002",
+          "1.103416018349897E+002",
+          "-8.387047612416484E+001",
+          "3.457347496389982E+002"
+        ],
+        [
+          "3.259193128484966E+002",
+          "-8.998767822431455E+001",
+          "-9.994759748766288E+001",
+          "-2.968772372747320E+002"
+        ],
+        [
+          "1.328922271488749E+002",
+          "4.474606902743728E+001",
+          "1.123590423557092E+002",
+          "5.507793518359164E+001"
+        ]
+      ],
+      "coefficients": {
+        "1EPS": -50.57873390282477,
+        "2EPS": -11.66666666666564,
+        "BORN": 6.81184777088957e-08,
+        "FIN": -40.87111912407767
+      },
+      "normalization_words": {
+        "ASO2PI": [
+          "1.878028328484365E-002"
+        ],
+        "EXP": [
+          "-4"
+        ],
+        "Export_Format": [
+          "Default"
+        ]
+      },
+      "raw_output_freshness_verified": false,
+      "raw_snapshot_sha256": "0ef551e482f14ff8f29eeb05811e3b75d0b5459456c8e4e31b71317c46514dcc",
+      "retained_returncode_words": [
+        "110"
+      ]
+    }
+  },
+  "schema": "zggg-stock-profile-retained-endpoint-consistency-v1",
+  "scope": "One retained end-of-batch FULL snapshot per configured backend; not all50 timed points and not per-point dispatch/accuracy proof. Native output freshness is not independently instrumented."
+}

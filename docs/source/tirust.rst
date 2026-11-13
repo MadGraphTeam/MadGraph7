@@ -79,20 +79,46 @@ is an invalid request.
 Profiling
 ---------
 
-After installing both libraries, run one ``check profile`` command for each
-timed backend::
+After installing the comparison libraries, launch the actual ``check profile``
+command from the checkout root with GNU Fortran optimization set before any
+export or compilation::
 
+    FFLAGS='-w -fPIC -O3' OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python3 -B bin/madgraph
+
+Generated ``Source/make_opts`` sets its default ``FFLAGS`` only when undefined.
+The environment therefore supplies ``-O3`` to generated MODEL, DHELAS, process
+routines and profiling drivers; makefile include and fixed-line-length flags
+are still appended. Preserve compiler commands and verify ``-O3`` for all four
+groups. The polynomial routine's separate ``-O3`` rule is insufficient evidence
+of an optimized full build.
+
+Use fresh profiling outputs and the standard legacy filtered configuration::
+
+    set nb_core 1
     import model loop_sm
-    check profile -reuse 10 u u~ > z [virt=QCD] --reduction=8 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
-    check profile -reuse 10 u u~ > z [virt=QCD] --reduction=9 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+    check profile 10 u u~ > z g g g [virt=QCD] --reduction=8 --loop_pole_mode=-1 --split_orders=-1 --energy=1000 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+    check profile 10 u u~ > z g g g [virt=QCD] --reduction=9 --loop_pole_mode=-1 --split_orders=-1 --energy=1000 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
 
 A reduction list times only its first backend; the separate stability analysis
-can compare its members. The integer ``10`` selects the stability sample,
-not the timing count. Compare full helicity-sum times. ``FULL−SKIP`` is an
-estimated reduction time from separate full and numerator-only runs.
-Explicit pole mode 0 includes UV/IR and all helicities; the configured single
-helicity is unverified and may contribute zero. Reused-export initialization
-may be unavailable rather than zero.
+can compare its members. ``set nb_core 1`` keeps compilation serial. Setting
+``FFLAGS`` does not invalidate old objects. Use a fresh output, or rebuild MODEL,
+DHELAS, every process object and the driver before using ``-reuse``; otherwise
+an old unoptimized object can survive the flag change.
+
+The integer ``10`` selects the stability sample, not the timing count. Legacy
+``LoopPoleMode=-1`` retains ``HelicityFilterLevel=2`` and learns the normal
+helicity and loop filters. Compare the **full helicity-sum time**: it includes
+the physical sum while skipping learned zero/equivalent configurations. The
+single-helicity time is separate. ``FULL−SKIP`` estimates reduction time from
+separate full and numerator-only runs, rather than timing a reducer call.
+Reused-export initialization may be unavailable rather than zero.
+
+``check profile`` preserves COLLIER's default UV/IR pole flags, both true. The
+separate ``check timing`` wrapper disables those flags by default unless supplied.
+Retain the effective cards. Explicit ``--loop_pole_mode=0`` remains supported,
+but disables learned filters and evaluates every helicity and loop group. It
+has a different workload; its configured single helicity can contribute zero
+and is labeled unverified. This reproduction example implies no measured timing.
 
 Stock timing uses fixed-DP MadLoop mode. TIRust may internally retry DP-input
 tensors at 106-bit DD, 256 or 512 bits, so accepted 219 is a transport code, not

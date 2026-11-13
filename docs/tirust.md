@@ -68,8 +68,8 @@ Values appear on the line immediately following each `#Parameter` name.
 UV-only, IR-only and no-pole modes require every selected rescue backend to
 support pole separation: use only 9, 8 and/or 7. These controls select residues
 of the bare loop integral; counterterms and R2 contributions keep their existing
-meaning. `LoopPoleMode=0` also avoids profiling defaults that can disable
-COLLIER poles when comparing all five backends.
+meaning. Explicit pole mode `0` includes both UV and IR poles; its profiling
+filter policy is described below.
 
 Numerical caches clear at MadLoop's phase-space boundary and reuse integrals
 across helicities and split orders. Full and partial results and DP/QP stores
@@ -78,23 +78,54 @@ Numerical failures propagate to MadLoop's existing rescue logic.
 
 ## Profile a backend
 
-After installing the comparison backends, use MadGraph's `check profile`
-command. Run one command per timed backend; a reduction list times only its
-first backend, while the stability analysis can compare the list.
+After installing the comparison backends, use MadGraph's actual `check profile`
+command. For an optimized GNU Fortran build, launch it from the checkout root
+with the flags in the environment **before exporting or compiling**:
 
-```text
-import model loop_sm
-check profile -reuse 10 u u~ > z [virt=QCD] --reduction=8 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
-check profile -reuse 10 u u~ > z [virt=QCD] --reduction=9 --loop_pole_mode=0 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+```bash
+FFLAGS='-w -fPIC -O3' OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python3 -B bin/madgraph
 ```
 
+Generated `Source/make_opts` assigns its default `FFLAGS` only when that variable
+is undefined. The environment therefore supplies `-O3` to generated MODEL,
+DHELAS, process routines and profiling drivers, while makefile include and
+fixed-line-length flags are still appended. Preserve the actual compiler
+commands and verify those four groups used `-O3`; the polynomial routine's
+separate `-O3` rule alone does not establish an optimized full build.
+
+These examples generate fresh profiling outputs and use the standard learned
+filters with legacy `LoopPoleMode=-1`:
+
+```text
+set nb_core 1
+import model loop_sm
+check profile 10 u u~ > z g g g [virt=QCD] --reduction=8 --loop_pole_mode=-1 --split_orders=-1 --energy=1000 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+check profile 10 u u~ > z g g g [virt=QCD] --reduction=9 --loop_pole_mode=-1 --split_orders=-1 --energy=1000 --tirust_qp_integrand=true --tirust_cache=-1 --seed=20261112
+```
+
+Run one command per timed backend; a reduction list times only its first backend,
+while the separate stability analysis can compare the list. `set nb_core 1`
+keeps compilation serial. Changing `FFLAGS` does not invalidate existing object
+files: use a fresh output as above, or rebuild MODEL, DHELAS, every process object
+and the driver before adding `-reuse`. Reusing an old output can otherwise keep
+unoptimized objects even when the current environment says `-O3`.
+
 Here `10` controls the separate stability sample, not the number of timing
-points. Read the full helicity-sum time for a full-amplitude comparison.
-`FULL−SKIP` estimates reduction time by subtracting a separate numerator-only
-run; it is not a directly timed reducer call. Explicit pole mode `0` includes
-both UV and IR poles and evaluates all helicities. The configured single
-helicity may have a zero contribution and is labeled unverified. Reusing an
-export may leave initialization time unavailable; it does not mean zero cost.
+points. Legacy mode retains `HelicityFilterLevel=2` and learns the normal
+helicity and loop filters. Read the **full helicity-sum time**, which includes
+the physical sum with learned zero/equivalent configurations skipped; the
+single-helicity time is a separate quantity. `FULL−SKIP` estimates reduction
+time by subtracting a separate numerator-only run; it is not a directly timed
+reducer call. Reused-export initialization may be unavailable rather than zero.
+
+`check profile` preserves COLLIER's default UV/IR pole flags, both true. The
+separate `check timing` wrapper disables those flags by default unless supplied;
+retain the effective cards rather than assuming the two wrappers agree.
+Explicit `--loop_pole_mode=0` remains supported for including both poles, but it
+disables learned filters and evaluates every helicity and loop group. Its
+workload differs from the legacy filtered profile; a configured single helicity
+can contribute zero and is labeled unverified. No timing result is implied by
+this reproduction example.
 
 The stock profiler uses fixed-DP MadLoop timing mode and a separate stability
 probe. TIRust can still retry individual DP-input tensors internally at

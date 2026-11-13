@@ -1,0 +1,52 @@
+{
+  "closed": true,
+  "files": {
+    "README.md": {
+      "bytes": 4753,
+      "sha256": "ccb78054eadc9f55e0c461173c3f03c5f8cad61b55af0f6c486781de6cfb8323"
+    },
+    "derive_stock_o3_profile.py": {
+      "bytes": 7902,
+      "sha256": "26431a321ea12ddf0670518c7a967b18f7912503de0e6dc5ed4e68fb800de8e2"
+    },
+    "render-receipt.json": {
+      "bytes": 2734,
+      "sha256": "cba4bc71d94001d1ddac94bc5a5ae8e875f99c67911ba64e0471b3a0a3a2b63b"
+    },
+    "stock-o3-binding.json": {
+      "bytes": 549,
+      "sha256": "07b06aa612f3844bd5a13513c338a5917e6a7fff3891c341d1dc2a2d8baf5a98"
+    },
+    "stock-o3-data.json": {
+      "bytes": 5635,
+      "sha256": "3294517928b6f93e93ec37244731227dbb2bd0b728e3d76f2f369d4032752da6"
+    },
+    "stock-o3-profile-supplement.pdf": {
+      "bytes": 86982,
+      "sha256": "188d05fe366b42f0f003810f2b64f9ddd012a532731a9dcb4adcb48cd10ef24c"
+    },
+    "stock-o3-profile.typ": {
+      "bytes": 3936,
+      "sha256": "ff4917b7793cddf3cb4e231012cc3fde68c7ad317399839a0394ec2ddec61353"
+    },
+    "stock-o3-selection.json": {
+      "bytes": 463,
+      "sha256": "d84d413655e92c5de571a3a20b8dbaac15f05d481b4423858a61f409036b0257"
+    },
+    "stock-o3-timings.csv": {
+      "bytes": 1380,
+      "sha256": "f69d06ea4a6a504f527f769479e9d0fe616fc10499eddbd35548190a1b1c83d6"
+    },
+    "style-provenance.json": {
+      "bytes": 732,
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "page_count": 1,
+  "performance_acceptance": false,
+  "schema": "madloop-stock-o3-profile-render-capsule-v1"
+}

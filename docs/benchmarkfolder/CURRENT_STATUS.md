@@ -1,6 +1,6 @@
-# Current acceptance status — 2026-11-12
+# Current acceptance status — 2026-11-13
 
-The current implementation is
+The registered validation source is
 `77eb57b82d4858ff302fa9870778e01cc86d7326`, with native-precision integration
 milestone `8b74cdbb3e106f2859514bb4ca95d9fe5d70b370`. Its matching registration is
 [`tirust-native-tiers-1`](campaigns/tirust-native-tiers-1/manifest.json), manifest
@@ -32,9 +32,25 @@ Review remains [draft TIRust PR #437](https://github.com/MadGraphTeam/MadGraph7/
 into `madloop_ninjars`, stacked on [NinjaRS PR #315](https://github.com/MadGraphTeam/MadGraph7/pull/315)
 into `main`.
 
-The [47-page published report](benchmark.pdf),
-[selected ledger](report-build.json) and
-[matching owner](build_initialization_profile_report.py) now preserve the exact 45-page
+The current [48-page report](benchmark.pdf), [ledger](report-build.json) and
+[matching owner](build_stock_o3_profile_report.py) preserve all 47 earlier pages
+and add [actual stock O3 Zggg profiling](experiments/zggg-o3-stock-profile-report-1/rendered-1/README.md)
+at source `cda704e28d634e893fabc3ac358d9a27789f93aa`. FULL ms/point are
+CutTools 1579.819, Ninja 1504.548, COLLIER 1771.918, NinjaRS 1450.697 and TIRust 2260.845.
+The descriptive TIRust/NinjaRS FULL ratio is 1.55845; runtime parity is not established.
+Each stock run uses normal learned filters (48/96 contributing helicities),
+legacy−1/HFL2, CTMode1 and 50 FULL/SKIP points, with generated objects at O3.
+Return code 110 is unchecked and timed accepted statuses/tensor routes remain
+unknown. All ten pairwise endpoint comparisons pass 3e-6 and 1e-8 at identical saved
+PS/normalization words (maximum 1.759e-9); this proves neither all 50-point accuracy
+nor formal local acceptance. Stock/filter initialization remains separately
+reported; installed reducer release builds are unchanged.
+
+## Prior checked-point and initialization checkpoint
+
+The [archived 47-page checkpoint](history/report-before-stock-o3-profile-1/benchmark.pdf),
+[archived ledger](history/report-before-stock-o3-profile-1/report-build.json) and
+[matching owner](build_initialization_profile_report.py) preserved the exact 45-page
 predecessor and append two separately bound pages. The
 [final-source diagnosed-point pilot and corrected stock CLI](experiments/tirust-initialization-profile-report-1/rendered-1/README.md)
 show TIRust slower than NinjaRS: matched-cycle median ratio 1.5533 at the selected
@@ -133,5 +149,5 @@ selection. Their references to DSO `095e`, candidate `c91cb85f` and pending
 successor physics describe those earlier snapshots. Frozen checkpoint documents
 may likewise describe the report page count at their creation. The current
 PDF and its reproduction commands are selected by the [current report ledger](report-build.json)
-and [matching report instructions](experiments/tirust-initialization-profile-report-1/rendered-1/README.md).
+and [matching report instructions](experiments/zggg-o3-stock-profile-report-1/rendered-1/README.md).
 No historical failure or unmeasured result is converted into a pass here.

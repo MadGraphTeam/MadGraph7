@@ -1,0 +1,24 @@
+{
+  "document_helper": {
+    "bytes": 17195,
+    "path": "history/report-before-five-backend-timing-1/build_stress_report.py",
+    "sha256": "f9df20e66a8457eb492941da67426ad2af1174d0ed4593065ff119697219803b"
+  },
+  "files": {
+    "benchmark.pdf": {
+      "bytes": 2697049,
+      "sha256": "a6cdf944f8ec8d936574371a225d18365cbdc6eddd5acf94c340dbc071a7aa46"
+    },
+    "build_initialization_profile_report.py": {
+      "bytes": 18076,
+      "sha256": "df7884bfa512c2e74924c0eed79e5ac53d09e393d512e25a78e6515388525ec8"
+    },
+    "report-build.json": {
+      "bytes": 202075,
+      "sha256": "8c20f265ea092bf4a1cc36673817a86ea41b10cf79c45cdb651428c552a12b03"
+    }
+  },
+  "page_count": 47,
+  "schema": "madloop-stock-o3-historical47-archive-v1",
+  "scope": "Pin archived47 PDF/ledger/owner and preserve its pages transitively; do not replay predecessor scientific campaigns."
+}

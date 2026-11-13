@@ -34,7 +34,15 @@ cd madgraph7_madloop_tirust
 git rev-parse HEAD
 nix develop
 source tools/tirust_env.sh
+export FFLAGS='-w -fPIC -O3'
 ```
+
+Export these flags before installation, local preparation and either generated
+build, and keep them set for every later command below. The workflow forwards
+`FFLAGS` to both baseline and candidate, records the local deployment and
+effective compiler recipes, and checks their equality. Verify `-O3` for
+MODEL, DHELAS, process code and drivers in both arms. Use fresh local roots;
+changing flags does not optimize old objects or relabel earlier measurements.
 
 A later documentation-only commit may preserve the registered exporter hash;
 changed generator, bridge or measurement protocol bytes require a new reviewed

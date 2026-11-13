@@ -1,6 +1,6 @@
 # TIRust / MadLoop benchmark
 
-The current source is `77eb57b82d4858ff302fa9870778e01cc86d7326`, including
+The source-matched validation registration uses `77eb57b82d4858ff302fa9870778e01cc86d7326`, including
 native-precision integration milestone `8b74cdbb3e10`. Its matching
 [`tirust-native-tiers-1` registration](campaigns/tirust-native-tiers-1/manifest.json)
 freezes the new source and inputs; **all 66 fresh numerical lanes and eight main
@@ -18,9 +18,53 @@ The native artifact and route-aware tools have separate bounded qualifications;
 they do not close the new process matrix or the paired runtime requirement.
 The report and older qualifications below retain their recorded source bindings.
 
-The current [47-page benchmark PDF](benchmark.pdf) is selected by
+The current [48-page benchmark PDF](benchmark.pdf),
+[matching owner](build_stock_o3_profile_report.py) and [ledger](report-build.json)
+add one page of [actual stock O3 Zggg profiling](experiments/zggg-o3-stock-profile-report-1/rendered-1/README.md)
+from source `cda704e28d634e893fabc3ac358d9a27789f93aa`, preserving all 47
+preceding pages. FULL ms/point for CutTools/Ninja/COLLIER/NinjaRS/TIRust are
+1579.819/1504.548/1771.918/1450.697/2260.845. TIRust remains slower: descriptive
+FULL ratio 1.55845 versus NinjaRS. These actual `check profile` runs use O3 for
+generated objects, normal learned filters, legacy pole mode−1/HFL2 and CTMode1;
+each FULL/SKIP stage has 50 points and 48/96 contributing helicities. They are
+configured-backend timings with unchecked return code 110, not native-DP or
+accepted-status proofs. Ten pairwise comparisons pass 1e-8 at one identical
+retained endpoint; this does not qualify all 50 timed points. Exact ancillary
+SKIP/estimated reduction costs and stock/filter startup are retained in the
+[CSV](experiments/zggg-o3-stock-profile-report-1/rendered-1/stock-o3-timings.csv).
+
+Verify the current canonical report without native numerical work:
+
+```sh
+python3 -B docs/benchmarkfolder/build_stock_o3_profile_report.py --root docs/benchmarkfolder --verify-only
+```
+
+Enter `nix develop` before rebuilding pages; the flake supplies Pillow and Poppler.
+The page proof requires `pdfinfo`, `pdffonts`, `pdftotext`, `pdftoppm` and `pdfunite`
+on PATH. Reproduce the 48-page composite into a fresh output path:
+
+```sh
+python3 -B docs/benchmarkfolder/build_stock_o3_profile_report.py --root docs/benchmarkfolder \
+  --archive docs/benchmarkfolder/history/report-before-stock-o3-profile-1 \
+  --archive-index-sha256 dca931b13f8d9adb0e68c6b8110c67b35c7f15abb19499aa194150e7d80b09b0 \
+  --report docs/benchmarkfolder/experiments/zggg-o3-stock-profile-report-1/rendered-1 \
+  --report-index-sha256 bef9bd0db8330a47b7307e3c7acebec4fc2958c3cfb1e71fd2cf980f608cace8 \
+  --output /tmp/madloop-tirust-benchmark48.pdf
+```
+
+The current ledger proves all 47 prefix pages and the new page match in paired
+144 dpi RGB pixels, text, fonts and geometry. The old 47 PDF/ledger/owner are
+archived byte-identically in
+[`history/report-before-stock-o3-profile-1`](history/report-before-stock-o3-profile-1/index.json).
+The new owner authenticates that checkpoint transitively and replays only the
+new dataset, without rerunning or relabeling older scientific qualifications.
+No PDF object-graph or annotation/link equivalence is claimed.
+
+## Archived 47-page checked-point and initialization evidence
+
+The [archived 47-page benchmark PDF](history/report-before-stock-o3-profile-1/benchmark.pdf) is selected by
 [`build_initialization_profile_report.py`](build_initialization_profile_report.py)
-and the [current report ledger](report-build.json). Its
+and its [archived ledger](history/report-before-stock-o3-profile-1/report-build.json). Its
 [two-page final-source appendix](experiments/tirust-initialization-profile-report-1/rendered-1/README.md)
 preserves all 45 preceding pages and adds the actual final-source Zggg first-point
 five-reducer pilot, corrected stock `check profile`, and separately bound
@@ -31,33 +75,9 @@ improvement does not close runtime acceptance or become final-artifact timing.
 All retained strict-target misses, original 600s timeout and precision limits
 remain visible. Exact values, nine CSVs, Typst and pure replay accompany the appendix.
 
-Verify the current canonical report without native numerical work:
-
-```sh
-python3 -B docs/benchmarkfolder/build_initialization_profile_report.py --root docs/benchmarkfolder --verify-only
-```
-
-Enter `nix develop` before rebuilding pages; the flake supplies Pillow and
-Poppler. The page proof requires `pdfinfo`,
-`pdffonts`, `pdftotext`, `pdftoppm` and `pdfunite` on PATH. The ledger records
-actual document-tool paths and versions.
-
-Reproduce the 47-page composite into a fresh output path:
-
-```sh
-python3 -B docs/benchmarkfolder/build_initialization_profile_report.py --root docs/benchmarkfolder \
-  --archive docs/benchmarkfolder/history/report-before-initialization-profile-1 \
-  --archive-index-sha256 d003b855cd4ecdfc051795a2723f5c832d9f20fa365e612dfd9193288c57d368 \
-  --report docs/benchmarkfolder/experiments/tirust-initialization-profile-report-1/rendered-1 \
-  --report-index-sha256 e0c677d999e55c890e297a07be994665159ef09a9ee4a30dc021763b4fee447f \
-  --output /tmp/madloop-tirust-benchmark47.pdf
-```
-
-The current ledger proves all 45 prefix pages and both appendix pages match in
-paired 144 dpi RGB pixels, per-page text, fonts and geometry. The preserved 45-page
-PDF, ledger and owner remain byte-identical in
-[`history/report-before-initialization-profile-1`](history/report-before-initialization-profile-1/index.json).
-This document proof does not claim PDF object-graph or annotation/link equivalence.
+The old 45-page PDF/ledger/owner and its preservation proof remain in
+`history/report-before-initialization-profile-1`. The current owner above
+selects the 48-page report. Precise local acceptance remains open.
 
 ## Archived 45-page report and predecessor evidence
 
@@ -137,7 +157,7 @@ of all 44 prefix pages and the new timing tail in paired 144 dpi RGB pixels,
 text, fonts and geometry. Its PDF SHA256 is
 `fa83602d57a43f25bc469e8d7185ba54b3236031eb861b12193a8788afd38678`.
 The checkpoint sections below retain their historical commands and page
-counts; use the current 47-page owner above. Precise local baseline/
+counts; use the current 48-page owner above. Precise local baseline/
 rescue-chain acceptance and the original TIRust timeout remain open; later
 the separately bound initialization-repair phase is in the new appendix.
 
