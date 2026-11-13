@@ -1687,6 +1687,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             mode = self.ask_run_configuration(mode, options)
         else:
             mode = self.ask_run_configuration('auto', options, switch)
+        self.check_onia_run_mode(mode)
 
         if 'run_name' in list(options.keys()) and options['run_name']:
             self.run_name = options['run_name']
@@ -5838,6 +5839,36 @@ RESTART = %(mint_mode)s
     def donothing(*args):
         pass
 
+
+    def check_onia_run_mode(self, mode):
+        """Bound states (quarkonia, leptonia; madgraph/fks/fks_onia.py) are
+        supported at fixed order only, with the bound-state mass m_Q + m_Qbar
+        (arXiv:2402.19221)."""
+        if not misc.glob(pjoin(self.me_dir, 'SubProcesses', 'P*', 'onia_fks.json')):
+            return
+        if mode not in ['LO', 'NLO']:
+            raise aMCatNLOError('Processes with bound states (quarkonia, leptonia) are only '
+                                'available at fixed order (launch LO or launch NLO, '
+                                'fixed_order = ON): matching to a parton shower (%s) is not '
+                                'supported for them.' % mode)
+        card = pjoin(self.me_dir, 'Cards', 'onia_card.dat')
+        if os.path.exists(card):
+            block, masses = None, []
+            for line in open(card):
+                words = line.split('#')[0].split()
+                if not words:
+                    continue
+                if words[0].lower() == 'block':
+                    block = words[1].lower() if len(words) > 1 else None
+                elif block == 'onium_mass' and len(words) > 1:
+                    try:
+                        masses.append(float(words[1]))
+                    except ValueError:
+                        pass
+            if any(m > 0 for m in masses):
+                logger.warning('At NLO the mass of a bound state is m_Q + m_Qbar of its '
+                               'constituents (param_card), with no reshuffling: the onium_mass '
+                               'block of onia_card.dat is not used.')
 
     def check_tests(self, test, dir):
         """just call the correct parser for the test log.
