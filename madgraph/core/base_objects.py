@@ -2756,24 +2756,32 @@ class FLV_Coupling(PhysicsObject):
             % (len(nonzero), repr(key)))
 
     def get_shared_partner_slot(self):
-        """(k1, [k2, ...]) for a flavor index k1 of the first fermion (F1)
-        that several keys pair with different partners, None when there is
-        none.
+        """(fermion, k, [partners]) for a flavor index k of the first
+        (fermion 1) or the second (fermion 2) fermion of the vertex that
+        several keys pair with different partners, None when there is none.
 
         The tables every backend fills from get_partner_indices hold ONE
-        partner (PARTNER(k1) = k2) and ONE value (VAL(k1)) per k1, and the
-        routines read them in that one orientation. Such a coupling -- one
-        unmerged fermion coupled to several flavors of a merged one sitting
-        second (one squark mixing into several merged quarks), or a merged
-        flavor with two merged partners -- loses all its keys but the last:
-        those vertices vanish, or take the last key's value, with no error."""
-        partners = {}
+        partner per flavor on each side, PARTNER(k1) = k2 and PARTNER2(k2) =
+        k1, and ONE value per flavor of the first fermion, VAL(k1); the
+        routines read them in that one orientation (the full vertex
+        PARTNER(k1), a current with an F1 input PARTNER, with an F2 input
+        PARTNER2). A shared k1 -- an unmerged fermion first coupled to
+        several flavors of a merged one second (one squark mixing into
+        several merged quarks), or a merged flavor with two merged partners
+        -- keeps the last key's partner and value; a shared k2 -- the same
+        with the merged fermion first -- keeps the last key in PARTNER2, so
+        a current built from the second fermion gets that flavor only.
+        Either way vertices of the other keys vanish, or take another key's
+        value, with no error."""
+        partners = ({}, {})
         for key in self['flavors']:
             k1, k2 = self.get_partner_indices(key)
-            partners.setdefault(k1, set()).add(k2)
-        for k1 in sorted(partners):
-            if len(partners[k1]) > 1:
-                return k1, sorted(partners[k1])
+            partners[0].setdefault(k1, set()).add(k2)
+            partners[1].setdefault(k2, set()).add(k1)
+        for fermion, table in enumerate(partners, 1):
+            for k in sorted(table):
+                if len(table[k]) > 1:
+                    return fermion, k, sorted(table[k])
         return None
 
     def __str__(self):

@@ -2531,29 +2531,34 @@ class HelperTest(unittest.TestCase):
 
 class FLVCouplingTableTest(unittest.TestCase):
     """The flavor tables every backend fills from
-    FLV_Coupling.get_partner_indices: one partner and one value per flavor
-    of the first fermion (F1)."""
+    FLV_Coupling.get_partner_indices: one partner per flavor of each fermion
+    (PARTNER, PARTNER2) and one value per flavor of the first (VAL)."""
 
     def test_a_key_set_the_tables_cannot_hold_is_found(self):
-        """get_shared_partner_slot names a k1 that several keys pair with
-        different partners: one unmerged fermion (index 1) first and a
-        merged one with two flavors second, or a merged flavor with two
-        merged partners. One-to-one tables (the W of merged quarks, a
-        single merged leg first with several flavors) can be written."""
+        """get_shared_partner_slot names a flavor of either fermion that
+        several keys pair with different partners: a single merged leg with
+        several flavors (first or second), or a merged flavor with two
+        merged partners. One-to-one tables (the W of merged quarks, one
+        key) can be written."""
         FLV = base_objects.FLV_Coupling
         # u~ d W+ and c~ s W+ of q = d u s c: one partner each way
         self.assertIsNone(FLV(flavors={(2, 1, 0): 'GC_100',
                                        (4, 3, 0): 'GC_100'}).get_shared_partner_slot())
-        # a single merged leg first: PARTNER(k) = 1 for every k
-        self.assertIsNone(FLV(flavors={(1, 0, 0): 'GC_1',
-                                       (3, 0, 0): 'GC_2'}).get_shared_partner_slot())
+        # one key
+        self.assertIsNone(FLV(flavors={(0, 2, 0): 'GC_1'}).get_shared_partner_slot())
         # a single merged leg second: PARTNER(1) would be both 1 and 3
         self.assertEqual(FLV(flavors={(0, 1, 0): 'GC_1',
                                       (0, 3, 0): 'GC_2'}).get_shared_partner_slot(),
-                         (1, [1, 3]))
+                         (1, 1, [1, 3]))
+        # a single merged leg first: PARTNER2(1) would be both 1 and 3
+        self.assertEqual(FLV(flavors={(1, 0, 0): 'GC_1',
+                                      (3, 0, 0): 'GC_2'}).get_shared_partner_slot(),
+                         (2, 1, [1, 3]))
         # flavor 2 of F1 with two merged partners
         self.assertEqual(FLV(flavors={(2, 1, 0): 'GC_1',
                                       (2, 3, 0): 'GC_2'}).get_shared_partner_slot(),
-                         (2, [1, 3]))
-        # one key
-        self.assertIsNone(FLV(flavors={(0, 2, 0): 'GC_1'}).get_shared_partner_slot())
+                         (1, 2, [1, 3]))
+        # flavor 1 of F2 with two merged partners
+        self.assertEqual(FLV(flavors={(2, 1, 0): 'GC_1',
+                                      (4, 1, 0): 'GC_2'}).get_shared_partner_slot(),
+                         (2, 1, [2, 4]))

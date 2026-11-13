@@ -79,14 +79,16 @@ def assert_flv_table_representable(coupl):
     shared = coupl.get_shared_partner_slot()
     if shared is None:
         return
-    k1, k2s = shared
+    fermion, k, partners = shared
     raise InvalidCmd(
         "merged-flavor C++ output (mg7/standalone) cannot write the flavor "
-        "coupling %s: flavor %d of its first fermion couples to flavors %s of "
-        "the second, and its flavor table holds one partner and one value per "
-        "flavor of the first fermion. Generate the flavors of this vertex as "
-        "separate processes (explicit particles instead of the merged one)."
-        % (coupl.name, k1, ', '.join(str(k) for k in k2s)))
+        "coupling %s: flavor %d of its %s fermion couples to flavors %s of "
+        "the %s, and its flavor table holds one partner per flavor of each "
+        "fermion. Generate the flavors of this vertex as separate processes "
+        "(explicit particles instead of the merged one)."
+        % (coupl.name, k, 'first' if fermion == 1 else 'second',
+           ', '.join(str(p) for p in partners),
+           'second' if fermion == 1 else 'first'))
 
 
 class UFOModelConverterCPP(object):
@@ -505,7 +507,7 @@ class UFOModelConverterCPP(object):
           * a vertex with more than two merged-flavor legs (never seen so far).
             The Fortran 'madevent'/'standalone_fortran' output supports it.
           * a coupling whose table cannot hold its keys (several keys with
-            the same flavor of the first fermion, see
+            the same flavor of one fermion, see
             FLV_Coupling.get_shared_partner_slot). The Fortran tables have
             the same limit.
 

@@ -3897,7 +3897,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'checks', 'parameters', 'options', 'coupling_order','variable',
                      'modellist', 'fockstates', 'boundstates']
     _add_opts = ['process', 'model']
-    _save_opts = ['model', 'processes', 'options']
+    # (no 'processes': the amplitudes kept after an output are the base
+    # amplitudes of its matrix elements, which lost the diagrams its --mask
+    # trimmed, so a saved list could not be output with the other --mask)
+    _save_opts = ['model', 'options']
     # commands the running tutorial provides, also accepted as `tutorial X`:
     # people reach for `tutorial hint` as readily as `hint`
     _tutorial_step_cmds = ('hint', 'solution', 'next', 'repeat', 'back', 'skip')
@@ -9963,32 +9966,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 raise self.RWError('Could not load model from file %s' \
                                       % args[1])
-        elif args[0] == 'processes':
-            amps,proc_defs = save_load_object.load_from_file(args[1])
-            if isinstance(amps, diagram_generation.AmplitudeList):
-                cpu_time2 = time.time()
-                logger.info("Loaded processes from file in %0.3f s" % \
-                      (cpu_time2 - cpu_time1))
-                if amps:
-                    model = amps[0].get('process').get('model')
-                    if not model.get('parameters'):
-                        # This is a v4 model.  Look for path.
-                        self._model_v4_path = import_v4.find_model_path(\
-                                   model.get('name').replace("_v4", ""),
-                                   self._mgme_dir)
-                    else:
-                        self._model_v4_path = None
-                    # If not exceptions from previous steps, set
-                    # _curr_amps and _curr_model
-                    self._curr_amps = amps
-                    self._curr_model = model
-                    self._curr_proc_defs = proc_defs
-                    logger.info("Model set from process.")
-                    # Do post-processing of model
-                    self.process_model()
-                self._done_export = None
-            else:
-                raise self.RWError('Could not load processes from file %s' % args[1])
 
 
     def post_install_RunningCoupling(self):
@@ -11154,13 +11131,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.info('Saved model to file %s' % args[1])
             else:
                 raise self.InvalidCmd('No model to save!')
-        elif args[0] == 'processes':
-            if self._curr_amps:
-                if save_load_object.save_to_file(args[1], (self._curr_amps,self._curr_proc_defs) ):
-                    logger.info('Saved processes to file %s' % args[1])
-            else:
-                raise self.InvalidCmd('No processes to save!')
-
         elif args[0] == 'options':
             partial_save = False
             to_define = {}

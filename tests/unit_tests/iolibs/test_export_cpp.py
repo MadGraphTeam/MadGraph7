@@ -1116,8 +1116,8 @@ class MG7LeptonDensityShippingTest(unittest.TestCase):
 
 class TestFlavorTableGuard(unittest.TestCase):
     """The C++ output refuses a flavored coupling whose table cannot hold its
-    keys (FLV_Coupling.get_shared_partner_slot), fixed or running: it would
-    lose all its keys but one, with no error."""
+    keys (FLV_Coupling.get_shared_partner_slot, on either fermion), fixed or
+    running: it would lose all its keys but one, with no error."""
 
     def test_a_coupling_the_table_cannot_hold_is_refused(self):
         import madgraph.core.base_objects as base_objects
@@ -1138,9 +1138,13 @@ class TestFlavorTableGuard(unittest.TestCase):
                                             export_cpp.UFOModelConverterCPP)
         self.assertRaises(InvalidCmd,
                           converter._assert_flv_couplings_supported, [lossy])
+        # the merged leg first: the second fermion's table is shared
+        first = FLV(name='FLV_FIRST', flavors={(1, 0, 0): 'GC_1',
+                                                (3, 0, 0): 'GC_2'})
+        self.assertRaises(InvalidCmd,
+                          export_cpp.assert_flv_table_representable, first)
         # the tables that can be written pass
         for flavors in ({(2, 1, 0): 'GC_100', (4, 3, 0): 'GC_100'},
-                        {(1, 0, 0): 'GC_1', (3, 0, 0): 'GC_2'},
                         {(0, 2, 0): 'GC_1'}):
             export_cpp.assert_flv_table_representable(FLV(flavors=flavors))
             converter._assert_flv_couplings_supported([FLV(flavors=flavors)])

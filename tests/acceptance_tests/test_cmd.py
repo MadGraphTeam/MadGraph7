@@ -388,7 +388,6 @@ class TestCmdShell2(unittest.TestCase,
         self.cmd.do_import('model sm', force=True)
         self.do('set group_subprocesses False')
         self.do('generate e+ e- > e+ e-')
-#        self.do('load processes %s' % self.join_path(_pickle_path,'e+e-_e+e-.pkl'))
         self.do('output madevent %s -nojpeg' % self.out_dir)
 
         self.assertTrue(os.path.exists(self.out_dir))
@@ -6822,11 +6821,6 @@ P1_qq_wp_wp_lvl
 
 
         #self.assertEqual(self.cmd._curr_amps[0].nice_string().split('\n'), nicestring.split('\n'))
-        #self.do('save processes /tmp/model.pkl')
-        #self.do('generate e+ e- > e+ e-')
-        #self.do('load processes /tmp/model.pkl')
-        #self.assertEqual(len(self.cmd._curr_amps), 1)
-        #self.assertEqual(self.cmd._curr_amps[0].nice_string(), nicestring)
         
         #os.remove('/tmp/model.pkl')
         
