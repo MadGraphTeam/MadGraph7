@@ -33,7 +33,6 @@ C the initial- or final-state reshuffling
 C-----Arguments      
       double precision p(0:3,nexternal-1), q(0:3,nexternal-1)
       integer iresh, pdg_old, pdg_new
-      double precision mass_old, mass_new
       logical pass
 C-----Local
       integer ihowresh
@@ -69,7 +68,6 @@ C the initial- or final-state reshuffling
 C-----Arguments      
       double precision p(0:3,nexternal-1), q(0:3,nexternal-1)
       integer iresh(2), pdg_old(2), pdg_new(2)
-      double precision mass_old, mass_new
       logical pass
 C-----Local
       integer i
@@ -230,15 +228,12 @@ C-----Arguments
       double precision mass_old, mass_new
       logical pass
 C-----Local
-      integer i, j, nu
-      double precision preco(0:3), qreco(0:3), pcom(0:3)
+      integer i
+      double precision pcom(0:3)
       double precision qinboost(0:3,nincoming)
-      double precision shat, newmom, m2_other
-      double precision msq_reco, totmass
-      double precision a, b
+      double precision shat,m2_other
       double precision dot, threedot, sumdot, get_mass_from_id
       external dot, threedot, sumdot, get_mass_from_id
-      double precision rescale_init
 C--------------- 
 C     BEGIN CODE                                                                   
 C---------------    
@@ -320,14 +315,12 @@ C-----Arguments
       double precision mass_old, mass_new
       logical pass
 C-----Local
-      integer i, j, nu
+      integer i,nu
       double precision preco(0:3), qreco(0:3), ptmp(0:3)
       double precision shat
       double precision msq_reco, totmass
-      double precision a, b
       double precision dot, threedot, get_mass_from_id
       external dot, threedot, get_mass_from_id
-      double precision rescale_init
 C--------------- 
 C     BEGIN CODE                                                                   
 C---------------    
@@ -423,14 +416,10 @@ C-----Arguments
       double precision mass_old, mass_new
       logical pass
 C-----Local
-      integer i, j, nu
-      double precision preco(0:3), qreco(0:3), ptmp(0:3)
-      double precision shat
-      double precision msq_reco
-      double precision a, b, etot, ztot
+      integer j,nu
+      double precision etot,ztot
       double precision dot, threedot, get_mass_from_id
       external dot, threedot, get_mass_from_id
-      double precision rescale_init
  
 C--------------- 
 C     BEGIN CODE                                                                    
@@ -492,7 +481,10 @@ C energies (sum of z components of FS momenta)
       double precision p(0:3,nexternal-1), q(0:3,nexternal-1)
       integer iresh
       double precision mass_new
-      double precision a, b
+      double precision a, b, e_scale
+      double precision eps_abs, eps_rel
+C-----Momentum-conservation tolerances: 1 MeV absolute, 1 ppm relative
+      parameter (eps_abs = 1d-3, eps_rel = 1d-6)
       integer i, j
       double precision dot
 
@@ -501,7 +493,7 @@ C energies (sum of z components of FS momenta)
      $   ' implemented', nincoming
         stop
       endif
-      
+
       do i = 1, nexternal-1
 C--------mass shell conditions
         if (i.ne.iresh) then
@@ -523,6 +515,14 @@ C--------mass shell conditions
         endif
       enddo
 
+C-----e_scale = sum of the incoming energies: reference for the relative
+C     tolerance that, unlike b (largest |q(i,j)| over the legs for the
+C     component i), does not become small for collinear configurations
+      e_scale = 0d0
+      do j = 1, nincoming
+        e_scale = e_scale + dabs(q(0,j))
+      enddo
+
 C--------momentum conservation
       do i = 0,3
         a = 0d0
@@ -535,9 +535,11 @@ C--------momentum conservation
             a = a + q(i,j)
           endif
         enddo
-        if (dabs(a)/b.gt.1d-6) then
+        if (dabs(a).gt.eps_abs           .and.
+     $      dabs(a).gt.eps_rel*e_scale   .and.
+     $      dabs(a).gt.eps_rel*b)        then
           write(*,*) 'ERROR IN CHECK_RESHUFFLED_MOMENTA: MOM. CONS',
-     $      i, dabs(a), b
+     $      i, dabs(a), b, ' e_scale=', e_scale
           do j = 1, nexternal-1
             write(*,*) q(0,j), q(1,j), q(2,j), q(3,j), dsqrt(dot(q(0,j), q(0,j)))
           enddo
@@ -556,7 +558,10 @@ C--------momentum conservation
       double precision p(0:3,nexternal-1), q(0:3,nexternal-1)
       integer iresh(1:2)
       double precision mass_new(1:2)
-      double precision a, b
+      double precision a, b, e_scale
+      double precision eps_abs, eps_rel
+C-----Momentum-conservation tolerances: 1 MeV absolute, 1 ppm relative
+      parameter (eps_abs = 1d-3, eps_rel = 1d-6)
       integer i, j
       double precision dot
       integer filoc_int
@@ -590,6 +595,14 @@ C--------mass shell conditions
       enddo
       enddo
 
+C-----e_scale = sum of the incoming energies: reference for the relative
+C     tolerance that, unlike b (largest |q(i,j)| over the legs for the
+C     component i), does not become small for collinear configurations
+      e_scale = 0d0
+      do j = 1, nincoming
+        e_scale = e_scale + dabs(q(0,j))
+      enddo
+
 C--------momentum conservation
       do i = 0,3
         a = 0d0
@@ -602,9 +615,11 @@ C--------momentum conservation
             a = a + q(i,j)
           endif
         enddo
-        if (dabs(a)/b.gt.1d-6) then
+        if (dabs(a).gt.eps_abs           .and.
+     $      dabs(a).gt.eps_rel*e_scale   .and.
+     $      dabs(a).gt.eps_rel*b)        then
           write(*,*) 'ERROR IN CHECK_RESHUFFLED_MOMENTA: MOM. CONS',
-     $      i, dabs(a), b
+     $      i, dabs(a), b, ' e_scale=', e_scale
           do j = 1, nexternal-1
             write(*,*) q(0,j), q(1,j), q(2,j), q(3,j), dsqrt(dot(q(0,j), q(0,j)))
           enddo

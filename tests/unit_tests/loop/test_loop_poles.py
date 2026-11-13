@@ -467,7 +467,8 @@ C     Runtime changes share the same global scope and the latest call wins.
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('loop_optimized_output enabled', result.stdout)
 
-    def test_diagnostic_modes_bypass_and_restore_learned_zero_filters(self):
+    def filter_blocks(self):
+        """Use the generated routine's actual filter lifecycle in a small driver."""
         source = (TEMPLATES / 'loop_matrix_standalone.inc').read_text()
         start = source.index('IF (BYPASS_FILTERS) THEN')
         bypass = source[start:source.index(
@@ -478,11 +479,15 @@ C     Runtime changes share the same global scope and the latest call wins.
         start = source.index('IF (WriteOutFilters.AND.')
         write_filters = source[start:source.index(
             'IF (BYPASS_FILTERS) THEN', start)]
-        assignment = next(line for line in source.splitlines()
-                          if line.startswith('BYPASS_FILTERS='))
+        start = source.index('BYPASS_FILTERS=')
+        assignment = source[start:source.index('IF (LOCAL_ML_INIT)', start)]
         start = source.index('## if(LoopInduced) {\nC For loop-induced processes')
         count_training_points = source[start:source.index(
             'IF (USER_STAB_PREC.GT.0.0d0) THEN', start)]
+        return assignment, count_training_points, write_filters, bypass, restore
+
+    def test_diagnostic_modes_bypass_and_restore_learned_zero_filters(self):
+        assignment, training, write_filters, bypass, restore = self.filter_blocks()
         # Represent a saved combined-pole zero: UV and IR separately survive.
         # Reading deliberately restrictive files reproduces the stale-filter
         # case, without relying on a numerical library to infer a zero.
@@ -496,7 +501,8 @@ C     Runtime changes share the same global scope and the latest call wins.
       INTEGER NCOMB,NSQUAREDSO,NLOOPGROUPS
       PARAMETER(NCOMB=2,NSQUAREDSO=1,NLOOPGROUPS=1)
       LOGICAL GOODAMP(1,1),OLD_GOODAMP(1,1)
-      INTEGER GOODHEL(2),OLD_GOODHEL(2),I,J,MODE,MODELIST(6),NTRY
+      INTEGER GOODHEL(2),OLD_GOODHEL(2),I,J,MODE,MODELIST(10),NTRY
+      INTEGER NPSPOINTS,TRAINED,LEGACY
       LOGICAL CHECKPHASE,HELDOUBLECHECKED,BYPASS_CHECK,BYPASS_FILTERS
       LOGICAL OLD_CHECKPHASE,OLD_HELDOUBLECHECKED
       LOGICAL FOUNDHELFILTER,FOUNDLOOPFILTER,EXISTS
@@ -504,6 +510,9 @@ C     Runtime changes share the same global scope and the latest call wins.
       REAL*8 UV,IR
       CALL DEFAULTPARAM()
       USELOOPFILTER=.TRUE.
+      WriteOutFilters=.FALSE.
+      MLReductionLib=0
+      MLReductionLib(1)=8
       HelFilterFN='new_helicities.dat'
       LoopFilterFN='new_loops.dat'
       OPEN(1,FILE='saved_loops.dat',STATUS='OLD')
@@ -513,18 +522,27 @@ C     Runtime changes share the same global scope and the latest call wins.
       READ(1,*) GOODHEL(1)
       READ(1,*) GOODHEL(2)
       CLOSE(1)
-      MODELIST=(/1,2,0,3,1,2/)
+      MODELIST=(/1,2,0,3,-1,0,2,1,3,0/)
       NTRY=2
+      TRAINED=NTRY
+      NPSPOINTS=2
       BYPASS_CHECK=.FALSE.
       CHECKPHASE=.FALSE.
       HELDOUBLECHECKED=.TRUE.
       FOUNDHELFILTER=.FALSE.
       FOUNDLOOPFILTER=.FALSE.
-      DO MODE=1,6
+      DO MODE=1,10
         LoopPoleMode=MODELIST(MODE)
-''' + assignment + '\n' + count_training_points + write_filters + bypass + '''
-        IF(NTRY.NE.2) STOP 30
-        IF(ANY(GOODHEL.NE.1).OR..NOT.ALL(GOODAMP)) STOP 31
+''' + assignment + '\n' + training + write_filters + bypass + '''
+        IF(LoopPoleMode.GT.0) THEN
+          IF(.NOT.BYPASS_FILTERS) STOP 29
+          IF(ANY(GOODHEL.NE.1).OR..NOT.ALL(GOODAMP)) STOP 31
+        ELSE
+          TRAINED=TRAINED+1
+          IF(BYPASS_FILTERS) STOP 29
+          IF(ANY(GOODHEL.NE.0).OR.ANY(GOODAMP)) STOP 31
+        ENDIF
+        IF(NTRY.NE.TRAINED) STOP 30
         IF(CHECKPHASE.OR..NOT.HELDOUBLECHECKED) STOP 32
         UV=0D0
         IF(GOODAMP(1,1)) THEN
@@ -532,7 +550,11 @@ C     Runtime changes share the same global scope and the latest call wins.
           IF(GOODHEL(2).GT.0) UV=UV+5D0
         ENDIF
         IR=-UV
-        IF(UV.NE.8D0.OR.IR.NE.-8D0) STOP 33
+        IF(LoopPoleMode.GT.0) THEN
+          IF(UV.NE.8D0.OR.IR.NE.-8D0) STOP 33
+        ELSE
+          IF(UV.NE.0D0.OR.IR.NE.0D0) STOP 33
+        ENDIF
 ''' + restore + '''
         IF(ANY(GOODHEL.NE.0).OR.ANY(GOODAMP)) STOP 34
         IF(CHECKPHASE.OR..NOT.HELDOUBLECHECKED) STOP 35
@@ -546,9 +568,125 @@ C     Returning to legacy mode restores the caller's learned filters.
       LoopPoleMode=-1
 ''' + assignment + '\n' + bypass + '''
       IF(BYPASS_FILTERS.OR.ANY(GOODHEL.NE.0).OR.ANY(GOODAMP)) STOP 39
+C     A caller-requested bypass still applies to explicit combined poles.
+      LoopPoleMode=0
+      BYPASS_CHECK=.TRUE.
+      WriteOutFilters=.TRUE.
+''' + assignment + training + write_filters.replace('110', '210').replace('111', '211') + bypass + '''
+      IF(.NOT.BYPASS_FILTERS.OR.NTRY.NE.TRAINED) STOP 40
+      IF(ANY(GOODHEL.NE.1).OR..NOT.ALL(GOODAMP)) STOP 41
+''' + restore + '''
+      IF(ANY(GOODHEL.NE.0).OR.ANY(GOODAMP)) STOP 42
+      BYPASS_CHECK=.FALSE.
+C     Legacy COLLIER filters can be zero with poles disabled, although the
+C     combined-pole result is nonzero. Do not reuse that convention for 0.
+      MLReductionLib(1)=7
+      DO LEGACY=1,3
+        COLLIERComputeUVpoles=LEGACY.EQ.1
+        COLLIERComputeIRpoles=LEGACY.EQ.2
+        LoopPoleMode=-1
+''' + assignment + '''
+        IF(BYPASS_FILTERS) STOP 43
+        LoopPoleMode=0
+''' + assignment + training + write_filters.replace('110', '310').replace('111', '311') + bypass + '''
+        IF(.NOT.BYPASS_FILTERS.OR.NTRY.NE.TRAINED) STOP 44
+        IF(ANY(GOODHEL.NE.1).OR..NOT.ALL(GOODAMP)) STOP 45
+''' + restore + '''
+        IF(ANY(GOODHEL.NE.0).OR.ANY(GOODAMP)) STOP 46
+        INQUIRE(FILE=HelFilterFN,EXIST=EXISTS)
+        IF(EXISTS) STOP 47
+        INQUIRE(FILE=LoopFilterFN,EXIST=EXISTS)
+        IF(EXISTS) STOP 48
+      ENDDO
+C     Legacy COLLIER switches have no effect on a NinjaRS-only chain.
+      MLReductionLib(1)=8
+''' + assignment + '''
+      IF(BYPASS_FILTERS) STOP 49
       WRITE(*,*) 'DIAGNOSTIC FILTER BYPASS PASSED'
       END
 ''', context={'LoopInduced': False})
         self.compile('filters.f')
         result = self.run_command(str(self.work / 'check'))
         self.assertIn('DIAGNOSTIC FILTER BYPASS PASSED', result.stdout)
+
+    def test_combined_mode_trains_and_writes_filters_for_born_and_loop_induced(self):
+        assignment, training, write_filters, bypass, restore = self.filter_blocks()
+        source = (TEMPLATES / 'loop_matrix_standalone.inc').read_text()
+        checkphase = next(line for line in source.splitlines()
+                          if line.startswith('CHECKPHASE=(NTRY.LE.CHECKCYCLE)'))
+        for loop_induced in (False, True):
+            with FortranWriter(str(self.work / 'training.f')) as writer:
+                writer.writelines('''
+      PROGRAM CHECK
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      INTEGER NCOMB,NSQUAREDSO,NLOOPGROUPS
+      PARAMETER(NCOMB=2,NSQUAREDSO=1,NLOOPGROUPS=1)
+      LOGICAL GOODAMP(1,1),OLD_GOODAMP(1,1),SAVEDAMP
+      INTEGER GOODHEL(2),OLD_GOODHEL(2),SAVEDHEL(2)
+      INTEGER I,J,NTRY,NPSPOINTS,NEVAL,EXPECTED
+      LOGICAL CHECKPHASE,HELDOUBLECHECKED,BYPASS_CHECK,BYPASS_FILTERS
+      LOGICAL OLD_CHECKPHASE,OLD_HELDOUBLECHECKED
+      LOGICAL FOUNDHELFILTER,FOUNDLOOPFILTER,EXISTS,SHOULDWRITE
+      CHARACTER*32 HelFilterFN,LoopFilterFN
+      CHARACTER*2 ARG
+      CALL DEFAULTPARAM()
+      CALL GET_COMMAND_ARGUMENT(1,ARG)
+      READ(ARG,*) LoopPoleMode
+      MLReductionLib=0
+      MLReductionLib(1)=8
+      USELOOPFILTER=.TRUE.
+      WriteOutFilters=.TRUE.
+      GOODHEL=(/2,-10001/)
+      GOODAMP=.FALSE.
+      NTRY=CheckCycle-1
+      EXPECTED=NTRY
+      HELDOUBLECHECKED=.TRUE.
+      BYPASS_CHECK=.FALSE.
+      FOUNDHELFILTER=.FALSE.
+      FOUNDLOOPFILTER=.FALSE.
+      HelFilterFN='trained_helicities.dat'
+      LoopFilterFN='trained_loops.dat'
+      DO NEVAL=1,3
+        NPSPOINTS=NEVAL-1
+''' + assignment + training + checkphase + '\n' + write_filters + bypass + '''
+## if(LoopInduced){
+        IF(LoopPoleMode.LE.0.AND.NPSPOINTS.GE.1) EXPECTED=EXPECTED+1
+## }else{
+        IF(LoopPoleMode.LE.0) EXPECTED=EXPECTED+1
+## }
+        IF(NTRY.NE.EXPECTED) STOP 51
+        SHOULDWRITE=LoopPoleMode.LE.0.AND.NTRY.GT.CheckCycle
+        INQUIRE(FILE=HelFilterFN,EXIST=EXISTS)
+        IF(EXISTS.NEQV.SHOULDWRITE) STOP 52
+        INQUIRE(FILE=LoopFilterFN,EXIST=EXISTS)
+        IF(EXISTS.NEQV.SHOULDWRITE) STOP 53
+        IF(FOUNDHELFILTER.NEQV.SHOULDWRITE) STOP 54
+        IF(FOUNDLOOPFILTER.NEQV.SHOULDWRITE) STOP 55
+''' + restore + '''
+        IF(ANY(GOODHEL.NE.(/2,-10001/)).OR.ANY(GOODAMP)) STOP 56
+        IF(.NOT.HELDOUBLECHECKED) STOP 57
+      ENDDO
+      IF(LoopPoleMode.LE.0) THEN
+        IF(.NOT.SHOULDWRITE) STOP 58
+        OPEN(1,FILE=HelFilterFN,STATUS='OLD')
+        READ(1,*) SAVEDHEL(1)
+        READ(1,*) SAVEDHEL(2)
+        CLOSE(1)
+        OPEN(1,FILE=LoopFilterFN,STATUS='OLD')
+        READ(1,*) SAVEDAMP
+        CLOSE(1)
+        IF(ANY(SAVEDHEL.NE.GOODHEL).OR.SAVEDAMP) STOP 59
+      ENDIF
+      WRITE(*,*) 'FILTER TRAINING AND PERSISTENCE PASSED'
+      END
+''', context={'LoopInduced': loop_induced})
+            self.compile('training.f')
+            for mode in (-1, 0, 1, 2, 3):
+                with self.subTest(loop_induced=loop_induced, mode=mode):
+                    for name in ('trained_helicities.dat', 'trained_loops.dat'):
+                        path = self.work / name
+                        if path.exists():
+                            path.unlink()
+                    result = self.run_command(str(self.work / 'check'), str(mode))
+                    self.assertIn('FILTER TRAINING AND PERSISTENCE PASSED', result.stdout)

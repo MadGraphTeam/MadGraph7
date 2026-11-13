@@ -33,9 +33,9 @@ else:
     import madgraph.various.misc as misc
     from madgraph import MadGraph5Error
 
-# The first ten entries follow the units-digit histogram written by MadLoop.
-# Keep the backend identifiers shared by the XML and NLO log readers.
-MADLOOP_UNIT_BACKENDS = (
+# Version 1 is retained for unmarked historical files. Format 2 retires
+# PJFry and gives NinjaRS one units digit; precision uses dedicated counters.
+MADLOOP_LEGACY_UNIT_BACKENDS = (
     ('unidentified', 'Not identified (CTModeRun != -1)'),
     ('CutTools_DP', 'CutTools (double precision)'),
     ('PJFry', 'PJFry++'),
@@ -47,7 +47,11 @@ MADLOOP_UNIT_BACKENDS = (
     ('Ninja_QP', 'Ninja (quadruple precision)'),
     ('CutTools_QP', 'CutTools (quadruple precision)'),
 )
-MADLOOP_BACKEND_LABELS = dict(MADLOOP_UNIT_BACKENDS + (
+MADLOOP_RETURN_CODE_VERSION = 2
+MADLOOP_UNIT_BACKENDS = tuple(
+    ('NinjaRS', 'NinjaRS') if unit == 2 else backend
+    for unit, backend in enumerate(MADLOOP_LEGACY_UNIT_BACKENDS))
+MADLOOP_BACKEND_LABELS = dict(MADLOOP_LEGACY_UNIT_BACKENDS + MADLOOP_UNIT_BACKENDS + (
     ('NinjaRS_DP', 'NinjaRS (double precision)'),
     ('NinjaRS_QP', 'NinjaRS (quadruple precision)'),
     ('TIRust_DP', 'TIRust (double precision)'),
@@ -56,26 +60,44 @@ MADLOOP_BACKEND_LABELS = dict(MADLOOP_UNIT_BACKENDS + (
 
 
 def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0,
-                                tirust_dp=0, tirust_qp=0):
-    """Decode a legacy units histogram and its optional contextual counters.
+                                 format_version=1, tirust_dp=0, tirust_qp=0):
+    """Decode one versioned histogram without modifying the input.
 
-    All units slots are occupied. To preserve the public three-digit return
-    codes, NinjaRS uses (hundreds, units) = (2, 8) for DP and (3, 2) for QP;
-    TIRust uses (2, 9) for DP and (3, 3) for QP.
-    Producers count these calls in both the units histogram and dedicated
-    counters. Split those aliases here, once, for both statistics formats.
-    Missing dedicated counters mean an old file with only legacy backends.
-    The input histogram is never modified; decoding can be repeated safely.
+    Unmarked files use version 1, including the historical aliases: NinjaRS
+    used (hundreds, units) = (2, 8) for DP and (3, 2) for QP, TIRust (2, 9)
+    for DP and (3, 3) for QP.
+    Version 2 assigns unit 2 exclusively to NinjaRS. Its DP/QP counters split
+    this bucket directly; there is no subtraction from another backend.
+    TIRust (MLReductionLib=9) shares unit 3 with IREGI; its DP/QP counters
+    are split off that bucket.
+    Decode each source before aggregating statistics from different versions.
     """
+    if format_version not in (1, MADLOOP_RETURN_CODE_VERSION):
+        raise MadGraph5Error('Unsupported MadLoop return-code format %s.' %
+                             format_version)
     usage = {backend: unit_counts[unit]
-             for unit, (backend, _) in enumerate(MADLOOP_UNIT_BACKENDS)}
-    for backend, alias, count in (
-            ('NinjaRS_DP', 'Ninja_QP', ninjars_dp),
-            ('NinjaRS_QP', 'PJFry', ninjars_qp),
-            ('TIRust_DP', 'CutTools_QP', tirust_dp),
-            ('TIRust_QP', 'IREGI', tirust_qp)):
-        usage[backend] = count
-        usage[alias] -= count
+             for unit, (backend, _) in enumerate(MADLOOP_LEGACY_UNIT_BACKENDS)}
+    if format_version == 1:
+        # These aliases belong only to previously serialized files.
+        usage['Ninja_QP'] -= ninjars_dp
+        usage['PJFry'] -= ninjars_qp
+        usage['CutTools_QP'] -= tirust_dp
+        usage['IREGI'] -= tirust_qp
+    else:
+        if (ninjars_dp < 0 or ninjars_qp < 0 or
+                ninjars_dp + ninjars_qp != unit_counts[2]):
+            raise MadGraph5Error('Inconsistent NinjaRS precision counters in '
+                                 'MadLoop return-code format 2.')
+        if (tirust_dp < 0 or tirust_qp < 0 or
+                tirust_dp + tirust_qp > unit_counts[3]):
+            raise MadGraph5Error('Inconsistent TIRust precision counters in '
+                                 'MadLoop return-code format 2.')
+        usage['PJFry'] = 0
+        usage['IREGI'] -= tirust_dp + tirust_qp
+    usage['NinjaRS_DP'] = ninjars_dp
+    usage['NinjaRS_QP'] = ninjars_qp
+    usage['TIRust_DP'] = tirust_dp
+    usage['TIRust_QP'] = tirust_qp
     return usage
 
 
@@ -170,16 +192,19 @@ class RunStatistics(dict):
                 key = '%s_%s' % (backend, precision)
                 nodes = xml_node.getElementsByTagName(key + '_usage')
                 contextual_usage[key] = int(getData(nodes[0])) if nodes else 0
+        versions = xml_node.getElementsByTagName('return_code_version')
+        version = int(getData(versions[0])) if versions else 1
         self.update((backend + '_usage', count) for backend, count in
                     decode_madloop_backend_usage(
-                        u_codes, **contextual_usage).items()
+                        u_codes, format_version=version,
+                        **contextual_usage).items()
                     if backend != 'unidentified')
         t_return_code = xml_node.getElementsByTagName('t_return_code')
         t_codes = [int(_) for _ in getData(t_return_code[0]).split(',')]
         self['DP_usage']          = t_codes[1]
         self['QP_usage']          = t_codes[2]
         self['DP_init_usage']     = t_codes[3]
-        self['DP_init_usage']     = t_codes[4]
+        self['QP_init_usage']     = t_codes[4]
         h_return_code = xml_node.getElementsByTagName('h_return_code')
         h_codes = [int(_) for _ in getData(h_return_code[0]).split(',')]
         self['unknown_stability']  = h_codes[1]

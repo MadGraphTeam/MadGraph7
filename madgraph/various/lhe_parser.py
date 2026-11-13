@@ -1,6 +1,7 @@
 from __future__ import division
 from __future__ import absolute_import
 import collections
+import codecs
 import random
 import re
 import operator
@@ -1254,7 +1255,7 @@ class EventFile(object):
         else:
             nb_events_unweighted = nb_keep
 
-        logger.log(log_level, "write %i event (efficiency %.2g %%, truncation %.2g %%) after %i iteration(s)", 
+        logger.log(log_level, "write %i event (efficiency %.2g %%, overweight excess %.2g %%) after %i iteration(s)",
           nb_keep, nb_events_unweighted/nb_event*100, trunc_cross/cross['abs']*100, i)
      
         # every event heavier than max_wgt is kept, so trunc_cross is the
@@ -1317,33 +1318,86 @@ class EventFile(object):
         else:
             return out
 
-    def split(self, nb_event=0, partition=None, cwd=os.path.curdir, zip=False):
-        """split the file in multiple file. Do not change the weight!"""
+    def _iter_event_text(self, chunk_size=1024 * 1024):
+        """Read complete event blocks without parsing or reformatting particles.
 
-        nb_file = -1
-        for i, event in enumerate(self):
-            if (not (partition is None) and i==sum(partition[:nb_file+1])) or \
-                                   (partition is None and i % nb_event == 0):
-                if i:
-                    #close previous file
-                    current.write('</LesHouchesEvent>\n')
+        Scan buffered chunks, rather than making a Python call for every line.
+        Memory use is limited to a chunk plus the largest event. Keep the usual
+        iterator for subclasses which generate or mix events themselves.
+        """
+        if type(self) is not EventFile or self.eventgroup:
+            for event in self:
+                yield str(event)
+            return
+
+        opening = re.compile(r'(?m)^[ \t]*<event(?:[ \t][^>\r\n]*)?>')
+        closing = re.compile(r'(?m)^[ \t]*</event>[ \t]*\r?\n')
+        decoder = codecs.getincrementaldecoder(self.encoding)(errors='ignore')
+        pending = ''
+        while True:
+            chunk = self.file.read(chunk_size)
+            eof = not chunk
+            if isinstance(chunk, bytes):
+                chunk = decoder.decode(chunk, final=eof)
+            pending += chunk
+            if eof and pending and not pending.endswith('\n'):
+                pending += '\n'
+            end = 0
+            for match in closing.finditer(pending):
+                start = opening.search(pending, end, match.start())
+                if start is not None:
+                    yield pending[start.start():match.end()]
+                end = match.end()
+            pending = pending[end:]
+            if eof:
+                if opening.search(pending):
+                    raise ValueError('Incomplete LHE event in %s' % self.path)
+                return
+
+    def split(self, nb_event=0, partition=None, cwd=os.path.curdir, zip=False):
+        """Split into consecutive files, preserving event text and weights.
+
+        File names retain the historical ``<input>_<index>.lhe[.gz]`` form.
+        A partition can select only the first sum(partition) events.
+        """
+        if partition is None:
+            sizes = None
+            if nb_event <= 0 or int(nb_event) != nb_event:
+                raise ValueError('nb_event must be a positive integer')
+            size = int(nb_event)
+        else:
+            sizes = list(partition)
+            if any(n <= 0 or int(n) != n for n in sizes):
+                raise ValueError('partition sizes must be positive integers')
+            if not sizes:
+                return 0
+
+        nb_file = 0
+        current = None
+        remaining = 0
+        try:
+            for event in self._iter_event_text():
+                if current is None:
+                    suffix = '.lhe.gz' if zip else '.lhe'
+                    path = pjoin(cwd, '%s_%d%s' % (self.path, nb_file, suffix))
+                    current = EventFile(path, 'w')
+                    current.write(self.banner)
+                    remaining = int(sizes[nb_file]) if sizes is not None else size
+                    nb_file += 1
+                current.write(event)
+                remaining -= 1
+                if remaining == 0:
+                    current.write('</LesHouchesEvents>\n')
                     current.close()
-                # create the new file
-                nb_file +=1
-                # If end of partition then finish writing events here.
-                if not partition is None and (nb_file+1>len(partition)):
-                    return nb_file
-                if zip:
-                    current = EventFile(pjoin(cwd,'%s_%s.lhe.gz' % (self.path, nb_file)),'w')
-                else:
-                    current = open(pjoin(cwd,'%s_%s.lhe' % (self.path, nb_file)),'w')                    
-                current.write(self.banner)
-            current.write(str(event))
-        if i!=0:
-            current.write('</LesHouchesEvent>\n')
-            current.close()
-             
-        return nb_file +1
+                    current = None
+                    if sizes is not None and nb_file == len(sizes):
+                        break
+            if current is not None:
+                current.write('</LesHouchesEvents>\n')
+        finally:
+            if current is not None:
+                current.close()
+        return nb_file
 
     def update_HwU(self, hwu, fct, name='lhe', keep_wgt=False, maxevents=sys.maxsize):
         """take a HwU and add this event file for the function fct"""
@@ -2798,6 +2852,8 @@ class Event(list):
             new.reweight_order = list(self.reweight_order)
         new.matched_scale_data = None if self.matched_scale_data is None \
                                  else list(self.matched_scale_data)
+        if getattr(self, 'scales_attributes', None) is not None:
+            new.scales_attributes = dict(self.scales_attributes)
         new.syscalc_data = dict(self.syscalc_data)
         new.density = list(self.density)
         fields = self._copy_particle_fields
@@ -3018,7 +3074,9 @@ class Event(list):
         initial-state partons give the PDF pdg codes and, together with the beam
         energies ``ebeam = (ebeam1, ebeam2)``, the Bjorken-x (x_i = E_i/ebeam_i,
         exact for the collinear massless initial state of an LHE event); the
-        renormalisation and factorisation scales are the event scale (SCALUP).
+        factorisation scale is the event scale (SCALUP, the larger mu_F) and
+        the renormalisation scale the ``mur`` of the <scales> tag (SCALUP if
+        there is none, see :meth:`get_ren_scale`).
         With a single alpha_s power there is no clustering, so there is a single
         PDF reweight entry per beam and no separate alpha_s reweight scale --
         matching what MadEvent writes for an unmatched LO event (verified
@@ -3037,7 +3095,7 @@ class Event(list):
             ebeam = (0., 0.)
         scale = float(self.scale)
         loweight = {'n_qcd': int(nqcd),
-                    'ren_scale': scale,
+                    'ren_scale': self.get_ren_scale(),
                     'asrwt': [],
                     'tot_fact': 1.0}
         for beam, (part, eb) in enumerate(zip(initial, ebeam), start=1):
@@ -3115,6 +3173,63 @@ class Event(list):
         return self.loweight
     
             
+    beamstrahlung_pattern = re.compile(
+        r"<beamstrahlung>(.*?)</beamstrahlung>", re.DOTALL)
+
+    def parse_beamstrahlung(self):
+        """Return [xbs1, xbs2], the momentum fraction each beam retained
+        after beamstrahlung, or None if the event carries no such block.
+
+        A dressed-lepton density convolutes beamstrahlung with ISR, so the
+        x's implied by the initial-state momenta are the product of the
+        two; this block is what lets a shower tell them apart (only the
+        ISR part may be backward-evolved). Unlike the other parse_*
+        methods this one leaves self.tag alone, so the information
+        survives being read and written back out."""
+
+        found = self.beamstrahlung_pattern.search(self.tag)
+        if not found:
+            return None
+        try:
+            values = [float(v) for v in found.group(1).split()]
+        except ValueError:
+            return None
+        if len(values) != 2:
+            return None
+        return values
+
+    scales_attribute_pattern = re.compile(r'(\w+)\s*=\s*["\']([^"\']*)["\']')
+
+    def get_scales_attributes(self):
+        """The scales of the LHEF3 <scales> tag other than the per-particle
+        pt_clust_i, as floats by name: mur, muf, muf1 and muf2 in the mg7
+        output; empty for an event without them (madevent writes pt_clust_i
+        only). Kept when parse_matching_scale takes the tag apart."""
+
+        if getattr(self, 'scales_attributes', None) is None:
+            self.scales_attributes = {}
+            match = re.search(r'<scales\s([^>]*)>', self.tag)
+            if match:
+                for name, value in self.scales_attribute_pattern.findall(match.group(1)):
+                    if name.startswith('pt_clust_'):
+                        continue
+                    try:
+                        self.scales_attributes[name] = float(value)
+                    except ValueError:
+                        pass
+        return self.scales_attributes
+
+    def get_ren_scale(self):
+        """The renormalisation scale of the event: the mur of its <scales>
+        tag when finite and positive, otherwise SCALUP. SCALUP is the factorisation
+        scale (madevent and mg7 alike), the closest a file without mur has."""
+
+        mur = self.get_scales_attributes().get('mur')
+        # MC@NLO-Delta uses mur=-1 to mark an unspecified scale.
+        if mur is not None and math.isfinite(mur) and mur > 0:
+            return mur
+        return float(self.scale)
+
     def parse_matching_scale(self):
         """Parse the line containing the starting scale for the shower"""
         
@@ -3122,7 +3237,8 @@ class Event(list):
             return self.matched_scale_data
             
         self.matched_scale_data = []
-        
+        # the tag is taken apart below: read the other scales first
+        self.get_scales_attributes()
 
         pattern  = re.compile(r"<scales\s|</scales>")
         data = re.split(pattern,self.tag)
@@ -3214,10 +3330,12 @@ class Event(list):
             this_particle.reshuffle_info = decay_particle.reshuffle_info
         self.nexternal += decay_event.nexternal -1
         old_scales = list(self.parse_matching_scale())
-        if old_scales:
-            jet_position = sum(1 for i in range(position) if self[i].status==1)
-            initial_pos = sum(1 for i in range(position) if self[i].status==-1)
-            self.matched_scale_data.pop(initial_pos+jet_position)
+        # pt_clust indices are full LHE rows, including resonances. The
+        # decaying particle stays in place with status 2, so keep its entry
+        # and all existing particle indices unchanged.
+        decay_scale = old_scales[position] if old_scales else -1
+        if decay_scale == -1:
+            decay_scale = self.scale
         # add the particle with only handling the 4-momenta/mother
         # color information will be corrected later.
         for particle in decay_event[1:]:
@@ -3226,7 +3344,11 @@ class Event(list):
             new_particle.event_id = len(self)
             self.append(new_particle)
             if old_scales:
-                self.matched_scale_data.append(old_scales[initial_pos+jet_position])
+                # Inherit the parent's shower scale (SCALUP for FxFx
+                # resonances). Pythia takes the maximum tagged external
+                # scale as SCALUP, so daughters must keep that maximum when
+                # the parent becomes status 2 and only EW jets remain.
+                self.matched_scale_data.append(decay_scale)
             # compute and assign the new four_momenta
             if at_rest:
                 new_momentum = FourMomentum(new_particle).boost(this_4mom)
@@ -3736,47 +3858,57 @@ class Event(list):
         #3. check mass
 
     def check_kinematics_only(self):
-        """check various property of the events - only kinematics"""
-        
-        # check that relative error is under control
-        threshold = 1e-3
-       
-        #1. Check that the 4-momenta are conserved
-        E, px, py, pz = 0,0,0,0
-        absE, abspx, abspy, abspz = 0,0,0,0
-        for particle in self:
-            coeff = 1
-            if particle.status == -1:
-                coeff = -1
-            elif particle.status != 1:
-                continue
-            E += coeff * particle.E
-            absE += abs(particle.E)
-            px += coeff * particle.px
-            py += coeff * particle.py
-            pz += coeff * particle.pz
-            abspx += abs(particle.px)
-            abspy += abs(particle.py)
-            abspz += abs(particle.pz)
-            # check mass
-            fourmass = FourMomentum(particle).mass
-            
-            if particle.mass and (abs(particle.mass) - fourmass)/ abs(particle.mass) > threshold:
-                logger.critical(self)
-                raise Exception( "Do not have correct mass lhe: %s momentum: %s (error at %s" % (particle.mass, fourmass, (abs(particle.mass) - fourmass)/ abs(particle.mass)))
+        """Check momentum conservation and masses of the status +-1 particles.
 
-        if abs(E/absE) > threshold:
+        Each component of DeltaP = Sum_out p - Sum_in p must satisfy
+        |DeltaP_i| <= max(eps_abs, eps_rel * E_scale), where E_scale is the
+        summed |E| of the incoming particles (of the outgoing ones if that is
+        zero).  Nonzero recorded masses must match the computed ones to 1e-3
+        (relative).
+        """
+        eps_abs = 1.0e-3      # GeV; boost/clustering round-off is ~1e-12 GeV
+        eps_rel = 1.0e-6      # relative to E_scale
+
+        P  = [0.0, 0.0, 0.0, 0.0]   # DeltaP (E, px, py, pz)
+        E_scale = 0.0
+        for p in self:
+            if p.status == -1:
+                coeff = -1.0
+                E_scale += abs(p.E)
+            elif p.status == 1:
+                coeff = +1.0
+            else:
+                continue
+            P[0] += coeff * p.E
+            P[1] += coeff * p.px
+            P[2] += coeff * p.py
+            P[3] += coeff * p.pz
+
+            m2 = p.E*p.E - p.px*p.px - p.py*p.py - p.pz*p.pz
+            m  = math.copysign(math.sqrt(abs(m2)), m2)
+            if abs(p.mass) > 1e-6:
+                if abs(m - p.mass) / abs(p.mass) > 1e-3:
+                    logger.critical(self)
+                    raise Exception(
+                        "Wrong mass: pdg=%s, recorded=%s, computed=%s"
+                        % (p.pid, p.mass, m))
+
+        if E_scale <= 0.0:
+            for p in self:
+                if p.status == 1:
+                    E_scale += abs(p.E)
+        if E_scale <= 0.0:
+            raise Exception("Event has no energy scale - likely empty/corrupt")
+
+        for i, label in enumerate(("E", "Px", "Py", "Pz")):
+            if abs(P[i]) <= eps_abs:
+                continue
+            if abs(P[i]) / E_scale <= eps_rel:
+                continue
             logger.critical(self)
-            raise Exception("Do not conserve Energy %s, %s" % (E/absE, E))
-        if abs(px/abspx) > threshold:
-            logger.critical(self)
-            raise Exception("Do not conserve Px %s, %s" % (px/abspx, px))         
-        if abs(py/abspy) > threshold:
-            logger.critical(self)
-            raise Exception("Do not conserve Py %s, %s" % (py/abspy, py))
-        if abs(pz/abspz) > threshold:
-            logger.critical(self)
-            raise Exception("Do not conserve Pz %s, %s" % (pz/abspz, pz))
+            raise Exception(
+                "%s not conserved: DeltaP = %.6e GeV, DeltaP/E_scale = %.3e, E_scale = %.3f GeV"
+                % (label, P[i], P[i]/E_scale, E_scale))
                  
          
     def assign_scale_line(self, line, convert=True):
@@ -4641,7 +4773,10 @@ class Event(list):
                                    for i,v in enumerate(self.matched_scale_data)
                                               if v!=-1])
             if tmp_scale:
-                tag_str = "<scales %s></scales>%s" % (tmp_scale, self.tag)
+                # the event's other scales (mg7's mur/muf...) go back in first
+                other = ''.join(' %s="%s"' % item
+                                for item in self.get_scales_attributes().items())
+                tag_str = "<scales%s %s></scales>%s" % (other, tmp_scale, self.tag)
             
         if self.syscalc_data:
             keys= ['rscale', 'asrwt', ('pdfrwt', 'beam', '1'), ('pdfrwt', 'beam', '2'),
@@ -5398,11 +5533,11 @@ class FourMomentum(object):
                             self.px,
                             self.py,
                             gamma*self.pz - gammabeta*self.E])
-        
-        if abs(out.pz) < 1e-6 * out.E:
-            out.pz = 0
+        # Exactly linear, no zeroing of small components: the FKS ISR mapping
+        # boosts every particle of an event, and zeroing |pz| < 1e-6 E would leave
+        # an MeV-scale momentum imbalance at TeV energies.
         return out
-    
+
     def zboost_inv(self, pboost=None, E=0, pz=0):
         """Both momenta should be in the same frame. 
            The boost perform correspond to the boost required to set pboost at 
@@ -5420,9 +5555,7 @@ class FourMomentum(object):
                             self.px,
                             self.py,
                             gamma*self.pz + gammabeta*self.E])
-        
-        if abs(out.pz) < 1e-6 * out.E:
-            out.pz = 0
+        # Exactly linear, as zboost.
         return out
 
 
@@ -5447,11 +5580,7 @@ class FourMomentum(object):
                             -gamma*betax*self.E + (1.0 + (gamma-1.0)*betax**2/(beta**2))*self.px + (gamma-1.0)*betax*betay/(beta**2)*self.py,
                             -gamma*betay*self.E + ((gamma-1.0)*betax*betay/(beta**2))*self.px + (1.0+(gamma-1.0)*(betay**2)/(beta**2))*self.py,
                             self.pz])
-        
-        if abs(out.px) < 1e-6 * out.E:
-            out.px = 0
-        if abs(out.py) < 1e-6 * out.E:
-            out.py = 0
+        # Exactly linear, as zboost (no zeroing of small px, py).
         return out
 
     def boost_beta(self,beta,mom):
@@ -5830,6 +5959,8 @@ class OneNLOWeight(object):
             to_add('%i', self.merge_new_pdg)
             to_add('%.10e', self.ref_wgt*self.bias_wgt)
             to_add('%.10e', self.bias_wgt)
+            if getattr(self, 'native_provenance', None) is not None:
+                to_add('%i', list(self.native_provenance))
             return ' '.join(format_var) % tuple(variable)
             
         
@@ -5909,7 +6040,6 @@ class OneNLOWeight(object):
         #     type=4 : soft counter-term: 
         #     type=5 : collinear counter-term: 
         #     type=6 : soft-collinear counter-term: 
-        #     type=7 : O(alphaS) expansion of Sudakov factor for NNLL+NLO:  
         #     type=8 : soft counter-term (with n+1-body kin.):     
         #     type=9 : collinear counter-term (with n+1-body kin.): 
         #     type=10: soft-collinear counter-term (with n+1-body kin.): 
@@ -5950,6 +6080,11 @@ class OneNLOWeight(object):
         except IndexError:
             self.bias_wgt = 1.0
             
+        # New outputs append provider, context, history and event-owner IDs.
+        # The preceding fields retain their native PDF/ME interpretation.
+        suffix = data[flag+16:flag+20]
+        self.native_provenance = tuple(map(int, suffix)) if len(suffix) == 4 else None
+
         if not keep_bias:
             self.ref_wgt /= self.bias_wgt
             self.pwgt = [p/self.bias_wgt for p in self.pwgt]

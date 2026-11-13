@@ -22,12 +22,18 @@ ROUTE_STATISTICS_OUTPUT = "tirust_routes.dat"
 OUTPUTS = ("timing.dat", "values.dat", "timed_status.dat", ROUTE_STATISTICS_OUTPUT)
 RAW_OUTPUTS = (*OUTPUTS, "dimensions.dat", "warmup.dat")
 SCHEME = "tirust-persistent-worker-v1"
+# (H, U) -> (MLReductionLib, precision) for the qualified backends 1, 6, 7, 8, 9.
+# Return-code format 2 reports NinjaRS as U=2 (212 DP, 322 QP) and TIRust as
+# U=3 (213 DP, 323 QP; IREGI shares U=3 but is never benchmarked). Format 1,
+# used by campaigns before the madloop_ninjars merge, aliased their DP results
+# to 218 and 219. Format 2 never emits those (U=8 and U=9 are QP-only), so
+# both formats decode unambiguously.
 BACKEND_CODES = {
     (2, 1): (1, "DP"), (3, 9): (1, "QP"),
     (2, 6): (6, "DP"), (3, 8): (6, "QP"),
     (2, 7): (7, "DP"),
-    (2, 8): (8, "DP"), (3, 2): (8, "QP"),
-    (2, 9): (9, "DP"), (3, 3): (9, "QP"),
+    (2, 2): (8, "DP"), (2, 8): (8, "DP"), (3, 2): (8, "QP"),
+    (2, 3): (9, "DP"), (2, 9): (9, "DP"), (3, 3): (9, "QP"),
 }
 
 
@@ -300,7 +306,8 @@ def validate_status(code, backend):
     """Decode H/T/U, requiring a warmed stable result from the selected chain.
 
     T=1/2 denotes steady DP/QP execution; initialization uses T=3/4. H,
-    together with U, distinguishes aliases such as CutTools QP and TIRust DP.
+    together with U, distinguishes the format-1 aliases (CutTools QP 329
+    versus TIRust DP 219); see BACKEND_CODES.
     """
     selected = {backend} if isinstance(backend, int) else set(backend)
     if not selected or not selected.issubset({1, 6, 7, 8, 9}):

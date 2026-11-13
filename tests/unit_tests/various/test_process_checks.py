@@ -280,6 +280,166 @@ class TestMatrixElementChecker(unittest.TestCase):
         #self.assertNotAlmostEqual(max(comparison[0][1]), min(comparison[0][1]))
 
 #===============================================================================
+# TestReferenceMomentaChecks
+#===============================================================================
+class TestReferenceMomentaChecks(unittest.TestCase):
+    """check gauge and check brs compare the matrix element with the external
+    wavefunctions of output --axial_gauge=True (column Reference): the
+    massless vectors in the axial gauge of a reference momentum, the massive
+    fermions quantised along it."""
+
+    def setUp(self):
+        self.base_model = import_ufo.import_model('sm',
+                                    options={'apply_flavor_grouping': False})
+
+    def process(self, ids):
+        legs = base_objects.LegList()
+        for i, pid in enumerate(ids):
+            legs.append(base_objects.Leg({'id': pid, 'state': i >= 2}))
+        return base_objects.Process({'legs': legs, 'model': self.base_model})
+
+    def test_brs_compares_the_reference_momenta(self):
+        """g g > t t~ g: the reference value equals the standard one, and the
+        output table has the column and passes"""
+
+        process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+        comparison = process_checks.check_gauge(self.process([21, 21, 6, -6, 21]))
+        self.assertEqual(len(comparison), 1)
+        one = comparison[0]
+        self.assertIn('ref', one)
+        self.assertLess(abs(one['ref']['m2'] / one['value']['m2'] - 1), 1e-12)
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 0)
+        self.assertIn('Reference', process_checks.output_gauge(comparison))
+
+    def test_reference_evaluator_uses_the_reference_routines(self):
+        """the Python matrix element of the reference evaluator calls
+        vxxxxxr / ixxxxxr / oxxxxxr: the helicity sum is unchanged, the
+        helicity amplitudes are not, and four helicity configurations of
+        g g > t t~ g vanish"""
+
+        import madgraph.core.diagram_generation as diagram_generation
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.iolibs.export_python as export_python
+        process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+        proc = self.process([21, 21, 6, -6, 21])
+        amplitude = diagram_generation.Amplitude(proc)
+        standard = process_checks.MatrixElementEvaluator(self.base_model,
+                                        auth_skipping=False, reuse=False)
+        for particle in standard.full_model.get('particles'):
+            if particle.get('width') != 'ZERO':
+                standard.full_model.get('parameter_dict')[particle.get('width')] = 0.
+        reference = process_checks.reference_momenta_evaluator(
+                     self.base_model, None, False, process_checks.FakeInterface())
+        p, _ = standard.get_momenta(proc)
+        me = lambda: helas_objects.HelasMatrixElement(amplitude, gen_color=False)
+        code = list(export_python.ProcessExporterPython(me(),
+                       reference.helas_writer).get_python_matrix_methods().values())[0]
+        self.assertEqual(sorted(set(re.findall(r'\b[iov]xxxxxr\(', code))),
+                         ['ixxxxxr(', 'oxxxxxr(', 'vxxxxxr('])
+        a = standard.evaluate_matrix_element(me(), p=p, output='jamp')
+        b = reference.evaluate_matrix_element(me(), p=p, output='jamp')
+        self.assertLess(abs(a['m2'] / b['m2'] - 1), 1e-12)
+        per_hel = lambda value: [sum(abs(x)**2 for x in row) for row in value['jamp']]
+        ha, hb = per_hel(a), per_hel(b)
+        self.assertGreater(max(abs(x - y) / max(x, y) for x, y in zip(ha, hb)), 0.1)
+        zeros = lambda h: sum(1 for x in h if x < 1e-12 * max(h))
+        self.assertEqual(zeros(hb) - zeros(ha), 4)
+
+    def test_output_gauge_fails_on_the_reference(self):
+        """a reference value away from the standard one fails"""
+
+        value = {'m2': 1.0, 'jamp': [[1.0]]}
+        comparison = [{'process': self.process([21, 21, 6, -6, 21]),
+                       'value': value, 'brs': {'m2': 0., 'jamp': [[0.]]},
+                       'ref': {'m2': 1.0 + 1e-5, 'jamp': [[1.0]]}}]
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 1)
+        comparison[0]['ref'] = {'m2': 1.0, 'jamp': [[1.0]]}
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 0)
+
+    def test_output_unitary_feynman_missing_value(self):
+        """a gauge in which a process got no value is reported as a failure,
+        not an IndexError"""
+
+        value = {'m2': 1.0, 'jamp': [[1.0]]}
+        result = [{'perturbation_couplings': []},
+                  {'process': 'g g > t t~ g', 'value_unit': value,
+                   'value_feynm': value, 'value_ref': None}]
+        self.assertEqual(process_checks.output_unitary_feynman(result,
+                                                               output='fail'), 1)
+        self.assertIn('no value in the Reference gauge',
+                      process_checks.output_unitary_feynman(result))
+
+    def test_check_gauge_without_reference_value(self):
+        """check gauge does not crash when the reference evaluation leaves a
+        process out"""
+
+        import madgraph.interface.master_interface as interface
+        cmd = interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('import model sm')
+        procdef = cmd.extract_process('e+ e- > a a')
+        original = process_checks.evaluate_with_reference_momenta
+        process_checks.evaluate_with_reference_momenta = lambda *args, **opts: []
+        try:
+            process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+            result = process_checks.check_unitary_feynman(procdef, procdef,
+                                cmd=cmd, processes_reference=procdef)
+        finally:
+            process_checks.evaluate_with_reference_momenta = original
+        self.assertIsNone(result[1]['value_ref'])
+        self.assertEqual(process_checks.output_unitary_feynman(result,
+                                                               output='fail'), 1)
+
+    def test_brs_widths_zero_in_every_gauge(self):
+        """check_gauge on a Process sets the widths to zero in the FD gauge as
+        in the unitary one (a fixed width breaks gauge invariance)"""
+
+        import aloha
+        seen = []
+        original = process_checks.MatrixElementEvaluator.evaluate_matrix_element
+        def spy(evaluator, *args, **opts):
+            seen.append(evaluator.full_model.get('parameter_dict')['mdl_WT'])
+            return original(evaluator, *args, **opts)
+        process_checks.MatrixElementEvaluator.evaluate_matrix_element = spy
+        old = aloha.unitary_gauge
+        try:
+            for gauge in (1, 3):
+                aloha.unitary_gauge = gauge
+                process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+                process_checks.check_gauge(self.process([21, 21, 6, -6, 21]))
+        finally:
+            aloha.unitary_gauge = old
+            process_checks.MatrixElementEvaluator.evaluate_matrix_element = original
+        self.assertTrue(seen)
+        self.assertEqual(set(seen), {0.})
+
+    def test_brs_no_reference_without_references(self):
+        """t t~ > z a: no leg gets a reference, so nothing is evaluated with
+        the reference momenta and the table shows '-'"""
+
+        process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+        comparison = process_checks.check_gauge(self.process([6, -6, 23, 22]))
+        self.assertEqual(len(comparison), 1)
+        self.assertNotIn('ref', comparison[0])
+        self.assertEqual(process_checks.output_gauge(comparison, output='fail'), 0)
+
+    def test_output_unitary_feynman_reference_column(self):
+        """check gauge: the Reference column, and its failure"""
+
+        def result(ref):
+            value = lambda m2: {'m2': m2, 'jamp': [[1.0]]}
+            return [{'perturbation_couplings': []},
+                    {'process': 'g g > t t~ g', 'value_unit': value(1.0),
+                     'value_feynm': value(1.0), 'value_ref': value(ref)}]
+        text = process_checks.output_unitary_feynman(result(1.0))
+        self.assertIn('Reference', text.splitlines()[0])
+        self.assertEqual(process_checks.output_unitary_feynman(result(1.0),
+                                                               output='fail'), 0)
+        self.assertEqual(process_checks.output_unitary_feynman(result(1.1),
+                                                               output='fail'), 1)
+
+
+#===============================================================================
 # TestLorentzInvariance
 #===============================================================================
 class TestLorentzInvariance(unittest.TestCase):
@@ -1245,6 +1405,56 @@ class TestPrecisionCheck(unittest.TestCase):
             self.assertLessEqual(results[1]['max'], results[0]['max'])
         finally:
             shutil.rmtree(output_path, ignore_errors=True)
+
+    def test_check_precision_v_epem_mupmum(self):
+        """FPTYPE=v against FPTYPE=d for e+ e- > mu+ mu-, on the widest SIMD
+        backend of the host and on the scalar one.
+
+        FPTYPE=v computes the momenta and the propagator denominators in double
+        precision and the rest in single precision. On a SIMD backend the
+        denominators are a double precision vector with the single precision
+        lane count (MGONGPU_SIMD_DENOM64), a code path of its own; on the scalar
+        backend they are plain doubles. The process uses both forms of
+        madmatrix::denom: the photon propagator with its coupling (FFV1P0_3) and
+        the Z one of a routine assembled from two Lorentz structures, without
+        coupling (FFV2_4_3). FPTYPE=v is good to ~1e-6 there, so a lane filled
+        from the wrong momenta, or a non-finite value, fails at once."""
+        import shutil
+        import tempfile
+        if not (misc.which('g++') and misc.which('make')):
+            self.skipTest('check precision needs g++ and make')
+        try:
+            import madmatrix.output  # noqa: F401
+        except ImportError:
+            self.skipTest('madmatrix is not available')
+
+        model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+        legs = base_objects.MultiLegList([
+            base_objects.MultiLeg({'ids': [-11], 'state': False}),
+            base_objects.MultiLeg({'ids': [11], 'state': False}),
+            base_objects.MultiLeg({'ids': [-13], 'state': True}),
+            base_objects.MultiLeg({'ids': [13], 'state': True})])
+        procdef = base_objects.ProcessDefinition({'legs': legs, 'model': model})
+
+        for backend in ('auto', 'scalar'):
+            output_path = tempfile.mkdtemp(prefix='mg5_test_precision_v_')
+            try:
+                results = process_checks.check_precision(
+                    procdef, ['v'], options={'nb_event': 20000, 'backend': backend},
+                    output_path=output_path)
+                self.assertEqual([(r['mode'], r['backend']) for r in results],
+                                 [('v', backend)])
+                entry = results[0]
+                self.assertEqual(entry['nb_event'], 20000)
+                self.assertEqual(entry['nb_invalid'], 0, backend)
+                self.assertEqual(entry['nb_above'], 0, backend)
+                self.assertLess(entry['max'], 1e-4, backend)
+                # single precision amplitudes leave a visible difference: a
+                # build that fell back to double precision would give 0
+                self.assertGreater(entry['max'], 0., backend)
+                self.assertGreater(entry['time_mode'], 0., backend)
+            finally:
+                shutil.rmtree(output_path, ignore_errors=True)
 
 
 if __name__ == '__main__':

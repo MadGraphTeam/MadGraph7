@@ -306,11 +306,14 @@ C     aliases outside the five qualified libraries fail immediately.
       U=MOD(CODE,10)
       IF(T.NE.1.AND.T.NE.2.AND.T.NE.3) RETURN
       IF(U.EQ.0.OR.H.EQ.4) RETURN
-      STABLE_ALIAS=(H.EQ.2.AND.(U.EQ.1.OR.U.EQ.6.OR.U.EQ.7
-     $ .OR.U.EQ.8.OR.U.EQ.9)).OR.(H.EQ.3.AND.(U.EQ.9
+C     Return-code format 2 reports NinjaRS as U=2 and TIRust as U=3 in
+C     both precisions; format 1 aliased their DP results to U=8 and U=9.
+      STABLE_ALIAS=(H.EQ.2.AND.(U.EQ.1.OR.U.EQ.2.OR.U.EQ.3.OR.U.EQ.6
+     $ .OR.U.EQ.7.OR.U.EQ.8.OR.U.EQ.9)).OR.(H.EQ.3.AND.(U.EQ.9
      $ .OR.U.EQ.8.OR.U.EQ.2.OR.U.EQ.3))
       BENCHMARK_WARM_STATUS=STABLE_ALIAS.OR.(T.EQ.3.AND.H.EQ.1
-     $ .AND.(U.EQ.1.OR.U.EQ.6.OR.U.EQ.7.OR.U.EQ.8.OR.U.EQ.9))
+     $ .AND.(U.EQ.1.OR.U.EQ.2.OR.U.EQ.3.OR.U.EQ.6.OR.U.EQ.7.OR.U.EQ.8
+     $ .OR.U.EQ.9))
       END
 
       SUBROUTINE BENCHMARK_TRACE_WARMUP(LUN,CALL_INDEX,POINT_INDEX,

@@ -137,8 +137,7 @@ TwoToThreeParticleScattering::TwoToThreeParticleScattering(
     _p12_condition(p12_condition),
     _incoming_recoil(incoming_recoil),
     _cut_aware_branch(cut_aware_branch && has_cut) {
-    // The block peels a particle off a t-channel chain, where no s-channel
-    // resonance is expected; the arcsine sampling covers power laws only.
+    // The arcsine sampling covers power laws only.
     if (arcsine_s23 && s_width != 0.) {
         throw std::invalid_argument(
             "TwoToThreeParticleScattering: arcsine_s23 does not support a "
@@ -161,10 +160,8 @@ Value negated(FunctionBuilder& fb, Value x) { return fb.sub(fb.sub(x, x), x); }
 std::array<Value, 3> TwoToThreeParticleScattering::split_conditions(
     FunctionBuilder& fb, const NamedVector<Value>& conditions
 ) const {
-    // The kernels take the outgoing system p_12 = p1 + p2 itself. By default it
-    // is formed from the incoming momenta as pa + pb - p3; a caller that already
-    // holds p_12 more precisely (ColorOrderedMapping, where it can be a soft
-    // system next to the beams) passes it as the second condition instead.
+    // The kernels take p_12 = p1 + p2: pa + pb - p3 by default, or the second
+    // condition itself with p12_condition.
     auto p_a = conditions.at(0), p_3 = conditions.at(2);
     if (_p12_condition) {
         auto p_12 = conditions.at(1);
@@ -178,6 +175,7 @@ std::array<Value, 4> TwoToThreeParticleScattering::sampling_ranges(
     FunctionBuilder& fb,
     Value s23_min,
     Value s23_max,
+    Value m2_squared,
     const NamedVector<Value>& conditions
 ) const {
     // returns the sampled and the kinematic range of the sampled variable
@@ -188,8 +186,11 @@ std::array<Value, 4> TwoToThreeParticleScattering::sampling_ranges(
     auto v_phys_min = negated(fb, s23_max), v_phys_max = negated(fb, s23_min);
     auto v_min = v_phys_min, v_max = v_phys_max;
     if (_has_cut) {
-        // |(p2 - k)^2| >= m_T(p2)^2 for a massless k along the beam axis
-        v_min = fb.max(v_min, fb.square(conditions.at(4)));
+        // |(p2 - k)^2| >= m_T(p2)^2 - m2^2 = p_T(p2)^2 for a massless k along
+        // the beam axis: the ETmin floor of a massive particle bounds m_T
+        v_min = fb.max(
+            v_min, fb.max(fb.sub(fb.square(conditions.at(4)), m2_squared), Value(0.))
+        );
         // an empty range keeps a small width; the weight is zero there, as
         // the point then lies outside the kinematic range
         auto width = fb.max(fb.mul(v_min, Value(1e-10)), Value(1e-300));
@@ -217,7 +218,7 @@ Mapping::Result TwoToThreeParticleScattering::build_forward_impl(
     std::array<Value, 4> ranges;
     if (_incoming_recoil) {
         auto [lo, hi] = fb.s23_min_max(p_a, p_12, p_3, t1, m1, m2);
-        ranges = sampling_ranges(fb, lo, hi, conditions);
+        ranges = sampling_ranges(fb, lo, hi, fb.square(m2), conditions);
     } else if (_has_cut) {
         auto [s_min, s_max] = fb.s23_min_max_cut(
             p_a,
@@ -303,7 +304,10 @@ Mapping::Result TwoToThreeParticleScattering::build_inverse_impl(
     if (_incoming_recoil) {
         auto [s23, lo, hi] = fb.s23_value_and_min_max(p_a, p_3, t1_abs, p1, p2);
         v = negated(fb, s23);
-        ranges = sampling_ranges(fb, lo, hi, conditions);
+        nested_vector2<double> factors_p2{{1.0}};
+        auto m2_squared =
+            fb.unstack(fb.invariants_from_momenta(fb.stack({p2}), factors_p2)).at(0);
+        ranges = sampling_ranges(fb, lo, hi, m2_squared, conditions);
     } else if (_has_cut) {
         auto [s23, s_min, s_max] = fb.s23_value_and_min_max_cut(
             p_a,

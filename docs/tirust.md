@@ -53,6 +53,14 @@ backends. Backend numbers are CutTools 1, Ninja 6, COLLIER 7 and NinjaRS 8.
 Install libraries before exporting a process so its interface and link rules
 include them. Re-export an older process to add a newly installed backend.
 
+MadLoop return codes (format 2, `HTU`) report TIRust with units digit `U=3`,
+shared with IREGI, in both precisions; `T` records whether quadruple precision
+was used. A stable DP result is `213` and a QP rescue `323`. The dedicated
+`TIRust DP`/`TIRust QP` counters in MadEvent and aMC@NLO statistics separate
+TIRust from IREGI, using `ML_GET_RET_CODE_LIBRARY()` (the `MLReductionLib`
+value behind the last return code). Results produced before the
+`madloop_ninjars` merge used format 1, where TIRust DP was `219`.
+
 ## Controls
 
 Values appear on the line immediately following each `#Parameter` name.
@@ -132,7 +140,7 @@ this reproduction example.
 
 The stock profiler uses fixed-DP MadLoop timing mode and a separate stability
 probe. TIRust can still retry individual DP-input tensors internally at
-106-bit DD, 256 or 512 bits. Accepted code `219` describes DP transport, not
+106-bit DD, 256 or 512 bits. Accepted code `213` describes DP transport, not
 entirely native-DP arithmetic. Genuine QP-input rescue remains distinct and
 uses code `323`; a QP numerator also requires the effective
 `UseQPIntegrandForTIRust` setting. Optional bridge route counters do not observe

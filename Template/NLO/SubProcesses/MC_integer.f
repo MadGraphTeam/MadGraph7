@@ -85,8 +85,9 @@ c flat_grid logical parameter.
       if (firsttime(this_dim)) then
          firsttime(this_dim)=.false.
          nintervals(this_dim)=niint_thisd
-         if (flat_grid) then
+         if (flat_grid.or.niint_thisd.eq.1) then
 c Flat grid for this dimension
+c A single bin is an explicit sum, even if an old multi-bin grid exists.
             do i=0,nintervals(this_dim)
                grid(i,this_dim)=dble(i)/nintervals(this_dim)
             enddo
@@ -119,6 +120,12 @@ c Set the arrays in which we accumulate the results to zero
          enddo
       endif
 c
+c No random choice or importance weight is needed for an explicit sum.
+      if (niint_thisd.eq.1) then
+         iint=1
+         vol=1d0
+         return
+      endif
 c Take a fresh random number and find the corresponding 'iint'
       rnd=ran2()
       iint=0
@@ -141,7 +148,6 @@ c Compute the volume 'vol'
       integer i,this_dim
       integer maxdim
       parameter (maxdim=50)
-      logical firsttime(maxdim)
       integer maxintervals
       parameter (maxintervals=200)
       integer ncall(0:maxintervals,maxdim),nintervals(maxdim)
@@ -206,7 +212,6 @@ c (for 'this_dim') has been picked.
       character*101 buff
       integer maxdim
       parameter (maxdim=50)
-      logical firsttime(maxdim)
       integer nintervals(maxdim),maxintervals
       parameter (maxintervals=200)
       integer ncall(0:maxintervals,maxdim)

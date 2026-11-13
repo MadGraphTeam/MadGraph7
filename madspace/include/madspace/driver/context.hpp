@@ -3,9 +3,11 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <typeindex>
 #include <unordered_map>
+#include <utility>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/tensor.hpp"
@@ -34,6 +36,7 @@ struct UmamiFunctions {
         supported_outputs;
     std::function<std::remove_pointer_t<decltype(&umami_initialize)>> initialize;
     std::function<std::remove_pointer_t<decltype(&umami_set_parameter)>> set_parameter;
+    std::function<std::remove_pointer_t<decltype(&umami_get_parameter)>> get_parameter;
     std::function<std::remove_pointer_t<decltype(&umami_matrix_element)>>
         matrix_element;
     std::function<std::remove_pointer_t<decltype(&umami_free)>> free;
@@ -174,6 +177,25 @@ public:
     /// Opaque per-thread UMAMI process handle, initialized on first use.
     void* process_instance() const { return _instances.get().get(); }
 
+    /// The device of the owning @ref Context. It determines whether inputs and
+    /// outputs of @ref call must be device buffers (CUDA/HIP) or host pointers.
+    DevicePtr device() const noexcept { return _device; }
+
+    /// Whether the library provides the optional `umami_set_parameter`.
+    bool supports_set_parameter() const noexcept {
+        return bool(_functions.set_parameter);
+    }
+    /// Whether the library provides the optional `umami_get_parameter`.
+    bool supports_get_parameter() const noexcept {
+        return bool(_functions.get_parameter);
+    }
+
+    /// Set a physics parameter (real and imaginary part) of this thread's process
+    /// instance. Throws if the library does not implement it or rejects `name`.
+    void set_parameter(const std::string& name, double real, double imag = 0.0) const;
+    /// Get a physics parameter of this thread's process instance as (real, imaginary).
+    std::pair<double, double> get_parameter(const std::string& name) const;
+
 private:
     MatrixElementApi(
         const std::string& file,
@@ -208,6 +230,7 @@ private:
     ThreadResource<InstanceType> _instances;
     std::string _file_name;
     std::size_t _index;
+    DevicePtr _device;
 
     friend class Context;
 };
@@ -248,8 +271,8 @@ public:
     /// `param_card`. Every entry of `parameters` is then passed to each
     /// process instance through `umami_set_parameter` (real value, e.g.
     /// `{"bwcutoff": 15.}`, the window of the `$`-excluded propagators);
-    /// a library that rejects one of them is an error. Caches by `file`:
-    /// loading the same file twice returns the same @ref MatrixElementApi.
+    /// a library that rejects one of them is an error. Each call loads the
+    /// library again and appends a new @ref MatrixElementApi.
     const MatrixElementApi& load_matrix_element(
         const std::string& file,
         const std::string& param_card,
@@ -265,7 +288,8 @@ public:
         const std::string& param_card = "",
         const std::unordered_map<std::string, double>& parameters = {}
     );
-    /// Create and zero-initialize a new global named `name`.
+    /// Create and zero-initialize a new global named `name`. The stored tensor
+    /// has `shape` preceded by a batch dimension of size 1.
     Tensor define_global(
         const std::string& name,
         DataType dtype,
@@ -284,12 +308,13 @@ public:
     std::vector<std::string> global_names() const;
     /// Remove the global named `name`.
     void delete_global(const std::string& name);
-    /// Overwrite every global also present in `context` with its value there.
+    /// Copy every global of `context` into this context, defining the ones that
+    /// do not exist yet. Data type and shape of existing globals must match.
     void copy_globals_from(Context& context);
-    /// Repack the globals in `names` into one contiguous allocation, for
-    /// example before handing them to an external optimizer.
+    /// Repack the globals in `names` into one contiguous allocation and return
+    /// it. The globals must share a data type and have no outside references.
     Tensor reallocate_globals_contiguously(const std::vector<std::string>& names);
-    /// The matrix element previously loaded at position `index`; see @ref
+    /// The matrix element at position `index` in load order; see @ref
     /// load_matrix_element.
     const MatrixElementApi& matrix_element(std::size_t index) const;
     /// Write every global to the tar archive `file`, as one `.npy` file per name.
@@ -374,9 +399,10 @@ ContextPtr default_hip_context(std::size_t index = 0);
 ContextPtr default_device_context(DevicePtr device);
 
 /// GPU stream that runtime calls on this thread run on without synchronizing;
-/// 0 for the legacy default stream.
+/// 0 for the legacy default stream. Empty if none is set.
 std::optional<std::uintptr_t> caller_stream();
-/// Set the stream returned by @ref caller_stream for this thread.
+/// Set the stream returned by @ref caller_stream for this thread. A value of 1
+/// is stored as 0; 2 (per-thread default stream) is rejected.
 void set_caller_stream(std::optional<std::uintptr_t> stream);
 
 /// `name`, namespaced under `prefix` as `"prefix.name"`; `name` unchanged if

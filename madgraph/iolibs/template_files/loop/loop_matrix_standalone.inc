@@ -400,6 +400,15 @@ C For now only CutTools is interfaced in the default mode. Samurai could follow.
 	STOP 1
   ENDIF
 ENDIF
+C Reject a retired selection also after global initialization.
+DO I=1,SIZE(MLReductionLib)
+  IF(MLReductionLib(I).EQ.0) EXIT
+  IF(MLReductionLib(I).EQ.2) THEN
+    WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+    WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+    STOP 1
+  ENDIF
+ENDDO
 C The non-optimized output uses CutTools regardless of the requested chain.
 IF(LoopPoleMode.GT.0) THEN
   WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires optimized MadLoop output with NinjaRS or COLLIER.'
@@ -416,9 +425,17 @@ C Setup the file paths
   CALL JOINPATH(TMP,COLORDENOMFNAME,COLORDENOMFN)
   CALL JOINPATH(TMP,HELFILTERFNAME,HELFILTERFN)
 
-C Make sure that the loop filter is disabled when there is spin-2 particles for 2>1 or 1>2 processes
-  if(MAX_SPIN_EXTERNAL_PARTICLE.gt.3.AND.(NEXTERNAL.LE.3.AND.HelicityFilterLevel.NE.0)) THEN
-    WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 processes involving spin 2 particles.'
+C Disable the helicity filter for 2>1 and 1>2 processes.
+C In the c.m. frame one particle is then at rest (the
+C final state of a 2>1, the decaying one of a 1>2), and
+C which helicities vanish depends on the frame: at rest
+C the helicity is defined along z, a boost changes it.
+C A filter learned in one frame silently drops part of
+C the result in another (u d~ > w+: virtual = 0 with the
+C W along -z) and the stability test cannot see it.
+C The tree-level standalone output does the same.
+  if(NEXTERNAL.LE.3.AND.HelicityFilterLevel.NE.0) THEN
+    WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and 1>2 processes.'
     HelicityFilterLevel = 0	
 C   We write a dummy filter for structural reasons here
     OPEN(1, FILE=HelFilterFN, err=6116, status='NEW',action='WRITE')

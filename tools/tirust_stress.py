@@ -134,7 +134,7 @@ def run_driver(campaign, config, case, lane, cpu, points, report, workspace, opt
 
     Some reducers end the whole program with a Fortran STOP on a pathological point
     (CutTools: momentum-conservation flag CT692) and exit 0, or never return (CutTools
-    at an exact complex-mass resonance). The driver prints STRESS-DONE only after its
+    on the most forward complex-mass small-Gram point). The driver prints STRESS-DONE only after its
     last point; when it is missing, or an invocation exceeds `timeout` seconds, the
     next point is recorded as stopping the process and the remaining points run in a
     fresh process.

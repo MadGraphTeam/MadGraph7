@@ -29,8 +29,9 @@ from tirust_benchmark_worker import Worker, parse_outputs, validate_status
 ROOT = bench.ROOT
 TEMPLATE = ROOT / "tools/tirust_benchmark_cohorts.f"
 COHORTS = ("dp", "compensated_dp", "qp", "failed")
-# TIRust status 219 is DP transport only. Per-call bridge route deltas split it
-# into binary64-only reductions, double-double tier rescues and MPFR tier rescues.
+# TIRust DP status 213 (219 before return-code format 2) is DP transport only.
+# Per-call bridge route deltas split it into binary64-only reductions,
+# double-double tier rescues and MPFR tier rescues.
 TIRUST_COHORTS = ("dp_native", "dp_dd", "dp_mpfr", "qp", "failed")
 ROUTE_SCHEMA = 1
 ROUTE_FILES = ("classification-routes.dat", "cohort-routes.dat")

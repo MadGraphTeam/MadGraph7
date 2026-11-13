@@ -1,11 +1,13 @@
 The bridge uses the pinned NinjaRS and Symbolica revisions in `Cargo.toml` and
-`Cargo.lock`. NinjaRS is GPL-3.0-or-later; this bridge uses the same license.
+`Cargo.lock`. Current NinjaRS is 0BSD; this bridge retains GPL-3.0-or-later,
+including code adapted from the earlier GPL-licensed NinjaRS revision below.
 
-The final dependency cohort pins NinjaRS
-`41a4c00e7635e3ab188fc26bacf0aae6941e8082`, oneloopmaster
-`5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5`, and the coupled
+The current library-key dependency cohort pins NinjaRS
+`cf28d8e0018e0555256d3fba51e457d4941dcb0e`, oneloopmaster
+`bd703d09a78f7849a6b86a07096e6f222fc01193`, and the coupled
 Symbolica/numerica/graphica revision
-`9cdc2949cdb153478c1eca0d40690dc0abfc616e`. The consuming bridge owns the
+`dfe6bd97b974b1028dc63071ea165136cd2b0ef5` from
+`ValentinHirschi/symbolica`. The consuming bridge owns the
 Symbolica patches because Cargo does not inherit dependency workspace patches.
 NinjaRS's transitive gammaloop kinematics and Symbolica helpers are locked at
 `d1904bf2bd5bf4f26969a73b415095e941a55610`; this also advances their earlier
@@ -14,8 +16,20 @@ Both native binary64 masters and generic higher-precision masters come from
 this oneloopmaster revision. NinjaRS includes the matching generic soft-box
 relabelling and precision-provider changes; a pin-only oneloopmaster update
 against the earlier NinjaRS revision is not equivalent.
-The benchmark report retains its original measured dependency cohort; this
-upstream pole-selection update is qualified separately in `tests/poles`.
+The benchmark report retains its original measured dependency cohort. The
+earlier pole-selection update is qualified separately in `tests/poles`; those
+historical records do not claim measurements for the new library-key cohort.
+
+NinjaRS registers the Symbolica library key issued for the Rust crate
+`ninjars`. Its persistent unlock handle stays private upstream. Scoped guards
+cover NinjaRS operations, including oneloopmaster calls, and the bridge holds
+a guard on its dedicated generic DP/MP worker before constructing any symbolic
+state. That guard ends when the worker exits. While the issued key remains
+valid, these operations need no personal `SYMBOLICA_LICENSE`, including when
+several MadLoop processes run concurrently. The library key does not authorize
+unrelated Symbolica use in a caller, and does not replace the caller's personal
+license environment. If library authorization expires or is unavailable,
+Symbolica's personal-license or restricted-mode behavior remains applicable.
 
 Every new installation records its exact manifest and resolved lock hashes and
 all transitive Git sources in `lib/ninjars-config.json`, alongside copies of
@@ -57,10 +71,13 @@ scaleless-bubble coefficients whose UV and IR residues cancel in the combined
 result. Their compensated-DP entry uses the same generic DP path, without the
 fast-engine compensated numerator callback; higher-precision rescue remains
 available. Combined-pole and no-pole DP calculations retain the fast engine.
-All explicit modes (`0`–`3`) bypass existing helicity/loop-filter decisions so
-that cancelled combined-pole contributions remain available for separation;
-default mode `-1` keeps the usual filtering policy. Explicit modes can
-therefore incur additional numerator and reduction costs. The committed
+Diagnostic modes (`1`–`3`) bypass existing helicity/loop-filter decisions so
+that cancelled combined-pole contributions remain available for separation.
+Mode `0` uses the usual filtering/training policy, except when COLLIER is in
+the reduction chain and a legacy pole switch is disabled: saved filters from
+that convention cannot safely be reused for explicit combined poles.
+Bypassed calls do not train or write filters, and retain the caller's filters
+for subsequent ordinary evaluations. The committed
 dependency revisions and lockfile include the upstream pole-selection APIs.
 See [Selecting UV and IR poles in MadLoop](../../doc/loop-pole-selection.md)
 for card examples, the Fortran setter, and the scope of the returned poles.
@@ -81,7 +98,7 @@ commands, input provenance, independent Ninja comparisons and sealed hashes
 are preserved in the [immutable measurement archive](https://github.com/MadGraphTeam/MadGraph7/tree/19d67c8605337c176680878a521b3a014176a7fb/docs/benchmarkfolder/experiments)
 under `qcd3-point67-{dp,masters,t3}` and `t3-dp-retry`. These fixtures do not
 require sibling reference clones. The final measured report and its offline
-reproduction instructions are in [`doc/benchmarkfolder`](../../doc/benchmarkfolder/README.md).
+reproduction instructions are linked from [the benchmark release guide](../../doc/ninjars-benchmarks.md).
 
 The `fenv-test-support` Cargo feature compiles test-only floating-point flag and
 rounding mutators. Normal installation leaves this feature disabled and builds

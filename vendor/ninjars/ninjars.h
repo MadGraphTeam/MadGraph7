@@ -70,11 +70,14 @@ int32_t ninjars_evaluate_dp_compensated_with_poles(ninjars_context *context, int
  * The last complex value is the generic engine's basis-dependent rational
  * diagnostic. Its split from the cut-constructible part can differ from DP
  * and original Ninja; the complete finite Laurent value includes both.
- * Symbolica licensing applies to MP and selected UV/IR DP execution.
- * Its restricted mode permits
- * one active Symbolica thread per user across all processes; concurrent MP
- * processes need a suitable license. Permit/license failures in upstream
- * Symbolica can terminate the process rather than return an ABI status.
+ * The pinned NinjaRS library registers its scoped Symbolica library key.
+ * The retained worker activates that scope before constructing any symbolic
+ * state, including oneloopmaster evaluation. While the key is valid, these
+ * operations need no separate personal Symbolica key, including concurrent
+ * processes. Unrelated caller Symbolica operations remain outside this scope.
+ * If library authorization is unavailable, Symbolica's personal-license or
+ * restricted-mode rules apply. Upstream permit/license failures can terminate
+ * the process rather than return an ABI status.
  */
 int32_t ninjars_evaluate_mp(ninjars_context *context, int32_t n, int32_t rank, size_t count,
     const unsigned char *coefficients, size_t coefficient_bytes,

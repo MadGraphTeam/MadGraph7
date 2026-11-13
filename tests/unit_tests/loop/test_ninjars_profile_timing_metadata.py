@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -41,7 +42,7 @@ def actual_functions(path):
     return methods
 
 def exercise(label, source, optimized=True, initialized=None, tool=8, failure=None, real_card=False,
-             mutate_runtime=None, base_root=None, physical_layout=None,
+             mutate_runtime=None, base_root=None, physical_layout=None, provenance=True,
              pole_mode=-1, helicity_filter_file=True):
     base = base_root/label
     base.mkdir(parents=True,exist_ok=False)
@@ -138,7 +139,8 @@ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=No
     exec(compile(ast.Module(body=actual_functions(source),type_ignores=[]),str(source),'exec'),ns)
     for name in ('time_matrix_element','boot_time_setup','skip_loop_evaluation_setup'):
         setattr(Timer,name,ns[name])
-    result = Timer().time_matrix_element(Matrix(),MLOptions={'MLReductionLib':[tool]})
+    options = None if provenance is None else {'timing_provenance': provenance}
+    result = Timer().time_matrix_element(Matrix(),options=options,MLOptions={'MLReductionLib':[tool]})
     (base/'archive-read-count.json').write_text(json.dumps(archive_reads))
     return result,calls,base
 
@@ -149,6 +151,60 @@ class TimingMetadataTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(dir=parent,prefix='mg5-profile-metadata-')
         self.addCleanup(temporary.cleanup)
         self.work = Path(temporary.name)
+
+    def test_default_profile_has_no_archival_io_or_runtime_mutation_guard(self):
+        for provenance in (None, False):
+            for optimized in (False, True):
+                name = 'plain-%s-%s' % (provenance, optimized)
+                settings = dict(base_root=self.work, provenance=provenance,
+                                optimized=optimized, mutate_runtime=2)
+                old, old_calls, _ = exercise(name+'-old', OLD, **settings)
+                with mock.patch.object(os, 'walk', side_effect=AssertionError('unexpected library walk')), \
+                     mock.patch.object(shutil, 'copyfile', side_effect=AssertionError('unexpected source copy')):
+                    new, new_calls, base = exercise(name+'-new', NEW, **settings)
+                self.assertEqual(new_calls, old_calls)
+                old['dir_path'] = new['dir_path']
+                self.assertEqual(new, old)
+                self.assertNotIn('timing_metadata', new)
+                self.assertEqual(json.loads((base/'archive-read-count.json').read_text()), [])
+                self.assertFalse(list(base.glob('*/SavedRunInfos')))
+
+    def test_cli_provenance_is_explicit_boolean_for_timing_and_profile_only(self):
+        source = ROOT/'madgraph/interface/madgraph_interface.py'
+        tree = ast.parse(source.read_text())
+        checker = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+                       and n.name == 'CheckValidForCmd')
+        check = next(n for n in checker.body if isinstance(n, ast.FunctionDef)
+                     and n.name == 'check_check')
+        command = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+                       and n.name == 'MadGraphCmd')
+        run = next(n for n in command.body if isinstance(n, ast.FunctionDef)
+                   and n.name == 'do_check')
+        parse = next(n for n in run.body if isinstance(n, ast.While)
+                     and ast.unparse(n.test) == "args[i].startswith('--')")
+        scope = {'os': os}
+        exec(compile(ast.Module(body=[check], type_ignores=[]), str(source), 'exec'), scope)
+        owner = SimpleNamespace(_curr_model=True, _model_v4_path=None,
+            _check_opts=['timing', 'profile', 'stability'], InvalidCmd=ValueError,
+            check_process_format=lambda process: None)
+        for mode in ('timing', 'profile'):
+            for value, expected in ((None, False), ('True', True), ('False', False), ('true', True)):
+                args = [mode, 'u', 'u~', '>', 'z', '[virt=QCD]']
+                if value is not None:
+                    args.append('--timing_provenance='+value)
+                scope['check_check'](owner, args)
+                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os)
+                exec(compile(ast.Module(body=[parse], type_ignores=[]), str(source), 'exec'), values)
+                self.assertIs(values['options']['timing_provenance'], expected)
+            for invalid in ('yes', 'True=garbage', 'False=garbage'):
+                args = [mode, 'u', 'u~', '>', 'z', '[virt=QCD]', '--timing_provenance='+invalid]
+                scope['check_check'](owner, args)
+                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os)
+                with self.assertRaisesRegex(ValueError, 'must be True or False'):
+                    exec(compile(ast.Module(body=[parse], type_ignores=[]), str(source), 'exec'), values)
+        with self.assertRaisesRegex(ValueError, 'unknown option --timing_provenance'):
+            scope['check_check'](owner, ['stability', 'u', 'u~', '>', 'z', '[virt=QCD]',
+                                       '--timing_provenance=True'])
 
     def compare(self,name,**kwargs):
         old,old_calls,_ = exercise(name+'-old',OLD,base_root=self.work,**kwargs)

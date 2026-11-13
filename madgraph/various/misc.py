@@ -389,16 +389,23 @@ def which(program):
                 return exe_file
     return None
 
-def has_f2py():
-    has_f2py = False
-    if which('f2py'):
-        has_f2py = True
-    elif which('f2py%d.%d' %(sys.version_info.major, sys.version_info.minor)):
-        has_f2py = True
-    elif which('f2py%d' %(sys.version_info.major)):
-        has_f2py = True
+def default_f2py():
+    """The f2py to use when none is configured (f2py_compiler): the one
+    installed with this Python (next to sys.executable, e.g. in a virtual
+    environment), else f2pyX.Y, f2pyX or f2py on the PATH -- which may
+    belong to another Python, whose modules this one cannot import. None
+    when there is none."""
+    for name in ('f2py%d.%d' % sys.version_info[:2], 'f2py%d' % sys.version_info[0], 'f2py'):
+        path = os.path.join(os.path.dirname(sys.executable), name)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    for name in ('f2py%d.%d' % sys.version_info[:2], 'f2py%d' % sys.version_info[0], 'f2py'):
+        if which(name):
+            return name
+    return None
 
-    return has_f2py       
+def has_f2py():
+    return default_f2py() is not None
         
 #===============================================================================
 #  Activate dependencies if possible. Mainly for tests
@@ -812,6 +819,16 @@ def pid_exists(pid):
             raise
     else:
         return True
+
+def pool_chunksize(pool, nitems):
+    """chunksize to pass to pool.map / pool.map_async: ceil(nitems / (4 * nprocs)),
+    as CPython computes when no chunksize is given, but from the number of
+    processes the pool was created with. CPython uses len(pool._pool) instead,
+    which drops to zero (ZeroDivisionError) while a maxtasksperchild pool
+    replaces the workers that exited after their last task.
+    """
+    nprocs = max(1, pool._processes)
+    return max(1, -(-nitems // (4 * nprocs)))
 
 
 
@@ -1780,6 +1797,51 @@ def find_pythia8_main164(pythia8_path):
         if examples_dir is None and os.path.isfile(pjoin(examples, 'main164.cc')):
             examples_dir = examples
     return None, examples_dir
+
+def get_pythia8_merging_plugin(pythia8_path):
+    """The 'Init:plugins' entry ('<library>::aMCatNLOHooks') of the merging
+    hook that main164 of this Pythia8 installation loads as a plugin, as the
+    main164 of Pythia8 8.318 does, or None if its main164 does not (up to
+    Pythia8 8.317, main164 sets the hook itself) or the plugin is missing.
+    The library is given by its absolute path, since the shower does not run
+    with the Pythia8 library directory in the library search path."""
+
+    for examples in (pjoin(pythia8_path, 'share', 'Pythia8', 'examples'),
+                     pjoin(pythia8_path, 'examples')):
+        try:
+            source = open(pjoin(examples, 'main164.cc')).read()
+        except IOError:
+            continue
+        # join the adjacent string literals of the C++ source
+        source = re.sub(r'"\s*"', '', source)
+        if 'Init:plugins += {libpythia8amcatnloHooks.so::aMCatNLOHooks}' not in source:
+            return None
+        library = os.path.abspath(pjoin(pythia8_path, 'lib', 'libpythia8amcatnloHooks.so'))
+        if not os.path.isfile(library):
+            return None
+        # a path that the Pythia8 card (or MadGraph7's reading of it) would cut
+        if re.search(r'[\s,{}"!=]', library):
+            library = os.path.basename(library)
+        return '%s::aMCatNLOHooks' % library
+    return None
+
+_cpp_token = re.compile(r'"(?:\\.|[^"\\])*"'      # string literal
+                        r"|'(?:\\.|[^'\\])*'"     # character literal
+                        r'|//[^\n]*'                 # line comment
+                        r'|/\*.*?\*/', re.S)         # block comment
+
+def strip_cpp_comments(source):
+    """The C/C++ source without its comments and with its whitespace
+    collapsed, so that two copies of a file differing only in comments or
+    layout compare equal. String and character literals are kept as is."""
+
+    code = _cpp_token.sub(lambda m: m.group(0) if m.group(0)[0] in '"\'' else ' ',
+                          source)
+    return ' '.join(code.split())
+
+def same_cpp_code(source1, source2):
+    """True if the two C/C++ sources differ at most by comments and whitespace"""
+    return strip_cpp_comments(source1) == strip_cpp_comments(source2)
 
 def get_pythia8_version(pythia8_path):
     """The version of a Pythia8 installation (e.g. '8.317'), from its
@@ -3452,6 +3514,18 @@ def import_python_lhapdf(lhapdfconfig):
                 os.environ['LD_LIBRARY_PATH'] = lhapdf_libdir
             else:
                 os.environ['LD_LIBRARY_PATH'] = '%s:%s' %(lhapdf_libdir,os.environ['LD_LIBRARY_PATH'])
+        # LD_LIBRARY_PATH set now only reaches child processes: the python
+        # module (built without an rpath, e.g. by HEPTools) would not find
+        # libLHAPDF in this one. Load it first, globally, so it does.
+        for libname in ('libLHAPDF.so', 'libLHAPDF.dylib'):
+            libpath = os.path.join(lhapdf_libdir, libname)
+            if os.path.exists(libpath):
+                try:
+                    import ctypes
+                    ctypes.CDLL(libpath, mode=ctypes.RTLD_GLOBAL)
+                except OSError:
+                    pass
+                break
         try:
             candidates=[dirname for dirname in os.listdir(lhapdf_libdir) \
                             if os.path.isdir(os.path.join(lhapdf_libdir,dirname))]

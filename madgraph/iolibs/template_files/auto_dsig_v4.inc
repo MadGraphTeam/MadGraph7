@@ -408,6 +408,12 @@ C     for each SMATRIX call (its good-helicity filter is per orientation)
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 	   integer igraph(VECSIZE_MEMMAX)
 	   common/vec_igraph/igraph
+C     1-x of each beam: OMX_EE is what PDG2PDF reads for a dressed-lepton
+C     density, ALL_OMX_EE its value per lane (filled in dsample.f)
+      DOUBLE PRECISION OMX_EE(2)
+      COMMON /TO_EE_OMX1/ OMX_EE
+      DOUBLE PRECISION ALL_OMX_EE(2, VECSIZE_MEMMAX)
+      COMMON /TO_EE_OMX_VEC/ ALL_OMX_EE
 C  
 C DATA
 C  
@@ -456,6 +462,7 @@ c        Do not need those three here. do I?
           XBK(:) = ALL_XBK(:,IVEC)
 c         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
 
 C     Select a flavor combination (need to do here for right sign)
@@ -522,6 +529,8 @@ c          config and mirror of this warp (used by the clustering in REWGT and b
      XBK(:) = ALL_XBK(:,IVEC)
 c    CM_RAP = ALL_CM_RAP(IVEC)
      Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+C    UNWGT samples the beamstrahlung split from it
+     OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
      if(frame_id.ne.6)then
            call boost_to_frame(ALL_PP(0,1,IVEC), frame_id, P1)

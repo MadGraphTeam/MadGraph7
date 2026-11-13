@@ -129,7 +129,8 @@ See :doc:`gridpacks` for details.
     - ``fix_max_weight``: no events. Each channel runs until ``freeze_max_weight_after``
       unweighted events are reached. Its maximum weight is then fixed in the gridpack,
       and its integral is used to share the events between the channels. This can be
-      slow for channels with a low unweighting efficiency.
+      slow for channels with a low unweighting efficiency. The gridpack also gets
+      ``bin/event_stream.py`` to stream events in memory from Python.
 
     See :ref:`gridpack-run-mode`.
 
@@ -156,7 +157,9 @@ See :doc:`gridpacks` for details.
 ``leptonic`` (``false``)
     Treat the beams as leptons: no PDFs are used and the partonic energy equals the
     collision energy. This is set automatically for lepton-collider processes, together
-    with 500 GeV beams and no jet cuts.
+    with 500 GeV beams; the jet cuts stay, as in madevent. Without a PDF,
+    :math:`\alpha_s` is the 2-loop running of the :math:`\alpha_s(m_Z)` of the param card,
+    as madevent does, and ``pdf1``/``pdf2`` are not used (nor downloaded).
 
 ``pdf1`` (``"NNPDF40_lo_as_01180"``), ``pdf2`` (``"NNPDF40_lo_as_01180"``)
     Name of the LHAPDF set of each beam. ``set beam.pdf X`` sets both. MG7 tries to
@@ -368,6 +371,78 @@ An empty string disables the function. See :doc:`custom_functions` for details.
 ``<function>_parameters.<name>``
     A parameter of a custom function, for example ``cut_parameters.pt_min = 30.0``. It replaces
     the default value declared by the function. See :ref:`custom-function-parameters`.
+
+.. _run-card-surrogate:
+
+[surrogate]
+-----------
+
+A fast surrogate of the matrix element, for example a neural network. The integrand and
+its optimization use the surrogate. The events are then reweighted or unweighted a second
+time with the full matrix element, which is only evaluated for the events that pass the
+first unweighting. The cross section and the events are those of the full matrix element.
+The surrogate does not return channel weights, so it needs ``sde_strategy =
+"denominators"``. It is not supported for outputs with ``[amplicol]`` subprocesses.
+
+``function`` (``""``)
+    The surrogate. An empty string disables it.
+
+    - A ``.so`` library implementing the UMAMI interface. It gets the momenta,
+      :math:`\alpha_s` and the flavor index of the madmatrix libraries as inputs, and
+      returns the matrix element. It is loaded once per subprocess: ``{subprocess}`` and
+      ``{device}`` in the path are replaced by the subprocess name (e.g. ``P1_gg_ttx``)
+      and the device, like in ``lib/libmadmatrix_{subprocess}_{device}.so``. It has to
+      be built for the device of the run. If it implements ``umami_set_parameter``, it
+      gets the run-time parameters of the madmatrix libraries, such as ``bwcutoff``.
+    - A Python file defining ``custom_surrogate(momenta, pdg_ids, alpha_s)``, which returns
+      :math:`|M|^2` for a batch of events. ``momenta`` has the shape ``(batch, n, 4)``,
+      ``pdg_ids`` the shape ``(batch, n)`` and identifies subprocess and flavor, and
+      ``alpha_s`` the shape ``(batch,)``. ``FRAMEWORK = "torch"`` passes torch tensors,
+      which also run on GPUs, otherwise numpy arrays are passed. See
+      :ref:`custom-function-surrogate`.
+
+``mode`` (``"unweight"``)
+    ``"unweight"`` unweights the events a second time with respect to the ratio of the full
+    matrix element to the surrogate. The events then have unit weights apart from
+    overweights. ``"reweight"`` keeps the ratio in the event weights.
+
+``first_pass_max_overweight_truncation`` (``0.01``), ``first_pass_freeze_max_weight_after`` (``10000``)
+    ``max_overweight_truncation`` and ``freeze_max_weight_after`` of the first
+    unweighting, with the surrogate, in unweight mode. The ones of ``[generation]`` set
+    the second unweighting with the full matrix element, which gives the final events,
+    and the unweighting of the subprocesses without a surrogate. In reweight mode, the
+    events are unweighted once, with the surrogate, as set by ``[generation]``.
+
+``param_card`` (``""``)
+    The param card a ``.so`` surrogate is initialized with. An empty string uses
+    ``Cards/param_card.dat``. A madmatrix library with a different param card, for example,
+    is a surrogate for testing.
+
+[amplicol]
+----------
+
+The ``[amplicol]`` subprocesses (``generate p p > j j j [amplicol]``) take their matrix
+elements from AmpliCol instead of Feynman diagrams. They are integrated at leading colour,
+one colour ordering at a time, over colour-ordered phase-space mappings. A second pass
+then re- or unweights the events to full colour with the ratio of the full-colour to the
+leading-colour matrix element, summed over the colour orderings, at the helicity of the
+event. These subprocesses run on CPUs only, and MG7 does not turn MLM merging on by itself
+for an output that has them.
+
+``color_accuracy`` (``"full"``)
+    ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
+    leading-colour events and skips the second pass.
+
+``mode`` (``"reweight"``)
+    ``"reweight"`` keeps the full- to leading-colour ratio in the event weights.
+    ``"unweight"`` unweights the events a second time with respect to that ratio. The
+    events then have unit weights apart from overweights.
+
+``first_pass_max_overweight_truncation`` (``0.01``), ``first_pass_freeze_max_weight_after`` (``10000``)
+    ``max_overweight_truncation`` and ``freeze_max_weight_after`` of the first,
+    leading-colour unweighting, in unweight mode. The ones of ``[generation]`` set the
+    second unweighting, to full colour, which gives the final events. In reweight mode, the
+    events are unweighted once, at leading colour, as set by ``[generation]``.
 
 .. _run-card-multiparticles:
 
@@ -616,3 +691,8 @@ function. The activations are ``relu``, ``leaky_relu``, ``elu``, ``gelu``, ``sig
 
 ``cwnet_hidden_dim`` (``"auto"``), ``cwnet_layers`` (``3``), ``cwnet_activation`` (``"leaky_relu"``)
     Size and activation of the channel weight network.
+
+``nn_float_precision`` (``"float32"``)
+    Floating-point precision of the weights and the evaluation of all networks,
+    ``float32`` or ``float64``. The rest of the computation, including the network
+    outputs, softmaxes and Jacobians, stays in double precision.

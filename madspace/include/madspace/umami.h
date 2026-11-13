@@ -30,7 +30,7 @@ extern "C" {
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
  */
-#define UMAMI_MINOR_VERSION 1
+#define UMAMI_MINOR_VERSION 2
 
 typedef enum {
     /** operation was executed successfully */
@@ -51,6 +51,8 @@ typedef enum {
     UMAMI_ERROR_UNSUPPORTED_META,
     /** a mandatory matrix element input was not provided */
     UMAMI_ERROR_MISSING_INPUT,
+    /** the provided parameter name is not a known, settable parameter */
+    UMAMI_ERROR_UNKNOWN_PARAMETER,
 } UmamiStatus;
 
 typedef enum {
@@ -138,10 +140,13 @@ typedef enum {
     UMAMI_OUT_PDF,
     /** value of a custom event bias, type: `double`, shape: `()` */
     UMAMI_OUT_BIAS,
+    /** ratio of the matrix element to a reference matrix element defined by the
+     * caller, type: `double`, shape: `()` */
+    UMAMI_OUT_MATRIX_ELEMENT_RATIO,
 } UmamiOutputKey;
 
 /** Number of values in `UmamiOutputKey` */
-#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_BIAS + 1)
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_MATRIX_ELEMENT_RATIO + 1)
 
 /** Implementation-defined pointer to a matrix element instance */
 typedef void* UmamiHandle;
@@ -222,7 +227,7 @@ UmamiStatus umami_supported_outputs(bool const** supported, int* count);
  *
  * @param handle
  *     pointer to an instance of the subprocess. Has to be cleaned up by
- *     the caller with `free_subprocess`.
+ *     the caller with `umami_free`.
  * @param param_card_path
  *     path to the parameter file
  * @return
@@ -242,7 +247,8 @@ UmamiStatus umami_initialize(UmamiHandle* handle, char const* param_card_path);
  * @param parameter_imag
  *     imaginary part of the parameter value. Ignored for real valued parameters.
  * @return
- *     UMAMI_SUCCESS on success, error code otherwise
+ *     UMAMI_SUCCESS on success, UMAMI_ERROR_UNKNOWN_PARAMETER if "name" is not
+ *     a settable parameter, error code otherwise
  */
 UmamiStatus umami_set_parameter(
     UmamiHandle handle, char const* name, double parameter_real, double parameter_imag
@@ -261,7 +267,8 @@ UmamiStatus umami_set_parameter(
  *     pointer to double to return imaginary part of the parameter value. Ignored
  *     for real-valued parameters (i.e. you may pass a null pointer)
  * @return
- *     UMAMI_SUCCESS on success, error code otherwise
+ *     UMAMI_SUCCESS on success, UMAMI_ERROR_UNKNOWN_PARAMETER if "name" is not
+ *     a known parameter, error code otherwise
  */
 UmamiStatus umami_get_parameter(
     UmamiHandle handle, char const* name, double* parameter_real, double* parameter_imag

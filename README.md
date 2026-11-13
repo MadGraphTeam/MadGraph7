@@ -1,8 +1,6 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/source/_static/logo-wide-dark.png">
-    <img src="docs/source/_static/logo-wide-light.png" width="450" alt="MadGraph7">
-  </picture>
+  <img src="docs/source/_static/logo-wide-light.png#gh-light-mode-only" width="450" alt="MadGraph7">
+  <img src="docs/source/_static/logo-wide-dark.png#gh-dark-mode-only" width="450" alt="MadGraph7">
 </p>
 
 MadGraph7 is the next major release of the MadGraph event generator. Its new features
@@ -16,7 +14,9 @@ This is an **alpha release**, meant for testing and feedback, **not for producti
 The MadGraph7 workflow currently covers leading-order event generation. The LO
 workflow from MG5_aMC@NLO is still reachable through the `output madevent` mode.
 The NLO workflow is also available (with only minor updates).
-AmpliCol mode is not included in this release.
+The AmpliCol backend is available for the MG7 output: `generate p p > j j j [amplicol]`
+takes the matrix elements from AmpliCol instead of Feynman diagrams (see below for its
+installation).
 
 If you need a stable release, use
 [MadGraph5_aMC@NLO](https://github.com/mg5amcnlo/mg5amcnlo) (also on
@@ -43,6 +43,10 @@ MadLoop also provides the optional TIRust reduction backend through
 [installation and parameter guide](docs/tirust.md) and the
 [numerical and performance report](docs/benchmarkfolder/benchmark.pdf).
 
+The `pyamplicol` package, the matrix-element generator of the `[amplicol]` backend, is
+installed in the same way with `install pyamplicol`. It lives in `pyamplicol/` and keeps
+its own license (0BSD, see `pyamplicol/LICENSE` and `pyamplicol/THIRD_PARTY_NOTICES.md`).
+
 ## First steps
 
 Type `tutorial` at the MadGraph7 prompt for a guided walkthrough of the commands.
@@ -61,3 +65,11 @@ browser and inspecting their results. You can install it with
 pip install madboard
 ```
 and launch it by running the `madboard` command within your MadGraph7 directory.
+
+### Contribution recognition
+
+Merged pull requests in this repository are recognised on [APICURON](<apicuron.org>). Opening, reviewing, discussing and merging pull requests count as contributions. Only activity metadata is recorded (who did what, and when), never code or comment text.
+
+To have your contributions credited to you, add your GitHub profile URL (`https://github.com/<your-login>`) to the "Websites & social links" section of your [ORCID](https://orcid.org) record, then log into APICURON once (or logout -> login again to sync up). Until then, your contributions are held unpublished.
+
+For how your data is handled, and to request its removal, see the [APICURON privacy notice](<https://apicuron.org/about#contact>).

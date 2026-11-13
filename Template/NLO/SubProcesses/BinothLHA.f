@@ -10,16 +10,14 @@ c
       include "coupl.inc"
       include "../../Source/MODEL/input.inc"
       include 'born_nhel.inc'
-      double precision pi, zero,mone
+      double precision pi,zero
       parameter (pi=3.1415926535897932385d0)
       parameter (zero=0d0)
       double precision p(0:3,nexternal-1)
       double precision virt_wgt,born_wgt,double,single
-     $     ,born_wgt_recomputed,born_wgt_recomp_direct
-      double precision, allocatable :: virt_wgts(:,:)
-      double precision, allocatable :: virt_wgts_hel(:,:)
-      double precision mu,ao2pi,conversion,alpha_S
-      save conversion
+      double precision, allocatable, save :: virt_wgts(:,:)
+      double precision, allocatable, save :: virt_wgts_hel(:,:)
+      double precision ao2pi,alpha_S
       logical firsttime,firsttime_conversion
       data firsttime,firsttime_conversion /.true.,.true./
       logical firsttime_run
@@ -31,22 +29,26 @@ c
       integer ret_code
       double precision madfks_single, madfks_double
       double precision tolerance
-      double precision, allocatable :: accuracies(:)
+      double precision, allocatable, save :: accuracies(:)
       integer i,j,IOErr, IOErrCounter
       integer dt(8)
       integer nbad, nbadmax
-      double precision target,ran2,accum
+      double precision ran2
       external ran2
       double precision hel_fact
 CCC      double precision wgt_hel(max_bhel)
 CCC      common/c_born_hel/wgt_hel
       integer nsqso, MLResArrayDim
+c Dimensions and buffers are initialized once, with firsttime_run.
+      save nsqso, MLResArrayDim
 c statistics for MadLoop
       double precision avgPoleRes(2),PoleDiff(2)
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
       INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
       COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      INTEGER ML_GET_RET_CODE_LIBRARY
+      EXTERNAL ML_GET_RET_CODE_LIBRARY
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
       parameter (nbadmax = 5)
@@ -499,14 +501,18 @@ c Update the statistics using the MadLoop return code (ret_code)
          n10=n10+1              ! no known ret_code (10)
       endif
       n1(mod(ret_code,10))=n1(mod(ret_code,10))+1 ! unit ret code distribution
-      if (ret_code/100.eq.2.and.mod(ret_code,10).eq.8)
-     $     NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
-      if (ret_code/100.eq.3.and.mod(ret_code,10).eq.2)
-     $     NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
-      if (ret_code/100.eq.2.and.mod(ret_code,10).eq.9)
-     $     TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
-      if (ret_code/100.eq.3.and.mod(ret_code,10).eq.3)
-     $     TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
+c Unit 2 is NinjaRS; classify precision with T, not the stability digit H.
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.1.or.
+     $     mod(ret_code,100)/10.eq.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.2.or.
+     $     mod(ret_code,100)/10.eq.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
+c Unit 3 is shared by IREGI and TIRust (MLReductionLib=9).
+      if (mod(ret_code,10).eq.3.and.ML_GET_RET_CODE_LIBRARY().eq.9) then
+         if (mod(ret_code,100)/10.eq.1.or.mod(ret_code,100)/10.eq.3)
+     $        TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
+         if (mod(ret_code,100)/10.eq.2.or.mod(ret_code,100)/10.eq.4)
+     $        TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
+      endif
 
 c Write out the unstable, non-rescued phase-space points (MadLoop return
 c code is in the four hundreds) or the ones that are found by the pole
@@ -581,11 +587,9 @@ c weight, screwing up the complete integration afterward.
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
-      integer status,procnum
-      double precision s,mu,sumdot
+      integer procnum
+      double precision sumdot
       external sumdot
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
       character*13 filename
       common /LH_procnum /procnum
 
@@ -627,9 +631,10 @@ c      include "fks.inc"
       include "coupl.inc"
 
 c Particle types (=color) of i_fks, j_fks and fks_mother
-      integer i_type,j_type,m_type
-      common/cparticle_types/i_type,j_type,m_type
-
+      double precision       ch_i,ch_j,ch_m
+      integer                i_type,j_type,m_type,j_pdg
+      common/cparticle_types/ch_i,ch_j,ch_m,
+     &                       i_type,j_type,m_type,j_pdg
       double precision pmass(nexternal),zero
       parameter (zero=0d0)
       include "pmass.inc"
@@ -673,7 +678,7 @@ c Particle types (=color) of i_fks, j_fks and fks_mother
 
       subroutine get_procnum(filename,procnum)
       implicit none
-      integer procnum,lookhere,procsize
+      integer procnum,lookhere
       character*13 filename
       character*176 buff
       logical done
@@ -683,6 +688,7 @@ c Particle types (=color) of i_fks, j_fks and fks_mother
       do while (.not.done)
          read (68,'(a)',end=889)buff
          if (index(buff,'->').ne.0) then
+            lookhere=0 ! Enable a provider-specific parser below first.
 c Rocket
 c            lookhere=index(buff,'process')+7
 c BlackHat

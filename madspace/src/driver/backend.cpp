@@ -26,7 +26,13 @@ struct LoadedBackend {
 #endif
         shared_lib = std::shared_ptr<void>(
             dlopen(std::format("{}/{}.{}", lib_path, file, so_ext).c_str(), RTLD_NOW),
-            [](void* lib) { dlclose(lib); }
+            // shared_ptr calls the deleter even for a null pointer, and
+            // dlclose(nullptr) would crash when dlopen fails.
+            [](void* lib) {
+                if (lib) {
+                    dlclose(lib);
+                }
+            }
         );
         if (!shared_lib) {
             throw std::runtime_error(

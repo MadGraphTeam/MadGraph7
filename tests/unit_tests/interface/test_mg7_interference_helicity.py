@@ -46,7 +46,7 @@ class TestInterferenceHelicity(unittest.TestCase):
 
     def setUp(self):
         try:
-            import madgraph.iolibs.template_files.mg7.launch as launch
+            import madgraph.mg7.launch as launch
         except ImportError as error:  # the mg7 runtime (madspace) is not there
             self.skipTest('mg7 launch not importable: %s' % error)
         self.launch = launch
@@ -77,6 +77,17 @@ class TestInterferenceHelicity(unittest.TestCase):
         for meta in ({'helicities': HELICITIES, 'interference': False},
                      {'helicities': HELICITIES}):
             self.assertEqual(self.launch.lhe_helicities(meta, rc), HELICITIES)
+
+    def test_unknown_helicity_legs(self):
+        """The massive fermions whose spin is quantised along a reference
+        momentum (output --axial_gauge=True) are not in a helicity state:
+        their helicity is 9, the one of the other particles is kept."""
+        rc = card()
+        meta = {'helicities': HELICITIES, 'unknown_helicity': [2, 3]}
+        self.assertEqual(self.launch.lhe_helicities(meta, rc),
+                         [[-1, 1, 9, 9], [1, -1, 9, 9]])
+        meta = {'helicities': HELICITIES, 'unknown_helicity': []}
+        self.assertEqual(self.launch.lhe_helicities(meta, rc), HELICITIES)
 
     def test_card_round_trip(self):
         rc = card('summed')

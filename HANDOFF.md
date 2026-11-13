@@ -56,6 +56,18 @@ Updated 2026-11-13. The current results are in
   - `tirust_requalify.sh` runs everything for a new pin.
   - `tirust_pin/` holds the pin-bump procedure.
 
+## Return codes (format 2)
+
+The `madloop_ninjars` merge (2026-11-13) brought MadLoop return-code format 2,
+which retires PJFry and gives `U=2` to NinjaRS. TIRust now reports `U=3`, shared
+with IREGI, in both precisions, with `T` for precision: stable DP is `213` and a
+QP rescue is `323` (format 1 used `219` and `323`).
+- The MadEvent and aMC@NLO `TIRust DP/QP` counters tell TIRust from IREGI
+  through `ML_GET_RET_CODE_LIBRARY()` in `MadLoopCommons.inc`.
+- `tools/tirust_benchmark_worker.py` (`BACKEND_CODES`) and the benchmark
+  drivers' warm-status checks decode both formats.
+- The rehearsal campaign below predates the merge, so its summaries show `219`.
+
 ## Results for `9a781998` (campaign `tirust-9a781998-1`)
 
 - **Ordinary matrix:** 66/66 lanes pass `3e-6`; 54 also meet `1e-8`, with the

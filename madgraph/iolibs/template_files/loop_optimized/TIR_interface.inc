@@ -112,7 +112,7 @@ C ----------
 C Reject unavailable OPP backends which reach the TIR fallback. Check before
 C consulting the cache so an unsupported ID can never reuse old coefficients.
       SELECT CASE(MLReductionLib(I_LIB))
-      CASE(2,3,4,7)
+      CASE(3,4,7)
         CONTINUE
       CASE(9)
 ## if(tirust_available){
@@ -121,6 +121,10 @@ C consulting the cache so an unsupported ID can never reuse old coefficients.
         WRITE(*,*) 'TIRust unavailable: install tirust, regenerate and rebuild.'
           STOP 1
 ## }
+      CASE(2)
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+        STOP 1
       CASE DEFAULT
         IF(MLReductionLib(I_LIB).EQ.8) THEN
           WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
@@ -248,17 +252,9 @@ C       Keep the constant expression valid when users disable this cache.
 ## } 
       SELECT CASE(MLReductionLib(I_LIB))
       CASE(2)
-C     PJFry++
-## if(pjfry_available){
-      CALL %(proc_prefix)sSWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
-      CALL PMLOOP(NLOOPLINE,RANK,PL,PDEN,M2L,MU_R,PJCOEFS(0:NLOOPCOEFS-1,1:3),STABLE)
-C     CONVERT TO MADLOOP CONVENTION
-      CALL %(proc_prefix)sCONVERT_PJFRY_COEFFS(RANK,PJCOEFS,TIRCOEFS)
-      CALL cite('Fleischer:2011bi','one-loop reduction with PJFry++')
-## } else {
-      WRITE(*,*) 'ERROR:: PJFRY++ is not interfaced.'
-      STOP
-## }
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+        STOP 1
       CASE(3)
 C     IREGI
 ## if(iregi_available){

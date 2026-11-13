@@ -2,10 +2,12 @@
 import copy
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
 import tirust_benchmark_local as local
 import tirust_benchmark_campaign as campaign
 

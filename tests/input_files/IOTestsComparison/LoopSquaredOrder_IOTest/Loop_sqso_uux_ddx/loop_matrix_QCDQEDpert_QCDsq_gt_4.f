@@ -114,15 +114,15 @@ C     These are constants related to the split orders
       INTEGER NSQUAREDSOP1
       PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only
-C      CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja, COLLIER and
-C      NinjaRS
+C     CutTools, IREGI, Golem95, Samurai, Ninja, COLLIER and NinjaRS
+C      are supported.
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=8)
+      PARAMETER (NLOOPLIB=9)
 C     CutTools, Ninja and NinjaRS can provide QP when installed with
 C      support
-      INTEGER QP_NLOOPLIB
-      PARAMETER (QP_NLOOPLIB=2)
+      INTEGER QP_NLOOPLIB,TIRUST_QP_COUNT
+      PARAMETER (TIRUST_QP_COUNT=0)
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
 
       INTEGER MAXSTABILITYLENGTH
       DATA MAXSTABILITYLENGTH/20/
@@ -283,13 +283,13 @@ C
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE
 C      AVAILABLE OR NOT
       LOGICAL LOOPLIBS_AVAILABLE(NLOOPLIB)
-      DATA LOOPLIBS_AVAILABLE/.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.
-     $ ,.TRUE.,.TRUE.,.TRUE./
+      DATA LOOPLIBS_AVAILABLE/.TRUE.,.FALSE.,.TRUE.,.TRUE.,.TRUE.
+     $ ,.TRUE.,.TRUE.,.TRUE.,.TRUE./
       COMMON/ML5_0_LOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS
 C      AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-      DATA LOOPLIBS_DIRECTEST /8*.TRUE./
+      DATA LOOPLIBS_DIRECTEST /9*.TRUE./
 C     Specifying for which reduction tool quadruple precision is
 C      available.
 C     The index 0 is dummy and simply means that the corresponding
@@ -300,6 +300,7 @@ C     in which case neither is its quadruple precision version.
       DATA LOOPLIBS_QPAVAILABLE(6)/.TRUE./
       DATA LOOPLIBS_QPAVAILABLE(7)/.FALSE./
       DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(9)/.FALSE./
 C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED
 C      FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
@@ -550,11 +551,26 @@ C        if AUTOMATIC_CACHE_CLEARING is disabled.
 C     Check every evaluation because callers may change the mode at
 C      runtime.
       CALL ML_CHECK_LOOP_POLE_MODE()
+      IF(.NOT.TIRUSTCOMPUTEFINITE) THEN
+        WRITE(*,*) 'Poles-only tensors are not complete amplitudes.'
+        WRITE(*,*) 'Use TIRUST_TENSOR_DIAGNOSTIC for poles-only'
+     $   //' evaluation.'
+        STOP 1
+      ENDIF
 C     Learned zero and equivalent-helicity filters belong to the pole
 C      convention
 C     that produced them.  Diagnostic modes must include cancelling
 C      UV/IR loops.
-      BYPASS_FILTERS=BYPASS_CHECK.OR.LOOPPOLEMODE.GE.0
+      BYPASS_FILTERS=BYPASS_CHECK.OR.LOOPPOLEMODE.GT.0
+C     Legacy COLLIER filters may have been trained without one pole
+C      origin.
+C     Isolate them when explicit combined poles override those
+C      switches.
+      IF (LOOPPOLEMODE.EQ.0.AND.ANY(MLREDUCTIONLIB.EQ.7)
+     $ .AND.(.NOT.COLLIERCOMPUTEUVPOLES.OR..NOT.COLLIERCOMPUTEIRPOLES))
+     $  THEN
+        BYPASS_FILTERS=.TRUE.
+      ENDIF
 
       IF (LOCAL_ML_INIT) THEN
         LOCAL_ML_INIT = .FALSE.
@@ -569,6 +585,15 @@ C        unavailable tools.
           WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate'
      $     //' and rebuild this process.'
           STOP 'Requested NinjaRS backend is unavailable.'
+        ENDIF
+        IF(MLREDUCTIONLIB(1).EQ.9.AND.MLREDUCTIONLIB(2)
+     $   .EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(9))THEN
+          WRITE(*,*) 'TIRust (MLReductionLib=9) is unavailable in this'
+     $     //' generated process.'
+          WRITE(*,*) 'Run install tirust, then regenerate and rebuild'
+     $     //' this process.'
+          WRITE(*,*) 'Requested TIRust backend is unavailable.'
+          STOP 1
         ENDIF
 C       SKIP THE ONES THAT NOT AVAILABLE
         J=1
@@ -607,12 +632,18 @@ C       Setup the file paths
 
         CALL ML5_0_SET_N_EVALS(N_DP_EVAL,N_QP_EVAL)
 
-C       Make sure that the loop filter is disabled when there is
-C        spin-2 particles for 2>1 or 1>2 processes
-        IF(MAX_SPIN_EXTERNAL_PARTICLE.GT.3.AND.(NEXTERNAL.LE.3.AND.HELI
-     $CITYFILTERLEVEL.NE.0)) THEN
-          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1'
-     $     //' processes involving spin 2 particles.'
+C       Disable the helicity filter for 2>1 and 1>2 processes.
+C       In the c.m. frame one particle is then at rest (the
+C       final state of a 2>1, the decaying one of a 1>2), and
+C       which helicities vanish depends on the frame: at rest
+C       the helicity is defined along z, a boost changes it.
+C       A filter learned in one frame silently drops part of
+C       the result in another (u d~ > w+: virtual = 0 with the
+C       W along -z) and the stability test cannot see it.
+C       The tree-level standalone output does the same.
+        IF(NEXTERNAL.LE.3.AND.HELICITYFILTERLEVEL.NE.0) THEN
+          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and'
+     $     //' 1>2 processes.'
           HELICITYFILTERLEVEL = 0
 C         We write a dummy filter for structural reasons here
           OPEN(1, FILE=HELFILTERFN, ERR=6116, STATUS='NEW'
@@ -798,6 +829,8 @@ C      orders
         REF=REF+ANS(0,I)
       ENDDO
 
+      FPE_IN_DP_REDUCTION=.FALSE.
+      FPE_IN_QP_REDUCTION=.FALSE.
       MP_DONE=.FALSE.
       MP_DONE_ONCE=.FALSE.
       MP_PS_SET=.FALSE.
@@ -834,7 +867,7 @@ C        trust the evaluation for checks.
       CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER)
      $ .AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-      IF (WRITEOUTFILTERS.AND.LOOPPOLEMODE.LT.0) THEN
+      IF (WRITEOUTFILTERS.AND..NOT.BYPASS_FILTERS) THEN
         IF ((HELICITYFILTERLEVEL.NE.0).AND.(.NOT. CHECKPHASE)
      $   .AND.(.NOT.FOUNDHELFILTER)) THEN
           OPEN(1, FILE=HELFILTERFN, ERR=110, STATUS='NEW'
@@ -1793,6 +1826,7 @@ C      after
 C     ech event
 C     
       CALL ML5_0_CLEAR_TIR_CACHE()
+      CALL ML5_0_CLEAR_TIRUST_CACHE()
       CALL NINJA_CLEAR_INTEGRAL_CACHE()
       CALL ML5_0_CLEAR_COLLIER_CACHE()
       END
@@ -2845,7 +2879,9 @@ C      the result
 C     Returns -1 if no stab test could be performed.
 C     RET_CODE			 integer :: Return code. See below for details
 C     
-C     Return code conventions: RET_CODE = H*100 + T*10 + U
+C     Return-code format 2: RET_CODE = H*100 + T*10 + U
+C     PJFry is retired. NinjaRS uses U=2 in both precisions.
+C     Record ML_GET_RETURN_CODE_VERSION() alongside saved return codes.
 C     
 C     H == 1
 C     Stability unknown.
@@ -2873,21 +2909,23 @@ C     Not stable.
 C     U == 1
 C     Stable with CutTools in double precision.
 C     U == 2
-C     Stable with PJFry++ (H=2), or NinjaRS in quadruple precision
-C      (H=3).
+C     Stable with NinjaRS. T records whether quadruple precision was
+C      used.
 C     U == 3
-C     Stable with IREGI.
+C     Stable with IREGI (H=2), or TIRust in quadruple precision (H=3).
 C     U == 4
 C     Stable with Golem95
 C     U == 5
 C     Stable with Samurai
 C     U == 6
 C     Stable with Ninja in double precision
+C     U == 7
+C     Stable with COLLIER.
 C     U == 8
-C     Stable with Ninja in quadruple precision (H=3), or NinjaRS in
-C      double precision (H=2).
+C     Stable with Ninja in quadruple precision.
 C     U == 9
-C     Stable with CutTools in quadruple precision.         
+C     Stable with CutTools in quadruple precision (H=3), or TIRust in
+C      double precision (H=2).
 C     
       IMPLICIT NONE
 C     
@@ -2954,6 +2992,7 @@ C     arrays
       SUBROUTINE ML5_0_EXIT_MADLOOP()
       USE MNINJARS, ONLY: NINJARS_FINALIZE
       CALL NINJARS_FINALIZE()
+      CALL ML5_0_FINALIZE_TIRUST()
       CONTINUE
       END
 

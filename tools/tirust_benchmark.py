@@ -1484,7 +1484,7 @@ def summarize(config):
         raise ValueError("qualification.json must contain an array of observed qualification records")
     summary = {**campaign_fields(), "schema": "madloop-tirust-summary-v1", "created_utc": utc_now(),
         "field_definitions": {"native_dp_only": "Strict arithmetic evidence: False for observed QP/fallback/internal tiers; None when complete amplitude/cache provenance is unavailable. Legacy observation aliases are ignored.",
-                              "actual_backend_precision_counts": "Final accepted input/output transport per amplitude; 219 may include internal DD/256/512 tensor work. 323 input transport and verified QP-numerator card are separate.",
+                              "actual_backend_precision_counts": "Final accepted input/output transport per amplitude; TIRust DP (213, or 219 before return-code format 2) may include internal DD/256/512 tensor work. 323 input transport and verified QP-numerator card are separate.",
                               "precision_usage": "Optional20-counter primary/check bridge deltas; Fortran coefficient-cache hits bypass counters. Unreported/error intervals make attempts lower bounds."},
         "candidate_revision": candidate_revision, "candidate_revisions": sorted(candidate_revisions),
         "candidate_source_hashes": sorted(candidate_source_hashes),

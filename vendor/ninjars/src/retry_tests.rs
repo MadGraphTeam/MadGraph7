@@ -5,6 +5,18 @@ fn doc()->PathBuf{PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/com
 fn pairs(v:&Value)->Vec<C64>{v.as_array().unwrap().iter().map(|v|C64::new(v[0].as_f64().unwrap(),v[1].as_f64().unwrap())).collect()}
 fn numbers(v:&Value)->Vec<f64>{v.as_array().unwrap().iter().map(|v|v.as_f64().unwrap()).collect()}
 fn bits(v:&[C64])->Vec<[u64;2]>{v.iter().map(|z|[z.re.to_bits(),z.im.to_bits()]).collect()}
+fn agrees_with_ninja(v:&Value,out:&[C64;3]){
+    let reference=pairs(&v["ninja"]);
+    let magnitude=|z:&C64|z.re.hypot(z.im);
+    let scale=out.iter().chain(&reference).map(magnitude).fold(0.,f64::max);
+    for (actual,expected) in out.iter().zip(&reference){
+        let difference=(actual.re-expected.re).hypot(actual.im-expected.im);
+        let bound=1e-7*magnitude(actual).max(magnitude(expected))+1e-10*scale;
+        assert!(actual.is_finite()&&difference<=bound,
+            "loop={} direction={} actual={actual:?} original Ninja={expected:?} error={difference} bound={bound}",
+            v["loop"],v["direction"]);
+    }
+}
 fn create()->*mut Context{let mut c=std::ptr::null_mut();assert_eq!(unsafe{ninjars_context_create(ABI_VERSION,&mut c)},SUCCESS);c}
 fn call(ctx:*mut Context,comp:bool,v:&Value)->(i32,[C64;3]){
     let n=v["n"].as_i64().unwrap()as i32;let rank=v["rank"].as_i64().unwrap()as i32;
@@ -21,25 +33,41 @@ fn call(ctx:*mut Context,comp:bool,v:&Value)->(i32,[C64;3]){
 fn retry_native_path_is_exact_and_compensated_state_is_lazy(){
     let fixtures:Vec<Value>=serde_json::from_slice(&fs::read(doc().join(
         "inputs.json")).unwrap()).unwrap();
-    let corrected:Vec<Value>=serde_json::from_slice(&fs::read(doc().join(
-        "corrected-results.json")).unwrap()).unwrap();
+    // Upstream NinjaRS 5920727 constructs spinors from the larger light-cone
+    // component. This changes reduction rounding relative to the immutable
+    // historical fixtures. Require exact current-context isolation/reuse and
+    // independently retain the original Ninja oracle at the campaign tolerance.
+    // The compensated callback's 480 frozen components remain exact oracles in
+    // guarded_tests; neither those fixtures nor the historical results change.
     let ctx=create();
+    let mut native=Vec::new();
     for v in &fixtures{
+        let fresh=create();let reference=call(fresh,false,v);
+        unsafe{assert_eq!(ninjars_context_destroy(fresh),SUCCESS);}
+        assert_eq!(reference.0,SUCCESS);
         let(status,out)=call(ctx,false,v);assert_eq!(status,SUCCESS);
-        assert_eq!(bits(&out),bits(&pairs(&v["ninjars"])));
+        assert_eq!(bits(&out),bits(&reference.1));
+        agrees_with_ninja(v,&out);
+        native.push(out);
     }
     unsafe{
         assert!((*ctx).compensated_dp.lock().unwrap().is_none());
         assert!((*ctx).mp.lock().unwrap().is_none());
     }
-    for v in &fixtures{
-        let reference=corrected.iter().find(|r|r["loop"]==v["loop"]&&r["direction"]==v["direction"]).unwrap();
+    let mut compensated_changed=false;
+    for (v,native) in fixtures.iter().zip(&native){
+        let fresh=create();let reference=call(fresh,true,v);
+        unsafe{assert_eq!(ninjars_context_destroy(fresh),SUCCESS);}
+        assert_eq!(reference.0,SUCCESS);
         let(status,out)=call(ctx,true,v);assert_eq!(status,SUCCESS);
-        assert_eq!(bits(&out),bits(&pairs(&reference["ninjars"])));
+        assert_eq!(bits(&out),bits(&reference.1));
+        agrees_with_ninja(v,&out);
+        compensated_changed|=bits(&out)!=bits(native);
         // A subsequent ordinary call must not inherit any compensated mode.
         let(status,out)=call(ctx,false,v);assert_eq!(status,SUCCESS);
-        assert_eq!(bits(&out),bits(&pairs(&v["ninjars"])));
+        assert_eq!(bits(&out),bits(native));
     }
+    assert!(compensated_changed,"the explicit retry must exercise its distinct tensor callback");
     unsafe{
         assert!((*ctx).compensated_dp.lock().unwrap().is_some());
         assert!((*ctx).mp.lock().unwrap().is_none());

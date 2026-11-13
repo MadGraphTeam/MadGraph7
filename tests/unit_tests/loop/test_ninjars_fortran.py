@@ -37,29 +37,62 @@ class NinjaRSFortranTest(unittest.TestCase):
 
     def test_legacy_and_ninjars_return_codes(self):
         source = (PARAMS / 'MadLoopCommons.inc').read_text()
-        routine = source.split('      INTEGER FUNCTION SET_RET_CODE_U', 1)[1]
+        routine = source.split('      INTEGER FUNCTION ML_GET_RETURN_CODE_VERSION', 1)[1]
         routine = routine.split('      SUBROUTINE DETECT_LOOPLIB', 1)[0]
         (self.work / 'status.f').write_text(
-            '      INTEGER FUNCTION SET_RET_CODE_U' + routine + '''
+            '      INTEGER FUNCTION ML_GET_RETURN_CODE_VERSION' + routine + '''
       PROGRAM TEST_STATUS
       IMPLICIT NONE
-      INTEGER SET_RET_CODE_U,I
+      INTEGER SET_RET_CODE_U,ML_GET_RETURN_CODE_VERSION,I,EXPECTED
+      INTEGER ML_GET_RET_CODE_LIBRARY
+      CHARACTER*1 MODE
+      CALL GET_COMMAND_ARGUMENT(1,MODE)
+      IF(MODE.EQ.'2'.OR.MODE.EQ.'F') THEN
+        I=SET_RET_CODE_U(2,.FALSE.,MODE.EQ.'2')
+        WRITE(*,*) 'UNEXPECTEDLY ACCEPTED RETIRED BACKEND'
+      ENDIF
+      IF (ML_GET_RETURN_CODE_VERSION().NE.2) STOP 7
+      IF (ML_GET_RET_CODE_LIBRARY().NE.0) STOP 11
       DO I=1,9
-        IF (SET_RET_CODE_U(I,.FALSE.,.TRUE.).NE.I) STOP 1
+        IF(I.EQ.2) CYCLE
+        EXPECTED=I
+        IF(I.EQ.8) EXPECTED=2
+        IF(I.EQ.9) EXPECTED=3
+        IF (SET_RET_CODE_U(I,.FALSE.,.TRUE.).NE.EXPECTED) STOP 1
+C The shared unit 3 is attributed to the library that produced it.
+        IF (ML_GET_RET_CODE_LIBRARY().NE.I) STOP 12
         IF (SET_RET_CODE_U(I,.FALSE.,.FALSE.).NE.0) STOP 2
+        IF (ML_GET_RET_CODE_LIBRARY().NE.0) STOP 13
         IF (SET_RET_CODE_U(I,.TRUE.,.FALSE.).NE.0) STOP 3
       ENDDO
       IF (SET_RET_CODE_U(1,.TRUE.,.TRUE.).NE.9) STOP 4
       IF (SET_RET_CODE_U(6,.TRUE.,.TRUE.).NE.8) STOP 5
       IF (SET_RET_CODE_U(8,.TRUE.,.TRUE.).NE.2) STOP 6
-      IF (SET_RET_CODE_U(9,.TRUE.,.TRUE.).NE.3) STOP 7
+C The backend digit is independent of H (quality) and T (QP usage).
+      IF(200+10+SET_RET_CODE_U(8,.FALSE.,.TRUE.).NE.212) STOP 8
+      IF(300+20+SET_RET_CODE_U(8,.TRUE.,.TRUE.).NE.322) STOP 9
+      IF(300+10+SET_RET_CODE_U(8,.FALSE.,.TRUE.).NE.312) STOP 10
+C TIRust shares IREGI's unit 3 in both precisions: 213 stable DP, 323 QP rescue.
+      IF(200+10+SET_RET_CODE_U(9,.FALSE.,.TRUE.).NE.213) STOP 14
+      IF(300+20+SET_RET_CODE_U(9,.TRUE.,.TRUE.).NE.323) STOP 15
+      IF (ML_GET_RET_CODE_LIBRARY().NE.9) STOP 16
+      IF(200+10+SET_RET_CODE_U(3,.FALSE.,.TRUE.).NE.213) STOP 17
+      IF (ML_GET_RET_CODE_LIBRARY().NE.3) STOP 18
       END
 ''')
         self.compile_run(['status.f'])
+        for mode in ('2', 'F'):
+            result = subprocess.run([str(self.work / 'check'), mode],
+                                    cwd=self.work, text=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn('PJFry (MLReductionLib=2) has been retired', result.stdout)
+            self.assertIn('MLReductionLib=8', result.stdout)
+            self.assertNotIn('UNEXPECTEDLY ACCEPTED', result.stdout)
 
-    def test_card_nine_libraries_and_terminator(self):
+    def test_card_supported_libraries_and_terminator(self):
         (self.work / 'card.dat').write_text(
-            '#MLReductionLib\n9|8|7|6|5|4|3|2|1|8|9|8\n'
+            '#MLReductionLib\n9|8|7|6|5|4|3|1|8|9|8\n'
             '#UseQPIntegrandForNinjaRS\n.FALSE.\n')
         (self.work / 'card.f').write_text('''
       PROGRAM TEST_CARD
@@ -71,11 +104,77 @@ class NinjaRSFortranTest(unittest.TestCase):
       IF(.NOT.UseQPIntegrandForNinjaRS) STOP 2
       FILENAME='card.dat'
       CALL MADLOOPPARAMREADER(FILENAME,.FALSE.)
-      IF(ANY(MLReductionLib.NE.(/9,8,7,6,5,4,3,2,1,0/))) STOP 3
+      IF(ANY(MLReductionLib.NE.(/9,8,7,6,5,4,3,1,0,0/))) STOP 3
       IF(UseQPIntegrandForNinjaRS) STOP 4
       END
 ''')
         self.compile_run(['card.f', str(PARAMS / 'MadLoopParamReader.f')])
+
+    def test_retired_pjfry_card_and_runtime_selection_are_actionable(self):
+        (self.work / 'retired.f').write_text('''
+      PROGRAM TEST_RETIRED
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      CHARACTER*512 FILENAME
+      CHARACTER*1 MODE
+      CALL DEFAULTPARAM()
+      CALL GET_COMMAND_ARGUMENT(1,MODE)
+      IF(MODE.EQ.'R') THEN
+        MLReductionLib(1:3)=(/8,2,1/)
+        CALL ML_CHECK_LOOP_POLE_MODE()
+      ELSE
+        FILENAME='retired.dat'
+        CALL MADLOOPPARAMREADER(FILENAME,.FALSE.)
+      ENDIF
+      WRITE(*,*) 'UNEXPECTEDLY ACCEPTED RETIRED BACKEND'
+      END
+''')
+        self.run_command('gfortran', '-ffixed-line-length-132', '-fcheck=all',
+                         '-I', str(PARAMS), 'retired.f',
+                         str(PARAMS / 'MadLoopParamReader.f'), '-o', 'retired')
+        for selection in ('2', '8|2|6', 'R'):
+            with self.subTest(selection=selection):
+                (self.work / 'retired.dat').write_text(
+                    '#MLReductionLib\n' + selection + '\n')
+                result = subprocess.run([str(self.work / 'retired'), selection],
+                                        cwd=self.work, text=True,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn('PJFry (MLReductionLib=2) has been retired', result.stdout)
+                self.assertIn('MLReductionLib=8', result.stdout)
+                self.assertNotIn('UNEXPECTEDLY ACCEPTED', result.stdout)
+
+    def test_nonoptimized_runtime_retired_backend_is_rejected(self):
+        source = (TEMPLATE.parent / 'loop' / 'loop_matrix_standalone.inc').read_text()
+        block = source[source.index('C Reject a retired selection also after global initialization.'):
+                       source.index('C The non-optimized output uses CutTools')]
+        with FortranWriter(str(self.work / 'nonoptimized.f')) as writer:
+            writer.writelines('''
+      PROGRAM TEST_NONOPTIMIZED
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      INTEGER I
+      CHARACTER*1 MODE
+      CALL DEFAULTPARAM()
+      CALL GET_COMMAND_ARGUMENT(1,MODE)
+      MLReductionLib=0
+      MLReductionLib(1)=1
+      IF(MODE.EQ.'2') MLReductionLib(2)=2
+''' + block + '''
+      WRITE(*,*) 'NONOPTIMIZED ACCEPTED'
+      END
+''')
+        self.run_command('gfortran', '-ffixed-line-length-132', '-fcheck=all',
+                         '-I', str(PARAMS), 'nonoptimized.f',
+                         str(PARAMS / 'MadLoopParamReader.f'), '-o', 'nonoptimized')
+        self.assertIn('NONOPTIMIZED ACCEPTED', self.run_command(
+            str(self.work / 'nonoptimized'), '1'))
+        result = subprocess.run([str(self.work / 'nonoptimized'), '2'],
+                                cwd=self.work, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('PJFry (MLReductionLib=2) has been retired', result.stdout)
+        self.assertNotIn('NONOPTIMIZED ACCEPTED', result.stdout)
 
     def test_unavailable_ninjars_only_is_actionable_and_fallback_is_preserved(self):
         source = (TEMPLATE / 'loop_matrix_standalone.inc').read_text()
@@ -238,7 +337,7 @@ C Fill a real coefficient cache with a valid reduction before switching IDs.
                     self.run_command('gfortran', '-ffixed-line-length-132',
                                      '-fcheck=all', '-I', str(PARAMS),
                                      'tir.f', 'dispatch.f', '-o', 'dispatch')
-                    for mode in (7, 17, 8, 18, 6, 16):
+                    for mode in (7, 17, 8, 18, 6, 16, 2, 12):
                         result = subprocess.run(
                             [str(self.work / 'dispatch'), str(mode)],
                             cwd=self.work, text=True, stdout=subprocess.PIPE,
@@ -253,6 +352,10 @@ C Fill a real coefficient cache with a valid reduction before switching IDs.
                                 if mode % 10 == 8:
                                     self.assertIn('install ninjars', result.stdout)
                                     self.assertIn('regenerate and rebuild', result.stdout)
+                                elif mode % 10 == 2:
+                                    self.assertIn('PJFry (MLReductionLib=2) has been retired',
+                                                  result.stdout)
+                                    self.assertIn('MLReductionLib=8', result.stdout)
                                 else:
                                     self.assertIn('Unsupported TIR reduction library',
                                                   result.stdout)

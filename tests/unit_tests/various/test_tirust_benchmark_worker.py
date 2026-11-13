@@ -39,14 +39,18 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(result["seconds_per_point"], .05)
 
     def test_aliases_use_both_hundreds_and_units(self):
-        for code, backend, precision in ((219, 9, "DP"), (319, 1, "QP"),
+        # Return-code format 2 (current) and the format-1 DP aliases 218/219.
+        for code, backend, precision in ((213, 9, "DP"), (323, 9, "QP"),
+                                         (212, 8, "DP"), (322, 8, "QP"),
+                                         (329, 1, "QP"), (328, 6, "QP"),
+                                         (219, 9, "DP"), (319, 1, "QP"),
                                          (313, 9, "QP"), (318, 6, "QP"),
                                          (218, 8, "DP"), (312, 8, "QP"),
                                          (211, 1, "DP"), (216, 6, "DP"),
                                          (217, 7, "DP")):
             with self.subTest(code=code):
                 self.assertEqual(worker.validate_status(code, backend)["precision"], precision)
-        for code in (209, 239, 119, 419, 213):
+        for code in (209, 239, 119, 419, 214, 233):
             with self.subTest(code=code), self.assertRaises(ValueError):
                 worker.validate_status(code, 9)
         with self.assertRaises(ValueError):
@@ -266,7 +270,7 @@ end subroutine
                         child.run(1)
                         self.assertEqual(worker.parse_outputs(directory, 9, 2, 1)["status_counts"],
                                          {"219": 1, "323": 1})
-            for status in (249, 230, 130, 410, 213, 109):
+            for status in (249, 230, 130, 410, 214, 109):
                 with self.subTest(failing_warmup_status=status):
                     env = dict(os.environ, BENCHMARK_STUB_WARM_STATUS=str(status))
                     with self.assertRaises(worker.MeasurementError) as caught:

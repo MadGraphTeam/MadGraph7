@@ -6,6 +6,13 @@ TIRust PR #35, which is not yet merged into TIRust `main`. The final MadGraph pi
 must be a merged `main` commit. Once that exists, rerun the same pipeline with
 `tools/tirust_requalify.sh tirust-<pin8>-1`.
 
+**Return codes.** Since the `madloop_ninjars` merge (2026-11-13), MadLoop uses
+return-code format 2. TIRust reports `U=3`, which it shares with IREGI, so a
+stable DP result is `213` and a QP rescue is `323`. This campaign ran before the
+merge, under format 1, so its summaries show TIRust DP as `219`. The benchmark
+tools decode both formats. The merge also changes MadLoop templates; the
+final-pin campaign requalifies the merged source.
+
 | | |
 |---|---|
 | MadGraph exporter | `624ef69f05` (generator inventory `be13df83…`); later commits change only `tools/`, `tests/` and `docs/` |

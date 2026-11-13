@@ -59,7 +59,7 @@ C
 C LOCAL VARIABLES 
 C  
         INTEGER NHEL(NEXTERNAL,NCOMB)
-		INTEGER I, II, J ,JJ
+		INTEGER I, II, J ,JJ, JB
         INTEGER ISHEL
         REAL*8 R,SUMHEL,TS(NCOMB), T
 		REAL*8 HWGT,XTOT
@@ -223,10 +223,13 @@ C Of course this option can also not be used for polarized beams.
 			DO JJ=1,nincoming
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-               IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                  T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-               ELSE IF(POL(JJ).NE.1d0)THEN
-                  T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+c JB: the beam leg JJ comes from, the other one for a mirror process
+               JB = JJ
+               IF (IMIRROR.EQ.2) JB = 3-JJ
+               IF(POL(JB).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JB)))) THEN
+                  T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2d0
+               ELSE IF(POL(JB).NE.1d0)THEN
+                  T=T*(2d0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2d0
                ENDIF
             ENDDO
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
@@ -285,10 +288,12 @@ C           The helicity configuration was chosen already by genps and put in a 
             ENDDO
 
 			DO JJ=1,nincoming
-              IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-              ELSE IF(POL(JJ).NE.1d0)THEN
-                T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+              JB = JJ
+              IF (IMIRROR.EQ.2) JB = 3-JJ
+              IF(POL(JB).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JB)))) THEN
+                T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2d0
+              ELSE IF(POL(JB).NE.1d0)THEN
+                T=T*(2d0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2d0
               ENDIF
             ENDDO
 
@@ -379,6 +384,8 @@ C	Local variables
 C
 	real time_after
 	integer u,t,h
+	INTEGER ML_GET_RET_CODE_LIBRARY
+	EXTERNAL ML_GET_RET_CODE_LIBRARY
 c
 c	Global variables
 c
@@ -412,10 +419,14 @@ c   ----
 	T_RETURN_CODES(T) = T_RETURN_CODES(T)+1	
 	H = (mod(RETURN_CODE,1000)-10*T-U)/100
 	H_RETURN_CODES(H) = H_RETURN_CODES(H)+1
-      IF (H.EQ.2.AND.U.EQ.8) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
-      IF (H.EQ.3.AND.U.EQ.2) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
-      IF (H.EQ.2.AND.U.EQ.9) TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
-      IF (H.EQ.3.AND.U.EQ.3) TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
+C     Unit 2 is NinjaRS; T records whether QP was used for this point.
+      IF (U.EQ.2.AND.(T.EQ.1.OR.T.EQ.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
+      IF (U.EQ.2.AND.(T.EQ.2.OR.T.EQ.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
+C     Unit 3 is shared by IREGI and TIRust (MLReductionLib=9).
+      IF (U.EQ.3.AND.ML_GET_RET_CODE_LIBRARY().EQ.9) THEN
+        IF (T.EQ.1.OR.T.EQ.3) TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
+        IF (T.EQ.2.OR.T.EQ.4) TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
+      ENDIF
 
 	MAX_PREC = max(PREC, MAX_PREC)
 	MIN_PREC = min(PREC, MIN_PREC)

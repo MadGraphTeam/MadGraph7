@@ -143,7 +143,7 @@ C     These are constants related to the split orders
 	  INTEGER NSQUAREDSOP1
 	  PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja, COLLIER and NinjaRS
+C     CutTools, IREGI, Golem95, Samurai, Ninja, COLLIER and NinjaRS are supported.
       INTEGER NLOOPLIB
       PARAMETER (NLOOPLIB=9)
 C     CutTools, Ninja and NinjaRS can provide QP when installed with support
@@ -603,7 +603,12 @@ IF(.NOT.TIRustComputeFinite) THEN
 ENDIF
 C Learned zero and equivalent-helicity filters belong to the pole convention
 C that produced them.  Diagnostic modes must include cancelling UV/IR loops.
-BYPASS_FILTERS=BYPASS_CHECK.OR.LoopPoleMode.GE.0
+BYPASS_FILTERS=BYPASS_CHECK.OR.LoopPoleMode.GT.0
+C Legacy COLLIER filters may have been trained without one pole origin.
+C Isolate them when explicit combined poles override those switches.
+IF (LoopPoleMode.EQ.0.AND.ANY(MLReductionLib.EQ.7).AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles)) THEN
+  BYPASS_FILTERS=.TRUE.
+ENDIF
 
 IF (LOCAL_ML_INIT) THEN
   LOCAL_ML_INIT = .FALSE.
@@ -657,9 +662,17 @@ C Setup the file paths
 
   CALL %(proc_prefix)sSET_N_EVALS(N_DP_EVAL,N_QP_EVAL)  
 
-C Make sure that the loop filter is disabled when there is spin-2 particles for 2>1 or 1>2 processes
-  if(MAX_SPIN_EXTERNAL_PARTICLE.gt.3.AND.(NEXTERNAL.LE.3.AND.HelicityFilterLevel.NE.0)) THEN
-    WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 processes involving spin 2 particles.'
+C Disable the helicity filter for 2>1 and 1>2 processes.
+C In the c.m. frame one particle is then at rest (the
+C final state of a 2>1, the decaying one of a 1>2), and
+C which helicities vanish depends on the frame: at rest
+C the helicity is defined along z, a boost changes it.
+C A filter learned in one frame silently drops part of
+C the result in another (u d~ > w+: virtual = 0 with the
+C W along -z) and the stability test cannot see it.
+C The tree-level standalone output does the same.
+  if(NEXTERNAL.LE.3.AND.HelicityFilterLevel.NE.0) THEN
+    WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and 1>2 processes.'
     HelicityFilterLevel = 0	
 C   We write a dummy filter for structural reasons here
     OPEN(1, FILE=HelFilterFN, err=6116, status='NEW',action='WRITE')
@@ -886,7 +899,7 @@ ENDIF
 
 CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER).AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-IF (WriteOutFilters.AND.LoopPoleMode.LT.0) THEN
+IF (WriteOutFilters.AND..NOT.BYPASS_FILTERS) THEN
 IF ((HelicityFilterLevel.ne.0).AND.(.NOT. CHECKPHASE).AND.(.NOT.FOUNDHELFILTER)) THEN
 OPEN(1, FILE=HelFilterFN, err=110, status='NEW',action='WRITE')
   DO I=1,NCOMB
@@ -3042,7 +3055,9 @@ C     PREC_FOUND         double  :: Relative accuracy estimated for the result
 C                                   Returns -1 if no stab test could be performed.
 C	  RET_CODE			 integer :: Return code. See below for details
 C
-C     Return code conventions: RET_CODE = H*100 + T*10 + U
+C     Return-code format 2: RET_CODE = H*100 + T*10 + U
+C     PJFry is retired. NinjaRS uses U=2 in both precisions.
+C     Record ML_GET_RETURN_CODE_VERSION() alongside saved return codes.
 C
 C     H == 1
 C         Stability unknown.
@@ -3070,7 +3085,7 @@ C         Not stable.
 C     U == 1
 C         Stable with CutTools in double precision.
 C     U == 2
-C         Stable with PJFry++ (H=2), or NinjaRS in quadruple precision (H=3).
+C         Stable with NinjaRS. T records whether quadruple precision was used.
 C     U == 3
 C         Stable with IREGI (H=2), or TIRust in quadruple precision (H=3).
 C     U == 4
@@ -3079,8 +3094,10 @@ C     U == 5
 C         Stable with Samurai
 C     U == 6
 C         Stable with Ninja in double precision
+C     U == 7
+C         Stable with COLLIER.
 C     U == 8
-C         Stable with Ninja in quadruple precision (H=3), or NinjaRS in double precision (H=2).
+C         Stable with Ninja in quadruple precision.
 C     U == 9
 C         Stable with CutTools in quadruple precision (H=3), or TIRust in double precision (H=2).
 C

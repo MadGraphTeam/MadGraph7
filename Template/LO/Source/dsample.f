@@ -119,6 +119,14 @@ c     refine last iteration decided before it was run (sample_put_point)
 
 C     data for vectorization      
       double precision all_xbk(2, VECSIZE_MEMMAX), all_q2fact(2, VECSIZE_MEMMAX), all_cm_rap(VECSIZE_MEMMAX)
+C     1-x of each beam, per lane. genps sets omx_ee with xbk, and the
+C     dressed-lepton densities read it rather than 1-xbk (the (1-x)**(-k)
+C     factor needs it exact), so it has to travel with xbk: otherwise
+C     every lane of a vector sees the 1-x of the last point generated.
+      double precision omx_ee(2)
+      common /to_ee_omx1/ omx_ee
+      double precision all_omx_ee(2, VECSIZE_MEMMAX)
+      common /to_ee_omx_vec/ all_omx_ee
       double precision all_fx(VECSIZE_MEMMAX)
       
       
@@ -202,6 +210,7 @@ c              write(*,*) 'pass_point ivec is ', ivec
                all_wgt(ivec) = wgt
                all_x(:,ivec) = x(:)
                all_xbk(:, ivec) = xbk(:)
+               all_omx_ee(:, ivec) = omx_ee(:)
                all_q2fact(:, ivec) = q2fact(:)
                all_cm_rap(ivec) = cm_rap
                all_cuts_orient(:, ivec) = cuts_orient(:)
@@ -229,6 +238,7 @@ c                 Here "i" is the position in the full grid of the event
                      
 c                 need to restore common block                  
                   xbk(:) = all_xbk(:, i)
+                  omx_ee(:) = all_omx_ee(:, i)
                   cm_rap = all_cm_rap(i)
                   q2fact(:) = all_q2fact(:,i)
                   CUTSDONE=.TRUE.
@@ -262,6 +272,7 @@ c              reset variable for the next grid
                 do i=1, VECSIZE_USED
 c                 need to restore common block                  
                   xbk(:) = all_xbk(:, i)
+                  omx_ee(:) = all_omx_ee(:, i)
                   cm_rap = all_cm_rap(i)
                   q2fact(:) = all_q2fact(:,i)
 c                  all_fx(i) = dsig(all_p(1,i),all_wgt(i),0)
@@ -474,6 +485,7 @@ c-----
       
       write(outUnit,*) '<run_statistics> '
       write(outUnit,33) '<u_return_code>',U_RETURN_CODES,'</u_return_code>'
+      write(outUnit,'(A)') '<return_code_version>2</return_code_version>'
       write(outUnit,'(A,I0,A)') '<ninjars_dp_usage>',NINJARS_DP_USAGE,
      &     '</ninjars_dp_usage>'
       write(outUnit,'(A,I0,A)') '<ninjars_qp_usage>',NINJARS_QP_USAGE,

@@ -6,7 +6,8 @@ campaign's candidate export with backend 9 alone, the campaign's natural policy
 (CTModeRun=-1, MLStabThres and caches from cases.json), and bridge route hooks
 around every amplitude call. Each of the 100 frozen points is classified as:
 
-  dp_native  accepted DP (status 219); only Direct/MethodChoice binary64 reductions
+  dp_native  accepted DP (status 213; 219 before return-code format 2); only
+             Direct/MethodChoice binary64 reductions
   dp_dd      accepted DP; at least one tensor lane needed the double-double tier
   dp_mpfr    accepted DP; at least one tensor lane needed 256/512-bit MPFR
   qp         genuine binary128-input QP rescue (status 323)

@@ -1950,7 +1950,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         super(LoopProcessOptimizedExporterFortranSA,self).__init__(dir_path, opt)
 
         # TIR available ones
-        self.tir_available_dict={'pjfry':True,'iregi':True,'golem':True,
+        self.tir_available_dict={'pjfry':False,'iregi':True,'golem':True,
                                  'samurai':True,'ninja':True,'collier':True,'ninjars':True,'tirust':True}
 
         for tir in self.all_tir:
@@ -2132,7 +2132,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         """Link the TIR source directory inside the target path given
         in argument"""
         
-        if tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
+        # PJFry's reduction ID is retired. Keep historical source helpers,
+        # but never link or advertise it in a newly generated process.
+        if tir_name == 'pjfry':
+            self.tir_available_dict['pjfry'] = False
+            return ""
+        if tir_name in ['golem','samurai','ninja','collier','ninjars','tirust']:
             # not self-contained libraries
             if (not isinstance(libpath,str)) or (not os.path.exists(libpath)) \
             or (not os.path.isfile(pjoin(libpath,libname))):

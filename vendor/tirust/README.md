@@ -161,10 +161,11 @@ cache hits bypass the bridge and are outside their scope. A nonzero unreported
 bucket makes attempted-tier totals lower bounds.
 
 Tier106 is DD. Tier256/512 process binary64 inputs with a DP numerator. None of
-these routes is the genuine binary128-input, 256-bit QP interface. The historical
-`TIRust DP` amplitude counter and return code `(H,U)=(2,9)` identify the DP-input
-interface; they do not prove native-only tensor evaluation. Genuine QP retains
-its existing counter and `(H,U)=(3,3)` return-code alias.
+these routes is the genuine binary128-input, 256-bit QP interface. The
+`TIRust DP` amplitude counter and return code `213` (MadLoop return-code format
+2: TIRust reports `U=3`, shared with IREGI, with `T` for precision; format 1
+used `219`) identify the DP-input interface; they do not prove native-only
+tensor evaluation. Genuine QP keeps its own counter and return code `323`.
 
 The generated `GET_TIRUST_DP_ROUTE_STATISTICS` routine returns zero counters and
 status `UNSUPPORTED` when an older ABI-1 installation lacks this optional
