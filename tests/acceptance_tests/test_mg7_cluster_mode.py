@@ -156,6 +156,10 @@ class MG7ClusterModeTest(unittest.TestCase):
         # the events of the jobs are only kept on request
         self.assertFalse(glob.glob(pjoin(events_dir, 'cluster', 'deploy', 'job_*',
                                          'events.lhe.gz')))
+        # the training gridpacks are dropped once merged, their info.json kept
+        train_jobs = pjoin(events_dir, 'cluster', 'train', 'job_*')
+        self.assertFalse(glob.glob(pjoin(train_jobs, 'gridpack')))
+        self.assertEqual(len(glob.glob(pjoin(train_jobs, 'info.json'))), 2)
 
     def test_cluster_run_estimating_the_max_weights(self):
         """Every generation job finds the max weights itself; merge groups and

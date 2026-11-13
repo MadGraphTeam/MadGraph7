@@ -204,7 +204,8 @@ A few more options are hidden: ``nb_retry`` (``1``, how often a failed job is su
 again), ``retry_wait`` (``300``, seconds a job is given to deliver its output),
 ``status_update`` (``[600, 30]``, seconds between status checks), ``temp_path`` (the
 ``cluster_temp_path`` of the configuration) and ``keep_job_files`` (``false``, keep the
-event files of the generation jobs).
+gridpacks of the training jobs once merged, and the event files of the generation
+jobs once combined; their logs and info.json are always kept).
 
 
 [beam]

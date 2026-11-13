@@ -160,6 +160,43 @@ class TestUnfinishedRun(unittest.TestCase):
 
 
 @unittest.skipIf(cluster_run is None, 'madspace not available')
+class TestCleanTrainingData(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def make_run(self, keep):
+        run = cluster_run.ClusterRun(types.SimpleNamespace(
+            run_card=card(cluster__keep_job_files=keep)), {})
+        run.cluster_path = self.tmp.name
+        run.state = {'train_jobs': [{'index': 0}, {'index': 1}]}
+        for index in (0, 1):
+            job_dir = run.job_dir('train', index)
+            os.makedirs(os.path.join(job_dir, 'gridpack', 'data'))
+            for name in ('log', 'info.json', 'done', 'gridpack/data/globals.tar',
+                         'gridpack/data/channels.json', 'gridpack/data/fixed_alphas.info'):
+                with open(os.path.join(job_dir, name), 'w') as f:
+                    f.write('x')
+        return run
+
+    def files(self, run):
+        return sorted(os.path.relpath(os.path.join(root, name), run.job_dir('train', 0))
+                      for root, _, names in os.walk(run.job_dir('train', 0))
+                      for name in names)
+
+    def test_gridpacks_dropped_logs_and_info_kept(self):
+        run = self.make_run(False)
+        run.clean_training_data()
+        self.assertEqual(self.files(run), ['done', 'info.json', 'log'])
+
+    def test_keep_job_files(self):
+        run = self.make_run(True)
+        run.clean_training_data()
+        self.assertIn('gridpack/data/globals.tar', self.files(run))
+
+
+@unittest.skipIf(cluster_run is None, 'madspace not available')
 class TestSupported(unittest.TestCase):
 
     def test_post_processing_tools_are_refused(self):

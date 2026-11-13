@@ -7448,7 +7448,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('cluster', 'temp_path', "", hidden=True,
             comment="cluster_temp_path: scratch directory of the nodes, for a cluster without shared disk")
         self.add_toml_param('cluster', 'keep_job_files', False, hidden=True,
-            comment="keep the event files of the generation jobs once combined")
+            comment="keep the gridpacks of the training jobs once merged, and the event files of the generation jobs once combined")
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'ebeam1', 6500.0,

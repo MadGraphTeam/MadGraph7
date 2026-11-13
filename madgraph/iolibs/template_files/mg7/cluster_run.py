@@ -381,6 +381,15 @@ class ClusterRun:
             self.process.gridpack_run_mode)
         return gridpack_path
 
+    def clean_training_data(self) -> None:
+        """Drop the gridpacks of the training jobs (network weights and grids)
+        once merged, keeping their logs and info.json."""
+        if self.section["keep_job_files"]:
+            return
+        for job in self.state["train_jobs"]:
+            shutil.rmtree(os.path.join(self.job_dir("train", job["index"]), "gridpack"),
+                          ignore_errors=True)
+
     # ------------------------------------------------------------------
     # generation pass
     # ------------------------------------------------------------------
@@ -453,8 +462,11 @@ class ClusterRun:
             gridpack_path = self.merge()
             if self.section["mode"] == "gridpack_only":
                 self.finish_gridpack_only(gridpack_path)
+                self.clean_training_data()
                 return
             self.set_stage("deploy")
+            # only after the stage moved on: a rerun no longer needs the inputs
+            self.clean_training_data()
         self.deploy(gridpack_path)
         self.set_stage("combine")
         info = self.combine()
