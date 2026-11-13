@@ -241,7 +241,9 @@ class MatrixElementEvaluator(object):
                 if pdg in sub_ids:
                     return list(sub_ids).index(pdg) + 1
             return 1
-        legs = process.get('legs')
+        # a decay-chain matrix element is evaluated on all its external legs
+        legs = process.get_legs_with_decays() if process.get('decay_chains') \
+               else process.get('legs')
         flavor = [_flavor_group_pos(leg) for leg in legs]
 
         if "matrix_elements" not in self.stored_quantities:
@@ -263,16 +265,21 @@ class MatrixElementEvaluator(object):
             except NameError:
                 pass
 
-        if (auth_skipping or self.auth_skipping) and matrix_element in \
-               self.stored_quantities['matrix_elements']:
+        # With flavour grouping one matrix element serves several flavours,
+        # chosen at run time: it has been tested only for the flavours tested.
+        tested = self.stored_quantities.setdefault('tested_flavors', [])
+        if (auth_skipping or self.auth_skipping) and \
+               any(flv == flavor and me == matrix_element
+                   for me, flv in tested):
             # Exactly the same matrix element has been tested
-            logger.info("Skipping %s, " % process.nice_string() + \
+            logger.info("Skipping %s, " % check_label(process) + \
                         "identical matrix element already tested" \
                         )
             return None
 
 
         self.stored_quantities['matrix_elements'].append(matrix_element)
+        tested.append((matrix_element, flavor))
         # Create an empty color basis, and the list of raw
         # colorize objects (before simplification) associated
         # with amplitude
@@ -447,6 +454,28 @@ if __name__ == '__main__':
     #===============================================================================
     # Helper function get_momenta
     #===============================================================================
+    def get_external_masses(self, process, special_mass=None):
+        """The (real) masses of the external legs of process, in the order of
+        their leg numbers; a merged multiplet takes its first flavour's. A leg
+        with id 0 is the special resonance of the CMS check, whose mass is
+        special_mass."""
+
+        mass = []
+        for l in sorted(process.get('legs'), key=lambda l: l.get('number')):
+            pdg = l.get('id')
+            if pdg != 0 and pdg:
+                if pdg in self.full_model.merged_particles:
+                    pdg =  self.full_model.merged_particles[pdg][0] 
+                mass_string = self.full_model.get_particle(pdg).get('mass')        
+                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
+            else:
+                if isinstance(special_mass, float):
+                    mass.append(special_mass)
+                else:
+                    raise Exception("A 'special_mass' option must be specified"+\
+                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
+        return mass
+
     def get_momenta(self, process, options=None, special_mass=None):
         """Get a point in phase space for the external states in the given
         process, with the CM energy given. The incoming particles are
@@ -502,21 +531,7 @@ if __name__ == '__main__':
         nfinal = len(sorted_legs) - nincoming
 
         # Find masses of particles
-        mass = []
-        for l in sorted_legs:
-            pdg = l.get('id')
-            if pdg != 0 and pdg:
-                if pdg in self.full_model.merged_particles:
-                    pdg =  self.full_model.merged_particles[pdg][0] 
-                mass_string = self.full_model.get_particle(pdg).get('mass')        
-                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
-            else:
-                if isinstance(special_mass, float):
-                    mass.append(special_mass)
-                else:
-                    raise Exception("A 'special_mass' option must be specified"+\
-                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
-        #mass = [math.sqrt(m.real) for m in mass]
+        mass = self.get_external_masses(process, special_mass)
 
 
 
@@ -2011,36 +2026,91 @@ def evaluate_helicities(process, param_card = None, mg_root="",
     
     return cumulative_helEvals
     
+def check_label(process):
+    """Name of a process in the log of the checks: the grouped process,
+    followed by the physical flavours when they are tagged on its legs."""
+
+    label = process.nice_string().replace('Process:', 'process')
+    if any(leg.get('flavor') for leg in process.get('legs')):
+        label += ' [%s]' % process.base_string()
+    return label
+
+def get_flavor_choices(multileg, model):
+    """Return the (id, pdg) choices of one leg of a multiprocess.
+
+    With flavour grouping a merged id (e.g. _quark, 81) stands for several
+    physical flavours, and the matrix element of a grouped process depends on
+    the flavour passed at run time. Each merged id is therefore expanded into
+    the flavours tagged on the leg (`u` -> _quark with flavour u) or, when the
+    leg carries no tag for it (`p`), into all the flavours of its group, so
+    that each physical process is checked on its own. pdg is the signed PDG
+    code of that flavour, or None for an id that is not merged."""
+
+    merged = model.get('merged_particles') or {}
+    choices = []
+    for pid in multileg.get('ids'):
+        if abs(pid) not in merged:
+            choices.append((pid, None))
+            continue
+        group = merged[abs(pid)]
+        sign = 1 if pid > 0 else -1
+        # Same filter as MultiProcess.generate_multi_amplitudes: the tag must
+        # belong to this group and have the sign of this (anti)particle id.
+        tagged = [abs(f) for f in multileg.get('flavor')
+                  if abs(f) in group and f * pid > 0]
+        for pdg in (tagged or group):
+            choices.append((pid, sign * abs(pdg)))
+    return choices
+
 def run_multiprocs_no_crossings(function, multiprocess, stored_quantities,
                                 opt=None, options=None):
     """A wrapper function for running an iteration of a function over
     a multiprocess, without having to first create a process list
     (which makes a big difference for very large multiprocesses.
     stored_quantities is a dictionary for any quantities that we want
-    to reuse between runs."""
+    to reuse between runs.
+    With flavour grouping, every merged leg is resolved into individual
+    flavours (see get_flavor_choices) and the flavour is tagged on the leg of
+    the process passed to function."""
     
     model = multiprocess.get('model')
-    isids = [leg.get('ids') for leg in multiprocess.get('legs') \
-              if not leg.get('state')]
-    fsids = [leg.get('ids') for leg in multiprocess.get('legs') \
-             if leg.get('state')]
-    # Create dictionary between isids and antiids, to speed up lookup
+    islegs = [leg for leg in multiprocess.get('legs') if not leg.get('state')]
+    fslegs = [leg for leg in multiprocess.get('legs') if leg.get('state')]
+    isids = [get_flavor_choices(leg, model) for leg in islegs]
+    fsids = [get_flavor_choices(leg, model) for leg in fslegs]
+    # Create dictionary between isids and antiids, to speed up lookup.
+    # Crossings are identified on the physical PDG code (the flavour for a
+    # merged id), so that e.g. u d~ > w+ g and c s~ > w+ g are both checked.
     id_anti_id_dict = {}
-    for id in set(tuple(sum(isids+fsids, []))):
-        id_anti_id_dict[id] = model.get_particle(id).get_anti_pdg_code()
-        id_anti_id_dict[model.get_particle(id).get_anti_pdg_code()] = id        
+    for pid, pdg in set(sum(isids+fsids, [])):
+        if pdg is None:
+            anti = model.get_particle(pid).get_anti_pdg_code()
+            id_anti_id_dict[pid] = anti
+            id_anti_id_dict[anti] = pid
+        else:
+            id_anti_id_dict[pdg] = -pdg
+            id_anti_id_dict[-pdg] = pdg
     sorted_ids = []
     results = []
     for is_prod in itertools.product(*isids):
         for fs_prod in itertools.product(*fsids):
 
             # Check if we have already checked the process
-            if check_already_checked(is_prod, fs_prod, sorted_ids,
-                                     multiprocess, model, id_anti_id_dict):
+            if check_already_checked(
+                    [pid if pdg is None else pdg for pid, pdg in is_prod],
+                    [pid if pdg is None else pdg for pid, pdg in fs_prod],
+                    sorted_ids, multiprocess, model, id_anti_id_dict):
                 continue
             # Generate process based on the selected ids
             # (get_process carries over the polarization of the multi-legs)
-            process = multiprocess.get_process(is_prod, fs_prod)
+            process = multiprocess.get_process([pid for pid, _ in is_prod],
+                                               [pid for pid, _ in fs_prod])
+            # Tag the flavour of the merged legs, with the convention of
+            # MultiProcess.generate_multi_amplitudes (initial-state flavour
+            # stored with the sign of the crossed particle).
+            for leg, (pid, pdg) in zip(process.get('legs'), is_prod + fs_prod):
+                if pdg is not None:
+                    leg.set('flavor', [pdg if leg.get('state') else -pdg])
 
             if opt is not None:
                 if isinstance(opt, dict):
@@ -2459,8 +2529,7 @@ def check_process(process, evaluator, quick, options):
     for i, leg in enumerate(process.get('legs')):
         leg.set('number', i+1)
 
-    logger.info("Checking crossings of %s" % \
-                process.nice_string().replace('Process:', 'process'))
+    logger.info("Checking crossings of %s" % check_label(process))
 
     process_matrix_elements = []
 
@@ -2570,6 +2639,13 @@ def check_process(process, evaluator, quick, options):
     
     # Check if process was interrupted
     if not values:
+        return None
+    if not any(values):
+        # A matrix element vanishing for every ordering compares nothing
+        # (e.g. a flavour combination of a grouped process that does not
+        # conserve charge).
+        logger.info("Vanishing matrix element for %s: not checked" % \
+                    check_label(process))
         return None
 
     # Done with this process. Collect values, and store
@@ -3259,8 +3335,7 @@ def check_gauge_process(process, evaluator, options=None):
     for i, leg in enumerate(process.get('legs')):
         leg.set('number', i+1)
 
-    logger.info("Checking ward identities for %s" % \
-                process.nice_string().replace('Process', 'process'))
+    logger.info("Checking ward identities for %s" % check_label(process))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -3556,7 +3631,7 @@ def check_lorentz_process(process, evaluator,options=None):
         leg.set('number', i+1)
 
     logger.info("Checking lorentz transformations for %s" % \
-                process.nice_string().replace('Process:', 'process'))
+                check_label(process))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -3602,6 +3677,13 @@ def check_lorentz_process(process, evaluator,options=None):
             results = [data]
         else:
             results = [('Original evaluation',data)]
+    elif data and any(leg.get('flavor') for leg in process.get('legs')):
+        # Flavour combination of a grouped process with a vanishing matrix
+        # element (e.g. not conserving charge): without grouping it has no
+        # diagrams, so skip it the same way.
+        logger.info("Vanishing matrix element for %s: not checked" % \
+                    check_label(process))
+        return None
     else:
         return  {'process':process, 'results':'pass'}
 
@@ -4049,6 +4131,22 @@ def _seeded_rambo_rng(ij=1802, kl=9373):
         rambo.random_nb = old_random_nb
 
 
+def _check_sa_energy(proc, evaluator_obj, energy):
+    """The centre-of-mass energy the standalone 'check' drivers actually use.
+
+    For a 2 -> n process, the Fortran, C++ and madmatrix drivers raise an
+    energy at or below twice the sum of the external masses to that value
+    (t t~ > w+ w- asked at 1 TeV runs at 1013.676 GeV). check_language passes
+    this energy explicitly to every backend, Python included (get_momenta has
+    its own, different, threshold rule), so that none of them adjusts it.
+    """
+    if len([l for l in proc.get('legs') if not l.get('state')]) != 2:
+        return energy
+    # |m|, as the Fortran pmass.inc (a model may carry a negative mass)
+    return max(energy, 2. * sum(abs(m) for m in
+                                evaluator_obj.get_external_masses(proc)))
+
+
 def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
     """Generate Python momenta with the same RAMBO RNG seed as check_sa.
 
@@ -4336,8 +4434,6 @@ def check_language(process_definition, param_card=None, options=None,
     # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
     sa_mg7_output_cache = {}
 
-    energy_str = str(energy)
-
     for proc in proc_list:
         try:
             amplitude = diagram_generation.Amplitude(proc)
@@ -4362,6 +4458,19 @@ def check_language(process_definition, param_card=None, options=None,
 
         sa_key = tuple(leg.get('id') for leg in proc.get('legs'))
 
+        # One energy for every backend, decided here: each driver (and
+        # get_momenta) has its own rule for an energy too close to threshold,
+        # and passing the one they would all reach keeps them on one point.
+        proc_energy = energy
+        if evaluator is not None:
+            try:
+                proc_energy = _check_sa_energy(proc, evaluator, energy)
+            except Exception as err:
+                logger.warning('Language check: could not work out the energy of %s '
+                               '(%s); the backends may compare different points.'
+                               % (proc.nice_string(), err))
+        energy_str = repr(proc_energy)
+
         # ── Fortran SA ───────────────────────────────────────────────────────
         out_f_text = None
         if has_fortran:
@@ -4372,6 +4481,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_f = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                              'mp': False, 'v5_model': True,
+                             'complex_mass': aloha.complex_mass,
                              'output_options': {'noeps': 'True'}}
                     exporter_f = export_v4.ProcessExporterFortranSA(sa_dir_f, opt_f)
                     fmodel = helas_call_writers.FortranUFOHelasCallWriter(model)
@@ -4419,6 +4529,7 @@ def check_language(process_definition, param_card=None, options=None,
                     opt_cpp = {'sa_symmetry': False,
                                'export_format': 'standalone_cpp',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler}
                     exporter_cpp = export_cpp.ProcessExporterCPP(sa_dir_cpp,
                                                                   opt_cpp)
@@ -4468,6 +4579,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_mg7 = {'export_format': 'standalone',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler,
                                'output_options': {}}
                     exporter_mg7 = madmatrix_output.\
@@ -4522,7 +4634,7 @@ def check_language(process_definition, param_card=None, options=None,
 
         # Build the Python phase-space point using the same RAMBO RNG seed as
         # check_sa (Fortran/C++), so all backends compare on the same point.
-        sa_momenta = _get_seeded_python_momenta(proc, evaluator, energy)
+        sa_momenta = _get_seeded_python_momenta(proc, evaluator, proc_energy)
         if not sa_momenta:
             # Fallback to parsing the point printed by SA when seeded generation
             # is unavailable.
@@ -5257,7 +5369,15 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
     mg_root = cmd._mgme_dir
     
     cmass_scheme = cmd.options['complex_mass_scheme']
-    
+
+    if isinstance(processes_unit, base_objects.ProcessDefinition) and \
+                                            processes_unit.get('decay_chains'):
+        return check_unitary_feynman_decay_chains(
+                    [('unitary', True, processes_unit),
+                     ('axial', 2, processes_axial),
+                     ('FD', 3, processes_fd)],
+                    param_card=param_card, options=options, cmd=cmd)
+
     if isinstance(processes_unit, base_objects.ProcessDefinition):
         # Generate a list of unique processes
         # Extract IS and FS ids
@@ -6595,6 +6715,222 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
 
     return (process.nice_string().replace('Process:', '').strip(),result)
 
+def boost_from_rest_frame(p, parent):
+    """p, given in the rest frame of 'parent' (a time-like momentum), seen in
+    the frame where the parent has momentum 'parent'."""
+    mass = math.sqrt(max(parent[0]**2 - sum(x * x for x in parent[1:]), 0.))
+    pdot = sum(p[i] * parent[i] for i in range(1, 4))
+    factor = pdot / (mass * (parent[0] + mass)) + p[0] / mass
+    return [(p[0] * parent[0] + pdot) / mass] + \
+           [p[i] + factor * parent[i] for i in range(1, 4)]
+
+
+DECAY_CHAIN_WIDTH = 1e-9
+
+def get_decay_chain_momenta(evaluator, process, options=None, parent=None):
+    """A phase-space point for all the external legs of a decay-chain process,
+    in the order of process.get_legs_with_decays().
+
+    The core process is drawn as for any process (get_momenta), and each decay
+    in the rest frame of the decaying particle, boosted to its momentum,
+    recursively: every decayed particle is on its mass shell."""
+
+    core, _ = evaluator.get_momenta(process, options)
+    legs = process.get('legs')
+    numbers = sorted(leg.get('number') for leg in legs)
+    momenta = [core[numbers.index(leg.get('number'))] for leg in legs]
+    if parent is not None:
+        momenta = [boost_from_rest_frame(p, parent) for p in momenta]
+
+    # same pairing of decays with legs as Process.get_legs_with_decays
+    decays = list(process.get('decay_chains'))
+    decay_of_leg = {}
+    for i, leg in enumerate(legs):
+        if not leg.get('state'):
+            continue
+        ids = [d.get('legs')[0].get('id') for d in decays]
+        if leg.get('id') in ids:
+            decay_of_leg[i] = decays.pop(ids.index(leg.get('id')))
+    assert not decays
+
+    out = []
+    for i, p in enumerate(momenta):
+        if i in decay_of_leg:
+            out.extend(get_decay_chain_momenta(evaluator, decay_of_leg[i],
+                                               options, p)[1:])
+        else:
+            out.append(p)
+    return out
+
+
+def decayed_particles(model, process):
+    """The particles decayed in a decay-chain process (at any depth); they
+    need a mass shell."""
+    particles = []
+    for decay in process.get('decay_chains'):
+        leg = decay.get('legs')[0]
+        # a ProcessDefinition has multi-legs
+        pdg = leg.get('ids')[0] if 'ids' in leg else leg.get('id')
+        particle = model.get_particle(model.merged_particles.get(pdg, [pdg])[0])
+        if particle.get('mass').upper() == 'ZERO':
+            raise InvalidCmd("'check gauge' with a decay chain needs massive "
+                "decayed particles: %s is massless." % particle.get_name())
+        particles.append(particle)
+        particles.extend(decayed_particles(model, decay))
+    return particles
+
+
+def decay_chain_flavors(model, legs):
+    """The physical flavour combinations of the external legs of a
+    decay-chain process (get_legs_with_decays), as [(flavour tag of each leg,
+    label)]. With flavour grouping a merged leg stands for several flavours,
+    picked at run time from its 'flavor' tag: each leg is expanded by
+    get_flavor_choices, as the legs of a process without decays are, into the
+    flavours tagged on it ('define q = u c' gives u and c) or, untagged
+    ('p', 'l+'), into its whole group. The label is ' [u d~ > e+ ve mu+ mu-]',
+    or '' when no leg is merged."""
+
+    choices = []
+    for leg in legs:
+        # a process leg stores an initial-state flavour with the sign of the
+        # crossed particle (MultiProcess.generate_multi_amplitudes); the
+        # multi-leg get_flavor_choices reads has the sign of the particle
+        sign = 1 if leg.get('state') else -1
+        multileg = base_objects.MultiLeg({'ids': [leg.get('id')],
+                        'state': leg.get('state'),
+                        'flavor': [sign * f for f in leg.get('flavor') or []]})
+        choices.append(get_flavor_choices(multileg, model))
+    any_merged = any(pdg is not None for leg in choices for _, pdg in leg)
+    ninitial = len([leg for leg in legs if not leg.get('state')])
+    out = []
+    for combination in itertools.product(*choices):
+        flavors = [leg.get('flavor') if pdg is None else
+                   [pdg if leg.get('state') else -pdg]
+                   for leg, (_, pdg) in zip(legs, combination)]
+        if not any_merged:
+            out.append((flavors, ''))
+            continue
+        names = [model.get_particle(pid if pdg is None else pdg).get_name()
+                 for pid, pdg in combination]
+        out.append((flavors, ' [%s > %s]' % (' '.join(names[:ninitial]),
+                                             ' '.join(names[ninitial:]))))
+    return out
+
+
+def decay_chain_string(process):
+    """One line in the syntax of 'generate', e.g. 'u u~ > t t~, (t > w+{0} b,
+    w+ > e+ ve)', for the table of 'check gauge'."""
+    text = process.nice_string(prefix=False, print_weighted=False)
+    text = text.split('\n')[0].split(' @')[0].strip()
+    for decay in process.get('decay_chains'):
+        sub = decay_chain_string(decay)
+        text += ', ' + ('(%s)' % sub if decay.get('decay_chains') else sub)
+    return text
+
+
+def check_unitary_feynman_decay_chains(gauge_procdefs, param_card=None,
+                                       options=None, cmd=FakeInterface()):
+    """'check gauge' for a process with decay chains, such as
+    't > w+{0} b, w+ > ta+ vt': the same phase-space point is evaluated in
+    each gauge of gauge_procdefs, a list of (name, aloha.unitary_gauge value,
+    ProcessDefinition or None to skip that gauge).
+
+    Every decayed particle is on its mass shell (get_decay_chain_momenta),
+    where a decay chain is meaningful: off shell, the chain is a subset of
+    the diagrams and depends on the gauge in proportion to q^2 - M^2 + iM*W.
+    Its propagator is kept finite there by a width of 1e-9 M
+    (DECAY_CHAIN_WIDTH), the same factor in every gauge; the other widths are
+    zero, as for any gauge check outside the complex-mass scheme. The gauge
+    dependence is then of order 1e-10: on 'u d~ > w+ z' with both bosons
+    decayed it is 4e-4 at the physical widths, 4e-8 at 1e-6 M, 4e-11 at
+    1e-9 M, while below 1e-10 M the rounding of q^2 - M^2 takes over.
+    The Feynman gauge is never in the list: a decay chain fixes the
+    intermediate vector, without its Goldstone boson, so the chain is not
+    complete there (and a polarised propagator does not exist there).
+
+    Returns the list of check_unitary_feynman, with 'value_unit',
+    'value_axial', 'value_fd' entries (no 'value_feynm')."""
+
+    cmass_scheme = cmd.options['complex_mass_scheme']
+    first = [procdef for _, _, procdef in gauge_procdefs if procdef][0]
+
+    results = {}
+    momenta = {}
+    order = []
+    for name, gauge, procdef in gauge_procdefs:
+        if procdef is None:
+            continue
+        with misc.TMP_variable(aloha, 'unitary_gauge', gauge):
+            model = procdef.get('model')
+            # reuse: a matrix element is exported once and evaluated for each
+            # flavour combination; clean_added_globals below forgets it before
+            # the next gauge
+            evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
+                                               auth_skipping=False, reuse=True)
+            param = evaluator.full_model.get('parameter_dict')
+            if not cmass_scheme:
+                zero_widths(evaluator)
+            for particle in decayed_particles(evaluator.full_model, procdef):
+                if particle.get('width') == 'ZERO':
+                    raise InvalidCmd("'check gauge' with a decay chain needs "
+                        "a width parameter for the decayed %s."
+                        % particle.get_name())
+                param[particle.get('width')] = DECAY_CHAIN_WIDTH * \
+                                            abs(param[particle.get('mass')])
+            amplitudes = diagram_generation.MultiProcess(procdef,
+                                    collect_mirror_procs=False).get('amplitudes')
+            matrix_elements = helas_objects.HelasMultiProcess(
+                                    amplitudes).get_matrix_elements()
+            for me in matrix_elements:
+                # evaluate_matrix_element evaluates the first process of the
+                # matrix element, with the flavours tagged on its legs
+                process = me.get('processes')[0]
+                chain = decay_chain_string(process)
+                if chain not in momenta:
+                    momenta[chain] = get_decay_chain_momenta(evaluator,
+                                                             process, options)
+                legs = process.get_legs_with_decays()
+                saved = [leg.get('flavor') for leg in legs]
+                try:
+                    for flavors, physical in decay_chain_flavors(model, legs):
+                        key = chain + physical
+                        logger.info("Checking process %s in %s gauge" % (key, name))
+                        for leg, flavor in zip(legs, flavors):
+                            leg.set('flavor', flavor)
+                        value = evaluator.evaluate_matrix_element(me,
+                                p=momenta[chain], output='jamp', options=options)
+                        if key not in results:
+                            order.append(key)
+                        results.setdefault(key, {})[name] = value
+                finally:
+                    for leg, flavor in zip(legs, saved):
+                        leg.set('flavor', flavor)
+            clean_added_globals(ADDED_GLOBAL)
+
+    labels = {'unitary': 'value_unit', 'axial': 'value_axial', 'FD': 'value_fd'}
+    output = [first]
+    for key in order:
+        values = results[key]
+        missing = [name for name, _, procdef in gauge_procdefs
+                   if procdef is not None and values.get(name) is None]
+        if missing:
+            logger.warning("%s: not compared, no value in the %s gauge"
+                           % (key, ' and '.join(missing)))
+            continue
+        if not any(value['m2'] for value in values.values()):
+            # a flavour combination of a grouped process that does not
+            # conserve charge, e.g. d d~ > w+ z: nothing to compare
+            logger.info("Vanishing matrix element for %s: not checked" % key)
+            continue
+        # the decayed particles are on shell with a width of 1e-9 M: the
+        # gauges agree to about 1e-10, the colour flows included
+        entry = {'process': key, 'jamp_threshold': 1e-8}
+        for name, value in values.items():
+            entry[labels[name]] = value
+        output.append(entry)
+    return output
+
+
 def get_value(process, evaluator, p=None, options=None):
     """Return the value/momentum for a phase space point"""
     
@@ -6603,8 +6939,7 @@ def get_value(process, evaluator, p=None, options=None):
 
     name = {0:'Feynman', 1:'unitary', 2:'axial', 3:'FD'}[int(aloha.unitary_gauge)]
 
-    logger.info("Checking %s in %s gauge" % \
-        ( process.nice_string().replace('Process:', 'process'), name))
+    logger.info("Checking %s in %s gauge" % (check_label(process), name))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -6851,7 +7186,10 @@ def output_unitary_feynman(comparison_results, output='text'):
     use_axial = any('value_axial' in comp for comp in comparison_results)
     use_fd = any('value_fd' in comp for comp in comparison_results)
     use_ref = any('value_ref' in comp for comp in comparison_results)
-    gauge_columns = [("Unitary", 'value_unit'), ("Feynman", 'value_feynm')]
+    use_feynman = any('value_feynm' in comp for comp in comparison_results)
+    gauge_columns = [("Unitary", 'value_unit')]
+    if use_feynman:
+        gauge_columns.append(("Feynman", 'value_feynm'))
     if use_axial:
         gauge_columns.append(("Axial", 'value_axial'))
     if use_fd:
@@ -6933,7 +7271,7 @@ def output_unitary_feynman(comparison_results, output='text'):
                     tmp_str += fixed_string_length("%1.10e" % value, col_size)
                 tmp_str += fixed_string_length("%1.10e" % diff, col_size)
                        
-                if diff > 1e-10:
+                if diff > one_comp.get('jamp_threshold', 1e-10):
                     if not len(failed_proc_list) or failed_proc_list[-1] != proc:
                         fail_proc += 1
                         pass_proc -= 1

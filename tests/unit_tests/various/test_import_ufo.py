@@ -569,6 +569,33 @@ class TestImportUFO(unittest.TestCase):
             self.assertAlmostEqual(abs(phase - 1), 0, places=9,
                                    msg='%s measured %s' % (goldstone.get('name'), phase))
 
+    def test_fd_gauge_unverified_tag(self):
+        """A model whose goldstone content cannot be checked against the FD
+        gauge is tagged in its 'limitations' (the interface then never picks
+        the FD gauge by itself): a goldstone phase that no fermion vertex
+        fixes, or no goldstone at all."""
+
+        converter = self.feynman_gauge_sm()
+        converter.get_goldstone_phases()
+        self.assertNotIn(import_ufo.FD_GAUGE_UNVERIFIED,
+                         converter.model['limitations'])
+
+        # nothing left to read the phase off
+        converter.interactions[:] = [
+            inter for inter in converter.interactions
+            if not (any(p.get('type') == 'goldstone' for p in inter.get('particles'))
+                    and any(p.get('spin') == 2 for p in inter.get('particles')))]
+        converter.get_goldstone_phases()
+        self.assertEqual(converter.model['limitations'].count(
+                                           import_ufo.FD_GAUGE_UNVERIFIED), 1)
+
+        # no goldstone at all, tagged once
+        converter.particles[:] = [p for p in converter.particles
+                                  if p.get('type') != 'goldstone']
+        converter.get_goldstone_phases()
+        self.assertEqual(converter.model['limitations'].count(
+                                           import_ufo.FD_GAUGE_UNVERIFIED), 1)
+
     def test_goldstone_phase_detects_a_rotated_convention(self):
         """Give the SM's charged goldstone another phase convention and the
         measurement has to find it.  This is what 2HDMtII_NLO (i) and
@@ -657,11 +684,12 @@ class TestImportUFO(unittest.TestCase):
             'orders': {'QED': 1}})
 
         class Model(object):
-            def __init__(self, couplings):
+            def __init__(self, couplings, parameters=None):
                 self.couplings = couplings
+                self.parameters = parameters or {'MZ': 91.188, 'MB': 4.7}
             def get(self, key):
                 return {'coupling_dict': self.couplings,
-                        'parameter_dict': {'MZ': 91.188, 'MB': 4.7},
+                        'parameter_dict': self.parameters,
                         'particles': [z, b, bbar],
                         'interactions': [inter]}[key]
             def get_lorentz(self, name):
@@ -684,6 +712,24 @@ class TestImportUFO(unittest.TestCase):
         self.assertAlmostEqual(actual, 4.7, places=6)
         self.assertEqual(parameter, 'MB')
         self.assertEqual(source, 'z')
+
+        # complex-mass scheme: the coupling is built with the complex masses
+        # CMASS_*, and the relation holds for those. Read with the real masses
+        # it would flag every massive particle at order (width/mass)**2 (the
+        # b gets a made-up width so that it is complex too).
+        import cmath
+        cmz = cmath.sqrt(91.188**2 - 1j * 91.188 * 2.4414)
+        cmb = cmath.sqrt(4.7**2 - 1j * 4.7 * 0.5)
+        couplings['CS'] = -axial * cmb / cmz
+        parameters = {'MZ': 91.188, 'MB': 4.7, 'CMASS_MZ': cmz, 'CMASS_MB': cmb}
+        self.assertEqual(
+            import_ufo.goldstone_mass_mismatches(Model(couplings, parameters)), [],
+            'a consistent complex-mass model must be left alone')
+        couplings['CS'] = -axial * 4.2 / cmz
+        found = import_ufo.goldstone_mass_mismatches(Model(couplings, parameters))
+        self.assertEqual(len(found), 1)
+        self.assertAlmostEqual(found[0][1], 4.2, places=6)
+        self.assertAlmostEqual(found[0][2], abs(cmb), places=6)
 
 
 class TestImportUFO_fromcmd(unittest.TestCase):

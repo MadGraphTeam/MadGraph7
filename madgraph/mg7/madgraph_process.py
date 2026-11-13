@@ -2262,10 +2262,21 @@ class MadgraphProcess:
             self.write_lhe_header(systematics)
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
-            lhe_path = os.path.join(self.run_path, "events.lhe")
+            # Ship the LHE compressed. These files are large and very
+            # compressible, madevent has always stored its events gzipped, and
+            # every consumer here already accepts either form (see
+            # _find_event_file). A GPU gzips while the events are written;
+            # otherwise misc.gzip replaces events.lhe with events.lhe.gz using
+            # pigz, which beats in-process gzip at any file size. Beamstrahlung
+            # annotation rewrites the file, so write it plain.
+            gzip_device = None if has_beamstrahlung else self.lhe_gzip_device()
+            lhe_path = os.path.join(
+                self.run_path, "events.lhe.gz" if gzip_device else "events.lhe"
+            )
             self.event_generator.combine_to_lhe(
                 lhe_path, self.lhe_completer,
-                self.build_lhe_meta(), systematics, histograms
+                self.build_lhe_meta(), systematics, histograms, gzip_device,
+                self.run_card["run"]["lhe_gzip_algorithm"]
             )
             # A dressed-lepton density folds beamstrahlung into the PDF, so
             # the initial-state momenta carry x = x_BS * x_ISR and a shower
@@ -2280,13 +2291,8 @@ class MadgraphProcess:
                 logger.info(
                     "wrote <beamstrahlung> into %d events; they need the "
                     "dedicated Pythia8 main to be showered correctly", count)
-            # Ship the LHE compressed by default. These files are large and
-            # very compressible, madevent has always stored its events
-            # gzipped, and every consumer here already accepts either form
-            # (see _find_event_file). misc.gzip replaces events.lhe with
-            # events.lhe.gz, and switches to an external multithreaded tool
-            # above 256 MB.
-            misc.gzip(lhe_path)
+            if gzip_device is None:
+                misc.gzip(lhe_path, forceexternal=True)
             self.events_path = _find_event_file(self.run_path)
         else:
             raise ValueError("Unknown output format")
@@ -2296,6 +2302,12 @@ class MadgraphProcess:
             self.write_systematics_sidecar()
             self.log_systematics_summary()
         self.save_gridpack()
+
+    def lhe_gzip_device(self):
+        """The device that gzips the LHE output, None to gzip it on the CPU."""
+        if self.run_card["run"]["lhe_compression"] != "auto":
+            return None
+        return next((device for device in self.devices if device.supports_gzip()), None)
 
     def save_lhe_completer(self) -> None:
         """Keep the LHE completer next to compact_npy events, so npy_to_lhe

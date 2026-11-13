@@ -118,6 +118,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 for (p, l) in zip(is_parts + fs_parts, self.process.get("legs"))
             ),
             self.process.get("id"),
+            self.process.get_gauge(),
         )
 
     def set_topology(self):
