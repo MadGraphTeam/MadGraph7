@@ -2757,32 +2757,63 @@ class FLV_Coupling(PhysicsObject):
 
     def get_shared_partner_slot(self):
         """(fermion, k, [partners]) for a flavor index k of the first
-        (fermion 1) or the second (fermion 2) fermion of the vertex that
-        several keys pair with different partners, None when there is none.
+        (fermion 1) or the second (fermion 2) fermion of the vertex whose one
+        table slot several keys need, None when there is none.
 
         The tables every backend fills from get_partner_indices hold ONE
         partner per flavor on each side, PARTNER(k1) = k2 and PARTNER2(k2) =
-        k1, and ONE value per flavor of the first fermion, VAL(k1); the
-        routines read them in that one orientation (the full vertex
-        PARTNER(k1), a current with an F1 input PARTNER, with an F2 input
-        PARTNER2). A shared k1 -- an unmerged fermion first coupled to
-        several flavors of a merged one second (one squark mixing into
-        several merged quarks), or a merged flavor with two merged partners
-        -- keeps the last key's partner and value; a shared k2 -- the same
-        with the merged fermion first -- keeps the last key in PARTNER2, so
-        a current built from the second fermion gets that flavor only.
-        Either way vertices of the other keys vanish, or take another key's
-        value, with no error."""
+        k1, and ONE value per flavor of the first fermion, VAL(k1). The full
+        vertex (_0, and _3 for a boson output) needs PARTNER(k1) == k2 and
+        reads VAL(k1), a current with an F1 input PARTNER(k1) and VAL(k1),
+        with an F2 input PARTNER2(k2) and VAL(k1). So:
+
+        * a k1 shared by several keys (an unmerged fermion first coupled to
+          several flavors of a merged one second, e.g. a heavy quark mixing
+          into d and s, or a merged flavor with two merged partners) keeps
+          the last key's partner and value: the vertices of the other keys
+          vanish, or take the last key's value (fermion 1);
+        * a k2 shared by keys with two merged legs keeps the last key in
+          PARTNER2, while the flavor of a current is set to the first one at
+          generation (fermion 2). A k2 shared by single-merged-leg keys with
+          the merged leg first is the unmerged partner's index: only a
+          current building the merged fermion from the unmerged one reads
+          it, and generation refuses that one (HelasWavefunction
+          .FlavorTagError, several flavors from no merged input), so those
+          couplings are written as they are (p p > xq z of a heavy quark
+          xq mixing into d and s)."""
         partners = ({}, {})
         for key in self['flavors']:
             k1, k2 = self.get_partner_indices(key)
             partners[0].setdefault(k1, set()).add(k2)
-            partners[1].setdefault(k2, set()).add(k1)
+            if len([i for i in key if i != 0]) == 2:
+                partners[1].setdefault(k2, set()).add(k1)
         for fermion, table in enumerate(partners, 1):
             for k in sorted(table):
                 if len(table[k]) > 1:
                     return fermion, k, sorted(table[k])
         return None
+
+    def assert_table_representable(self):
+        """Raise InvalidCmd when the flavor tables cannot hold the keys of
+        this coupling (get_shared_partner_slot): every output (Fortran,
+        C++) would silently drop or mix up all of them but one. p p > xq~ z
+        of a heavy quark xq mixing into d and s gave |M|^2 = 0 for g d~ >
+        xq~ z in the Fortran standalone."""
+        shared = self.get_shared_partner_slot()
+        if shared is None:
+            return
+        fermion, k, partners = shared
+        raise InvalidCmd(
+            "merged-flavor output cannot write the flavor coupling %s: "
+            "flavor %d of its %s fermion couples to flavors %s of the %s, "
+            "and its flavor table holds one partner and one value per flavor "
+            "of the %s fermion. Generate the flavors of this vertex as "
+            "separate processes: 'set apply_flavor_grouping False', import "
+            "the model again and use explicit particles."
+            % (self.get('name'), k, 'first' if fermion == 1 else 'second',
+               ', '.join(str(p) for p in partners),
+               'second' if fermion == 1 else 'first',
+               'first' if fermion == 1 else 'second'))
 
     def __str__(self):
 

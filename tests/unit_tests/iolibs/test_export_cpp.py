@@ -1116,35 +1116,23 @@ class MG7LeptonDensityShippingTest(unittest.TestCase):
 
 class TestFlavorTableGuard(unittest.TestCase):
     """The C++ output refuses a flavored coupling whose table cannot hold its
-    keys (FLV_Coupling.get_shared_partner_slot, on either fermion), fixed or
-    running: it would lose all its keys but one, with no error."""
+    keys (FLV_Coupling.assert_table_representable), fixed or running: it
+    would lose all its keys but one, with no error."""
 
     def test_a_coupling_the_table_cannot_hold_is_refused(self):
         import madgraph.core.base_objects as base_objects
         from madgraph import InvalidCmd
         FLV = base_objects.FLV_Coupling
-        # one squark coupled to two merged quarks sitting second (a running
-        # gluino-squark-quark coupling with squark mixing)
-        lossy = FLV(name='FLV_TEST', flavors={(0, 1, 0): 'GC_106',
-                                               (0, 3, 0): 'GC_110'})
-        try:
-            export_cpp.assert_flv_table_representable(lossy)
-        except InvalidCmd as error:
-            self.assertIn('FLV_TEST', str(error))
-        else:
-            self.fail('no InvalidCmd for %s' % lossy.get('flavors'))
+        # one heavy quark coupled to two merged quarks sitting second
+        lossy = FLV(name='FLV_TEST', flavors={(0, 1, 0): 'GC_XD',
+                                               (0, 3, 0): 'GC_XS'})
         # through the guard of the fixed couplings (write_flv_couplings)
         converter = export_cpp.UFOModelConverterCPP.__new__(
                                             export_cpp.UFOModelConverterCPP)
         self.assertRaises(InvalidCmd,
                           converter._assert_flv_couplings_supported, [lossy])
-        # the merged leg first: the second fermion's table is shared
-        first = FLV(name='FLV_FIRST', flavors={(1, 0, 0): 'GC_1',
-                                                (3, 0, 0): 'GC_2'})
-        self.assertRaises(InvalidCmd,
-                          export_cpp.assert_flv_table_representable, first)
-        # the tables that can be written pass
+        # the tables that can be written pass, the merged leg first included
         for flavors in ({(2, 1, 0): 'GC_100', (4, 3, 0): 'GC_100'},
+                        {(1, 0, 0): 'GC_XD', (3, 0, 0): 'GC_XS'},
                         {(0, 2, 0): 'GC_1'}):
-            export_cpp.assert_flv_table_representable(FLV(flavors=flavors))
             converter._assert_flv_couplings_supported([FLV(flavors=flavors)])

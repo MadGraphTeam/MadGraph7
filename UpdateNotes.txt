@@ -16,9 +16,12 @@ ANNOUNCEMENT:
          trimmed diagrams;
        - a subprocess of more than 64 flavour groups (p p > j j j j QCD=0) keeps its flavour
          guards;
-       - the C++ output refuses a flavoured coupling its tables cannot hold (several keys
-         sharing a flavour of one fermion; none in the bundled models) instead of silently
-         keeping only one of them;
+       - every output (Fortran and C++) refuses a flavoured coupling its flavour tables
+         cannot hold: an unmerged fermion coupled, as the first fermion of the vertex, to
+         several flavours of a merged one (e.g. a heavy quark xq mixing into d and s; none
+         in the bundled models). The tables kept one of them without a word: the Fortran
+         standalone gave |M|^2 = 0 for g d~ > xq~ z. Use "set apply_flavor_grouping False"
+         and explicit flavours for such a model;
        - "save processes" / "load processes" are removed (the amplitudes kept after an
          output have lost the diagrams its --mask trimmed). "save model", "load model" and
          "save options" remain.

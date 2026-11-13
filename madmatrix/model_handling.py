@@ -2810,7 +2810,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             partner1_vals, partner2_vals, idcoup_vals = [], [], []
             for name in flv_couplings_dep:
                 coupl = flv_map[name]
-                export_cpp.assert_flv_table_representable(coupl)
+                coupl.assert_table_representable()
                 p1 = [-1] * nMF
                 p2 = [-1] * nMF
                 idc = ['-1'] * nMF

@@ -3189,6 +3189,145 @@ print(json.dumps(out))
         mg7 = get_values('standalone', './check_sa.exe')
         self._assert_me_lists_close(mg7, fortran)
 
+    # a heavy down-type quark xq (pdg 6000001) coupling to d and s through
+    # the Z, with two couplings: merged, [xq~, q, Z] and [q~, xq, Z] each
+    # become ONE flavored coupling with two keys
+    _XQ_PARTICLES = """
+xq = Particle(pdg_code = 6000001, name = 'xq', antiname = 'xq~', spin = 2,
+              color = 3, mass = Param.MXQ, width = Param.WXQ, texname = 'xq',
+              antitexname = 'xq~', charge = -1/3, GhostNumber = 0,
+              LeptonNumber = 0, Y = 0)
+xq__tilde__ = xq.anti()
+"""
+    _XQ_PARAMETERS = """
+MXQ = Parameter(name = 'MXQ', nature = 'external', type = 'real', value = 1000.,
+                texname = 'MXQ', lhablock = 'MASS', lhacode = [ 6000001 ])
+WXQ = Parameter(name = 'WXQ', nature = 'external', type = 'real', value = 10.,
+                texname = 'WXQ', lhablock = 'DECAY', lhacode = [ 6000001 ])
+KXD = Parameter(name = 'KXD', nature = 'external', type = 'real', value = 0.3,
+                texname = 'KXD', lhablock = 'XQMIX', lhacode = [ 1 ])
+KXS = Parameter(name = 'KXS', nature = 'external', type = 'real', value = 0.5,
+                texname = 'KXS', lhablock = 'XQMIX', lhacode = [ 2 ])
+"""
+    _XQ_COUPLINGS = """
+GC_XD = Coupling(name = 'GC_XD', value = 'ee*complex(0,1)*KXD', order = {'QED':1})
+GC_XS = Coupling(name = 'GC_XS', value = 'ee*complex(0,1)*KXS', order = {'QED':1})
+"""
+    _XQ_VERTICES = """
+V_XQ1 = Vertex(name = 'V_XQ1', particles = [ P.xq__tilde__, P.d, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ2 = Vertex(name = 'V_XQ2', particles = [ P.xq__tilde__, P.s, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ3 = Vertex(name = 'V_XQ3', particles = [ P.d__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ4 = Vertex(name = 'V_XQ4', particles = [ P.s__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
+               color = [ 'T(3,2,1)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_11})
+"""
+
+    def _sm_with_mixing_heavy_quark(self):
+        """A copy of the sm UFO with the heavy quark xq of _XQ_* (its
+        restriction card extended with xq's parameters); returns its path."""
+        path = pjoin(self.tmpdir, 'sm_xq')
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        shutil.copytree(pjoin(MG5DIR, 'models', 'sm'), path,
+                        ignore=shutil.ignore_patterns('*.pkl', '*.log', 'restrict_*'))
+        shutil.copy(pjoin(MG5DIR, 'models', 'sm', 'restrict_default.dat'), path)
+        for name, text in (('particles.py', self._XQ_PARTICLES),
+                           ('parameters.py', self._XQ_PARAMETERS),
+                           ('couplings.py', self._XQ_COUPLINGS),
+                           ('vertices.py', self._XQ_VERTICES)):
+            with open(pjoin(path, name), 'a') as fsock:
+                fsock.write(text)
+        card = open(pjoin(path, 'restrict_default.dat')).read()
+        card = card.replace('   25 1.250000e+02 # MH \n',
+                            '   25 1.250000e+02 # MH \n 6000001 1.000000e+03 # MXQ \n', 1)
+        card += ('\nDECAY 6000001 1.000000e+01\n'
+                 'Block XQMIX \n    1 3.000000e-01 # KXD \n    2 5.000000e-01 # KXS \n')
+        with open(pjoin(path, 'restrict_default.dat'), 'w') as fsock:
+            fsock.write(card)
+        return path
+
+    def test_flavor_coupling_shared_table_slot(self):
+        """A flavored coupling whose table cannot hold its keys is refused by
+        every output, and one that can is written right by both backends.
+
+        The heavy quark xq couples to d and s through the Z. Merged, xq~ q Z
+        is one coupling with keys (0,1,0), (0,3,0): both need PARTNER(1) and
+        VAL(1) of the first fermion, xq, and the table keeps only the s key.
+        The Fortran standalone wrote p p > xq~ z without a word and gave
+        |M|^2 = 0 for g d~ > xq~ z (0.0512 unmerged); the C++ one the same
+        through its own tables. Both refuse it now. q~ xq Z, the merged leg
+        first, shares only PARTNER2(1), which no call reads (generation
+        refuses to build a merged quark from xq alone): p p > xq z is
+        written, and its flavors agree with the unmerged g d > xq z and g s
+        > xq z.
+        """
+        devnull = open(os.devnull, 'w')
+        model = self._sm_with_mixing_heavy_quark()
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            proc_root = pjoin(path, 'SubProcesses')
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check', '3000']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix', '3000']
+            out = {}
+            for proc_dir in sorted(glob.glob(pjoin(proc_root, 'P*'))):
+                self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir),
+                                 'the build of %s failed' % proc_dir)
+                log = pjoin(proc_dir, 'check_flavours.log')
+                subprocess.call(run, stdout=open(log, 'w'),
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+                out.update((tuple(int(p) for p in pdg.split()),
+                            float(me.replace('D', 'E').replace('d', 'e')))
+                           for pdg, me in entry_re.findall(open(log).read()))
+            self.assertTrue(out, 'no matrix element in %s' % path)
+            return out
+
+        dirs = dict((name, '%s_xq_%s' % (self.out_dir, name))
+                    for name in ('refused', 'fortran', 'cpp', 'reference'))
+        self.do('import model %s' % model)
+        self.do('generate p p > xq~ z')
+        for output in ('standalone_fortran', 'madevent', 'standalone'):
+            self.assertRaises(InvalidCmd, self.do,
+                              'output %s %s -f' % (output, dirs['refused']))
+        self.do('generate p p > xq z')
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['cpp'])
+        self.do('set apply_flavor_grouping False')
+        self.do('import model %s' % model)
+        self.do('generate g d > xq z')
+        self.do('add process g s > xq z')
+        self.do('output standalone_fortran %s -f' % dirs['reference'])
+
+        reference = values(dirs['reference'], True)
+        self.assertEqual(sorted(reference),
+                         [(21, 1, 6000001, 23), (21, 3, 6000001, 23)])
+        # the two couplings of the model, squared: g d at 0.36 of g s
+        self.assertAlmostEqual(reference[(21, 1, 6000001, 23)] /
+                               reference[(21, 3, 6000001, 23)], 0.36, places=6)
+        for name, fortran in (('fortran', True), ('cpp', False)):
+            merged = values(dirs[name], fortran)
+            self.assertEqual(sorted(merged), sorted(reference), name)
+            for pdg, me in reference.items():
+                self.assertLessEqual(abs(merged[pdg] - me), 1e-10 * me,
+                                     '%s, flavour %s: %r, unmerged %r'
+                                     % (name, pdg, merged[pdg], me))
+
     def test_madmatrix_mssm_single_leg(self):
         """Single-merged-leg flavored couplings must give the same per-flavor
         |M|^2 in standalone (madmatrix) as in the Fortran standalone.

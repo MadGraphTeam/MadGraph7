@@ -2535,30 +2535,50 @@ class FLVCouplingTableTest(unittest.TestCase):
     (PARTNER, PARTNER2) and one value per flavor of the first (VAL)."""
 
     def test_a_key_set_the_tables_cannot_hold_is_found(self):
-        """get_shared_partner_slot names a flavor of either fermion that
-        several keys pair with different partners: a single merged leg with
-        several flavors (first or second), or a merged flavor with two
-        merged partners. One-to-one tables (the W of merged quarks, one
-        key) can be written."""
+        """get_shared_partner_slot names a table slot several keys need: a
+        flavor of the first fermion with several partners (a single merged
+        leg second with several flavors, or a merged flavor with two merged
+        partners), or a merged flavor of the second with several. A single
+        merged leg FIRST with several flavors shares only the unmerged
+        partner's PARTNER2 slot, which no vertex call that generation allows
+        reads: it can be written, as can one-to-one tables."""
         FLV = base_objects.FLV_Coupling
         # u~ d W+ and c~ s W+ of q = d u s c: one partner each way
         self.assertIsNone(FLV(flavors={(2, 1, 0): 'GC_100',
                                        (4, 3, 0): 'GC_100'}).get_shared_partner_slot())
         # one key
         self.assertIsNone(FLV(flavors={(0, 2, 0): 'GC_1'}).get_shared_partner_slot())
-        # a single merged leg second: PARTNER(1) would be both 1 and 3
+        # a single merged leg first (d~ xq Z and s~ xq Z): only PARTNER2(1)
+        self.assertIsNone(FLV(flavors={(1, 0, 0): 'GC_1',
+                                       (3, 0, 0): 'GC_2'}).get_shared_partner_slot())
+        # a single merged leg second (xq~ d Z and xq~ s Z): PARTNER(1), VAL(1)
         self.assertEqual(FLV(flavors={(0, 1, 0): 'GC_1',
                                       (0, 3, 0): 'GC_2'}).get_shared_partner_slot(),
                          (1, 1, [1, 3]))
-        # a single merged leg first: PARTNER2(1) would be both 1 and 3
-        self.assertEqual(FLV(flavors={(1, 0, 0): 'GC_1',
-                                      (3, 0, 0): 'GC_2'}).get_shared_partner_slot(),
-                         (2, 1, [1, 3]))
         # flavor 2 of F1 with two merged partners
         self.assertEqual(FLV(flavors={(2, 1, 0): 'GC_1',
                                       (2, 3, 0): 'GC_2'}).get_shared_partner_slot(),
                          (1, 2, [1, 3]))
-        # flavor 1 of F2 with two merged partners
+        # merged flavor 1 of F2 with two merged partners
         self.assertEqual(FLV(flavors={(2, 1, 0): 'GC_1',
                                       (4, 1, 0): 'GC_2'}).get_shared_partner_slot(),
                          (2, 1, [2, 4]))
+
+    def test_a_coupling_the_tables_cannot_hold_is_refused(self):
+        """assert_table_representable raises InvalidCmd, which every output
+        (Fortran and C++) calls on the couplings it writes, naming the
+        coupling."""
+        FLV = base_objects.FLV_Coupling
+        lossy = FLV(name='FLV_TEST', flavors={(0, 1, 0): 'GC_XD',
+                                               (0, 3, 0): 'GC_XS'})
+        try:
+            lossy.assert_table_representable()
+        except madgraph.InvalidCmd as error:
+            self.assertIn('FLV_TEST', str(error))
+            self.assertIn('apply_flavor_grouping', str(error))
+        else:
+            self.fail('no InvalidCmd for %s' % lossy.get('flavors'))
+        for flavors in ({(2, 1, 0): 'GC_100', (4, 3, 0): 'GC_100'},
+                        {(1, 0, 0): 'GC_XD', (3, 0, 0): 'GC_XS'},
+                        {(0, 2, 0): 'GC_1'}):
+            FLV(flavors=flavors).assert_table_representable()

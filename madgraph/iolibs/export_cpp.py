@@ -70,27 +70,6 @@ def make_model_cpp(dir_path):
 # UFOModelConverterCPP
 #===============================================================================
 
-def assert_flv_table_representable(coupl):
-    """Raise InvalidCmd when the flavor table of coupl cannot hold its keys
-    (FLV_Coupling.get_shared_partner_slot): its vertices would vanish, or
-    take another key's coupling, for all of them but one, with no error. For
-    the fixed couplings (write_flv_couplings) and the running ones
-    (cDPF_* of ProcessTables.h) alike."""
-    shared = coupl.get_shared_partner_slot()
-    if shared is None:
-        return
-    fermion, k, partners = shared
-    raise InvalidCmd(
-        "merged-flavor C++ output (mg7/standalone) cannot write the flavor "
-        "coupling %s: flavor %d of its %s fermion couples to flavors %s of "
-        "the %s, and its flavor table holds one partner per flavor of each "
-        "fermion. Generate the flavors of this vertex as separate processes "
-        "(explicit particles instead of the merged one)."
-        % (coupl.name, k, 'first' if fermion == 1 else 'second',
-           ', '.join(str(p) for p in partners),
-           'second' if fermion == 1 else 'first'))
-
-
 class UFOModelConverterCPP(object):
     """ A converter of the UFO-MG5 Model to the C++ format """
 
@@ -506,10 +485,9 @@ class UFOModelConverterCPP(object):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
             The Fortran 'madevent'/'standalone_fortran' output supports it.
-          * a coupling whose table cannot hold its keys (several keys with
-            the same flavor of one fermion, see
-            FLV_Coupling.get_shared_partner_slot). The Fortran tables have
-            the same limit.
+          * a coupling whose table cannot hold its keys (several keys
+            needing one slot, see FLV_Coupling.get_shared_partner_slot). The
+            Fortran output refuses it too.
 
         See docs/mg7_merged_flavor_mssm_design.md.
         """
@@ -525,7 +503,7 @@ class UFOModelConverterCPP(object):
                     "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
-            assert_flv_table_representable(coupl)
+            coupl.assert_table_representable()
 
     def write_flv_couplings(self, params):
         """Write out the lines of independent parameters"""
