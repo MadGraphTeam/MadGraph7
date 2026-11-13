@@ -34,7 +34,10 @@ Consumers must check `schema_version` (currently `2`) and
 identifies the producer. `artifact_id` is the original artifact identity.
 `parameters` records the model values used to resolve the programs. Complex
 numbers are objects with `re` and `im` f64 values. A reader must preserve f64
-round trips, including signed zero.
+round trips, including signed zero. Every number is finite: JSON has no NaN or
+infinity, so an export whose resolved values include one (for example from a
+model parameter) is refused with an error that names the quantity, such as a
+parameter or a program's `body[12].factor.re`.
 
 `kernels` contains each referenced saved `.plane.symjit` application, deduplicated
 by its `sha256`. `application_base64` contains the original saved application

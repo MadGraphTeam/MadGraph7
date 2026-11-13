@@ -148,6 +148,9 @@ pub struct RecurrenceExportProgram {
     pub alpha_s: Option<RecurrenceExportAlphaS>,
 }
 
+/// The arithmetic contract of every exported program.
+pub(crate) const EXECUTION_SEMANTICS: &str = "rusticol-batched-f64-v1";
+
 struct ExportContext {
     artifact: VerifiedArtifact,
     executors: ProcessDirectExecutorPack,
@@ -189,13 +192,6 @@ impl NativeRuntime {
                     .iter()
                     .any(|component| component.id() == colour)
                 {
-                    return Err(RusticolError::selector(format!(
-                        "unknown recurrence export colour {colour:?} for process {:?} ({}); \
-                         colour-flow IDs are per process, this process has: {available}",
-                        self.process_key, self.process
-                    )));
-                }
-            }
                     // Colour-flow IDs name leg permutations of one process,
                     // so the same ID can be absent from another process.
                     let available = physics
@@ -204,6 +200,13 @@ impl NativeRuntime {
                         .map(|component| component.id())
                         .collect::<Vec<_>>()
                         .join(", ");
+                    return Err(RusticolError::selector(format!(
+                        "unknown recurrence export colour {colour:?} for process {:?} ({}); \
+                         colour-flow IDs are per process, this process has: {available}",
+                        self.process_key, self.process
+                    )));
+                }
+            }
         }
         let parameters = self
             .runtime
@@ -464,15 +467,33 @@ impl NativeRuntime {
                 }
             }
         }
-        Ok(RecurrenceExport {
+        let export = RecurrenceExport {
             schema_version: 2,
             rusticol_version: env!("CARGO_PKG_VERSION").to_owned(),
             artifact_id: self.artifact_id.clone(),
-            execution_semantics: "rusticol-batched-f64-v1".to_owned(),
+            execution_semantics: EXECUTION_SEMANTICS.to_owned(),
             parameters,
             programs,
             kernels: kernels.into_values().collect(),
-        })
+        };
+        // JSON has no non-finite numbers (serde_json would write `null`).
+        for parameter in &export.parameters {
+            finite::require_finite(
+                &format!("model parameter {:?}", parameter.name),
+                &parameter.value,
+            )?;
+        }
+        for program in &export.programs {
+            finite::require_finite(
+                &format!(
+                    "process {:?} colour {:?}",
+                    program.process_key, program.colour_id
+                ),
+                program,
+            )?;
+        }
+        finite::require_finite("the recurrence export", &export)?;
+        Ok(export)
     }
 
     pub fn export_recurrence_json(&mut self, colours: Option<&[String]>) -> RusticolResult<String> {
@@ -881,9 +902,396 @@ fn export_alpha_s(
     })
 }
 
+/// Walks any serializable export value and refuses the first non-finite
+/// float with the path of the quantity that holds it.
+mod finite {
+    use crate::{RusticolError, RusticolResult};
+    use serde::ser::{self, Serialize};
+    use std::fmt;
+
+    /// `owner` names the checked value in the error, e.g. a program's process
+    /// and colour; the quantity's field path follows it.
+    pub(super) fn require_finite<T: Serialize + ?Sized>(
+        owner: &str,
+        value: &T,
+    ) -> RusticolResult<()> {
+        let mut checker = Checker { path: Vec::new() };
+        value.serialize(&mut checker).map_err(|error| match error {
+            Error::NonFinite { path, value } => RusticolError::evaluation(format!(
+                "recurrence export quantity `{path}` of {owner} is not finite ({value}); \
+                 JSON cannot represent it, so the export is refused (check the model \
+                 parameters)"
+            )),
+            Error::Custom(message) => RusticolError::serialization(format!(
+                "could not inspect recurrence export: {message}"
+            )),
+        })
+    }
+
+    #[derive(Debug)]
+    pub(super) enum Error {
+        NonFinite { path: String, value: f64 },
+        Custom(String),
+    }
+
+    impl fmt::Display for Error {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::NonFinite { path, value } => write!(formatter, "{path}: {value}"),
+                Self::Custom(message) => formatter.write_str(message),
+            }
+        }
+    }
+
+    impl std::error::Error for Error {}
+
+    impl ser::Error for Error {
+        fn custom<T: fmt::Display>(message: T) -> Self {
+            Self::Custom(message.to_string())
+        }
+    }
+
+    struct Checker {
+        path: Vec<String>,
+    }
+
+    impl Checker {
+        fn float(&self, value: f64) -> Result<(), Error> {
+            if value.is_finite() {
+                return Ok(());
+            }
+            let mut path = String::new();
+            for segment in &self.path {
+                if !segment.starts_with('[') && !path.is_empty() {
+                    path.push('.');
+                }
+                path.push_str(segment);
+            }
+            Err(Error::NonFinite { path, value })
+        }
+
+        fn nested<T: Serialize + ?Sized>(
+            &mut self,
+            segment: String,
+            value: &T,
+        ) -> Result<(), Error> {
+            self.path.push(segment);
+            let result = value.serialize(&mut *self);
+            self.path.pop();
+            result
+        }
+    }
+
+    struct Compound<'a> {
+        checker: &'a mut Checker,
+        index: usize,
+    }
+
+    impl Compound<'_> {
+        fn element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {
+            let segment = format!("[{}]", self.index);
+            self.index += 1;
+            self.checker.nested(segment, value)
+        }
+    }
+
+    macro_rules! ignore {
+        ($($method:ident($type:ty)),* $(,)?) => {
+            $(fn $method(self, _value: $type) -> Result<(), Error> { Ok(()) })*
+        };
+    }
+
+    impl<'a> ser::Serializer for &'a mut Checker {
+        type Ok = ();
+        type Error = Error;
+        type SerializeSeq = Compound<'a>;
+        type SerializeTuple = Compound<'a>;
+        type SerializeTupleStruct = Compound<'a>;
+        type SerializeTupleVariant = Compound<'a>;
+        type SerializeMap = Compound<'a>;
+        type SerializeStruct = Compound<'a>;
+        type SerializeStructVariant = Compound<'a>;
+
+        ignore!(
+            serialize_bool(bool),
+            serialize_i8(i8),
+            serialize_i16(i16),
+            serialize_i32(i32),
+            serialize_i64(i64),
+            serialize_u8(u8),
+            serialize_u16(u16),
+            serialize_u32(u32),
+            serialize_u64(u64),
+            serialize_char(char),
+            serialize_str(&str),
+            serialize_bytes(&[u8]),
+        );
+
+        fn serialize_f32(self, value: f32) -> Result<(), Error> {
+            self.float(f64::from(value))
+        }
+
+        fn serialize_f64(self, value: f64) -> Result<(), Error> {
+            self.float(value)
+        }
+
+        fn serialize_none(self) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<(), Error> {
+            value.serialize(self)
+        }
+
+        fn serialize_unit(self) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn serialize_unit_struct(self, _name: &'static str) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn serialize_unit_variant(
+            self,
+            _name: &'static str,
+            _index: u32,
+            _variant: &'static str,
+        ) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn serialize_newtype_struct<T: Serialize + ?Sized>(
+            self,
+            _name: &'static str,
+            value: &T,
+        ) -> Result<(), Error> {
+            value.serialize(self)
+        }
+
+        fn serialize_newtype_variant<T: Serialize + ?Sized>(
+            self,
+            _name: &'static str,
+            _index: u32,
+            variant: &'static str,
+            value: &T,
+        ) -> Result<(), Error> {
+            self.nested(variant.to_owned(), value)
+        }
+
+        fn serialize_seq(self, _len: Option<usize>) -> Result<Compound<'a>, Error> {
+            Ok(Compound {
+                checker: self,
+                index: 0,
+            })
+        }
+
+        fn serialize_tuple(self, len: usize) -> Result<Compound<'a>, Error> {
+            self.serialize_seq(Some(len))
+        }
+
+        fn serialize_tuple_struct(
+            self,
+            _name: &'static str,
+            len: usize,
+        ) -> Result<Compound<'a>, Error> {
+            self.serialize_seq(Some(len))
+        }
+
+        fn serialize_tuple_variant(
+            self,
+            _name: &'static str,
+            _index: u32,
+            _variant: &'static str,
+            len: usize,
+        ) -> Result<Compound<'a>, Error> {
+            self.serialize_seq(Some(len))
+        }
+
+        fn serialize_map(self, len: Option<usize>) -> Result<Compound<'a>, Error> {
+            self.serialize_seq(len)
+        }
+
+        fn serialize_struct(self, _name: &'static str, len: usize) -> Result<Compound<'a>, Error> {
+            self.serialize_seq(Some(len))
+        }
+
+        fn serialize_struct_variant(
+            self,
+            _name: &'static str,
+            _index: u32,
+            _variant: &'static str,
+            len: usize,
+        ) -> Result<Compound<'a>, Error> {
+            self.serialize_seq(Some(len))
+        }
+    }
+
+    impl ser::SerializeSeq for Compound<'_> {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {
+            self.element(value)
+        }
+
+        fn end(self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeTuple for Compound<'_> {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {
+            self.element(value)
+        }
+
+        fn end(self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeTupleStruct for Compound<'_> {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {
+            self.element(value)
+        }
+
+        fn end(self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeTupleVariant for Compound<'_> {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {
+            self.element(value)
+        }
+
+        fn end(self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeMap for Compound<'_> {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Error> {
+            key.serialize(&mut *self.checker)
+        }
+
+        fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {
+            self.element(value)
+        }
+
+        fn end(self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeStruct for Compound<'_> {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T: Serialize + ?Sized>(
+            &mut self,
+            key: &'static str,
+            value: &T,
+        ) -> Result<(), Error> {
+            self.checker.nested(key.to_owned(), value)
+        }
+
+        fn end(self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeStructVariant for Compound<'_> {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T: Serialize + ?Sized>(
+            &mut self,
+            key: &'static str,
+            value: &T,
+        ) -> Result<(), Error> {
+            self.checker.nested(key.to_owned(), value)
+        }
+
+        fn end(self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_finite_export_values_are_refused_with_their_quantity() {
+        use crate::recurrence::direct_export::DirectExportInstruction;
+        let run = |weight: f64| RecurrenceExportRun {
+            sources: Vec::new(),
+            reduction: vec![RecurrenceExportReduction {
+                helicity_output: 0,
+                amplitude: 0,
+                amplitude_scale: ExportComplex::ONE,
+                apply_amplitude_scale: false,
+                weight,
+            }],
+        };
+        finite::require_finite("finite runs", &[run(0.5), run(-0.0)]).unwrap();
+        let error = finite::require_finite(
+            "process \"p0\" colour \"flow:0\"",
+            &[run(0.5), run(f64::INFINITY)],
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Evaluation);
+        assert!(
+            error.to_string().starts_with(
+                "recurrence export quantity `[1].reduction[0].weight` of process \"p0\" \
+                 colour \"flow:0\" is not finite (inf)"
+            ),
+            "{error}"
+        );
+        let closure = DirectExportInstruction::Closure {
+            amplitude: 0,
+            left: 0,
+            right: 1,
+            component_factors: vec![
+                ExportComplex::ONE,
+                ExportComplex {
+                    re: 1.0,
+                    im: f64::NAN,
+                },
+            ],
+            factor: ExportComplex::ONE,
+        };
+        let error = finite::require_finite("a body", &[closure]).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("`[0].component_factors[1].im` of a body is not finite (NaN)"),
+            "{error}"
+        );
+        let parameter = RecurrenceExportParameter {
+            name: "particle.23.width".to_owned(),
+            value: ExportComplex {
+                re: f64::NEG_INFINITY,
+                im: 0.0,
+            },
+        };
+        let error = finite::require_finite("the recurrence export", &[parameter]).unwrap_err();
+        assert!(error.to_string().contains("`[0].value.re`"), "{error}");
+        assert!(error.to_string().contains("(-inf)"), "{error}");
+    }
 
     #[test]
     fn alpha_s_export_does_not_double_count_factored_builtin_couplings() {
