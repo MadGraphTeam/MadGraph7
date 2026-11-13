@@ -53,6 +53,17 @@ it into `pyamplicol/build/rust`, without touching `~/.rustup` or `~/.cargo`.
 The Cargo build tree is kept in `pyamplicol/build`, so rebuilds after a source
 change are incremental.
 
+On macOS 27 with the Command Line Tools 27.2 linker, a library built with the
+pinned Rust 1.97.1 can have its string table at an offset the macOS 27 loader
+rejects ("mis-aligned LINKEDIT string pool"; fixed in Rust 1.99,
+rust-lang/rust#157750), so importing pyAmpliCol fails. Pad the table and sign
+the library ad hoc after the install:
+
+```console
+python pyamplicol/tools/local/fix_macho_alignment.py \
+  pyamplicol/install/pyamplicol/_rusticol.abi3.so
+```
+
 The prepared SM and SM+HEFT models shipped in the package are not stored in
 Git. The installer downloads them from the MadGraph7 release (the release of
 this version, else the latest one) and checks that they match the source tree.
