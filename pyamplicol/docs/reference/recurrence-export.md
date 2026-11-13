@@ -1,3 +1,9 @@
+---
+title: "Recurrence Export"
+nav_order: 6
+parent: "Python API"
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Resolved recurrence export
 
 `pyamplicol export-recurrence LC_DIR -o capture.json` exports the portable
