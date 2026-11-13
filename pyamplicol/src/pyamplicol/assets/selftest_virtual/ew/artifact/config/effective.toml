@@ -18,6 +18,7 @@ squared_coupling_orders = []
 reference_color_order = []
 selected_color_sector_ids = []
 flavor_blind = false
+flavor_blind_strict = false
 consider_charge_conjugation = true
 only_unit_multiplier = false
 analyze_process_groups = "none"
@@ -67,6 +68,7 @@ output = "artifact"
 mode = "error"
 workers = 1
 emit_api_bundle = false
+pack_payloads = false
 particle_veto = []
 allow_anomalous_veto = false
 loop_induced_probes = false
@@ -156,7 +158,8 @@ helicity_ids = []
 color_flow_ids = []
 runtime = false
 stability = false
-stability_points = 100
+stability_points = 1000
+n_core = 10
 
 [check]
 points = 3
@@ -166,7 +169,7 @@ precision = "auto"
 format = "human"
 color = "auto"
 progress = "off"
-log_level = "info"
+log_level = "warning"
 
 [symbolica]
 suggest_license = true

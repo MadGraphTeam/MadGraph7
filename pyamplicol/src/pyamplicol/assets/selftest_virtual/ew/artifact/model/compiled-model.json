@@ -143838,10 +143838,10 @@
   "producer": {
     "compiled_model_schema_version": 9,
     "contact_decomposition_policy": "ufo-four-point-contact-decomposition-v2",
-    "model_compiler_sha256": "d94a627db542be4818e0d0149e8aba61557e50f62fcf741fdfc3186665a359b6",
+    "model_compiler_sha256": "278c64881415e9f02f499e7923d28dc758d2cccbd321cfbaac8e36c93c1f0ede",
     "model_compiler_version": 17,
     "model_environment_policy": "sanitize-historical-scalar-options-v1",
-    "pyamplicol": "1.0.3",
+    "pyamplicol": "0.2.1",
     "symbol_namespace_policy": "model-name-and-pyamplicol-registry-v1",
     "symbolica": "3.0.3",
     "symbolica_serialization_abi": "symbolica-bincode2-v2",
