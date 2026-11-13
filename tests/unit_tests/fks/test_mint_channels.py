@@ -43,8 +43,13 @@ class TestMintChannels(unittest.TestCase):
         return [line.split()[1:] for line in result.stdout.splitlines()
                 if line.startswith(' CHECK ')]
 
-    def test_zero_virtual_envelope_bootstraps_from_finite_positive_sample(self):
+    def test_zero_virtual_envelope_bootstraps_from_finite_positive_iteration(self):
         self.run_case('virtual_envelope')
+
+    def test_virtual_envelope_bootstrap_averages_an_isolated_outlier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.run_case('envelope_seed', directory)
+            self.run_case('envelope_recover', directory)
 
     def test_rms_allocation_and_unbiased_channel_compensation(self):
         probability, integral = self.run_case('rms')
@@ -126,10 +131,12 @@ for _name in ('accum', 'HwU_accum_iter', 'HwU_add_points', 'initplot',
 PROGRAM = '''
 module integrand_state
 logical :: seed_only=.false.
+logical :: envelope_case=.false.
+integer :: virtual_calls=0
 end module
 
 program check_mint
-use, intrinsic :: ieee_arithmetic, only: ieee_value,ieee_quiet_nan
+use, intrinsic :: ieee_arithmetic, only: ieee_value,ieee_quiet_nan,ieee_positive_inf
 use mint_module
 use integrand_state
 implicit none
@@ -150,17 +157,32 @@ iconfigs(1:3)=[1,2,3]
 imode=0
 nit=2
 double_events=.false.
+! Common integration setup; cases override only the settings they exercise.
+ndim=4
+ncalls0=20000
+itmax=4
+accuracy=0d0
+n_ord_virt=0
+only_virt=.false.
+ifold=1
+ifold_energy=ndim-2
+ifold_yij=ndim-1
+ifold_phi=ndim
+min_virt_fraction_mint=.005d0
+wgt_mult=.5d0
 select case(mode)
 case('virtual_envelope')
- ndim=4
+ imode=1
  ichan=1
- n_ord_virt=0
  ncell=1
  ymax=1d0
  ymax_virt=0d0
  virtual_fraction(1)=0.25d0
  f=0d0;f(1)=1d0;f(5)=4d0
  call add_point_to_bounding_envelope
+ if(ymax_virt(1).ne.0d0)error stop 'single point bootstrapped virtual envelope'
+ vtot=0d0;vtot(5,1)=4d0
+ call bootstrap_virtual_envelopes
  if(ymax_virt(1).ne.1d0)error stop 'zero virtual envelope did not bootstrap'
  f(5)=12d0
  call add_point_to_bounding_envelope
@@ -168,15 +190,35 @@ case('virtual_envelope')
  f(5)=0.5d0
  call add_point_to_bounding_envelope
  if(ymax_virt(1).ne.2d0)error stop 'positive virtual envelope decreased'
- ymax_virt=0d0;f(5)=0d0
- call add_point_to_bounding_envelope
+ ymax_virt=0d0;vtot(5,1)=0d0
+ call bootstrap_virtual_envelopes
  if(ymax_virt(1).ne.0d0)error stop 'empty virtual envelope changed'
- f(5)=-1d0
- call add_point_to_bounding_envelope
- if(ymax_virt(1).ne.0d0)error stop 'negative virtual sample bootstrapped'
- f(5)=ieee_value(0d0,ieee_quiet_nan)
- call add_point_to_bounding_envelope
- if(ymax_virt(1).ne.0d0)error stop 'nonfinite virtual sample bootstrapped'
+ vtot(5,1)=-1d0
+ call bootstrap_virtual_envelopes
+ if(ymax_virt(1).ne.0d0)error stop 'negative virtual mean bootstrapped'
+ vtot(5,1)=ieee_value(0d0,ieee_quiet_nan)
+ call bootstrap_virtual_envelopes
+ if(ymax_virt(1).ne.0d0)error stop 'nonfinite virtual mean bootstrapped'
+ vtot(5,1)=ieee_value(0d0,ieee_positive_inf)
+ call bootstrap_virtual_envelopes
+ if(ymax_virt(1).ne.0d0)error stop 'infinite virtual mean bootstrapped'
+ vtot(5,1)=4d0
+ imode=2
+ call bootstrap_virtual_envelopes
+ if(ymax_virt(1).ne.0d0)error stop 'virtual bootstrap ran during generation'
+case('envelope_seed','envelope_recover')
+ nchans=1
+ envelope_case=.true.
+ if(mode.eq.'envelope_recover')imode=1
+ itmax=2
+ wgt_mult=1d0
+ call mint(integrand)
+ if(mode.eq.'envelope_seed')then
+  if(ans(5,1).ne.0d0)error stop 'virtual bootstrap fixture did not start at zero'
+ else
+  if(ymax_virt(1).le.0d0.or.ymax_virt(1).gt.10d0) &
+    error stop 'isolated outlier dominated virtual envelope bootstrap'
+ endif
 case('rms')
  nchans=3
  ! The tiny channel has mean 1e-9 and RMS 1e-8: about 100% error
@@ -246,23 +288,10 @@ case('zero')
  write(*,*) 'CHECK ',channel_probability(1:2)
 case('seed','recover','automatic')
  seed_only=mode.eq.'seed'
- imode=0
- wgt_mult=.5d0
  if(mode.eq.'recover') then
   imode=-1
   wgt_mult=.25d0
  endif
- ndim=4
- ncalls0=20000
- itmax=4
- accuracy=0d0
- n_ord_virt=0
- only_virt=.false.
- ifold=1
- ifold_energy=1
- ifold_yij=1
- ifold_phi=1
- min_virt_fraction_mint=.005d0
  if(mode.eq.'automatic') then
   wgt_mult=1d0
   ncalls0=-1
@@ -276,7 +305,7 @@ end select
 end program
 
 double precision function integrand(x,vol,ifl,f)
-use mint_module, only: ndimmax,nintegrals,ichan,pass_cuts_check
+use mint_module, only: ndimmax,nintegrals,ichan,pass_cuts_check,imode,virtual_fraction
 use integrand_state
 implicit none
 integer :: ifl
@@ -286,6 +315,11 @@ if(seed_only.and.ichan.eq.2) point=0d0
 f=0d0
 f(1)=point*vol
 f(2)=f(1)
+if(envelope_case.and.imode.eq.1)then
+ f(5)=vol/virtual_fraction(ichan)
+ if(virtual_calls.eq.0)f(5)=1d4*f(5)
+ if(ifl.eq.2)virtual_calls=virtual_calls+1
+endif
 pass_cuts_check=.true.
 integrand=f(2)
 end function

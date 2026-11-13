@@ -312,6 +312,7 @@ c Share the sampled Born within this evaluation when sectors permit it.
          pass_cuts_check=.false.
       endif
       call vs_begin_point
+      call reset_folded_virtual
       if (firsttime) then
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)

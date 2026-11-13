@@ -10,15 +10,19 @@ from tests.unit_tests.fks.test_momentum_maps import TEMPLATE, fortran_routine
 
 
 def production_fixture():
-    """Exercise the production selection, residual and cache code verbatim."""
+    """Exercise production link collection, selection, residual and cache code."""
     source = fortran_routine(TEMPLATE / 'fks_singular.f', 'bornsoftvirtual')
     reset = source[source.index('c The first radiation trial'):source.index('      if (firsttime) then')]
+    links = source[source.index(' 547  continue'):source.index('      use_surrogate=VirtTrickSurrogate.ge.1')]
     start = source.index('c The scalar fit is valid only for one virtual Born order normalized by')
     block = source[start:source.index('c eq.(MadFKS.C.13)', start)]
+    driver = fortran_routine(TEMPLATE / 'driver_mintFO.f', 'sigint')
+    begin_point = driver[driver.index('      call vs_begin_point'):driver.index('      if (firsttime) then')]
     return '''      subroutine evaluate_fold
       use point_fixture
       implicit none
-      integer iamp
+      integer iamp,iord,i,j,k,m,n
+      double precision wgt1,wgt,contr,eikIreg
       logical first_virtual_evaluation,virtual_fold_ready
       common /c_folded_virtual/ virtual_fold_ready
       double precision virt_wgt_save,amp_split_virt_save(amp_split_size)
@@ -29,7 +33,10 @@ def production_fixture():
       virt_wgt=0d0
       amp_split_virt=0d0
       amp_split_avv=0d0
-''' + reset + block + '''      end
+''' + reset + links + block + '''      end
+      subroutine begin_fixed_order_point
+      use virt_surrogate
+''' + begin_point + '''      end
 ''' + fortran_routine(TEMPLATE / 'fks_singular.f', 'reset_folded_virtual')
 
 
@@ -46,6 +53,14 @@ integer,parameter :: amp_split_size=1,timing_virtual=1
 integer :: fold,ifold_counter,calls=0,draws=0
 common /cfl/fold,ifold_counter
 logical :: use_surrogate,timing_sampled=.false.
+logical :: collect_surrogate,need_color_links_used=.true.,need_charge_links_used=.false.
+logical :: need_color_links,need_charge_links
+integer,parameter :: nsplitorders=1,qcd_pos=1,qed_pos=2,nexternal=5,i_fks=5
+integer :: nFKSprocess=1,nFKSprocess_save,nFKSprocess_col=1,nFKSprocess_chg=0
+integer :: fks_j_from_i(nexternal,0:nexternal)=0
+real(8),parameter :: ZERO=0d0,oneo8pi2=1d0
+real(8) :: pmass(nexternal)=1d0,p(0:3,nexternal)=0d0,xicut_used=1d0
+real(8) :: bsv_wgt=0d0,amp_split_bsv(1)=0d0,amp_split_soft(1)=0d0,link_weight=2d0
 character(len=4) :: abrv='all '
 real(8) :: p_born(0:3,4),QES2=100d0,born_wgt,virt_wgt,virtual_over_born,avv_wgt
 real(8) :: amp_split_born_for_virt(1),amp_split_finite_ML(1)
@@ -60,6 +75,11 @@ born_wgt=born
 amp_split_born_for_virt=born
 exact_virtual=exact
 virtual_over_born=0d0
+p_born(:,1)=[5d0,0d0,0d0,5d0]
+p_born(:,2)=[5d0,0d0,0d0,-5d0]
+p_born(:,3)=[5d0,3d0,0d0,4d0]
+p_born(:,4)=[5d0,-3d0,0d0,-4d0]
+fks_j_from_i(i_fks,0:1)=[1,3]
 end subroutine
 subroutine expect(residual,approximated,ncalls,ndraws)
 real(8) residual,approximated
@@ -71,6 +91,23 @@ if(abs(avv_wgt-approximated)>1d-12.or.any(abs(amp_split_avv-approximated)>1d-12)
 if(calls.ne.ncalls.or.draws.ne.ndraws)error stop 'virtual redrawn within folded point'
 end subroutine
 end module
+subroutine fks_inc_chooser
+end subroutine
+subroutine sborn_frame(p,wgt)
+real(8) p(0:3,4),wgt
+wgt=1d0
+end subroutine
+subroutine sborn_sf_frame(p,m,n,wgt)
+use point_fixture,only: link_weight
+integer m,n
+real(8) p(0:3,4),wgt
+wgt=link_weight
+end subroutine
+subroutine eikonal_Ireg(p,m,n,xicut,eik)
+integer m,n
+real(8) p(0:3,5),xicut,eik
+eik=0d0
+end subroutine
 subroutine binothlha_frame(p,born,result)
 use point_fixture,only: calls,exact_virtual,amp_split_finite_ML
 real(8) p(0:3,4),born,result
@@ -135,23 +172,32 @@ born_spread_phase=0
 VirtTrickSurrogate=1
 virtual_fraction=0.5d0
 call new_point(6d0,19d0)
+! Other contributions can have populated links before this first endpoint.
+! The production block must clear them and collect this Born's links.
+call vs_add_link(p_born,QES2,i_fks,3,3,100d0)
 call evaluate_fold
 call expect(26d0,6d0,3,4)
 if(.not.vs_vcomp.or.vs_born.ne.6d0.or.vs_fvirt.ne.0.5d0.or.vs_virt.ne.19d0) &
   error stop 'surrogate state not initialized on delayed endpoint'
+if(.not.vs_featok.or.vs_feat(4).ne.link_weight)error stop 'delayed endpoint colour links missing or stale'
 call evaluate_fold
 call expect(26d0,6d0,3,4)
-! Fixed-order callers do not use the MC driver's reset hook. Fold zero
-! must still initialize their distinct single-point evaluations.
+call vs_features(p_born,born_wgt,QES2,VirtTrickSurrogate)
+if(.not.vs_featok.or.vs_feat(4).ne.link_weight)error stop 'links changed across folds'
+! Fixed-order callers own their reset just like the MC driver.
 VirtTrickSurrogate=0
 virtual_fraction=1d0
 fold=0
+call begin_fixed_order_point
 born_wgt=2d0
 amp_split_born_for_virt=2d0
 exact_virtual=29d0
 call evaluate_fold
 call expect(27d0,2d0,4,5)
 exact_virtual=31d0
+call evaluate_fold
+call expect(27d0,2d0,4,5)
+call begin_fixed_order_point
 call evaluate_fold
 call expect(29d0,2d0,5,6)
 write(*,*) 'PASS folded virtual cache'

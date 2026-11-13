@@ -186,7 +186,7 @@ module mint_module
   logical, private :: double_events,reset,even_rn,firsttime
   ! Reset grids need a per-channel pilot even when a spreading fit is ready.
   logical, private :: initial_channel_scan_pending=.false.
-  private :: bootstrap_virtual_envelope_sample
+  private :: bootstrap_virtual_envelopes
   logical, dimension(maxchannels), private :: regridded
   double precision, dimension(0:nintervals,ndimmax,maxchannels), private :: xgrid,xacc
   double precision, dimension(nintervals,ndimmax,maxchannels), private :: ymax,xmmm
@@ -988,6 +988,7 @@ contains
     call update_channel_sampling
     call check_fractional_uncertainty(efrac)
     if (reset) return ! iteration was not accurate enough: do not include it
+    call bootstrap_virtual_envelopes
     call combine_iterations
     call combine_final_three_iterations
     if (fixed_order) then
@@ -1501,11 +1502,7 @@ contains
 ! Update the upper bounding envelope virtual. Do not include the
 ! enhancement due to the virtual_fraction. (And again limit by factor 2
 ! at most).
-    if(ymax_virt(ichan).eq.0d0)then
-       ! A zero step-zero estimate cannot grow through the factor-two cap.
-       ! Seed it from the first supported virtual observation instead.
-       call bootstrap_virtual_envelope_sample(f(5)*virtual_fraction(ichan))
-    else
+    if(ymax_virt(ichan).gt.0d0)then
        if (f(5)*virtual_fraction(ichan).gt.ymax_virt(ichan)) &
             ymax_virt(ichan) = min(f(5)*virtual_fraction(ichan),ymax_virt(ichan)*2d0)
     endif
@@ -1524,13 +1521,22 @@ contains
     enddo
   end subroutine add_point_to_bounding_envelope
      
-  subroutine bootstrap_virtual_envelope_sample(candidate)
+  subroutine bootstrap_virtual_envelopes
     use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
     implicit none
-    double precision,intent(in) :: candidate
-    if(.not.ieee_is_finite(candidate))return
-    if(candidate.gt.0d0)ymax_virt(ichan)=candidate
-  end subroutine bootstrap_virtual_envelope_sample
+    integer :: kchan
+    double precision :: candidate
+    ! A zero step-zero estimate cannot grow through the factor-two cap.
+    ! Seed from an accepted iteration's mean, never from a single point.
+    ! This is only needed while setting up the unweighting envelopes.
+    if(imode.ne.1)return
+    do kchan=1,nchans
+       if(ymax_virt(kchan).ne.0d0)cycle
+       candidate=vtot(5,kchan)*virtual_fraction(kchan)
+       if(.not.ieee_is_finite(candidate))cycle
+       if(candidate.gt.0d0)ymax_virt(kchan)=candidate
+    enddo
+  end subroutine bootstrap_virtual_envelopes
 
   subroutine accumulate_the_point(x)
     implicit none

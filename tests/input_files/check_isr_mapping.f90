@@ -11,7 +11,7 @@ subroutine check_isr_mapping(mode)
   use fks_phase_space, only: generate_FKS_kinematics,invert_fks_radiation, &
        compute_flux,boost_born_momenta_noevpr
   use fks_phase_space_helpers, only: boost_n1_to_lab,boost_n1_to_its_cms
-  use fks_radiation_maps, only: generate_momenta_initial
+  use fks_radiation_maps, only: generate_momenta_initial,generate_momenta_initial_inverse
   implicit none
   include 'genps.inc'
   include 'nexternal.inc'
@@ -62,7 +62,8 @@ subroutine check_isr_mapping(mode)
   nbody=.false.
   fixed_order=.true.
   nlo_ps=.false.
-  symmetric_map=mode.eq.'isr_symmetric'.or.mode.eq.'isr_symmetric_fks'.or.mode.eq.'isr_symmetric_bounds'
+  symmetric_map=mode.eq.'isr_symmetric'.or.mode.eq.'isr_symmetric_fks'.or. &
+       mode.eq.'isr_symmetric_bounds'.or.mode.eq.'isr_symmetric_boundary'
   FKSISRMapping=2
   if(symmetric_map)FKSISRMapping=1
   if(mode.eq.'isr_automatic')FKSISRMapping=0
@@ -90,7 +91,7 @@ subroutine check_isr_mapping(mode)
   max_replay=0d0
   max_inverse=0d0
 
-  if(mode.eq.'isr_bjorken_boundary')then
+  if(mode.eq.'isr_bjorken_boundary'.or.mode.eq.'isr_symmetric_boundary')then
     call check_bjorken_boundary()
     return
   endif
@@ -341,8 +342,9 @@ contains
   subroutine check_bjorken_boundary()
     ! Korobov clustering reaches exact and adjacent xi endpoints. These
     ! Born fractions make 1-(1-xbar) round below xbar in binary64.
-    real(8),parameter :: endpoints(5)=[3d-5,0.00051927089450435379d0, &
-         1.4986315881618521d-6,0.035932381424984616d0,0.9d0]
+    real(8),parameter :: endpoints(9)=[3d-5,0.00051927089450435379d0, &
+         1.4986315881618521d-6,0.035932381424984616d0,0.9d0, &
+         1d0-1d-8,1d0-1d-12,nearest(1d0,-1d0),1d0]
     real(8) :: coordinates(4),residual(0:3),scale,mass_shell
     integer :: which_end,which_x,which_y,slot
     coordinates=[1d0,nearest(1d0,-1d0),1d0-1d-8,1d0-1d-6]
@@ -353,6 +355,11 @@ contains
         do which_end=1,size(endpoints)
           bx=.2d0
           bx(side)=endpoints(which_end)
+          ! Retain a separately calculated lepton endpoint, including
+          ! one that rounds slightly above the subtracted complement.
+          omx=0d0
+          if(which_end.gt.5)omx(side)=1d0-bx(side)+spacing(bx(side))
+          if(which_end.eq.9)omx(side)=1d-20
           call set_born()
           do which_x=1,size(coordinates)
             do which_y=1,3
@@ -367,6 +374,10 @@ contains
                      error stop 'valid ISR endpoint was rejected'
                 if(any(tmp_xb.gt.1d0).or.any(tmp_xb.le.0d0)) &
                      error stop 'roundoff sent ISR endpoint outside Bjorken support'
+                if(abs(tmp_tau/product(tmp_xb)-1d0).gt.1d-14.or. &
+                     abs(tmp_s/(tmp_tau*stot)-1d0).gt.1d-14.or. &
+                     abs(tmp_ycm-log(tmp_xb(1)/tmp_xb(2))/2d0).gt.1d-14) &
+                     error stop 'ISR endpoint fractions and invariants disagree'
                 residual=sum(p(:,1:2),dim=2)-sum(p(:,3:nexternal),dim=2)
                 scale=maxval(abs(p))
                 if(maxval(abs(residual))/scale.gt.2d-12)then
@@ -379,13 +390,29 @@ contains
                   if(abs(mass_shell-pmass(k)**2)/max(1d0,p(0,k)**2).gt.5d-12) &
                        error stop 'ISR endpoint mass shell'
                 enddo
+                if(kind.eq.-100)then
+                  call boost_n1_to_lab(p,plab,-yb)
+                  jinv=1d0
+                  psinv=1d0
+                  ! Supply the forward radiation variables to isolate the
+                  ! endpoint guard from their extraction out of lab momenta.
+                  call generate_momenta_initial_inverse(plab,tmp_xi,tmp_y,2d0*pi*x(3),invborn,rad, &
+                       jinv,psinv,tmp_s,tmp_sqrt,ifks,jfks,stot,tmp_tau,tmp_ycm,tmp_xb,tauinv,yinv,bxinv)
+                  if(jinv.le.0d0.or.maxval(abs(invborn(:,1:4)-born))/mass.gt.2d-8.or. &
+                       maxval(abs(bxinv-bx)).gt.2d-10)then
+                    print *, 'endpoint inverse',native,side,which_end,which_x,which_y,jinv, &
+                         maxval(abs(invborn(:,1:4)-born))/mass,maxval(abs(bxinv-bx)),rad
+                    error stop 'ISR endpoint inverse Born projection'
+                  endif
+                endif
               enddo
             enddo
           enddo
           ! A genuinely invalid emission still fails before the endpoint
           ! roundoff correction. No physical support is silently enlarged.
+          call generate_slot(-100)
           softtest=.true.
-          xi_fix=1d0-bx(side)+1d-5
+          xi_fix=tmp_xmax+1d-5
           call generate_slot(-100)
           if(pass.or.tmp_jac.ge.0d0)error stop 'physical ISR endpoint violation accepted'
           softtest=.false.

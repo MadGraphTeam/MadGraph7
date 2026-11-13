@@ -660,7 +660,8 @@ c
       logical firsttime,passcuts,passcuts_native_born,
      $     passcuts_nbody,passcuts_n1body
       logical rejected_point,weights_valid,born_cuts_for_flow,
-     $     calibrating_spread
+     $     calibrating_spread,folded
+      save folded
       save rejected_point
       data rejected_point/.false./
       integer i,ifl,proc_map(0:fks_configs,0:fks_configs),nFKS_picked_nbody,nFKS_in,nFKS_out,izero,mohdr,iFKS,sum,
@@ -730,6 +731,7 @@ c Each fold owns its Born sample; compatible sectors can reuse it.
 c Find the nFKSprocess for which we compute the Born-like contributions
       if (firsttime) then
          firsttime=.false.
+         folded=any(ifold(1:ndim).gt.1)
 c Determines the proc_map that sets which FKS configuration can be
 c summed explicitly and which by MC-ing.
          call setup_proc_map(sum,proc_map,ini_fin_fks)
@@ -813,11 +815,7 @@ c 1/proc_map(0,0)*vol1)
          jac=jac/(proc_map(0,0)*vol1)
          call generate_born_contribution(nndim,iconfig,jac,x_local,
      $        phase_space)
-         if (product(ifold(1:ndim)).gt.1.and.
-     $        .not.phase_space%born%event_projection)then
-            write(*,*) 'Folding requires event projection'
-            stop 1
-         endif
+         call check_event_projection
          p=phase_space%p
          p_lab=phase_space%p_lab
          p_cms=phase_space%p_cms
@@ -947,11 +945,7 @@ c the active Born. Starting scales still belong to the shared sample.
             jacPS=1d0/vol1
             call generate_real_phase_space(nndim,iconfig,jacPS,
      $           x_local,phase_space)
-            if (product(ifold(1:ndim)).gt.1.and.
-     $           .not.phase_space%born%event_projection)then
-               write(*,*) 'Folding requires event projection'
-               stop 1
-            endif
+            call check_event_projection
             p=phase_space%p
             p_lab=phase_space%p_lab
             p_cms=phase_space%p_cms
@@ -963,10 +957,6 @@ c counter-event momenta do not exist).
             if (FKSExplicitSum) then
 c All S records in this fold must describe the same underlying event.
 c Check the sampled Born before native H histories change active data.
-               if (.not.phase_space%born%event_projection) then
-                  write(*,*) 'FKSExplicitSum requires event projection'
-                  stop 1
-               endif
                if (have_sum_born) then
                   if (maxval(abs(phase_space%born%p-sum_born)).gt.
      $                1d-10*max(1d0,maxval(abs(sum_born))).or.
@@ -1155,6 +1145,17 @@ c Use the final, finite PDF/bias weights of the complete point for the fit.
       f=0d0
       if(ifl.eq.2)call fill_MC_integer(1,proc_map(0,1),0d0)
       return
+      contains
+      subroutine check_event_projection
+      if (phase_space%born%event_projection) return
+      if (folded) then
+         write(*,*) 'Folding requires event projection'
+         stop 1
+      elseif (FKSExplicitSum) then
+         write(*,*) 'FKSExplicitSum requires event projection'
+         stop 1
+      endif
+      end subroutine check_event_projection
       end
 
       subroutine repartition_MC_H(first_native,p,p_lab,p_cms,

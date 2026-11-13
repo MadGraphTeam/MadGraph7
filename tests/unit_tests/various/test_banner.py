@@ -1127,6 +1127,28 @@ class TestRunCard(unittest.TestCase):
     """ A class to test the TestConfig functionality """
     # a lot of the functionality is actually already tested in the child
     # TESTMadLoopParam and are not repeated here.
+
+    def test_nlo_folding_rejects_dressed_lepton_beams(self):
+        card = bannermod.RunCardNLO()
+        card.user_set.update(card)
+        for lpp in (-4, -3, 3, 4):
+            for beam in (1, 2):
+                for folding in ([2, 1, 1], [1, 2, 1], [1, 1, 2]):
+                    with self.subTest(lpp=lpp, beam=beam, folding=folding):
+                        card['lpp1'], card['lpp2'] = abs(lpp), -abs(lpp)
+                        card['lpp%d' % beam] = lpp
+                        card['pdlabel'] = 'emela'
+                        card['folding'] = folding
+                        with self.assertRaisesRegex(bannermod.InvalidRunCard,
+                                                    'Folding requires event projection'):
+                            card.check_validity()
+                        card['folding'] = [1, 1, 1]
+                        card.check_validity()
+        for beams in ((1, 1), (0, 0)):
+            with self.subTest(beams=beams):
+                card['lpp1'], card['lpp2'] = beams
+                card['folding'] = [2, 2, 1]
+                card.check_validity()
     
 
     def setUp(self):

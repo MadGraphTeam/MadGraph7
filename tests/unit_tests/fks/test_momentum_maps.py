@@ -200,6 +200,7 @@ class TestMomentumMaps(unittest.TestCase):
 
     def test_isr_endpoint_roundoff_keeps_bjorken_fractions_physical(self):
         self.check_map("isr_bjorken_boundary")
+        self.check_map("isr_symmetric_boundary")
 
     def test_initial_state_recoil_and_endpoints(self):
         self.check_map("isr")

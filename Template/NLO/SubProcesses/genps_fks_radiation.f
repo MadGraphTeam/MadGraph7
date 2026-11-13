@@ -1047,13 +1047,10 @@ c These endpoints cannot pass the cuts below the supplied lower bound.
          return
       endif
 
-      z=1d0-xi_i_fks
-c The validated ordinary endpoint is xi <= 1-xbar. Subtracting the
-c rounded xi from one can put z a few ulps below xbar, sending a valid
-c boundary point beyond Bjorken x=1. Enforce this known inequality only
-c for that endpoint; separately retained dressed-lepton bounds differ.
-      if(xiimax.eq.1d0-xbjrk_born(j_fks))
-     $     z=max(z,xbjrk_born(j_fks))
+c The validated endpoint implies z >= xbar, including when a dressed
+c lepton's 1-xbar was retained separately. Enforce the inequality after
+c subtracting xi, without relying on how the bounds were computed.
+      z=max(1d0-xi_i_fks,xbjrk_born(j_fks))
       sqrtz=sqrt(z)
       sqrtborn=sqrt(shat_born)
       tau=tau_born/z
@@ -1326,12 +1323,17 @@ c
       omega=sqrt( (2-xi_i_fks*(1+yijdir))/
      &     (2-xi_i_fks*(1-yijdir)) )
       if (icountevts.ne.0) then
-         tau=tau_born/(1-xi_i_fks)
-         ycm=ycm_born-log(omega)
+c xi has already been checked against both physical beam bounds. At
+c an endpoint the divisions can still overshoot one through roundoff.
+c Keep the fractions, invariant mass and rapidity consistent.
+         xbjrk(1)=min(1d0,
+     $        xbjrk_born(1)/(sqrt(1-xi_i_fks)*omega))
+         xbjrk(2)=min(1d0,
+     $        xbjrk_born(2)*omega/sqrt(1-xi_i_fks))
+         tau=xbjrk(1)*xbjrk(2)
+         ycm=log(xbjrk(1)/xbjrk(2))/2d0
          shat=tau*stot
          sqrtshat=sqrt(shat)
-         xbjrk(1)=xbjrk_born(1)/(sqrt(1-xi_i_fks)*omega)
-         xbjrk(2)=xbjrk_born(2)*omega/sqrt(1-xi_i_fks)
       else
          tau=tau_born
          ycm=ycm_born

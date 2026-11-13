@@ -76,6 +76,12 @@ class TestBornFlowRejection(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Folding requires event projection', result.stdout)
 
+    def test_explicit_sum_requires_event_projection_without_folding(self):
+        result = subprocess.run([str(self.executable), 'no_proj_exp'],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('FKSExplicitSum requires event projection', result.stdout)
+
     def test_calibration_uses_s_weights_and_restores_production(self):
         self.check_mode('calibration')
 

@@ -6630,6 +6630,11 @@ class RunCardNLO(RunCard):
         for ifold in self['folding']:
             if ifold not in [1,2,4,8]: 
                 raise InvalidRunCard("The three 'folding' parameters should be equal to 1, 2, 4, or 8.")
+        if max(self['folding']) > 1 and any(
+                abs(lpp) in (3, 4) for lpp in (self['lpp1'], self['lpp2'])):
+            raise InvalidRunCard("Folding requires event projection, which is not "
+                                 "always available for dressed-lepton beams "
+                                 "(lpp=+/-3 or +/-4). Set folding to [1, 1, 1].")
     # Check MC@NLO-Delta
         if self['mcatnlo_delta'] and not self['parton_shower'].lower() == 'pythia8':
             raise InvalidRunCard("MC@NLO-DELTA only possible with matching to Pythia8")
