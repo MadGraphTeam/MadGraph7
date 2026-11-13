@@ -871,8 +871,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "sample",
             &BeamstrahlungSampler::sample,
-            py::arg("x1"), py::arg("x2"), py::arg("q2"), py::arg("component"),
-            py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"),
+            py::arg("x1"),
+            py::arg("x2"),
+            py::arg("q2"),
+            py::arg("component"),
+            py::arg("u1"),
+            py::arg("u2"),
+            py::arg("u3"),
+            py::arg("u4"),
             pydoc::doc("BeamstrahlungSampler::sample")
         );
 
@@ -3028,13 +3034,17 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const MadnisTraining::Config&,
                 const std::vector<std::shared_ptr<Integrand>>&,
                 const std::optional<ChannelWeightNetwork>&,
-                std::optional<std::uint64_t>>(),
+                std::optional<std::uint64_t>,
+                std::size_t,
+                const nested_vector2<std::size_t>&>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
             py::arg("cwnet"),
             py::arg("seed") = std::nullopt,
+            py::arg("channel_index_offset") = 0,
+            py::arg("channel_resonances") = nested_vector2<std::size_t>{},
             pydoc::doc("MadnisTraining::MadnisTraining")
         )
         .def(
@@ -3070,10 +3080,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const MadnisTraining::Config&,
                 const std::vector<std::shared_ptr<Integrand>>&,
-                const std::optional<ChannelWeightNetwork>&>(),
+                const std::optional<ChannelWeightNetwork>&,
+                const nested_vector2<std::size_t>&>(),
             py::arg("config"),
             py::arg("integrands"),
-            py::arg("cwnet")
+            py::arg("cwnet"),
+            py::arg("channel_resonances") = nested_vector2<std::size_t>{}
         );
 
     py::classh<MultiMadnisTraining>(

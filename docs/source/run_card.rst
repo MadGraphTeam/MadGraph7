@@ -330,6 +330,20 @@ VEGAS grids adapt the phase-space sampling during the survey.
     are dropped. ``-1`` keeps all channels. This helps with processes that have too many
     channels.
 
+``ew_channel_reduction`` (``20``)
+    If a subprocess still has more channels than this, channels with the same tree and
+    resonances that differ only in the bosons of their off-shell propagators (a t-channel
+    photon, Z or W) are merged into one, which takes over their channel weights. Of these,
+    the channels with the fewest non-resonant s-channel propagators are kept, and others
+    only if they map a flavor or a (flavor, resonance) pair no kept channel does. ``-1``
+    keeps all channels. This is the counterpart of ``drop_qcd_s_channel`` for processes with
+    many electroweak diagrams.
+
+``channel_reduction_with_vegas`` (``false``)
+    ``ew_channel_reduction`` is meant for MadNIS, which trains poorly with many channels.
+    By default it is skipped when the run is certain to use VEGAS: ``madnis.enable =
+    false``, or ``"auto"`` for a 2 -> 2 process. ``true`` applies it then as well.
+
 ``invariant_power`` (``0.7``)
     Exponent :math:`p` of the :math:`1/s^p` sampling of time-like invariants.
 
@@ -666,6 +680,12 @@ Channel dropping
 ``channel_dropping_threshold`` (``0.01``), ``channel_dropping_interval`` (``100``)
     Every ``channel_dropping_interval`` batches, channels that contribute less than the
     threshold fraction of the integral are dropped.
+
+``resonance_guard`` (``true``)
+    The channel dropping never drops the last channel that maps a resonance (a propagator
+    that can go on shell, with its decay products) for a flavor. The last channel of a
+    flavor is kept in any case. Without the guard, a resonance with a small share of the cross section, such as
+    H -> W W* in a VBS process, can lose its only channel and end up undersampled.
 
 Networks
 ^^^^^^^^
