@@ -301,6 +301,8 @@ jobs:
 
       - name: "MLM diagram/color handoff for inclusive ttbar and Z multijet samples"
         if: ${{ !cancelled() }}
+        env:
+          MG7_MLM_REQUIRE_DEPS: '1'
         run: |
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"

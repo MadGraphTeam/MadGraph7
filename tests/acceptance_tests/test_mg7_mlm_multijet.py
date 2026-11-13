@@ -71,13 +71,18 @@ def _launch_with_probe():
 
 
 class MG7MLMMultijetTest(unittest.TestCase):
+    def missing_dependency(self, reason):
+        if os.environ.get('MG7_MLM_REQUIRE_DEPS') == '1':
+            self.fail(reason)
+        self.skipTest(reason)
+
     def setUp(self):
         from madgraph.mg7 import bootstrap
         if not bootstrap.madspace_is_installed():
-            self.skipTest('source-built madspace unavailable')
+            self.missing_dependency('source-built madspace unavailable')
         pdf = misc.resolve_lhapdf().find_set(_PDF)
         if not pdf:
-            self.skipTest('%s LHAPDF data not found' % _PDF)
+            self.missing_dependency('%s LHAPDF data not found' % _PDF)
         self.datadir = str(Path(pdf))
         self.path = Path(tempfile.mkdtemp(prefix='mg7_mlm_multijet_'))
         if not os.environ.get('MG7_MLM_KEEP_OUTPUT'):
