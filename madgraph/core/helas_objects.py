@@ -122,6 +122,7 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         
         return [amplitude.get('has_mirror_process'),
                 process.get('id'),
+                process.get_gauge(),
                 process.get('is_decay_chain'),
                 identical_particle_factor,
                 dc,
@@ -555,6 +556,32 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
         """Return the numerical vertex id from a link.vertex_id"""
 
         return vertex_id[1][0]
+
+
+# The propagator form of a polarised massive vector that is decayed further:
+# the brace (the sorted 'polarization' list of the leg) -> the ALOHA tag of the
+# propagator numerator (aloha/create_aloha.py, get_custom_propa; in the FD
+# gauge aloha/aloha_writers.py, FD_POLARIZED_PROPAGATORS). The one place where
+# that correspondence is written: the interface reads it to tell which braces a
+# gauge supports.
+VECTOR_PROPAGATOR_TAGS = {(0,): '1L',       # {0}
+                          (-1, 1): '1T',    # {T}
+                          (1,): '1TR',      # {+}
+                          (-1,): '1TL',     # {-}
+                          (99,): '1A',      # {A}
+                          (9,): '1S',       # {S}
+                          (0, 9): '1LS',    # {0S}
+                          (4,): '1G',       # {G}
+                          (5,): '1H',       # {H}
+                          (6,): '1Q',       # {Q}
+                          (7,): '1W',       # {W}
+                          }
+
+
+def vector_propagator_tag(polarization):
+    """The ALOHA propagator tag (without its 'P') of a polarised massive
+    vector propagator, or None when the brace has no propagator form."""
+    return VECTOR_PROPAGATOR_TAGS.get(tuple(sorted(polarization)))
 
 
 #===============================================================================
@@ -1910,60 +1937,17 @@ class HelasWavefunction(base_objects.PhysicsObject):
             if self.get('polarization'):
                 raise InvalidCmd( 'particle with custom propagator can not have polarization')
         elif self.get('polarization'):
-            if self.get('polarization') == [0]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1L' 
-            elif sorted(self.get('polarization')) == [-1,1]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1T'
-            elif self.get('polarization') == [99]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd('polarization not supported for decay particle')
-                output['propa'] = 'P1A'
-            elif sorted(self.get('polarization')) == [0,9]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1LS'
-            elif self.get('polarization') == [4]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1G'
-            elif self.get('polarization') == [5]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1H'
-            elif self.get('polarization') == [6]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1Q'
-            elif self.get('polarization') == [7]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1W'
-            elif self.get('polarization') == [9]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1S'
-
-            elif self.get('polarization') == [1]:
-                if self.get('spin') == 2:
-                    output['propa'] = 'P1P'
-                elif self.get('spin') == 3:
-                    output['propa'] = 'P1TR'
-                else:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-            elif self.get('polarization') == [-1]:
-                if self.get('spin') == 2:
-                    output['propa'] = 'P1M'
-                elif self.get('spin') == 3:
-                    output['propa'] = 'P1TL'
-                else:
-                    raise InvalidCmd( 'Left polarization not supported for decay particle for spin (2s+1=%s) particles' % self.get('spin'))
-            else:            
+            spin = self.get('spin')
+            tag = vector_propagator_tag(self.get('polarization'))
+            if spin == 2 and self.get('polarization') in ([1], [-1]):
+                output['propa'] = 'P1P' if self.get('polarization') == [1] else 'P1M'
+            elif spin == 3 and tag:
+                output['propa'] = 'P%s' % tag
+            elif self.get('polarization') == [-1] and spin not in (2, 3):
+                raise InvalidCmd( 'Left polarization not supported for decay particle for spin (2s+1=%s) particles' % spin)
+            else:
                 raise InvalidCmd( 'polarization not supported for decay particle')
-            
+
         if flav_mode:
             output['propa'] = 'M%s' % output['propa']
 
@@ -4209,6 +4193,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                self['has_mirror_process'] != other['has_mirror_process'] or \
                self['processes'] and \
                self['processes'][0]['id'] != other['processes'][0]['id'] or \
+               self['processes'][0].get_gauge() != \
+                                    other['processes'][0].get_gauge() or \
                self['processes'][0]['is_decay_chain'] or \
                other['processes'][0]['is_decay_chain'] or \
                self['identical_particle_factor'] != \

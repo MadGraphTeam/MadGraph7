@@ -154,6 +154,10 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         self.systematics = False # allow to run systematics in ouput2.0 mode
         self.boost_event = False
         self.mg5cmd = master_interface.MasterCmd()
+        # the reweighting runs in the gauge of the sample: the one of its
+        # proc_card ('set gauge FD' when it was chosen automatically at
+        # generation time), never a new automatic choice
+        self.mg5cmd.options['auto_gauge'] = False
         if mother:
             self.mg5cmd.options.update(mother.options)
         self.seed = None
@@ -245,6 +249,12 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
             value = self.ask("What is the path to banner", 0, [0], "please enter a path", timeout=0)
             self.lhe_input.banner = open(value).read()
         self.banner = self.lhe_input.get_banner()
+        if self.banner.proc_card_in_one_gauge():
+            # a sample whose processes are in two gauges: the processes are
+            # generated again with the automatic choice, and the one library
+            # of the reweighting gets one gauge (single_gauge_for_output: FD
+            # when every process can be, else unitary)
+            self.mg5cmd.options['auto_gauge'] = True
         
         #get original cross-section/error
         if 'init' not in self.banner:
@@ -2828,7 +2838,10 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         has_ew = re.compile(r'''set\s+EWscheme\s*(\w*)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
+            # 'set gauge X' is run: the matrix elements must be the ones of
+            # the sample; the automatic choice stays off (auto_gauge False)
+            if line.startswith('set') and \
+                                    line.split()[:2] != ['set', 'auto_gauge']:
                 try:
                     mgcmd.exec_cmd(line, printcmd=False, precmd=False,
                                    postcmd=False)
@@ -3585,7 +3598,10 @@ class DensityInterface(ReweightInterface):
         complex_mass = False   
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
+            # 'set gauge X' is run: the matrix elements must be the ones of
+            # the sample; the automatic choice stays off (auto_gauge False)
+            if line.startswith('set') and \
+                                    line.split()[:2] != ['set', 'auto_gauge']:
                 try:
                     mgcmd.exec_cmd(line, printcmd=False, precmd=False,
                                    postcmd=False)

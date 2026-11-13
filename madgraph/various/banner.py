@@ -523,6 +523,17 @@ class Banner(dict):
         self[tag.lower()] = text
     
     
+    def proc_card_in_one_gauge(self):
+        """Replace proc_card by its lines without '--gauge=' options (see
+        ProcCard.strip_gauge_options) and say whether a line had
+        --gauge=FD.  For MadSpin and the reweighting only."""
+
+        if 'mg5proccard' not in self:
+            return False
+        lines, fd = ProcCard.strip_gauge_options(self['mg5proccard'].split('\n'))
+        self.proc_card = ProcCard(lines)
+        return fd
+
     def charge_card(self, tag):
         """Build the python object associated to the card"""
         
@@ -933,6 +944,24 @@ class ProcCard(list):
                 self.remove(line)
                 list.append(self, line)
     
+    @staticmethod
+    def strip_gauge_options(lines):
+        """(lines, had_fd): the lines of a proc_card whose processes are in
+        two gauges ('--gauge=FD' on some process lines) without the option,
+        for the tools regenerating them in one library (MadSpin, the
+        reweighting), and whether a line had --gauge=FD."""
+
+        out = []
+        fd = False
+        for line in lines:
+            words = line.split()
+            if line.strip().startswith(('generate', 'add process')) and \
+                    any(w.startswith('--gauge=') for w in words):
+                fd = fd or '--gauge=FD' in words
+                line = ' '.join(w for w in words if not w.startswith('--gauge='))
+            out.append(line)
+        return out, fd
+
     def append(self, line):
         """"add a line in the proc_card perform automatically cleaning"""
         
@@ -2060,6 +2089,9 @@ class ProcCharacteristic(ConfigFile):
         self.add_param('single_color', True)
         self.add_param('nlo_mixed_expansion', True)
         self.add_param('gauge', 'U')
+        # the P directories written in another gauge than 'gauge', as
+        # 'P1_uux_wpwm=FD' (an output whose processes are in two gauges)
+        self.add_param('gauge_of_dirs', [], typelist=str)
         # single power of alpha_s in |M|^2 when it is the same for every diagram
         # (a "single value of alpha_s" process); -1 when it is not uniform. Used
         # to reconstruct the LO reweighting info for systematics on outputs that
@@ -5644,7 +5676,9 @@ class RunCardLO(RunCard):
         # here pick strategy 2 if only one QCD color flow
         # and for pure multi-jet case
         jet_id = [21] + list(range(1, self['maxjetflavor']+1))
-        if proc_characteristic['gauge'] != 'FD' and proc_characteristic['single_color']:
+        fd_somewhere = proc_characteristic['gauge'] == 'FD' or any(
+            d.endswith('=FD') for d in proc_characteristic['gauge_of_dirs'])
+        if not fd_somewhere and proc_characteristic['single_color']:
             self['sde_strategy'] = 2
             #for pure lepton final state go back to sde_strategy=1
             pure_lepton=True
