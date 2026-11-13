@@ -1424,7 +1424,7 @@ c Use the same run-level choice for the event and every counterevent.
       use fks_phase_space_data, only: xinorm_ev,xij_aor,xij_kperp
       use mc_native_context, only: native_mapping
       implicit none
-      integer i_fks,j_fks,idir,i,iborn
+      integer i_fks,j_fks,idir,i,iborn,hard_leg
       double precision xjac,x(3),xp(0:3,nexternal),xi_i_fks,y_ij_fks,phi_i_fks,p_born(0:3,-max_branch:nexternal-1),shat,
      $     sqrtshat,xpswgt,stot,tau,ycm,xbjrk(2),tau_born,ycm_born,xbjrk_born(2),pred(0:3),z,sqrtborn,xiimax,xiimin,
      $     xinorm,sstiny,cctiny,pplus,pminus,exp_y
@@ -1433,7 +1433,7 @@ c Use the same run-level choice for the event and every counterevent.
       type(isr_recoil_boost) recoil_boost
       double precision pi,stiny,ctiny
       parameter(pi=3.1415926535897932d0,stiny=1d-6,ctiny=5d-7)
-      logical softtest,colltest
+      logical softtest,colltest,one_body
       common/sctests/softtest,colltest
       double complex ximag
       parameter(ximag=(0d0,1d0))
@@ -1449,17 +1449,35 @@ c Use the same run-level choice for the event and every counterevent.
          cctiny=0d0
       endif
       z=1d0-xi_i_fks
+      shat=tau*stot
+      sqrtshat=sqrt(shat)
+      hard_leg=nincoming+1
+      if(hard_leg.eq.i_fks)hard_leg=hard_leg+1
+      one_body=nexternal.eq.nincoming+2.and.pmass(hard_leg).gt.0d0
+     $     .and.pmass(i_fks).eq.0d0
+      if(one_body)then
+c Keep the known Born mass in z and tau independently. Subtracting xi
+c from one loses relative precision at hard ISR points; a boosted soft
+c energy can also put tau*z below the exact one-particle threshold.
+         z=pmass(hard_leg)**2/shat
+c An exactly soft point can straddle threshold by an incoming-energy ulp.
+         if(z.gt.1d0.and.z-1d0.le.16d0*epsilon(1d0))z=1d0
+      endif
       if(z.le.0d0.or.z.gt.1d0)then
          xjac=-102d0
          return
       endif
       tau_born=tau*z
       ycm_born=ycm+idir*log(z)/2d0
-      shat=tau*stot
-      sqrtshat=sqrt(shat)
       sqrtborn=sqrt(shat*z)
       xbjrk_born=xbjrk
       xbjrk_born(j_fks)=z*xbjrk(j_fks)
+      if(one_body)then
+         tau_born=pmass(hard_leg)**2/stot
+         sqrtborn=pmass(hard_leg)
+         xbjrk_born(j_fks)=tau_born/xbjrk(3-j_fks)
+         ycm_born=log(xbjrk_born(1)/xbjrk_born(2))/2d0
+      endif
 
       x(2)=((1d0-y_ij_fks)/2d0-cctiny)/(1d0-cctiny)
       if(x(2).lt.-1d-12.or.x(2).gt.1d0+1d-12)then
@@ -1490,6 +1508,11 @@ c with light-cone components to retain the smaller beam at large y.
       exp_y=exp(ycm_born)
       call prepare_isr_recoil_boost(xi_i_fks,y_ij_fks,phi_i_fks,
      &     recoil_boost)
+      if(one_body)then
+c The single hard Born momentum is exactly at rest in its own CM.
+         p_born(:,nincoming+1)=0d0
+         p_born(0,nincoming+1)=sqrtborn
+      else
       do i=3,nexternal
          if(i.eq.i_fks)cycle
          iborn=i
@@ -1512,6 +1535,7 @@ c when undoing a large Born rapidity. Its mass is supplied by the model.
          call apply_isr_recoil_boost(pred,p_born(0,iborn),
      &        recoil_boost,idir,.true.,pmass(i)**2)
       enddo
+      endif
       p_born(0,1:2)=sqrtborn/2d0
       p_born(1:2,1:2)=0d0
       p_born(3,1)=p_born(0,1)

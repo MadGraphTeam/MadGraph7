@@ -1508,7 +1508,7 @@ c histories only consume momenta and active data, so skip their snapshot.
       double precision xjac0,xpswgt0,xx(3),p_cms(0:3,nexternal),stot
      $     ,tau_born,ycm_born,xbjrk_born(2),pb(0:3,
      $     -max_branch:nexternal-1),p_lab(0:3,nexternal)
-      integer i_fks,j_fks
+      integer i_fks,j_fks,hard_leg
       common/fks_indices/i_fks,j_fks
       double precision pmass(nexternal)
       common /to_mass/pmass
@@ -1548,15 +1548,25 @@ c a direct inversion in the lab would use a different transverse basis.
 
       call boost_n1_to_its_cms(p_lab,p_cms,y_lab_to_cms)
 
-      xi_i_fks=get_xi_from_p(i_fks,p_cms)
-      y_ij_fks=get_yij_from_p(i_fks,j_fks,p_cms,
-     $     p_i_fks_cnt(:,0))
-      phi_i_fks=get_phi_from_p(i_fks,j_fks,p_cms)
-
       ycm=log(xbjrk(1)/xbjrk(2))/2d0
       tau=xbjrk(1)*xbjrk(2)
       shat=tau*stot
       sqrtshat=sqrt(shat)
+c A one-particle Born with massless radiation fixes (p1+p2-k)^2 to its
+c model mass. For hard ISR recover the small 1-xi from this invariant;
+c soft radiation retains its energy, avoiding subtraction near xi=0.
+      xi_i_fks=get_xi_from_p(i_fks,p_cms)
+      hard_leg=nincoming+1
+      if(hard_leg.eq.i_fks)hard_leg=hard_leg+1
+      if(j_fks.le.nincoming.and.nexternal.eq.nincoming+2.and.
+     $     pmass(hard_leg).gt.0d0.and.pmass(i_fks).eq.0d0)then
+         if(pmass(hard_leg)**2.lt.shat/2d0)
+     $        xi_i_fks=1d0-pmass(hard_leg)**2/shat
+      endif
+      y_ij_fks=get_yij_from_p(i_fks,j_fks,p_cms,
+     $     p_i_fks_cnt(:,0))
+      phi_i_fks=get_phi_from_p(i_fks,j_fks,p_cms)
+
       if (j_fks.gt.nincoming) then
          if(resonance_recoil)then
             call invert_momenta_resonance_final(p_cms,
