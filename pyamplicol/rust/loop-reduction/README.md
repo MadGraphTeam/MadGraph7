@@ -57,7 +57,8 @@ aligns Symbolica with the application's shared core and uses:
   a non-zero constant relation, i.e. exactly degenerate kinematics, now
   evaluates the master families (A0/B0) its base plan never created, which
   before kept a previous lane's values or zero and were returned as a wrong
-  `Success`, e.g. a gg -> HH top-loop box at threshold), behind the cargo feature `tir` (below).
+  `Success`, e.g. a gg -> HH top-loop box at threshold; regression test
+  `tests/v2_tir_relation_variants.rs`), behind the cargo feature `tir` (below).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
 - oneloopmaster `bd703d09a78f7849a6b86a07096e6f222fc01193` (its main: per-evaluator
