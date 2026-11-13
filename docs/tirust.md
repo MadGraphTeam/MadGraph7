@@ -197,5 +197,7 @@ The common benchmark uses `MLStabThres=1e-6` for every reducer and both revision
 the production default remains `1e-3`. Independent numerical comparisons and QP
 adjudication supplement each backend's own error estimate. TIRust QP transports
 Fortran binary128 inputs without a DP conversion, evaluates at 256-bit MPFR
-precision and contracts with QP numerator coefficients when enabled. Higher
+precision (a lane refused there on Gram conditioning is evaluated once more at
+512 bits from the same inputs) and contracts with QP numerator coefficients
+when enabled. Higher
 working precision alone is not a guarantee of accuracy at singular kinematics.

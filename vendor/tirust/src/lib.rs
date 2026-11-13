@@ -25,6 +25,13 @@ const ERROR: i32 = 2;
 const UNSUPPORTED: i32 = 3;
 const RECORD: usize = 64;
 const MP_BITS: u32 = 256;
+/// Working precision of the QP rescue: a lane that the 256-bit gate refuses
+/// on conditioning is evaluated once more at this precision.
+const MP_RESCUE_BITS: u32 = 512;
+/// A QP workspace of `bits` accepts conditioning down to
+/// `2^-(bits - MP_ACCURACY_BITS)`: rounding stays below 2^-120 of the result,
+/// above binary128's 113 bits. At 256 bits the limit is 2^-136.
+const MP_ACCURACY_BITS: u32 = 120;
 const DEFAULT_BUDGET: u64 = 268_435_456;
 const DP_ROUTE_FIELDS: usize = 10;
 const DP_ROUTE_STATS_COUNT: usize = 2 * DP_ROUTE_FIELDS;
@@ -46,7 +53,7 @@ struct State {
     plans: HashMap<Key, DirectReductionPlan>,
     dp_plans: HashMap<Key, TensorReductionPlan>,
     dp: HashMap<(Key, bool), TensorWorkspace<f64>>,
-    mp: HashMap<Key, DirectWorkspace<Float>>,
+    mp: HashMap<(Key, u32), DirectWorkspace<Float>>,
     store: TensorStore,
     /// Subintegral store of MadLoop's independent direction checks. It never
     /// shares an entry with the primary store, so a check recomputes every
@@ -60,7 +67,7 @@ struct State {
     #[cfg(feature = "poles-only")]
     pole_dp: HashMap<Key, DirectPoleWorkspace<f64>>,
     #[cfg(feature = "poles-only")]
-    pole_mp: HashMap<Key, DirectPoleWorkspace<Float>>,
+    pole_mp: HashMap<(Key, u32), DirectPoleWorkspace<Float>>,
     #[cfg(feature = "poles-only")]
     pole_store: PoleTensorStore,
 }
@@ -249,24 +256,32 @@ impl State {
             #[cfg(not(feature = "poles-only"))]
             return Ok((UNSUPPORTED, Vec::new()));
         }
-        if !self.mp.contains_key(&key) {
-            let mut workspace = self.plans[&key]
-                .workspace(Float::new(MP_BITS))
-                .map_err(|e| e.to_string())?;
-            workspace.set_input_precision(113);
-            // 256-bit arithmetic with substantial headroom above binary128.
-            // The external MadLoop check still decides numerical acceptance.
-            workspace.set_stability_threshold(Float::with_val(MP_BITS, 2).pow(136).inv());
-            self.mp.insert(key, workspace);
-        }
-        // MPFR store reuse is not supported by TIRust; do not claim DP hits as QP reuse.
-        let workspace = self.mp.get_mut(&key).unwrap();
-        let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
-        match result.lane(0) {
-            Ok(values) => Ok((SUCCESS, pack_mp(values, mode.poles, 4)?)),
-            Err(status) => {
-                set_error(&format!("TIRust QP: {status:?}"));
-                Ok((lane_status(status), Vec::new()))
+        // 256 bits first; a lane refused on conditioning that the rescue
+        // precision admits is evaluated once more at MP_RESCUE_BITS.
+        let (mut bits, mut batch) = (MP_BITS, batch);
+        loop {
+            if !self.mp.contains_key(&(key, bits)) {
+                let mut workspace = self.plans[&key]
+                    .workspace(Float::new(bits))
+                    .map_err(|e| e.to_string())?;
+                workspace.set_input_precision(113);
+                // The external MadLoop check still decides numerical acceptance.
+                workspace.set_stability_threshold(mp_threshold(bits));
+                self.mp.insert((key, bits), workspace);
+            }
+            // MPFR store reuse is not supported by TIRust; do not claim DP hits as QP reuse.
+            let workspace = self.mp.get_mut(&(key, bits)).unwrap();
+            let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
+            match result.lane(0) {
+                Ok(values) => return Ok((SUCCESS, pack_mp(values, mode.poles, 4)?)),
+                Err(LaneStatus::Unstable(_)) if bits == MP_BITS && mp_rescuable(workspace.last_conditions()[0]) => {
+                    bits = MP_RESCUE_BITS;
+                    batch = at_precision(batch, bits);
+                }
+                Err(status) => {
+                    set_error(&format!("TIRust QP ({bits} bits): {status:?}"));
+                    return Ok((lane_status(status), Vec::new()));
+                }
             }
         }
     }
@@ -329,25 +344,29 @@ impl State {
         batch: KinematicsBatch<Float>,
         mode: Mode,
     ) -> Result<(i32, Vec<u8>)> {
-        if !self.pole_mp.contains_key(&key) {
-            let mut workspace = self.plans[&key]
-                .pole_workspace(Float::new(MP_BITS))
-                .map_err(|e| e.to_string())?;
-            workspace.set_input_precision(113);
-            workspace.set_stability_threshold(Float::with_val(MP_BITS, 2).pow(136).inv());
-            self.pole_mp.insert(key, workspace);
-        }
-        let result = self
-            .pole_mp
-            .get_mut(&key)
-            .unwrap()
-            .reduce_batch(&batch)
-            .map_err(|e| e.to_string())?;
-        match result.lane(0) {
-            Ok(values) => Ok((SUCCESS, pack_mp(values, mode.poles, 3)?)),
-            Err(status) => {
-                set_error(&format!("TIRust poles QP: {status:?}"));
-                Ok((lane_status(status), Vec::new()))
+        // Same precision ladder as the finite QP path.
+        let (mut bits, mut batch) = (MP_BITS, batch);
+        loop {
+            if !self.pole_mp.contains_key(&(key, bits)) {
+                let mut workspace = self.plans[&key]
+                    .pole_workspace(Float::new(bits))
+                    .map_err(|e| e.to_string())?;
+                workspace.set_input_precision(113);
+                workspace.set_stability_threshold(mp_threshold(bits));
+                self.pole_mp.insert((key, bits), workspace);
+            }
+            let workspace = self.pole_mp.get_mut(&(key, bits)).unwrap();
+            let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
+            match result.lane(0) {
+                Ok(values) => return Ok((SUCCESS, pack_mp(values, mode.poles, 3)?)),
+                Err(LaneStatus::Unstable(_)) if bits == MP_BITS && mp_rescuable(workspace.last_conditions()[0]) => {
+                    bits = MP_RESCUE_BITS;
+                    batch = at_precision(batch, bits);
+                }
+                Err(status) => {
+                    set_error(&format!("TIRust poles QP ({bits} bits): {status:?}"));
+                    return Ok((lane_status(status), Vec::new()));
+                }
             }
         }
     }
@@ -654,6 +673,24 @@ fn parse_records(data: &[u8]) -> Result<Vec<Float>> {
             Ok(value)
         })
         .collect()
+}
+/// Stability threshold of a QP workspace of `bits` (see [`MP_ACCURACY_BITS`]).
+fn mp_threshold(bits: u32) -> Float {
+    Float::with_val(bits, 2).pow(u64::from(bits - MP_ACCURACY_BITS)).inv()
+}
+/// Whether a lane the 256-bit QP gate refused, with conditioning estimate
+/// `condition` (`None`: not refused on conditioning; zero: an exactly
+/// singular pivot), may pass the [`MP_RESCUE_BITS`] gate.
+fn mp_rescuable(condition: Option<f64>) -> bool {
+    condition.is_some_and(|c| c > 0.0 && c >= 2f64.powi(-((MP_RESCUE_BITS - MP_ACCURACY_BITS) as i32)))
+}
+/// The same exact values at `bits` of precision.
+fn at_precision(mut batch: KinematicsBatch<Float>, bits: u32) -> KinematicsBatch<Float> {
+    for value in &mut batch.values {
+        value.re.set_prec(bits);
+        value.im.set_prec(bits);
+    }
+    batch
 }
 fn mp_batch(
     n: usize,
@@ -1216,6 +1253,141 @@ mod tests {
         let values = parse_records(&partial).unwrap();
         assert_eq!(values[0], Float::with_val(MP_BITS, 4));
         assert_eq!(values[6], Float::new(MP_BITS));
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    /// A genuine-QP box (N=4, rank 4) whose Gram conditioning, about 1.9e-13,
+    /// the 256-bit gate refuses (1.9e-13^4 < 2^-136). Captured from MadLoop's
+    /// loop-induced g g > h h (loop_sm) at a small-Gram stress point
+    /// (pT = 4.8e-4 GeV), where CutTools, Ninja and NinjaRS in QP agree.
+    const SMALL_GRAM_BOX: [&[&str]; 4] = [
+        // shifts
+        &[
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "4.999999999999999431565811391919851303101E+0002", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "4.999999999999999431565811391919851303101E+0002",
+            "9.999999999999998863131622783839702606201E+0002", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "4.999999999999999431565811391919851303101E+0002", "4.841229182758463914747204537292191162123E-0004",
+            "0.000000000000000000000000000000000000000E+0000", "4.841229182756849904806396744180584968736E+0002",
+        ],
+        // invariants
+        &[
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "9.999999999999997726263245567679534459373E+0005", "1.562500000000000000000000000000000000000E+0004",
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "-2.520817243149508709262512888969985876317E+0002",
+            "9.999999999999997726263245567679534459373E+0005", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "1.562500000000000000000000000000000000000E+0004",
+            "1.562500000000000000000000000000000000000E+0004", "-2.520817243149508709262512888969985876317E+0002",
+            "1.562500000000000000000000000000000000000E+0004", "0.000000000000000000000000000000000000000E+0000",
+        ],
+        // masses
+        &[
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+        ],
+        // scale
+        &[
+            "1.000000000000000000000000000000000000000E+0006",
+        ],
+    ];
+    fn small_gram_box(c: *mut Context, finite: i32, cache: i32) -> (i32, Vec<u8>) {
+        let [p, s, m, scale] = SMALL_GRAM_BOX.map(|values| {
+            let mut bytes = vec![b' '; values.len() * RECORD];
+            for (i, value) in values.iter().enumerate() {
+                bytes[i * RECORD..i * RECORD + value.len()].copy_from_slice(value.as_bytes());
+            }
+            bytes
+        });
+        let mut output = vec![0; 8 * 70 * RECORD];
+        let status = unsafe {
+            ml_tirust_evaluate_mp(
+                c,
+                4,
+                4,
+                p.as_ptr(),
+                p.len(),
+                s.as_ptr(),
+                s.len(),
+                m.as_ptr(),
+                m.len(),
+                scale.as_ptr(),
+                scale.len(),
+                output.as_mut_ptr(),
+                output.len(),
+                0,
+                finite,
+                0,
+                cache,
+            )
+        };
+        (status, output)
+    }
+    #[test]
+    fn qp_gram_refusal_is_evaluated_again_at_512_bits() {
+        use symbolica::domains::float::RealLike;
+        let key = dimensions(4, 4).unwrap().0;
+        let c = handle();
+        // A well-conditioned QP call never builds a rescue workspace.
+        qp_tadpole(c, "4", 0, 1, 0, 0);
+        assert!(unsafe { context(c).unwrap() }.state.lock().unwrap().mp.keys().all(|&(_, bits)| bits == MP_BITS));
+        let (status, output) = small_gram_box(c, 1, 0);
+        assert_eq!(status, SUCCESS);
+        let mut state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+        assert!(state.mp.contains_key(&(key, MP_RESCUE_BITS)));
+        // The 256-bit workspace alone refuses the lane on its Gram conditioning.
+        let [p, s, m, scale] = SMALL_GRAM_BOX.map(|values| {
+            let mut bytes = vec![b' '; values.len() * RECORD];
+            for (i, value) in values.iter().enumerate() {
+                bytes[i * RECORD..i * RECORD + value.len()].copy_from_slice(value.as_bytes());
+            }
+            bytes
+        });
+        let batch = mp_batch(4, &p, &s, &m, &scale).unwrap();
+        let workspace = state.mp.get_mut(&(key, MP_BITS)).unwrap();
+        let refused = workspace.reduce_batch(&batch).unwrap();
+        assert!(matches!(refused.lane(0), Err(LaneStatus::Unstable(_))));
+        let condition = workspace.last_conditions()[0].unwrap();
+        assert!(condition > 0.0 && condition < 2f64.powi(-136) && mp_rescuable(Some(condition)));
+        // The accepted 512-bit tensor agrees with a 1024-bit evaluation of the
+        // same exact inputs far below binary128's resolution.
+        let mut reference = state.plans[&key].workspace(Float::new(1024)).unwrap();
+        reference.set_input_precision(113);
+        reference.set_stability_threshold(mp_threshold(1024));
+        let values = reference.reduce_batch(&at_precision(batch, 1024)).unwrap();
+        let expected = parse_records(&pack_mp(values.lane(0).unwrap(), 0, 4).unwrap()).unwrap();
+        let got = parse_records(&output).unwrap();
+        let scale = expected.iter().map(|v| v.to_f64().abs()).fold(0.0, f64::max);
+        assert!(scale > 0.0);
+        for (g, e) in got.iter().zip(&expected) {
+            assert!((g.clone() - e).to_f64().abs() <= 1e-30 * scale);
+        }
+        drop(state);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[cfg(feature = "poles-only")]
+    #[test]
+    fn qp_pole_only_small_gram_box_matches_full_poles() {
+        use symbolica::domains::float::RealLike;
+        let c = handle();
+        let (full_status, full) = small_gram_box(c, 1, 0);
+        let (pole_status, poles) = small_gram_box(c, 0, 0);
+        assert_eq!((full_status, pole_status), (SUCCESS, SUCCESS));
+        // Same pole slots 0-2 (slot 3, the finite part, is not computed in pole-only mode).
+        let (full, poles) = (parse_records(&full).unwrap(), parse_records(&poles).unwrap());
+        let nc = full.len() / 8;
+        for slot in 0..3 {
+            for i in 2 * slot * nc..2 * (slot + 1) * nc {
+                let scale = full[2 * slot * nc..2 * (slot + 1) * nc].iter().map(|v| v.to_f64().abs()).fold(0.0, f64::max);
+                assert!((full[i].clone() - &poles[i]).to_f64().abs() <= 1e-30 * scale, "slot {slot}");
+            }
+        }
+        // The pole-only executor refuses at 256 bits too and is rescued at 512.
+        let key = dimensions(4, 4).unwrap().0;
+        assert!(unsafe { context(c).unwrap() }.state.lock().unwrap().pole_mp.contains_key(&(key, MP_RESCUE_BITS)));
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
     }
     #[test]

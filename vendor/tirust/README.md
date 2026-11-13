@@ -60,6 +60,11 @@ existing installation with this policy.
 
 Genuine Fortran binary128 inputs use 64-byte, 40-significant-digit ASCII
 records, parsed at 113 bits and then widened to 256-bit MPFR. Signed zero is kept.
+A 256-bit QP workspace accepts conditioning down to 2^-136, which keeps its
+rounding near 2^-120 of the result. A lane that this gate refuses on
+conditioning (small Gram determinants: loop-induced g g > h h at small pT) is
+evaluated once more from the same exact inputs at 512 bits, with gate 2^-392.
+Exactly singular pivots and every other failure are not retried.
 Fortran contracts the returned moments in binary128 before the final amplitude
 is rounded to the existing MadLoop result type. Double-double is not called
 quadruple precision. Numerical working precision does not by itself certify the
@@ -161,11 +166,12 @@ cache hits bypass the bridge and are outside their scope. A nonzero unreported
 bucket makes attempted-tier totals lower bounds.
 
 Tier106 is DD. Tier256/512 process binary64 inputs with a DP numerator. None of
-these routes is the genuine binary128-input, 256-bit QP interface. The
-`TIRust DP` amplitude counter and return code `213` (MadLoop return-code format
-2: TIRust reports `U=3`, shared with IREGI, with `T` for precision; format 1
-used `219`) identify the DP-input interface; they do not prove native-only
-tensor evaluation. Genuine QP keeps its own counter and return code `323`.
+these routes is the genuine binary128-input QP interface (256 bits, with one
+512-bit retry). The `TIRust DP` amplitude counter and return code `213`
+(MadLoop return-code format 2: TIRust reports `U=3`, shared with IREGI, with
+`T` for precision; format 1 used `219`) identify the DP-input interface; they
+do not prove native-only tensor evaluation. Genuine QP keeps its own counter
+and return code `323`.
 
 The generated `GET_TIRUST_DP_ROUTE_STATISTICS` routine returns zero counters and
 status `UNSUPPORTED` when an older ABI-1 installation lacks this optional

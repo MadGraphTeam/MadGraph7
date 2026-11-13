@@ -47,7 +47,9 @@ Updated 2026-11-13. The current results are in
   - `tirust_capture/` captures and replays bridge calls; it is the
     double-double gate study.
   - `tirust_stress.py` handles physical and CMS stress (`tirust_cms_stress.py`).
-    It resumes after a reducer STOPs or hangs.
+    It resumes after a reducer STOPs or hangs. `tirust_stress_rerun.py` reruns
+    a campaign's recorded stress lanes against another bridge library, for
+    bridge-only changes.
   - `tirust_stability.py` produces the Appendix-C plots.
   - `tirust_provenance.py` classifies every point by arithmetic route and checks
     cache-off and budget equivalence.
@@ -85,11 +87,14 @@ QP rescue is `323` (format 1 used `219` and `323`).
   - One is CMS `forward-1e-08`, where CutTools then hangs.
   - **CutTools STOP:** a CutTools fallback can `STOP` the process (QCD ZZgg
     soft-collinear point).
-  - **Genuine-QP refusals:** TIRust's genuine-QP interface refuses 48 rank-4
-    box tensors at the loop-induced H H small-Gram point, where the DP-input
-    path with 512-bit tiers succeeds. Unchecked forced QP then returns an
-    incomplete sum; automatic mode rejects it through the QP failure latch.
-    Reported upstream with a trace of the exact inputs.
+  - **Genuine-QP refusals (fixed in the bridge since):** TIRust's genuine-QP
+    interface refused 48 rank-4 box tensors at the loop-induced H H small-Gram
+    point. The bridge now retries such lanes once at 512 bits (patch from the
+    TIRust upstream session). A stress rerun on the patched bridge
+    ([`qp-rescue-512.md`](docs/benchmarkfolder/campaigns/tirust-9a781998-1/summaries/qp-rescue-512.md))
+    matches NinjaRS QP at that point and lets TIRust accept the EW t t̄ γ
+    threshold point (the references disagree there). Everything else is
+    unchanged. The final-pin requalification covers the patched bridge.
 - **Stability:** every reducer has 100/100 usable estimates. TIRust's raw-DP
   availability is now 100/100 for Zgg and ZZgg; the earlier pilot had 24 and 0.
 - **Provisional stock O3 Zggg profile:** TIRust/NinjaRS 1.177, initialization
@@ -122,8 +127,6 @@ QP rescue is `323` (format 1 used `219` and `323`).
 3. **Optional upstream improvements.**
    - TIRust's handling of exactly singular Gram matrices from `OSThres`-zeroed
      CMS invariants.
-   - A 512-bit tier for TIRust's genuine-QP interface, which refuses the H H
-     small-Gram boxes that the DP-input path evaluates.
    - A CutTools STOP or hang is a MadLoop/CutTools limitation; it can abort a
      TIRust-first chain that falls back to CutTools.
 4. **Review.** Finish the review of PR #437 (stacked on NinjaRS PR #315) after
