@@ -62,9 +62,16 @@ endif
 # Bound states: the soft current of a P-wave quarkonium (born_onia.f is
 # written for such a Born only)
 ifneq ("$(wildcard born_onia.f)","")
-    ONIA_SOFT_OBJECTS = born_onia.o fks_onia_soft.o
+    ONIA_SOFT_OBJECTS = born_onia.o fks_onia_soft.o fks_onia_eikonal.o
 else
     ONIA_SOFT_OBJECTS = fks_onia_soft_dummy.o
+endif
+# Bound states: which legs are onia (onia_legs.f is written for processes
+# with bound states only), used by the FKS partition (fks_Sij.f)
+ifneq ("$(wildcard onia_legs.f)","")
+    ONIA_SOFT_OBJECTS += onia_legs.o
+else
+    ONIA_SOFT_OBJECTS += onia_legs_dummy.o
 endif
 
 # Active point data, entry points, sampling, radiation maps and kernels.

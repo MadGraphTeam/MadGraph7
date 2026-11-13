@@ -3594,6 +3594,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
             max_jamp = max(max_jamp, jamp)
         
         
+        # flows without any term are zero, as in the expanded lines above: all
+        # of them (a colour or C-parity forbidden process), and the trailing
+        # ones of bound states, whose flows lose the diagrams that vanish by
+        # C parity (HelasMatrixElement.get_onia_c_forbidden_amplitudes)
+        if max_jamp == 0 or (isinstance(col_amps, helas_objects.HelasMatrixElement)
+                             and col_amps.get_nonia()):
+            max_jamp = max(max_jamp, len(color_amplitudes))
         for i in range(1,max_jamp+1):
             name = JAMP_format % i
             if not jamp_res[i]:

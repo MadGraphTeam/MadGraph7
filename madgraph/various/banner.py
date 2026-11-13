@@ -6352,6 +6352,8 @@ class RunCardNLO(RunCard):
             comment="\'-1\' is based on CKKW back clustering (following feynman diagram).\n \'1\' is the sum of transverse energy.\n '2' is HT (sum of the transverse mass)\n '3' is HT/2, '0' allows to use the user_hook definition (need to be defined via custom_fct entry) ")
         self.add_param('fixed_qes_scale', False, hidden=True)
         self.add_param('qes_ref_fixed', -1.0, hidden=True, energy=True)
+        self.add_param('mu_nrqcd_ref_fixed', -1.0, hidden=True, energy=True,
+                       comment='NRQCD scale of the LDME counterterms of a P-wave quarkonium; -1 means (m_Q+m_Qbar)/2')
         self.add_param('mur_over_ref', 1.0)
         self.add_param('muf_over_ref', 1.0)                       
         self.add_param('muf1_over_ref', -1.0, hidden=True)                       

@@ -63,6 +63,11 @@ c      include "fks.inc"
       save ijskip
 
       logical setsijzero
+c Bound states (onia_legs.f): an onium is a soft partner of the gluons
+c (colour links, P-wave soft current) but owns no FKS sector, so it is
+c not part of the partition
+      logical fks_onia_leg
+      external fks_onia_leg
 
       double precision tiny,zero,one
       parameter (tiny=1.d-6)
@@ -184,6 +189,7 @@ c         firsttime=.false.
          kk = i
          ll = fks_j_from_i(i,j)
          if (nincoming.ne.2 .and. ll.le.nincoming) cycle
+         if (fks_onia_leg(kk) .or. fks_onia_leg(ll)) cycle
          if(ijskip(kk,ll).ne.1)goto 222
          if(is_aorg(ll).and..not.is_aorg(kk).and.
      #      ll.gt.nincoming)then

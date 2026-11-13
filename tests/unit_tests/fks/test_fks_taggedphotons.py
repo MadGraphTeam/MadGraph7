@@ -241,6 +241,8 @@ class TestTaggedPhotonStatistics(unittest.TestCase):
                     ('fks_Sij', 'get_dkl_Sij', 'get_cms_energy',
                      'get_cms_costh_fks', 'costh_fks', 'h_damp')]
         routines.append(fortran_routine(self.root / 'Template/NLO/Source/kin_functions.f', 'dot'))
+        # fks_Sij leaves bound states out of the partition (onia_legs.f); no onia here
+        routines.append(fortran_routine(template / 'onia_legs_dummy.f', 'fks_onia_leg'))
         (work / 'partition.f').write_text('\n'.join(routines))
         source = PARTITION_DRIVER.replace('@PHOTONS@', ints(photons))
         for key, values in (('PAIR_I', [pair[0] for pair in pairs]),

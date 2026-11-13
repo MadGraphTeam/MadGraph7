@@ -328,7 +328,10 @@ def to_physical_fks(real_legs, model, fks_infos, fks_j_from_i, colors, particle_
             set(physical_number(legs, j) for j in js if j - 1 not in hidden))
     new_colors = [physical_colour(l, model) for l in plegs]
     new_tags = [particle_tags[pos] for pos in range(len(legs)) if pos not in hidden]
-    new_charges = [charges[pos] for pos in range(len(legs)) if pos not in hidden]
+    # the charge of a bound state is that of its two constituents together
+    second = dict(pairs)
+    new_charges = [charges[pos] + (charges[second[pos]] if pos in second else 0)
+                   for pos in range(len(legs)) if pos not in hidden]
     return new_infos, new_j, new_colors, new_tags, new_charges
 
 

@@ -116,6 +116,57 @@ class TestFKSOniaGeneration(unittest.TestCase):
         real = [r for r in born.real_amps if r.process['legs'][-1]['id'] == 21][0]
         self.assertEqual(sorted(real.fks_j_from_i[5]), [1, 2, 3])
 
+    def test_missing_singular_borns(self):
+        """A real whose soft or collinear region has no generated Born is
+        reported (MadFKS would not subtract it): with gluons only in the
+        initial state, d g > chic0 d g needs d g > chic0 d (soft gluon) and
+        d d~ > chic0 g (final d || initial g). With every massless flavour
+        in p and j, and for a coupling of another order (e+ e- > a in a QCD
+        calculation), nothing is reported."""
+        self.generate('g g > chic0(1|3P01) g [real=QCD]')
+        found = self.cmd._fks_multi_proc.warn_missing_singular_borns()
+        self.assertIn(('d g > chic0(1|3P01) d g', 'd g > chic0(1|3P01) d'), found)
+        self.assertIn(('d g > chic0(1|3P01) d g', 'd d~ > chic0(1|3P01) g'), found)
+        for real, born in found:
+            self.assertNotEqual(born.split('>')[0].split(), ['g', 'g'])
+        self.generate('u u~ > z g [real=QCD]')
+        self.assertIn(('u g > z u g', 'u g > z u'),
+                      self.cmd._fks_multi_proc.warn_missing_singular_borns())
+        self.generate('u u~ > e+ e- [real=QCD]')
+        self.assertEqual(self.cmd._fks_multi_proc.warn_missing_singular_borns(), [])
+        self.cmd.exec_cmd('define p = g u d s u~ d~ s~')
+        self.cmd.exec_cmd('define j = g u d s u~ d~ s~')
+        self.generate('p p > chic0(1|3P01) j [real=QCD]')
+        self.assertEqual(self.cmd._fks_multi_proc.warn_missing_singular_borns(), [])
+
+    def test_c_parity_zeros(self):
+        """Diagrams whose onium projection vanishes by C parity or colour are
+        left out of the JAMPs (HelasMatrixElement.get_onia_c_forbidden_
+        amplitudes): all of q g > J/psi[1] q (two gluons make a C-even
+        singlet), none of q q~ > 3S1[8], the two-gluon and s-channel diagrams
+        of g g > J/psi[1] g but not its six three-gluon orderings, the own-line
+        diagrams of g g > J/psi J/psi but not the crossed ones, the photon but
+        not the Z diagrams of u u~ > (tau tau)[1S0] g; for an auxiliary S wave
+        (states=) the rule of that state."""
+        import madgraph.core.helas_objects as helas_objects
+        cases = [('u g > Jpsi(1|3S11) u', 5, 5), ('u u~ > hc(1|1P11) g', 5, 5),
+                 ('g g > hc(1|1P11)', 3, 3), ('u u~ > Jpsi(1|3S18)', 1, 0),
+                 ('u u~ > etac(1|1S08)', 1, 1), ('g g > Jpsi(1|3S11) g', 18, 12),
+                 ('g g > Jpsi(1|3S11) Jpsi(1|3S11)', 76, 38),
+                 ('u u~ > tata(1|1S0) g', 4, 2), ('u u~ > tata(1|3S1)', 2, 0)]
+        for process, namp, ndrop in cases:
+            self.cmd.exec_cmd('generate %s' % process)
+            me = helas_objects.HelasMatrixElement(self.cmd._curr_amps[0], gen_color=True)
+            self.assertEqual(sum(len(d['amplitudes']) for d in me['diagrams']), namp, process)
+            self.assertEqual(len(me.get_onia_c_forbidden_amplitudes()), ndrop, process)
+        # u u~ > 1P1[1] g vanishes; as a 1S0[8] state (the auxiliary S wave of
+        # its soft current) its single-gluon diagrams survive
+        self.cmd.exec_cmd('generate u u~ > hc(1|1P11) g')
+        me = helas_objects.HelasMatrixElement(self.cmd._curr_amps[0], gen_color=True)
+        self.assertEqual(len(me.get_onia_c_forbidden_amplitudes()), 5)
+        aux = me.get_onia_c_forbidden_amplitudes({0: {'L': 0, 'S': 0, 'C': 8}})
+        self.assertLess(len(aux), 5)
+
     def test_leptonium_no_partner(self):
         born, = self.generate('u u~ > tata(1|3S1) g [real=QCD]')
         self.check_reals(born)

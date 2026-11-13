@@ -27,6 +27,10 @@ c Values of fixed reference scales, to be given in input
      &                            muF2_ref_fixed,QES_ref_fixed,muF_ref_fixed
       common/cscales_fixed_values/muR_ref_fixed,muF1_ref_fixed,
      &                            muF2_ref_fixed,QES_ref_fixed,muF_ref_fixed
+c NRQCD scale of the LDME counterterms of a P-wave quarkonium (-1 means
+c (m_Q+m_Qbar)/2; fks_onia_soft.f)
+      double precision mu_nrqcd_ref_fixed
+      common/c_mu_nrqcd/mu_nrqcd_ref_fixed
 
 c Values of the current scales squared. The information is partly
 c redundant with that of common block /to_scale/

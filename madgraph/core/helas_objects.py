@@ -6810,6 +6810,108 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 return True
         return False
 
+    def get_onia_c_forbidden_amplitudes(self, states=None):
+        """Numbers of the amplitudes whose projection on a bound state
+        vanishes by charge conjugation (or colour), so that they can be left
+        out of the JAMPs exactly instead of cancelling to rounding noise.
+
+        For an onium of one flavour, follow the heavy-quark line from one
+        constituent to the other in each diagram and collect the bosons
+        attached to it. When they are only gluons and photons (n of them,
+        n_g gluons) and their colour factor is symmetric under reversing the
+        line, the diagrams related by that reversal sum to
+        (1 + C (-1)^n) times one of them, with C = (-1)^(L+S):
+          colour singlet: n_g = 1 vanishes (Tr T^a = 0); n_g = 0, 2 need
+            C = (-1)^n (Furry; two gluons make a C-even singlet);
+          colour octet: n_g = 0 vanishes (Tr T^c = 0); n_g = 1 needs
+            C = (-1)^n.
+        Such a set of diagrams is closed under the reversal and sums to zero
+        (q g > J/psi[3S1(1)] q, u u~ > h_c g, g g > h_c). A line through other
+        bosons, or open (ending on another quark), has no rule. Parity and
+        Landau-Yang zeros are not detected.
+
+        states optionally replaces the quantum numbers of onium index i by
+        states[i] = {'L':, 'S':, 'C':} (the auxiliary S waves of the P-wave
+        soft current: same diagrams, other state)."""
+        if not self.get('processes') or self.get_nonia() == 0:
+            return set()
+        legs = self.get('processes')[0].get('legs')
+        onia = {}
+        for leg in legs:
+            onium = leg.get('onium')
+            if onium:
+                onia.setdefault((onium['index'], leg.get('state')), []).append(leg)
+        lines = []
+        for (index, _), pair in onia.items():
+            if len(pair) != 2 or abs(pair[0].get('id')) != abs(pair[1].get('id')):
+                continue
+            onium = dict(pair[0]['onium'])
+            if states and index in states:
+                onium.update(states[index])
+            lines.append((pair[0].get('number'), pair[1].get('number'),
+                          abs(pair[0].get('id')), onium))
+        if not lines:
+            return set()
+
+        class _NoRule(Exception):
+            pass
+
+        def attachments(amplitude, ext_a, ext_b, flavour):
+            """The bosons attached to the line ext_a -> ext_b, or None."""
+            found = []
+            closed = []
+
+            def visit(wf):
+                mothers = wf.get('mothers')
+                if not mothers:
+                    number = wf.get('number_external')
+                    return 'a' if number == ext_a else ('b' if number == ext_b else None)
+                tags = [visit(mother) for mother in mothers]
+                on = [tag for tag in tags if tag]
+                if not on:
+                    return None
+                if wf.is_fermion():
+                    if len(on) != 1 or abs(wf.get_pdg_code()) != flavour:
+                        raise _NoRule()
+                    found.extend(m for m, t in zip(mothers, tags) if not t)
+                    return on[0]
+                if sorted(on) == ['a', 'b'] and len(mothers) == 2:
+                    found.append(wf)
+                    closed.append(True)
+                    return None
+                raise _NoRule()
+
+            try:
+                tags = [visit(mother) for mother in amplitude.get('mothers')]
+            except _NoRule:
+                return None
+            on = [tag for tag in tags if tag]
+            if sorted(on) == ['a', 'b']:
+                found.extend(m for m, t in zip(amplitude.get('mothers'), tags) if not t)
+            elif on or not closed:
+                return None
+            return found
+
+        def forbidden(onium, bosons):
+            pdgs = [abs(wf.get_pdg_code()) for wf in bosons]
+            if not pdgs or any(pdg not in (21, 22) for pdg in pdgs):
+                return False
+            ng = pdgs.count(21)
+            even = (onium['L'] + onium['S'] + len(pdgs)) % 2 == 0
+            if onium.get('C', 1) == 8:
+                return ng == 0 or (ng == 1 and not even)
+            return ng == 1 or (ng in (0, 2) and not even)
+
+        dropped = set()
+        for diagram in self.get('diagrams'):
+            for amplitude in diagram.get('amplitudes'):
+                for ext_a, ext_b, flavour, onium in lines:
+                    bosons = attachments(amplitude, ext_a, ext_b, flavour)
+                    if bosons is not None and forbidden(onium, bosons):
+                        dropped.add(amplitude.get('number'))
+                        break
+        return dropped
+
     def generate_color_amplitudes(self, color_basis, diagrams):
         """ Return a list of (coefficient, amplitude number) lists,
         corresponding to the JAMPs for the HelasDiagrams and color basis passed
@@ -6876,6 +6978,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                                   self['diagrams'])
         # never computed at all: their current was summed instead
         dropped = set(self.get_quartic_current_sums()[2])
+        # bound states: diagrams whose projection vanishes by C parity or
+        # colour sum to zero exactly (onia_state_override: the auxiliary S
+        # waves of the P-wave soft current, set by export_fks)
+        dropped |= self.get_onia_c_forbidden_amplitudes(
+            getattr(self, 'onia_state_override', None))
         if merge_quartic_amplitudes:
             # summed into their partner by GET_AMP, so they must not enter the
             # JAMPs a second time

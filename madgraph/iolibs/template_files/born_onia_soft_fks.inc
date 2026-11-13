@@ -175,6 +175,49 @@ C         the self tensor sum_colours V^mu V^nu*
       END
 
 
+      SUBROUTINE BORN_ONIA_INFO(NAUX_OUT,SPIN_OUT,JTOT_OUT,LABEL_OUT,
+     &  CEFF_OUT,MQ_OUT,MQB_OUT)
+C     the P-wave quarkonium of BORN_ONIA_SOFT: its spin S and J, its S-wave
+C     states S' (label 18, 81 or 88, and C_eff of Q_eff(CC')), and the
+C     masses of its quark and antiquark
+      IMPLICIT NONE
+      INTEGER    NAUX
+      PARAMETER (NAUX=%(naux)d)
+      INTEGER    SPIN, JTOT
+      PARAMETER (SPIN=%(spin)d, JTOT=%(jtot)d)
+      INTEGER    NCONST
+      PARAMETER (NCONST=%(nconst)d)
+      INTEGER    IQ, IQBAR
+      PARAMETER (IQ=%(nq)d, IQBAR=%(nqbar)d)
+      REAL*8     ZERO, NC, CF
+      PARAMETER (ZERO=0D0, NC=3D0, CF=4D0/3D0)
+      INTEGER NAUX_OUT, SPIN_OUT, JTOT_OUT, A
+      CHARACTER*2 LABEL_OUT(*), LABEL(NAUX)
+      DATA LABEL /%(aux_labels)s/
+      REAL*8 CEFF_OUT(*), MQ_OUT, MQB_OUT, R, MSUM
+      REAL*8 PMASS_ONIA(NCONST)
+      INCLUDE 'coupl.inc'
+%(pmassonia_lines)s
+      R = PMASS_ONIA(IQ)/PMASS_ONIA(IQBAR)
+      MSUM = 2D0+R+1D0/R
+      NAUX_OUT = NAUX
+      SPIN_OUT = SPIN
+      JTOT_OUT = JTOT
+      MQ_OUT = PMASS_ONIA(IQ)
+      MQB_OUT = PMASS_ONIA(IQBAR)
+      DO A = 1, NAUX
+        LABEL_OUT(A) = LABEL(A)
+        IF (LABEL(A).EQ.'18') THEN
+          CEFF_OUT(A) = MSUM**2/(2D0*NC)
+        ELSE IF (LABEL(A).EQ.'81') THEN
+          CEFF_OUT(A) = MSUM**2*CF
+        ELSE
+          CEFF_OUT(A) = MSUM*(-2D0/NC+(NC**2-2D0)/(2D0*NC)*(R+1D0/R))
+        ENDIF
+      ENDDO
+      END
+
+
       SUBROUTINE ONIA_SOFT_AMPS(A,P,NHEL,JS)
 C     the colour flows of S-wave state A at the Born momenta P, helicities
 C     NHEL (S_z for the onium)

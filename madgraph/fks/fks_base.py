@@ -27,6 +27,7 @@ import madgraph.fks.fks_common as fks_common
 import madgraph.fks.fks_onia as fks_onia
 import madgraph.fks.sudakov as sudakov
 import copy
+import re
 import logging
 import array
 import madgraph.various.misc as misc
@@ -94,6 +95,62 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                 raise self.PhysicsObjectError("%s is not a valid value for ncores_for_proc_gen " % str(value))
                                                      
         return super(FKSMultiProcess,self).filter(name, value)
+
+
+    def warn_missing_singular_borns(self, leptons=()):
+        """Warn when a singular region of a real emission has no generated
+        Born (FKSRealProcess.find_missing_singular_borns): MadFKS does not
+        subtract it and the NLO integral diverges. This happens with fixed
+        initial states (g g > X g: the q || g region of g g > X q q~ needs
+        q~ g > X q~) or a p / j missing a massless flavour. Lepton-initiated
+        Borns that are discarded on purpose (init_lep_split) are not reported.
+        Returns the list of (real, missing Born) process strings."""
+        born_pdg_list = [[l['id'] for l in born.get_leglist()]
+                         for born in self['born_processes']]
+        candidates = {}
+        for born in self['born_processes']:
+            for real in born.real_amps:
+                for i, j, legs in real.find_missing_singular_borns(born_pdg_list):
+                    key = tuple(l['id'] for l in legs)
+                    if key not in candidates:
+                        candidates[key] = (born, real, legs)
+        found = []
+        for key, (born, real, legs) in candidates.items():
+            initial = [l['id'] for l in legs if not l['state']]
+            if not self['init_lep_split'] and initial and all(pdg in leptons for pdg in initial):
+                continue
+            # the missing Born counts only at the coupling orders of the
+            # generated Borns: a splitting of another coupling (e+ e- > a in
+            # the real of p p > e+ e- [real=QCD]) leads to a Born of another
+            # order, and its region is not singular in this calculation
+            born_proc = born.born_amp['process']
+            proc = copy.copy(born_proc)
+            proc['orders'] = copy.copy(born_proc['orders'])
+            proc['squared_orders'] = copy.copy(born_proc.get('born_sq_orders') or
+                                               born_proc['squared_orders'])
+            proc_legs = fks_common.to_legs(legs)
+            for number, (leg, fksleg) in enumerate(zip(proc_legs, legs)):
+                leg['number'] = number + 1
+                if fksleg.get('onium'):
+                    leg['onium'] = copy.copy(fksleg['onium'])
+            proc['legs'] = proc_legs
+            if not diagram_generation.Amplitude(proc, diagram_filter=self['diagram_filter']).get('diagrams'):
+                continue
+            found.append(tuple(
+                re.sub(r'\s+\w+(\^2)?(<=|==|=|>)\d+', '',
+                       p.nice_string(print_weighted=False, print_perturbated=False)
+                       .replace('Process: ', '').split(' @')[0]).strip()
+                for p in (real.process, proc)))
+        if found:
+            lines = ['  %s needs the Born %s' % pair for pair in sorted(found)[:10]]
+            if len(found) > 10:
+                lines.append('  ... and %d more' % (len(found) - 10))
+            logger.warning('Some real emissions have soft or collinear regions whose underlying '
+                           'Born process is not generated. MadFKS does not subtract these regions, '
+                           'so the NLO integral diverges:\n' + '\n'.join(lines) +
+                           '\nGenerate every Born that radiates into the same reals, e.g. with p p '
+                           'initial states and p and j holding every massless parton.')
+        return found
 
 
     def check_ij_confs(self):
@@ -283,6 +340,12 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
 
             # finally combine the real amplitudes
             born.combine_real_amplitudes()
+
+        try:
+            self.warn_missing_singular_borns(leptons)
+        except Exception as error:
+            # a diagnostic: it must never stop the generation
+            logger.debug('Check of the singular regions of the reals failed: %s' % error)
 
         if not self['ncores_for_proc_gen']:
             # old generation mode 
@@ -568,7 +631,40 @@ class FKSRealProcess(object):
         self.fks_j_from_i = fks_j_from_i
         return fks_j_from_i
 
-        
+
+    def find_missing_singular_borns(self, born_pdg_list):
+        """The singular regions of this real emission (a massless final-state
+        FKS parton i soft, or collinear to j) whose underlying Born is not in
+        born_pdg_list. MadFKS builds the sectors from the generated Borns
+        only (find_fks_j_from_i), so such a region is not subtracted: e.g. the
+        initial-state q || g region of g g > X q q~, whose Born q~ g > X q~ is
+        missing when only gluons are incoming. Returns a list of
+        (i, j, underlying Born FKSLegList)."""
+        missing = []
+        legs = self.process.get('legs')
+        model = self.process.get('model')
+        onia = fks_onia.has_onia(legs)
+        pert_dicts = dict((pert, fks_common.find_pert_particles_interactions(model, pert))
+                          for pert in self.process.get('perturbation_couplings'))
+        for i in legs:
+            if not i.get('state') or not i.get('massless') or \
+                    (onia and fks_onia.onium_of(i)):
+                continue
+            for j in legs:
+                if j.get('number') == i.get('number') or (onia and fks_onia.onium_of(j)):
+                    continue
+                for pert, pert_dict in pert_dicts.items():
+                    for ij in fks_common.combine_ij(i, j, model, pert_dict, pert=pert):
+                        born_leglist = fks_common.to_fks_legs(copy.deepcopy(legs), model)
+                        born_leglist.remove(i)
+                        born_leglist.remove(j)
+                        born_leglist.insert(ij.get('number') - 1, ij)
+                        born_leglist.sort(pert=self.perturbation)
+                        if [leg['id'] for leg in born_leglist] not in born_pdg_list:
+                            missing.append((i.get('number'), j.get('number'), born_leglist))
+        return missing
+
+
     def get_leg_i(self): #test written
         """Returns leg corresponding to i fks.
         An error is raised if the fks_infos list has more than one entry"""

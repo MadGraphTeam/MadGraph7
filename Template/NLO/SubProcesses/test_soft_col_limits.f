@@ -646,6 +646,9 @@ c
       double precision etmax(nincoming+1:nexternal-1)
       double precision mxxmin(nincoming+1:nexternal-1,nincoming+1:nexternal-1)
       common /to_cuts/etmin,etmax, mxxmin
+      logical onia
+      logical fks_onia_leg
+      external fks_onia_leg
       if (firsttime) then
          beam_energy=ebeam
          firsttime=.false.
@@ -680,6 +683,20 @@ c Note that tests are always performed at fixed energy with Bjorken x=1.
      $     /(nb_proton(1)+nb_neutron(1))/20d0,totmass*2d0)
       if (lpp(2).ne.0) ebeam(2)=max(beam_energy(2)
      $     /(nb_proton(2)+nb_neutron(2))/20d0,totmass*2d0)
+c Bound states (onia_legs.f): the soft current of a P-wave or colour-octet
+c onium of mass M and energy E_K holds only once K.k << M^2, i.e. for
+c xi << M^2/(E_K sqrt(shat)), and the round-off of the finite-difference
+c P-wave derivative grows as shat/(M^2 xi). Far above threshold the window
+c between the two is about three decades, too short for checkres. Test
+c close to threshold instead, where it spans several decades.
+      onia=.false.
+      do i=nincoming+1,nexternal
+         if (fks_onia_leg(i)) onia=.true.
+      enddo
+      if (onia) then
+         if (lpp(1).ne.0) ebeam(1)=totmass*2d0
+         if (lpp(2).ne.0) ebeam(2)=totmass*2d0
+      endif
       end
 
       

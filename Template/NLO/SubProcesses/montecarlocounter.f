@@ -318,6 +318,9 @@ c
 c
       if (split_type(QCD_pos)) then
       ! these tests only apply for QCD-type splittings
+c Bound states: a Born that vanishes by colour (q q~ > chi_c0[1]) has one
+c trivial flow without any colour connection; there is nothing to check
+        if (ipartners(0).eq.0) return
         do i=1,ipartners(0)
           ipart=ipartners(i)
           if(ipart.le.0.or.ipart.gt.nexternal-1)then

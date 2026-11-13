@@ -1756,7 +1756,10 @@ c Compute the multi-channel enhancement factor 'enhance'.
             enhance=amp2(mapconfig(this_config,0))/xtot
             enhance=enhance*diagramsymmetryfactor
          else
-            enhance=0d0
+c A Born with no diagram weight (a Born that vanishes by colour, e.g.
+c q q~ > chi_c0[1], whose real emission and counterterms do not): share
+c the point uniformly among the configurations
+            enhance=diagramsymmetryfactor/dble(mapconfig(0,0))
          endif
       endif
 
@@ -1803,7 +1806,8 @@ c Compute the multi-channel enhancement factor 'enhance_real'.
                enhance_real=amp2(mapconfig(this_config,0))/xtot
                enhance_real=enhance_real*diagramsymmetryfactor
             else
-               enhance_real=0d0
+c No Born diagram weight (see above): uniform share
+               enhance_real=diagramsymmetryfactor/dble(mapconfig(0,0))
             endif
          endif
       else
@@ -6647,6 +6651,9 @@ c For the MINT folding
       COMMON/c_nFKSprocess/nFKSprocess
       data nFKSprocess_col / 0 /
       data nFKSprocess_chg / 0 /
+      double precision bsv_onia_wgt
+      integer ord_onia(nsplitorders),orders_to_amp_split_pos
+      external orders_to_amp_split_pos
       double precision bsv_wgt_mufoqes, bsv_wgt_mufomur
       double precision contr_mufoqes, contr_mufomur
 C to keep track of the various split orders
@@ -6908,6 +6915,18 @@ c we should set
 c   bsv_wgt=bsv_wgt+ao2pi*contr  <-- DO NOT USE THIS LINE
 c
          bsv_wgt=bsv_wgt-2*oneo8pi2*contr
+c Bound states: the integrated soft current of a P-wave quarkonium and its
+c LDME counterterms (fks_onia_soft.f; 0 otherwise), at the Born orders + g^2
+         if (iord.eq.qcd_pos .and. abrv.ne.'virt') then
+            call bsv_onia(p,xicut_used,bsv_onia_wgt)
+            if (bsv_onia_wgt.ne.0d0) then
+               bsv_wgt=bsv_wgt+bsv_onia_wgt
+               ord_onia(1:nsplitorders)=born_orders(1:nsplitorders)
+               ord_onia(qcd_pos)=ord_onia(qcd_pos)+2
+               k=orders_to_amp_split_pos(ord_onia)
+               amp_split_bsv(k)=amp_split_bsv(k)+bsv_onia_wgt
+            endif
+         endif
       enddo
 
 C set back the fks i/j info as prior to enter this function

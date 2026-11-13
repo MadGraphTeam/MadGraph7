@@ -775,6 +775,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'fks_singular.f',
                      'fks_onia_soft.f',
                      'fks_onia_soft_dummy.f',
+                     'fks_onia_eikonal.f',
+                     'onia_legs_dummy.f',
                      'splitorders_stuff.f',
                      'orderstags_glob.f',
                      'chooser_functions.f',
@@ -850,6 +852,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             os.system("ln -s ../../Cards/onia_card.dat .")
             os.system("ln -s ../ldme.inc .")
             fks_onia.OniaRecord.write(matrix_element.born_me, 'onia_fks.json')
+            # which legs are onia, for the FKS partition (fks_Sij.f)
+            self.write_onia_legs_file('onia_legs.f', matrix_element)
             if matrix_element.real_processes:
                 # the soft current of a P-wave quarkonium (fks_onia_soft.f)
                 self.write_born_onia_file('born_onia.f', matrix_element, fortran_model)
@@ -2702,6 +2706,53 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             raise MadGraph5Error('Bound states: no P wave in the onia data')
         return text[:match.start(1)] + str(int(match.group(1)) - 1) + text[match.end(1):]
 
+    def write_onia_legs_file(self, filename, matrix_element):
+        """onia_legs.f: FKS_ONIA_LEG(I) is true when leg I (physical numbering)
+        of the real emission of the current FKS configuration is a bound state.
+        The onium is a soft partner of the gluons (it is in fks_j_from_i, for
+        the colour links and the P-wave soft current) but owns no FKS sector,
+        so fks_Sij leaves it out of the partition: the soft region is then
+        shared among the sectors that are integrated. Without the exclusion
+        the share of the pairs (gluon, onium) would be dropped while the
+        integrated soft counterterm keeps it."""
+        fks_info_list = matrix_element.get_fks_info_list()
+        rows = []
+        for info in fks_info_list:
+            real = matrix_element.real_processes[info['n_me'] - 1]
+            legs = real.matrix_element.get('processes')[0].get('legs')
+            rows.append([bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)])
+        if not rows:
+            # LOonly: one fake configuration, the Born legs and a gluon
+            legs = matrix_element.born_me.get('processes')[0].get('legs')
+            rows.append([bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)]
+                        + [False])
+        nexternal = len(rows[0])
+        if any(len(r) != nexternal for r in rows):
+            raise fks_onia.OniaNLOError('inconsistent numbers of legs in the FKS configurations')
+        tf = {True: '.TRUE.', False: '.FALSE.'}
+        lines = ['      LOGICAL FUNCTION FKS_ONIA_LEG(I)',
+                 'C     True if leg I (physical numbering) of the real emission of',
+                 'C     the current FKS configuration is a bound state (written by',
+                 'C     export_fks.write_onia_legs_file)',
+                 '      IMPLICIT NONE',
+                 '      INTEGER I, IPOS',
+                 '      INTEGER NCONF, NEXT',
+                 '      PARAMETER (NCONF=%d, NEXT=%d)' % (len(rows), nexternal),
+                 '      LOGICAL ONIUM(NCONF,NEXT)',
+                 '      INTEGER NFKSPROCESS',
+                 '      COMMON/C_NFKSPROCESS/NFKSPROCESS']
+        for n, row in enumerate(rows):
+            lines.append('      DATA (ONIUM(%d,IPOS),IPOS=1,NEXT) / %s /'
+                         % (n + 1, ', '.join(tf[x] for x in row)))
+        lines += ['      FKS_ONIA_LEG = .FALSE.',
+                  '      IF (NFKSPROCESS.LT.1 .OR. NFKSPROCESS.GT.NCONF) RETURN',
+                  '      IF (I.LT.1 .OR. I.GT.NEXT) RETURN',
+                  '      FKS_ONIA_LEG = ONIUM(NFKSPROCESS,I)',
+                  '      END']
+        writer = writers.FortranWriter(filename)
+        writer.writelines('\n'.join(lines) + '\n')
+        writer.close()
+
     def write_born_onia_file(self, filename, matrix_element, fortran_model):
         """born_onia.f: the soft current of the P-wave quarkonium of the Born
         (arXiv:2402.19221, sect. 3.2), for sbornsoft_onia (fks_onia_soft.f).
@@ -2738,9 +2789,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                                                     .get('process').get('legs'),
                                                     born_me.get('processes')[0].get('model')))
 
-        def jamp_routine(name, basis, ncolor):
+        def jamp_routine(name, basis, ncolor, state=None):
             saved = born_me['color_basis']
             born_me['color_basis'] = basis
+            # the C-parity zeros of HelasMatrixElement.get_color_amplitudes
+            # are those of the state these flows project on
+            born_me.onia_state_override = state
             try:
                 if has_colour and not len(basis):
                     lines, ntemp = [], 0       # colour forbidden: no flow
@@ -2748,6 +2802,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                     lines, ntemp = self.get_JAMP_lines(born_me)
             finally:
                 born_me['color_basis'] = saved
+                born_me.onia_state_override = None
             out = ['      SUBROUTINE %s(AMP,JAMP)' % name,
                    'C     the colour flows of the Born diagrams for this colour basis',
                    '      IMPLICIT NONE',
@@ -2830,7 +2885,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                                              aux=(data['index'], aux['colour']),
                                              fortran_model=fortran_model))
             text.append('\n'.join(jamp_routine('ONIA_SOFT_JAMPS%d' % (ia_aux + 1),
-                                                aux['basis'], ncols[ia_aux])))
+                                                aux['basis'], ncols[ia_aux],
+                                                state={data['index']: {
+                                                    'L': 0, 'S': data['S'],
+                                                    'C': aux['colour']}})))
         writers.FortranWriter(filename).writelines('\n'.join(text))
         return True
 
