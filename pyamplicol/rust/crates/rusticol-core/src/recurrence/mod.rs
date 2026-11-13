@@ -12,6 +12,7 @@ mod contact_orbit_owner;
 mod diagnostic;
 pub mod direct_backend;
 mod direct_codec;
+pub mod direct_export;
 mod direct_helicity_dispatch;
 mod direct_lowering;
 mod direct_pacbin;

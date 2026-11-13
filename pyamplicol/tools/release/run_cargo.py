@@ -61,6 +61,15 @@ def main(argv: list[str] | None = None) -> int:
             # Unoptimised test threads of the generic reduction engine need more
             # than Rust's 2 MiB default stack (8 MiB measured; twice that here).
             updates["RUST_MIN_STACK"] = os.environ.get("RUST_MIN_STACK", "16777216")
+            # Test inputs, not build inputs: the recurrence export parity test
+            # reads the artifacts CI generated. The RUST prefix is otherwise
+            # removed by the build-injection guard.
+            for name in (
+                "RUSTICOL_RECURRENCE_ARTIFACT",
+                "RUSTICOL_RECURRENCE_PROCESSES",
+            ):
+                if name in os.environ:
+                    updates[name] = os.environ[name]
         updates.update(backend._macos_native_build_updates())
         environment = backend._clean_environment(updates)
         completed = subprocess.run(

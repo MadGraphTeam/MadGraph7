@@ -115,6 +115,22 @@ impl LazyProcessPhysicsV1 {
     }
 }
 
+/// Scale resolved values by an exact process-group factor: multiply by the
+/// numerator, then divide by the denominator. A precomputed ratio would round
+/// differently, and the recurrence export documents this order.
+pub(super) fn apply_rational_factor(values: &mut [f64], factor: NativeRationalFactor) {
+    let NativeRationalFactor {
+        numerator,
+        denominator,
+    } = factor;
+    if numerator != denominator {
+        let (numerator, denominator) = (numerator as f64, denominator as f64);
+        for value in values {
+            *value = *value * numerator / denominator;
+        }
+    }
+}
+
 /// Public metadata of `selection`: the representative physics remapped to the
 /// requested order and, for a process-group member, relabelled as the member.
 fn public_process_physics(
@@ -2297,16 +2313,7 @@ impl NativeRuntime {
         let Some(group) = self.process_group.as_deref() else {
             return;
         };
-        let NativeRationalFactor {
-            numerator,
-            denominator,
-        } = group.factor;
-        if numerator != denominator {
-            let (numerator, denominator) = (numerator as f64, denominator as f64);
-            for value in values {
-                *value = *value * numerator / denominator;
-            }
-        }
+        apply_rational_factor(values, group.factor);
     }
 
     /// Translate caller color IDs to the IDs the execution lanes use.

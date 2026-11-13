@@ -671,6 +671,49 @@ class Runtime:
             raise EvaluationError("runtime backend returned invalid runtime inspection")
         return dict(result)
 
+    def export_recurrence(
+        self,
+        *,
+        color_flows: Sequence[str | ColorFlow] | None = None,
+        reference_momenta: Momenta | None = None,
+    ) -> dict[str, object]:
+        """Export this process's prepared LC recurrence without evaluating it.
+
+        The versioned, JSON-serializable value describes the batched f64 path
+        at the model parameters currently set on this runtime. Omit
+        ``color_flows`` to include every provider colour flow. Kernel payloads
+        are included, so the result can be consumed without the artifact.
+        Supplying ``reference_momenta`` also evaluates the batched f64 path and
+        attaches its per-helicity values and caller-order momenta to every
+        program. The default export does not execute any phase-space points.
+        """
+
+        if self._virtual:
+            raise CompatibilityError(
+                f"a one-loop ({self.contribution_kind}) runtime has no leading-colour "
+                "recurrence export: recurrence export supports tree-level LC "
+                "recurrence artifacts (execution mode 'recurrence') with JIT or "
+                "built-in intrinsic executors"
+            )
+        operation = getattr(self._backend, "export_recurrence", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "runtime backend does not support recurrence export"
+            )
+        result = operation(
+            color_flows=_selector_ids(
+                color_flows, expected_type=ColorFlow, name="color-flow"
+            )
+        )
+        if not isinstance(result, Mapping):
+            raise EvaluationError("runtime backend returned invalid recurrence export")
+        export = dict(result)
+        if reference_momenta is not None:
+            from .recurrence_export import attach_reference_points
+
+            export = attach_reference_points(export, self, reference_momenta)
+        return export
+
     def save(self, path: os.PathLike[str] | str) -> None:
         """Save the retained on-the-fly recursion after completed evaluations.
 

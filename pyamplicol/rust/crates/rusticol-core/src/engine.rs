@@ -4954,7 +4954,17 @@ use eager_backend::*;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod recurrence_backend;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_export;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_export_executors;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod recurrence_lane;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub use recurrence_export::*;
+#[cfg(all(test, feature = "f64-symjit"))]
+mod recurrence_export_golden;
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+mod recurrence_export_tests;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use recurrence_lane::*;
 

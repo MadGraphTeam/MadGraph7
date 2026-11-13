@@ -43,10 +43,10 @@ pub(super) struct PreparedParameterProjectionEntry {
 /// the scheduler's lightweight function handles alive. All point-dependent
 /// storage belongs to `scheduler` or the fixed-size external-momentum scratch.
 pub(super) struct RecurrenceNativeRuntime {
-    scheduler: DirectRecurrenceExecutionRuntime,
+    pub(super) scheduler: DirectRecurrenceExecutionRuntime,
     _backend_owner: NativeRecurrenceDirectExecutorOwners,
     backend_name: String,
-    selectors: RecurrenceNativeSelectors,
+    pub(super) selectors: RecurrenceNativeSelectors,
     parameter_defaults: Vec<crate::EagerComplex64>,
     parameter_projection: Vec<PreparedParameterProjectionEntry>,
     external_source_count: usize,
@@ -318,7 +318,7 @@ fn primary_local_color_destination_map(
     })
 }
 
-struct ContractedReplayRoute {
+pub(super) struct ContractedReplayRoute {
     selector: DirectReplaySelectorPlan,
     destination_copies: Vec<(u32, u32)>,
 }
@@ -326,7 +326,7 @@ struct ContractedReplayRoute {
 // Boxing the contracted-color payload would add an indirection to every
 // contracted recurrence tile; this enum is instantiated only once per runtime.
 #[allow(clippy::large_enum_variant)]
-enum RecurrenceNativeSelectors {
+pub(super) enum RecurrenceNativeSelectors {
     TopologyReplay {
         replay_selectors: Vec<DirectReplaySelectorPlan>,
         direct_helicity_to_physics: Vec<usize>,
@@ -2676,7 +2676,7 @@ impl RecurrenceNativeRuntime {
         }
     }
 
-    fn prepare_parameters(&mut self, common: &ExecutionRuntime) -> RusticolResult<()> {
+    pub(super) fn prepare_parameters(&mut self, common: &ExecutionRuntime) -> RusticolResult<()> {
         let (parameters_re, parameters_im) = self.scheduler.parameters_mut();
         initialize_prepared_parameter_planes(
             &self.parameter_defaults,

@@ -331,8 +331,25 @@ impl DirectReplaySelectorPlan {
         self.multiplicity
     }
 
+    /// The complex factor replay applies to each representative amplitude:
+    /// the phase times the multiplicity. The recurrence export publishes this
+    /// value, so both read it from here.
+    pub fn amplitude_scale(&self) -> (f64, f64) {
+        let multiplicity = f64::from(self.multiplicity);
+        (self.phase_re * multiplicity, self.phase_im * multiplicity)
+    }
+
     pub fn mapped_external_source_slot(&self, representative_source_slot: u32) -> Option<u32> {
         self.source_permutation
+            .get(representative_source_slot as usize)
+            .copied()
+    }
+
+    pub(crate) fn mapped_external_source_sign(
+        &self,
+        representative_source_slot: u32,
+    ) -> Option<i32> {
+        self.source_momentum_signs
             .get(representative_source_slot as usize)
             .copied()
     }
@@ -352,7 +369,7 @@ impl DirectReplaySelectorPlan {
             .sum()
     }
 
-    fn selected_row_groups(&self) -> &[DirectRowGroupDescriptor] {
+    pub(crate) fn selected_row_groups(&self) -> &[DirectRowGroupDescriptor] {
         self.destination_program
             .as_ref()
             .map_or(self.row_groups.as_ref(), |program| {
@@ -495,6 +512,10 @@ pub struct DirectRecurrenceExecutionRuntime {
 }
 
 impl DirectRecurrenceExecutionRuntime {
+    pub(crate) fn export_fanout(&self) -> &DirectContributionFanoutProgram {
+        &self.contribution_fanout
+    }
+
     /// Allocate the initial workspace and convert the plan's exact factors to
     /// their persistent binary64 split-complex catalog. Packed-capable
     /// runtimes defer aligned tiled point storage until it is needed.
@@ -1511,8 +1532,7 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
     ) -> RusticolResult<()> {
         let started = PROFILE.then(Instant::now);
-        let scale_re = selector.phase_re * f64::from(selector.multiplicity);
-        let scale_im = selector.phase_im * f64::from(selector.multiplicity);
+        let (scale_re, scale_im) = selector.amplitude_scale();
         let point_stride = self.point_stride as usize;
         let active_points = point_count as usize;
         let mut scaled_values = 0_u64;
@@ -1537,10 +1557,8 @@ impl DirectRecurrenceExecutionRuntime {
             let values_re = &mut amplitude_re[start..end];
             let values_im = &mut amplitude_im[start..end];
             for point in 0..active_points {
-                let value_re = values_re[point];
-                let value_im = values_im[point];
-                values_re[point] = value_re * scale_re - value_im * scale_im;
-                values_im[point] = value_re * scale_im + value_im * scale_re;
+                (values_re[point], values_im[point]) =
+                    apply_replay_scale(values_re[point], values_im[point], scale_re, scale_im);
             }
             scaled_values = scaled_values.saturating_add(u64::from(point_count));
         }
@@ -2860,6 +2878,21 @@ fn fill_external_momentum_term<const INITIALIZE: bool, const SOURCE_MAJOR: bool>
             }
         }
     }
+}
+
+/// Multiply one representative amplitude by its replay scale, value first,
+/// as an ordinary complex product without fused operations.
+#[inline(always)]
+pub(crate) fn apply_replay_scale(
+    value_re: f64,
+    value_im: f64,
+    scale_re: f64,
+    scale_im: f64,
+) -> (f64, f64) {
+    (
+        value_re * scale_re - value_im * scale_im,
+        value_re * scale_im + value_im * scale_re,
+    )
 }
 
 fn validate_split_values(

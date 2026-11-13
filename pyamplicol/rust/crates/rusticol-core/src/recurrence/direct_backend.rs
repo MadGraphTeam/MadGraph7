@@ -995,7 +995,7 @@ impl<'a> DirectInteractionScheduleView<'a> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DirectContributionFanoutStep {
+pub(crate) enum DirectContributionFanoutStep {
     Direct {
         row_start: u64,
         row_count: u32,
@@ -1130,9 +1130,9 @@ pub(crate) struct DirectContributionFanoutProgram {
     plan_layout_digest: SemanticDigest,
     groups: Box<[DirectContributionFanoutGroup]>,
     steps: Box<[DirectContributionFanoutStep]>,
-    representatives: Box<[DirectContributionRow]>,
-    runs: Box<[DirectContributionFanoutRun]>,
-    bundles: Box<[DirectContributionFanoutBundle]>,
+    pub(crate) representatives: Box<[DirectContributionRow]>,
+    pub(crate) runs: Box<[DirectContributionFanoutRun]>,
+    pub(crate) bundles: Box<[DirectContributionFanoutBundle]>,
     scratch_component_base: u32,
     scratch_component_count: u32,
     unit_factor_id: u32,
@@ -1593,7 +1593,7 @@ impl DirectContributionFanoutProgram {
         )
     }
 
-    fn group_steps(
+    pub(crate) fn group_steps(
         &self,
         descriptor: &DirectRowGroupDescriptor,
     ) -> RusticolResult<&[DirectContributionFanoutStep]> {

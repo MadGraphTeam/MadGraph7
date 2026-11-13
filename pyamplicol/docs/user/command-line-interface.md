@@ -26,6 +26,7 @@ drives the typed [Python API](python-api.md).
 | `benchmark` | Compatibility alias for `profile` | Existing cards use `action = "benchmark"` |
 | `check` | Pole (Catani; loop-induced: finiteness) and Ward checks of a one-loop request, regenerated in memory | `pyamplicol check loop_gg_zgg_generate.toml` or `pyamplicol check artifacts/loop_gg_zgg` |
 | `inspect` | Show artifact and process metadata without running it | `pyamplicol inspect artifacts/builtin_ddbar_to_zg` |
+| `export-recurrence` | Export resolved LC programs for external runners | `pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json` |
 | `group-processes` | Find generated subprocesses with equal matrix elements | `pyamplicol group-processes artifacts/pp_jj` |
 | `model inspect` | Summarize a built-in, JSON, UFO, or compiled model | `pyamplicol model inspect models/json/sm/sm.json` |
 | `model compile` | Compile portable model IR or a prepared kernel bundle | See [Models and Processes](models-and-processes.md) |
@@ -1110,3 +1111,33 @@ For common failures and the information to include in a bug report, see
 - [Generation Modes and Evaluators](generation-modes-and-evaluators.md)
 - [Runtime and Selectors](runtime-and-selectors.md)
 - [Native APIs](native-apis.md)
+
+## Export recurrence programs
+
+Export an LC recurrence artifact without evaluating momenta:
+
+```console
+pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json
+pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json \
+  --model-parameters parameters.json --process g_g_to_g_g_g --color-flow flow:1,2,3,4,5
+```
+
+By default the export includes every stored process, alias and process-group
+member, and every provider colour flow. Repeat `--process` or `--color-flow`
+to select several. Colour-flow IDs are per process and `--color-flow` applies
+to every selected process, so combine it with `--process` on a multi-process
+artifact; an ID a selected process lacks is refused with that process's flow
+IDs. The destination is checked before the export runs, and the file is
+written beside it and renamed into place, so a failed export leaves an
+existing file unchanged. `--model-parameters` reads the same JSON parameter mapping
+as `evaluate` and applies it before resolving the programs. The output contains
+versioned JSON and embedded symjit applications, so external runners do not
+need a Rust toolchain or the original artifact. The programs describe the
+batched f64 execution path. See the [export format](../reference/recurrence-export.md)
+for arithmetic and ordering requirements.
+
+Exports use compact JSON, shared kernel bindings and union bodies, and
+representative references for aliases and group members. `--indent 2` enables
+readable JSON. Add `--reference-points momenta.json` to include batched f64
+reference values; this is the only export option that evaluates momenta.
+Kernel applications are embedded as base64.

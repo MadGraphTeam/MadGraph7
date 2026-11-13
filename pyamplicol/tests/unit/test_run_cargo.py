@@ -96,3 +96,45 @@ def test_rust_tests_use_only_the_selected_python_loader_directories(
         "LD_LIBRARY_PATH": f"{libdir}{module.os.pathsep}{libpl}"
     }
     assert module._python_test_loader_updates(["check", "--workspace"]) == {}
+
+
+def test_rust_tests_forward_only_the_recurrence_export_test_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+
+    class Overlay:
+        def __enter__(self) -> tuple[Path, Path]:
+            return overlay, tmp_path / "target"
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+    class Completed:
+        returncode = 0
+
+    environments: list[dict[str, str]] = []
+
+    def run(command: list[str], **kwargs: object) -> Completed:
+        del command
+        environments.append(dict(kwargs["env"]))  # type: ignore[call-overload]
+        return Completed()
+
+    monkeypatch.setattr(module.backend, "_overlay", lambda mode: Overlay())
+    monkeypatch.setattr(module, "_python_test_loader_updates", lambda arguments: {})
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setenv("RUSTICOL_RECURRENCE_ARTIFACT", "/tmp/replay:/tmp/union")
+    monkeypatch.setenv("RUSTICOL_RECURRENCE_PROCESSES", '["p"]')
+    monkeypatch.setenv("RUSTFLAGS", "-C link-arg=/attacker")
+
+    assert module.main(["--mode", "release", "--", "test", "--workspace"]) == 0
+    assert module.main(["--mode", "release", "--", "check", "--workspace"]) == 0
+    test_environment, check_environment = environments
+    assert test_environment["RUSTICOL_RECURRENCE_ARTIFACT"] == "/tmp/replay:/tmp/union"
+    assert test_environment["RUSTICOL_RECURRENCE_PROCESSES"] == '["p"]'
+    # The build-injection guard still removes build inputs with the prefix.
+    assert "RUSTFLAGS" not in test_environment
+    assert "RUSTICOL_RECURRENCE_ARTIFACT" not in check_environment

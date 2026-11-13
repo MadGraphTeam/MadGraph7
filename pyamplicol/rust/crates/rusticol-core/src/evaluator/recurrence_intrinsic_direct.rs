@@ -2713,6 +2713,67 @@ fn effective_context_scale(
     Ok(literal.mul(parameter))
 }
 
+/// Test interpreter boundary: consume already exported numeric operands, not
+/// a plan, prepared executor, parameter binding, or runtime dispatch catalog.
+#[cfg(test)]
+pub(crate) unsafe fn execute_exported_vertex_for_test(
+    template: &str,
+    row: DirectContributionRow,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    coupling: (f64, f64),
+    factor: (f64, f64),
+    points: usize,
+) {
+    let scale =
+        ComplexValue::new(coupling.0, coupling.1).mul(ComplexValue::new(factor.0, factor.1));
+    let stride = arena.point_stride as usize;
+    macro_rules! execute {
+        ($formula:ty) => {{
+            let mut point = 0;
+            while point + 1 < points {
+                unsafe { <$formula>::evaluate_pair(arena, row, stride, point, scale) };
+                point += 2;
+            }
+            if point < points {
+                unsafe { <$formula>::evaluate_point(arena, row, stride, point, scale) };
+            }
+        }};
+    }
+    match RecurrenceContributionIntrinsicKind::from_runtime_template(template).unwrap() {
+        RecurrenceContributionIntrinsicKind::WeylVectorToWeylPositive => {
+            execute!(WeylVectorToWeylPositive)
+        }
+        RecurrenceContributionIntrinsicKind::WeylVectorToWeylNegative => {
+            execute!(WeylVectorToWeylNegative)
+        }
+        RecurrenceContributionIntrinsicKind::AntisymmetricTensorVectorToVector => {
+            execute!(AntisymmetricTensorVectorToVector)
+        }
+        RecurrenceContributionIntrinsicKind::VectorWedgeVectorToAntisymmetricTensor => {
+            execute!(VectorWedgeVectorToAntisymmetricTensor)
+        }
+        RecurrenceContributionIntrinsicKind::ColorOrderedThreeVector => {
+            let mut point = 0;
+            while point + 1 < points {
+                unsafe {
+                    ColorOrderedThreeVector::evaluate_pair(
+                        arena, momenta, row, stride, point, scale,
+                    )
+                };
+                point += 2;
+            }
+            if point < points {
+                unsafe {
+                    ColorOrderedThreeVector::evaluate_point(
+                        arena, momenta, row, stride, point, scale,
+                    )
+                };
+            }
+        }
+    }
+}
+
 #[inline(always)]
 fn reciprocal_minkowski_norm(p0: f64, p1: f64, p2: f64, p3: f64) -> f64 {
     1.0 / (p0 * p0 - p1 * p1 - p2 * p2 - p3 * p3)

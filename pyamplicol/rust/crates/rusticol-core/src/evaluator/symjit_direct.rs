@@ -1427,8 +1427,10 @@ fn apply_outputs(
     Ok(())
 }
 
+/// Store or add a kernel's complex outputs multiplied, value first, by the
+/// row factor. The recurrence export documents this adapter's arithmetic.
 #[inline]
-fn apply_complex_scaled(
+pub(crate) fn apply_complex_scaled(
     destination_re: &mut [f64],
     destination_im: &mut [f64],
     source_re: &[f64],

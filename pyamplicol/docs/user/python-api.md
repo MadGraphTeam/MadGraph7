@@ -258,6 +258,40 @@ colour-flow selection of such a mapped process is refused; select on the
 stored process (see
 [Process grouping](process-grouping.md#one-loop-virtual-artifacts)).
 
+## Export recurrence programs
+
+`Runtime.export_recurrence()` returns a versioned, JSON-serializable dictionary
+for the loaded process and its LC provider flows. It resolves values using the
+current model parameters without evaluating any phase-space points:
+
+```python
+import json
+from pathlib import Path
+from pyamplicol import Runtime
+
+runtime = Runtime.load("artifacts/gg_ggg")  # built-in SM g g > g g g
+runtime.set_model_parameter("normalization.alpha_s_me_check", 0.12)
+capture = runtime.export_recurrence()  # optionally color_flows=["flow:1,2,3,4,5"]
+Path("recurrence.json").write_text(json.dumps(capture, separators=(",", ":")) + "\n")
+```
+
+Parameter names are the model's: built-in SM applies alpha_s through
+`normalization.alpha_s_me_check`, and UFO SM names it `aS`. Each program's
+`alpha_s.parameter` names the parameter for the loaded model.
+
+The export includes the symjit kernel applications and describes the batched
+f64 program. To export every process and process-group member of an artifact,
+use [`pyamplicol export-recurrence`](command-line-interface.md#export-recurrence-programs).
+See the [export format](../reference/recurrence-export.md) for its schema and
+arithmetic conventions. Rust consumers can call
+`NativeRuntime::export_recurrence(colours)` directly, or
+`export_recurrence_json(colours)` for JSON; `None` selects all provider flows.
+
+To include numerical checks for an external runner, pass
+`reference_momenta=points` to `export_recurrence`. Each program then includes
+caller-order momenta and batched f64 per-helicity reference values. Omitting
+this argument keeps the export static.
+
 ## Evaluate totals and resolved components
 
 ```python

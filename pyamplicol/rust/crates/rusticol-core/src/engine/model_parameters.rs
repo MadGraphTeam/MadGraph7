@@ -4,6 +4,10 @@ use super::*;
 #[cfg(feature = "symbolica-runtime")]
 use symbolica::{atom::Atom, atom::AtomCore, parser::ParseSettings};
 
+/// The parameter through which the built-in normalization contract applies
+/// `(4 pi alpha_s)^p` (see `refresh_normalization_factor`).
+pub(super) const NORMALIZATION_ALPHA_S_PARAMETER: &str = "normalization.alpha_s_me_check";
+
 struct RuntimeParameterStateSnapshot {
     values: Vec<f64>,
     particle_masses: BTreeMap<i32, f64>,
@@ -283,7 +287,7 @@ impl ExecutionRuntime {
     pub(super) fn refresh_normalization_factor(&mut self) {
         let alpha_s = self
             .model_parameter_name_to_index
-            .get("normalization.alpha_s_me_check")
+            .get(NORMALIZATION_ALPHA_S_PARAMETER)
             .and_then(|index| self.model_parameter_values_f64.get(*index))
             .copied();
         let alpha_ew = self

@@ -1369,7 +1369,7 @@ dependencies = [
 [[package]]
 name = "iregi-masters"
 version = "0.1.0"
-source = "git+https://github.com/huashengshao/TIRust.git?rev=bc94b496e94d7b7686fc28adbfe9b42a68200d02#bc94b496e94d7b7686fc28adbfe9b42a68200d02"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=de60dc480fec6475d2373a533c64d1c40ce23b2e#de60dc480fec6475d2373a533c64d1c40ce23b2e"
 dependencies = [
  "oneloop",
  "symbolica",
@@ -1378,7 +1378,7 @@ dependencies = [
 [[package]]
 name = "iregi-rust"
 version = "0.1.0"
-source = "git+https://github.com/huashengshao/TIRust.git?rev=bc94b496e94d7b7686fc28adbfe9b42a68200d02#bc94b496e94d7b7686fc28adbfe9b42a68200d02"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=de60dc480fec6475d2373a533c64d1c40ce23b2e#de60dc480fec6475d2373a533c64d1c40ce23b2e"
 dependencies = [
  "iregi-masters",
  "oneloop",
@@ -2378,6 +2378,7 @@ dependencies = [
 name = "rusticol-core"
 version = "0.2.1"
 dependencies = [
+ "base64",
  "bincode",
  "brotli",
  "flate2",
