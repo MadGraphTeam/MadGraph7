@@ -2592,8 +2592,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     def hel_recycling_refusal(self):
         """Why this process cannot be recycled, or None."""
-        if len(self.matrix_elements) != 1:
-            return 'more than one matrix element in the directory'
         so = export_v4.split_order_tables(self.matrix_elements[0])
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
@@ -2831,7 +2829,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
         """Write EvaluateDiagrams.inc, the diagram calls backend/<variant>/SigmaKin.cc #includes"""
         recycle = False
-        if self.single_helicities and self.hel_recycling:
+        if self.hel_recycling:
             refusal = self.hel_recycling_refusal()
             if refusal:
                 (logger.warning if self.hel_recycling_explicit else
@@ -2847,28 +2845,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 self._hr_gauge = 'FD' if aloha.unitary_gauge == 3 else 'U'
                 if self not in OneProcessExporterMadMatrix._hr_warmups:
                     OneProcessExporterMadMatrix._hr_warmups.append(self)
-        if self.single_helicities:
-            self.helas_call_writer.hr_probe = recycle
-            try:
-                helas_calls = self.helas_call_writer.get_matrix_element_calls(\
-                                                    self.matrix_elements[0],
-                                                    color_amplitudes[0],
-                                                    multi_channel_map = self.multi_channel_map
-                                                    )
-            finally:
-                self.helas_call_writer.hr_probe = False
-            assert len(self.matrix_elements) == 1 or len(self.matrix_elements) == 2 # how to handle if this is not true?
-            self.couplings2order = self.helas_call_writer.couplings2order
-            self.couporderflv = self.helas_call_writer.couporderflv
-            self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
-            self.params2order = self.helas_call_writer.params2order
-            content = []
-            content += helas_calls
-        else:
-            content = [self.get_sigmaKin_single_process(i, me) \
-                                  for i, me in enumerate(self.matrix_elements)]
+        self.helas_call_writer.hr_probe = recycle
+        try:
+            helas_calls = self.helas_call_writer.get_matrix_element_calls(\
+                                                self.matrix_elements[0],
+                                                color_amplitudes[0],
+                                                multi_channel_map = self.multi_channel_map
+                                                )
+        finally:
+            self.helas_call_writer.hr_probe = False
+        self.couplings2order = self.helas_call_writer.couplings2order
+        self.couporderflv = self.helas_call_writer.couporderflv
+        self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
+        self.params2order = self.helas_call_writer.params2order
         ff = open(pjoin(self.path, 'EvaluateDiagrams.inc'), 'w')
-        ff.write('\n'.join(content))
+        ff.write('\n'.join(helas_calls))
         ff.close()
         return ''
 
@@ -2936,10 +2927,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nampso'] = so['nampso'] if so else 1
         replace_dict['nsqampso'] = so['nsqampso'] if so else 1
         replace_dict['nwf'] = me.get_number_of_wavefunctions()
-        replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
+        replace_dict['nproc'] = 2 if me.get('has_mirror_process') else 1
         replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
-        den_factors = [str(m.get_denominator_factor()) for m in self.matrix_elements]
-        replace_dict['den_factors'] = ",".join(den_factors)
+        replace_dict['den_factor'] = me.get_denominator_factor()
         # cached by get_process_function_definitions(), which runs earlier in
         # super().generate_process_files()
         replace_dict['nipd'] = self._nipd

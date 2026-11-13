@@ -10,13 +10,127 @@
 # distribution.
 #
 ################################################################################
-"""Unit tests for the madmatrix ALOHA writer (madmatrix/model_handling.py)."""
+"""Unit tests for madmatrix writers and process metadata."""
 
 from __future__ import absolute_import
 
 import re
+import os
+import tempfile
 
 import tests.unit_tests as unittest
+
+
+class TestMadMatrixProcessData(unittest.TestCase):
+    """Each P* directory has one ME, possibly shared by a mirror process."""
+
+    @staticmethod
+    def exporters():
+        from madgraph.iolibs import export_mg7
+        from madmatrix import model_handling
+        return (export_mg7.OneProcessExporterMG7,
+                model_handling.OneProcessExporterMadMatrix,
+                model_handling.OneProcessExporterMadMatrixStandalone)
+
+    @staticmethod
+    def matrix_element(model, ids=(81, 21, 81, 21)):
+        from madgraph.core import base_objects, diagram_generation, helas_objects
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': pdg, 'state': i > 1})
+            for i, pdg in enumerate(ids)])
+        amplitude = diagram_generation.Amplitude(
+            base_objects.Process({'legs': legs, 'model': model}))
+        return helas_objects.HelasMatrixElement(amplitude)
+
+    def test_rejects_multiple_matrix_elements(self):
+        """Reject real grouped MEs before CPP can renumber their HELAS objects."""
+        from madgraph import MadGraph5Error
+        from madgraph.core import helas_objects
+        from madgraph.models import import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        elements = helas_objects.HelasMatrixElementList([
+            self.matrix_element(model),
+            self.matrix_element(model, (21, 21, 6, -6))])
+        objects = [obj for me in elements
+                   for obj in me.get_all_wavefunctions() + me.get_all_amplitudes()]
+        numbers = [obj.get('number') for obj in objects]
+        multi = helas_objects.HelasMultiProcess({'matrix_elements': elements})
+        for exporter in self.exporters():
+            for grouped in (elements, multi):
+                with self.subTest(exporter=exporter.__name__,
+                                  grouped=type(grouped).__name__):
+                    with self.assertRaisesRegex(
+                            MadGraph5Error,
+                            'exactly one HelasMatrixElement.*separate directories'):
+                        exporter(grouped,
+                            model_handling.MadMatrixUFOHelasCallWriter(model))
+                    self.assertEqual([obj.get('number') for obj in objects], numbers)
+
+    def test_rejects_empty_matrix_element_containers(self):
+        from madgraph import MadGraph5Error
+        from madgraph.core import helas_objects
+
+        for exporter in self.exporters():
+            for empty in (helas_objects.HelasMatrixElementList(),
+                          helas_objects.HelasMultiProcess()):
+                with self.subTest(exporter=exporter.__name__,
+                                  container=type(empty).__name__):
+                    with self.assertRaisesRegex(MadGraph5Error,
+                                                'exactly one HelasMatrixElement'):
+                        exporter(empty, None)
+
+    def test_accepts_single_matrix_element_containers(self):
+        """Singleton containers retain the same ME and its mirror metadata."""
+        from madgraph.core import helas_objects
+        from madgraph.models import import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        for exporter in self.exporters():
+            for mirror in (False, True):
+                for container in ('direct', 'list', 'multi'):
+                    with self.subTest(exporter=exporter.__name__,
+                                      mirror=mirror, container=container):
+                        me = self.matrix_element(model)
+                        me.set('has_mirror_process', mirror)
+                        argument = me
+                        if container != 'direct':
+                            argument = helas_objects.HelasMatrixElementList([me])
+                        if container == 'multi':
+                            argument = helas_objects.HelasMultiProcess(
+                                {'matrix_elements': argument})
+                        process = exporter(argument,
+                            model_handling.MadMatrixUFOHelasCallWriter(model))
+                        self.assertIs(process.matrix_element, me)
+                        self.assertEqual(len(process.matrix_elements), 1)
+                        self.assertIs(process.matrix_elements[0], me)
+                        self.assertEqual(process.nprocesses, 2 if mirror else 1)
+
+    def test_processdata_single_denominator(self):
+        """Mirroring doubles nproc, but both processes use the same denominator."""
+        from madgraph.models import import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        for exporter in (model_handling.OneProcessExporterMadMatrix,
+                         model_handling.OneProcessExporterMadMatrixStandalone):
+            for mirror in (False, True):
+                with self.subTest(exporter=exporter.__name__, mirror=mirror):
+                    # q g > q g also exercises merged flavors within one ME.
+                    me = self.matrix_element(model)
+                    me.set('has_mirror_process', mirror)
+                    process = exporter(me,
+                        model_handling.MadMatrixUFOHelasCallWriter(model))
+                    with tempfile.TemporaryDirectory(prefix='madmatrix-process-') as tmp:
+                        process.path = tmp
+                        process.generate_process_files()
+                        with open(os.path.join(tmp, 'ProcessData.h')) as stream:
+                            data = stream.read()
+                    self.assertIn('constexpr int nproc = %d;' % (2 if mirror else 1), data)
+                    self.assertIn('constexpr int helcolDenominators[1] = { %d };'
+                                  % me.get_denominator_factor(), data)
 
 
 class TestMomentaInDenomPrecision(unittest.TestCase):
