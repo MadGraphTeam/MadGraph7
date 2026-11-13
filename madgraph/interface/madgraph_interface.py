@@ -1410,6 +1410,8 @@ PYTHIA8_OUTPUT_DROPPED = ("output pythia8 is no longer supported in MadGraph7. "
     "Pythia 8 runs on the generated events instead: use an event-generation "
     "output (output madevent, output mg7, or an NLO output) and select "
     "shower=Pythia8 at the launch question.")
+PYTHIA8_LAUNCH_DROPPED = ("%s is a Pythia 8 directory: launching Pythia 8 "
+    "process code is no longer supported. " + PYTHIA8_OUTPUT_DROPPED)
 
 #===============================================================================
 # CheckValidForCmd
@@ -2116,8 +2118,7 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('launch on a madweight directory is no longer supported; '
                                   'MadWeight has been removed')
         if mode == 'pythia8':
-            raise self.InvalidCmd('%s is a Pythia 8 directory: launching Pythia 8 process code '
-                                  'is no longer supported. %s' % (path, PYTHIA8_OUTPUT_DROPPED))
+            raise self.InvalidCmd(PYTHIA8_LAUNCH_DROPPED % path)
 
         args[0] = mode
         args.append(path)
@@ -12931,6 +12932,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     for exporter in exporters)
         else:
             use_ddm = (mode == 'ddm')
+        # The formats which can only write the trace basis (Matchbox) keep it,
+        # even when the DDM one is requested explicitly
+        if use_ddm and any(getattr(exporter, 'trace_color_basis_only', False)
+                           for exporter in exporters):
+            use_ddm = False
+            if mode == 'ddm':
+                logger.info("color_basis ddm: output %s keeps the trace color "
+                            "basis, the only one it can write",
+                            getattr(self, '_export_format', None))
 
         # An exporter which has to write a color flow per event also needs the
         # trace basis next to the DDM one

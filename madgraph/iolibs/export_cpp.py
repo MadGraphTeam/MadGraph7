@@ -2361,6 +2361,8 @@ class ProcessExporterCPP(VirtualExporter):
 
 class ProcessExporterMatchbox(ProcessExporterCPP):
     oneprocessclass = OneProcessExporterMatchbox
+    # Matchbox only reads trace-basis color strings
+    trace_color_basis_only = True
 
 
 def mg7_launcher_source(interpreter, mg5_dir):

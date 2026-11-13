@@ -117,6 +117,10 @@ class VirtualExporter(object):
     # True when the format also needs a color flow per event: the trace basis
     # is then built next to the DDM one, and the trace JAMPs are obtained from
     # the DDM ones through the Kleiss-Kuijf relations.
+    trace_color_basis_only = False
+    # True for the formats which can only write the trace basis (Matchbox,
+    # which passes its color strings on): they keep it even after an explicit
+    # 'set color_basis ddm'.
 
     default_vector_size = 0
     
@@ -6678,8 +6682,10 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
            
 
     matrix_template = "matrix_standalone_matchbox.inc"
-    # matchbox needs the color flow information
+    # matchbox needs the color flow information, and only reads trace-basis
+    # color strings (get_color_string_lines)
     support_ddm_color_basis = False
+    trace_color_basis_only = True
     
     def color_data_prefix(self, replace_dict):
         """CF and DENOM are plain locals of each routine in the matchbox
