@@ -1346,28 +1346,33 @@ fn check_every_exported_process(root: &Path) {
         serde_json::from_str(&ids)
             .expect("RUSTICOL_RECURRENCE_PROCESSES must be a JSON array of CLI process IDs")
     } else {
-        let manifest: Value =
-            serde_json::from_slice(&fs::read(root.join("artifact.json")).unwrap()).unwrap();
+        // Read the manifest and the declared process-group payload through
+        // the artifact's authenticated reader, not files on disk.
+        let artifact = VerifiedArtifact::open(root).unwrap();
         let mut ids = Vec::new();
         let mut seen = BTreeSet::new();
-        let mut add = |id: &Value| {
-            let id = id.as_str().expect("provider process ID").to_owned();
-            if seen.insert(id.clone()) {
-                ids.push(id);
+        let mut add = |id: &str| {
+            if seen.insert(id.to_owned()) {
+                ids.push(id.to_owned());
             }
         };
-        for process in manifest["processes"].as_array().unwrap() {
-            add(&process["id"]);
-            for alias in process["aliases"].as_array().unwrap() {
-                add(&alias["id"]);
+        for process in &artifact.manifest().processes {
+            add(&process.id);
+            for alias in &process.aliases {
+                add(&alias.id);
             }
         }
-        let groups = root.join("process-groups.json");
-        if groups.exists() {
-            let groups: Value = serde_json::from_slice(&fs::read(groups).unwrap()).unwrap();
+        if let Some(payload) = artifact
+            .manifest()
+            .payloads
+            .iter()
+            .find(|payload| payload.role == PayloadRole::ProcessGroups)
+        {
+            let groups: Value =
+                serde_json::from_slice(&artifact.read_payload(&payload.path).unwrap()).unwrap();
             for group in groups["groups"].as_array().unwrap() {
                 for member in group["members"].as_array().unwrap() {
-                    add(&member["process_id"]);
+                    add(member["process_id"].as_str().expect("provider process ID"));
                 }
             }
         }

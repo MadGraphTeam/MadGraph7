@@ -14,13 +14,24 @@ fn assert_close(actual: f64, expected: f64, context: &str) {
 
 #[cfg(feature = "f64-symjit")]
 pub(super) fn generated_recurrence_validation_point(runtime: &NativeRuntime) -> Vec<[f64; 4]> {
-    let validation_path = runtime
-        .root()
-        .join("processes")
-        .join(&runtime.metadata().representative_process_key)
-        .join("validation-momenta.json");
+    // Read the declared payload through the artifact's own authenticated
+    // reader, not a path on disk, so a tree that stores payloads elsewhere
+    // (packed containers) can run the generated-artifact tests unchanged.
+    let artifact = VerifiedArtifact::open(runtime.root()).expect("open the generated artifact");
+    let process = &runtime.metadata().representative_process_key;
+    let payload = artifact
+        .manifest()
+        .payloads
+        .iter()
+        .find(|payload| {
+            payload.role == PayloadRole::ValidationMomenta
+                && payload.process_id.as_deref() == Some(process.as_str())
+        })
+        .unwrap_or_else(|| panic!("artifact declares validation momenta for {process:?}"));
     let validation: Value = serde_json::from_slice(
-        &fs::read(&validation_path).expect("read recurrence validation momenta"),
+        &artifact
+            .read_payload(&payload.path)
+            .expect("read recurrence validation momenta"),
     )
     .expect("parse recurrence validation momenta");
     validation["points"][0]
