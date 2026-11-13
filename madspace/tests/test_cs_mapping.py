@@ -62,7 +62,11 @@ def inverse(mapping, momenta, x1, x2, conditions=()):
 
 
 def random_numbers(mapping, batch, seed, low=0.0, high=1.0):
-    r = torch.rand((batch, mapping.random_dim()), generator=generator(seed))
+    # on the CPU, the device of the generator, also when a GPU run makes the
+    # GPU the default device
+    r = torch.rand(
+        (batch, mapping.random_dim()), generator=generator(seed), device="cpu"
+    )
     return low + (high - low) * r.numpy().astype(np.float64)
 
 
