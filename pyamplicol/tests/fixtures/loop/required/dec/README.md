@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: 0BSD -->
 # Decay references (M-FINAL MF-DEC-1)
 
+MadGraph7: the Python scripts named below are in the upstream pyAmpliCol
+repository (`tools/loop_reference`); MadGraph7 carries only the JSON files
+there.
+
 - `tree_<row>.json`: MG5_aMC 3.7.0 `output standalone` tree values (binary64
   `SMATRIX`) of six decays on loop_sm at the scheme's param_card
   (`tools/loop_reference/decay_tree_mg5.py`).

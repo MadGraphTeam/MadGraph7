@@ -250,12 +250,13 @@ by the wheel-owned static Rusticol SDK.
 
 ## Performance reports
 
-Selected manual measurement snapshots are published in the upstream repository:
+Selected manual measurement snapshots are published in the upstream repository
+(the tree-level ones in its history, before their removal from `main`):
 
-- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
-- [FullColor FFT selected-helicity snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
-- [FullColor FFT helicity-sum snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
+- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/11663c099393a62ac2d2919b95658697dade0cf7/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/11663c099393a62ac2d2919b95658697dade0cf7/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [FullColor FFT selected-helicity snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/11663c099393a62ac2d2919b95658697dade0cf7/docs/performance_reports/summary_plots_final.pdf)
+- [FullColor FFT helicity-sum snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/11663c099393a62ac2d2919b95658697dade0cf7/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
 - [One-loop benchmark report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/loop/README.md)
 
 ## Documentation

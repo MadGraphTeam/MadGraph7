@@ -303,10 +303,11 @@ precision altogether. See [Python API](python-api.md) and
 
 ## Published reports
 
-The upstream repository publishes two rendered manual snapshots:
+The upstream repository published two rendered manual snapshots (in its
+history, before their removal from `main`):
 
-- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/11663c099393a62ac2d2919b95658697dade0cf7/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/11663c099393a62ac2d2919b95658697dade0cf7/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
 They are measurement-host results, not release-CI benchmarks.
 

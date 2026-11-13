@@ -345,8 +345,8 @@ Source installation may work elsewhere, but a platform is not advertised as
 supported until its installed Python and native API matrix has passed.
 
 Rendered performance reports are not PyPI wheel payloads or release-CI
-benchmarks; the one-loop benchmark report lives under
-[docs/performance_reports/loop](../performance_reports/loop/README.md).
+benchmarks; the one-loop benchmark report lives in the upstream repository,
+under [docs/performance_reports/loop](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/loop/README.md).
 
 ## How artifacts are validated and published
 

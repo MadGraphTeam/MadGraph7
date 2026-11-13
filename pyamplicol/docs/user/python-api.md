@@ -544,7 +544,8 @@ processes on TIRust at the checked target accuracy above with the per-point
 NinjaRS fallback. A value that is not a bool is refused (`ValueError`).
 
 Measured accuracy of the setting (2026-11-08/09, development host; record
-`docs/performance_reports/loop/data/li-unchecked-accuracy.json`):
+[`docs/performance_reports/loop/data/li-unchecked-accuracy.json`](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/loop/data/li-unchecked-accuracy.json)
+in the upstream repository):
 binary64 finite part through this API (`Runtime.load(artifact,
 reduction_unchecked=True)`, `evaluate(points, mu_r2=..., poles="none",
 on_failure="return", reduction="tirust" | "ninjars")`) on each row's first
