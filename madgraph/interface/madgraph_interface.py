@@ -4349,8 +4349,6 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # the line being generated ('--gauge=X' of generate/add process)
         self._gauge_models = {}
         self._line_gauge = ''
-        # the line being generated carries '--gauge=X' of the session gauge
-        self._line_gauge_typed = False
         self._auto_gauge_freeze_logged = False
         self._model_v4_path = None
         self._export_dir = None
@@ -4547,7 +4545,7 @@ This implies that with decay chains:
                     raise MadGraph5Error(error_msg)
                 else:
                     myprocdef, line = self.extract_decay_chain_process(line, proc_number=nb_proc)
-                    set_process_gauge(myprocdef, self._line_gauge)
+                    set_process_gauge(myprocdef, self.process_gauge_tag())
                     # Redundant with above, but not completely as in the future
                     # one might think of allowing the core process to be 
                     # corrected by loops.
@@ -4566,7 +4564,7 @@ This implies that with decay chains:
             else:
                 line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
-                set_process_gauge(myprocdef, self._line_gauge)
+                set_process_gauge(myprocdef, self.process_gauge_tag())
                 if backend:
                     self.add_backend_process(myprocdef, backend, warning_duplicate)
                     self._line_ranges.append((first_amp, first_amp, False))
@@ -4593,6 +4591,15 @@ This implies that with decay chains:
             if self._curr_amplicol_defs and myprocdef.get_ninitial() != 2 \
                     and not standalone_only:
                 raise self.InvalidCmd("Can not mix processes with different number of initial states.")
+
+            # A polarised line next to an FD gauge chosen automatically: the
+            # automatic choice keeps it in the unitary gauge (amplitudes_
+            # prefer_fd_gauge), so the session leaves the FD gauge now, before
+            # the diagrams of the line are generated, and the line is run
+            # again there (its braces then validated in that gauge)
+            if self.polarised_line_leaves_automatic_fd(myprocdef):
+                self.leave_automatic_fd_gauge(raw_line.split(None, 1)[-1])
+                return MadGraphCmd.do_add(self, raw_line, counter=counter)
 
             # Check the propagator-only polarization braces: {G},{H},{Q},{W}
             # and {S} name a piece of a propagator numerator and are valid on
@@ -4734,7 +4741,7 @@ This implies that with decay chains:
         if gauge == self.options['gauge']:
             # the line itself is recorded (with its option) below, once
             with misc.TMP_variable(self, '_auto_gauge_replay', True), \
-                 misc.TMP_variable(self, '_line_gauge_typed', True):
+                 misc.TMP_variable(self, '_line_gauge', gauge):
                 MadGraphCmd.do_add(self, line, counter=counter)
         else:
             if self.postponed_export_pending():
@@ -4943,22 +4950,9 @@ This implies that with decay chains:
         line) or turned it off ('set auto_gauge False').  Runs at the end of
         every 'generate' and 'add process'."""
 
-        if self._auto_gauge_replay or not self.options.get('auto_gauge', True):
-            return
-        if self._explicit_gauge or self.model_edited_since_import():
-            # the user's choice; or a model changed after its import, which
-            # the reload into another gauge would lose
+        if self._auto_gauge_replay or not self.automatic_gauge_in_charge():
             return
         current = self.options['gauge']
-        if current != 'FD':
-            # an FD gauge we had chosen is gone (a model without the Feynman
-            # gauge was imported since): nothing of ours is in use
-            self._auto_gauge_active = False
-        if current not in ['unitary', 'FD'] or \
-                (current == 'FD' and not self._auto_gauge_active):
-            # Feynman/axial are imposed by the model or by a loop interface,
-            # and an FD gauge that is not ours (configuration file) is kept
-            return
         target = self.automatic_gauge_target()
         if target == (current, self._auto_fd_lines):
             return
@@ -4998,6 +4992,58 @@ This implies that with decay chains:
             logger.info('Back to the unitary gauge for the processes that do not '
                         'need the FD gauge (chosen automatically).')
         self.switch_gauge_and_regenerate(gauge, tags)
+
+    def automatic_gauge_in_charge(self):
+        """Whether the automatic choice may change the gauge of the session
+        (apply_automatic_gauge): it is on, the user has not chosen a gauge,
+        the model was not edited after its import (a reload into another
+        gauge would lose that), and the gauge in use is the unitary one or
+        an FD gauge it chose itself (Feynman/axial are imposed by the model
+        or by a loop interface, an FD gauge from the configuration file is
+        the user's).  An output waiting for its model is checked apart, see
+        postponed_export_pending."""
+
+        if not self.options.get('auto_gauge', True) or self._explicit_gauge \
+                or self.model_edited_since_import():
+            return False
+        current = self.options['gauge']
+        if current != 'FD':
+            # an FD gauge we had chosen is gone (a model without the Feynman
+            # gauge was imported since): nothing of ours is in use
+            self._auto_gauge_active = False
+        return current == 'unitary' or \
+               (current == 'FD' and self._auto_gauge_active)
+
+    def polarised_line_leaves_automatic_fd(self, procdef):
+        """Whether the session leaves an FD gauge chosen automatically for
+        the process definition of a new line: it has a polarised leg (its
+        decays included), which automatic_gauge_target never puts in the FD
+        gauge, and nothing else holds the FD gauge (the user's '--gauge=FD'
+        on the line, an output waiting for its model)."""
+
+        def polarised(one):
+            return any(leg.get('polarization') for leg in one.get('legs')) or \
+                   any(polarised(decay) for decay in one.get('decay_chains'))
+
+        return not self._auto_gauge_replay and not self._line_gauge and \
+               self.options['gauge'] == 'FD' and \
+               self.automatic_gauge_in_charge() and \
+               not self.postponed_export_pending() and polarised(procdef)
+
+    def leave_automatic_fd_gauge(self, line):
+        """Back to the unitary gauge from an FD gauge chosen automatically
+        for the lines of the session, which keep it with '--gauge=FD' (as
+        apply_automatic_gauge does once a line not wanting it is added),
+        before the polarised process `line` is generated."""
+
+        lines = self._process_lines
+        tags = set(k for k, (_, _, wants) in enumerate(self._line_ranges)
+                   if wants) if len(self._line_ranges) == len(lines) else set()
+        logger.info('%s: polarised, generated in the unitary gauge%s.'
+                    % (line, ', the other processes in the FD gauge chosen '
+                       'automatically for them (--gauge=FD)' if tags else ''),
+                    '$MG:BOLD')
+        self.switch_gauge_and_regenerate('unitary', tags)
 
     def automatic_gauge_target(self):
         """(session gauge, lines to generate with --gauge=FD) the automatic
@@ -7187,22 +7233,20 @@ This implies that with decay chains:
 
     def line_aloha_gauge(self):
         """The aloha.unitary_gauge value of the process line being generated:
-        its '--gauge=X' (self._line_gauge, or the session gauge for a typed
-        '--gauge=' of that gauge); the unitary gauge when the session
-        is in an FD gauge chosen automatically, since apply_automatic_gauge
-        keeps a line with polarised legs out of it (it then generates the
-        line again in the unitary gauge, unless an output waiting for its
-        model fixes the gauge); else the gauge of the session."""
+        its '--gauge=X' (self._line_gauge), else the gauge of the session."""
 
         if self._line_gauge:
             return {'unitary': True, 'FD': self.FD_GAUGE}[self._line_gauge]
-        if aloha.unitary_gauge == self.FD_GAUGE and self._auto_gauge_active and \
-                not self._explicit_gauge and not self._line_gauge_typed and \
-                self.options.get('auto_gauge', True) and \
-                not self.model_edited_since_import() and \
-                not self.postponed_export_pending():
-            return True
         return aloha.unitary_gauge
+
+    def process_gauge_tag(self):
+        """The 'gauge' of the process definitions of the line being
+        generated: its '--gauge=X' when that is not the session gauge, ''
+        (the session gauge) otherwise."""
+
+        if self._line_gauge == self.options['gauge']:
+            return ''
+        return self._line_gauge
 
     def validate_polarized_propagator_gauge(self, procdef, aloha_gauge=None):
         """Refuse a polarised propagator of a vector in a gauge where it does

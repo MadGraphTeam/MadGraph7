@@ -17,10 +17,12 @@
 
 from __future__ import absolute_import
 import glob
+import logging
 import os
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 
 import aloha
 import madgraph
@@ -259,6 +261,59 @@ class TestAutomaticGauge(unittest.TestCase):
                      for amp in mg_interface.iter_tree_amplitudes(self.cmd._curr_amps)
                      if not amp.get('process').get('is_decay_chain'))
         self.assertEqual(gauges, set([(24, 'FD'), (23, 'unitary')]))
+
+    def test_polarised_line_generated_once(self):
+        """the session leaves the automatic FD gauge before the diagrams of
+        a polarised line are generated: they are generated once, in the
+        unitary gauge, where {A} is the unitary remainder (no warning about
+        the FD one)"""
+
+        self.do('generate e+ e- > w+ w-')
+        self.assertGauge('FD', automatic=True)
+        # the diagrams of each generated line pass through
+        # amplitudes_prefer_fd_gauge: record the gauge of the polarised ones
+        generated = []
+        original = mg_interface.amplitudes_prefer_fd_gauge
+        def spy(amplitudes):
+            if any(leg.get('polarization')
+                   for amp in mg_interface.iter_tree_amplitudes(amplitudes)
+                   for leg in amp.get('process').get('legs')):
+                generated.append(aloha.unitary_gauge)
+            return original(amplitudes)
+        messages = []
+        class Collect(logging.Handler):
+            def emit(self, record):
+                messages.append(record.getMessage())
+        handler = Collect(level=logging.WARNING)
+        logging.getLogger('cmdprint').addHandler(handler)
+        try:
+            with unittest.mock.patch.object(mg_interface,
+                                            'amplitudes_prefer_fd_gauge', spy):
+                self.do('add process e+ e- > z{A} h, z > mu+ mu-')
+        finally:
+            logging.getLogger('cmdprint').removeHandler(handler)
+        self.assertEqual(generated, [True])
+        self.assertFalse([m for m in messages if 'remainder of the FD' in m])
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
+
+    def test_typed_fd_gauge_keeps_fd_refusals(self):
+        """'--gauge=FD' typed on a polarised line keeps it in the FD gauge
+        chosen automatically: {W}, which has no FD counterpart, is refused"""
+
+        self.do('generate e+ e- > w+ w-')
+        self.assertGauge('FD', automatic=True)
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'add process e+ e- > z{W} h, z > mu+ mu- --gauge=FD')
+        self.assertGauge('FD', automatic=True)
+        # {0} exists in FD: the line is FD, and so stays the other one (per
+        # line, the explicit option keeping the session out of a whole-FD
+        # choice)
+        self.do('add process e+ e- > z{0} h, z > mu+ mu- --gauge=FD')
+        self.assertEqual(set(amp.get('process').get_gauge(self.cmd.options['gauge'])
+                             for amp in mg_interface.iter_tree_amplitudes(
+                                                    self.cmd._curr_amps)),
+                         set(['FD']))
 
     # ------------------------------------------------------------------
     # the user's word
@@ -528,6 +583,23 @@ class TestAutomaticGaugeOutput(unittest.TestCase):
         self.assertIn('set gauge FD', lines)
         self.assertLess(lines.index('set gauge FD'),
                         lines.index('generate p p > t t~'))
+
+    def test_postponed_fd_output_keeps_fd_refusals(self):
+        """while an output written in the automatic FD gauge waits for its
+        model, the gauge stays FD: a polarised line is validated there"""
+
+        self.do('set apply_flavor_grouping False')
+        self.do('import model sm')
+        out = pjoin(self.path, 'POL')
+        self.do('generate e+ e- > w+ w-')
+        self.assertEqual(self.cmd.options['gauge'], 'FD')
+        self.do('output standalone %s --postpone_model' % out)
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'generate e+ e- > z{W} h, z > mu+ mu-')
+        self.assertEqual(self.cmd.options['gauge'], 'FD')
+        self.do('generate e+ e- > z{0} h, z > mu+ mu-')
+        self.assertEqual(self.cmd.options['gauge'], 'FD')
+        self.assertTrue(self.cmd._auto_gauge_active)
 
     def test_loop_process_after_postponed_fd_output(self):
         """a loop process cannot follow an FD-gauge output waiting for its

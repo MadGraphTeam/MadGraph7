@@ -56,8 +56,9 @@ spin-2 `y` of `loop_smgrav` is wrong by a factor 300 in the FD gauge), bound
 states, `[amplicol]` processes (pyAmplicol has no FD gauge yet, see below),
 polarised legs (`{0}`, `{T}`, ...: the split of a cross section into
 polarisations depends on the gauge and is defined in the unitary gauge),
-propagator-only polarisations (`{G}`, `{H}`, `{Q}`, `{W}`, `{S}` are pieces
-of the unitary-gauge propagator), a model without the Feynman gauge
+propagator polarisations (`{G}`, `{H}`, `{Q}`, `{W}` exist only in the
+unitary-gauge propagator; `{A}`, `{S}`, `{0S}` exist in FD too, but differ
+from the unitary-gauge ones), a model without the Feynman gauge
 (`1 not in model['gauge']`), and a model whose goldstone content `import_ufo`
 could not check against the FD convention (tagged `fd_gauge_unverified`).
 
