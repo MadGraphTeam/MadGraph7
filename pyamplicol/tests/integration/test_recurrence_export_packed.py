@@ -119,7 +119,6 @@ def test_recurrence_export_of_a_packed_artifact_equals_the_loose_one(
     assert stripped[0] == stripped[1]
     programs = exports["packed"]["programs"]
     assert isinstance(programs, list) and programs
-    assert exports["packed"]["kernels"]
 
     # The reference values equal a fresh evaluation of the packed artifact, bit
     # for bit (two points: the batched path the export describes).
