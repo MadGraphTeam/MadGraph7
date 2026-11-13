@@ -230,17 +230,21 @@ class VirtualTrick:
             self.fraction = max(min(self.fraction * factor, 1.0), self.min_fraction)
 
 
-def born_topology(masses, nincoming, channel):
+def born_topology(masses, nincoming, channel, order=None):
     """The Topology of the Born diagram of a channel of the provider
-    (FortranProvider.channels), with the masses of the Born."""
+    (FortranProvider.channels), with the masses of the Born. With order the
+    leg n of the provider is the particle order[n] of the topology, whose
+    masses are then in that order (the Born of a dipole of cs_driver.py)."""
     ms = madspace()
+    order = list(range(len(masses))) if order is None else list(order)
 
     def line(label):
         if label < 0:
             return f"p{-label - 1}"
-        if label <= nincoming:
-            return f"i{label - 1}"
-        return f"o{label - nincoming - 1}"
+        position = order[label - 1]
+        if position < nincoming:
+            return f"i{position}"
+        return f"o{position - nincoming}"
 
     vertices, used = [], set()
     for index, d1, d2, _, _ in channel["forest"]:
@@ -804,8 +808,8 @@ class NLORun:
             jets["jetalgo"] = integer(jets["jetalgo"])
             jets["maxjetflavor"] = integer(jets["maxjetflavor"])
             for integrand in self.integrands:
-                self.histogram_runtimes[integrand.name] = (
-                    integrand.histogram_runtime(self.histograms, jets)
+                self.histogram_runtimes[integrand.name] = integrand.histogram_runtime(
+                    self.histograms, jets
                 )
 
     def make_integrands(self, directories, n_f, n_l):

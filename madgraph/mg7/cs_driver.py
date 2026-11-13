@@ -22,9 +22,27 @@ light flavors of the model (coupl.inc). The Catani-Seymour corrections are
 those of QCD to every Born order (an NLO order is a Born order with two more
 powers of g_s).
 
-Not covered yet: the real stream (the real emission minus the dipoles), so
-a run gives the n-body part alone, decays, PDF schemes other than MSbar,
-user scales and the photon cuts.
+The real stream of a real process (a real matrix element of the cs block of
+madspace.cs, with its flavor lines) is the real emission minus its dipoles
+(CSDipoles), with one channel per dipole and Born channel of its Born: the
+CSMapping of the dipole on the Born diagram of the channel. The weight of a
+channel is |c| of its dipole over the sum over the dipoles of the real, c
+the color weight of CSDipoles at alpha = 1, times amp2 of its Born diagram
+over that of all Born diagrams at the Born of the dipole, so that the
+weights add up to one at every event. Each dipole takes the blocks of the
+Born of its own subprocess, the spin correlation in the factorized form
+<T_j . T_k> B(k_t) / B, with B(k_t) the Born of the provider with the
+azimuthal part of an FKS configuration whose mother is the emitter. The
+real emission has the cuts and scales of the real process, each dipole those
+of its Born, and both the densities at the momentum fractions of the real
+emission. An event where two partons i and j of one of its dipoles have
+2 p_i . p_j below technical_cut times s_hat has neither the real emission
+nor the dipoles, since the real emission of the Fortran in double precision
+loses digits as 1 / xi^2 towards the soft limit (a relative error of 1e-3 at
+an energy fraction xi = 5e-7 of the soft gluon in g g > t t~ g).
+
+Not covered yet: decays, PDF schemes other than MSbar, user scales and the
+photon cuts.
 """
 
 import argparse
@@ -54,6 +72,23 @@ from madgraph.mg7.nlo_driver import (
 logger = logging.getLogger("madgraph.mg7.cs_driver")
 
 INV_GEV2_TO_PB = 0.38937937217186e9
+FAMILIES = ("ff", "fi", "if", "ii")
+STREAMS = ("nbody", "real")
+
+
+def minkowski(a, b):
+    """The Minkowski product of the four-vectors a and b (..., 4)."""
+    return a[..., 0] * b[..., 0] - (a[..., 1:] * b[..., 1:]).sum(-1)
+
+
+def spin_configuration(provider, leg):
+    """The first FKS configuration of a provider whose mother is a gluon at
+    the Born leg leg (from 0), None without one."""
+    for c, configuration in enumerate(provider.configurations):
+        i_fks, j_fks = configuration["i_fks"], configuration["j_fks"]
+        if configuration["ij_pdg"] == 21 and j_fks - 1 - (j_fks > i_fks) == leg:
+            return c
+    return None
 
 
 def qcd_orders(orders):
@@ -149,13 +184,14 @@ class CSBornIntegrand:
         self.nlo_of_born = qcd_orders(orders)
         self.qcd_powers = [int(o[0]) for o in orders["born"]]
         self.nlo_count = len(orders["nlo"])
+        self.channels = self.provider.channels()
         self.channel_mappings = [
             ms.PhaseSpaceMapping(
                 born_topology(self.masses, self.incoming, channel),
                 self.energy,
                 leptonic=leptonic,
             )
-            for channel in self.provider.channels()
+            for channel in self.channels
         ]
         self.forward = [
             ms.FunctionRuntime(m.forward_function(), context)
@@ -385,28 +421,454 @@ class CSBornIntegrand:
         self.provider.close()
 
 
+class CSDipole:
+    """One dipole of a real process (an entry of the cs block of madspace.cs)
+    with the CSBornIntegrand of the subprocess of its Born: the Born legs
+    (from 0, in the order of the matrix element) of its emitter and its
+    spectator and, for a gluon emitter, the FKS configuration of the spin
+    correlation."""
+
+    def __init__(self, entry, born):
+        self.entry = entry
+        self.born = born
+        self.order = list(entry["born_order"])
+        i = entry["i"]
+        emitter = entry["j"] - (entry["j"] > i)
+        spectator = entry["k"] - (entry["k"] > i)
+        self.legs = self.order.index(emitter), self.order.index(spectator)
+        self.gluon = born.born_pdgs[self.legs[0]] == 21
+        self.configuration = 0
+        if self.gluon:
+            self.configuration = spin_configuration(born.provider, self.legs[0])
+            if self.configuration is None:
+                raise NotImplementedError(
+                    f"cs_driver: no FKS configuration of {born.name} with the "
+                    f"gluon {self.legs[0] + 1} as its mother"
+                )
+
+
+class CSRealIntegrand:
+    """The real stream of the Catani-Seymour integrand of one real process of
+    an aMC@NLO output, the real emission minus its dipoles, per dipole and
+    Born channel of its Born (an integrand of nlo_driver, without a discrete
+    choice). subprocesses are the CSBornIntegrand of the P* directories by
+    name, whose providers, scales and cuts the dipoles take."""
+
+    choice_key = "choice_probabilities"
+
+    def __init__(
+        self,
+        index,
+        block,
+        subprocesses,
+        run_card,
+        param_card,
+        context,
+        alpha,
+        kappa,
+        technical_cut,
+    ):
+        ms = madspace()
+        from madspace.fks import fks_cuts, fks_scale
+
+        entry = block["reals"][index]
+        source = subprocesses[entry["subprocess"]]
+        self.source = source
+        self.context = context
+        self.configuration = entry["configuration"]
+        self.name = f"{source.name} real {self.configuration + 1}"
+        configurations = source.configurations
+        real_pdgs = configurations["configurations"][self.configuration]["real_pdgs"]
+        self.pdgs = list(entry["pdgs"])
+        if len(self.pdgs) != len(real_pdgs):
+            raise ValueError(f"cs_driver: the real {self.pdgs} is not {real_pdgs}")
+        self.flavors = [list(f) for f in entry["flavors"]]
+        self.incoming = source.incoming
+        self.born_pdgs = source.born_pdgs
+        self.energy = source.energy
+        self.beams = source.beams
+        leptonic = self.beams == (0, 0)
+        orders = configurations["orders"]
+        self.nlo_count = len(orders["nlo"])
+        self.real_powers = [int(o[0]) for o in orders["nlo"]]
+        self.technical_cut = technical_cut
+        self.masses = [
+            float(param_card["mass"].get(str(abs(pdg)), 0.0)) for pdg in self.pdgs
+        ]
+        n = len(self.pdgs)
+        self.scale = Runtime(
+            fks_scale(configurations, **scale_parameters(run_card)).with_particle_count(
+                n
+            ),
+            context,
+        )
+        self.cuts = Runtime(
+            fks_cuts(source.channel_mappings[0], configurations, **run_cuts(run_card)),
+            context,
+        )
+        self.alpha_s = source.alpha_s
+        self.densities = source.densities
+        self.dipoles, self.channels, self.forward, self.dimensions = [], [], [], []
+        mappings, kernels, symmetry = [], [], []
+        for d in block["cs"]:
+            if d["real"] != index:
+                continue
+            born = subprocesses[block["borns"][d["born"]]["subprocess"]]
+            dipole = CSDipole(d, born)
+            line_masses = list(np.delete(self.masses, d["i"]))
+            for b, channel in enumerate(born.channels):
+                topology = born_topology(line_masses, 2, channel, dipole.order)
+                born_mapping = ms.PhaseSpaceMapping(
+                    topology, self.energy, leptonic=leptonic
+                )
+                mapping = ms.CSMapping(born_mapping, d["i"], d["j"], d["k"])
+                if b == 0:
+                    mappings.append(mapping)
+                self.channels.append((len(self.dipoles), b))
+                self.forward.append(
+                    ms.FunctionRuntime(mapping.forward_function(), context)
+                )
+                self.dimensions.append(mapping.random_dim())
+            self.dipoles.append(dipole)
+            kernels.append(d["kernel"])
+            symmetry.append(d["symmetry"])
+        self.pairs = np.array([(d.entry["i"], d.entry["j"]) for d in self.dipoles])
+        self.subtraction = Runtime(
+            ms.CSDipoles(
+                mappings,
+                kernels,
+                symmetry,
+                kappa=kappa,
+                **{f"alpha_{family}": alpha[family] for family in FAMILIES},
+            ),
+            context,
+        )
+        # the weights of the channels, without the gates of alpha
+        self.ungated = self.subtraction
+        if any(alpha[family] != 1.0 for family in FAMILIES):
+            self.ungated = Runtime(
+                ms.CSDipoles(mappings, kernels, symmetry, kappa=kappa), context
+            )
+
+    @property
+    def channel_count(self):
+        return len(self.channels)
+
+    def channel_dimension(self, index):
+        return self.dimensions[index]
+
+    def channel_name(self, index):
+        m, b = self.channels[index]
+        return f"{self.name} dipole {m + 1} channel {b + 1}"
+
+    def choice_count(self, index):
+        return 1
+
+    def luminosity(self, x1, x2, mu1, mu2):
+        """The luminosity of the real over its flavor lines, at the momentum
+        fractions of the real and the factorization scales mu1, mu2."""
+        if self.densities is None:
+            return np.full(len(x1), float(len(self.flavors)))
+        f1 = self.densities[0](x1, mu1)
+        f2 = self.densities[1](x2, mu2)
+        c1, c2 = self.densities[0].column, self.densities[1].column
+        return sum(f1[:, c1[a]] * f2[:, c2[b]] for a, b, *_ in self.flavors)
+
+    def dipole_value(self, dipole, cm, k_t, color_weight, spin_weight, born):
+        """-D / g_s^2 per Born order of a dipole (points, b) at its Born in
+        the partonic center-of-mass frame cm, with k_t in the same frame,
+        the weights of CSDipoles and born the output of the provider."""
+        provider = dipole.born.provider
+        plain = provider.born_orders_of(born[0])
+        colors = provider.color_correlated(cm)[:, :, dipole.legs[0], dipole.legs[1]]
+        value = color_weight[:, None] * colors
+        if dipole.gluon:
+            perp = provider.spin_correlated(
+                cm,
+                k_t,
+                np.full(len(cm), dipole.configuration),
+                born=born,
+            )
+            square = -minkowski(k_t, k_t)
+            ratio = np.divide(
+                colors, plain, out=np.zeros_like(colors), where=plain != 0
+            )
+            value += (spin_weight * square)[:, None] * ratio * perp
+        return value
+
+    def evaluate(self, index, x, choice, choice_weight, trick, rng):
+        """The weights of a channel at the points x of its random numbers (see
+        SubprocessIntegrand.evaluate of fks_driver.py and weights)."""
+        count = len(x)
+        out = self.forward[index].call([np.ascontiguousarray(x)])
+        momenta, x1, x2, det = [np.array(np.from_dlpack(t)) for t in out]
+        x1 = np.broadcast_to(x1, count).copy()
+        x2 = np.broadcast_to(x2, count).copy()
+        return self.weights(index, momenta, x1, x2, det)
+
+    def weights(self, index, momenta, x1, x2, det):
+        """The weights of the channel index at real emissions (batch, n + 1, 4)
+        in the lab frame, with their momentum fractions and the Jacobian det
+        of their mapping, and the parts of the histograms: the real emission
+        and its weight, the Borns of the dipoles in the order of their matrix
+        elements and their weights."""
+        count = len(momenta)
+        m_channel, b_channel = self.channels[index]
+        valid = (det != 0) & np.isfinite(det)
+        valid &= np.isfinite(momenta).all(axis=(1, 2))
+        momenta = np.where(valid[:, None, None], momenta, 0.0)
+        incoming = momenta[:, 0] + momenta[:, 1]
+        s_hat = minkowski(incoming, incoming)
+        valid &= s_hat > 0
+        # the technical cut on the pairs i, j of the dipoles
+        pairs = 2 * np.abs(
+            minkowski(momenta[:, self.pairs[:, 0]], momenta[:, self.pairs[:, 1]])
+        )
+        keep = valid & (pairs >= self.technical_cut * s_hat[:, None]).all(1)
+        projected = self.subtraction(momenta, x1, x2)
+        ungated = self.ungated(momenta, x1, x2)["color_weight"]
+        rho = np.abs(ungated)
+        total = rho.sum(1)
+        channel_weight = np.divide(
+            rho[:, m_channel], total, out=np.zeros(count), where=total > 0
+        )
+        # the real emission
+        fks_index = np.full(count, self.configuration, dtype=np.int32)
+        scales = self.scale(momenta)
+        passes = self.cuts(momenta, fks_index=fks_index)["mask"] != 0
+        points = np.flatnonzero(keep & passes)
+        real_weight = np.zeros(count)
+        if len(points):
+            cm = boost_z(momenta[points], -partonic_rapidity(momenta[points], 2))
+            matrix_element = self.source.provider.real_orders(cm, fks_index[points])
+            alpha_s = self.alpha_s(scales["ren_scale"][points])["alpha_s"]
+            g_s = np.sqrt(4 * math.pi * alpha_s)
+            weight = sum(
+                g_s**power * matrix_element[:, o]
+                for o, power in enumerate(self.real_powers)
+            )
+            lum = self.luminosity(
+                x1[points],
+                x2[points],
+                scales["fact_scale1"][points],
+                scales["fact_scale2"][points],
+            )
+            real_weight[points] = lum * weight
+        # the dipoles, each at its Born
+        d = len(self.dipoles)
+        n = len(self.pdgs) - 1
+        born_momenta = np.zeros((count, d, n, 4))
+        dipole_weights = np.zeros((count, d))
+        amplitude_weight = np.zeros(count)
+        first = np.zeros(count, dtype=np.int32)
+        for m, dipole in enumerate(self.dipoles):
+            born = dipole.born
+            me = projected["born_momenta"][:, m][:, dipole.order]
+            me = np.where(valid[:, None, None], me, 0.0)
+            born_momenta[:, m] = me
+            color_weight = projected["color_weight"][:, m]
+            spin_weight = projected["spin_weight"][:, m]
+            active = keep & ((color_weight != 0) | (spin_weight != 0))
+            active &= born.cuts(born.soft_momenta(me), fks_index=first)["mask"] != 0
+            needed = active | (keep if m == m_channel else False)
+            points = np.flatnonzero(needed)
+            if not len(points):
+                continue
+            y = -partonic_rapidity(me[points], 2)
+            cm = boost_z(me[points], y)
+            evaluated = born.provider.born(
+                cm, np.full(len(points), dipole.configuration)
+            )
+            if m == m_channel:
+                amp2 = evaluated[2]
+                amp2_total = amp2.sum(1)
+                amplitude_weight[points] = np.divide(
+                    amp2[:, b_channel],
+                    amp2_total,
+                    out=np.zeros(len(points)),
+                    where=amp2_total > 0,
+                )
+            take = active[points]
+            if not take.any():
+                continue
+            points, y, cm = points[take], y[take], cm[take]
+            k_t = boost_z(projected["spin_vector"][points, m], y)
+            value = self.dipole_value(
+                dipole,
+                cm,
+                k_t,
+                color_weight[points],
+                spin_weight[points],
+                tuple(part[take] for part in evaluated),
+            )
+            born_scales = born.scale(me[points])
+            alpha_s = born.alpha_s(born_scales["ren_scale"])["alpha_s"]
+            g_s = np.sqrt(4 * math.pi * alpha_s)
+            # -D, the term the real emission subtracts
+            weight = sum(
+                g_s ** (power + 2) * value[:, o]
+                for o, power in enumerate(born.qcd_powers)
+            )
+            lum = self.luminosity(
+                x1[points],
+                x2[points],
+                born_scales["fact_scale1"],
+                born_scales["fact_scale2"],
+            )
+            dipole_weights[points, m] = lum * weight
+        norm = np.where(
+            keep,
+            INV_GEV2_TO_PB
+            * det
+            * channel_weight
+            * amplitude_weight
+            / (2 * np.where(keep, s_hat, 1.0)),
+            0.0,
+        )
+        real_weight *= norm
+        dipole_weights *= norm[:, None]
+        zero = np.zeros(count)
+        return dict(
+            nlo=real_weight + dipole_weights.sum(1),
+            lo=zero,
+            residual=zero,
+            momenta=momenta,
+            real_weight=real_weight,
+            born_momenta=born_momenta,
+            dipole_weights=dipole_weights,
+            virtual=np.zeros((count, self.nlo_count)),
+            born=np.zeros((count, 1)),
+            evaluated=np.zeros(count, dtype=bool),
+        )
+
+    def histogram_runtime(self, histograms, jets):
+        return CSRealHistograms(self, histograms, jets)
+
+    def histogram_sums(self, runtime, result, jacobian, choice):
+        return runtime(result, jacobian)
+
+    def matrix_element_calls(self):
+        return {}
+
+    def close(self):
+        pass
+
+
+class CSRealHistograms:
+    """The histograms of the real stream of a real process, the real emission
+    and the Borns of its dipoles of each point in the same histograms
+    (FKSHistograms): the jets of FKSJets on each kinematics, those of the
+    Born for the dipoles, and the observables of the histograms on them, as
+    fks_histograms builds them."""
+
+    def __init__(self, integrand, histograms, jets):
+        ms = madspace()
+        from madspace.fks import fks_configurations, fks_histogram_jet_count
+
+        self.context = integrand.context
+        self.configuration = integrand.configuration
+        self.observables = {}
+
+        def layout(subprocess, born):
+            entries = fks_configurations(
+                subprocess.channel_mappings[0], subprocess.configurations
+            )
+            runtime = Runtime(ms.FKSJets(entries, born, **jets), self.context)
+            pids = tuple(runtime.function.pids())
+            if pids not in self.observables:
+                self.observables[pids] = []
+                for histogram in histograms:
+                    options = dict(histogram["observable"])
+                    options.setdefault("name", histogram.get("name", ""))
+                    self.observables[pids].append(
+                        Runtime(ms.Observable(list(pids), **options), self.context)
+                    )
+            return runtime, pids
+
+        self.real_jets = layout(integrand.source, False)
+        born_layouts = {}
+        self.born_jets = []
+        for dipole in integrand.dipoles:
+            name = dipole.born.name
+            if name not in born_layouts:
+                born_layouts[name] = layout(dipole.born, True)
+            self.born_jets.append(born_layouts[name])
+        items = []
+        for histogram in histograms:
+            options = dict(histogram["observable"])
+            items.append(
+                ms.FKSHistograms.HistItem(
+                    histogram["min"],
+                    histogram["max"],
+                    histogram["bin_count"],
+                    fks_histogram_jet_count(options),
+                )
+            )
+        self.binning = Runtime(
+            ms.FKSHistograms(items, 1 + len(integrand.dipoles)), self.context
+        )
+
+    def kinematics(self, jets, momenta, fks_index, inputs, k):
+        runtime, pids = jets
+        out = runtime(momenta, fks_index=fks_index)
+        inputs[f"jet_count{k}"] = out["jet_count"].astype(np.int32)
+        for i, observable in enumerate(self.observables[pids]):
+            value = observable(out["jet_momenta"])
+            inputs[f"value{i}_{k}"] = np.asarray(next(iter(value.values()))).reshape(
+                len(momenta)
+            )
+
+    def __call__(self, result, jacobian):
+        momenta = result["momenta"]
+        count = len(momenta)
+        inputs = {"weight0": result["real_weight"] * jacobian}
+        configuration = np.full(count, self.configuration, dtype=np.int32)
+        self.kinematics(self.real_jets, momenta, configuration, inputs, 0)
+        zero = np.zeros(count, dtype=np.int32)
+        for m, jets in enumerate(self.born_jets):
+            inputs[f"weight{m + 1}"] = result["dipole_weights"][:, m] * jacobian
+            born = result["born_momenta"][:, m]
+            self.kinematics(jets, born, zero, inputs, m + 1)
+        return list(self.binning.by_name(inputs).values())
+
+
 class CSRun(NLORun):
     """A fixed-order NLO run of madspace with the Catani-Seymour integrand on
     an aMC@NLO output (see the module and NLORun of nlo_driver), with the
     alpha of the four families of dipoles (ff, fi, if, ii, by name or one
-    for all) and kappa of the final-state gluon kernels with a massive
-    spectator."""
+    for all), kappa of the final-state gluon kernels with a massive
+    spectator, the technical cut of the real stream and the streams to
+    integrate (nbody, real or both)."""
 
     scheme = "cs"
     work_directory = "madspace_cs"
 
-    def __init__(self, output, alpha=1.0, kappa=2.0 / 3.0, **options):
+    def __init__(
+        self,
+        output,
+        alpha=1.0,
+        kappa=2.0 / 3.0,
+        technical_cut=1e-6,
+        streams=STREAMS,
+        **options,
+    ):
         super().__init__(output, **options)
         if not isinstance(alpha, dict):
-            alpha = {family: alpha for family in ("ff", "fi", "if", "ii")}
-        self.alpha = {
-            family: float(alpha.get(family, 1.0)) for family in ("ff", "fi", "if", "ii")
-        }
+            alpha = {family: alpha for family in FAMILIES}
+        self.alpha = {family: float(alpha.get(family, 1.0)) for family in FAMILIES}
         self.kappa = kappa
+        self.technical_cut = technical_cut
+        unknown = set(streams) - set(STREAMS)
+        if unknown or not streams:
+            raise ValueError(f"cs_driver: streams of {STREAMS} expected, not {streams}")
+        self.streams = tuple(streams)
+        self.subprocesses = {}
 
     def make_integrands(self, directories, n_f, n_l):
-        return [
-            CSBornIntegrand(
+        from madspace.cs import read_cs_subtraction
+
+        for directory in directories:
+            born = CSBornIntegrand(
                 directory,
                 self.run_card,
                 self.param_card,
@@ -416,8 +878,39 @@ class CSRun(NLORun):
                 self.alpha,
                 self.kappa,
             )
-            for directory in directories
-        ]
+            self.subprocesses[born.name] = born
+        integrands = []
+        if "nbody" in self.streams:
+            integrands += list(self.subprocesses.values())
+        if "real" in self.streams:
+            masses = {int(k): float(v) for k, v in self.param_card["mass"].items()}
+            block = read_cs_subtraction(self.output, masses)
+            integrands += [
+                CSRealIntegrand(
+                    index,
+                    block,
+                    self.subprocesses,
+                    self.run_card,
+                    self.param_card,
+                    self.context,
+                    self.alpha,
+                    self.kappa,
+                    self.technical_cut,
+                )
+                for index in range(len(block["reals"]))
+            ]
+        return integrands
+
+    def matrix_element_calls(self):
+        return {
+            name: born.matrix_element_calls()
+            for name, born in self.subprocesses.items()
+        }
+
+    def close(self):
+        super().close()
+        for born in self.subprocesses.values():
+            born.close()
 
 
 def main(argv=None):
@@ -432,6 +925,17 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, help="the seed (iseed of the run card)")
     parser.add_argument("--alpha", type=float, default=1.0, help="alpha of the dipoles")
     parser.add_argument(
+        "--technical-cut",
+        type=float,
+        default=1e-6,
+        help="the technical cut of the real stream",
+    )
+    parser.add_argument(
+        "--streams",
+        default=",".join(STREAMS),
+        help="the streams to integrate, nbody, real or both (nbody,real)",
+    )
+    parser.add_argument(
         "--histograms", help="a TOML file with [histograms] as run_card.toml"
     )
     args = parser.parse_args(argv)
@@ -439,6 +943,8 @@ def main(argv=None):
     run = CSRun(
         args.output,
         alpha=args.alpha,
+        technical_cut=args.technical_cut,
+        streams=tuple(args.streams.split(",")),
         name=args.name,
         accuracy=args.accuracy,
         grid_points=args.grid_points,
