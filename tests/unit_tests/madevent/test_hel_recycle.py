@@ -12,7 +12,16 @@
 # For more information, please visit: http://madgraph.phys.ucl.ac.be
 #
 ################################################################################
-""" Fixed-form line wrapping of the helicity recycled matrix element """
+"""How the helicity-recycled color stage reads the amplitudes.
+
+AMP is helicity major in the recycled matrix element, so a color flow line
+either indexes it in place, AMP(K,i), or reads a row that has been gathered out
+of it contiguously, AMPK(i,HRL). Which one it is has to be the same decision in
+the rewritten lines and in the loop the driver template opens around them, so
+both come from set_gather_lines and are checked together here.
+
+Also the fixed-form line wrapping the recycled matrix element is emitted
+through, which is what decides whether those lines are legal fortran at all."""
 
 from __future__ import absolute_import
 import os
@@ -21,6 +30,153 @@ import tempfile
 import unittest
 
 import madgraph.madevent.hel_recycle as hel_recycle
+
+
+class TestAmpGather(unittest.TestCase):
+    """The size gate of the contiguous amplitude gather, and the two shapes of
+    generated code that hang off it."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='hr_gather')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def recycler(self, ngraphs, ncomb):
+        """A recycler whose template announces ngraphs amplitudes and whose
+        good helicity list is ncomb long -- the two the gate is a function
+        of."""
+
+        template = os.path.join(self.tmpdir, 'template_matrix1.f')
+        with open(template, 'w') as fsock:
+            fsock.write('      PARAMETER (NGRAPHS=%d) \n' % ngraphs)
+        obj = hel_recycle.HelicityRecycler(
+            [str(i + 1) for i in range(ncomb)])
+        obj.set_template(template)
+        return obj
+
+    def test_template_ngraphs(self):
+        self.assertEqual(self.recycler(510, 8).template_ngraphs(), 510)
+        # no template to read: the gate has nothing to decide on
+        obj = self.recycler(510, 8)
+        obj.set_template(os.path.join(self.tmpdir, 'absent.f'))
+        self.assertEqual(obj.template_ngraphs(), 0)
+
+    def test_gate_is_on_the_size_of_amp(self):
+        """AMP is NCOMB x NGRAPHS complex*16, and only its total size decides:
+        either factor can be the large one."""
+
+        limit = hel_recycle.GATHER_MIN_BYTES // 16
+        for ngraphs, ncomb in [(limit // 8, 8), (8, limit // 8)]:
+            obj = self.recycler(ngraphs, ncomb)
+            obj.set_gather_lines()
+            self.assertTrue(obj.amp_gather, (ngraphs, ncomb))
+            obj = self.recycler(ngraphs, ncomb - 1)
+            obj.set_gather_lines()
+            self.assertFalse(obj.amp_gather, (ngraphs, ncomb - 1))
+
+    def test_no_template_never_gathers(self):
+        obj = self.recycler(0, 4096)
+        obj.set_gather_lines()
+        self.assertFalse(obj.amp_gather)
+
+    def test_plain_loop_reads_amp_in_place(self):
+        """Below the gate nothing changes: the holes render the very loop the
+        template used to carry, and the color flows index AMP by helicity."""
+
+        obj = self.recycler(45, 20)
+        obj.set_gather_lines()
+        self.assertEqual(obj.template_dict['hr_gather_decl'], '')
+        self.assertEqual(obj.template_dict['hr_gather_open'], 'K = 1, NCOMB')
+        self.assertEqual(obj.template_dict['hr_gather_close'], 'K')
+        self.assertEqual(obj.add_indices('JAMP(1,1) = AMP(31) - AMP(1)'),
+                         'JAMP(1,1) = AMP( K,31) - AMP( K,1)')
+
+    def test_gathered_loop_reads_the_lane(self):
+        """Above it the block loop wraps a row loop, and every amplitude read
+        moves to the gathered lane -- the color flows and the AMP2 lines
+        alike."""
+
+        obj = self.recycler(4096, 128)
+        obj.set_gather_lines()
+        decl = obj.template_dict['hr_gather_decl']
+        self.assertIn('PARAMETER (NHRBLK=%d)' % hel_recycle.GATHER_BLOCK, decl)
+        self.assertIn('COMPLEX*16 AMPK(NGRAPHS,NHRBLK)', decl)
+        # same storage class as AMP, so that it stays thread private if the
+        # !$OMP PARALLEL of SMATRIX1_MULTI is ever compiled in
+        self.assertNotIn('SAVE', decl)
+        opened = obj.template_dict['hr_gather_open']
+        self.assertTrue(opened.startswith('KB = 1, NCOMB, NHRBLK'))
+        self.assertIn('AMPK(I,HRL) = AMP(KB+HRL-1,I)', opened)
+        # K is no longer a loop variable but still what every rewritten line
+        # uses, so the row loop has to assign it
+        self.assertIn('K = KB + HRL - 1', opened)
+        # one ENDDO is the template's own, closing the row loop
+        self.assertEqual(obj.template_dict['hr_gather_close'],
+                         'HRL\n      ENDDO ! KB')
+        self.assertEqual(obj.add_indices('JAMP(1,1) = AMP(31) - AMP(1)'),
+                         'JAMP(1,1) = AMPK(31,HRL) - AMPK(1,HRL)')
+        self.assertEqual(
+            obj.add_indices('AMP2(1)=AMP2(1)+AMP(1)*DCONJG(AMP(1))'),
+            'AMP2(1)=AMP2(1)+AMPK(1,HRL)*DCONJG(AMPK(1,HRL))')
+
+    def test_amp2_of_a_shared_matrix_element(self):
+        """A matrix element shared by a crossing fills AMP2 after the helicity
+        loop, from the rows above the good-helicity cut of the point only: a
+        row dead for the caller is a rounding zero of diagrams that cancel,
+        and those diagrams must not weight the channels (p p > w+ j). The
+        pass reads AMP in place, the loop's gathered lane being gone by
+        then; any other matrix element keeps AMP2 inside the loop."""
+
+        amp2 = '      AMP2(1)=AMP2(1)+AMP(1)*DCONJG(AMP(1))\n'
+        for ngraphs, ncomb in [(45, 20), (4096, 128)]:
+            obj = self.recycler(ngraphs, ncomb)
+            obj.set_gather_lines()
+            obj.get_amp2_lines(amp2)
+            blocks = obj.amp2_blocks()
+            self.assertIn(obj.template_dict['amp2_lines'],
+                          blocks['amp2_row_lines'])
+            self.assertEqual(blocks['amp2_cut_lines'].strip(), '')
+            self.assertEqual(blocks['dead_row_decl'].strip(), '')
+            self.assertNotIn('dead_row_if', blocks)
+
+            obj.shared_rows = True
+            blocks = obj.amp2_blocks()
+            self.assertEqual(blocks['amp2_row_lines'].strip(), '')
+            cut = blocks['amp2_cut_lines']
+            self.assertIn('AMP2(1)=AMP2(1)+AMP( K,1)*DCONJG(AMP( K,1))', cut)
+            self.assertNotIn('AMPK', cut)
+            self.assertIn('IF (DABS(TS(K)).GT.TSSUM*LIMHEL/NCOMB) THEN', cut)
+            # comments must start in column 1 of their own line
+            self.assertTrue(cut.startswith('\nC '))
+            self.assertIn('COMMON/TO_LIMHEL/LIMHEL', blocks['dead_row_decl'])
+            # the colour weights keep the exact-zero gate
+            self.assertEqual(blocks['dead_row_if'], 'IF (TS(K).NE.0D0) THEN')
+
+    def test_only_amp_is_rewritten(self):
+        """TMP_JAMP, JAMP and the AMPBUF of the table-emitted color flows all
+        contain the three letters, and none of them is the amplitude array."""
+
+        for obj in (self.recycler(45, 20), self.recycler(4096, 128)):
+            obj.set_gather_lines()
+            for line in ['TMP_JAMP(3) = TMP_JAMP(1) + TMP_JAMP(2)',
+                         'JAMP(1,1) = JAMP(2,1)',
+                         'AMPBUF(NGRAPHS+ITMP) = AMPBUF(TMP_JAMP_A(ITMP))']:
+                self.assertEqual(obj.add_indices(line), line)
+
+    def test_a_bracketed_index_survives(self):
+        """With the color flow definitions emitted as operand tables, the
+        gather the exporter writes into matrix<i>_orig.f reads AMP at a table
+        lookup rather than at a literal."""
+
+        obj = self.recycler(45, 20)
+        obj.set_gather_lines()
+        self.assertEqual(obj.add_indices('AMPBUF(ITMP) = AMP(IDX(ITMP))'),
+                         'AMPBUF(ITMP) = AMP( K,IDX(ITMP))')
+        obj = self.recycler(4096, 128)
+        obj.set_gather_lines()
+        self.assertEqual(obj.add_indices('AMPBUF(ITMP) = AMP(IDX(ITMP))'),
+                         'AMPBUF(ITMP) = AMPK(IDX(ITMP),HRL)')
 
 
 class TestDoMultiline(unittest.TestCase):
@@ -317,6 +473,68 @@ class TestCppDialect(unittest.TestCase):
         skipped = [line for line in open(path)
                    if self.dialect.skip_line(line)]
         self.assertEqual(len(skipped), 3)
+
+
+class TestCppCrossedExternal(unittest.TestCase):
+    """A crossed external of a madmatrix output with crossing, in the form the
+    recycler reads (MadMatrixUFOHelasCallWriter._crossing_external_orig).
+
+    Every lane evaluates the BASE helicity row; a lane whose leg changed side
+    takes the opposite helicity with the opposite NSF flag (the all-outgoing
+    configuration). So each unfolded copy of helicity h is the head call
+    (+nsf, h) followed by the tail call (-nsf, -h) and the icsign blend into
+    the copy's own slot."""
+
+    def setUp(self):
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        self.dialect = hel_recycle.CppDialect()
+        self.tmpdir = tempfile.mkdtemp(prefix='hr_cpp_x')
+
+        def one_call(sign, obj, hel=None):
+            return ('ixxxxx<M_ACCESS, W_ACCESS>( xmom, m_pars->MT, %s, %+d,'
+                    ' cFlavors[iflavor][2], %s, 2 );' % (hel, sign, obj))
+        self.text = MadMatrixUFOHelasCallWriter._crossing_external_orig(
+            None, one_call, 2, 2, 5, -1)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_the_head_is_an_ordinary_external(self):
+        head = self.text.split('\n')[0]
+        args = self.dialect.arguments(head)
+        self.assertEqual(self.dialect.called_function(head), 'ixxxxx')
+        self.assertEqual(self.dialect.external_leg(args), 3)
+        self.assertEqual(self.dialect.external_helicity_leg(args), 3)
+        self.assertEqual(self.dialect.output_name(args), 'aloha_obj[5]')
+
+    def test_each_copy_gets_the_opposite_helicity_and_its_own_slot(self):
+        path = os.path.join(self.tmpdir, 'orig.cc')
+        with open(path, 'w') as fsock:
+            fsock.write(self.text + '\n')
+        self.dialect.read_folds(path)
+        self.assertEqual(sorted(self.dialect.externals), [2])
+        streamed = [line for line in open(path)
+                    if not self.dialect.skip_line(line)]
+        self.assertEqual(len(streamed), 1)  # the head only
+
+        class FakeExternal(object):
+            def __init__(self, hel, slot):
+                self.mg, self.hel, self.numbers = 3, hel, (slot,)
+                self.args = None
+        head = streamed[0].rstrip('\n')
+        for hel, slot in ((-1, 7), (1, 8)):
+            wav = FakeExternal(hel, slot)
+            wav.args = self.dialect.set_external_helicity(
+                self.dialect.arguments(head), hel)
+            wav.args[self.dialect.output_position(wav.args)] = 'aloha_obj[%d]' % (slot - 1)
+            text = self.dialect.render_external(head, wav)
+            # the helicity per SIMD lane (CppDialect.helicity_literal)
+            lit = '( fptype_amp_sv{} + %d )' % hel
+            self.assertIn('m_pars->MT, %s, -1,' % lit, text)
+            self.assertIn('m_pars->MT, -( %s ), +1,' % lit, text)
+            self.assertIn('aloha_obj[%d].pvec[_k]' % (slot - 1), text)
+            self.assertIn('icsign[2]', text)
+            self.assertNotIn('$', text)
 
 
 class TestCppAmplitudeSplit(unittest.TestCase):
@@ -1305,7 +1523,67 @@ class TestHelRecyclingWarmup(unittest.TestCase):
                             'HEL/ZEROAMP: 1 1 2',
                             'Matrix element = 1.0 GeV^-2'])
         self.assertEqual(ProcessExporterMadMatrixStandalone._parse_hel_warmup(output),
-                         ([1, 3], [(1, 2), (3, 7)]))
+                         ([1, 3], [(1, 2), (3, 7)], []))
+        # a crossing the probe could only scan off shell is reported
+        self.assertEqual(ProcessExporterMadMatrixStandalone._parse_hel_warmup(
+                             output + '\nHEL/OFFSHELL: 4\nHEL/OFFSHELL: 2')[2],
+                         [2, 4])
+
+
+class TestCrossingHelicityFactor(unittest.TestCase):
+    """The helicity baked into an external of a crossing-aware fortran matrix
+    element keeps the IC(i) factor of its NSF flag.
+
+    A crossed call evaluates the base row with every leg that changed side
+    negated together with its NSF flag (APPLY_CROSSING_ROWS), so one optim
+    serves every crossing only if the baked value is h*IC(i). The C++ dialect
+    has no IC: its crossed external carries the sign through its //HREXT tail."""
+
+    FERMION = '      CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1*IC(2), FLAVOR(2),W(2))'
+    VECTOR = '      CALL VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))'
+    SCALAR = '      CALL SXXXXX(P(0,3),+1*IC(3),W(3))'
+
+    def setUp(self):
+        hel_recycle.HelicityRecycler(['1'])  # resets the shared class state
+
+    def fortran_args(self, line, hel):
+        dialect = hel_recycle.Dialect()
+        return dialect.set_external_helicity(dialect.arguments(line), hel)
+
+    def test_the_ic_factor_follows_the_helicity(self):
+        """NHEL(2) with +1*IC(2) as its NSF becomes -1*IC(2)"""
+
+        self.assertEqual(self.fortran_args(self.FERMION, -1)[2], '-1*IC(2)')
+        self.assertEqual(self.fortran_args(self.FERMION, 1)[2], '+1*IC(2)')
+
+    def test_no_ic_no_factor(self):
+        """A leg whose NSF carries no IC gets the bare value"""
+
+        self.assertEqual(self.fortran_args(self.VECTOR, -1)[2], '-1')
+
+    def test_a_scalar_takes_no_factor(self):
+        """A scalar has no helicity: the slot is its output, renamed later"""
+
+        self.assertEqual(self.fortran_args(self.SCALAR, 0)[2], ' 0')
+
+    def test_the_unfolded_copies_carry_it(self):
+        """generate_wavfuncs writes one copy per helicity, each h*IC(i)"""
+
+        hel_recycle.External.hel_ranges = [set(), {-1, 1}]
+        dag = hel_recycle.DAG()
+        copies = hel_recycle.External.generate_wavfuncs(self.FERMION + '\n', dag)
+        self.assertEqual(sorted(copy.args[2] for copy in copies),
+                         ['+1*IC(2)', '-1*IC(2)'])
+        self.assertEqual(sorted(copy.hel for copy in copies), [-1, 1])
+
+    def test_cpp_takes_no_factor(self):
+        """The C++ dialect writes the bare value (one per SIMD lane)"""
+
+        dialect = hel_recycle.CppDialect()
+        line = ('      ixxxxx<M_ACCESS, W_ACCESS>( xmom, m_pars->MT, cHel[ihel][2],'
+                ' -1, cFlavors[iflavor][2], aloha_obj[5], 2 );')
+        args = dialect.set_external_helicity(dialect.arguments(line), -1)
+        self.assertEqual(args[2], '( fptype_amp_sv{} + -1 )')
 
 
 class TestHelRecyclingWarmupDispatch(unittest.TestCase):
