@@ -4363,8 +4363,11 @@ print(json.dumps(out))
         run (madgraph/mg7/helicity_choice.py), made from the cards on 16 RAMBO
         points on a CPU build before the run and given to every instance: for
         13 TeV beams with PDFs, the points go down to just above threshold and
-        the same 16 points come out right with it; on points at 13 TeV only
-        (beams without PDFs) the all-plus helicities would be dropped.
+        the same 16 points come out right with it. On points at 13 TeV only
+        (beams without PDFs), where the all-plus helicities are 1e-14 of |M|^2,
+        they are kept too: with a massive external leg (the Higgs) the filter
+        keeps every row that is not exactly 0 (ProcessTables hel_massive), so
+        both choices are the same and both give the analytic |M|^2.
         """
         import array
         import math
@@ -4445,8 +4448,9 @@ print(json.dumps(out))
         no_pdfs = helicity_choice.choose(lib_path, param_card, {}, 13000., 0., False)
         self.assertIsNotNone(with_pdfs)
         self.assertIsNotNone(no_pdfs)
-        self.assertLess(len(no_pdfs), len(with_pdfs),
-                        'at 13 TeV only, the all-plus helicities are kept')
+        self.assertEqual(no_pdfs[1:], with_pdfs[1:],
+                         'with a massive leg, the choice at 13 TeV only keeps '
+                         'the all-plus helicities too')
         lib = ctypes.CDLL(lib_path)
         mom = (ctypes.c_double * (16 * nevt))()  # mom[nevt * (4 * mu + ipart) + i]
         for i in range(nevt):
@@ -4474,13 +4478,12 @@ print(json.dumps(out))
             lib.umami_free(handle)
             return list(me)
 
-        for ievt, (me, ref) in enumerate(zip(evaluate(with_pdfs), expected)):
-            self.assertLessEqual(abs(me / ref - 1), 1e-10,
-                                 'the choice for 13 TeV with PDFs, sqrt(s) = %g GeV: '
-                                 '%r instead of %r' % (2 * points[16 * ievt], me, ref))
-        low = evaluate(no_pdfs)[0]  # 130 GeV
-        self.assertLess(low / expected[0], 0.9,
-                        'the choice at 13 TeV only should drop the all-plus helicities')
+        for tag, choice in (('with PDFs', with_pdfs), ('without PDFs', no_pdfs)):
+            for ievt, (me, ref) in enumerate(zip(evaluate(choice), expected)):
+                self.assertLessEqual(abs(me / ref - 1), 1e-10,
+                                     'the choice for 13 TeV %s, sqrt(s) = %g GeV: '
+                                     '%r instead of %r'
+                                     % (tag, 2 * points[16 * ievt], me, ref))
 
     def test_madmatrix_vs_fortran(self):
         """Cross-check that standalone (madmatrix) reproduces the
