@@ -28,12 +28,21 @@ cosa = 1, top vetoed, QCD corrections, model R2/UV, full colour, MU_R = 125):
   - ``auto`` resolves to TIRust with its reason in binary64, double-double
     and arbitrary precision, and on every level of a rescue ladder (no
     NinjaRS fallback); an explicit NinjaRS, a NinjaRS rescue level and the
-    cross-backend check are refused typed (``ReductionUnavailable``). In
-    binary64 TIRust's conditioning gates (and its method choice's check)
-    refuse the rank-8 pentagons' sub-boxes at most of these points, which
-    then fail closed with TIRust's reason; double-double and arbitrary
-    precision serve every point, and the default rescue ladder moves the
-    failed points to double-double (TIRust there too);
+    cross-backend check are refused typed (``ReductionUnavailable``). Each
+    carrier serves some points and fails the others closed with TIRust's
+    typed reason, recorded per carrier (``runs["served"]``,
+    ``runs["refusals"]``). The served sets differ by design and neither
+    contains the other: binary64 retries the rows its conditioning gates
+    refuse with the method choice and then the verified gate-0 last resort
+    (each lane checked in its acceptance frame at the call's target), the
+    extended carriers have the method choice off (``v2_tir``'s
+    ``extended_method_choice``), so a row their gates refuse (the gate
+    raised to the carrier's precision, against conditioning^rank at rank 8)
+    fails closed where binary64 may serve it. The carriers are compared on
+    the points both serve (at least one, else the check fails), within the
+    call's target accuracy (TIRust's own consistency, no correctness
+    claim); the default rescue ladder serves every point (TIRust on every
+    level);
   - the native runtime the SDKs use (``evaluate_v2_artifact``) serves it on
     TIRust by default, bitwise the Python API's binary64 values;
   - the families NinjaRS reduces (rank <= N+2) agree lane by lane (the
@@ -64,6 +73,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from decimal import Decimal
 from fractions import Fraction
@@ -328,6 +338,22 @@ def _statuses(result) -> list:
     ]
 
 
+def _refusals(result) -> dict[str, int]:
+    """The failed points of ``result`` by TIRust's reason: the kind its
+    detail names ('TIRust <kind>: ...', e.g. 'Unstable', 'method-choice lane
+    refused by its check'), else 'untyped' (which the typed-failure check
+    then refuses)."""
+
+    found: dict[str, int] = {}
+    for lane in result.diagnostics:
+        if lane.status == "success":
+            continue
+        match = re.search(r"TIRust ([^:;]+):", lane.detail or "")
+        kind = match.group(1).strip() if match else "untyped"
+        found[kind] = found.get(kind, 0) + 1
+    return found
+
+
 def _relative(a_values, b_values) -> float:
     """The largest deviation of two points' sectors, per Laurent
     coefficient relative to the sector's largest one."""
@@ -391,24 +417,24 @@ def tir_only_checks(artifact: Path, loaded, pts, scales) -> dict:
     runs["served"] = {
         name: f"{len(v)}/{len(results[name].diagnostics)}" for name, v in served.items()
     }
-    # TIRust's own consistency across carriers (no correctness claim).
-    runs["binary64_vs_double_double"] = max(
-        (
-            _relative(results["double"].values[p], results["double-double"].values[p])
-            for p in served["double"]
-        ),
-        default=None,
-    )
-    runs["double_double_vs_arbitrary"] = max(
-        (
-            _relative(
-                results["double-double"].values[p], results["arbitrary"].values[p]
-            )
-            for p in served["arbitrary"]
-            if p in served["double-double"]
-        ),
-        default=None,
-    )
+    runs["refusals"] = {name: _refusals(r) for name, r in results.items()}
+    # TIRust's own consistency across carriers (no correctness claim) on the
+    # points both carriers serve: each carrier serves at the call's target
+    # accuracy, so two served values agree within it (module docstring).
+    target = results["double"].diagnostics[0].reduction.target
+    runs["target"] = target
+    for key, (a, b) in {
+        "binary64_vs_double_double": ("double", "double-double"),
+        "double_double_vs_arbitrary": ("double-double", "arbitrary"),
+    }.items():
+        common = [p for p in served[a] if p in served[b]]
+        runs[key] = {
+            "points": common,
+            "worst": max(
+                (_relative(results[a].values[p], results[b].values[p]) for p in common),
+                default=None,
+            ),
+        }
     runs["values_double_double"] = _values(results["double-double"])
     out["runs"] = runs
     # The default rescue ladder (binary64, double-double, arbitrary): a point
@@ -506,7 +532,14 @@ def tir_only_checks(artifact: Path, loaded, pts, scales) -> dict:
             for name in ("double", "double-double", "arbitrary")
             for entry in runs[name]["points"]
         )
-        and all(served[name] for name in results),
+        and all(served[name] for name in results)
+        and not any("untyped" in kinds for kinds in runs["refusals"].values()),
+        "carriers_agree_where_both_serve": all(
+            runs[key]["points"]
+            and runs[key]["worst"] is not None
+            and runs[key]["worst"] <= target
+            for key in ("binary64_vs_double_double", "double_double_vs_arbitrary")
+        ),
         "rescue_on_tirust": all(
             attempt["effective"] == "tirust"
             for result in ("default_attempts", "forced_attempts")
