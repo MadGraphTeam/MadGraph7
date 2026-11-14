@@ -84,6 +84,14 @@ def flux_factor(shat, nexternal, nin=2):
     return 1 / (2 * shat) / pi2 ** (3 * (nexternal - nin) - 4) * pi2**3
 
 
+def lepton_luminosity(s_lab, condition=True):
+    """The LeptonLuminosity of the lepton PDFs of MadFKS: the full Jacobian of
+    generate_x_ee and the lower bound on s_hat per event."""
+    return ms.LeptonLuminosity(
+        s_lab, 0.0, BETA, reduced_density=False, s_hat_min_condition=condition
+    )
+
+
 def s_lab(data):
     return 4 * data["ebeam"][0] * data["ebeam"][1]
 
@@ -105,8 +113,8 @@ def test_luminosity_matches_generate_x_ee(path):
     ndim = data["ndim"]
     r = np.array([point["x"][ndim - 5 : ndim - 3] for _, point in rows])
     tau = np.array([point["noevpr"]["tau_born_lower_bound"] for _, point in rows])
-    luminosity = ms.FKSLeptonLuminosity(s_lab(data), BETA, s_hat_min_condition=True)
-    x1, x2, s_hat, omx1, omx2, det = map(
+    luminosity = lepton_luminosity(s_lab(data))
+    x1, omx1, x2, omx2, s_hat, det = map(
         to_numpy,
         luminosity.map_forward(
             [to_torch(r[:, 0]), to_torch(r[:, 1])], [to_torch(tau * s_lab(data))]
@@ -127,7 +135,7 @@ def test_luminosity_matches_generate_x_ee(path):
     r1, r2, det_inv = map(
         to_numpy,
         luminosity.map_inverse(
-            [to_torch(v) for v in (x1, x2, s_hat, omx1, omx2)],
+            [to_torch(v) for v in (x1, omx1, x2, omx2, s_hat)],
             [to_torch(tau * s_lab(data))],
         ),
     )
@@ -317,7 +325,7 @@ def lepton_mapping(data, cuts_floor=0.0, initial_map="symmetric"):
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
         sqrt_s_hat_condition=True,
     )
-    luminosity = ms.FKSLeptonLuminosity(s_lab(data), BETA, s_hat_min_condition=True)
+    luminosity = lepton_luminosity(s_lab(data))
     mapping = fks_configuration_mapping(
         born,
         data["fks_configurations"],
@@ -443,7 +451,7 @@ def test_volume(path, initial_map):
             to_numpy, mapping.map_forward([to_torch(r)], [to_torch_int(index)])
         )
         r_lumi = rng.random((batch, 2))
-        x1, x2, s_hat, _, _, det_lumi = map(
+        x1, _, x2, _, s_hat, det_lumi = map(
             to_numpy,
             luminosity.map_forward(
                 [to_torch(r_lumi[:, 0]), to_torch(r_lumi[:, 1])],
@@ -472,7 +480,7 @@ def test_invalid_lepton_mappings():
             masses, 1000.0, mode=ms.PhaseSpaceMapping.TChannelMode.rambo, **options
         )
 
-    luminosity = ms.FKSLeptonLuminosity(1e6, BETA, s_hat_min_condition=True)
+    luminosity = lepton_luminosity(1e6)
     fixed = born(leptonic=True, sqrt_s_hat_condition=True)
     mapping = ms.FKSConfigurationMapping(fixed, configurations, luminosity=luminosity)
     assert mapping.random_dim() == fixed.random_dim() + 5
@@ -481,7 +489,13 @@ def test_invalid_lepton_mappings():
             ms.FKSConfigurationMapping(bad_born, configurations, luminosity=luminosity)
     with pytest.raises(ValueError, match="s_hat_min condition"):
         ms.FKSConfigurationMapping(
-            fixed, configurations, luminosity=ms.FKSLeptonLuminosity(1e6, BETA)
+            fixed, configurations, luminosity=lepton_luminosity(1e6, condition=False)
+        )
+    with pytest.raises(ValueError, match="full Jacobian"):
+        ms.FKSConfigurationMapping(
+            fixed,
+            configurations,
+            luminosity=ms.LeptonLuminosity(1e6, 0.0, BETA, s_hat_min_condition=True),
         )
     with pytest.raises(ValueError, match="needs a lepton luminosity"):
         ms.FKSConfigurationMapping(fixed, configurations)
@@ -489,6 +503,3 @@ def test_invalid_lepton_mappings():
         ms.FKSMapping(fixed, 4, 0)
     with pytest.raises(ValueError, match="sqrt_s_hat condition"):
         born(sqrt_s_hat_condition=True)
-    for bad in [dict(beta=1.0), dict(s_hat_min=1e6), dict(s_hat_min=-1.0)]:
-        with pytest.raises(ValueError, match="FKSLeptonLuminosity"):
-            ms.FKSLeptonLuminosity(1e6, **{"beta": BETA, **bad})

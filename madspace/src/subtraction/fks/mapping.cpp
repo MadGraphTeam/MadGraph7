@@ -430,7 +430,7 @@ const PhaseSpaceMapping& checked_configuration_born(
     const PhaseSpaceMapping& born,
     const std::vector<FKSConfigurationMapping::Configuration>& configurations,
     double sqrt_s_hat_floor,
-    const std::optional<FKSLeptonLuminosity>& luminosity
+    const std::optional<LeptonLuminosity>& luminosity
 ) {
     if (luminosity &&
         (!born.leptonic() || !born.sqrt_s_hat_condition() ||
@@ -450,6 +450,12 @@ const PhaseSpaceMapping& checked_configuration_born(
         throw std::invalid_argument(
             "FKSConfigurationMapping: the lepton luminosity needs the s_hat_min "
             "condition (s_hat_min_condition)"
+        );
+    }
+    if (luminosity && luminosity->reduced_density()) {
+        throw std::invalid_argument(
+            "FKSConfigurationMapping: the lepton luminosity needs the full "
+            "Jacobian of the densities of MadFKS (reduced_density false)"
         );
     }
     if (!luminosity && born.sqrt_s_hat_condition()) {
@@ -567,7 +573,7 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     const std::vector<FKSConfiguration>& configurations,
     double s_hat_min,
     double sqrt_s_hat_floor,
-    const std::optional<FKSLeptonLuminosity>& luminosity,
+    const std::optional<LeptonLuminosity>& luminosity,
     FKSRadiation::InitialMap initial_map,
     const nested_vector3<std::size_t>& resonances
 ) :
@@ -586,7 +592,7 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     const std::vector<Configuration>& configurations,
     double s_hat_min,
     double sqrt_s_hat_floor,
-    const std::optional<FKSLeptonLuminosity>& luminosity,
+    const std::optional<LeptonLuminosity>& luminosity,
     FKSRadiation::InitialMap initial_map,
     const nested_vector3<std::size_t>& resonances
 ) :
@@ -1091,8 +1097,8 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
         );
         x1_born = lumi.at("x1");
         x2_born = lumi.at("x2");
-        omx1 = lumi.at("one_minus_x1");
-        omx2 = lumi.at("one_minus_x2");
+        omx1 = lumi.at("omx1");
+        omx2 = lumi.at("omx2");
         det_lumi = lumi.at("det");
         sqrt_s_lumi = fb.sqrt(lumi.at("s_hat"));
         born = fixed_born(fb, born_inputs, conditions, sqrt_s_lumi);
@@ -1767,7 +1773,7 @@ Mapping::Result FKSConfigurationMapping::build_lepton_inverse(
         born_conditions(fb, conditions, pick(fb, sqrt_s_k, slot))
     );
     auto lumi = _luminosity->build_inverse(
-        fb, ValueVec{x1, x2, s_hat, omx1, omx2}, ValueVec{s_born_min}
+        fb, ValueVec{x1, omx1, x2, omx2, s_hat}, ValueVec{s_born_min}
     );
     auto r = fb.unstack(born.at("random"));
     r.push_back(lumi.at("r1"));

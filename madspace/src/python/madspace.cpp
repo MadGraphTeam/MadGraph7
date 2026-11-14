@@ -925,36 +925,6 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("LeptonLuminosityInvariant::LeptonLuminosityInvariant")
         );
 
-    py::classh<FKSLeptonLuminosity, Mapping>(
-        m, "FKSLeptonLuminosity", pydoc::doc("FKSLeptonLuminosity")
-    )
-        .def(
-            py::init<double, double, double, bool>(),
-            py::arg("s_lab"),
-            py::arg("beta"),
-            py::arg("s_hat_min") = 0.,
-            py::arg("s_hat_min_condition") = false,
-            pydoc::doc("FKSLeptonLuminosity::FKSLeptonLuminosity")
-        )
-        .def(
-            "s_lab",
-            &FKSLeptonLuminosity::s_lab,
-            pydoc::doc("FKSLeptonLuminosity::s_lab")
-        )
-        .def(
-            "beta", &FKSLeptonLuminosity::beta, pydoc::doc("FKSLeptonLuminosity::beta")
-        )
-        .def(
-            "s_hat_min",
-            &FKSLeptonLuminosity::s_hat_min,
-            pydoc::doc("FKSLeptonLuminosity::s_hat_min")
-        )
-        .def(
-            "s_hat_min_condition",
-            &FKSLeptonLuminosity::s_hat_min_condition,
-            pydoc::doc("FKSLeptonLuminosity::s_hat_min_condition")
-        );
-
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
         .def(
             py::init<bool, double, double, double>(),
@@ -2271,7 +2241,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<FKSConfigurationMapping::Configuration>&,
                 double,
                 double,
-                const std::optional<FKSLeptonLuminosity>&,
+                const std::optional<LeptonLuminosity>&,
                 FKSRadiation::InitialMap,
                 const nested_vector3<std::size_t>&>(),
             py::arg("born"),
@@ -2289,7 +2259,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<FKSConfiguration>&,
                 double,
                 double,
-                const std::optional<FKSLeptonLuminosity>&,
+                const std::optional<LeptonLuminosity>&,
                 FKSRadiation::InitialMap,
                 const nested_vector3<std::size_t>&>(),
             py::arg("born"),

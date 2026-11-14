@@ -246,7 +246,6 @@ add_library(
     src/subtraction/fks/limits.cpp
     src/subtraction/fks/couplings.cpp
     src/subtraction/fks/histograms.cpp
-    src/subtraction/fks/lepton_luminosity.cpp
     src/subtraction/fks/mapping.cpp
     src/subtraction/fks/radiation.cpp
     src/subtraction/fks/sector.cpp
@@ -320,7 +319,6 @@ add_library(
     include/madspace/subtraction/fks/configuration.hpp
     include/madspace/subtraction/fks/couplings.hpp
     include/madspace/subtraction/fks/histograms.hpp
-    include/madspace/subtraction/fks/lepton_luminosity.hpp
     include/madspace/subtraction/fks/limits.hpp
     include/madspace/subtraction/fks/mapping.hpp
     include/madspace/subtraction/fks/radiation.hpp

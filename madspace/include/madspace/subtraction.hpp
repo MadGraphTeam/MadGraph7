@@ -6,7 +6,6 @@
 #include "subtraction/fks/configuration.hpp"
 #include "subtraction/fks/couplings.hpp"
 #include "subtraction/fks/histograms.hpp"
-#include "subtraction/fks/lepton_luminosity.hpp"
 #include "subtraction/fks/limits.hpp"
 #include "subtraction/fks/mapping.hpp"
 #include "subtraction/fks/radiation.hpp"

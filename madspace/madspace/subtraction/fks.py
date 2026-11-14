@@ -293,8 +293,9 @@ def fks_configuration_mapping(
             bound (fks_sqrt_s_hat_min) is the floor of the Born for a
             final-state emitter and raises s_hat_min for an incoming one. They
             stay to be applied to the real emission and the counter-events.
-        luminosity: for lepton beams, the FKSLeptonLuminosity of the momentum
-            fractions, with s_hat_min_condition=True, and born leptonic with
+        luminosity: for lepton beams, the LeptonLuminosity of the momentum
+            fractions, with reduced_density=False and
+            s_hat_min_condition=True, and born leptonic with
             sqrt_s_hat_condition=True. An incoming emitter then radiates
             without the projection of the event, see
             FKSConfigurationMapping.
