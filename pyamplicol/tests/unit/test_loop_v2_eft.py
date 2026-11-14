@@ -15,7 +15,9 @@ rank > N+2 numerators in the models we have; a run-only check).
 * nightly, on HC_NLO_X0 (``tools/loop_v2_eft_execution.py``'s rows):
   g g > x0 x0 x0 (three x0 G G insertions; its pentagons at rank N+3) is
   generated TIR-only, evaluates through TIRust in binary64, double-double and
-  arbitrary precision and on every rescue level, refuses NinjaRS typed (call,
+  arbitrary precision (each carrier's served points and typed refusals
+  recorded; the carriers agree within the target accuracy on the points both
+  serve, at least one) and on every rescue level, refuses NinjaRS typed (call,
   rescue level, cross-backend check), is served by the SDKs' native runtime
   on TIRust bitwise, and its families NinjaRS reduces agree lane by lane;
   g g > x0 x0 (two insertions, rank N+2 at most) is no TIR-only artifact and
