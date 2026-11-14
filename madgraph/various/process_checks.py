@@ -78,7 +78,8 @@ from madgraph.iolibs.files import cp
 import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
-     ixxxxx, oxxxxx, vxxxxx, sxxxxx, txxxxx, irxxxx, orxxxx, sfdxxx, vfdxxxx
+     ixxxxx, oxxxxx, vxxxxx, sxxxxx, txxxxx, irxxxx, orxxxx, sfdxxx, vfdxxxx, \
+     ixxxxxr, oxxxxxr, vxxxxxr
 import io
 import io as StringIO
 file = io.FileIO
@@ -89,6 +90,14 @@ ADDED_GLOBAL = []
 temp_dir_prefix = "TMP_CHECK"
 
 pjoin = os.path.join
+
+def zero_widths(evaluator):
+    """Set every width of the model of this evaluator to zero: a fixed width
+    breaks gauge invariance, which the gauge, BRS and Lorentz checks would
+    see (not for the complex-mass scheme, which keeps it)."""
+    for particle in evaluator.full_model.get('particles'):
+        if particle.get('width') != 'ZERO':
+            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
 
 def clean_added_globals(to_clean):
     for value in list(to_clean):
@@ -232,7 +241,9 @@ class MatrixElementEvaluator(object):
                 if pdg in sub_ids:
                     return list(sub_ids).index(pdg) + 1
             return 1
-        legs = process.get('legs')
+        # a decay-chain matrix element is evaluated on all its external legs
+        legs = process.get_legs_with_decays() if process.get('decay_chains') \
+               else process.get('legs')
         flavor = [_flavor_group_pos(leg) for leg in legs]
 
         if "matrix_elements" not in self.stored_quantities:
@@ -254,16 +265,21 @@ class MatrixElementEvaluator(object):
             except NameError:
                 pass
 
-        if (auth_skipping or self.auth_skipping) and matrix_element in \
-               self.stored_quantities['matrix_elements']:
+        # With flavour grouping one matrix element serves several flavours,
+        # chosen at run time: it has been tested only for the flavours tested.
+        tested = self.stored_quantities.setdefault('tested_flavors', [])
+        if (auth_skipping or self.auth_skipping) and \
+               any(flv == flavor and me == matrix_element
+                   for me, flv in tested):
             # Exactly the same matrix element has been tested
-            logger.info("Skipping %s, " % process.nice_string() + \
+            logger.info("Skipping %s, " % check_label(process) + \
                         "identical matrix element already tested" \
                         )
             return None
 
 
         self.stored_quantities['matrix_elements'].append(matrix_element)
+        tested.append((matrix_element, flavor))
         # Create an empty color basis, and the list of raw
         # colorize objects (before simplification) associated
         # with amplitude
@@ -438,6 +454,28 @@ if __name__ == '__main__':
     #===============================================================================
     # Helper function get_momenta
     #===============================================================================
+    def get_external_masses(self, process, special_mass=None):
+        """The (real) masses of the external legs of process, in the order of
+        their leg numbers; a merged multiplet takes its first flavour's. A leg
+        with id 0 is the special resonance of the CMS check, whose mass is
+        special_mass."""
+
+        mass = []
+        for l in sorted(process.get('legs'), key=lambda l: l.get('number')):
+            pdg = l.get('id')
+            if pdg != 0 and pdg:
+                if pdg in self.full_model.merged_particles:
+                    pdg =  self.full_model.merged_particles[pdg][0] 
+                mass_string = self.full_model.get_particle(pdg).get('mass')        
+                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
+            else:
+                if isinstance(special_mass, float):
+                    mass.append(special_mass)
+                else:
+                    raise Exception("A 'special_mass' option must be specified"+\
+                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
+        return mass
+
     def get_momenta(self, process, options=None, special_mass=None):
         """Get a point in phase space for the external states in the given
         process, with the CM energy given. The incoming particles are
@@ -493,21 +531,7 @@ if __name__ == '__main__':
         nfinal = len(sorted_legs) - nincoming
 
         # Find masses of particles
-        mass = []
-        for l in sorted_legs:
-            pdg = l.get('id')
-            if pdg != 0 and pdg:
-                if pdg in self.full_model.merged_particles:
-                    pdg =  self.full_model.merged_particles[pdg][0] 
-                mass_string = self.full_model.get_particle(pdg).get('mass')        
-                mass.append(self.full_model.get('parameter_dict')[mass_string].real)
-            else:
-                if isinstance(special_mass, float):
-                    mass.append(special_mass)
-                else:
-                    raise Exception("A 'special_mass' option must be specified"+\
-                 " in get_momenta when a leg with id=-10 is present (for CMS check)")
-        #mass = [math.sqrt(m.real) for m in mass]
+        mass = self.get_external_masses(process, special_mass)
 
 
 
@@ -2002,36 +2026,91 @@ def evaluate_helicities(process, param_card = None, mg_root="",
     
     return cumulative_helEvals
     
+def check_label(process):
+    """Name of a process in the log of the checks: the grouped process,
+    followed by the physical flavours when they are tagged on its legs."""
+
+    label = process.nice_string().replace('Process:', 'process')
+    if any(leg.get('flavor') for leg in process.get('legs')):
+        label += ' [%s]' % process.base_string()
+    return label
+
+def get_flavor_choices(multileg, model):
+    """Return the (id, pdg) choices of one leg of a multiprocess.
+
+    With flavour grouping a merged id (e.g. _quark, 81) stands for several
+    physical flavours, and the matrix element of a grouped process depends on
+    the flavour passed at run time. Each merged id is therefore expanded into
+    the flavours tagged on the leg (`u` -> _quark with flavour u) or, when the
+    leg carries no tag for it (`p`), into all the flavours of its group, so
+    that each physical process is checked on its own. pdg is the signed PDG
+    code of that flavour, or None for an id that is not merged."""
+
+    merged = model.get('merged_particles') or {}
+    choices = []
+    for pid in multileg.get('ids'):
+        if abs(pid) not in merged:
+            choices.append((pid, None))
+            continue
+        group = merged[abs(pid)]
+        sign = 1 if pid > 0 else -1
+        # Same filter as MultiProcess.generate_multi_amplitudes: the tag must
+        # belong to this group and have the sign of this (anti)particle id.
+        tagged = [abs(f) for f in multileg.get('flavor')
+                  if abs(f) in group and f * pid > 0]
+        for pdg in (tagged or group):
+            choices.append((pid, sign * abs(pdg)))
+    return choices
+
 def run_multiprocs_no_crossings(function, multiprocess, stored_quantities,
                                 opt=None, options=None):
     """A wrapper function for running an iteration of a function over
     a multiprocess, without having to first create a process list
     (which makes a big difference for very large multiprocesses.
     stored_quantities is a dictionary for any quantities that we want
-    to reuse between runs."""
+    to reuse between runs.
+    With flavour grouping, every merged leg is resolved into individual
+    flavours (see get_flavor_choices) and the flavour is tagged on the leg of
+    the process passed to function."""
     
     model = multiprocess.get('model')
-    isids = [leg.get('ids') for leg in multiprocess.get('legs') \
-              if not leg.get('state')]
-    fsids = [leg.get('ids') for leg in multiprocess.get('legs') \
-             if leg.get('state')]
-    # Create dictionary between isids and antiids, to speed up lookup
+    islegs = [leg for leg in multiprocess.get('legs') if not leg.get('state')]
+    fslegs = [leg for leg in multiprocess.get('legs') if leg.get('state')]
+    isids = [get_flavor_choices(leg, model) for leg in islegs]
+    fsids = [get_flavor_choices(leg, model) for leg in fslegs]
+    # Create dictionary between isids and antiids, to speed up lookup.
+    # Crossings are identified on the physical PDG code (the flavour for a
+    # merged id), so that e.g. u d~ > w+ g and c s~ > w+ g are both checked.
     id_anti_id_dict = {}
-    for id in set(tuple(sum(isids+fsids, []))):
-        id_anti_id_dict[id] = model.get_particle(id).get_anti_pdg_code()
-        id_anti_id_dict[model.get_particle(id).get_anti_pdg_code()] = id        
+    for pid, pdg in set(sum(isids+fsids, [])):
+        if pdg is None:
+            anti = model.get_particle(pid).get_anti_pdg_code()
+            id_anti_id_dict[pid] = anti
+            id_anti_id_dict[anti] = pid
+        else:
+            id_anti_id_dict[pdg] = -pdg
+            id_anti_id_dict[-pdg] = pdg
     sorted_ids = []
     results = []
     for is_prod in itertools.product(*isids):
         for fs_prod in itertools.product(*fsids):
 
             # Check if we have already checked the process
-            if check_already_checked(is_prod, fs_prod, sorted_ids,
-                                     multiprocess, model, id_anti_id_dict):
+            if check_already_checked(
+                    [pid if pdg is None else pdg for pid, pdg in is_prod],
+                    [pid if pdg is None else pdg for pid, pdg in fs_prod],
+                    sorted_ids, multiprocess, model, id_anti_id_dict):
                 continue
             # Generate process based on the selected ids
             # (get_process carries over the polarization of the multi-legs)
-            process = multiprocess.get_process(is_prod, fs_prod)
+            process = multiprocess.get_process([pid for pid, _ in is_prod],
+                                               [pid for pid, _ in fs_prod])
+            # Tag the flavour of the merged legs, with the convention of
+            # MultiProcess.generate_multi_amplitudes (initial-state flavour
+            # stored with the sign of the crossed particle).
+            for leg, (pid, pdg) in zip(process.get('legs'), is_prod + fs_prod):
+                if pdg is not None:
+                    leg.set('flavor', [pdg if leg.get('state') else -pdg])
 
             if opt is not None:
                 if isinstance(opt, dict):
@@ -2450,8 +2529,7 @@ def check_process(process, evaluator, quick, options):
     for i, leg in enumerate(process.get('legs')):
         leg.set('number', i+1)
 
-    logger.info("Checking crossings of %s" % \
-                process.nice_string().replace('Process:', 'process'))
+    logger.info("Checking crossings of %s" % check_label(process))
 
     process_matrix_elements = []
 
@@ -2561,6 +2639,13 @@ def check_process(process, evaluator, quick, options):
     
     # Check if process was interrupted
     if not values:
+        return None
+    if not any(values):
+        # A matrix element vanishing for every ordering compares nothing
+        # (e.g. a flavour combination of a grouped process that does not
+        # conserve charge).
+        logger.info("Vanishing matrix element for %s: not checked" % \
+                    check_label(process))
         return None
 
     # Done with this process. Collect values, and store
@@ -3156,9 +3241,13 @@ def check_gauge(processes, param_card = None,cuttools="", tir={}, reuse = False,
         if not cmass_scheme and multiprocess.get('perturbation_couplings')==[]:
             # Set all widths to zero for gauge check
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            zero_widths(evaluator)
+        if multiprocess.get('perturbation_couplings')==[] and \
+                                                   aloha.unitary_gauge != 3:
+            # the standard matrix element is compared with the one of the
+            # reference momenta of output --axial_gauge=True as well
+            evaluator.reference_evaluator = reference_momenta_evaluator(
+                                    model, param_card, cmass_scheme, cmd)
         results = run_multiprocs_no_crossings(check_gauge_process,
                                            multiprocess,
                                            evaluator,
@@ -3192,6 +3281,14 @@ def check_gauge(processes, param_card = None,cuttools="", tir={}, reuse = False,
                                            model=model, param_card=param_card,
                                            auth_skipping = False, reuse = False,
                                            output_path=output_path, cmd = cmd)
+    cmass_scheme = cmd.options['complex_mass_scheme']
+    if not cmass_scheme and processes[0].get('perturbation_couplings')==[]:
+        # as for a ProcessDefinition, in every gauge
+        zero_widths(evaluator)
+    if processes[0].get('perturbation_couplings')==[] and \
+                                                   aloha.unitary_gauge != 3:
+        evaluator.reference_evaluator = reference_momenta_evaluator(model,
+                    param_card, cmass_scheme, cmd)
     comparison_results = []
     comparison_explicit_flip = []
 
@@ -3238,8 +3335,7 @@ def check_gauge_process(process, evaluator, options=None):
     for i, leg in enumerate(process.get('legs')):
         leg.set('number', i+1)
 
-    logger.info("Checking ward identities for %s" % \
-                process.nice_string().replace('Process', 'process'))
+    logger.info("Checking ward identities for %s" % check_label(process))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -3273,18 +3369,41 @@ def check_gauge_process(process, evaluator, options=None):
 #    brsvalue = evaluator.evaluate_matrix_element(matrix_element, gauge_check = True,
 #                                  output='jamp',MLOptions=MLOptions, options=options)
 
+    reference = getattr(evaluator, 'reference_evaluator', None)
+    if reference is not None and not isinstance(matrix_element,
+                                    loop_helas_objects.LoopHelasMatrixElement) \
+            and not helas_call_writers.get_axial_gauge_refs(matrix_element,
+                            massive_fermions=reference.helas_writer.fermion_reference):
+        # no leg gets a reference: the reference code would be the standard
+        # one, nothing to compare
+        reference = None
+    p = None
+    if reference is not None:
+        # the same point for the standard and the reference matrix elements
+        p, w_rambo = evaluator.get_momenta(process, options)
+
     brsvalue = evaluator.evaluate_matrix_element(matrix_element, gauge_check = True,
-                                                 output='jamp', options=options)
+                                                 p=p, output='jamp', options=options)
 
     if not isinstance(amplitude,loop_diagram_generation.LoopAmplitude):
         matrix_element = helas_objects.HelasMatrixElement(amplitude,
                                                       gen_color = False)
           
     mvalue = evaluator.evaluate_matrix_element(matrix_element, gauge_check = False,
-                                               output='jamp', options=options)
-    
+                                               p=p, output='jamp', options=options)
+
+    refvalue = None
+    if reference is not None and mvalue and mvalue['m2']:
+        matrix_element = helas_objects.HelasMatrixElement(amplitude,
+                                                          gen_color = False)
+        refvalue = reference.evaluate_matrix_element(matrix_element, p=p,
+                                                output='jamp', options=options)
+
     if mvalue and mvalue['m2']:
-        return {'process':process,'value':mvalue,'brs':brsvalue}
+        result = {'process':process,'value':mvalue,'brs':brsvalue}
+        if refvalue:
+            result['ref'] = refvalue
+        return result
 
 def output_gauge(comparison_results, output='text'):
     """Present the results of a comparison in a nice list format"""
@@ -3315,6 +3434,10 @@ def output_gauge(comparison_results, output='text'):
             proc_col_size = len(proc) + 1
 
     col_size = 18
+    # the matrix element with the reference momenta of output
+    # --axial_gauge=True (tree level), compared with the standard one
+    use_ref = any('ref' in one_comp for one_comp in comparison_results)
+    ref_threshold = 1e-8
 
     pass_proc = 0
     fail_proc = 0
@@ -3325,20 +3448,31 @@ def output_gauge(comparison_results, output='text'):
     res_str = fixed_string_length(process_header, proc_col_size) + \
               fixed_string_length("matrix", col_size) + \
               fixed_string_length("BRS", col_size) + \
-              fixed_string_length("ratio", col_size) + \
-              "Result"
+              fixed_string_length("ratio", col_size)
+    if use_ref:
+        res_str += fixed_string_length("Reference", col_size) + \
+                   fixed_string_length("Relative diff.", col_size)
+    res_str += "Result"
 
     for  one_comp in comparison_results:
         proc = one_comp['process'].base_string()
         mvalue = one_comp['value']
         brsvalue = one_comp['brs']
+        refvalue = one_comp.get('ref')
         ratio = (abs(brsvalue['m2'])/abs(mvalue['m2']))
         res_str += '\n' + fixed_string_length(proc, proc_col_size) + \
                     fixed_string_length("%1.10e" % mvalue['m2'], col_size)+ \
                     fixed_string_length("%1.10e" % brsvalue['m2'], col_size)+ \
                     fixed_string_length("%1.10e" % ratio, col_size)
+        ref_diff = 0.
+        if refvalue:
+            ref_diff = abs(refvalue['m2'] - mvalue['m2'])/abs(mvalue['m2'])
+            res_str += fixed_string_length("%1.10e" % refvalue['m2'], col_size)+ \
+                       fixed_string_length("%1.10e" % ref_diff, col_size)
+        elif use_ref:
+            res_str += fixed_string_length("-", col_size) * 2
          
-        if ratio > threshold:
+        if ratio > threshold or ref_diff > ref_threshold:
             fail_proc += 1
             proc_succeed = False
             failed_proc_list.append(proc)
@@ -3371,8 +3505,17 @@ def output_gauge(comparison_results, output='text'):
                        fixed_string_length("%1.10e" % m_sum, col_size) + \
                        fixed_string_length("%1.10e" % brs_sum, col_size) + \
                        fixed_string_length("%1.10e" % ratio, col_size)        
-                       
-                if ratio > 1e-15:
+                # the reference momenta: the sum over the helicities of each
+                # colour flow is unchanged (the spin axis changes the basis)
+                ref_jdiff = 0.
+                if refvalue and len(refvalue['jamp']) == len(mvalue['jamp']):
+                    ref_sum = sum(abs(refvalue['jamp'][j][k])**2
+                                  for j in range(len(refvalue['jamp'])))
+                    ref_jdiff = abs(ref_sum - m_sum) / abs(m_sum)
+                    tmp_str += fixed_string_length("%1.10e" % ref_sum, col_size) + \
+                               fixed_string_length("%1.10e" % ref_jdiff, col_size)
+
+                if ratio > 1e-15 or ref_jdiff > ref_threshold:
                     if not len(failed_proc_list) or failed_proc_list[-1] != proc:
                         fail_proc += 1
                         pass_proc -= 1
@@ -3419,10 +3562,7 @@ def check_lorentz(processes, param_card = None,cuttools="", tir={}, options=None
         if not cmass_scheme and processes.get('perturbation_couplings')==[]:
             # Set all widths to zero for lorentz check
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[\
-                                                     particle.get('width')] = 0.
+            zero_widths(evaluator)
 
         results = run_multiprocs_no_crossings(check_lorentz_process,
                                            multiprocess,
@@ -3491,7 +3631,7 @@ def check_lorentz_process(process, evaluator,options=None):
         leg.set('number', i+1)
 
     logger.info("Checking lorentz transformations for %s" % \
-                process.nice_string().replace('Process:', 'process'))
+                check_label(process))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -3537,6 +3677,13 @@ def check_lorentz_process(process, evaluator,options=None):
             results = [data]
         else:
             results = [('Original evaluation',data)]
+    elif data and any(leg.get('flavor') for leg in process.get('legs')):
+        # Flavour combination of a grouped process with a vanishing matrix
+        # element (e.g. not conserving charge): without grouping it has no
+        # diagrams, so skip it the same way.
+        logger.info("Vanishing matrix element for %s: not checked" % \
+                    check_label(process))
+        return None
     else:
         return  {'process':process, 'results':'pass'}
 
@@ -3662,10 +3809,7 @@ def check_flavor(process_definition, param_card=None, options=None,
                                               auth_skipping=False, reuse=False)
     if not cmass_scheme and multiprocess.get('perturbation_couplings') == []:
         logger.info('Setting all widths to zero for flavor check')
-        for particle in evaluator_merged.full_model.get('particles'):
-            if particle.get('width') != 'ZERO':
-                evaluator_merged.full_model.get('parameter_dict')[
-                    particle.get('width')] = 0.
+        zero_widths(evaluator_merged)
 
     # ── 2. Import the same model *without* flavor grouping ───────────────────
     # Using unmerge_flavors() on a deep-copy can leave color-algebra objects in
@@ -3679,10 +3823,7 @@ def check_flavor(process_definition, param_card=None, options=None,
                                                 cmd=cmd,
                                                 auth_skipping=False, reuse=False)
     if not cmass_scheme:
-        for particle in evaluator_unmerged.full_model.get('particles'):
-            if particle.get('width') != 'ZERO':
-                evaluator_unmerged.full_model.get('parameter_dict')[
-                    particle.get('width')] = 0.
+        zero_widths(evaluator_unmerged)
 
     # ── 3. Build the list of individual-flavor processes to check ────────────
     # For each multileg combination in the process definition, expand every
@@ -3904,6 +4045,795 @@ def output_flavor(comparison_results, output='text'):
 
 
 #===============================================================================
+# check_crossing
+#===============================================================================
+# Driver script run in a *fresh* interpreter for every compiled matrix2py
+# module.  Importing an f2py .so pollutes the importing interpreter (the module
+# name 'matrix2py' can only be bound once and its Fortran COMMON blocks leak
+# globally), so each module has to be probed in its own subprocess; the request
+# and the answer are exchanged as JSON through files/stdout.
+_CROSSING_DRIVER = r'''
+import sys, json
+import numpy as np
+req = json.load(open(sys.argv[1]))
+sys.path.insert(0, req["pdir"])
+import matrix2py
+from flavor_dispatch import FlavorDispatch
+me = FlavorDispatch(matrix2py)
+me.initialisemodel(req["card"])
+out = {}
+if req["mode"] == "enumerate":
+    nflav, nexternal, ncross = me.flavor_layout()
+    out["layout"] = [nflav, nexternal, ncross]
+    entries = []
+    for cross in range(ncross):
+        for flav in range(1, nflav + 1):
+            idx = cross * nflav + flav
+            pdg = me.pdg_for_index(idx)
+            if pdg is not None:
+                entries.append([idx, cross, flav, list(pdg)])
+    out["entries"] = entries
+elif req["mode"] == "evaluate":
+    values = []
+    for item in req["items"]:
+        P = np.asfortranarray(np.array(item["momenta"], dtype=float).T)
+        values.append(float(me.smatrix(P, int(item["index"]))))
+    out["values"] = values
+sys.stdout.write("CROSSJSON:" + json.dumps(out) + "\n")
+'''
+
+
+def _crossing_build_env():
+    """Environment for building/running the f2py module.
+
+    numpy>=1.26 drives f2py through the meson backend, whose ``meson`` and
+    ``ninja`` executables normally sit next to the running interpreter.  Prepend
+    that directory to PATH so ``make matrix2py.so`` finds them even when they are
+    not on the ambient PATH.
+    """
+    env = dict(os.environ)
+    bindir = os.path.dirname(os.path.abspath(sys.executable))
+    env['PATH'] = bindir + os.pathsep + env.get('PATH', '')
+    return env
+
+
+def _crossing_build_f2py(pdir, env):
+    """Compile ``matrix2py.so`` in *pdir*; return True on success.
+
+    The system ``f2py`` is unusable on some setups (dangling interpreter, or the
+    distutils backend removed on numpy>=1.26), so the makefile is driven with
+    ``F2PY="<python> -m numpy.f2py"`` which always resolves to the running
+    interpreter's f2py.  A plain ``make matrix2py.so`` is tried first so a
+    working system f2py is still honoured.
+
+    Success is that the module IMPORTS, not that a file appeared. f2py can fail
+    to build anything and still exit 0 (it does exactly that when handed a link
+    flag its meson backend does not parse), and the makefile touches the bare
+    .so unconditionally to give make a timestamp -- so "the target exists" is
+    not evidence of anything. Taking it as evidence turned a hard build failure
+    into a check_crossing that silently returned no comparison at all, instead
+    of the build_failed that makes the caller skip.
+    """
+    for f2py in (None, '%s -m numpy.f2py' % sys.executable):
+        for stale in glob.glob(pjoin(pdir, 'matrix2py*.so')):
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
+        cmd = ['make', 'matrix2py.so']
+        if f2py is not None:
+            cmd.append('F2PY=%s' % f2py)
+        with open(os.devnull, 'w') as devnull:
+            ret = subprocess.call(cmd, cwd=pdir, stdout=devnull,
+                                  stderr=devnull, env=env)
+        if ret == 0 and glob.glob(pjoin(pdir, 'matrix2py*.so')) \
+           and _crossing_f2py_importable(pdir, env):
+            return True
+    return False
+
+
+def _crossing_f2py_importable(pdir, env):
+    """True when ``import matrix2py`` actually succeeds inside *pdir*.
+
+    Run out of process: the module is a compiled extension, it is rebuilt per
+    directory under the same name, and a failed dlopen must not be able to hurt
+    the interpreter driving the check.
+    """
+    probe = ('import sys\n'
+             'sys.path.insert(0, %r)\n'
+             'import matrix2py\n'
+             'print("CROSSIMPORT_OK")\n' % pdir)
+    try:
+        proc = subprocess.Popen([sys.executable, '-c', probe],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, cwd=pdir, env=env)
+        output = proc.communicate()[0].decode()
+    except OSError:
+        return False
+    if 'CROSSIMPORT_OK' in output:
+        return True
+    logger.debug("matrix2py built in %s but does not import:\n%s"
+                 % (pdir, output))
+    return False
+
+
+def _crossing_run_driver(pdir, request, env):
+    """Run the JSON driver against the module in *pdir*; return the answer dict
+    (or None on failure)."""
+    import json
+    import tempfile
+    request = dict(request)
+    request['pdir'] = pdir
+    script = pjoin(pdir, '_crossing_driver.py')
+    with open(script, 'w') as fsock:
+        fsock.write(_CROSSING_DRIVER)
+    fd, req_path = tempfile.mkstemp(suffix='.json', dir=pdir)
+    with os.fdopen(fd, 'w') as fsock:
+        json.dump(request, fsock)
+    try:
+        proc = subprocess.Popen([sys.executable, script, req_path],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, cwd=pdir, env=env)
+        output = proc.communicate()[0].decode()
+    finally:
+        try:
+            os.remove(req_path)
+        except OSError:
+            pass
+    for line in output.split('\n'):
+        if line.startswith('CROSSJSON:'):
+            return json.loads(line[len('CROSSJSON:'):])
+    logger.debug("Crossing driver produced no answer in %s:\n%s"
+                 % (pdir, output))
+    return None
+
+
+# The three standalone backends that decode an extended (crossing-carrying)
+# flavor index. 'standalone_fortran' is the fortran default (f2py); 'standalone' is the madmatrix one (names as of PR #64; 'standalone_cpp' is gone) --
+# the C++ / cudacpp-CPU-SIMD standalones.
+CROSSING_EXPORTERS = ('standalone_fortran', 'standalone')
+
+# Vectorisation (SIMD) choices for the standalone (madmatrix) backend; each
+# is a madmatrix.mk BACKEND token (SUPPORTED_CPU_BACKENDS, plus 'auto'); the
+# makefile rejects anything else, the pre-PR #64 cpp<name> spellings included. 'auto' lets
+# madmatrix pick the widest instruction set the host CPU supports. Only used by
+# the standalone crossing backend; ignored by the others.
+MG7_SIMD_CHOICES = ('auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512')
+
+# Floating-point precision choices for the standalone (madmatrix) backend, each
+# mapping to the madmatrix.mk 'FPTYPE=<x>' build variant: 'd' double, 'f' float,
+# 'm' mixed (double elsewhere, float in the colour algebra -- the madmatrix
+# default). Only used by the standalone crossing backend.
+MG7_PRECISION_CHOICES = ('f', 'm', 'd')
+
+
+class _FortranCrossingBackend(object):
+    """The fortran standalone (f2py) crossing backend -- the historical path.
+
+    Enumeration and evaluation both go through the compiled matrix2py module in
+    a fresh subprocess (see _CROSSING_DRIVER); the matrix element python object
+    is not needed because GET_PDG_FOR_FLAVOR resolves the crossed PDG at
+    runtime.
+    """
+    output_format = 'standalone_fortran'
+    needs_matrix_element = False
+
+    def __init__(self, options=None):
+        # options accepted for a uniform backend signature; --simd only applies
+        # to the madmatrix backend ('standalone').
+        pass
+
+    def build(self, pdir, env):
+        return _crossing_build_f2py(pdir, env)
+
+    def enumerate(self, pdir, matrix_element, card, env, identity_only):
+        answer = _crossing_run_driver(
+            pdir, {'mode': 'enumerate', 'card': card}, env)
+        if not answer:
+            return None
+        entries = []
+        for idx, cross, flav, pdg in answer['entries']:
+            if identity_only and cross != 0:
+                continue
+            entries.append((idx, cross, flav, tuple(pdg)))
+        return entries
+
+    def evaluate(self, pdir, items, card, env):
+        answer = _crossing_run_driver(
+            pdir, {'mode': 'evaluate', 'card': card, 'items': items}, env)
+        return answer['values'] if answer else [None] * len(items)
+
+
+# ── cudacpp CPU-SIMD standalone (madmatrix) ─────────────────────────────
+# check_sa.exe generates its own RAMBO momenta, so to evaluate at a prescribed
+# phase-space point the shipped check_sa.cc is patched (as the acceptance test
+# TestStandaloneMg7CrossSymmetry does): when MG_MOMFILE is set, the momenta
+# read from that file are written into every event of the SIMD page before the
+# matrix element is computed. (Its flavorID cap already admits the extended
+# ids of the compiled crossing table.)
+_MG7_MOM_FROM = '        prsk->getMomentaFinal();'
+_MG7_MOM_TO = (
+    '        prsk->getMomentaFinal();\n'
+    '        if( const char* mgmf = getenv("MG_MOMFILE") ) {\n'
+    '          std::ifstream mgin( mgmf );\n'
+    '          std::vector<double> mgbuf( (std::size_t)CPPProcess::npar*4 );\n'
+    '          for( std::size_t mgk = 0; mgk < mgbuf.size(); mgk++ ) mgin >> mgbuf[mgk];\n'
+    '          for( unsigned int mgie = 0; mgie < nevt; mgie++ )\n'
+    '            for( int mgip = 0; mgip < CPPProcess::npar; mgip++ )\n'
+    '              for( int mgi4 = 0; mgi4 < 4; mgi4++ )\n'
+    '                MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), mgie, mgi4, mgip ) = mgbuf[mgip*4+mgi4];\n'
+    '        }')
+
+
+def _mg7_crossing_rows(pdir):
+    """{K: D} over the crossing-table rows the madmatrix module in `pdir` was
+    compiled with, D[k] the base slot input slot k is fed to (None for the
+    identity of a module without the machinery). Read from the generated
+    ProcessTables.h, since that is what was compiled: a module compiled with
+    ProcessTables::use_crossing = true takes exactly the rows of its table
+    (the crossings its matrix element RECORDED, see export_v4
+    get_crossing_table); one compiled without the machinery --
+    --use_crossing=False, a pinned s-channel, or nothing folded in -- decodes
+    no crossing at all, so an extended id past nmaxflavor would index its
+    flavor tables out of range."""
+    try:
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            text = fsock.read()
+    except IOError:
+        return {0: None}
+    if 'constexpr bool use_crossing = true;' not in text:
+        return {0: None}
+    ncross = re.search(r'constexpr int ncross = (\d+);', text)
+    pinv = re.search(r'xpinv_tab\[[^\]]*\]\s*=\s*\{([^}]*)\}', text)
+    if not ncross or not pinv:
+        return {0: None}
+    ncross = int(ncross.group(1))
+    values = [int(tok) for tok in pinv.group(1).split(',') if tok.strip()]
+    npar = len(values) // ncross if ncross else 0
+    if not npar or npar * ncross != len(values):
+        return {0: None}
+    return dict((K, tuple(values[K * npar:(K + 1) * npar]))
+                for K in range(ncross))
+
+
+def _mg7_compiled_crossings(pdir):
+    """The crossing-table rows the madmatrix module in `pdir` can be asked for
+    (see _mg7_crossing_rows)."""
+    return set(_mg7_crossing_rows(pdir))
+
+
+def _mg7_crossing_entries(matrix_element, rows, identity_only=False,
+                          members=True):
+    """(index, K, flav0, pdg) for the rows `rows` ({K: D}, see
+    _mg7_crossing_rows; D None for the identity) of a madmatrix matrix
+    element: the 0-based id K*nmaxflavor + flav0 evaluates flavor class flav0
+    through its representative's couplings, which every member shares, so
+    each member row crossed by D is a process that id evaluates (only the
+    representative's with members=False)."""
+    import madgraph.iolibs.export_v4 as export_v4
+    import madgraph.iolibs.crossing_table as crossing_table
+    base = export_v4.ProcessExporterFortran.crossing_base_entries(
+        None, matrix_element, 'classes')
+    if not members:
+        base = [entry for i, entry in enumerate(base)
+                if i == 0 or base[i - 1][0] != entry[0]]
+    nflav = len(matrix_element.get_external_flavors_with_iden())
+    nexternal, ninitial = matrix_element.get_nexternal_ninitial()
+    anti = crossing_table.make_anti(
+        matrix_element.get('processes')[0].get('model'))
+    entries = []
+    for K, D in sorted(rows.items()):
+        if identity_only and K != 0:
+            continue
+        perm = crossing_table.CrossingPerm(
+            D if D is not None else range(nexternal), ninitial)
+        for flav0, pdg in base:
+            entries.append((K * nflav + flav0, K, flav0,
+                            perm.crossed(pdg, anti)))
+    return entries
+
+
+class _Mg7CrossingBackend(object):
+    """The cudacpp CPU-SIMD standalone (madmatrix) crossing backend.
+
+    The vectorisation width is selectable via options['simd'] (see
+    MG7_SIMD_CHOICES): it is passed to the madmatrix build as
+    'BACKEND=<simd>', so the same crossing self-check can run on scalar
+    (none), SSE4, AVX2 or AVX-512 code, or let madmatrix auto-detect ('auto').
+    The floating-point precision is selectable via options['precision'] (see
+    MG7_PRECISION_CHOICES): it is passed as 'FPTYPE=<x>' (f/m/d).
+    """
+    output_format = 'standalone'
+    needs_matrix_element = True
+
+    def __init__(self, options=None):
+        self.compiler = os.environ.get('CXX', 'g++')
+        simd = (options or {}).get('simd', 'auto')
+        if simd not in MG7_SIMD_CHOICES:
+            raise InvalidCmd(
+                "Unknown --simd '%s' for standalone; choose one of %s."
+                % (simd, ', '.join(MG7_SIMD_CHOICES)))
+        self.simd = simd
+        precision = (options or {}).get('precision', 'm')
+        if precision not in MG7_PRECISION_CHOICES:
+            raise InvalidCmd(
+                "Unknown --precision '%s' for standalone; choose one of %s."
+                % (precision, ', '.join(MG7_PRECISION_CHOICES)))
+        self.precision = precision
+
+    def build(self, pdir, env):
+        if not shutil.which(self.compiler):
+            return False
+        check = pjoin(pdir, 'check_sa.cc')
+        try:
+            with open(check) as fsock:
+                src = fsock.read()
+        except IOError:
+            return False
+        src = src.replace(_MG7_MOM_FROM, _MG7_MOM_TO, 1)
+        with open(check, 'w') as fsock:
+            fsock.write(src)
+        make_cmd = ['make', '-j2', 'BACKEND=%s' % self.simd,
+                    'FPTYPE=%s' % self.precision, 'check_sa.exe']
+        with open(os.devnull, 'w') as devnull:
+            rc = subprocess.call(make_cmd, cwd=pdir,
+                                 stdout=devnull, stderr=subprocess.STDOUT,
+                                 env=env)
+        return rc == 0 and os.path.isfile(pjoin(pdir, 'check_sa.exe'))
+
+    def enumerate(self, pdir, matrix_element, card, env, identity_only):
+        """(index, K, flav0, pdg) for every row the module was compiled with
+        (_mg7_crossing_rows) and every physical member of every flavor class:
+        the id K*nmaxflavor + flav0 evaluates the class through its
+        representative's couplings, which every member shares, so each member
+        row crossed by D is a process that id evaluates."""
+        if matrix_element is None:
+            # Correlation to a P* directory failed; the caller skips this module.
+            return None
+        return _mg7_crossing_entries(matrix_element, _mg7_crossing_rows(pdir),
+                                     identity_only=identity_only)
+
+    def evaluate(self, pdir, items, card, env):
+        values = []
+        for item in items:
+            momfile = pjoin(pdir, 'mom_cross.dat')
+            with open(momfile, 'w') as fsock:
+                for leg in item['momenta']:
+                    fsock.write(' '.join('%.17e' % float(c) for c in leg) + '\n')
+            run_env = dict(env)
+            run_env['MG_MOMFILE'] = momfile
+            try:
+                out = subprocess.check_output(
+                    ['./check_sa.exe', 'perf', '-v', '-f',
+                     str(int(item['index'])), '1', '8', '1'],
+                    cwd=pdir, env=run_env, stderr=subprocess.STDOUT).decode()
+            except subprocess.CalledProcessError:
+                values.append(None)
+                continue
+            mes = re.findall(r'Matrix element =\s*([-\d.eE+]+)', out)
+            values.append(float(mes[0]) if mes else None)
+        return values
+
+
+_CROSSING_BACKENDS = {
+    'standalone_fortran': _FortranCrossingBackend,
+    'standalone': _Mg7CrossingBackend,
+}
+
+
+def _crossing_dir_name(matrix_element):
+    """The SubProcesses/P* directory name generated for this matrix element.
+
+    Both the C++ and the mg7 exporters name the directory ``P`` + the process
+    shell string (export_cpp uses P<id>_<name> and export_mg7 uses
+    P<shell_string>, and shell_string already is ``<id>_<name>``), so this
+    single reconstruction correlates a matrix element to its output directory
+    for either backend without instantiating a throwaway exporter.
+    """
+    return 'P' + matrix_element.get('processes')[0].shell_string()
+
+
+def check_crossing(process_definition, param_card=None, options=None,
+                   cmd=FakeInterface()):
+    """Compare the crossing-enabled and crossing-disabled standalone output.
+
+    The process is generated twice and output to the standalone backend picked
+    by ``options['exporter']`` (one of :data:`CROSSING_EXPORTERS`; default
+    ``'standalone'``, the fortran/f2py path):
+
+    * ``--use_crossing=False`` — the crossing machinery is *off*; each generated
+      matrix element is self-contained and reachable only as its own identity.
+      This is the independent, per-diagram reference (``value_direct``).
+    * ``--use_crossing=True`` — the crossing machinery is *on*; a single matrix
+      element reaches many physical processes through the extended flavor index
+      (leg permutation + NSF flip + per-crossing denominator).
+
+    For every physical subprocess of the reference, the same signed-PDG process
+    is located in the crossing output and evaluated *through a genuine crossing*
+    (a non-identity extended index reproducing that PDG signature, when one
+    exists) at the very same phase-space point, giving ``value_crossed``.  The
+    two must agree: this exercises the crossing (leg permutation / dynamic NSF /
+    crossed averaging denominator) against a value computed with none of them.
+
+    The backend abstraction (:data:`_CROSSING_BACKENDS`) parametrises the three
+    steps that differ per exporter -- the ``output`` format, the build, and how
+    an extended index is evaluated -- while the generate/match/momenta logic is
+    shared. ``'standalone_fortran'`` enumerates the crossed PDG at runtime
+    via f2py (GET_PDG_FOR_FLAVOR); ``'standalone'`` (madmatrix) has no
+    runtime accessor and computes it in python from the crossing table its
+    ProcessTables.h was compiled with (:func:`_mg7_crossing_rows`), then
+    evaluates through a compiled driver.
+
+    Processes whose crossing is auto-disabled by an s-channel constraint (e.g.
+    ``u u~ > z > e+ e-``: what is s-channel in one arrangement is not in its
+    crossings) reach nothing but their own identity, so ``value_crossed`` falls
+    back to the identity and the result is flagged 'crossing not applicable'.
+
+    Returns a list of result dicts consumed by :func:`output_crossing`.
+    """
+    import tempfile
+    import madgraph.interface.master_interface as master_interface
+
+    if options is None:
+        options = {}
+    energy = float(options.get('energy', 1000.0))
+
+    exporter = options.get('exporter', 'standalone_fortran')
+    if exporter not in _CROSSING_BACKENDS:
+        raise InvalidCmd(
+            "Unknown crossing exporter '%s'; choose one of %s."
+            % (exporter, ', '.join(CROSSING_EXPORTERS)))
+    backend = _CROSSING_BACKENDS[exporter](options)
+
+    model = process_definition.get('model')
+    proc_line = options.get('proc_line')
+    if proc_line is None:
+        # Fall back to a regenerable string; the caller normally supplies the
+        # verbatim line via options so s-channel/forbidden constraints survive.
+        proc_line = process_definition.nice_string().split(':', 1)[-1].strip()
+    modelname = model.get('modelpath') or model.get('name')
+
+    ninitial = len([leg for leg in process_definition.get('legs')
+                    if not leg.get('state')])
+
+    tmproot = tempfile.mkdtemp(prefix='mg5_crosscheck_')
+
+    def _generate(use_crossing, name):
+        """Generate + output the backend format; return
+        ``(outdir, pdirs, me_by_pdir)``.
+
+        ``me_by_pdir`` maps each P* directory to its matrix element (only built
+        when the backend needs it -- the C++/mg7 backends compute the crossed
+        PDG in python and so need the matrix element object; the fortran backend
+        resolves it at runtime and leaves the map empty)."""
+        mgcmd = master_interface.MasterCmd()
+        mgcmd.no_notification()
+        mgcmd.exec_cmd('set automatic_html_opening False', printcmd=False)
+        mgcmd.exec_cmd('set group_subprocesses False', printcmd=False)
+        mgcmd.exec_cmd('set apply_flavor_grouping True', printcmd=False)
+        mgcmd.exec_cmd('import model %s' % modelname, printcmd=False)
+        # Carry over any user-defined multiparticle labels (e.g. a custom
+        # 'define x = g u u~'); the built-in ones (p, j, ...) are recreated by
+        # 'import model', but user labels only live in the caller's session.
+        user_mp = getattr(cmd, '_multiparticles', None)
+        if user_mp and hasattr(mgcmd, '_multiparticles'):
+            mgcmd._multiparticles.update(user_mp)
+        mgcmd.exec_cmd('generate %s --use_crossing=%s'
+                       % (proc_line, use_crossing), printcmd=False)
+        outdir = pjoin(tmproot, name)
+        mgcmd.exec_cmd('output %s %s -f' % (backend.output_format, outdir),
+                       printcmd=False)
+        subroot = pjoin(outdir, 'SubProcesses')
+        pdirs = [pjoin(subroot, d) for d in sorted(os.listdir(subroot))
+                 if d.startswith('P') and os.path.isdir(pjoin(subroot, d))]
+        me_by_pdir = {}
+        if backend.needs_matrix_element:
+            by_name = {}
+            try:
+                for me in mgcmd._curr_matrix_elements.get_matrix_elements():
+                    by_name[_crossing_dir_name(me)] = me
+            except Exception as err:
+                logger.debug("Could not read matrix elements for the crossing "
+                             "check (%s): %s" % (backend.output_format, err))
+            for pdir in pdirs:
+                me_by_pdir[pdir] = by_name.get(os.path.basename(pdir))
+        # If the user supplied a param_card, use it in place of the model
+        # default for both evaluation and momenta generation.
+        if param_card:
+            shutil.copy(param_card, pjoin(outdir, 'Cards', 'param_card.dat'))
+        return outdir, pdirs, me_by_pdir
+
+    def _pdg_label(pdg):
+        try:
+            names = []
+            for code in pdg:
+                part = model.get_particle(code)
+                names.append(part.get_name() if part else str(code))
+            return (' '.join(names[:ninitial]) + ' > '
+                    + ' '.join(names[ninitial:]))
+        except Exception:
+            return str(tuple(pdg))
+
+    results = []
+    env = _crossing_build_env()
+    try:
+        ref_out, ref_pdirs, ref_me = _generate('False', 'reference')
+        cross_out, cross_pdirs, cross_me = _generate('True', 'crossing')
+        ref_card = pjoin(ref_out, 'Cards', 'param_card.dat')
+        cross_card = pjoin(cross_out, 'Cards', 'param_card.dat')
+
+        # ── build every module ──────────────────────────────────────────────
+        built = {}
+        for pdir in ref_pdirs + cross_pdirs:
+            built[pdir] = backend.build(pdir, env)
+        if not any(built.get(pdir) for pdir in ref_pdirs) or \
+           not any(built.get(pdir) for pdir in cross_pdirs):
+            # Nothing usable on either side: signal a skip rather than a fail.
+            return [{'status': 'build_failed', 'exporter': exporter}]
+
+        # ── enumerate the crossing output: pdg-tuple -> (pdir, index, cross) ─
+        # Two-stage matching so the crossing code path is exercised *safely*:
+        #  * within a module keep the lowest-cross index per PDG (this is what
+        #    find_pdg does). A module owning the process as its identity gives
+        #    cross==0; a module reaching it only by crossing gives cross>0. The
+        #    dedup is essential -- a *shadowed* higher-cross index can report the
+        #    same PDG yet evaluate to a different (wrong) value, so it must never
+        #    be picked over the identity of the module that owns the process.
+        #  * across modules prefer a genuine crossing (cross>0) from a module
+        #    that does not own the process, so the comparison exercises the
+        #    crossing rather than a plain identity when the process line spans
+        #    crossable subprocesses.
+        cross_map = {}
+        for pdir in cross_pdirs:
+            if not built.get(pdir):
+                continue
+            entries = backend.enumerate(pdir, cross_me.get(pdir), cross_card,
+                                        env, identity_only=False)
+            if not entries:
+                continue
+            module_map = {}     # find_pdg semantics: lowest cross per PDG
+            for idx, cross, _flav, pdg in entries:
+                key = tuple(pdg)
+                if key not in module_map:
+                    module_map[key] = (idx, cross)
+            for key, (idx, cross) in module_map.items():
+                existing = cross_map.get(key)
+                # Prefer a genuine crossing (cross>0) over an identity match.
+                if existing is None or (existing[2] == 0 and cross > 0):
+                    cross_map[key] = (pdir, idx, cross)
+
+        # ── enumerate the reference identities and generate momenta ─────────
+        # (ref_pdir, ref_idx, pdg) for every reference subprocess (cross==0).
+        ref_subprocs = []
+        momenta_by_pdg = {}
+        for pdir in ref_pdirs:
+            if not built.get(pdir):
+                continue
+            entries = backend.enumerate(pdir, ref_me.get(pdir), ref_card, env,
+                                        identity_only=True)
+            if not entries:
+                continue
+            for idx, cross, _flav, pdg in entries:
+                if cross != 0:
+                    continue   # reference has no genuine crossing anyway
+                key = tuple(pdg)
+                ref_subprocs.append((pdir, idx, key))
+                if key not in momenta_by_pdg:
+                    momenta_by_pdg[key] = _crossing_momenta(
+                        key, ninitial, model, param_card, energy, cmd)
+
+        # ── batch the evaluations per module ────────────────────────────────
+        # value_direct: reference module at its own identity index.
+        direct_jobs = {}
+        for pdir, idx, key in ref_subprocs:
+            direct_jobs.setdefault(pdir, []).append((idx, key))
+        direct_val = {}
+        for pdir, jobs in direct_jobs.items():
+            items = [{'index': idx, 'momenta': momenta_by_pdg[key]}
+                     for idx, key in jobs if momenta_by_pdg[key] is not None]
+            values = backend.evaluate(pdir, items, ref_card, env)
+            vi = 0
+            for idx, key in jobs:
+                if momenta_by_pdg[key] is None:
+                    continue
+                direct_val[(pdir, idx, key)] = values[vi]
+                vi += 1
+
+        # value_crossed: crossing module at the (preferably crossed) index.
+        crossed_jobs = {}
+        for _pdir, _idx, key in ref_subprocs:
+            match = cross_map.get(key)
+            if match is None or momenta_by_pdg[key] is None:
+                continue
+            cpdir, cidx, _ccross = match
+            crossed_jobs.setdefault(cpdir, []).append((cidx, key))
+        crossed_val = {}
+        for cpdir, jobs in crossed_jobs.items():
+            items = [{'index': cidx, 'momenta': momenta_by_pdg[key]}
+                     for cidx, key in jobs]
+            values = backend.evaluate(cpdir, items, cross_card, env)
+            for (cidx, key), value in zip(jobs, values):
+                crossed_val[(cpdir, cidx, key)] = value
+
+        # ── assemble the per-subprocess results ─────────────────────────────
+        for pdir, idx, key in ref_subprocs:
+            value_direct = direct_val.get((pdir, idx, key))
+            match = cross_map.get(key)
+            value_crossed = None
+            cross_code = None
+            # crossing_matched records whether a crossing reproducing this
+            # subprocess was *located* in the crossing build, so the report can
+            # tell "no crossing reaches this here" apart from "a crossing was
+            # found but its matrix element could not be evaluated".
+            crossing_matched = match is not None
+            if match is not None and momenta_by_pdg[key] is not None:
+                cpdir, cidx, ccross = match
+                value_crossed = crossed_val.get((cpdir, cidx, key))
+                cross_code = ccross
+            results.append({
+                'process': _pdg_label(key),
+                'pdg': key,
+                'value_direct': value_direct,
+                'value_crossed': value_crossed,
+                'cross_code': cross_code,
+                'crossing_matched': crossing_matched,
+                'exporter': exporter,
+                'status': 'ok',
+            })
+    finally:
+        shutil.rmtree(tmproot, ignore_errors=True)
+
+    return results
+
+
+def _crossing_momenta(pdg, ninitial, model, param_card, energy, cmd):
+    """A seeded phase-space point for the leg ordering *pdg* (signed codes).
+
+    Uses the same RAMBO seed as the check_sa templates so the point is
+    reproducible.  Returns a list of ``[E, px, py, pz]`` per leg, or None.
+    """
+    try:
+        legs = base_objects.LegList()
+        for i, code in enumerate(pdg):
+            legs.append(base_objects.Leg({'id': int(code),
+                                          'state': (i >= ninitial),
+                                          'number': i + 1}))
+        proc = base_objects.Process({'legs': legs, 'model': model})
+        evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
+                                           auth_skipping=False, reuse=False)
+        momenta = _get_seeded_python_momenta(proc, evaluator, energy)
+        if momenta is None:
+            return None
+        return [list(map(float, p)) for p in momenta]
+    except Exception as err:
+        logger.debug("Could not build momenta for %s: %s" % (tuple(pdg), err))
+        return None
+
+
+def output_crossing(comparison_results, output='text'):
+    """Present the results of a crossing check in a table.
+
+    Compares ``value_direct`` (the crossing-disabled build, evaluating the
+    subprocess with its own diagrams) against ``value_crossed`` (the
+    crossing-enabled build, evaluating the same signed-PDG process through the
+    extended flavor index).  ``output='fail'`` returns the number of failures
+    instead of the formatted string.
+    """
+    exporter = None
+    for data in comparison_results:
+        if data.get('exporter'):
+            exporter = data['exporter']
+            break
+
+    if len(comparison_results) == 1 and \
+            comparison_results[0].get('status') == 'build_failed':
+        if exporter in ('standalone', None):
+            reason = ("f2py matrix2py module (f2py / numpy build backend "
+                      "unavailable)")
+        else:
+            reason = "%s output (C++ compiler / build toolchain unavailable)" \
+                     % exporter
+        msg = ("Could not build the %s; the crossing check cannot run here."
+               % reason)
+        return 0 if output == 'fail' else msg
+
+    proc_col_size = 17
+    process_header = "Process"
+    for data in comparison_results:
+        # Leave room for the ' (identity)' tag that may be appended below.
+        proc = data['process'] + ' (identity)'
+        if len(proc) + 1 > proc_col_size:
+            proc_col_size = len(proc) + 1
+    col_size = 20
+
+    pass_proc = 0
+    fail_proc = 0
+    no_check_proc = 0
+    failed_proc_list = []
+    no_check_proc_list = []
+    any_crossed = False
+
+    res_str = ''
+    if exporter:
+        res_str += "Exporter: %s\n" % exporter
+    res_str += fixed_string_length(process_header, proc_col_size) + \
+        fixed_string_length("Direct", col_size) + \
+        fixed_string_length("Crossed", col_size) + \
+        fixed_string_length("Relative diff.", col_size) + \
+        "Result"
+
+    for one_comp in comparison_results:
+        proc = one_comp['process']
+        val_d = one_comp['value_direct']
+        val_c = one_comp['value_crossed']
+
+        if val_d is None or val_c is None:
+            no_check_proc += 1
+            no_check_proc_list.append(proc)
+            if val_d is None:
+                reason = "reference matrix element could not be evaluated"
+            elif one_comp.get('crossing_matched'):
+                # A crossing reproducing this process WAS found, but evaluating
+                # its matrix element failed -- a build/run problem of this
+                # backend, not a missing crossing.
+                reason = ("crossing found but its matrix element could not be "
+                          "evaluated with this exporter")
+            else:
+                # No crossing in the *generated* output reaches this exact
+                # subprocess. A crossing may still exist from a process line
+                # not spanned here (e.g. d d~ > g d d~ for g d > d d d~), or
+                # the backend groups flavors so this ordering is not produced.
+                reason = ("no crossing in the generated output reproduces this "
+                          "subprocess")
+            res_str += '\n' + fixed_string_length(proc, proc_col_size) + \
+                "    * Not checked: %s *" % reason
+            continue
+
+        cross_code = one_comp.get('cross_code')
+        crossed = bool(cross_code)
+        any_crossed = any_crossed or crossed
+
+        ref = abs(val_d) if val_d != 0 else abs(val_c)
+        if ref == 0:
+            diff = 0.0
+        else:
+            diff = abs(val_d - val_c) / ref
+
+        tag = '' if crossed else ' (identity)'
+        res_str += '\n' + fixed_string_length(proc + tag, proc_col_size) + \
+            fixed_string_length("%1.10e" % val_d, col_size) + \
+            fixed_string_length("%1.10e" % val_c, col_size) + \
+            fixed_string_length("%1.10e" % diff, col_size)
+
+        if diff < 1e-6:
+            pass_proc += 1
+            res_str += "Passed"
+        else:
+            fail_proc += 1
+            failed_proc_list.append(proc)
+            res_str += "Failed"
+
+    res_str += "\nSummary: %i/%i passed, %i/%i failed" % (
+        pass_proc, pass_proc + fail_proc,
+        fail_proc, pass_proc + fail_proc)
+    if fail_proc:
+        res_str += "\nFailed processes: %s" % ', '.join(failed_proc_list)
+    if no_check_proc:
+        res_str += "\nNot checked processes: %s" % ', '.join(no_check_proc_list)
+    if not any_crossed and (pass_proc or fail_proc):
+        res_str += ("\nNote: every subprocess was matched at the identity, so "
+                    "this compares the crossing-enabled build against the "
+                    "crossing-disabled one at cross=0. No non-identity crossing "
+                    "was reached -- either the process line spans no crossable "
+                    "subprocesses or a constrained s-channel forbids crossing.")
+
+    if output == 'text':
+        return res_str
+    else:
+        return fail_proc
+
+
+#===============================================================================
 # Marsaglia-Zaman RNG matching the check_sa Fortran/C++ template seed
 #===============================================================================
 class _Ranmar(object):
@@ -3988,6 +4918,22 @@ def _seeded_rambo_rng(ij=1802, kl=9373):
         yield rng
     finally:
         rambo.random_nb = old_random_nb
+
+
+def _check_sa_energy(proc, evaluator_obj, energy):
+    """The centre-of-mass energy the standalone 'check' drivers actually use.
+
+    For a 2 -> n process, the Fortran, C++ and madmatrix drivers raise an
+    energy at or below twice the sum of the external masses to that value
+    (t t~ > w+ w- asked at 1 TeV runs at 1013.676 GeV). check_language passes
+    this energy explicitly to every backend, Python included (get_momenta has
+    its own, different, threshold rule), so that none of them adjusts it.
+    """
+    if len([l for l in proc.get('legs') if not l.get('state')]) != 2:
+        return energy
+    # |m|, as the Fortran pmass.inc (a model may carry a negative mass)
+    return max(energy, 2. * sum(abs(m) for m in
+                                evaluator_obj.get_external_masses(proc)))
 
 
 def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
@@ -4277,8 +5223,6 @@ def check_language(process_definition, param_card=None, options=None,
     # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
     sa_mg7_output_cache = {}
 
-    energy_str = str(energy)
-
     for proc in proc_list:
         try:
             amplitude = diagram_generation.Amplitude(proc)
@@ -4303,6 +5247,19 @@ def check_language(process_definition, param_card=None, options=None,
 
         sa_key = tuple(leg.get('id') for leg in proc.get('legs'))
 
+        # One energy for every backend, decided here: each driver (and
+        # get_momenta) has its own rule for an energy too close to threshold,
+        # and passing the one they would all reach keeps them on one point.
+        proc_energy = energy
+        if evaluator is not None:
+            try:
+                proc_energy = _check_sa_energy(proc, evaluator, energy)
+            except Exception as err:
+                logger.warning('Language check: could not work out the energy of %s '
+                               '(%s); the backends may compare different points.'
+                               % (proc.nice_string(), err))
+        energy_str = repr(proc_energy)
+
         # ── Fortran SA ───────────────────────────────────────────────────────
         out_f_text = None
         if has_fortran:
@@ -4313,6 +5270,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_f = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                              'mp': False, 'v5_model': True,
+                             'complex_mass': aloha.complex_mass,
                              'output_options': {'noeps': 'True'}}
                     exporter_f = export_v4.ProcessExporterFortranSA(sa_dir_f, opt_f)
                     fmodel = helas_call_writers.FortranUFOHelasCallWriter(model)
@@ -4360,6 +5318,7 @@ def check_language(process_definition, param_card=None, options=None,
                     opt_cpp = {'sa_symmetry': False,
                                'export_format': 'standalone_cpp',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler}
                     exporter_cpp = export_cpp.ProcessExporterCPP(sa_dir_cpp,
                                                                   opt_cpp)
@@ -4409,6 +5368,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_mg7 = {'export_format': 'standalone',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler,
                                'output_options': {}}
                     exporter_mg7 = madmatrix_output.\
@@ -4463,7 +5423,7 @@ def check_language(process_definition, param_card=None, options=None,
 
         # Build the Python phase-space point using the same RAMBO RNG seed as
         # check_sa (Fortran/C++), so all backends compare on the same point.
-        sa_momenta = _get_seeded_python_momenta(proc, evaluator, energy)
+        sa_momenta = _get_seeded_python_momenta(proc, evaluator, proc_energy)
         if not sa_momenta:
             # Fallback to parsing the point printed by SA when seeded generation
             # is unavailable.
@@ -5152,17 +6112,61 @@ def output_language(comparison_results, output='text'):
 #===============================================================================
 # check_gauge
 #===============================================================================
+def reference_momenta_evaluator(model, param_card, cmass_scheme, cmd):
+    """A tree-level evaluator whose external wavefunctions are those of
+    output --axial_gauge=True: the massless vectors in the axial gauge of a
+    reference momentum (vxxxxxr), the massive fermions quantised along it
+    (ixxxxxr / oxxxxxr), see helas_call_writers.get_axial_gauge_refs. It
+    defines its matrix elements in a namespace of its own (reuse=False): the
+    class names are those of the standard evaluator."""
+
+    evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
+                                       auth_skipping=False, reuse=False)
+    evaluator.helas_writer.axial_gauge = True
+    if not cmass_scheme:
+        zero_widths(evaluator)
+    return evaluator
+
+
+def evaluate_with_reference_momenta(processes, param_card, momentum, options,
+                                    cmass_scheme, cmd):
+    """get_value for the processes of check gauge, at the same momenta, with
+    the reference momenta of reference_momenta_evaluator, in the unitary
+    gauge."""
+
+    with misc.TMP_variable(aloha, 'unitary_gauge', 1):
+        # the ALOHA routines are re-created in this gauge by the new evaluator
+        clean_added_globals(ADDED_GLOBAL)
+        evaluator = reference_momenta_evaluator(processes.get('model'),
+                                                param_card, cmass_scheme, cmd)
+        return run_multiprocs_no_crossings(get_value, processes, evaluator,
+                                           momentum, options=options)
+
+
 def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None, processes_fd=None, param_card=None, 
                                options=None, tir={}, output_path=None,
-                               cuttools="", reuse=False, cmd = FakeInterface()):
+                               cuttools="", reuse=False, cmd = FakeInterface(),
+                               processes_reference=None):
     """Check gauge invariance of the processes by flipping
-       the gauge of the model
+       the gauge of the model. With processes_reference (tree level), the
+       processes are evaluated once more in the unitary gauge with the
+       external wavefunctions of output --axial_gauge=True: the massless
+       vectors in the axial gauge of a reference momentum and the massive
+       fermions quantised along it (column "Reference").
     """
     
     mg_root = cmd._mgme_dir
     
     cmass_scheme = cmd.options['complex_mass_scheme']
-    
+
+    if isinstance(processes_unit, base_objects.ProcessDefinition) and \
+                                            processes_unit.get('decay_chains'):
+        return check_unitary_feynman_decay_chains(
+                    [('unitary', True, processes_unit),
+                     ('axial', 2, processes_axial),
+                     ('FD', 3, processes_fd)],
+                    param_card=param_card, options=options, cmd=cmd)
+
     if isinstance(processes_unit, base_objects.ProcessDefinition):
         # Generate a list of unique processes
         # Extract IS and FS ids
@@ -5195,9 +6199,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                            reuse = False)
         if not cmass_scheme and multiprocess_unit.get('perturbation_couplings')==[]:
             logger.info('Set All width to zero for non complex mass scheme checks')
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            zero_widths(evaluator)
 
         output_u = run_multiprocs_no_crossings(get_value,
                                            multiprocess_unit,
@@ -5234,9 +6236,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
 
         if not cmass_scheme and multiprocess_feynm.get('perturbation_couplings')==[]:
             # Set all widths to zero for gauge check
-            for particle in evaluator.full_model.get('particles'):
-                if particle.get('width') != 'ZERO':
-                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            zero_widths(evaluator)
 
         output_f = run_multiprocs_no_crossings(get_value, multiprocess_feynm,
                                                             evaluator, momentum,
@@ -5259,9 +6259,7 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                                 reuse = False)
 
                 if not cmass_scheme and multiprocess_axial.get('perturbation_couplings')==[]:
-                    for particle in evaluator.full_model.get('particles'):
-                        if particle.get('width') != 'ZERO':
-                            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+                    zero_widths(evaluator)
 
                 output_axial = run_multiprocs_no_crossings(get_value, multiprocess_axial,
                                                                    evaluator, momentum,
@@ -5284,26 +6282,35 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
                                                 reuse = False)
 
                 if not cmass_scheme and multiprocess_fd.get('perturbation_couplings')==[]:
-                    for particle in evaluator.full_model.get('particles'):
-                        if particle.get('width') != 'ZERO':
-                            evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+                    zero_widths(evaluator)
 
                 output_fd = run_multiprocs_no_crossings(get_value, multiprocess_fd,
                                                                     evaluator, momentum,
                                                                     options=options)
+        output_ref = None
+        if processes_reference is not None:
+            output_ref = evaluate_with_reference_momenta(processes_reference,
+                            param_card, momentum, options, cmass_scheme, cmd)
+        def value_of(results, process):
+            # None when that evaluation gave no result for the process:
+            # reported as a failure by output_unitary_feynman
+            for d in results:
+                if d['process'] == process:
+                    return d['value']
+            return None
+
         output = [processes_unit]        
         for data in output_f:
             local_dico = {}
             local_dico['process'] = data['process']
             local_dico['value_feynm'] = data['value']
-            local_dico['value_unit'] = [d['value'] for d in output_u 
-                                      if d['process'] == data['process']][0]
+            local_dico['value_unit'] = value_of(output_u, data['process'])
             if output_axial is not None:
-                local_dico['value_axial'] = [d['value'] for d in output_axial
-                                             if d['process'] == data['process']][0]
+                local_dico['value_axial'] = value_of(output_axial, data['process'])
             if output_fd is not None:
-                local_dico['value_fd'] = [d['value'] for d in output_fd
-                                          if d['process'] == data['process']][0]
+                local_dico['value_fd'] = value_of(output_fd, data['process'])
+            if output_ref is not None:
+                local_dico['value_ref'] = value_of(output_ref, data['process'])
             output.append(local_dico)
         
         if processes_feynm.get('perturbation_couplings')!=[] and not reuse:
@@ -6497,6 +7504,222 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
 
     return (process.nice_string().replace('Process:', '').strip(),result)
 
+def boost_from_rest_frame(p, parent):
+    """p, given in the rest frame of 'parent' (a time-like momentum), seen in
+    the frame where the parent has momentum 'parent'."""
+    mass = math.sqrt(max(parent[0]**2 - sum(x * x for x in parent[1:]), 0.))
+    pdot = sum(p[i] * parent[i] for i in range(1, 4))
+    factor = pdot / (mass * (parent[0] + mass)) + p[0] / mass
+    return [(p[0] * parent[0] + pdot) / mass] + \
+           [p[i] + factor * parent[i] for i in range(1, 4)]
+
+
+DECAY_CHAIN_WIDTH = 1e-9
+
+def get_decay_chain_momenta(evaluator, process, options=None, parent=None):
+    """A phase-space point for all the external legs of a decay-chain process,
+    in the order of process.get_legs_with_decays().
+
+    The core process is drawn as for any process (get_momenta), and each decay
+    in the rest frame of the decaying particle, boosted to its momentum,
+    recursively: every decayed particle is on its mass shell."""
+
+    core, _ = evaluator.get_momenta(process, options)
+    legs = process.get('legs')
+    numbers = sorted(leg.get('number') for leg in legs)
+    momenta = [core[numbers.index(leg.get('number'))] for leg in legs]
+    if parent is not None:
+        momenta = [boost_from_rest_frame(p, parent) for p in momenta]
+
+    # same pairing of decays with legs as Process.get_legs_with_decays
+    decays = list(process.get('decay_chains'))
+    decay_of_leg = {}
+    for i, leg in enumerate(legs):
+        if not leg.get('state'):
+            continue
+        ids = [d.get('legs')[0].get('id') for d in decays]
+        if leg.get('id') in ids:
+            decay_of_leg[i] = decays.pop(ids.index(leg.get('id')))
+    assert not decays
+
+    out = []
+    for i, p in enumerate(momenta):
+        if i in decay_of_leg:
+            out.extend(get_decay_chain_momenta(evaluator, decay_of_leg[i],
+                                               options, p)[1:])
+        else:
+            out.append(p)
+    return out
+
+
+def decayed_particles(model, process):
+    """The particles decayed in a decay-chain process (at any depth); they
+    need a mass shell."""
+    particles = []
+    for decay in process.get('decay_chains'):
+        leg = decay.get('legs')[0]
+        # a ProcessDefinition has multi-legs
+        pdg = leg.get('ids')[0] if 'ids' in leg else leg.get('id')
+        particle = model.get_particle(model.merged_particles.get(pdg, [pdg])[0])
+        if particle.get('mass').upper() == 'ZERO':
+            raise InvalidCmd("'check gauge' with a decay chain needs massive "
+                "decayed particles: %s is massless." % particle.get_name())
+        particles.append(particle)
+        particles.extend(decayed_particles(model, decay))
+    return particles
+
+
+def decay_chain_flavors(model, legs):
+    """The physical flavour combinations of the external legs of a
+    decay-chain process (get_legs_with_decays), as [(flavour tag of each leg,
+    label)]. With flavour grouping a merged leg stands for several flavours,
+    picked at run time from its 'flavor' tag: each leg is expanded by
+    get_flavor_choices, as the legs of a process without decays are, into the
+    flavours tagged on it ('define q = u c' gives u and c) or, untagged
+    ('p', 'l+'), into its whole group. The label is ' [u d~ > e+ ve mu+ mu-]',
+    or '' when no leg is merged."""
+
+    choices = []
+    for leg in legs:
+        # a process leg stores an initial-state flavour with the sign of the
+        # crossed particle (MultiProcess.generate_multi_amplitudes); the
+        # multi-leg get_flavor_choices reads has the sign of the particle
+        sign = 1 if leg.get('state') else -1
+        multileg = base_objects.MultiLeg({'ids': [leg.get('id')],
+                        'state': leg.get('state'),
+                        'flavor': [sign * f for f in leg.get('flavor') or []]})
+        choices.append(get_flavor_choices(multileg, model))
+    any_merged = any(pdg is not None for leg in choices for _, pdg in leg)
+    ninitial = len([leg for leg in legs if not leg.get('state')])
+    out = []
+    for combination in itertools.product(*choices):
+        flavors = [leg.get('flavor') if pdg is None else
+                   [pdg if leg.get('state') else -pdg]
+                   for leg, (_, pdg) in zip(legs, combination)]
+        if not any_merged:
+            out.append((flavors, ''))
+            continue
+        names = [model.get_particle(pid if pdg is None else pdg).get_name()
+                 for pid, pdg in combination]
+        out.append((flavors, ' [%s > %s]' % (' '.join(names[:ninitial]),
+                                             ' '.join(names[ninitial:]))))
+    return out
+
+
+def decay_chain_string(process):
+    """One line in the syntax of 'generate', e.g. 'u u~ > t t~, (t > w+{0} b,
+    w+ > e+ ve)', for the table of 'check gauge'."""
+    text = process.nice_string(prefix=False, print_weighted=False)
+    text = text.split('\n')[0].split(' @')[0].strip()
+    for decay in process.get('decay_chains'):
+        sub = decay_chain_string(decay)
+        text += ', ' + ('(%s)' % sub if decay.get('decay_chains') else sub)
+    return text
+
+
+def check_unitary_feynman_decay_chains(gauge_procdefs, param_card=None,
+                                       options=None, cmd=FakeInterface()):
+    """'check gauge' for a process with decay chains, such as
+    't > w+{0} b, w+ > ta+ vt': the same phase-space point is evaluated in
+    each gauge of gauge_procdefs, a list of (name, aloha.unitary_gauge value,
+    ProcessDefinition or None to skip that gauge).
+
+    Every decayed particle is on its mass shell (get_decay_chain_momenta),
+    where a decay chain is meaningful: off shell, the chain is a subset of
+    the diagrams and depends on the gauge in proportion to q^2 - M^2 + iM*W.
+    Its propagator is kept finite there by a width of 1e-9 M
+    (DECAY_CHAIN_WIDTH), the same factor in every gauge; the other widths are
+    zero, as for any gauge check outside the complex-mass scheme. The gauge
+    dependence is then of order 1e-10: on 'u d~ > w+ z' with both bosons
+    decayed it is 4e-4 at the physical widths, 4e-8 at 1e-6 M, 4e-11 at
+    1e-9 M, while below 1e-10 M the rounding of q^2 - M^2 takes over.
+    The Feynman gauge is never in the list: a decay chain fixes the
+    intermediate vector, without its Goldstone boson, so the chain is not
+    complete there (and a polarised propagator does not exist there).
+
+    Returns the list of check_unitary_feynman, with 'value_unit',
+    'value_axial', 'value_fd' entries (no 'value_feynm')."""
+
+    cmass_scheme = cmd.options['complex_mass_scheme']
+    first = [procdef for _, _, procdef in gauge_procdefs if procdef][0]
+
+    results = {}
+    momenta = {}
+    order = []
+    for name, gauge, procdef in gauge_procdefs:
+        if procdef is None:
+            continue
+        with misc.TMP_variable(aloha, 'unitary_gauge', gauge):
+            model = procdef.get('model')
+            # reuse: a matrix element is exported once and evaluated for each
+            # flavour combination; clean_added_globals below forgets it before
+            # the next gauge
+            evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
+                                               auth_skipping=False, reuse=True)
+            param = evaluator.full_model.get('parameter_dict')
+            if not cmass_scheme:
+                zero_widths(evaluator)
+            for particle in decayed_particles(evaluator.full_model, procdef):
+                if particle.get('width') == 'ZERO':
+                    raise InvalidCmd("'check gauge' with a decay chain needs "
+                        "a width parameter for the decayed %s."
+                        % particle.get_name())
+                param[particle.get('width')] = DECAY_CHAIN_WIDTH * \
+                                            abs(param[particle.get('mass')])
+            amplitudes = diagram_generation.MultiProcess(procdef,
+                                    collect_mirror_procs=False).get('amplitudes')
+            matrix_elements = helas_objects.HelasMultiProcess(
+                                    amplitudes).get_matrix_elements()
+            for me in matrix_elements:
+                # evaluate_matrix_element evaluates the first process of the
+                # matrix element, with the flavours tagged on its legs
+                process = me.get('processes')[0]
+                chain = decay_chain_string(process)
+                if chain not in momenta:
+                    momenta[chain] = get_decay_chain_momenta(evaluator,
+                                                             process, options)
+                legs = process.get_legs_with_decays()
+                saved = [leg.get('flavor') for leg in legs]
+                try:
+                    for flavors, physical in decay_chain_flavors(model, legs):
+                        key = chain + physical
+                        logger.info("Checking process %s in %s gauge" % (key, name))
+                        for leg, flavor in zip(legs, flavors):
+                            leg.set('flavor', flavor)
+                        value = evaluator.evaluate_matrix_element(me,
+                                p=momenta[chain], output='jamp', options=options)
+                        if key not in results:
+                            order.append(key)
+                        results.setdefault(key, {})[name] = value
+                finally:
+                    for leg, flavor in zip(legs, saved):
+                        leg.set('flavor', flavor)
+            clean_added_globals(ADDED_GLOBAL)
+
+    labels = {'unitary': 'value_unit', 'axial': 'value_axial', 'FD': 'value_fd'}
+    output = [first]
+    for key in order:
+        values = results[key]
+        missing = [name for name, _, procdef in gauge_procdefs
+                   if procdef is not None and values.get(name) is None]
+        if missing:
+            logger.warning("%s: not compared, no value in the %s gauge"
+                           % (key, ' and '.join(missing)))
+            continue
+        if not any(value['m2'] for value in values.values()):
+            # a flavour combination of a grouped process that does not
+            # conserve charge, e.g. d d~ > w+ z: nothing to compare
+            logger.info("Vanishing matrix element for %s: not checked" % key)
+            continue
+        # the decayed particles are on shell with a width of 1e-9 M: the
+        # gauges agree to about 1e-10, the colour flows included
+        entry = {'process': key, 'jamp_threshold': 1e-8}
+        for name, value in values.items():
+            entry[labels[name]] = value
+        output.append(entry)
+    return output
+
+
 def get_value(process, evaluator, p=None, options=None):
     """Return the value/momentum for a phase space point"""
     
@@ -6505,8 +7728,7 @@ def get_value(process, evaluator, p=None, options=None):
 
     name = {0:'Feynman', 1:'unitary', 2:'axial', 3:'FD'}[int(aloha.unitary_gauge)]
 
-    logger.info("Checking %s in %s gauge" % \
-        ( process.nice_string().replace('Process:', 'process'), name))
+    logger.info("Checking %s in %s gauge" % (check_label(process), name))
 
     legs = process.get('legs')
     # Generate a process with these legs
@@ -6752,11 +7974,17 @@ def output_unitary_feynman(comparison_results, output='text'):
     col_size = 18
     use_axial = any('value_axial' in comp for comp in comparison_results)
     use_fd = any('value_fd' in comp for comp in comparison_results)
-    gauge_columns = [("Unitary", 'value_unit'), ("Feynman", 'value_feynm')]
+    use_ref = any('value_ref' in comp for comp in comparison_results)
+    use_feynman = any('value_feynm' in comp for comp in comparison_results)
+    gauge_columns = [("Unitary", 'value_unit')]
+    if use_feynman:
+        gauge_columns.append(("Feynman", 'value_feynm'))
     if use_axial:
         gauge_columns.append(("Axial", 'value_axial'))
     if use_fd:
         gauge_columns.append(("FD", 'value_fd'))
+    if use_ref:
+        gauge_columns.append(("Reference", 'value_ref'))
 
     res_str = fixed_string_length(process_header, proc_col_size)
     for label, _ in gauge_columns:
@@ -6771,6 +7999,17 @@ def output_unitary_feynman(comparison_results, output='text'):
         if data[0] == 'pass':
             no_check_proc += 1
             no_check_proc_list.append(proc)
+            continue
+
+        missing = [label for (label, _), value in zip(gauge_columns, data)
+                   if value is None]
+        if missing:
+            # an evaluation gave no result for this process
+            res_str += '\n' + fixed_string_length(proc, proc_col_size) + \
+                       'no value in the %s gauge' % '/'.join(missing) + \
+                       ' ' * 3 + "Failed"
+            fail_proc += 1
+            failed_proc_list.append(proc)
             continue
         
         values = [data[i]['m2'] for i in range(len(data))]
@@ -6821,7 +8060,7 @@ def output_unitary_feynman(comparison_results, output='text'):
                     tmp_str += fixed_string_length("%1.10e" % value, col_size)
                 tmp_str += fixed_string_length("%1.10e" % diff, col_size)
                        
-                if diff > 1e-10:
+                if diff > one_comp.get('jamp_threshold', 1e-10):
                     if not len(failed_proc_list) or failed_proc_list[-1] != proc:
                         fail_proc += 1
                         pass_proc -= 1

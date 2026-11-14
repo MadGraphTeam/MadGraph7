@@ -4,7 +4,7 @@ ANNOUNCEMENT:
    The 2.9.X LONG TERM STABLE version is now at end of life for bug fixing/support since December 2025.
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
-0.3.0 (XX/XX/XX):
+0.4.0 (XX/XX/XX):
    OM: color_basis ddm (and auto, for the outputs where auto picks it): the (n-2)!
        Del Duca-Dixon-Maltoni colour basis is now also used when the gluons come with
        colour singlets, e.g. g g > h + n g in the Higgs effective theory (any number of
@@ -24,6 +24,87 @@ ANNOUNCEMENT:
        export_cpp.py, template_files/pythia8, and 'launch' on a Pythia 8 directory, which
        now says that this is no longer supported, from the LO, MadLoop and aMC@NLO
        interfaces alike).
+   OM: flavour grouping: a process in which a merged quark is built from unmerged particles
+       only, through a flavoured coupling with several flavours (a heavy quark xq mixing into
+       d and s through the Z: p p > xq z j, xq xq~ > z z; none in the bundled models), crashed
+       the output with a FlavorTagError and a "report this bug" message (xq xq~ > z z, with no
+       merged external leg, only while writing check_sa.f). The merged output gives each
+       wavefunction the one flavour its inputs fix: it can neither take this one from the
+       other end of the fermion line nor sum over it. The output now stops before writing any
+       subprocess, with an error naming the process and the couplings; generate such a
+       process after "set apply_flavor_grouping False" and a new import of the model.
+   OM: polarised propagators of a massive vector (w+{0}, w+{T}, w+{A}, w+{S}, ... on a
+       particle decayed further) in the FD gauge: {0}, {T}, {+}, {-}, {A}, {S}, {0S} are the
+       pieces of the five-component FD propagator (the FD longitudinal vector of the
+       external W, the unitary transverse ones, and (q^2-M^2) n n/(n.q)^2). The FD output
+       used to be wrong (SIGBUS in the Fortran standalone). {T}, {+}, {-} equal the
+       unitary-gauge ones, {0} equals it on shell; {A}, {S}, {0S} are the FD remainder
+       (a warning says so). A line at rest has its helicity axis along +z, as in the
+       unitary gauge. A massless vector keeps only {T}, {+}, {-} in the FD gauge.
+   OM: polarised propagators of a massive vector are refused in the Feynman gauge (the
+       output crashed), in the complex-mass scheme, and {G}, {H}, {Q}, {W} in the FD gauge
+       (also by ALOHA itself).
+   OM: madmatrix: a custom propagator denominator with a width term (the polarised
+       propagators) was written as a Python complex literal and did not compile.
+   OM: madmatrix, FD gauge, flavour grouping on (the default): |M|^2 was 0 for a W/Goldstone
+       line between merged and unmerged flavours (t > b ta+ vt, ta+ vt > t b~): the
+       combined vector + Goldstone routine assumed a flavour-diagonal coupling.
+   OM: check gauge accepts a decay chain, e.g. 'check gauge t > w+{0} b, w+ > ta+ vt' (the
+       other checks still refuse them). The chain is compared in the unitary, axial and FD
+       gauges (not Feynman, where it has no Goldstone boson), with every decayed particle on
+       shell and a width of 1e-9 M: the helicity pieces agree to 1e-12, {A}, {S} and {0S}
+       are gauge dependent. Refused in the complex-mass scheme and with loops.
+   OM: check gauge/brs/lorentz/permutation/full with flavour grouping (the default):
+       the flavour of the legs was dropped and every grouped process was evaluated for
+       the first flavour of each group only. A charged-current process such as
+       `u d~ > w+ g` (evaluated as d d~ > w+ g, which vanishes) was checked by nothing:
+       an empty gauge table ("Summary: 0/0 passed"), no Ward check, and a "Passed"
+       0 = 0 permutation check. The checks now evaluate the flavour asked for, and a
+       multiparticle such as `p p > w+ w-` each physical flavour, as without grouping.
+       A check that could check no process now says so instead of printing an empty
+       table.
+   OM: the FD gauge (Feynman-diagram gauge, arXiv:2203.10440, 2405.01256) is now chosen
+       automatically for each process line whose diagrams have a W/Z propagator ending on a
+       vertex that is not a conserved current (HVV, VVV, VVVV, or a massive fermion such as t-b):
+       VBF/VBS, u u > h j j j j, p p > w+ w-, t t~ with leptonic W decays switch; Drell-Yan,
+       u d~ > e+ ve g, p p > z z and pure QCD do not. In the unitary gauge the diagrams of such a
+       process grow with the energy and digits are lost in their sum, in the FD gauge the
+       cancellation happens diagram by diagram. When every line needs it the whole output is in
+       the FD gauge ('set gauge FD' in the proc_card), otherwise only those lines are
+       ('--gauge=FD' on them). 'set gauge X' always wins, 'set gauge default' hands the choice
+       back, 'set auto_gauge False' turns it off. Never for loop processes, spin above one,
+       bound states, [amplicol] processes, polarised legs, propagator polarisations, or models
+       without (checked) goldstone bosons. The FD-gauge citation is triggered, the mg7 output
+       records the gauge in its proc_characteristics. Costs 6-27% per phase-space point, with
+       an unweighting efficiency equal or better.
+   OM: new process option 'generate|add process ... --gauge=FD|unitary': the outputs madevent,
+       standalone_fortran, standalone and mg7 hold subprocesses in both gauges (Fortran:
+       Source/DHELAS_FD, C++: src/HelAmps_<model>_fd.h), the other formats refuse it. MadSpin
+       and the reweighting read such a proc_card in one gauge (the reweighting: FD when every
+       process can be, else unitary). Not available after 'add model' or 'customize_model'.
+   OM: FD gauge in the complex-mass scheme: the goldstone part of the propagator used the
+       conjugate mass. Outputs in one gauge are otherwise unchanged. The multiparticles of the
+       user survive the reload of the model behind 'set gauge'. While an 'output
+       --postpone_model' waits for its model, the gauge of the processes written in it is kept.
+   OM: complex-mass scheme: check gauge no longer stops at its axial step (a custom
+       denominator is written unless it uses the width); madmatrix (standalone, mg7)
+       compiles and agrees with Fortran; MadSpin uses madmatrix density matrices; the $
+       exclusion window works (it was silently wrong in Fortran, did not compile in C++);
+       $ on a massless particle is refused. check language evaluates every backend at the
+       same phase-space point, and the C++ FD vxxxxx has the FD longitudinal polarisation.
+
+0.3.0 (XX/XX/XX):
+   OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix
+       element left out the flavour masks of a flavour-merged subprocess, on the assumption
+       that an amplitude masked for a flavour vanishes there anyway. It does not always (a
+       diagram closed by a bosonic vertex, fed by fermion currents that follow the coupling
+       partner tables): |M|^2 was wrong for some flavours of merged electroweak multi-quark
+       processes with charged currents. p p > w+ w- j j QCD=0: 12 of 36 flavours, e.g.
+       d d~ > w+ w- u u~ x55, d u~ > w+ w- s c~ x169, and 83.7 pb instead of 0.934 pb in a
+       MadSpace run. Every copy of such an amplitude is now guarded with its mask, as in the
+       plain build. GPU builds, --hel_recycling=False and MadEvent were not affected; outputs
+       made before this fix must be regenerated. Also: a recycled build cut into chunks
+       (HelRecyclingChunks_*.cc) did not compile (ndcoup undeclared).
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point
@@ -136,6 +217,28 @@ ANNOUNCEMENT:
        vanishes, including equal-scale and flat-table limits.
    RF: Use the current emitter mass for the PYTHIA6Q starting-scale bound,
        avoiding stale kinematic invariants after a change of FKS sector.
+   OM: output --axial_gauge=True (madevent, standalone_fortran, standalone, mg7) now also
+       chooses the spin axis of the massive final-state fermions when at least two of the
+       massless vectors they couple to share a reference: their spin is quantised along that
+       reference momentum instead of along their own momentum (new HELAS
+       routines IXXXXXR/OXXXXXR). More helicity configurations and amplitudes then vanish and
+       are removed by the helicity filtering and the helicity recycling: g g > t t~ g g has 60
+       helicity configurations instead of 64 and 7868 non vanishing (helicity, amplitude)
+       pairs instead of 8784 (9376 without the option). The matrix element summed over the
+       helicities is unchanged, but the two spin states of such a fermion are not helicity
+       states: its helicity is written as 9 (unknown) in the event file, and the madmatrix
+       density binding refuses a density matrix for it. Nothing changes for g g > t t~ or
+       e+ e- > t t~ g g (no reference shared by two vectors), for a process with a single
+       massless vector or none, for a polarised process, for an
+       initial-state fermion, with --density, or with the new --fermion_reference=False,
+       which keeps the references of the vectors only.
+       The gluons of a process with an initial-state quark now all share the momentum of
+       that quark rather than of the initial gluon (u g > u g g: 132 non vanishing pairs
+       instead of 168).
+       check gauge and check brs compare these external wavefunctions (reference momenta of
+       the massless vectors and spin axis of the massive fermions) with the standard ones
+       as well, in a new column Reference (tree level; new Python routines vxxxxxr, ixxxxxr
+       and oxxxxxr).
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

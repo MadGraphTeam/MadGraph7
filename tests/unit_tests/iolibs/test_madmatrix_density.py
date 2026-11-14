@@ -58,6 +58,15 @@ class TestMadMatrixDensityDispatch(unittest.TestCase):
         self.lib = _library({(1, 2, 23, 1, 2): (self.sub, 0),
                              (2, 2, 23, 2, 2): (self.sub, 1)})
 
+    def test_crossed_process_reaches_its_base(self):
+        """A crossed process is the library of its base at an extended flavor
+        index, found from its pdg codes in its own leg order, the swap of two
+        legs of one merged pdg repaired as for the base."""
+        lib = _library({(2, 2, 23, 2, 2): (self.sub, 1),
+                        (1, -2, 23, 1, -2): (self.sub, 7)})
+        self.assertEqual(lib.dispatch((1, -2, 23, 1, -2)), (self.sub, 7, None))
+        self.assertEqual(lib.dispatch((1, -2, 23, -2, 1)), (self.sub, 7, [0, 1, 2, 4, 3]))
+
     def test_tabulated_order(self):
         self.assertEqual(self.lib.dispatch([1, 2, 23, 1, 2]), (self.sub, 0, None))
         self.assertEqual(self.lib.dispatch([2, 2, 23, 2, 2]), (self.sub, 1, None))
@@ -84,6 +93,31 @@ class TestMadMatrixDensityDispatch(unittest.TestCase):
 
     def test_unknown_process(self):
         self.assertRaises(density.MadDensityError, self.lib.dispatch, [3, 3, 23, 3, 3])
+
+
+@needs_numpy
+class TestMadMatrixDensitySpinReference(unittest.TestCase):
+    """The massive fermions of an output --axial_gauge=True (spin_reference
+    in madmatrix_processes.json) are not in a helicity state: no density
+    matrix may be asked for them, while summing over their states is fine."""
+
+    def subprocess(self, legs):
+        sub = density._Subprocess.__new__(density._Subprocess)
+        sub.path = 'P1_gg_ttxgg'
+        sub.spin_reference = frozenset(legs)
+        return sub
+
+    def test_open_spin_reference_leg_is_refused(self):
+        sub = self.subprocess([3, 4])
+        for pos in ([3], [4], [3, 4], [4, 5]):
+            hel = density._Helicities(pos, [1, -1] * len(pos))
+            self.assertRaises(density.MadDensityError, sub.check_open_legs, hel)
+
+    def test_other_open_legs(self):
+        hel = density._Helicities([5, 6], [1, 1, -1, -1])
+        self.subprocess([3, 4]).check_open_legs(hel)
+        # a table written before spin_reference: nothing to refuse
+        self.subprocess([]).check_open_legs(density._Helicities([3], [1, -1]))
 
 
 @needs_numpy
@@ -184,6 +218,19 @@ class TestMadMatrixDensityFiles(unittest.TestCase):
         except density.MadDensityError as error:
             # refused for the missing build only
             self.assertIn('missing', str(error))
+
+    def test_crossings_without_their_ids_are_refused(self):
+        """An output folding crossings (--use_crossing) lists their extended
+        flavor ids (crossed_flavors); one written before it did cannot reach
+        them and is refused rather than silently missing them."""
+        with open(os.path.join(self.tmp, 'SubProcesses', density.PROCESSES_FILE), 'w') as f:
+            json.dump({'subprocesses': [{'path': 'P1_QQx_ttx', 'legs': [81, -81, 6, -6],
+                                         'ninitial': 2, 'offshell': [], 'processes': [],
+                                         'crossed': [[-81, 81, 6, -6]],
+                                         'library': 'libmadmatrix{libtag}_P1_QQx_ttx_{backend}.so',
+                                         'flavors': [[[2, -2, 6, -6]]]}]}, f)
+        self.assertRaisesRegex(density.MadDensityError, 'flavor ids',
+                               density.MadDensityLibrary, self.tmp, 'scalar', '')
 
     def test_same_name_twice_is_refused(self):
         """Two libraries of one name: the loader would hand back the first."""

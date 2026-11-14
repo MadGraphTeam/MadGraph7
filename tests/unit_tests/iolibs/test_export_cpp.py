@@ -664,7 +664,8 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
             'broken_sym_component_old_factors': ",".join(str(v) for v in sym_data['component_old_factors']),
             'broken_sym_pid_list': ",".join(str(v) for v in sym_data['pid_list']),
             'broken_sym_block_starts': ",".join(str(v) for v in sym_data['block_starts']),
-            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths'])
+            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths']),
+            'ident_cross_function': ''
         }
         template_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                               'cpp_process_function_definitions.inc')
@@ -685,10 +686,12 @@ class DDMColorFlowMG7Test(unittest.TestCase):
     basis changes how the jamps are computed, never which color flows exist,
     so none of it may depend on the mode."""
 
-    def get_exporter(self, ids, ddm):
+    def get_exporter(self, ids, ddm, cls=None):
         """The mg7 exporter for the all-gluon process with npar = len(ids),
-        built with or without the DDM color basis."""
+        built with or without the DDM color basis. `cls` selects a subclass
+        (the madmatrix one shares this constructor)."""
 
+        cls = cls if cls else export_mg7.OneProcessExporterMG7
         color_amp.set_ddm_basis(ddm, with_flow=ddm)
         try:
             model = import_ufo.import_model('sm')
@@ -698,7 +701,7 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             amplitude = diagram_generation.Amplitude(
                 base_objects.Process({'legs': legs, 'model': model}))
             matrix_element = helas_objects.HelasMatrixElement(amplitude)
-            return export_mg7.OneProcessExporterMG7(
+            return cls(
                 matrix_element, helas_call_writer.CPPUFOHelasCallWriter(model))
         finally:
             color_amp.set_ddm_basis(False)
@@ -726,6 +729,38 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             for active_colors in ddm.active_color_map:
                 self.assertTrue(active_colors)
                 self.assertLess(max(active_colors), nflow)
+
+    def test_ddm_colordata_is_written_and_mode_independent(self):
+        """ColorData.h bakes the canonical color flow code of each flow, which
+        has to be decomposed on the flow basis: asking the DDM basis itself
+        raises (its elements are products of f's and have no single flow
+        each). That left a 0 byte header and no CPPProcess.cc at all for
+        every all-gluon process, silently and with a zero exit code."""
+
+        import madmatrix.model_handling as model_handling
+
+        written = {}
+        for npar in (4, 5):
+            for ddm in (False, True):
+                exporter = self.get_exporter(
+                    [21] * npar, ddm=ddm,
+                    cls=model_handling.OneProcessExporterMadMatrix)
+                exporter.path = tempfile.mkdtemp()
+                try:
+                    exporter.edit_colordata()
+                    with open(pjoin(exporter.path, 'ColorData.h')) as stream:
+                        # the color flow half: the color matrix before it is
+                        # the one of the basis the color sum runs on
+                        text = stream.read()
+                        written[(npar, ddm)] = text[text.index('namespace mgOnGpu'):]
+                finally:
+                    shutil.rmtree(exporter.path)
+                self.assertTrue(written[(npar, ddm)])
+                self.assertIn('colorflowcode_valid = true',
+                              written[(npar, ddm)])
+            # switching the color basis changes how the jamps are computed,
+            # never which color flows exist
+            self.assertEqual(written[(npar, True)], written[(npar, False)])
 
 
 #===============================================================================
@@ -851,3 +886,63 @@ class MG7LeptonDensityShippingTest(unittest.TestCase):
         os.makedirs(target)
         self.exporter(2, [-11], [11]).copy_lepton_densities()
         self.assertEqual(os.listdir(target), [])
+
+
+#===============================================================================
+# MG7MergedChannelsTest
+#===============================================================================
+class MG7MergedChannelsTest(unittest.TestCase):
+    """get_merged_info when the diagrams of one channel sit in several merged
+    channels.
+
+    A crossed subprocess folded into its base keeps, per crossing-table row,
+    only the diagrams that row needs (export_mg7.crossed_entries_of), so the
+    diagrams of one of its channels can land in two merged channels. A later
+    subprocess whose channel holds both used to take the merged channel of the
+    last match with the diagram index of another one: an IndexError in the
+    output of p p > l+ l- + 0-4 jets, or a diagram filed under the wrong
+    channel.
+    """
+
+    @staticmethod
+    def merged(subprocesses):
+        # get_merged_info only reads merged_subprocesses and process_info;
+        # ProcessExporterMG7.__init__ wants a full set of export arguments
+        exporter = export_cpp.ProcessExporterMG7.__new__(
+            export_cpp.ProcessExporterMG7)
+        exporter.process_info = []
+        group = []
+        for index, channels in enumerate(subprocesses):
+            exporter.process_info.append({
+                'incoming': [21, 21], 'outgoing': [21, 21],
+                'flavors': [{'options': [[21, 21, 21, 21]]}],
+                'channels': [{'diagrams': [
+                    {'diagram': diagram, 'permutation': [0, 1, 2, 3],
+                     'active_flavors': [0]}
+                    for diagram, _ in channel]} for channel in channels]})
+            group.append((index, [[tag for _, tag in channel]
+                                  for channel in channels]))
+        exporter.merged_subprocesses = {'class': group}
+        (info,) = exporter.get_merged_info()
+        return info['channels']
+
+    def test_channel_split_over_two_merged_channels(self):
+        channels = self.merged([
+            # the first subprocess: tags a, b in one channel, c in another
+            [[(1, 'a'), (2, 'b')], [(3, 'c')]],
+            # the second one: b and c together, and a new d
+            [[(10, 'b'), (11, 'c'), (12, 'd')]]])
+        self.assertEqual(len(channels), 2)
+        # each diagram stays in the merged channel that holds its tag
+        self.assertEqual([d['diagram'] for d in channels[0]['diagrams']],
+                         [[1, -1], [2, 10], [-1, 12]])
+        self.assertEqual([d['diagram'] for d in channels[1]['diagrams']],
+                         [[3, 11]])
+        # the flavours of the second subprocess follow the first one's
+        self.assertEqual(channels[0]['diagrams'][1]['active_flavors'], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['active_flavors'], [0, 1])
+
+    def test_new_channel_when_nothing_matches(self):
+        channels = self.merged([[[(1, 'a')]], [[(5, 'z')]]])
+        self.assertEqual([c['subprocess'] for c in channels], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['diagram'], [-1, 5])
