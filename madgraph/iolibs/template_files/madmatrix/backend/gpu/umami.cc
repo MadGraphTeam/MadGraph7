@@ -290,6 +290,190 @@ namespace
     instance->keep_every_helicity = no_phase_space( instance );
   }
 
+  // nevt RAMBO points of a 2 > n (n >= 2) process of external masses `masses` at a
+  // collider of centre-of-mass energy sqrt_s, whose frame moves at `rapidity` along
+  // the beams in the lab (asymmetric beams), in the layout of
+  // rambo::helicity_scan_points (momenta[nevt * ( npar * mu + ipar ) + ievt]); none
+  // if the process is closed at sqrt_s or RAMBO does not converge. The points come
+  // in pairs, one in the partonic centre-of-mass frame and one in the lab frame,
+  // since the matrix element is called in either (me_frame) and the helicity of a
+  // massive leg is not boost invariant: a helicity can vanish in one frame only.
+  // With `spread`, the partonic energy varies (PDFs, ISR, beamstrahlung): a pair at
+  // each of nevt/2 energies, from just above the threshold of the process up to
+  // sqrt_s in geometric steps, since a helicity whose |M|^2 is a power of
+  // m/sqrt(s) below the others matters near threshold only (the all-plus
+  // helicities of g g > h g in the heft model are (m_H^2/s)^4 of the rest: 1e-14 at
+  // 13 TeV, 42% at 130 GeV). With massless external legs there is no threshold,
+  // the helicities scale alike up to the internal masses, and the lowest energy is
+  // sqrt_s/100. The partonic system of a lab-frame point moves by a random rapidity
+  // of at most max_boost, or, if max_boost is negative, of at most
+  // log( sqrt_s / energy ), the most that the beams boost a system of that energy.
+  // Without `spread`, every point is at sqrt_s.
+  std::vector<double> collider_scan_points( const std::vector<double>& masses, std::size_t nevt, double sqrt_s, double rapidity, bool spread, double max_boost )
+  {
+    constexpr int npar = ProcessData::npar;
+    constexpr int npari = 2;
+    double mfinal = 0, mtotal = 0;
+    for( int ipar = 0; ipar < npar; ++ipar )
+    {
+      mtotal += masses[ipar];
+      if( ipar >= npari ) mfinal += masses[ipar];
+    }
+    const double threshold = std::max( mtotal - mfinal, mfinal ); // incoming or outgoing masses
+    // rambo exits on a closed phase space: check it first
+    if( !( sqrt_s > threshold ) ) return {};
+    const double ehigh = sqrt_s;
+    double elow = ehigh;
+    if( spread ) elow = threshold > 0 ? std::min( 1.1 * threshold, 0.5 * ( threshold + ehigh ) ) : ehigh / 100;
+    const std::size_t nenergy = nevt / 2;
+    // A private generator: the shared one (rambo::rn) makes the points of the check
+    // drivers, which must not move.
+    rambo::Random random;
+    random.rmarin( 1802, 9373 );
+    auto draw = [&random]( int )
+    {
+      double r = random.ranmar();
+      while( r <= 1e-16 ) r = random.ranmar();
+      return r;
+    };
+    std::vector<double> momenta( nevt * npar * 4 ); // momenta[nevt * ( npar * mu + ipar ) + ievt]
+    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+    {
+      const double energy = elow * std::pow( ehigh / elow, double( ievt / 2 ) / ( nenergy - 1 ) );
+      double weight = 0;
+      std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
+      double y = 0; // the partonic centre-of-mass frame, or the lab frame:
+      if( ievt % 2 == 1 )
+      {
+        y = rapidity;
+        if( max_boost != 0 ) y += ( max_boost < 0 ? std::log( ehigh / energy ) : max_boost ) * ( 2 * draw( 0 ) - 1 );
+      }
+      if( y != 0 )
+      {
+        const double ch = std::cosh( y ), sh = std::sinh( y );
+        for( std::vector<double>& q : p )
+        {
+          const double e = q[0], pz = q[3];
+          q[0] = e * ch + pz * sh;
+          q[3] = pz * ch + e * sh;
+        }
+      }
+      for( int ipar = 0; ipar < npar; ++ipar )
+      {
+        // on shell, or rambo did not converge: no points
+        const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
+        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * p[ipar][0] * p[ipar][0] ) return {};
+        for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
+      }
+    }
+    return momenta;
+  }
+
+  // The good-helicity scan points of choose_good_helicities: nlearn points per row
+  // of the crossing table, block K (events K*nlearn on) at the masses of crossing K
+  // -- its input slot k carries the mass of the base slot it is fed to -- and with
+  // its extended id K*nmaxflavor, which is how sigmaKin_getGoodHel finds it, made
+  // by points( masses ). The base points serve a crossing that moves no mass. A
+  // crossing that does needs its own: a massive leg in a massless slot is off shell
+  // on the base points, where a row it needs can vanish to rounding. A crossing
+  // with no phase space at its masses (t > b e+ ve crossed into b~ > t~ e+ ve) is
+  // never evaluated on shell and needs no row: getGoodHel skips it
+  // (sigmaKin_setNoPhaseSpace), as the fortran warm-up does, and its block holds
+  // the base points under the base id. One that `points` gives none for (closed at
+  // the collider energy, RAMBO did not converge) gets them too, which getGoodHel
+  // scans the conservative way. Returns the number of events, 0 when `points`
+  // gives none for the base process. masses0 are the external masses of the
+  // instance (in the base slot order).
+  template<typename Points>
+  std::size_t scan_points( const std::vector<double>& masses0, Points points, std::vector<double>& momenta, std::vector<unsigned int>& flavor_indices )
+  {
+    constexpr std::size_t nevt = nlearn;
+    constexpr int npar = ProcessData::npar;
+    constexpr int nblock = ProcessTables::use_crossing ? ProcessTables::ncross : 1;
+    sigmaKin_setNoPhaseSpace( -1 ); // the rows of this instance only
+    const std::vector<double> base = points( masses0 );
+    if( base.empty() ) return 0;
+    const std::size_t count = nblock * nevt;
+    momenta.assign( count * npar * 4, 0. );
+    flavor_indices.assign( count, 0 );
+    for( int cross = 0; cross < nblock; ++cross )
+    {
+      std::vector<double> own;
+      if( cross > 0 && !ProcessTables::xonshell_tab[cross] )
+      {
+        std::vector<double> masses( npar );
+        for( int k = 0; k < npar; ++k ) masses[k] = masses0[ProcessTables::xmass_slot_tab[cross * npar + k]];
+        if( rambo::has_phase_space( ProcessData::npari, masses ) )
+          own = points( masses );
+        else
+          sigmaKin_setNoPhaseSpace( cross );
+      }
+      const bool use_base = own.empty();
+      const std::vector<double>& block = use_base ? base : own;
+      const bool own_id = cross == 0 || ProcessTables::xonshell_tab[cross] || !use_base;
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+      {
+        const std::size_t jevt = cross * nevt + ievt;
+        flavor_indices[jevt] = own_id ? cross * ProcessData::nmaxflavor : 0;
+        for( int i = 0; i < npar * 4; ++i ) momenta[count * i + jevt] = block[nevt * i + ievt];
+      }
+    }
+    return count;
+  }
+
+  // Choose the good helicities of an instance at once, on RAMBO points of a
+  // collider (scan_points), as the cpu and simd backends do (see there): the points
+  // are made on the host and copied to the device, and evaluated on the default
+  // stream. Where the process has no phase space at all, every helicity is kept.
+  // Returns false, and chooses nothing, where the points do not reach it: the first
+  // events choose then.
+  bool choose_good_helicities( InterfaceInstance* instance, double sqrt_s, double rapidity, bool spread, double max_boost )
+  {
+    DeviceGuard guard( instance->device );
+    const std::vector<fptype>& instanceMasses = instance->process.getMasses();
+    const std::vector<double> masses( instanceMasses.begin(), instanceMasses.end() );
+    reset_good_helicities( instance );
+    if( instance->keep_every_helicity )
+    {
+      keep_all_helicities( instance );
+      checkGpu( gpuDeviceSynchronize() );
+      return true;
+    }
+    std::vector<double> momenta;
+    std::vector<unsigned int> flavor_indices;
+    std::size_t count = 0;
+    if( ProcessData::npari == 2 && ProcessData::npar > 3 )
+      count = scan_points(
+        masses, [&]( const std::vector<double>& m ) { return collider_scan_points( m, nlearn, sqrt_s, rapidity, spread, max_boost ); },
+        momenta, flavor_indices );
+    else
+      count = scan_points(
+        masses, []( const std::vector<double>& m ) { return rambo::helicity_scan_points( ProcessData::npari, m, nlearn ); },
+        momenta, flavor_indices );
+    if( count == 0 ) return false;
+    double* device_momenta = nullptr;
+    unsigned int* device_flavor_indices = nullptr;
+    double* device_matrix_elements = nullptr;
+    gpuMalloc( (void**)&device_momenta, momenta.size() * sizeof( double ) );
+    gpuMalloc( (void**)&device_flavor_indices, count * sizeof( unsigned int ) );
+    gpuMalloc( (void**)&device_matrix_elements, count * sizeof( double ) );
+    gpuMemcpy( device_momenta, momenta.data(), momenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
+    gpuMemcpy( device_flavor_indices, flavor_indices.data(), count * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+    // no UMAMI_OUT_GPU_STREAM: the default stream, as the filter's own copies
+    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
+    const void* inputs[] = { device_momenta, device_flavor_indices };
+    const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
+    void* outputs[] = { device_matrix_elements };
+    umami_matrix_element( instance, count, count, 0, 2, input_keys, inputs, 1, output_keys, outputs );
+    // umami_matrix_element returns before its kernels end: wait before freeing
+    checkGpu( gpuDeviceSynchronize() );
+    gpuFree( device_matrix_elements );
+    gpuFree( device_flavor_indices );
+    gpuFree( device_momenta );
+    instance->learned = nlearn;
+    return true;
+  }
+
 }
 
 extern "C"
@@ -722,6 +906,19 @@ extern "C"
     return static_cast<InterfaceInstance*>( handle )->process.parameters().nGoodHelRows;
   }
 
+  // A madmatrix extension, not part of UMAMI: choose the good helicities of an
+  // instance at once, on RAMBO points of a collider of centre-of-mass energy sqrt_s,
+  // whose frame moves at `rapidity` along the beams, the partonic energy and frame
+  // varying with `spread` (see the cpu backend). mg7 makes this choice on a CPU
+  // build and gives it to the GPU instances (madmatrix_set_helicity_choice); this is
+  // for a caller of the GPU build alone. UMAMI_ERROR where the points do not reach
+  // the process; the first events choose then.
+  UmamiStatus madmatrix_choose_good_helicities( UmamiHandle handle, double sqrt_s, double rapidity, int spread )
+  {
+    InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
+    return choose_good_helicities( instance, sqrt_s, rapidity, spread != 0, spread != 0 ? -1. : 0. ) ? UMAMI_SUCCESS : UMAMI_ERROR;
+  }
+
   // A madmatrix extension, not part of UMAMI: the good helicities an instance has
   // chosen, as madmatrix_set_helicity_choice takes them (see the cpu backend):
   // choice[0], the flags of the CPU builds (--hel_recycling, C-parity dedup: neither
@@ -746,8 +943,8 @@ extern "C"
   // A madmatrix extension, not part of UMAMI: give an instance the good helicities
   // that madmatrix_get_helicity_choice wrote for an instance of this process with
   // the same parameters: mg7 chooses them from its cards on a CPU build
-  // (madmatrix_choose_good_helicities, which the GPU builds do not have), so that a
-  // run on a GPU evaluates the helicities of a run on a CPU. They are kept until
+  // (madmatrix_choose_good_helicities), so that a run on a GPU evaluates the
+  // helicities of a run on a CPU. They are kept until
   // umami_set_parameter changes a parameter. The flags of choice[0] are not used
   // here. UMAMI_ERROR, and nothing changes, if the choice does not fit the
   // helicities of this process.
