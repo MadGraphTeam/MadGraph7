@@ -16,9 +16,11 @@ divided out (g = 1, as the weight lines of MadFKS store them):
 - the color-correlated Borns, B_mn = sborn_sf(m, n) / g^(b + 2) for m != n
   and 2 sborn_sf(m, m) / g^(b + 2) for a massive m, the rest from color
   conservation;
-- the spin-correlated Born, B_perp = B / 2 + Re(conj(xij_aor) A) with the
-  azimuthal part A of sborn (amp_split_cnt(:, 2)) and its phase xij_aor,
-  which sborncol_isr and sborncol_fsr take at y = 1;
+- the spin-correlated Born, B_perp = B / 2 + Re(e A) with the azimuthal
+  part A of sborn (amp_split_cnt(:, 2)) and the phase e of sborncol_isr and
+  sborncol_fsr at y = 1: conj(xij_aor) for an incoming mother, and for an
+  outgoing one xij_aor without the azimuth phi of the mother,
+  xij_aor exp(-2 i phi) (the factor of getaziangles in sborncol_fsr);
 - the virtual, the finite part of MadLoop at the Ellis-Sexton scale over g^n.
 
 The contributions are then the weight lines of sigint. The real emission and
@@ -275,6 +277,23 @@ class Channel:
         """FKSKinematics at the configuration of the n-body part."""
         return self.run_kinematics("nfks_born")
 
+    def azimuthal_phase(self, point):
+        """The phase e of the azimuthal part of the Born at the collinear
+        counter-event of a point: conj(xij_aor) for an incoming mother,
+        xij_aor exp(-2 i phi) for an outgoing one of azimuth phi in p_born."""
+        phase = complex(*point["blocks"]["azimuthal_phase"])
+        configuration = self.configurations["configurations"][point["nfks_picked"] - 1]
+        i_fks, j_fks = configuration["i_fks"], configuration["j_fks"]
+        leg = j_fks - 1 - (j_fks > i_fks)
+        if leg < self.incoming:
+            return phase.conjugate()
+        mother = point["p_born"][leg]
+        transverse = math.hypot(mother[1], mother[2])
+        if transverse == 0:
+            return phase
+        azimuth = complex(mother[1], mother[2]) / transverse
+        return phase * azimuth.conjugate() ** 2
+
     @functools.cached_property
     def blocks(self):
         """The real per NLO order, the Born, color-correlated and
@@ -290,7 +309,7 @@ class Channel:
             if "real" in blocks:
                 for o, (pos, power) in enumerate(zip(self.nlo, self.nlo_power)):
                     real[k, o] = blocks["real_orders"][pos] / blocks["g_real"] ** power
-            phase = complex(*blocks["azimuthal_phase"])
+            phase = self.azimuthal_phase(point)
             g = blocks["g_born"]
             for o, (pos, power) in enumerate(zip(self.counterterm, self.born_power)):
                 born[k, o] = blocks["born_orders"][pos] / g**power
@@ -298,9 +317,7 @@ class Channel:
                     blocks["azimuthal_orders"][0][pos],
                     blocks["azimuthal_orders"][1][pos],
                 )
-                spin[k, o] = (
-                    born[k, o] / 2 + (phase.conjugate() * azimuthal).real / g**power
-                )
+                spin[k, o] = born[k, o] / 2 + (phase * azimuthal).real / g**power
             nbody = blocks["nbody"]
             for link in nbody["links"]:
                 # the legs of the real process at the configuration of the

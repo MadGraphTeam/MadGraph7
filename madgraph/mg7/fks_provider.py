@@ -108,13 +108,14 @@ def partonic_rapidity(p, incoming):
     return np.where(np.isfinite(y), y, 0.0)
 
 
-def azimuthal_phase(mother, k_perp):
-    """-exp(2 i (psi + phi)) of k_perp (batch, 4) about the massless mother
-    (batch, 4): psi is the azimuth of k_perp, without its part along the
-    mother, in the helicity basis e1 = (cos th cos ph, cos th sin ph, -sin th), e2 =
+def helicity_phase(mother, k_perp):
+    """-exp(2 i psi) of k_perp (batch, 4) about the massless mother (batch,
+    4): psi is the azimuth of k_perp, without its part along the mother, in
+    the helicity basis e1 = (cos th cos ph, cos th sin ph, -sin th), e2 =
     (-sin ph, cos ph, 0) of the mother direction (th, ph), phi = 0 on the
-    beam axis. This is xij_aor of genps_fks.f for k_perp = xij_kperp, and
-    zero where k_perp has no transverse part."""
+    beam axis. This is azifact_from_kperp of boost_to_frame.f, and zero where
+    k_perp has no transverse part. It comes with exp(i ph), the azimuth of
+    the mother (one on the beam axis)."""
     mother = np.asarray(mother, dtype=float)
     v = np.asarray(k_perp, dtype=float)
     v = v - (v[:, :1] / mother[:, :1]) * mother
@@ -131,7 +132,16 @@ def azimuthal_phase(mother, k_perp):
     b = (v[:, 1:] * e2).sum(1)
     norm = np.hypot(a, b)
     z = (a + 1j * b) / np.where(norm > 0, norm, 1.0)
-    return np.where(norm > 0, -(z**2) * (cph + 1j * sph) ** 2, 0.0)
+    return np.where(norm > 0, -(z**2), 0.0), cph + 1j * sph
+
+
+def azimuthal_phase(mother, k_perp):
+    """-exp(2 i (psi + phi)) of k_perp (batch, 4) about the massless mother
+    (batch, 4), with psi of helicity_phase and phi the azimuth of the
+    mother. This is xij_aor of genps_fks.f for k_perp = xij_kperp, and zero
+    where k_perp has no transverse part."""
+    phase, azimuth = helicity_phase(mother, k_perp)
+    return phase * azimuth**2
 
 
 class FortranProvider:
@@ -445,9 +455,14 @@ class FortranProvider:
     def spin_correlated(self, momenta, k_perp, fks_index, born=None):
         """B_perp per Born order (batch, b) at Born kinematics with k_perp
         (batch, 4) in the same frame, for the emitter of the configurations
-        fks_index, a gluon or photon: B / 2 + Re(conj(phase) A) with A the
-        azimuthal part of sborn at the counterterm of the correction of the
-        emitter. B / 2 for other emitters and where k_perp is zero."""
+        fks_index, a gluon or photon: B / 2 + Re(e A) with A the azimuthal
+        part of sborn at the counterterm of the correction of the emitter and
+        e = -exp(2 i psi) of helicity_phase for an outgoing emitter, its
+        conjugate for an incoming one (sborncol_fsr and sborncol_isr of
+        fks_singular.f, the conjugation that distinguishes a timelike from a
+        spacelike splitting). That is k_t B k_t / (-k_t^2), the spin tensor of
+        the Born contracted with k_t transverse to the emitter. B / 2 for
+        other emitters and where k_perp is zero."""
         b_orders = self.orders["born"]
         momenta = self._momenta(momenta, self.particle_count - 1)
         k_perp = np.asarray(k_perp, dtype=float)
@@ -465,11 +480,13 @@ class FortranProvider:
             points = np.flatnonzero(fks_index == c)
             i_fks, j_fks = configuration["i_fks"], configuration["j_fks"]
             leg = j_fks - 1 - (j_fks > i_fks)
-            phase = azimuthal_phase(momenta[points, leg], k_perp[points])
+            phase, _ = helicity_phase(momenta[points, leg], k_perp[points])
+            if leg < self.incoming:
+                phase = np.conj(phase)
             for o, order in enumerate(b_orders):
                 pos = self.counterterm_position(order, mother)
                 a = parts[points, mother, 1, pos]
-                out[points, o] = plain[points, o] / 2 + (np.conj(phase) * a).real
+                out[points, o] = plain[points, o] / 2 + (phase * a).real
         return out
 
     def virtual_orders(self, momenta, ren_scale):

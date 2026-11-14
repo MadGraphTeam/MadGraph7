@@ -50,10 +50,11 @@ SETUPS = {
     "pp_epem": ("pp_epem", mfir.PROCESSES["pp_epem"][1]),
     "pp_ttx": ("pp_ttx", mfir.PROCESSES["pp_ttx"][1]),
     "t_bw": ("t_bw", {}),
+    "epem_jjj": ("epem_jjj", {}),
 }
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4
-ACCURACIES = {"pp_ttx": 1e-3}
+ACCURACIES = {"pp_ttx": 1e-3, "epem_jjj": 1e-3}
 # the values of every run, the defaults of the run_card where a setup of
 # the same output changes them
 RUN_CARD = {

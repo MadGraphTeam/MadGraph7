@@ -123,6 +123,8 @@ PROCESSES = {
     ),
     # a decay: a massive incoming particle at rest, a final-state emitter
     "t_bw": ("t > b w+ QED=1 [QCD]", {}),
+    # a final-state gluon in the Born: its splittings into g g and q q~
+    "epem_jjj": ("e+ e- > j j j [QCD]", dict(ptj=50, jetalgo=-1, jetradius=0.4)),
 }
 # more points where the jet cuts fail rarely at the event alone
 POINTS = {"epem_jj_kt": 100, "epem_jj_antikt": 100}
