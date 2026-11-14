@@ -1,4 +1,4 @@
-"""The Fortran provider of the MG7 NLO driver (madgraph/mg7/fks_provider.py
+"""The Fortran provider of the MG7 NLO driver (madgraph/mg7/nlo/provider.py
 with fks_provider.f of its templates) against the references of
 test_data/fks_integrand. At the points of the references its blocks at g = 1
 are those MadFKS took there, over their powers of g: the real at the event,
@@ -23,11 +23,11 @@ import os
 import numpy as np
 import pytest
 from fks_testing import evaluate, reference
-from madgraph.mg7.fks_driver import born_topology
-from madgraph.mg7.fks_provider import FortranProvider, azimuthal_phase, fks_blocks
+from madgraph.mg7.nlo.fks import born_topology
+from madgraph.mg7.nlo.provider import FortranProvider, azimuthal_phase, fks_blocks
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
 
-from madspace.fks import fks_cross_section, fks_splitting_kernels
+from madspace.subtraction.fks import fks_cross_section, fks_splitting_kernels
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
 pytestmark = pytest.mark.skipif(
@@ -178,7 +178,7 @@ def test_correlated_borns(path):
 def test_channels(path):
     """The Born configurations of MadFKS are the channels of amp2, one
     Born diagram each, with a propagator per internal line of the Born, and
-    the topology of each maps the Born (born_topology of fks_driver)."""
+    the topology of each maps the Born (born_topology of nlo.fks)."""
     for channel in reference(path)["channels"]:
         p = provider(name_of(path), channel["subprocess"])
         configurations = p.fks_configurations

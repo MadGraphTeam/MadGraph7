@@ -35,7 +35,7 @@ from fks_testing import (
 from madspace_testing import default_context
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping
+from madspace.subtraction.fks import fks_configuration_mapping
 
 # get_ee_expo of the built-in lepton PDFs of MadGraph (pdg2pdf.f)
 BETA = 0.975

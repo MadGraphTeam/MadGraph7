@@ -77,7 +77,7 @@ _CPP_GROUPS = [
         "Phase-space building blocks",
         "Supporting types shared by the mappings: topologies, cuts, observables "
         "and density grids.",
-        lambda c: "/phasespace/" in c.loc,
+        lambda c: "/phasespace/" in c.loc or "/subtraction/" in c.loc,
     ),
     (
         "Compute graph",

@@ -446,7 +446,7 @@ def provider_points(name):
     """The number of light flavors of the output, and per subprocess the
     provider, the masses of its Born and the Born kinematics of the
     reference points."""
-    from madgraph.mg7.fks_provider import FortranProvider
+    from madgraph.mg7.nlo.provider import FortranProvider
 
     data = reference(os.path.join(FKS_DATA, f"{name}.json"))
     out = []
@@ -517,7 +517,7 @@ def test_poles_massless_decay():
     """The poles of <I> of t > b w+ with a massless b (the output t_bw_mb0 of
     make_fks_cross_section_reference.py) at Born points of the decay at
     rest, with the W mass of MadGraph (from M_Z, G_F and alpha)."""
-    from madgraph.mg7.fks_provider import FortranProvider
+    from madgraph.mg7.nlo.provider import FortranProvider
 
     root = os.path.join(OUTPUTS, "t_bw_mb0", "SubProcesses")
     (name,) = [d for d in os.listdir(root) if d.startswith("P")]

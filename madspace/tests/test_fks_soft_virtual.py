@@ -30,7 +30,11 @@ from fks_testing import reference_born_mapping as born_mapping
 from test_fks_limits import generated_points
 
 import madspace as ms
-from madspace.fks import fks_configurations, fks_coupling_orders, fks_soft_virtual
+from madspace.subtraction.fks import (
+    fks_configurations,
+    fks_coupling_orders,
+    fks_soft_virtual,
+)
 
 SOFT = 2
 

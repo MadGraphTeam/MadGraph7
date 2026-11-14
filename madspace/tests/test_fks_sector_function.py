@@ -21,7 +21,7 @@ from fks_testing import reference_born_mapping as born_mapping
 from fks_testing import reference_configurations, with_pair
 
 import madspace as ms
-from madspace.fks import fks_sector_function
+from madspace.subtraction.fks import fks_sector_function
 
 # position k + 2 of the counter-events k = 0, 1, 2 of genps_fks.f
 COUNTER_EVENTS = {"soft": 2, "collinear": 3, "soft_collinear": 4}

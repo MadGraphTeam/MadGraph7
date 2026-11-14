@@ -23,7 +23,7 @@ from test_fks_integrand import IDS as INTEGRAND_IDS
 from test_fks_integrand import channels
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping, fks_cuts
+from madspace.subtraction.fks import fks_configuration_mapping, fks_cuts
 
 KINEMATICS = ("momenta", "soft_momenta", "collinear_momenta", "soft_collinear_momenta")
 LEPTONS = {11, 13, 15}

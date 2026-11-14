@@ -24,7 +24,7 @@ Run from anywhere with pyAmpliCol and madspace importable:
     python madspace/tests/cs_reference/make_cs_reference.py [--work DIR]
 
 The JSON layout: setup (name, nincoming, sqrt_s, leptonic, masses {pdg:
-mass}, alpha_s, source), borns, reals and cs (madspace.cs.cs_subtraction),
+mass}, alpha_s, source), borns, reals and cs (madspace.subtraction.cs.cs_subtraction),
 points[]: real, ray (dipole: the index in cs of the dipole whose mapping
 gives the ray, limit: collinear or soft, lam, random: the random numbers of
 the mapping), momenta, x1, x2 (the real emission in the lab frame), real_me,
@@ -253,7 +253,7 @@ def projector(mappings, dipoles):
 
 
 def make(name, setup, work):
-    from madspace.cs import cs_subtraction
+    from madspace.subtraction.cs import cs_subtraction
 
     masses = {6: TOP_MASS}
     borns = [dict(pdgs=b, flavors=[b]) for b in setup["borns"]]

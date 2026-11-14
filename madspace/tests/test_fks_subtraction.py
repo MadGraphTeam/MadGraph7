@@ -34,7 +34,7 @@ from fks_testing import reference_born_mapping as born_mapping
 from test_fks_limits import born_blocks, generated_points, soft_scale
 
 import madspace as ms
-from madspace.fks import (
+from madspace.subtraction.fks import (
     fks_configuration_mapping,
     fks_configurations,
     fks_limits,

@@ -1,9 +1,10 @@
 """Guard the "expose every constructor parameter" documentation convention.
 
-For each documented ``Mapping`` subclass under ``phasespace/``, construct it
-with every parameter its docstring names passed **by keyword**. This fails if a
-binding drops a constructor argument (e.g. ``has_cut`` of ``DoubleT``) or
-renames one away from the header, keeping the rendered Parameters list honest.
+For each documented ``Mapping`` subclass under ``phasespace/`` and
+``subtraction/``, construct it with every parameter its docstring names passed
+**by keyword**. This fails if a binding drops a constructor argument (e.g.
+``has_cut`` of ``DoubleT``) or renames one away from the header, keeping the
+rendered Parameters list honest.
 """
 
 import inspect

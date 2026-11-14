@@ -21,7 +21,7 @@ import pytest
 from fks_testing import evaluate, reference
 
 import madspace as ms
-from madspace.fks import ew_sudakov, ew_sudakov_process
+from madspace.subtraction.fks import ew_sudakov, ew_sudakov_process
 
 DATA = sorted(
     glob.glob(

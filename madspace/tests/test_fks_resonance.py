@@ -1,6 +1,6 @@
 """The resonance-local recoil of an FKS emission off a final-state parton
 (FKSRadiation with a resonance), and the resonances of MadGraph
-(madspace.fks.fks_resonances with fks_minimal_masses).
+(madspace.subtraction.fks.fks_resonances with fks_minimal_masses).
 
 The reference data of test_data/fks_resonance come from MadGraph7 (see
 fks_reference/make_fks_resonance_reference.py), one file per Born
@@ -31,7 +31,7 @@ from fks_testing import (
 from madspace_testing import default_context, generator
 
 import madspace as ms
-from madspace.fks import fks_minimal_masses, fks_resonances
+from madspace.subtraction.fks import fks_minimal_masses, fks_resonances
 
 SQRT_S = 500.0
 M_Z, W_Z = 91.188, 2.4952

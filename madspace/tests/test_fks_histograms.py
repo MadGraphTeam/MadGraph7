@@ -26,7 +26,7 @@ from test_fks_cuts import genkt_jets, jet_eta, random_kinematics
 from test_fks_integrand import DATA, IDS, boost_z, channels
 
 import madspace as ms
-from madspace.fks import (
+from madspace.subtraction.fks import (
     fks_configurations,
     fks_histogram_jet_count,
     fks_histogram_results,

@@ -11,6 +11,7 @@
 #include "madspace/compgraphs/optimizer.hpp"
 #include "madspace/driver.hpp"
 #include "madspace/phasespace.hpp"
+#include "madspace/subtraction.hpp"
 #include "madspace/util.hpp"
 #include "python_function.hpp"
 

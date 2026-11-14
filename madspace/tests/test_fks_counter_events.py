@@ -40,7 +40,7 @@ from fks_testing import (
 from madspace_testing import default_context
 
 import madspace as ms
-from madspace.fks import fks_mappings
+from madspace.subtraction.fks import fks_mappings
 
 DATA = (
     sorted(

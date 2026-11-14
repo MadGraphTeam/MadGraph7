@@ -2,7 +2,7 @@
 
 The reference data of genps_fks.f (see test_fks_reference.py) store, for each
 subprocess, the fks_configurations.json that MadGraph's FKS exporter writes
-next to fks_info.inc. madspace.fks builds the FKSMappings of a Born mapping
+next to fks_info.inc. madspace.subtraction.fks builds the FKSMappings of a Born mapping
 from it. Their FKS configurations must be those of the Fortran, and the
 pointwise comparison with genps_fks.f (test_fks_counter_events.py) runs on
 them. The color types, charges and FKS pairs of the real processes, which the
@@ -18,7 +18,7 @@ import pytest
 import torch
 
 import madspace as ms
-from madspace.fks import (
+from madspace.subtraction.fks import (
     born_of_real,
     fks_configuration_mapping,
     fks_configurations,

@@ -622,6 +622,47 @@ KERNELSPEC void kernel_boost_beam_inverse(
     boost_beam<T>(p1, masses, x1, x2, -1.0, p_out);
 }
 
+// Boost along z by the rapidity y = log(plus / minus) / 2, in light-cone
+// components: q_+ = E + p_z -> e^{+y} q_+, q_- = E - p_z -> e^{-y} q_-, the
+// larger of the two taken directly and the smaller from the mass shell,
+// q_+ q_- = m^2 + p_T^2, with the given mass (a negative one means unknown, and
+// that momentum is boosted linearly). Each momentum keeps its relative
+// precision in both components, in either direction of the boost, so the
+// center-of-mass frame of the Born comes out of the lab frame as precisely as
+// it went in, whatever the rapidity. (boost_beam projects onto the mass shell
+// only the momenta whose energy decreases and hands the shifts to the hardest
+// one, which loses up to e^{2|y|} of relative precision in that momentum when
+// it is boosted out of the lab.)
+template <typename T>
+KERNELSPEC void kernel_boost_beam_light_cone(
+    FIn<T, 2> p, FSIn<T, 1> masses, FIn<T, 0> plus, FIn<T, 0> minus, FOut<T, 2> p_out
+) {
+    FVal<T> pl = plus, mi = minus;
+    auto e_plus = sqrt(pl / mi);
+    auto e_minus = sqrt(mi / pl);
+    auto cosh_rap = 0.5 * (e_plus + e_minus);
+    auto sinh_rap = 0.5 * (e_plus - e_minus);
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        auto q = p[i];
+        auto q_out = p_out[i];
+        FVal<T> mass(masses[i]);
+        FVal<T> q0(q[0]), q1(q[1]), q2(q[2]), q3(q[3]);
+        auto trans2 = mass * mass + q1 * q1 + q2 * q2;
+        auto forward = q3 >= 0.;
+        auto big = where(forward, q0 + q3, q0 - q3);
+        auto small = trans2 / max(big, FVal<T>(EPS2));
+        auto p_plus = e_plus * where(forward, big, small);
+        auto p_minus = e_minus * where(forward, small, big);
+        auto known = mass >= 0.;
+        q_out[0] =
+            where(known, 0.5 * (p_plus + p_minus), q0 * cosh_rap + q3 * sinh_rap);
+        q_out[1] = q1;
+        q_out[2] = q2;
+        q_out[3] =
+            where(known, 0.5 * (p_plus - p_minus), q3 * cosh_rap + q0 * sinh_rap);
+    }
+}
+
 template <typename T>
 KERNELSPEC void kernel_com_p_in(FIn<T, 0> e_cm, FOut<T, 1> p1, FOut<T, 1> p2) {
     auto p_com = e_cm / 2;

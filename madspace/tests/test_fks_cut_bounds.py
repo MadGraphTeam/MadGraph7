@@ -1,9 +1,9 @@
 """Lower bounds on the partonic energy of the FKS phase space from the cuts.
 
 fks_sqrt_s_hat_min turns the cuts on the Born-level objects into a lower bound
-on sqrt(s_hat) of the real emission. madspace.fks.fks_mappings puts it where it
-belongs: a floor of the Born mapping for a final-state emitter (s_hat is that
-of the Born), s_hat_min for an incoming one. fks_configuration_mapping does the
+on sqrt(s_hat) of the real emission. madspace.subtraction.fks.fks_mappings puts
+it where it belongs: a floor of the Born mapping for a final-state emitter
+(s_hat is that of the Born), s_hat_min for an incoming one. fks_configuration_mapping does the
 same in one pass, the floor read per event by the Born mapping. The bound must
 hold for every real emission that passes the cuts, whatever i does, or it would
 remove part of the cross section. Here the cuts are applied as an NLO integrand would apply them:
@@ -20,7 +20,7 @@ import torch
 from madspace_testing import default_context, to_numpy
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping, fks_mappings
+from madspace.subtraction.fks import fks_configuration_mapping, fks_mappings
 
 O = ms.Observable
 SQRT_S = 2000.0

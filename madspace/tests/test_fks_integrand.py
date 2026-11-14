@@ -61,7 +61,7 @@ import torch
 from fks_testing import evaluate, reference, reference_born_mapping
 
 import madspace as ms
-from madspace.fks import (
+from madspace.subtraction.fks import (
     fks_configuration_mapping,
     fks_cross_section,
     fks_cuts,

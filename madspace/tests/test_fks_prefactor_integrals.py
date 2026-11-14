@@ -28,7 +28,7 @@ from fks_testing import FKS_DATA, FKS_DATA_IDS, evaluate, reference
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping, fks_prefactors
+from madspace.subtraction.fks import fks_configuration_mapping, fks_prefactors
 
 STINY, CTINY = 1e-6, 5e-7
 EPS = np.finfo(np.float64).eps

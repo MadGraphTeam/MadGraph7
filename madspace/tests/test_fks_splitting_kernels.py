@@ -18,7 +18,7 @@ from fks_testing import EPS, FKS_DATA, FKS_DATA_IDS, configuration, evaluate, re
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping, fks_splitting_kernels
+from madspace.subtraction.fks import fks_configuration_mapping, fks_splitting_kernels
 
 # positions k + 2 of the counter-events k = 1, 2 of genps_fks.f
 COUNTER_EVENTS = {"collinear": 3, "soft_collinear": 4}

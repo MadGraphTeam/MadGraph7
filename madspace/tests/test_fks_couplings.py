@@ -21,7 +21,7 @@ linearly on a grid of 256 nodes per region (alphas_from_grids), within 1e-5
 of it. madspace itself reads LHAPDF grids, here the same nodes of NNPDF in
 that format, which it interpolates cubically, and alpha_s from a dense grid of
 the 2-loop running, both as the MG7 NLO driver writes them
-(madgraph/mg7/fks_couplings.py).
+(madgraph/mg7/nlo/grids.py).
 """
 
 import functools
@@ -31,7 +31,7 @@ import os
 import numpy as np
 import pytest
 from fks_testing import evaluate, reference
-from madgraph.mg7.fks_couplings import (
+from madgraph.mg7.nlo.grids import (
     COLUMNS,
     NNPDF_GRID,
     PIDS,
@@ -49,7 +49,7 @@ from test_fks_integrand import (
 )
 
 import madspace as ms
-from madspace.fks import (
+from madspace.subtraction.fks import (
     fks_born_flavor_indices,
     fks_cross_section,
     fks_luminosities,

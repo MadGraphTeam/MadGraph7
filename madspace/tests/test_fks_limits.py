@@ -33,7 +33,11 @@ from fks_testing import (
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
-from madspace.fks import fks_configurations, fks_limits, fks_splitting_kernels
+from madspace.subtraction.fks import (
+    fks_configurations,
+    fks_limits,
+    fks_splitting_kernels,
+)
 
 SOFT, COLLINEAR, SOFT_COLLINEAR = 2, 3, 4
 TINY = 1e-6  # tiny of sreal

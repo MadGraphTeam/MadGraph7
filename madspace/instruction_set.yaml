@@ -711,6 +711,26 @@ boost_beam_inverse:
       desc: "momenta in the partonic center-of-mass frame"
   desc: "Inverse of `boost_beam`: boosts lab-frame momenta back to the partonic center-of-mass frame."
 
+boost_beam_light_cone:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle, or a negative value for a linear boost"
+    - name: plus
+      type: [float]
+      desc: "boost by the rapidity log(plus / minus) / 2"
+    - name: minus
+      type: [float]
+      desc: "see plus"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the boosted momenta"
+  desc: "Boost along the beam axis in light-cone components, the smaller one of each momentum from its mass shell, which keeps the relative precision of every momentum in both directions of the boost. Exchanging plus and minus gives the inverse. Unlike @ref boost_beam it does not lose precision when boosting out of the lab frame. See @ref FKSMapping."
+
 com_p_in:
   inputs:
     - name: e_cm
@@ -3330,26 +3350,6 @@ fks_counter_event_det:
       desc: "det where the counter-event exists, 0 elsewhere"
   desc: "Jacobian of an FKS counter-event, zero where genps_fks.f does not generate it: a soft counter-event needs xi = 0, which a lower bound on the partonic energy of an emission off an incoming parton can exclude, and an event with the first solution for the momentum of a massive emitter; a collinear one needs y = 1, which the bound can exclude. A massive emitter has no collinear counter-events. See @ref FKSRadiation."
 
-fks_beam_boost:
-  inputs:
-    - name: p
-      type: [float, n, 4]
-      desc: "momenta"
-    - name: masses
-      type: [float, single, n]
-      desc: "mass of each particle, or a negative value for a linear boost"
-    - name: plus
-      type: [float]
-      desc: "boost by the rapidity log(plus / minus) / 2"
-    - name: minus
-      type: [float]
-      desc: "see plus"
-  outputs:
-    - name: p_out
-      type: [float, n, 4]
-      desc: "the boosted momenta"
-  desc: "Boost along the beam axis in light-cone components, the smaller one of each momentum from its mass shell, which keeps the relative precision of every momentum in both directions of the boost. Exchanging plus and minus gives the inverse. Unlike @ref boost_beam it does not lose precision when boosting out of the lab frame. See @ref FKSMapping."
-
 ---
 title: FKS subtraction
 
@@ -4241,57 +4241,6 @@ fks_luminosity:
   vectorized: False
   desc: "The parton luminosity of one kinematics, PD of the parton_lum_*.f files of MadFKS for the flavor of the event or summed over the flavors of its FKS configuration, each times its factor, without the conversion to pb. See @ref FKSLuminosity."
 
-ew_sudakov:
-  inputs:
-    - name: momenta
-      type: [float, n, 4]
-      desc: "momenta of the Born"
-    - name: diagonal
-      type: [float, h]
-      desc: "|M_h|^2 of the base amplitude of each helicity combination at the LO1"
-    - name: lo2
-      type: [float, h]
-      desc: "the same at the LO2"
-    - name: derivatives
-      type: [float, h, 6]
-      desc: "derivatives of diagonal with respect to the parameters of numder_*.f"
-    - name: interference
-      type: [float, t, 2]
-      desc: "real and imaginary parts of the interferences of the interference terms at the LO1"
-    - name: alpha_s
-      type: [float]
-      desc: "strong coupling"
-    - name: ren_scale
-      type: [float]
-      desc: "renormalization scale"
-    - name: signs
-      type: [float, single, n]
-      desc: "-1 for an incoming particle, 1 for an outgoing one"
-    - name: modes
-      type: [int, single, m, 2]
-      desc: "s_to_rij and rij_ge_mw of each mode"
-    - name: diagonal_coefficients
-      type: [float, single, m, h, c]
-      desc: "factors of the logarithms (L, l, then F and G of every pair (i, j) with j < i) in the coefficient of each helicity combination in each mode, the real and imaginary part of each one after the other"
-    - name: interference_coefficients
-      type: [float, single, m, t, c]
-      desc: "the same for each interference term"
-    - name: par_coefficients
-      type: [float, single, 6]
-      desc: "parameter renormalisation of each derivative per unit l"
-    - name: qcd_coefficients
-      type: [float, single, 2]
-      desc: "factors of log(mu_R^2 / m_t^2) and log(s / m_t^2) of the QCD part per unit alpha_s / (2 pi)"
-    - name: options
-      type: [float, single, 4]
-      desc: "M_W^2, M_Z^2, m_t^2 and alpha / (4 pi)"
-  outputs:
-    - name: sudakov
-      type: [float, m]
-      desc: "the Sudakov approximation of the EW corrections in each mode"
-  vectorized: False
-  desc: "The Sudakov approximation of the EW corrections of ewsudakov_wrapper.f and ewsudakov_functions.f, without the factor f_b / g^k of compute_ewsudakov. With a = alpha / (4 pi), L = a log^2(s / M_W^2), l = a log(s / M_W^2) and for every pair the invariant r of sdk_get_invariants (set to +-M_W^2 below it in size with rij_ge_mw), ell = log(|r| / s) and i pi = -i pi for r > 0, F = 2 l (ell + i pi) + a (ell^2 + 2 ell i pi) and G = 2 a ell log(M_W^2 / M_Z^2), the second terms only with s_to_rij. The coefficients C are the combinations of these with the factors of the tables, and the correction is 2 Re(sum_h C_h diagonal_h + sum_t C_t interference_t) + l sum_h sum_p par_p derivatives_hp + 2 Q sum_h lo2_h with Q = alpha_s / (2 pi) (q_1 log(mu_R^2 / m_t^2) + q_2 log(s / m_t^2))."
-
 ---
 title: FKS histograms
 
@@ -4347,7 +4296,7 @@ fks_histogram_weights:
   desc: "The weights of the kinematics of one point for a histogram, as HwU_fill and HwU_add_points of HwU.f: the kinematics in one bin add up before the square of the point enters the error. A kinematics with fewer jets than needed or an observable that is not finite does not count. The histogram of the centers with the merged weights has the sums per bin of each point, and their squares. See @ref FKSHistograms."
 
 ---
-title: CS radiation
+title: Catani-Seymour
 
 cs_final_final_radiate:
   inputs:
@@ -4913,7 +4862,7 @@ cs_insertion:
       type: [float, b, 2]
       desc: "the coefficients of eps^-2 and eps^-1 of <I> per Born order"
   vectorized: False
-  desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). In a decay (incoming = 1) the decaying particle a is no emitter, and the pair of a final-state quark j with a as the spectator is the integral of the dipole of @ref cs_final_decay_dipole: the pair term above with the recoil system K~ = p_a - p_j as the spectator (s_jK = 2 p_j.K~ and the mass of K~), plus (s_jK / 2 + 2 m_j^2) H_j - (s_jK / 2) H_K - I_a per unit <T_j . T_a> B, with H_x the integral of 1 / (p_a.q p_x.q) over the gluon q and I_a that of m_a^2 / (p_a.q)^2, in closed form (see cs_decay_soft of cs_integrated.hpp): the pair term has the mean of the integrals of the eikonal terms s_jK / (p_a.q p_j.q) and s_jK / (p_a.q p_K.q) of both orderings, the dipole that of its own, and the soft terms of a. For alpha < 1 it loses the integral of the dipole over alpha y_+ < y < y_+. See @ref CSInsertion."
+  desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). In a decay (incoming = 1) the decaying particle a is no emitter, and the pair of a final-state quark j with a as the spectator is the integral of the dipole of @ref cs_final_decay_dipole: the pair term above with the recoil system K~ = p_a - p_j as the spectator (s_jK = 2 p_j.K~ and the mass of K~), plus (s_jK / 2 + 2 m_j^2) H_j - (s_jK / 2) H_K - I_a per unit <T_j . T_a> B, with H_x the integral of 1 / (p_a.q p_x.q) over the gluon q and I_a that of m_a^2 / (p_a.q)^2, in closed form (see cs_decay_soft in kernels/subtraction/cs/integrated.hpp): the pair term has the mean of the integrals of the eikonal terms s_jK / (p_a.q p_j.q) and s_jK / (p_a.q p_K.q) of both orderings, the dipole that of its own, and the soft terms of a. For alpha < 1 it loses the integral of the dipole over alpha y_+ < y < y_+. See @ref CSInsertion."
 
 cs_collinear:
   inputs:
@@ -4965,6 +4914,60 @@ cs_collinear:
       desc: "per Born order and beam the weights of the luminosity f_a'(x_i / z) / z of the parton a' of the Born, of the luminosity of the partons a that split into a' (the gluon for a quark, the quarks and antiquarks for a gluon) and of the luminosity f_a'(x_i) of the Born"
   vectorized: False
   desc: "The K and P operators of the Catani-Seymour dipoles of each beam, CS eqs. 10.24-10.29 with the terms of massive final-state quarks of CDST eqs. 6.55-6.62, as weights of the luminosities of the beam at one point z = x_i + (1 - x_i) r of their convolution int_0^1 dx [K + P](x) f_a(x_i / x) / x, whose mean over r is the convolution: f(z) (1 - x_i) for a regular f, [f(z) - f(1)] (1 - x_i) - int_0^(x_i) f for a plus distribution, with the invariants s_ja = 2 p_j p_a of the real emission (s_ja' / z) inside it and those of the Born at its end point. P has log(mu_F^2 / s_ja') with the factorization scale of the beam. alpha < 1 adds what the gates of the dipoles of the families remove, a regular function of z (see @ref cs_final_initial_dipole, @ref cs_initial_final_dipole, @ref cs_initial_initial_dipole). Times alpha_s / (2 pi). See @ref CSCollinear."
+
+---
+title: EW Sudakov
+
+ew_sudakov:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "momenta of the Born"
+    - name: diagonal
+      type: [float, h]
+      desc: "|M_h|^2 of the base amplitude of each helicity combination at the LO1"
+    - name: lo2
+      type: [float, h]
+      desc: "the same at the LO2"
+    - name: derivatives
+      type: [float, h, 6]
+      desc: "derivatives of diagonal with respect to the parameters of numder_*.f"
+    - name: interference
+      type: [float, t, 2]
+      desc: "real and imaginary parts of the interferences of the interference terms at the LO1"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: ren_scale
+      type: [float]
+      desc: "renormalization scale"
+    - name: signs
+      type: [float, single, n]
+      desc: "-1 for an incoming particle, 1 for an outgoing one"
+    - name: modes
+      type: [int, single, m, 2]
+      desc: "s_to_rij and rij_ge_mw of each mode"
+    - name: diagonal_coefficients
+      type: [float, single, m, h, c]
+      desc: "factors of the logarithms (L, l, then F and G of every pair (i, j) with j < i) in the coefficient of each helicity combination in each mode, the real and imaginary part of each one after the other"
+    - name: interference_coefficients
+      type: [float, single, m, t, c]
+      desc: "the same for each interference term"
+    - name: par_coefficients
+      type: [float, single, 6]
+      desc: "parameter renormalisation of each derivative per unit l"
+    - name: qcd_coefficients
+      type: [float, single, 2]
+      desc: "factors of log(mu_R^2 / m_t^2) and log(s / m_t^2) of the QCD part per unit alpha_s / (2 pi)"
+    - name: options
+      type: [float, single, 4]
+      desc: "M_W^2, M_Z^2, m_t^2 and alpha / (4 pi)"
+  outputs:
+    - name: sudakov
+      type: [float, m]
+      desc: "the Sudakov approximation of the EW corrections in each mode"
+  vectorized: False
+  desc: "The Sudakov approximation of the EW corrections of ewsudakov_wrapper.f and ewsudakov_functions.f, without the factor f_b / g^k of compute_ewsudakov. With a = alpha / (4 pi), L = a log^2(s / M_W^2), l = a log(s / M_W^2) and for every pair the invariant r of sdk_get_invariants (set to +-M_W^2 below it in size with rij_ge_mw), ell = log(|r| / s) and i pi = -i pi for r > 0, F = 2 l (ell + i pi) + a (ell^2 + 2 ell i pi) and G = 2 a ell log(M_W^2 / M_Z^2), the second terms only with s_to_rij. The coefficients C are the combinations of these with the factors of the tables, and the correction is 2 Re(sum_h C_h diagonal_h + sum_t C_t interference_t) + l sum_h sum_p par_p derivatives_hp + 2 Q sum_h lo2_h with Q = alpha_s / (2 pi) (q_1 log(mu_R^2 / m_t^2) + q_2 log(s / m_t^2))."
 
 ---
 title: Invariants

@@ -52,7 +52,7 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     absent, and amp_split: the powers of each split order at every position
     of the amp_split arrays), gal (the QED coupling e of the Fortran),
     fks_configurations (the fks_configurations.json the FKS exporter writes
-    into the P* directory, with its own conventions, see madspace/fks.py)
+    into the P* directory, with its own conventions, see madspace/subtraction/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
                particle_charge, fks_j_from_i (the common blocks of the
                configuration after fks_inc_chooser), iden_comp,

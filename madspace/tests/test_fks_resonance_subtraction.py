@@ -37,7 +37,7 @@ from test_fks_resonance import EMITTER_IDS, EMITTERS, SQRT_S, z_topology
 from test_fks_subtraction import check_against_madfks
 
 import madspace as ms
-from madspace.fks import (
+from madspace.subtraction.fks import (
     fks_eikonals,
     fks_limits,
     fks_prefactors,

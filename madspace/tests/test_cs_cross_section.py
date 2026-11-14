@@ -1,4 +1,4 @@
-"""The cross sections of the Catani-Seymour NLO driver (madgraph/mg7/cs_driver.py)
+"""The cross sections of the Catani-Seymour NLO driver (madgraph/mg7/nlo/cs.py)
 on the aMC@NLO outputs of the references of test_fks_cross_section.py
 (MADSPACE_FKS_OUTPUTS), with their run and param cards.
 
@@ -34,9 +34,9 @@ import tempfile
 
 import numpy as np
 import pytest
-from madgraph.mg7.cs_driver import STREAMS, CSRun, dipole_variables
-from madgraph.mg7.fks_provider import boost_z, partonic_rapidity
-from madgraph.mg7.nlo_driver import Runtime
+from madgraph.mg7.nlo.core import Runtime
+from madgraph.mg7.nlo.cs import STREAMS, CSRun, dipole_variables
+from madgraph.mg7.nlo.provider import boost_z, partonic_rapidity
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
 needs_outputs = pytest.mark.skipif(

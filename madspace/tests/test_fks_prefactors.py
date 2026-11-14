@@ -26,7 +26,7 @@ from fks_testing import (
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping, fks_prefactors
+from madspace.subtraction.fks import fks_configuration_mapping, fks_prefactors
 
 SOFT, COLLINEAR, SOFT_COLLINEAR = 2, 3, 4
 

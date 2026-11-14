@@ -1,5 +1,5 @@
 c The matrix-element blocks of the FKS integrand from the Fortran of an
-c aMC@NLO output, for madgraph/mg7/fks_provider.py, the Fortran provider
+c aMC@NLO output, for madgraph/mg7/nlo/provider.py, the Fortran provider
 c of the FKS integrand of madspace. It is linked in a P* directory as
 c check_poles (the objects of madevent_mintFO without its driver) and
 c serves requests over two pipes, whose file descriptors are its two

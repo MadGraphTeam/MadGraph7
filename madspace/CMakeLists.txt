@@ -241,14 +241,18 @@ add_library(
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
     src/phasespace/color_ordered_mapping.cpp
-    src/phasespace/fks_configuration.cpp
-    src/phasespace/fks_limits.cpp
-    src/phasespace/fks_couplings.cpp
-    src/phasespace/fks_histograms.cpp
-    src/phasespace/fks_mapping.cpp
-    src/phasespace/fks_radiation.cpp
-    src/phasespace/fks_sector.cpp
-    src/phasespace/fks_subtraction.cpp
+    src/subtraction/common.cpp
+    src/subtraction/fks/configuration.cpp
+    src/subtraction/fks/limits.cpp
+    src/subtraction/fks/couplings.cpp
+    src/subtraction/fks/histograms.cpp
+    src/subtraction/fks/lepton_luminosity.cpp
+    src/subtraction/fks/mapping.cpp
+    src/subtraction/fks/radiation.cpp
+    src/subtraction/fks/sector.cpp
+    src/subtraction/fks/subtraction.cpp
+    src/subtraction/cs/integrated.cpp
+    src/subtraction/cs/mapping.cpp
     src/phasespace/ew_sudakov.cpp
     src/phasespace/phasespace.cpp
     src/phasespace/multichannel.cpp
@@ -272,8 +276,6 @@ add_library(
     src/phasespace/matrix_element.cpp
     src/phasespace/mlm_clustering.cpp
     src/phasespace/cross_section.cpp
-    src/phasespace/cs_integrated.cpp
-    src/phasespace/cs_mapping.cpp
     src/phasespace/scale.cpp
     src/phasespace/weighting_step.cpp
     include/madspace/util.hpp
@@ -313,13 +315,19 @@ add_library(
     include/madspace/phasespace/topology.hpp
     include/madspace/phasespace/t_propagator_mapping.hpp
     include/madspace/phasespace/color_ordered_mapping.hpp
-    include/madspace/phasespace/fks_configuration.hpp
-    include/madspace/phasespace/fks_histograms.hpp
-    include/madspace/phasespace/fks_limits.hpp
-    include/madspace/phasespace/fks_mapping.hpp
-    include/madspace/phasespace/fks_radiation.hpp
-    include/madspace/phasespace/fks_sector.hpp
-    include/madspace/phasespace/fks_subtraction.hpp
+    include/madspace/subtraction.hpp
+    include/madspace/subtraction/common.hpp
+    include/madspace/subtraction/fks/configuration.hpp
+    include/madspace/subtraction/fks/couplings.hpp
+    include/madspace/subtraction/fks/histograms.hpp
+    include/madspace/subtraction/fks/lepton_luminosity.hpp
+    include/madspace/subtraction/fks/limits.hpp
+    include/madspace/subtraction/fks/mapping.hpp
+    include/madspace/subtraction/fks/radiation.hpp
+    include/madspace/subtraction/fks/sector.hpp
+    include/madspace/subtraction/fks/subtraction.hpp
+    include/madspace/subtraction/cs/integrated.hpp
+    include/madspace/subtraction/cs/mapping.hpp
     include/madspace/phasespace/ew_sudakov.hpp
     include/madspace/phasespace/phasespace.hpp
     include/madspace/phasespace/multichannel.hpp
@@ -342,8 +350,6 @@ add_library(
     include/madspace/phasespace/matrix_element.hpp
     include/madspace/phasespace/mlm_clustering.hpp
     include/madspace/phasespace/cross_section.hpp
-    include/madspace/phasespace/cs_integrated.hpp
-    include/madspace/phasespace/cs_mapping.hpp
     include/madspace/phasespace/scale.hpp
     include/madspace/phasespace/weighting_step.hpp
     include/madspace/mixmax/mixmax.hpp
@@ -407,6 +413,14 @@ set(
     src/kernels/threeparticle.hpp
     src/kernels/multichannel.hpp
     src/kernels/operations.hpp
+    src/kernels/subtraction/common.hpp
+    src/kernels/subtraction/fks/couplings.hpp
+    src/kernels/subtraction/fks/cuts.hpp
+    src/kernels/subtraction/fks/histograms.hpp
+    src/kernels/subtraction/fks/radiation.hpp
+    src/kernels/subtraction/fks/subtraction.hpp
+    src/kernels/subtraction/cs/integrated.hpp
+    src/kernels/subtraction/cs/mapping.hpp
 )
 
 

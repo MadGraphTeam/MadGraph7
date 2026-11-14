@@ -16,7 +16,11 @@ from fks_testing import FKS_DATA, FKS_DATA_IDS, configuration, evaluate, referen
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
-from madspace.fks import fks_configuration_mapping, fks_eikonals, real_masses
+from madspace.subtraction.fks import (
+    fks_configuration_mapping,
+    fks_eikonals,
+    real_masses,
+)
 
 SOFT = 2  # position of the soft counter-event (k = 0) of genps_fks.f
 TINY = 1e-6  # tiny of eikonal_reduced

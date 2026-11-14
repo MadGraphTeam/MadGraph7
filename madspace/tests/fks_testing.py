@@ -221,8 +221,9 @@ def massive_xi_max(real, i_fks, j_fks, m_j):
 
 
 def reference_configurations(data):
-    """The FKSConfigurations of reference data, as madspace.fks builds them."""
-    from madspace.fks import fks_configurations
+    """The FKSConfigurations of reference data, as madspace.subtraction.fks
+    builds them."""
+    from madspace.subtraction.fks import fks_configurations
 
     return fks_configurations(reference_born_mapping(data), data["fks_configurations"])
 

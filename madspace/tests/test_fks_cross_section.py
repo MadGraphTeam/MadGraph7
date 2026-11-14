@@ -1,4 +1,4 @@
-"""The cross sections of the MG7 NLO driver (madgraph/mg7/fks_driver.py) with
+"""The cross sections of the MG7 NLO driver (madgraph/mg7/nlo/fks.py) with
 the FKS integrand of madspace against those of MG5aMC at LO and NLO
 (test_data/fks_cross_section, from make_fks_cross_section_reference.py), per
 subprocess, within PULL combined errors. For e+ e- > j j at a fixed scale
@@ -26,11 +26,11 @@ import tempfile
 
 import numpy as np
 import pytest
-from madgraph.mg7.fks_driver import FKSRun, default_histograms, read_histograms
+from madgraph.mg7.nlo.fks import FKSRun, default_histograms, read_histograms
 from madspace_testing import default_context
 from test_fks_couplings import alpha_s_madfks
 
-from madspace.fks import fks_histogram_jet_count
+from madspace.subtraction.fks import fks_histogram_jet_count
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
 needs_outputs = pytest.mark.skipif(
