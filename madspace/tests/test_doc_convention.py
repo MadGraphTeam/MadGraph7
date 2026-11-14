@@ -24,6 +24,13 @@ CASES = {
         mass=0.0,
         width=0.0,
     ),
+    "LeptonLuminosity": dict(
+        s_lab=1.0e6,
+        s_hat_min=1.0e4,
+        sampling_power=0.975,
+        reduced_density=False,
+        s_hat_min_condition=False,
+    ),
     "TwoBodyDecay": dict(com=True),
     "TwoToTwoParticleScattering": dict(
         com=True, invariant_power=0.0, mass=0.0, width=0.0, has_cut=False
