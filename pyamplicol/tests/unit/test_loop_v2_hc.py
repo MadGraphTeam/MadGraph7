@@ -646,8 +646,13 @@ def test_hc05_five_point_gluon_r2_is_lowered_and_equals_madloop(
     five-point R2 [G G G G X0] (colour f*f*f*f, the trace of four adjoint
     generators) enters the counterterm program through its exact f*f and
     Identity*Identity pairings (P6) instead of the former
-    ``unlowered-counterterm`` refusal. One point at one scale in binary64
-    equals MadLoop per Laurent coefficient (the whole row: nightly)."""
+    ``unlowered-counterterm`` refusal. One point at one scale on NinjaRS in
+    binary64 equals MadLoop per Laurent coefficient (the whole row:
+    nightly), its double pole Catani's, its rotation check passes and
+    double-double agrees; TIRust, where it serves the point, agrees with
+    NinjaRS (its refusal is no failure)."""
+
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
 
     card = _card()
     row = _row(card, "HC05")
@@ -664,13 +669,41 @@ def test_hc05_five_point_gluon_r2_is_lowered_and_equals_madloop(
     )
     point = [[float(x) for x in leg] for leg in fixture["points"][value["point"]]]
     mu = float(value["mu_r"])
-    result = runtime.evaluate([point], mu_r2=[mu * mu])
-    floor = abs(value["born"]) * float(entry["parameters"]["aS"]) / (2 * math.pi)
-    assert _relative(float(result.born_values[0][0]), value["born"], 0.0) <= TOLERANCE
+    alpha_s = float(entry["parameters"]["aS"])
+    result = runtime.evaluate(
+        [point],
+        mu_r2=[mu * mu],
+        reduction="ninjars",
+        stability_checks=VirtualStabilityChecks(1),
+    )
+    floor = abs(value["born"]) * alpha_s / (2 * math.pi)
+    born = float(result.born_values[0][0])
+    assert _relative(born, value["born"], 0.0) <= TOLERANCE
     for ours, key in zip(
         result.values[0][0], ("finite", "single_pole", "double_pole"), strict=True
     ):
         assert _relative(float(ours), value[key], floor) <= TOLERANCE, key
+    # The double pole is Catani's (four gluons: the single pole's colour
+    # correlators are no Casimirs, MadLoop's above stands for it).
+    _single, double = _catani(row["process"], point, born, mu, alpha_s)
+    assert _relative(float(result.values[0][0][2]), double, floor) <= POLE_TOLERANCE
+    (estimate,) = result.stability
+    assert [name for name, _ in estimate.checks] == ["rotation-0"]
+    assert estimate.relative <= ROTATION_BOUND, estimate
+    binary64 = [float(x) for x in result.values[0][0]]
+    extended = runtime.evaluate(
+        [point], mu_r2=[mu * mu], reduction="ninjars", arithmetic="double-double"
+    )
+    for ours, theirs in zip(extended.values[0][0], binary64, strict=True):
+        assert _relative(float(ours), theirs, floor) <= ROTATION_BOUND
+    # TIRust: a refusal is recorded, never a failure (USER 2026-11-14); a
+    # value it serves equals NinjaRS's within the row's tolerance.
+    tirust = runtime.evaluate(
+        [point], mu_r2=[mu * mu], reduction="tirust", on_failure="return"
+    )
+    if tirust.values[0] is not None:
+        for ours, theirs in zip(tirust.values[0][0], binary64, strict=True):
+            assert _relative(float(ours), theirs, floor) <= TOLERANCE
 
 
 def _rewritten_ring(a: int, b: int, c: int, d: int) -> str:
