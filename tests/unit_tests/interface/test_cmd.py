@@ -29,6 +29,7 @@ import contextlib
 
 import tests.parallel_tests.test_aloha as test_aloha
 
+import shutil
 import tempfile
 pjoin = os.path.join
 MG5DIR = madgraph.MG5DIR
@@ -538,7 +539,79 @@ class TestValidCmd(unittest.TestCase):
         cmd.check_output([])
         
         self.assertNotEqual('tmp', cmd._export_dir)
-        
+
+    def test_output_pythia8_refused(self):
+        """'output pythia8' was dropped in MadGraph7 (Pythia 8 showers the
+        LHE events of a madevent/mg7/NLO output instead). It must be refused,
+        with that advice, by the LO, MadLoop and aMC@NLO interfaces; the
+        aMC@NLO one used to take 'pythia8' as the output directory name.
+        'launch' on a Pythia 8 directory (which ran the main program of such
+        an output) is refused with the same advice, from every interface and
+        before any change of interface or of the last output directory."""
+
+        self.addCleanup(shutil.rmtree, self.path, True)
+        target = pjoin(self.path, 'PY8_OUTPUT')
+        for interface in ('MadGraph', 'MadLoop', 'aMC@NLO'):
+            master = cmd.MasterCmd()
+            master.no_notification()
+            with misc.MuteLogger(['madgraph', 'cmdprint'], [40, 40]):
+                master.change_principal_cmd(interface)
+            self.assertNotIn('pythia8', master._export_formats)
+            self.assertRaisesRegex(master.InvalidCmd,
+                                   'output pythia8 is no longer supported.*shower=Pythia8',
+                                   master.check_output, ['pythia8', target])
+            self.assertFalse(os.path.exists(target))
+
+        # a Pythia 8 tree, as find_output_type recognises it
+        py8_dir = pjoin(self.path, 'PY8_TREE')
+        os.makedirs(pjoin(py8_dir, 'include', 'Pythia8'))
+        open(pjoin(py8_dir, 'include', 'Pythia8', 'Pythia.h'), 'w').close()
+        refused = 'is a Pythia 8 directory.*output pythia8 is no longer supported'
+        for interface in ('MadGraph', 'MadLoop', 'aMC@NLO'):
+            master = cmd.MasterCmd()
+            master.no_notification()
+            with misc.MuteLogger(['madgraph', 'cmdprint'], [40, 40]):
+                master.change_principal_cmd(interface)
+            done_export = master._done_export
+            self.assertRaisesRegex(master.InvalidCmd, refused,
+                                   master.do_launch, py8_dir)
+            self.assertEqual(master.current_interface, interface)
+            self.assertEqual(master._done_export, done_export)
+        # and by the check of the MadGraph interface itself
+        master = cmd.MasterCmd()
+        master.no_notification()
+        self.assertEqual(master.current_interface, 'MadGraph')
+        options = type('LaunchOptions', (), {'cluster': 0})()
+        self.assertRaisesRegex(master.InvalidCmd, refused,
+                               master.check_launch, [py8_dir], options)
+
+    def test_color_basis_ddm_keeps_trace_for_matchbox(self):
+        """The Matchbox outputs pass the color strings of the trace basis on:
+        they keep it even after 'set color_basis ddm', which still selects the
+        DDM basis for the other formats."""
+
+        import madgraph.core.color_amp as color_amp
+        import madgraph.iolibs.export_v4 as export_v4
+        import madgraph.iolibs.export_cpp as export_cpp
+        import madgraph.loop.loop_exporters as loop_exporters
+
+        self.addCleanup(color_amp.set_ddm_basis, False)
+        master = cmd.MasterCmd()
+        master.no_notification()
+        sa = export_v4.ProcessExporterFortranSA
+        for mode in ('ddm', 'auto'):
+            master.options['color_basis'] = mode
+            for exporters in ([export_v4.ProcessExporterFortranMatchBox],
+                              [export_cpp.ProcessExporterMatchbox],
+                              [loop_exporters.LoopProcessExporterFortranMatchBox],
+                              [sa, export_v4.ProcessExporterFortranMatchBox]):
+                with misc.MuteLogger(['madgraph'], [40]):
+                    master.set_color_basis_mode(*exporters)
+                self.assertFalse(color_amp.ddm_basis,
+                                 '%s, %s' % (mode, [e.__name__ for e in exporters]))
+            master.set_color_basis_mode(sa)
+            self.assertTrue(color_amp.ddm_basis, mode)
+
     @test_aloha.set_global()
     def test_simple_generate(self):
         """check that simple syntax goes through and return expected process"""

@@ -209,6 +209,10 @@ class VirtualExporter(object):
     # True when the format also needs a color flow per event: the trace basis
     # is then built next to the DDM one, and the trace JAMPs are obtained from
     # the DDM ones through the Kleiss-Kuijf relations.
+    trace_color_basis_only = False
+    # True for the formats which can only write the trace basis (Matchbox,
+    # which passes its color strings on): they keep it even after an explicit
+    # 'set color_basis ddm'.
     folds_decay_chain_crossings = True
     # For a folding format (MadGraphCmd._crossing_folding_formats): whether
     # the crossings recorded inside a decay chain are folded as well, or the
@@ -10393,8 +10397,10 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
            
 
     matrix_template = "matrix_standalone_matchbox.inc"
-    # matchbox needs the color flow information
+    # matchbox needs the color flow information, and only reads trace-basis
+    # color strings (get_color_string_lines)
     support_ddm_color_basis = False
+    trace_color_basis_only = True
     
 
     # Inherits from the standalone exporter but writes its own template, which

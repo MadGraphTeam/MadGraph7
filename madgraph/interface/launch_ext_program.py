@@ -18,7 +18,6 @@ from __future__ import absolute_import
 import logging
 import math
 import os
-import pydoc
 import re
 import subprocess
 import time
@@ -1142,105 +1141,6 @@ class MELauncher(ExtLauncher):
             logger.info('more information in %s' 
                                      % os.path.join(self.running_dir, 'index.html'))
                 
-
-class Pythia8Launcher(ExtLauncher):
-    """A class to launch Pythia8 run"""
-    
-    def __init__(self, running_dir, cmd_int, **option):
-        """ initialize launching Pythia 8"""
-
-        running_dir = os.path.join(running_dir, 'examples')
-        ExtLauncher.__init__(self, cmd_int, running_dir, '.', **option)
-        self.cards = []
-    
-    def prepare_run(self):
-        """ ask for pythia-pgs/delphes run """
-
-        # Find all main_model_process.cc files
-        date_file_list = []
-        for file in misc.glob('main_*_*.cc', self.running_dir):
-            # retrieves the stats for the current file as a tuple
-            # (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime)
-            # the tuple element mtime at index 8 is the last-modified-date
-            stats = os.stat(file)
-            # create tuple (year yyyy, month(1-12), day(1-31), hour(0-23), minute(0-59), second(0-59),
-            # weekday(0-6, 0 is monday), Julian day(1-366), daylight flag(-1,0 or 1)) from seconds since epoch
-            # note:  this tuple can be sorted properly by date and time
-            lastmod_date = time.localtime(stats[8])
-            date_file_list.append((lastmod_date, os.path.split(file)[-1]))
-
-        if not date_file_list:
-            raise MadGraph5Error('No Pythia output found')
-        # Sort files according to date with newest first
-        date_file_list.sort()
-        date_file_list.reverse()
-        files = [d[1] for d in date_file_list]
-        
-        answer = ''
-        answer = self.ask('Select a main file to run:', files[0], files)
-
-        self.cards.append(answer)
-    
-        self.executable = self.cards[-1].replace(".cc","")
-
-        # Assign a valid run name if not put in options
-        if self.name == '':
-            for i in range(1000):
-                path = os.path.join(self.running_dir, '',
-                                    '%s_%02i.log' % (self.executable, i))
-                if not os.path.exists(path):
-                    self.name = '%s_%02i.log' % (self.executable, i)
-                    break
-        
-        if self.name == '':
-            raise MadGraph5Error('too many runs in this directory')
-
-        # Find all exported models
-        models = misc.glob("Processes_*", pjoin(self.running_dir,os.path.pardir))
-        models = [os.path.split(m)[-1].replace("Processes_","") for m in models]
-        # Extract model name from executable
-        models.sort(key=len)
-        models.reverse()
-        model_dir = ""
-        for model in models:
-            if self.executable.replace("main_", "").startswith(model):
-                model_dir = "Processes_%s" % model
-                break
-        if model_dir:
-            self.model = model
-            self.model_dir = os.path.realpath(os.path.join(self.running_dir,
-                                                           os.path.pardir,
-                                                           model_dir))
-            self.cards.append(os.path.join(self.model_dir,
-                                           "param_card_%s.dat" % model))
-        
-    def launch_program(self):
-        """launch the main program"""
-
-        # Make pythia8
-        print("Running make for pythia8 directory")
-        if self.model_dir:
-            print("Running make in %s" % self.model_dir)
-            misc.compile(cwd=self.model_dir, mode='cpp')
-        # Finally run make for executable
-        makefile = self.executable.replace("main_","Makefile_")
-        print("Running make with %s" % makefile)
-        misc.compile(arg=['-f', makefile], cwd=self.running_dir, mode='cpp')
-        
-        print("Running " + self.executable)
-        
-        output = open(os.path.join(self.running_dir, self.name), 'w')
-        if not self.executable.startswith('./'):
-            self.executable = os.path.join(".", self.executable)
-        subprocess.call([self.executable], stdout = output, stderr = output,
-                        cwd=self.running_dir)
-        
-        # Display the cross-section to the screen
-        path = os.path.join(self.running_dir, self.name) 
-        pydoc.pager(open(path).read())
-
-        print("Output of the run is found at " + \
-              os.path.realpath(os.path.join(self.running_dir, self.name)))
 
 # old compatibility shortcut
 open_file = misc.open_file

@@ -539,8 +539,12 @@ class Switcher(object):
         # if there is a path, find what output has been done
         if path:
             type = self.cmd.find_output_type(self, path)
+            if type == 'pythia8':
+                # refused before any change of interface (the aMC@NLO launch
+                # would otherwise switch to MadLoop before MadGraph refuses it)
+                raise self.InvalidCmd(MGcmd.PYTHIA8_LAUNCH_DROPPED % path)
             if type in ['standalone_fortran', 'standalone_cpp_family',
-                        'pythia8', 'madevent', 'amcatnlo_fks_sa']:
+                        'madevent', 'amcatnlo_fks_sa']:
                 self.change_principal_cmd('MadGraph')
             elif type == 'aMC@NLO':
                 self.change_principal_cmd('aMC@NLO')

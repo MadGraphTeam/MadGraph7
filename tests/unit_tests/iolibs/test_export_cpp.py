@@ -12,7 +12,7 @@
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""Unit test library for the export Pythia8 format routines"""
+"""Unit test library for the C++ export routines"""
 
 from __future__ import absolute_import
 import copy
@@ -21,7 +21,6 @@ import os
 import re
 import shutil
 import tempfile
-import tests.IOTests as IOTests
 from tests import test_manager
 
 import tests.unit_tests as unittest
@@ -54,20 +53,17 @@ import tests.unit_tests.iolibs.test_file_writers as test_file_writers
 pjoin = os.path.join
 
 #===============================================================================
-# IOExportPythia8Test
+# CPPTemplateWriterTest
 #===============================================================================
-class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCreate):
-    """Test class for the export v4 module"""
+class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate):
+    """The C++ process templates and the CPPWriter (formerly IOExportPythia8Test,
+    whose setUp built a Pythia 8 process exporter that none of these tests
+    used: 'output pythia8' is gone from MadGraph7)."""
 
-    mymodel = base_objects.Model()
-    mymatrixelement = helas_objects.HelasMatrixElement()
-    created_files = ['test.h', 'test.cc'
-                    ]
+    created_files = ['cppprocess.cc']
 
     def assertFileContains(self,*args,**opts):
-        """Wrapper to make sure that the function assertFileContains, of
-        test_file_writers is used. We cannot put IOTests.IOTestManager last
-        in the hierarchy because the structure requires it to be first always."""
+        """Use the assertFileContains of test_file_writers."""
         return test_file_writers.CheckFileCreate.assertFileContains(
                                                                self,*args,**opts)
 
@@ -76,239 +72,6 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
                               'cpp_process_wavefunctions.inc')).read()
         self.assertIn('%(flavor_mask_decl)s', template)
         self.assertIn('%(flavor_mask_setup)s', template)
-
-    def setUp(self):
-
-        test_file_writers.CheckFileCreate.clean_files
-
-        # Set up model
-        mypartlist = base_objects.ParticleList()
-        myinterlist = base_objects.InteractionList()
-
-        # u and c quarkd and their antiparticles
-        mypartlist.append(base_objects.Particle({'name':'u',
-                      'antiname':'u~',
-                      'spin':2,
-                      'color':3,
-                      'mass':'ZERO',
-                      'width':'ZERO',
-                      'texname':'u',
-                      'antitexname':'\bar u',
-                      'line':'straight',
-                      'charge':2. / 3.,
-                      'pdg_code':2,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':False}))
-        u = mypartlist[len(mypartlist) - 1]
-        antiu = copy.copy(u)
-        antiu.set('is_part', False)
-
-        mypartlist.append(base_objects.Particle({'name':'c',
-                      'antiname':'c~',
-                      'spin':2,
-                      'color':3,
-                      'mass':'MC',
-                      'width':'ZERO',
-                      'texname':'c',
-                      'antitexname':'\bar c',
-                      'line':'straight',
-                      'charge':2. / 3.,
-                      'pdg_code':4,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':False}))
-        c = mypartlist[len(mypartlist) - 1]
-        antic = copy.copy(c)
-        antic.set('is_part', False)
-
-        # A gluon
-        mypartlist.append(base_objects.Particle({'name':'g',
-                      'antiname':'g',
-                      'spin':3,
-                      'color':8,
-                      'mass':'ZERO',
-                      'width':'ZERO',
-                      'texname':'g',
-                      'antitexname':'g',
-                      'line':'curly',
-                      'charge':0.,
-                      'pdg_code':21,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':True}))
-
-        g = mypartlist[len(mypartlist) - 1]
-
-        # A photon
-        mypartlist.append(base_objects.Particle({'name':'Z',
-                      'antiname':'Z',
-                      'spin':3,
-                      'color':1,
-                      'mass':'MZ',
-                      'width':'WZ',
-                      'texname':'Z',
-                      'antitexname':'Z',
-                      'line':'wavy',
-                      'charge':0.,
-                      'pdg_code':23,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':True}))
-        z = mypartlist[len(mypartlist) - 1]
-
-        # A gluino
-        mypartlist.append(base_objects.Particle({'name':'go',
-                      'antiname':'go',
-                      'spin':2,
-                      'color':8,
-                      'mass':'MGO',
-                      'width':'WGO',
-                      'texname':'go',
-                      'antitexname':'go',
-                      'line':'straight',
-                      'charge':0.,
-                      'pdg_code':1000021,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':True}))
-
-        go = mypartlist[len(mypartlist) - 1]
-
-        # A sextet diquark
-        mypartlist.append(base_objects.Particle({'name':'six',
-                      'antiname':'six~',
-                      'spin':1,
-                      'color':6,
-                      'mass':'MSIX',
-                      'width':'WSIX',
-                      'texname':'six',
-                      'antitexname':'sixbar',
-                      'line':'straight',
-                      'charge':4./3.,
-                      'pdg_code':6000001,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':False}))
-
-        six = mypartlist[len(mypartlist) - 1]
-        antisix = copy.copy(six)
-        antisix.set('is_part', False)
-        
-
-        # Gluon couplings to quarks
-        myinterlist.append(base_objects.Interaction({
-                      'id': 1,
-                      'particles': base_objects.ParticleList(\
-                                            [antiu, \
-                                             u, \
-                                             g]),
-                      'color': [color.ColorString([color.T(2, 1, 0)])],
-                      'lorentz':['FFV1'],
-                      'couplings':{(0, 0):'GC_10'},
-                      'orders':{'QCD':1}}))
-
-        # Gamma couplings to quarks
-        myinterlist.append(base_objects.Interaction({
-                      'id': 2,
-                      'particles': base_objects.ParticleList(\
-                                            [antiu, \
-                                             u, \
-                                             z]),
-                      'color': [color.ColorString([color.T(1, 0)])],
-                      'lorentz':['FFV2', 'FFV5'],
-                      'couplings':{(0,0): 'GC_35', (0,1): 'GC_47'},
-                      'orders':{'QED':1}}))
-
-        # Gluon couplings to gluinos
-        myinterlist.append(base_objects.Interaction({
-                      'id': 3,
-                      'particles': base_objects.ParticleList(\
-                                            [go, \
-                                             go, \
-                                             g]),
-                      'color': [color.ColorString([color.f(0,1,2)])],
-                      'lorentz':['FFV1'],
-                      'couplings':{(0, 0):'GC_8'},
-                      'orders':{'QCD':1}}))
-
-        # Sextet couplings to quarks
-        myinterlist.append(base_objects.Interaction({
-                      'id': 4,
-                      'particles': base_objects.ParticleList(\
-                                            [u, \
-                                             u, \
-                                             antisix]),
-                      'color': [color.ColorString([color.K6Bar(2, 0, 1)])],
-                      'lorentz':['FFS1'],
-                      'couplings':{(0,0): 'GC_24'},
-                      'orders':{'QSIX':1}}))
-
-        myinterlist.append(base_objects.Interaction({
-                       'id': 5,
-                       'particles': base_objects.ParticleList(\
-                                             [antiu, \
-                                             antiu, \
-                                             six]),
-                      'color': [color.ColorString([color.K6(2, 0, 1)])],
-                      'lorentz':['FFS1'],
-                      'couplings':{(0,0): 'GC_24'},
-                      'orders':{'QSIX':1}}))
-
-        self.mymodel.set('particles', mypartlist)
-        self.mymodel.set('interactions', myinterlist)
-        self.mymodel.set('name', 'sm')
-
-        myleglist = base_objects.LegList()
-
-        myleglist.append(base_objects.Leg({'id':2,
-                                         'state':False}))
-        myleglist.append(base_objects.Leg({'id':-2,
-                                         'state':False}))
-        myleglist.append(base_objects.Leg({'id':2,
-                                         'state':True}))
-        myleglist.append(base_objects.Leg({'id':-2,
-                                         'state':True}))
-
-        myproc = base_objects.Process({'legs':myleglist,
-                                       'model':self.mymodel,
-                                       'orders':{'QSIX':0}})
-        
-        myamplitude = diagram_generation.Amplitude({'process': myproc})
-
-        self.mymatrixelement = helas_objects.HelasMultiProcess(myamplitude)
-
-        myleglist = base_objects.LegList()
-
-        myleglist.append(base_objects.Leg({'id':4,
-                                           'state':False,
-                                           'number' : 1}))
-        myleglist.append(base_objects.Leg({'id':-4,
-                                         'state':False,
-                                           'number' : 2}))
-        myleglist.append(base_objects.Leg({'id':4,
-                                         'state':True,
-                                           'number' : 3}))
-        myleglist.append(base_objects.Leg({'id':-4,
-                                         'state':True,
-                                           'number' : 4}))
-
-        myproc = base_objects.Process({'legs':myleglist,
-                                       'model':self.mymodel,
-                                       'orders':{'QSIX':0}})
-
-        self.mymatrixelement.get('matrix_elements')[0].\
-                                               get('processes').append(myproc)
-
-        self.mycppwriter = helas_call_writer.CPPUFOHelasCallWriter(self.mymodel)
-    
-        self.pythia8_exporter = export_cpp.OneProcessExporterPythia8(\
-            self.mymatrixelement, self.mycppwriter,
-            process_string = "q q~ > q q~")
-        
-        self.cpp_exporter = export_cpp.OneProcessExporterCPP(\
-            self.mymatrixelement, self.mycppwriter,
-            process_string = "q q~ > q q~")
 
     tearDown = test_file_writers.CheckFileCreate.clean_files
 
@@ -540,30 +303,6 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
         self.assertFileContains('cppprocess.cc', goal_string)
 
 
-
-
-    def disabled_test_write_process_files(self):
-        """Test writing the .h  and .cc Pythia file for a matrix element"""
-
-        export_cpp.generate_process_files_pythia8(self.mymatrixelement,
-                                                      self.mycppwriter,
-                                                      process_string = "q q~ > q q~",
-                                                      path = "/tmp")
-        
-        print("Please try compiling the file /tmp/Sigma_sm_qqx_qqx.cc:")
-        print("cd /tmp; g++ -c -I $PATH_TO_PYTHIA8/include Sigma_sm_qqx_qqx.cc.cc")
-
-
-#===============================================================================
-# ExportUFOModelPythia8Test
-#===============================================================================
-
-
-
-
-#===============================================================================
-# IOExportPythia8Test
-#===============================================================================
 class IOExportMatchBox(unittest.TestCase,
                          test_file_writers.CheckFileCreate):
     """Test class for the export v4 module"""

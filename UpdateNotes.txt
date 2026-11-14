@@ -5,6 +5,25 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: color_basis ddm (and auto, for the outputs where auto picks it): the (n-2)!
+       Del Duca-Dixon-Maltoni colour basis is now also used when the gluons come with
+       colour singlets, e.g. g g > h + n g in the Higgs effective theory (any number of
+       scalars or pseudoscalars). The adjoint delta of the g g H vertex made these
+       processes fall back silently on the (n-1)! trace basis (120 instead of 24 colour
+       structures for g g > h + 4g). With 'set color_basis ddm' the processes that keep
+       the trace basis, and why, are now listed at info level. The Matchbox outputs
+       (matchbox, matchbox_cpp, madloop_matchbox) keep the trace basis even after an
+       explicit 'set color_basis ddm', since they pass its color strings on.
+   OM: 'output pythia8' (dropped in MadGraph7) is now refused by the NLO interface too,
+       where 'pythia8' was taken as the name of the output directory, and the message
+       says how to use Pythia 8 instead: shower the events of a madevent, mg7 or NLO
+       output (shower=Pythia8 at the launch question). The help no longer advertises
+       it, and 'output <format> auto' no longer writes into the Pythia 8 directory for
+       the formats without an automatic directory name (it used pythia8_path). The code
+       that wrote Pythia 8 process and model code is removed (the Pythia 8 exporters of
+       export_cpp.py, template_files/pythia8, and 'launch' on a Pythia 8 directory, which
+       now says that this is no longer supported, from the LO, MadLoop and aMC@NLO
+       interfaces alike).
    OM: standalone/mg7 with --mask=False (no flavour guard) gave wrong |M|^2 for some flavours
        of merged electroweak processes (p p > w+ w- j j QCD=0: 24 of 54, d d~ > w+ w- u u~
        x55). This was also the root cause of the --hel_recycling bug of 0.3.0: the C++ flavoured
