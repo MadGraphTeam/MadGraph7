@@ -141,6 +141,12 @@ c and partial runs skip the sector loop that the probes record.
       if(FKSSectorLearning.and..not.sector_learning_active)
      $     write(*,*) 'FKSSectorLearning applies to abrv=all only: ',
      $     'ignored for abrv=',abrv
+      if(sector_learning_active.and.(.not.FKSExplicitSum.or.
+     $     .not.MCSubtractionAtFixedFlow))then
+         write(*,*) 'FKSSectorLearning requires FKSExplicitSum and ',
+     $        'MCSubtractionAtFixedFlow'
+         stop 1
+      endif
 c Only do the reweighting when actually generating the events
       if (imode.eq.2) then
          doreweight=do_rwgt_scale.or.do_rwgt_pdf.or.store_rwgt_info

@@ -117,8 +117,8 @@ contains
                 stop 1
              endif
           else if (buff .eq. '#FKSSectorLearningBudget') then
-             read(68,*,end=999) FKSSectorLearningBudget
-             if(.not.(FKSSectorLearningBudget.gt.0d0.and.FKSSectorLearningBudget.le.1d0))then
+             read(68,*,end=999,iostat=ios) FKSSectorLearningBudget
+             if(ios.ne.0.or..not.(FKSSectorLearningBudget.gt.0d0.and.FKSSectorLearningBudget.le.1d0))then
                 write(*,*) 'FKSSectorLearningBudget must be in (0,1].'
                 stop 1
              endif
@@ -201,10 +201,6 @@ contains
        endif
     enddo
 999 continue
-    if(FKSSectorLearning.and.(.not.FKSExplicitSum.or..not.MCSubtractionAtFixedFlow))then
-       write(*,*) 'FKSSectorLearning requires FKSExplicitSum and MCSubtractionAtFixedFlow.'
-       stop 1
-    endif
     couldRead=.True.
     goto 998      
 

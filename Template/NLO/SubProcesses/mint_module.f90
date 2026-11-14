@@ -688,7 +688,8 @@ contains
        old_capacity=size(sl_entries(entry)%b,3)
     endif
     if(nf.gt.old_nf.or.number.gt.old_capacity)then
-       capacity=max(number,max(64,2*old_capacity))
+       capacity=old_capacity
+       if(number.gt.old_capacity)capacity=max(number,max(64,2*old_capacity))
        nf=max(nf,old_nf)
        allocate(grown_b(nf,sl_nodes,capacity),source=0d0)
        allocate(grown_r(nf,sl_nodes,ns,capacity),source=0d0)
@@ -1339,22 +1340,23 @@ contains
     integer :: i,s,c,d
     if(.not.sl_ready.or..not.allocated(sl_grid_snapshot))error stop 'Missing frozen online state'
     call sl_unified_ensure()
-    write(unit,*)'SCL10 H',10,sl_method_id,size(sl_entries),sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
+    ! Explicit formats keep one record per line (the reader counts tokens).
+    write(unit,'(a,*(1x,i0))')'SCL10 H',10,sl_method_id,size(sl_entries),sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
          online_epoch,online_ordinary_calls,online_probes,online_reused_nodes,online_record_rejections, &
          online_probes,64,16,1,3,3,1
-    write(unit,*)'SCL10 C',online_budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
+    write(unit,'(a,*(1x,es24.16))')'SCL10 C',online_budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
     do i=1,size(sl_entries)
-       write(unit,*)'SCL10 L',sl_entries(i)%slot,size(sl_entries(i)%ids),size(sl_entries(i)%pdgs,2), &
+       write(unit,'(a,*(1x,i0))')'SCL10 L',sl_entries(i)%slot,size(sl_entries(i)%ids),size(sl_entries(i)%pdgs,2), &
             sl_entries(i)%nflavours,online_slots(i)%gx,online_slots(i)%gy,online_slots(i)%total_samples,unified_slots(i)%gauge
        do s=1,size(sl_entries(i)%ids)
-          write(unit,*)'SCL10 R',sl_entries(i)%slot,s,sl_entries(i)%ids(s),sl_entries(i)%providers(s), &
+          write(unit,'(a,*(1x,i0))')'SCL10 R',sl_entries(i)%slot,s,sl_entries(i)%ids(s),sl_entries(i)%providers(s), &
                sl_entries(i)%groups(s),sl_entries(i)%pdgs(s,:),unified_slots(i)%qcodes(:,s)
-          write(unit,*)'SCL10 P',sl_entries(i)%slot,s,sl_entries(i)%permutations(:,s)
+          write(unit,'(a,*(1x,i0))')'SCL10 P',sl_entries(i)%slot,s,sl_entries(i)%permutations(:,s)
        enddo
     enddo
     do c=1,sl_grid_nchans
        do d=1,sl_grid_ndim
-          write(unit,*)'SCL10 G',c,d,sl_grid_nint,sl_grid_snapshot(:,d,c)
+          write(unit,'(a,3(1x,i0),*(1x,es24.16))')'SCL10 G',c,d,sl_grid_nint,sl_grid_snapshot(:,d,c)
        enddo
     enddo
   end subroutine sl_epoch_replay_write_table
@@ -1415,15 +1417,12 @@ contains
     if(ios.ne.0)error stop 'Missing SCL10 CPU'
     call sl_epoch_replay_validate_line(line,'C',7)
     read(line,*,iostat=ios)marker,tag,budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
-    if(ios.eq.0.and.budget.ne.online_budget)then
-       write(*,*) 'FKSSectorLearningBudget differs from the saved MINT training.'
-       write(*,*) 'Rerun integration and envelope setup before restarting.'
-       stop 1
-    endif
     if(ios.ne.0.or. &
          .not.all(ieee_is_finite([budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu])).or. &
          min(online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu).lt.0d0) &
          error stop 'Malformed SCL10 CPU'
+    ! The budget only steered the MINT0 probes; keep the training value.
+    online_budget=budget
     if(allocated(sl_entries))deallocate(sl_entries)
     if(allocated(online_slots))deallocate(online_slots)
     if(allocated(unified_slots))deallocate(unified_slots)
@@ -1565,7 +1564,9 @@ contains
        online_slots(entry)%channels(number)=ichan
        online_slots(entry)%sample_ids(number)=online_ordinary_calls
        do node=1,sl_nodes
-          proxy=sl_node_proxy(sl_point_b,sl_point_r,sl_entries(entry)%permutations,node,nf,ns)
+          ! A probe can record no S contribution at all (e.g. every fold cut).
+          proxy=0d0
+          if(nf.gt.0)proxy=sl_node_proxy(sl_point_b,sl_point_r,sl_entries(entry)%permutations,node,nf,ns)
           do d=1,ndim
              cell=online_probe_cells(d,node)
              xacc(cell,d,ichan)=xacc(cell,d,ichan)+proxy

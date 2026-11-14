@@ -131,14 +131,19 @@ def sector_learning_card_error(fks_params, run_card):
     """Why the cards cannot train FKSSectorLearning maps, or None. MINT0
     always runs at folding 1 1 1, so the Fortran sees the run-card folding
     only after the training step has been spent."""
-    value = mcatnlo_shower.read_fks_param(fks_params, 'FKSSectorLearning', '.false.')
-    # Fortran list-directed logical input: an optional '.', then T or F.
-    if str(value).lstrip('.')[:1].lower() != 't':
+    def flag(name, default):
+        # Fortran list-directed logical input: an optional '.', then T or F.
+        value = mcatnlo_shower.read_fks_param(fks_params, name, default)
+        return str(value).lstrip('.')[:1].lower() == 't'
+    if not flag('FKSSectorLearning', '.false.'):
         return None
     if list(run_card['folding']) != [1, 1, 1] or \
             ('born_spreading' in run_card and run_card['born_spreading']):
         return ('FKSSectorLearning (Cards/FKS_params.dat) requires folding = 1, 1, 1 '
                 'and born_spreading = False in the run_card.')
+    if not (flag('FKSExplicitSum', '.true.') and flag('MCSubtractionAtFixedFlow', '.true.')):
+        return ('FKSSectorLearning requires FKSExplicitSum and MCSubtractionAtFixedFlow '
+                '(Cards/FKS_params.dat).')
     return None
 
 
