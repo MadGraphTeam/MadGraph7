@@ -273,6 +273,7 @@ jobs:
   acceptancetest_mg7_bundle_2:
     # former jobs, run one after the other: acceptancetest_mg7_fd_gauge
     #   acceptancetest_mg7_madspin_mixed_flavor
+    #   acceptancetest_mg7_crossing_folding
     #   acceptancetest_mg7_flavor_grouping
     #   acceptancetest_mg7_vegas_reproducibility
     #   acceptancetest_mg7_gridpack_reproducibility
@@ -309,12 +310,13 @@ jobs:
       # flavour index of a merged-flavour process through umami (MSSM_SLHA2
       # p p > go go j: check_sa only evaluates flavour 0); and a build
       # measured again at other parameters than the output's (the launch card)
-      # gives the plain |M|^2 there (b b~ > t t~ QCD=0 at ymb = 0)
+      # gives the plain |M|^2 there (b b~ > t t~ QCD=0 at ymb = 0); the rows
+      # mode at every crossed flavour id of a folded crossing with flavour masks
       - name: "acceptancetest_mg7_hel_recycling: madmatrix --hel_recycling vs plain"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries test_madmatrix_hel_recycling_every_flavour test_madmatrix_hel_recycling_launch_parameters -pA -t0 -l INFO
+            ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries test_madmatrix_hel_recycling_every_flavour test_madmatrix_hel_recycling_launch_parameters test_madmatrix_hel_recycling_flavour_masks_crossed -pA -t0 -l INFO
 
       # --hel_recycling through the mg7 launch: a param_card scan (ymb = 0, 4.7,
       # 0) whose points need different recycled builds gives the plain cross
@@ -336,6 +338,19 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_madspin_mixed_flavor_decay_log_summary_mg7 -pA -t0 -l INFO
+
+      # ---- acceptancetest_mg7_crossing_folding ----
+      # output mg7 folds the crossings recorded at generation into
+      # subprocesses.json entries evaluated by their base's library: each entry
+      # must integrate what the expanded output does (rows, helicities, colour
+      # flows, channels), and the folded and expanded cross sections of
+      # p p > w+ j must agree with the same seed.
+      - name: "acceptancetest_mg7_crossing_folding"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py -pA TestMg7FoldedCrossing -t0 -l INFO
 
       # ---- acceptancetest_mg7_flavor_grouping ----
       # p p > l+ l- must give the same cross-section for all four

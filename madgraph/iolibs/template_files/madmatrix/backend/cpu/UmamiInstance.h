@@ -22,6 +22,8 @@ namespace madmatrix
     CPPProcess process;
     // whether the good helicities of process.parameters() have been chosen
     bool initialized = false;
+    // where RAMBO has no phase space, every helicity is kept (see initialize, umami.cc)
+    bool keep_every_helicity = false;
     // parameter interference_helicity_summed (run card [generation]
     // interference_helicity = "summed"): an interference |M|^2 stays the helicity
     // sum even when the caller draws the helicity (see umami_matrix_element)

@@ -67,6 +67,10 @@ namespace madmatrix
                              const fptype* allgs,                                 // input: Gs[nevt]
                              fptype* allcouplings );                              // output: couplings[nevt*ndcoup*2]
 
+  // The events sigmaKin_getGoodHel looks at, which umami_initialize makes for it
+  // (choose_good_helicities): one constant, so that the two never disagree
+  constexpr int goodHelScanEvents = 16;
+
   void
   sigmaKin_getGoodHel( const ProcessParametersArg params,  // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
@@ -82,6 +86,11 @@ namespace madmatrix
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( ProcessParameters& params, // output: the good helicities of the process
                        const bool* isGoodHel );  // input: isGoodHel[ncomb] - host array
+
+  // A crossing-table row with no phase space at its own masses (a crossed
+  // decay lighter than its products, see scan_points in umami.cc): set before
+  // sigmaKin_getGoodHel, which then leaves it out of the good-helicity scan.
+  void sigmaKin_setNoPhaseSpace( const int cross );
 
   void
   sigmaKin( const ProcessParameters& params,     // input: parameters of the process (host)

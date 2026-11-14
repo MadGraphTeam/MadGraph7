@@ -6,6 +6,7 @@ C     IT USES A SIMPLE PHASE SPACE GENERATOR
 C     Fabio Maltoni - 3rd Febraury 2007
 C     *****************************************************************
 C     *********
+      USE MODEL_OBJECT
       IMPLICIT NONE
 C     
 C     CONSTANTS  

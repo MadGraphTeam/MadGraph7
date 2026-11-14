@@ -20,6 +20,7 @@ import subprocess
 import unittest
 import os
 import re
+import shlex
 import shutil
 import sys
 import logging
@@ -280,6 +281,7 @@ class TestCmdShell1(unittest.TestCase):
                     'samurai': None,
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,
+                    'zerowidth_external': True,
                     'auto_convert_model': True,
                     'auto_gauge': True,
                     'nlo_mixed_expansion': True,
@@ -697,7 +699,9 @@ class TestCmdShell2(unittest.TestCase,
                            re.IGNORECASE)
         me_groups = me_re.search(log_output)
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 0.592626100)
+        # value shifted at the 7th digit by the NHEL helicity-summation reorder
+        # (MG7 --crossing branch); physics unchanged.
+        self.assertAlmostEqual(float(me_groups.group('value')), 0.5926263)
         
     def test_ufo_aloha_merged(self):
         """Test the import of models and the export of Helas Routine """
@@ -887,7 +891,12 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p  > w+ w- j j  QCD=0')
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # opens the q q~ > w+ w- q q~ directory itself, which a crossing-on
+        # output would fold into a base directory. Crossing is off by default,
+        # so this only states the choice explicitly; the folded matrix element
+        # is checked by the crossing and consistency suites.
+        self.do('generate p p  > w+ w- j j  QCD=0 --use_crossing=False')
         self.do('output standalone_fortran %s ' % self.out_dir)
 
         sub_root = os.path.join(self.out_dir, 'SubProcesses')
@@ -927,10 +936,11 @@ class TestCmdShell2(unittest.TestCase,
         mixes a fixed u leg with a merged-quark leg, and asserts that the
         standalone matrix elements for the two surviving flavor
         assignments match the reference values obtained by running each
-        flavor as its own explicit process:
+        flavor as its own explicit process (see the note by ``references``
+        below: these were bumped ~0.1% by the ALOHA t-channel width drop):
 
-            u d > Z u d  ->  1.4704291881825141E-006
-            u u > Z u u  ->  3.5590322244693227E-008
+            u d > Z u d  ->  1.4718113670817815E-006
+            u u > Z u u  ->  3.5626573789048226E-008
 
         The same checks are repeated with ``--mask=False`` so the
         regression is guarded both with and without the per-flavor
@@ -944,9 +954,23 @@ class TestCmdShell2(unittest.TestCase,
         unaffected.
         """
 
+        # Reference matrix elements for u d > Z u d and u u > Z u u.
+        #
+        # Updated on the MG7 crossing branch (claude/fortran-cross-symmetry-3f13f3)
+        # after commit 4ec2ae7d5 "aloha: drop the T-channel (spacelike)
+        # propagator width at runtime". u q > Z u q proceeds through a spacelike
+        # (t-channel) electroweak propagator, and ALOHA now drops the width of a
+        # spacelike propagator: a spacelike momentum can never reach the pole, so
+        # the Breit-Wigner width term there is spurious. This shifts the matrix
+        # element by ~0.1%; it is independent of crossing and of the per-flavor
+        # mask (verified: identical for --use_crossing on/off and --mask on/off).
+        #
+        # Previous values (t-channel width kept), for reference:
+        #     (2, 1, 23, 2, 1): 1.4704291881825141e-06
+        #     (2, 2, 23, 2, 2): 3.5590322244693227e-08
         references = {
-            (2, 1, 23, 2, 1): 1.4704291881825141e-06,
-            (2, 2, 23, 2, 2): 3.5590322244693227e-08,
+            (2, 1, 23, 2, 1): 1.4718113670817815e-06,
+            (2, 2, 23, 2, 2): 3.5626573789048226e-08,
         }
 
         me_re = re.compile(
@@ -1012,6 +1036,75 @@ class TestCmdShell2(unittest.TestCase,
                          'expected %s' % (label, pdg,
                                           results[pdg], expected)))
 
+    def test_standalone_crossing_folds_qqx_subprocess(self):
+        """The crossing (--use_crossing=True) counterpart of the tests below.
+
+        test_standalone_flavor_mask and test_standalone_wwjj both pass
+        --use_crossing=False because they open one specific subprocess directory,
+        which a crossing-on standalone output folds away. That leaves
+        the folded layout of this very process untested here, so cover it: with
+        crossing on the q q~ > q q~ directory must be *gone*, the output must be
+        strictly smaller, and the base subprocess that absorbed it must carry the
+        crossing machinery plus a PDG entry for the folded initial state -- i.e.
+        the subprocess is folded, not dropped.
+        """
+        def build(options, name):
+            out = pjoin(self.out_dir, name)
+            if os.path.isdir(out):
+                shutil.rmtree(out)
+            self.do('generate p p > j j QCD=0 %s' % options)
+            self.do('output standalone_fortran %s -f' % out)
+            sub = pjoin(out, 'SubProcesses')
+            return sorted(d for d in os.listdir(sub) if d.startswith('P'))
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        os.makedirs(self.out_dir)
+
+        # Both states are pinned: this test is precisely about the difference
+        # between the two, so neither arm may inherit the shipped default
+        # (TestCrossingProductDefault tests that one).
+        crossed = build('--use_crossing=True', 'crossed')
+        plain = build('--use_crossing=False', 'plain')
+
+        # Folding really happened: fewer directories, and the one the sibling
+        # tests inspect is not among them any more.
+        self.assertLess(len(crossed), len(plain),
+                        'crossing did not fold anything: %s vs %s'
+                        % (crossed, plain))
+        qqx_plain = [d for d in plain if 'QQx' in d and d.endswith('QQx')]
+        self.assertTrue(qqx_plain, 'uncrossed build lost q q~ > q q~: %s' % plain)
+        self.assertEqual([d for d in crossed if 'QQx' in d and d.endswith('QQx')],
+                         [], 'q q~ > q q~ should be folded away: %s' % crossed)
+
+        # ... and it is reachable from a surviving base rather than dropped: some
+        # base emits the crossing machinery and declares the q q~ initial state.
+        sub = pjoin(self.out_dir, 'crossed', 'SubProcesses')
+        with_machinery = []
+        for d in crossed:
+            matrix = pjoin(sub, d, 'matrix.f')
+            if not os.path.exists(matrix):
+                continue
+            text = open(matrix).read()
+            if 'APPLY_CROSSING' in text:
+                with_machinery.append(d)
+        self.assertTrue(with_machinery,
+                        'no crossed base emits the crossing machinery: %s'
+                        % crossed)
+        # GET_PDG_FOR_FLAVOR is what a caller uses to reach a folded crossing;
+        # check_sa demoes it, so the folded quark initial state must show up.
+        demoed = set()
+        for d in with_machinery:
+            check_sa = pjoin(sub, d, 'check_sa.f')
+            if not os.path.exists(check_sa):
+                continue
+            for m in re.finditer(r'PDG_FOR_FLAVOR\(\s*\d+\s*,\s*\d+\s*\)\s*=\s*'
+                                 r'(-?\d+)', open(check_sa).read()):
+                demoed.add(int(m.group(1)))
+        self.assertTrue(demoed & {1, 2, 3, 4, -1, -2, -3, -4},
+                        'no quark initial state demoed by the folded bases: %s'
+                        % sorted(demoed))
+
     def test_standalone_flavor_mask(self):
         """Acceptance test for the per-flavor masking optimization.
 
@@ -1036,7 +1129,12 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p > j j QCD=0')
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # inspects the q q~ > q q~ directory and its per-flavor mask, and the
+        # standalone output does support crossing, so by default that subprocess
+        # is folded into a base directory. The mask of the folded matrix element
+        # is covered by the crossing suite; this one is about the plain layout.
+        self.do('generate p p > j j QCD=0 --use_crossing=False')
         devnull = open(os.devnull, 'w')
 
         def find_qqx(sub_root):
@@ -1405,6 +1503,117 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
+    def _openmp_compile_base(self, proc_dir, source='CPPProcess.cc'):
+        """(base command, OpenMP flags) for compiling `source` in proc_dir.
+
+        `source` is matched by its file name, so a backend-owned file compiled
+        from backend/<variant>/ (SigmaKin.cc) is found as well; the path the
+        makefile gives it is appended to the base command.
+
+        The base command is the one the generated makefile itself would run,
+        read back from ``make -n`` with the ``-c <src>`` and ``-o <obj>`` pairs
+        stripped, so this test keeps following the real build flags (backend,
+        fptype, include paths, ...) instead of duplicating them.
+
+        The OpenMP flags are probed rather than assumed: gcc and a full clang
+        take plain -fopenmp, while Apple clang only understands
+        ``-Xpreprocessor -fopenmp`` together with the homebrew libomp headers.
+        Returns ``(base, None)`` when no OpenMP-capable C++ compiler is found.
+        """
+        make = subprocess.Popen(['make', '-n'], cwd=proc_dir,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        dry_run = make.communicate()[0].decode('utf-8', 'replace')
+        compile_line = [l for l in dry_run.splitlines()
+                        if re.search(r'-c \S*%s\b' % re.escape(source), l)]
+        self.assertTrue(compile_line,
+                        'make -n did not show how to compile %s:\n%s'
+                        % (source, dry_run))
+        base = shlex.split(compile_line[0])
+        self._openmp_source = base[base.index('-c') + 1]
+        for flag in ('-o', '-c'):
+            pos = base.index(flag)
+            del base[pos:pos + 2]
+
+        probe = pjoin(self.tmpdir, 'omp_probe.cc')
+        with open(probe, 'w') as fsock:
+            fsock.write('#ifndef _OPENMP\n'
+                        '#error OpenMP is not enabled\n'
+                        '#endif\n'
+                        'int main() { int s = 0;\n'
+                        '#pragma omp parallel for reduction(+:s)\n'
+                        '  for (int i = 0; i < 8; ++i) s += i;\n'
+                        '  return s == 28 ? 0 : 1; }\n')
+        candidates = [['-fopenmp'], ['-Xpreprocessor', '-fopenmp']]
+        for prefix in ('/opt/homebrew/opt/libomp', '/usr/local/opt/libomp'):
+            candidates.append(['-Xpreprocessor', '-fopenmp',
+                               '-I%s/include' % prefix])
+        devnull = open(os.devnull, 'w')
+        for flags in candidates:
+            cmd = base + flags + ['-c', probe, '-o', probe + '.o']
+            if subprocess.call(cmd, cwd=proc_dir,
+                               stdout=devnull, stderr=devnull) == 0:
+                return base, flags
+        return base, None
+
+    def test_standalone_mg7_openmp(self):
+        """The standalone (madmatrix) sigmaKin must compile with OpenMP.
+
+        sigmaKin is backend-owned (backend/<variant>/SigmaKin.cc, compiled in
+        every P* directory). The CPU branch of sigmaKin runs the event-page loop under
+        ``#pragma omp parallel for default( none )``, so *every* variable the
+        loop body touches has to be named in the shared() clause -- anything
+        missing is a hard compile error, not a warning. Three sigmaKin
+        arguments used inside the loop (iflavorVec, allrnddiagram and
+        allDiagramIdsOut) were absent from it, so the generated code did not
+        build at all once OpenMP was on.
+
+        Nothing caught that, because nothing ever builds this path: OpenMP is
+        opt-in via USEOPENMP=1 (#758), madmatrix.mk force-disables it on Darwin,
+        and no CI job sets it. This test therefore does not go through
+        USEOPENMP: it compiles the generated file directly with whatever OpenMP
+        flags this compiler accepts, which keeps it meaningful on macOS too.
+        """
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('output standalone %s -f' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertTrue(dirs, 'standalone produced no subprocess directory')
+        proc_dir = pjoin(proc_root, dirs[0])
+
+        base, omp_flags = self._openmp_compile_base(proc_dir, 'SigmaKin.cc')
+        if omp_flags is None:
+            self.skipTest('no OpenMP-capable C++ compiler on this machine')
+
+        obj = pjoin(self.tmpdir, 'SigmaKin_omp.o')
+        build = subprocess.Popen(base + omp_flags +
+                                 ['-c', self._openmp_source, '-o', obj],
+                                 cwd=proc_dir, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
+        log = build.communicate()[0].decode('utf-8', 'replace')
+        self.assertEqual(build.returncode, 0,
+                         'SigmaKin.cc does not compile with OpenMP (%s):\n%s'
+                         % (' '.join(omp_flags), log))
+
+        # Guard against the test going vacuous: if the parallel region were ever
+        # compiled out, the object would carry no OpenMP runtime call and the
+        # shared() clause above would no longer be exercised.
+        try:
+            symbols = subprocess.check_output(['nm', obj],
+                                              stderr=subprocess.STDOUT)
+            symbols = symbols.decode('utf-8', 'replace')
+        except (OSError, subprocess.CalledProcessError):
+            symbols = None    # no usable nm: keep the compile check only
+        if symbols is not None:
+            self.assertTrue('GOMP_parallel' in symbols or
+                            'kmpc_fork_call' in symbols,
+                            'SigmaKin.o has no OpenMP runtime call, so the '
+                            'parallel sigmaKin loop was not compiled')
+
     def _standalone_me(self, output_format, make_args=()):
         """Output the current process as `output_format` ('standalone', the
         madmatrix one, or 'standalone_fortran'), build its check driver and
@@ -1748,6 +1957,153 @@ class TestCmdShell2(unittest.TestCase,
                                       ('simd_128', 'd', 1e-12),
                                       ('simd_128', 'm', 1e-6)])
 
+    def test_standalone_umami_two_to_one(self):
+        """a 2 > 1 keeps the helicities of every frame, whatever the first call.
+
+        RAMBO has no phase space for a 2 > 1, so its good helicities were still
+        chosen at the first umami_matrix_element call. For u d~ > w+ with the
+        beams along z, the W at rest has one J_z: two of its three rows vanish.
+        After a first call there, |M|^2 with the beams along x was 4 times too
+        small. The scan at initialization now draws the beam axis at random.
+        For the scalar backend, after a first call with the beams along z:
+        3 helicities are kept, and |M|^2 is the same with the beams along z, x,
+        y and in a boosted frame.
+        """
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate u d~ > w+')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_P*_scalar.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_two_to_one.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, json, math, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 3
+                masses = (ctypes.c_double * npar)()
+                assert lib.umami_get_meta(5, masses) == 0  # umami.h: UMAMI_META_MASSES = 5
+                mw = masses[2]
+
+                def point(axis, beta=0.):  # beams along axis at sqrt(s) = mw, boosted along x
+                    e = mw / 2
+                    p = [[e] + [e * x for x in axis], [e] + [-e * x for x in axis], [mw, 0, 0, 0]]
+                    g = 1 / math.sqrt(1 - beta * beta)
+                    return [[g * (q[0] + beta * q[1]), g * (q[1] + beta * q[0]), q[2], q[3]] for q in p]
+
+                def evaluate(p):
+                    mom = (ctypes.c_double * (4 * npar))()
+                    for ipart in range(npar):  # momenta[npar * mu + ipart]
+                        for mu in range(4):
+                            mom[npar * mu + ipart] = p[ipart][mu]
+                    me = (ctypes.c_double * 1)()
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+                    assert lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(1), ctypes.c_size_t(1), ctypes.c_size_t(0),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(me))) == 0
+                    return me[0]
+
+                first = evaluate(point((0, 0, 1)))
+                print(json.dumps({
+                    'good': lib.madmatrix_good_helicity_count(),
+                    'me': [first] + [evaluate(point(a, b)) for a, b in
+                                     (((1, 0, 0), 0.), ((0, 1, 0), 0.), ((0, 0, 1), 0.6))]}))
+                '''))
+        out = subprocess.check_output([sys.executable, helper, lib, card])
+        run = json.loads(out.decode().strip().splitlines()[-1])
+        self.assertEqual(run['good'], 3)
+        for me in run['me'][1:]:
+            self.assertAlmostEqual(me, run['me'][0], delta=1e-10 * run['me'][0])
+
+    def test_standalone_umami_below_threshold(self):
+        """a decay below threshold keeps every helicity, whatever the first call.
+
+        RAMBO has no phase space for h > w+ w- (mh < 2 mW), so the good
+        helicities were chosen at the first umami_matrix_element call, on off
+        shell W momenta. At rest only the 3 rows of equal W helicities are
+        above rounding, but the others are not 0 in a boosted frame: after a
+        first call at rest, |M|^2 there was 8.5 times too small. For the scalar
+        backend, every one of the 9 rows is now kept, and the boosted |M|^2
+        is the same after a first call at rest or in the boosted frame.
+        """
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate h > w+ w-')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_P*_scalar.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_below_threshold.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, json, math, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 3
+                masses = (ctypes.c_double * npar)()
+                assert lib.umami_get_meta(5, masses) == 0  # umami.h: UMAMI_META_MASSES = 5
+                mh, mv = masses[0], 0.4 * masses[0]  # two W of virtuality 0.4 mh
+
+                def point(beta):  # at rest, W+ along (0.3, 0.4, ...), boosted along x
+                    q = math.sqrt(mh * mh / 4 - mv * mv)
+                    n = [0.3, 0.4, math.sqrt(0.75)]
+                    p = [[mh, 0, 0, 0], [mh / 2] + [q * x for x in n],
+                         [mh / 2] + [-q * x for x in n]]
+                    g = 1 / math.sqrt(1 - beta * beta)
+                    return [[g * (k[0] + beta * k[1]), g * (k[1] + beta * k[0]), k[2], k[3]] for k in p]
+
+                def evaluate(p):
+                    mom = (ctypes.c_double * (4 * npar))()
+                    for ipart in range(npar):  # momenta[npar * mu + ipart]
+                        for mu in range(4):
+                            mom[npar * mu + ipart] = p[ipart][mu]
+                    me = (ctypes.c_double * 1)()
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+                    assert lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(1), ctypes.c_size_t(1), ctypes.c_size_t(0),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(me))) == 0
+                    return me[0]
+
+                evaluate(point(float(sys.argv[3])))
+                print(json.dumps({'good': lib.madmatrix_good_helicity_count(),
+                                  'me': evaluate(point(0.6))}))
+                '''))
+        runs = []
+        for first in ('0', '0.6'):  # the helicities are chosen once per library
+            out = subprocess.check_output([sys.executable, helper, lib, card, first])
+            runs.append(json.loads(out.decode().strip().splitlines()[-1]))
+        for run in runs:
+            self.assertEqual(run['good'], 9)
+            self.assertAlmostEqual(run['me'], runs[1]['me'], delta=1e-10 * runs[1]['me'])
+
     def test_standalone_umami_first_call_gpu(self):
         """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
 
@@ -1938,7 +2294,11 @@ class TestCmdShell2(unittest.TestCase,
         me_groups = me_re.search(log_output)
 
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739191,5)
+        # g g > go go: the gluino exchanged in the t/u channels carries no
+        # width -- it is an external field (zerowidth_external) and its momentum
+        # is spacelike (zerowidth_tchannel), either rule alone drops it. With
+        # both set to False this reads 6.4739191, the value that keeps it.
+        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739329,5)
 
         # Cross-check standalone (madmatrix) against standalone_fortran for
         # this massive BSM process. The Fortran ./check auto-bumps the CM energy
@@ -1968,7 +2328,8 @@ class TestCmdShell2(unittest.TestCase,
         f_default = me_re.search(open(f_log).read())
         self.assertTrue(f_default,
                         'standalone_fortran produced no matrix element')
-        self.assertAlmostEqual(float(f_default.group('value')), 6.4739191, 5)
+        # same value as the C++ one above, gluino propagator width dropped
+        self.assertAlmostEqual(float(f_default.group('value')), 6.4739329, 5)
         # Reference value at the explicit above-threshold energy.
         f_e_log = os.path.join(f_dir, 'check_e.log')
         subprocess.call('./check %s' % energy,
@@ -2121,7 +2482,208 @@ class TestCmdShell2(unittest.TestCase,
         for i,_ in enumerate(original):
             self.assertEqual(original[i], new[i])
 
-    def _output_standalone_cpp(self, out_dir, force=False):
+    def test_standalone_cpp_cparity_dedup(self):
+        """The scalar C++ C-parity helicity de-duplication must engage, stay
+        exact, and keep the good-helicity lists inside their rows.
+
+        sigmaKin validates the pairing of every helicity row with its fully
+        flipped partner on the first 19 calls of a flavor, then computes only
+        the lower-index row of each pair and counts it twice. That reuse used
+        to sit in the helicity-sampling branch, which the default sum_hel == 0
+        mode never takes, so it never ran; and igood was filled 1-based into an
+        ncomb-long row, which for g g > t t~ (all 16 helicities good) wrote one
+        past the row and left igood[0] unset.
+
+        check_sa.cpp is replaced by a driver that counts the
+        calculate_wavefunctions calls of every sigmaKin call and dumps the
+        good-helicity bookkeeping (the header's private section is opened for
+        it). Both with and without the crossing machinery:
+          * g g > t t~: 16 rows per call while scanning, 8 once settled, the
+            same |M|^2 throughout, igood[0..ngood-1] the 16 good rows; a
+            crossed flavor_id (t t~ > g g) too: it evaluates the base rows
+            with the legs that changed side negated, so the base mirror is
+            its C-parity partner, and it scans the verdict on its own calls;
+          * u u~ > e+ e- (parity violating through the Z): the pairing is
+            refused, every call keeps the full sum.
+        The helicity-sampling mode (sum_hel > 0, set by the driver) must
+        average to the full sum, also when crossed calls of the same flavor
+        are interleaved: they used to rewind the shared sampling cursor, so
+        every uncrossed call redrew the same first representatives.
+        """
+        driver = r'''
+#include <iostream>
+#include <iomanip>
+#include <cstdlib>
+#include <cstdio>
+#include "CPPProcess.h"
+#include "rambo.h"
+
+extern long cw_count;
+
+int main(int argc, char** argv){
+  CPPProcess seed("../../Cards/param_card.dat");
+  double weight;
+  vector<double*> p = get_momenta(seed.ninitial, 1000., seed.getMasses(),
+                                  weight);
+  std::cout << std::setprecision(17);
+  for (int a = 1; a < argc; a++){
+    int nhel, fa, fb;
+    if (sscanf(argv[a], "s%d:%d:%d", &nhel, &fa, &fb) == 3){
+      // Helicity sampling (sum_hel = nhel) on one process, alternating the
+      // calls of fa and fb (fb == fa: fa alone). 19 full-sum calls validate
+      // the pairing, the 400 sampling ones then cycle nhel*400 times through
+      // the representatives, a whole number of rounds for the 8 (or 4) of
+      // the tests: the averages are the full sums up to roundoff.
+      CPPProcess process("../../Cards/param_card.dat");
+      process.setMomenta(p);
+      process.sum_hel[fa % CPPProcess::nflavors] = nhel;
+      process.sum_hel[fb % CPPProcess::nflavors] = nhel;
+      double suma = 0., sumb = 0.;
+      const int ncall = 19 + 400;
+      for (int i = 0; i < ncall; i++){
+        suma += process.sigmaKin(fa);
+        if (fb != fa)
+          sumb += process.sigmaKin(fb);
+      }
+      std::cout << "AVG " << argv[a] << " " << fa << " " << suma / ncall
+                << std::endl;
+      if (fb != fa)
+        std::cout << "AVG " << argv[a] << " " << fb << " " << sumb / ncall
+                  << std::endl;
+      continue;
+    }
+    int fid = atoi(argv[a]);
+    CPPProcess process("../../Cards/param_card.dat");
+    process.setMomenta(p);
+    for (int i = 1; i <= 30; i++){
+      long before = cw_count;
+      double me = process.sigmaKin(fid);
+      std::cout << "CALL " << fid << " " << i << " " << cw_count - before
+                << " " << me << std::endl;
+    }
+    int f = fid % CPPProcess::nflavors;
+    std::cout << "GOOD " << fid << " " << process.csym_bad[f];
+    for (int i = 0; i < CPPProcess::ncomb; i++)
+      if (process.goodhel[f][i]) std::cout << " " << i;
+    std::cout << std::endl << "IGOOD " << fid;
+    for (int g = 0; g < process.ngood[f]; g++)
+      std::cout << " " << process.igood[f][g];
+    std::cout << std::endl;
+  }
+  return 0;
+}
+'''
+
+        def run(proc_dir, fids):
+            cc = pjoin(proc_dir, 'CPPProcess.cc')
+            src = open(cc).read()
+            marker = '// Calculate wavefunctions for all processes'
+            self.assertIn(marker, src)
+            src = src.replace(marker, marker + '\n  cw_count++;', 1)
+            open(cc, 'w').write('long cw_count = 0;\n' + src)
+            header = pjoin(proc_dir, 'CPPProcess.h')
+            src = open(header).read()
+            self.assertIn('private:', src)
+            open(header, 'w').write(src.replace('private:', 'public:'))
+            open(pjoin(proc_dir, 'check_sa.cpp'), 'w').write(driver)
+            with open(os.devnull, 'w') as devnull:
+                subprocess.call(['make'], stdout=devnull,
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+            self.assertTrue(os.path.isfile(pjoin(proc_dir, 'check')),
+                            'the driver did not build in %s' % proc_dir)
+            out = subprocess.check_output(['./check'] + [str(f) for f in fids],
+                                          cwd=proc_dir).decode()
+            res = {}
+            for line in out.splitlines():
+                toks = line.split()
+                if toks[:1] == ['CALL']:
+                    res.setdefault(int(toks[1]), {}).setdefault(
+                        'calls', []).append((int(toks[3]), float(toks[4])))
+                elif toks[:1] == ['GOOD']:
+                    res[int(toks[1])]['csym_bad'] = int(toks[2])
+                    res[int(toks[1])]['good'] = [int(x) for x in toks[3:]]
+                elif toks[:1] == ['IGOOD']:
+                    res[int(toks[1])]['igood'] = [int(x) for x in toks[2:]]
+                elif toks[:1] == ['AVG']:
+                    res.setdefault(toks[1], {})[int(toks[2])] = float(toks[3])
+            return res
+
+        def check_sampling(res, mode, fid):
+            # the sampled average is the full sum of the plain calls
+            full = res[fid]['calls'][0][1]
+            self.assertAlmostEqual(res[mode][fid], full, delta=1e-12 * full,
+                                   msg='%s: fid %d sampled average %r, full sum'
+                                       ' %r' % (mode, fid, res[mode][fid], full))
+
+        def check(res, fid, nfull, deduped, scanned=True):
+            calls = res[fid]['calls']
+            self.assertEqual(len(calls), 30)
+            first = calls[0][1]
+            self.assertGreater(first, 0.)
+            for i, (ncw, me) in enumerate(calls):
+                # Call 1 is the plain full sum: every call must reproduce it.
+                self.assertAlmostEqual(me, first, delta=1e-12 * first,
+                                       msg='fid %d call %d' % (fid, i + 1))
+                # call 1 visits every row (16 for both processes) to find the
+                # good ones, the scan the nfull good ones, the reuse half.
+                expected = 16 if i == 0 else nfull
+                if deduped and i >= 19:
+                    expected = nfull // 2
+                self.assertEqual(ncw, expected,
+                                 'fid %d call %d: %d wavefunction evaluations,'
+                                 ' expected %d' % (fid, i + 1, ncw, expected))
+            if scanned:
+                self.assertEqual(res[fid]['csym_bad'], 0 if deduped else 1)
+            # 0-based: igood[0..ngood-1] lists exactly the good rows.
+            self.assertEqual(sorted(res[fid]['igood']), res[fid]['good'])
+            self.assertEqual(len(res[fid]['good']), nfull)
+
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('add process u u~ > e+ e-')
+        for use_crossing in (False, True):
+            # a single process records no crossing: its table gets its rows
+            # from --crossing_table=all
+            self._output_standalone_cpp(self.out_dir, force=True,
+                                        use_crossing=use_crossing,
+                                        crossing_table='all')
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = dict((suffix, pjoin(proc_root, d))
+                        for d in os.listdir(proc_root)
+                        for suffix in ('_gg_ttx', '_uux_epem')
+                        if d.endswith(suffix))
+            self.assertEqual(len(dirs), 2, os.listdir(proc_root))
+            source = open(pjoin(dirs['_gg_ttx'], 'CPPProcess.cc')).read()
+            crossing = 'cross_gather' in source
+            self.assertEqual(crossing, use_crossing)
+            # 1<->4, 2<->3 on g g > t t~ is t t~ > g g: the row of the
+            # crossing table whose input slot k is fed to base slot 3-k.
+            fids = [0]
+            if use_crossing:
+                match = re.search(r'static const int xpinv\[(\d+) \* '
+                                  r'nexternal\] = \{([^}]*)\}', source)
+                pinv = [int(tok) for tok in match.group(2).split(',')]
+                rows = [tuple(pinv[k:k + 4]) for k in range(0, len(pinv), 4)]
+                fids.append(rows.index((3, 2, 1, 0)))
+            # helicity sampling of 2 and 3 of the 8 representatives; with the
+            # crossing, crossed calls interleaved (they share the flavor's
+            # sampling cursor and must not rewind it).
+            modes = ['s2:0:%d' % fids[-1], 's3:0:%d' % fids[-1]]
+            res = run(dirs['_gg_ttx'], fids + modes)
+            check(res, 0, 16, deduped=True)
+            if use_crossing:
+                # a crossed call scans and reuses the C-parity pairing too
+                check(res, fids[1], 16, deduped=True)
+            for mode in modes:
+                for fid in fids:
+                    check_sampling(res, mode, fid)
+            # refused pairing: the sampling draws the 4 good rows, weight 1
+            res = run(dirs['_uux_epem'], [0, 's3:0:0'])
+            check(res, 0, 4, deduped=False)
+            check_sampling(res, 's3:0:0', 0)
+
+    def _output_standalone_cpp(self, out_dir, force=False, use_crossing=False,
+                               crossing_table=None):
         """Write a scalar C++ standalone output for the processes currently
         held by the interface, driving export_cpp.ProcessExporterCPP through
         its internal API.
@@ -2132,6 +2694,10 @@ class TestCmdShell2(unittest.TestCase,
         this way (see madgraph/various/process_checks.py and
         tests/unit_tests/various/test_process_checks.py).  Going through the API
         keeps the scalar-C++ coverage of these tests without the command.
+        use_crossing emits the crossing machinery (the extended flavor_id);
+        crossing_table='all' gives its table every applicable crossing (the
+        --crossing_table=all output option), without which a process that
+        records no crossing gets no machinery at all.
         """
         import madgraph.iolibs.export_cpp as export_cpp
         import madgraph.iolibs.helas_call_writers as helas_call_writers
@@ -2144,9 +2710,11 @@ class TestCmdShell2(unittest.TestCase,
             shutil.rmtree(out_dir)
 
         opt = dict(cmd.options)
-        opt['output_options'] = {}
+        opt['output_options'] = {'crossing_table': crossing_table} \
+            if crossing_table else {}
         opt.update({'sa_symmetry': False, 'export_format': 'standalone_cpp',
-                    'mp': False, 'v5_model': True})
+                    'mp': False, 'v5_model': True,
+                    'use_crossing': use_crossing})
         exporter = export_cpp.ProcessExporterCPP(out_dir, opt)
 
         # Reuse the helas objects the interface already built, exactly like
@@ -2991,6 +3559,75 @@ print(json.dumps(out))
                 self.assertTrue(glob.glob(pjoin(proc_dir, 'HelRecyclingChunks_*.cc')),
                                 'the recycled block was not cut into chunks')
 
+    def test_madmatrix_hel_recycling_flavour_masks_crossed(self):
+        """--hel_recycling rows mode keeps the flavour masks of the crossed
+        processes folded into a base: |M|^2 of every crossed flavour id, against
+        the plain build.
+
+        A folded crossing is evaluated under the extended flavour id
+        cross*nmaxflavor + flavour, which JampsPreamble.h reduces to the flavour
+        before anything reads a mask. hr_row, the row loop of the rows mode,
+        read the id itself: at every crossed id the guards of
+        HelRecyclingJamps.inc tested a bit beyond the masks, dropped every
+        masked amplitude, and qa qa > w+ w- qa qa QCD=0 (qa = u d u~ d~, the
+        11 crossings folded into u u > w+ w- u u) came out wrong at all 30
+        crossed ids (by up to x400), p p > t t~ j j at the same-flavour rows,
+        whose survey then failed for lack of points passing the cuts.
+        check_sa.exe 'matrix' evaluates the ids listed in crossing_demo.dat:
+        all the crossed ids are listed there.
+        """
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrxmask'
+        dirs = {'plain': root + '_plain', 'rows': root + '_rows'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define qa = u d u~ d~')
+        self.do('generate qa qa > w+ w- qa qa QCD=0 --use_crossing=True')
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f' % dirs['rows'])
+
+        me_re = re.compile(r'Matrix element\s*=\s*([-+\d.eE]+)')
+        nids = None
+        results = {}
+        for name, path in dirs.items():
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(d for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 1, 'one subprocess expected in %s' % path)
+            proc_dir = pjoin(proc_root, found[0])
+            ncross = int(re.search(r'constexpr int ncross = (\d+);',
+                                   open(pjoin(proc_dir, 'ProcessTables.h')).read()).group(1))
+            nmaxflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);',
+                                       open(pjoin(proc_dir, 'ProcessData.h')).read()).group(1))
+            self.assertGreater(ncross, 1, 'no crossing folded into %s' % proc_dir)
+            self.assertGreater(nmaxflavor, 1, 'no merged flavours in %s' % proc_dir)
+            nids = ncross * nmaxflavor
+            with open(pjoin(proc_dir, 'crossing_demo.dat'), 'w') as fsock:
+                fsock.write('\n'.join(str(i) for i in range(nmaxflavor, nids)) + '\n')
+            self.assertEqual(0, subprocess.call(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                                                stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'the build of %s failed' % proc_dir)
+            if name == 'rows':
+                self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                'the --hel_recycling warm-up did not produce the '
+                                'recycled build')
+                self.assertIn('>> iflavor ) & 0x1ULL )',
+                              open(pjoin(proc_dir, 'HelRecyclingJamps.inc')).read(),
+                              'no flavour guard in the row loop')
+            log = pjoin(proc_dir, 'check_crossed.log')
+            subprocess.call(['./check_sa.exe', 'matrix'], stdout=open(log, 'w'),
+                            stderr=subprocess.STDOUT, cwd=proc_dir)
+            results[name] = [float(me) for me in me_re.findall(open(log).read())]
+            # the base flavours, then every crossed id
+            self.assertEqual(len(results[name]), nids, '%s: %s' % (name, log))
+        self.assertTrue(all(me > 0 for me in results['plain']), results['plain'])
+        for fid, (plain, rows) in enumerate(zip(results['plain'], results['rows'])):
+            self.assertLessEqual(abs(rows - plain), 1e-10 * plain,
+                                 'flavour id %d: rows %r, plain %r' % (fid, rows, plain))
+
     def _hel_recycling_vs_plain(self, process,
                                 recycled_flag=' --hel_recycling=True'):
         """plain (--hel_recycling=False) and recycled standalone outputs of
@@ -3608,7 +4245,10 @@ print(json.dumps(out))
             ['g g > chic1(1|3P11) chib0(1|3P01)', 3.132275172481691e-16],
             ['g g > hc(1|1P11) g', 2.3637208371566567e-12],
             ['u u~ > a Jpsi(1|3P08) QCD=99 QED=99', 3.6650612158421924e-11],
-            ['u a > Upsilon(1|3S11) u chib2(1|3P21) QCD=99 QED=99', 1.819597262304262e-20],
+            # a t-channel Z: its width is dropped where the momentum is
+            # spacelike (zerowidth_tchannel, the default); keeping it gives
+            # 1.819597262304262e-20
+            ['u a > Upsilon(1|3S11) u chib2(1|3P21) QCD=99 QED=99', 1.81950515062415e-20],
         ]
         for process in process_list:
             mg_cmd.exec_cmd('generate %s ' % process[0])
@@ -3701,7 +4341,18 @@ print(json.dumps(out))
 
         # We changed the value of the reference by a factor of 256, which is the inclusion of IDEN in get_inter in matrix.
         # original_sol = {(-1, -1, 1, 1): (0.02827952274928987, 0.0), (-1, -1, 1, -1): (-0.0041892876162345, -0.0041923830983622255), (-1, 1, 1, 1): (0.000469685615962711, 0.0006142055733429721), (-1, 1, 1, -1): (-0.01784029173125566, -0.00794999696313525), (-1, -1, -1, -1): (0.02532739017396033, 0.0), (-1, 1, -1, 1): (-0.00028182588524174187, 0.0024162264334765746), (-1, 1, -1, -1): (-0.00048593945847553023, -0.0006039982074415239), (1, 1, 1, 1): (0.025301510150454294, 0.0), (1, 1, 1, -1): (0.004212401136919661, 0.0042167644618831875), (1, 1, -1, -1): (0.028322721746299958, 0.0)}
-        original_sol = {(-1, -1, 1, 1): (0.00011046688573941356, 0.0), (-1, -1, 1, -1): (-1.6364404750916015e-05, -1.6376496477977443e-05), (-1, 1, 1, 1): (1.83470943735434e-06, 2.3992405208709848e-06), (-1, 1, 1, -1): (-6.968863957521743e-05, -3.105467563724707e-05), (-1, -1, -1, -1): (9.893511786703254e-05, 0.0), (-1, 1, -1, 1): (-1.1008823642255542e-06, 9.43838450576787e-06), (-1, 1, -1, -1): (-1.89820100967004e-06, -2.359367997818453e-06), (1, 1, 1, 1): (9.883402402521209e-05, 0.0), (1, 1, 1, -1): (1.6454691941092424e-05, 1.64717361792312e-05), (1, 1, -1, -1): (0.00011063563182148421, 0.0)}
+        # Updated on the MG7 crossing branch (claude/fortran-cross-symmetry-3f13f3).
+        # Two intended changes shifted these ~0.1%: (a) zerowidth_external
+        # (commit 35706c9ae, default on) drops the width of the internal top
+        # propagator because the top is an external final state of p p > j t t~;
+        # (b) the canonical helicity encoder (commit 2b22dd566) fixed a small
+        # C-parity asymmetry the old reference carried -- for QCD g g > g t t~
+        # the t-tbar spin density matrix must obey rho(h,h') = rho(-h,-h'), which
+        # the new values satisfy to float precision (e.g. (1,1,1,1) ==
+        # (-1,-1,-1,-1) and (-1,-1,1,1) == (1,1,-1,-1)) while the old ones did not.
+        # Previous values (width kept, slightly asymmetric):
+        #   original_sol = {(-1, -1, 1, 1): (0.00011046688573941356, 0.0), (-1, -1, 1, -1): (-1.6364404750916015e-05, -1.6376496477977443e-05), (-1, 1, 1, 1): (1.83470943735434e-06, 2.3992405208709848e-06), (-1, 1, 1, -1): (-6.968863957521743e-05, -3.105467563724707e-05), (-1, -1, -1, -1): (9.893511786703254e-05, 0.0), (-1, 1, -1, 1): (-1.1008823642255542e-06, 9.43838450576787e-06), (-1, 1, -1, -1): (-1.89820100967004e-06, -2.359367997818453e-06), (1, 1, 1, 1): (9.883402402521209e-05, 0.0), (1, 1, 1, -1): (1.6454691941092424e-05, 1.64717361792312e-05), (1, 1, -1, -1): (0.00011063563182148421, 0.0)}
+        original_sol = {(-1, -1, 1, 1): (1.1055111552478938e-04, 0.0), (-1, -1, 1, -1): (-1.64093293295174e-05, -1.6423855436270287e-05), (-1, 1, 1, 1): (1.8665871580175305e-06, 2.379192499586592e-06), (-1, 1, 1, -1): (-6.968855681502337e-05, -3.105473609582678e-05), (-1, -1, -1, -1): (9.888413899750238e-05, 0.0), (-1, 1, -1, 1): (-1.1008919387924359e-06, 9.438278745771431e-06), (-1, 1, -1, -1): (-1.8665871580175398e-06, -2.3791924995866025e-06), (1, 1, 1, 1): (9.88841389975024e-05, 0.0), (1, 1, 1, -1): (1.640932932951739e-05, 1.6423855436270293e-05), (1, 1, -1, -1): (1.1055111552478935e-04, 0.0)}
 
         for key in original_sol:
             self.assertIn(key, sol)
@@ -3882,12 +4533,19 @@ print(json.dumps(out))
             sub = os.path.join(out_dir, 'SubProcesses')
             pdir = [d for d in os.listdir(sub) if d.split('_', 1)[-1] == pdir][0]
             text = open(os.path.join(sub, pdir, 'matrix.f')).read()
-            return [l.strip() for l in text.split('\n')
+            # compared without blanks: with the crossing machinery the
+            # written call is ',ZERO,', not the ', ZERO,' of the rewrite
+            return [l.strip().replace(' ', '') for l in text.split('\n')
                     if l.strip().startswith('CALL') and 'XXXXX' not in l]
 
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
         self.do('set group_subprocesses False')
+        # zerowidth_external (on by default) drops the width of any internal
+        # top here, the top being external: switch it off so that only
+        # --zerowidth_decay acts
+        self.do('set zerowidth_external False')
+        self.addCleanup(self.do, 'set zerowidth_external True')
         # the HELAS calls checked below are the unitary-gauge ones (the FD
         # gauge, picked by default here, wraps them differently)
         self.do('set gauge unitary')
@@ -3901,7 +4559,7 @@ print(json.dumps(out))
                              if ',MDL_MW,MDL_WW,' in c])
             # the internal top of t > w+ b g does not
             self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
-                             if ',MDL_MT, ZERO,' in c])
+                             if ',MDL_MT,ZERO,' in c])
         self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=False -f'
                 % self.out_dir)
         self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
@@ -3912,7 +4570,7 @@ print(json.dumps(out))
                 % self.out_dir)
         zeroed = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
         self.assertEqual(len(zeroed), 2)
-        self.assertTrue(all('MDL_MT, ZERO,' in c for c in zeroed), zeroed)
+        self.assertTrue(all('MDL_MT,ZERO,' in c for c in zeroed), zeroed)
 
         self.do('output standalone_fortran %s --prefix=int --density=1 -f' % self.out_dir)
         kept = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
@@ -4483,14 +5141,14 @@ print(json.dumps(out))
 import itertools, json, math, os, sys
 import numpy as np
 import all_matrix2py as m
-mdir, prefix, outfile = sys.argv[1:]
+mdir, prefix, outfile, pdgs = sys.argv[1:]
 fct = lambda name: getattr(m, prefix + name)
 fct('initialise')(os.path.join(mdir, 'Cards', 'param_card.dat'))
 E, th, ph = 500., 0.7, 0.3
 k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
 p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
               [E] + [-x for x in k]]).T.copy()
-kw = dict(pdgs=[2, -2, -11, 11], procid=-1, p=p, pos=[3, 4],
+kw = dict(pdgs=json.loads(pdgs), procid=-1, p=p, pos=[3, 4],
           allow_hel=[-1, -1, -1, 1, 1, -1, 1, 1])
 cplx = lambda a: [[z.real, z.imag] for z in a]
 res = {'density': cplx(fct('py_get_density')(alphas=0., scale2=0., **kw)),
@@ -4522,40 +5180,55 @@ json.dump(res, open(outfile, 'w'))
                                         (prefixed_dir, ' --prefixf2py=1', 'f1_')]:
             self.do('output standalone_fortran %s --prefix=int -f%s'
                     % (out_dir, option))
-            subdir = os.path.join(out_dir, 'SubProcesses')
-            build = subprocess.run(['make', 'f2py'], cwd=subdir,
-                                   capture_output=True, text=True)
-            self.assertEqual(build.returncode, 0,
-                             'make f2py failed:\n' + build.stdout[-2000:]
-                             + build.stderr[-2000:])
+            self._check_get_all_inter(out_dir, prefix, [2, -2, -11, 11])
 
-            outfile = os.path.join(out_dir, 'get_all_inter.json')
-            run = subprocess.run([sys.executable, '-c',
-                                  self._get_all_inter_script,
-                                  out_dir, prefix, outfile],
-                                 cwd=subdir, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0,
-                             run.stdout[-2000:] + run.stderr[-2000:])
-            res = json.load(open(outfile))
+        # Split orders: the per-process GET_ALL_INTER fills one INTER per
+        # squared split order (NSQAMPSO=3 here), more than the f2py buffer
+        # holds; the dispatch has to hand back their sum, as the density does.
+        so_dir = self.out_dir + '_splitorders'
+        self.addCleanup(shutil.rmtree, so_dir, ignore_errors=True)
+        self.do('generate u u~ > u u~ QED^2<=4 QCD^2<=4')
+        self.do('output standalone_fortran %s --prefix=int -f' % so_dir)
+        self._check_get_all_inter(so_dir, '', [2, -2, 2, -2])
 
-            # f2py hands the int32 array straight through, and GET_ALL_INTER
-            # writes the pos entries of the NHEL it is given
-            for after, before in res['nhel']:
-                self.assertEqual(after, before)
+    def _check_get_all_inter(self, out_dir, prefix, pdgs):
+        """Build out_dir's f2py module and check that py_get_all_inter summed
+        over the helicities of legs 1 and 2 gives py_get_density."""
+        import json
+        subdir = os.path.join(out_dir, 'SubProcesses')
+        build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                               capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0,
+                         'make f2py failed:\n' + build.stdout[-2000:]
+                         + build.stderr[-2000:])
 
-            dens = res['density']
-            scale = max(abs(complex(*z)) for z in dens)
-            self.assertGreater(scale, 0)
-            # more than one helicity of the other legs contributes, so the
-            # sum below does not reduce to a single call
-            self.assertGreaterEqual(
-                sum(any(re_ or im_ for re_, im_ in inter)
-                    for inter in res['inter']), 2)
-            for i, (re_, im_) in enumerate(dens):
-                self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
-                                       re_, delta=1e-12 * scale)
-                self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
-                                       im_, delta=1e-12 * scale)
+        outfile = os.path.join(out_dir, 'get_all_inter.json')
+        run = subprocess.run([sys.executable, '-c',
+                              self._get_all_inter_script,
+                              out_dir, prefix, outfile, json.dumps(pdgs)],
+                             cwd=subdir, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0,
+                         run.stdout[-2000:] + run.stderr[-2000:])
+        res = json.load(open(outfile))
+
+        # f2py hands the int32 array straight through, and GET_ALL_INTER
+        # writes the pos entries of the NHEL it is given
+        for after, before in res['nhel']:
+            self.assertEqual(after, before)
+
+        dens = res['density']
+        scale = max(abs(complex(*z)) for z in dens)
+        self.assertGreater(scale, 0)
+        # more than one helicity of the other legs contributes, so the
+        # sum below does not reduce to a single call
+        self.assertGreaterEqual(
+            sum(any(re_ or im_ for re_, im_ in inter)
+                for inter in res['inter']), 2)
+        for i, (re_, im_) in enumerate(dens):
+            self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
+                                   re_, delta=1e-12 * scale)
+            self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
+                                   im_, delta=1e-12 * scale)
 
     def test_standalone_density_f2py(self):       
 
@@ -4700,119 +5373,6 @@ json.dump(res, open(outfile, 'w'))
             self.assertAlmostEqual(density_matrix.trace()/fortran_me, 1,4)
             misc.sprint(density_matrix.values[1], fortran_dens[1])
 
-    def test_madmatrix_density_matches_fortran(self):
-        """The madmatrix density matrices and |M|^2 (madmatrix.density, what
-        MadSpin uses by default) against the Fortran f2py ones MadSpin used
-        before, on the processes MadSpin generates for p p > t t~ with both tops
-        decayed: off-shell ('*') tops, merged quark and lepton flavors, both
-        quark orderings, on- and off-shell momenta."""
-        import importlib.util
-        import math
-        import random
-        import numpy as np
-        import madmatrix.density as madmatrix_density
-
-        os.makedirs(self.out_dir)
-        self.do('set apply_flavor_grouping True')
-        self.do('set group_subprocesses False')
-        dirs = {}
-        for name, process in (('prod', 'generate p p > t* t~*'),
-                              ('dec', 'generate t* > b w+, w+ > l+ vl')):
-            self.do(process)
-            dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
-            self.do('output standalone %s -f --noeps=True' % dirs[name][0])
-            self.do('output standalone_fortran %s --prefix=int --density=1 -f' % dirs[name][1])
-
-        libtag = '_acc%d' % os.getpid()
-        fortran, mm = {}, {}
-        for menum, name in ((2, 'prod'), (1, 'dec')):
-            mm_dir, f_dir = dirs[name]
-            misc.compile(madmatrix_density.make_variables(libtag=libtag + name),
-                         cwd=pjoin(mm_dir, 'SubProcesses'), mode='cpp', nb_core=4)
-            mm[name] = madmatrix_density.MadDensityLibrary(mm_dir)
-            mm[name].initialise(pjoin(mm_dir, 'Cards', 'param_card.dat'))
-            misc.compile(cwd=pjoin(f_dir, 'Source'), nb_core=4)
-            misc.compile(['MENUM=%d' % menum, 'all_matrix%dpy.so' % menum],
-                         cwd=pjoin(f_dir, 'SubProcesses'))
-            so = max(misc.glob('all_matrix%dpy*.so' % menum, pjoin(f_dir, 'SubProcesses')),
-                     key=os.path.getsize)
-            spec = importlib.util.spec_from_file_location('all_matrix%dpy' % menum, so)
-            fortran[name] = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(fortran[name])
-            fortran[name].initialise(pjoin(f_dir, 'Cards', 'param_card.dat'))
-        self.assertEqual(mm['prod'].get_idens(), list(fortran['prod'].get_idens()))
-
-        rng = random.Random(3)
-
-        def boost(p, b):
-            m = math.sqrt(b[0]**2 - b[1]**2 - b[2]**2 - b[3]**2)
-            g, n = b[0] / m, [x / m for x in b[1:]]
-            pb = sum(x * y for x, y in zip(p[1:], n))
-            f = pb / (g + 1) + p[0]
-            return (g * p[0] + pb,) + tuple(x + f * y for x, y in zip(p[1:], n))
-
-        def two_body(M, m1, m2):
-            k = math.sqrt((M**2 - (m1 + m2)**2) * (M**2 - (m1 - m2)**2)) / (2 * M)
-            c, phi = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi)
-            s = math.sqrt(1 - c * c)
-            v = (k * s * math.cos(phi), k * s * math.sin(phi), k * c)
-            return ((math.sqrt(m1**2 + k * k),) + v,
-                    (math.sqrt(m2**2 + k * k),) + tuple(-x for x in v))
-
-        def production(mt1, mt2):
-            shat = rng.uniform(mt1 + mt2 + 10, 1200.)
-            p3, p4 = two_body(shat, mt1, mt2)
-            beta = rng.uniform(-0.5, 0.5)
-            gamma = 1. / math.sqrt(1 - beta**2)
-            b = (gamma, 0., 0., gamma * beta)
-            return [boost(p, b) for p in ((shat / 2, 0, 0, shat / 2),
-                                          (shat / 2, 0, 0, -shat / 2), p3, p4)]
-
-        def decay(mt, mw):
-            w, b = two_body(mt, mw, 4.7)
-            l, v = (boost(q, w) for q in two_body(mw, 0, 0))
-            top = (math.sqrt(mt**2 + 250.**2), 100., -60., math.sqrt(250.**2 - 100.**2 - 60.**2))
-            return [boost(q, top) for q in ((mt, 0, 0, 0), b, l, v)]
-
-        def check(name, pdgs, p, pos, allow):
-            P = np.array(p).T.copy()
-            ref = np.asarray(fortran[name].py_get_density(pdgs=pdgs, procid=-1, p=P, pos=pos,
-                                                          allow_hel=allow, alphas=0.118, scale2=0.))
-            got = mm[name].density(pdgs, p, pos, allow, 0.118)
-            self.assertLess(abs(ref - got).max(), 1e-10 * abs(ref).max(), (name, pdgs, p))
-            ref = fortran[name].smatrixhel(pdgs, 0, P, 0.118, 0., -1)
-            self.assertLess(abs(mm[name].matrix_element(pdgs, p, 0.118) - ref), 1e-10 * ref)
-
-        two = [1, -1]
-        both = [h for a in two for b in two for h in (a, b)]
-        for mt1, mt2 in ((173., 173.), (168.5, 180.)):
-            p = production(mt1, mt2)
-            for pdgs in ([21, 21, 6, -6], [2, -2, 6, -6], [-1, 1, 6, -6], [3, -3, 6, -6]):
-                check('prod', pdgs, p, [3, 4], both)
-                check('prod', pdgs, p, [4], two)
-        for mt, mw in ((173., 80.419), (176., 78.), (165., 84.)):
-            for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
-                check('dec', pdgs, decay(mt, mw), [1], two)
-        # a decay at rest boosted by the library (MadSpin's decays) is the decay
-        # boosted beforehand
-        self.assertTrue(mm['dec'].supports_boost)
-        w, b = two_body(171., 79., 4.7)
-        l, v = (boost(q, w) for q in two_body(79., 0, 0))
-        at_rest = [(171., 0., 0., 0.), b, l, v]
-        top = (math.sqrt(171.**2 + 300.**2), 120., -80., math.sqrt(300.**2 - 120.**2 - 80.**2))
-        lab = [boost(q, top) for q in at_rest]
-        for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
-            ref = mm['dec'].density(pdgs, lab, [1], two, 0.118)
-            got = mm['dec'].density(pdgs, at_rest, [1], two, 0.118, boost=top)
-            self.assertLess(abs(ref - got).max(), 1e-12 * abs(ref).max())
-        # a batch is the same as the points one by one
-        points = [decay(rng.uniform(165., 180.), rng.uniform(75., 85.)) for _ in range(9)]
-        pdgs = [[6, 5, -11, 12] if k % 2 else [6, 5, -13, 14] for k in range(9)]
-        batch = mm['dec'].density_batch(pdgs, points, [1], two, [0.118] * 9)
-        for k in range(9):
-            np.testing.assert_array_equal(batch[k],
-                                          mm['dec'].density(pdgs[k], points[k], [1], two, 0.118))
-
     # Run in a fresh interpreter: every output names its module all_matrix2py,
     # so it must not share a process with one an earlier test imported.
     _pdgs_not_modified_script = '''
@@ -4896,6 +5456,427 @@ json.dump(res, open(outfile, 'w'))
                 self.assertAlmostEqual(re_, ref_re, delta=1e-12 * abs(ref_u[0][0]))
                 self.assertAlmostEqual(im_, ref_im, delta=1e-12 * abs(ref_u[0][0]))
 
+    # p p > e+ e- j folds g u~ > e+ e- u~ (legs 2 and 5 exchanged across)
+    # and u u~ > e+ e- g (a 3-cycle of legs 1, 2 and 5) onto g u > e+ e- u.
+    # Run in a fresh interpreter: every output names its module all_matrix2py.
+    # mode 'pdg': the PDG-keyed entry points; 'idx': the per-process _IDX ones
+    # at the extended index GET_PDG_FOR_FLAVOR names for those PDG codes.
+    _crossed_f2py_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile, mode = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+# on shell and momentum conserving: E3=300, E4=400, E5=300 in the partonic
+# rest frame (cos(p3,p4) = -2/3), then boosted along z
+a, f, psi = 0.7, 0.3, 1.1
+n3 = np.array([math.sin(a)*math.cos(f), math.sin(a)*math.sin(f), math.cos(a)])
+u = np.cross(n3, [0., 0., 1.])
+u /= np.linalg.norm(u)
+v = np.cross(n3, u)
+c = -2./3.
+n4 = c*n3 + math.sqrt(1 - c*c)*(math.cos(psi)*u + math.sin(psi)*v)
+k3, k4 = 300*n3, 400*n4
+mom = [[500, 0, 0, 500], [500, 0, 0, -500], [300] + list(k3),
+       [400] + list(k4), [300] + list(-k3 - k4)]
+b = 0.3
+g = 1/math.sqrt(1 - b*b)
+p = np.asfortranarray(np.array(
+    [[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom]).T)
+pos, allow = [1, 5], [-1, -1, -1, 1, 1, -1, 1, 1]
+nhels = [[0, h2, h3, h4, 0] for h2, h3, h4 in itertools.product([-1, 1], repeat=3)]
+cases = [[21, 2, -11, 11, 2], [21, -2, -11, 11, -2], [2, -2, -11, 11, 21]]
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'inter': [], 'kept': True, 'idx': []}
+for pdgs in cases:
+    arr = np.array(pdgs, dtype=np.int32)
+    res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+    if mode == 'pdg':
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                                allow_hel=allow, alphas=0.118, scale2=0.)
+        inter = lambda nh: m.py_get_all_inter(pdgs=arr, procid=-1, p=p,
+                                              nhel=nh, pos=pos, allow_hel=allow)
+    else:
+        nflav, next_, ncross = m.py_m0_get_flavor_layout()
+        idx = [i for i in range(1, nflav*ncross + 1)
+               if list(m.py_m0_get_pdg_for_flavor(i)) == pdgs][0]
+        res['idx'].append([idx, int(nflav)])
+        dens = m.py_m0_get_density_idx(p, pos, 2, allow, 4, idx, 0.118, 0.)
+        inter = lambda nh: m.py_m0_get_all_inter_idx(p, nh, pos, 2, allow, 4, idx)
+    res['dens'].append(cplx(dens))
+    res['inter'].append([])
+    for nhel in nhels:
+        nh = np.array(nhel, dtype=np.int32)
+        res['inter'][-1].append(cplx(inter(nh)))
+        res['kept'] &= nh.tolist() == nhel
+    res['kept'] &= arr.tolist() == pdgs
+if mode == 'pdg':
+    # e- e+ swapped: a leg order no matrix element serves
+    arr = np.array([21, 2, 11, -11, 2], dtype=np.int32)
+    res['nomatch'] = cplx(m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                          allow_hel=allow, alphas=0.118, scale2=0.)) + \\
+        cplx(m.py_get_all_inter(pdgs=arr, procid=-1, p=p, nhel=nhels[0],
+                                pos=pos, allow_hel=allow))
+    res['nomatch_sm'] = repr(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def _crossed_eej_outputs(self):
+        """p p > e+ e- j with crossing (folded) and without (expanded), both
+        built with make f2py; returns the two output directories."""
+        self.do('import model sm')
+        dirs = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > e+ e- j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            build = subprocess.run(['make', 'f2py'],
+                                   cwd=os.path.join(out_dir, 'SubProcesses'),
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            dirs.append(out_dir)
+        # the folded output really folds: one matrix element, the crossings
+        # of g u > e+ e- u serve the two other subprocesses
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[0], 'SubProcesses'))), 1)
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[1], 'SubProcesses'))), 3)
+        return dirs
+
+    def _run_crossed_script(self, out_dir, mode):
+        import json
+        outfile = os.path.join(out_dir, 'crossed_%s.json' % mode)
+        run = subprocess.run([sys.executable, '-c', self._crossed_f2py_script,
+                              out_dir, outfile, mode],
+                             cwd=os.path.join(out_dir, 'SubProcesses'),
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout[-2000:] + run.stderr[-2000:])
+        return json.load(open(outfile)), run.stdout
+
+    def _assert_same_inter(self, got, ref, scale):
+        self.assertEqual(len(got), len(ref))
+        for (re_, im_), (ref_re, ref_im) in zip(got, ref):
+            self.assertAlmostEqual(re_, ref_re, delta=1e-12 * scale)
+            self.assertAlmostEqual(im_, ref_im, delta=1e-12 * scale)
+
+    def test_standalone_f2py_crossed_pdg_fallback(self):
+        """py_get_density / py_get_all_inter find a FOLDED crossed subprocess
+        by its PDG codes, as smatrixhel does (f77_crossed_density /
+        f77_crossed_get_all_inter), with P, POS and NHEL in the caller's leg
+        order: the folded output must answer what the expanded one does.
+
+        They used to return zeros for it: the PDG dispatch only knew the
+        uncrossed processes. PDG codes that no process matches now give NaN
+        (and an ERROR line) rather than zeros a caller cannot tell from a
+        vanishing density matrix, in smatrixhel as well.
+        """
+        import math
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, out = self._run_crossed_script(folded_dir, 'pdg')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        self.assertTrue(expanded['kept'])
+        for i in range(3):
+            self.assertAlmostEqual(folded['sm'][i] / expanded['sm'][i], 1,
+                                   places=12)
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+            # summed over the helicities of the legs not in POS, the
+            # interference terms give the density matrix
+            total = [[sum(inter[k][j] for inter in folded['inter'][i])
+                      for j in range(2)] for k in range(len(folded['dens'][i]))]
+            self._assert_same_inter(total, folded['dens'][i], scale)
+        for res in (folded, expanded):
+            # 4 helicity combinations: 10 entries, density then all_inter
+            self.assertEqual(len(res['nomatch']), 20)
+            self.assertTrue(all(math.isnan(x) for z in res['nomatch'] for x in z))
+            self.assertEqual(res['nomatch_sm'], 'nan')
+        self.assertIn('ERROR: py_get_density: no matrix element', out)
+        self.assertIn('ERROR: smatrixhel: no matrix element', out)
+
+    # every ordering of u~ d~ > u~ d~ and d~ u~ > u~ d~ that only exchanges
+    # legs inside the initial or the final state, at one phase-space point
+    # (momenta moved with their leg); u d > u d (uncrossed) as a control
+    _crossed_leg_order_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph, b = 500., 1.1, 0.4, 0.27
+k = E*np.array([math.sin(th)*math.cos(ph), math.sin(th)*math.sin(ph), math.cos(th)])
+mom = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + list(k), [E] + list(-k)])
+g = 1/math.sqrt(1 - b*b)
+mom = np.array([[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom])
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'dens12': [], 'inter12': []}
+allow12 = [-1, -1, -1, 1, 1, -1, 1, 1]
+for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
+    for order in ([0, 1, 2, 3], [0, 1, 3, 2], [1, 0, 2, 3], [1, 0, 3, 2]):
+        arr = np.array([pdgs[o] for o in order], dtype=np.int32)
+        p = np.asfortranarray(mom[order].T)
+        res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+        # the density of the leg in slot 1, which the repair may move
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
+                                allow_hel=[-1, 1], alphas=0.118, scale2=0.)
+        res['dens'].append(cplx(dens))
+        # the initial legs open, the final ones at fixed helicities
+        res['dens12'].append(cplx(m.py_get_density(
+            pdgs=arr, procid=-1, p=p, pos=[1, 2], allow_hel=allow12,
+            alphas=0.118, scale2=0.)))
+        res['inter12'].append([cplx(m.py_get_all_inter(
+            pdgs=arr, procid=-1, p=p, nhel=np.array([0, 0, h3, h4],
+                                                    dtype=np.int32),
+            pos=[1, 2], allow_hel=allow12))
+            for h3, h4 in itertools.product([-1, 1], repeat=2)])
+# the 81 81 > 81 81 branch matches, but no ordering of the legs is in the
+# table (and no folded crossing serves it): NaN from every entry point
+res['unresolved'] = []
+for pdgs in ([2, 2, 1, 1], [2, 1, 1, 1]):
+    arr = np.array(pdgs, dtype=np.int32)
+    p = np.asfortranarray(mom.T)
+    res['unresolved'].append([
+        repr(m.smatrixhel(arr, -1, p, 0.118, 0., -1)),
+        cplx(m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
+                              allow_hel=[-1, 1], alphas=0.118, scale2=0.))])
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_crossed_pdg_leg_order(self):
+        """smatrixhel and py_get_density reach a FOLDED crossed subprocess
+        whatever the order of its same-code legs inside the initial or the
+        final state, as the uncrossed entries do with FLAVOR_ORDER_REPAIR.
+
+        In p p > j j the all-antiquark subprocesses are crossings of
+        P1_QQ_QQ, and F77_CROSSED_SMATRIXHEL took them only in the leg order
+        of GET_PDG_FOR_FLAVOR: u~ d~ > u~ d~ came back as a silent 0 while
+        the expanded output (P1_QxQx_QxQx) answers it in every order."""
+        import json
+        import math
+        self.do('import model sm')
+        res = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > j j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            subdir = os.path.join(out_dir, 'SubProcesses')
+            build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            outfile = os.path.join(out_dir, 'leg_order.json')
+            run = subprocess.run([sys.executable, '-c',
+                                  self._crossed_leg_order_script, out_dir,
+                                  outfile], cwd=subdir,
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0,
+                             run.stdout[-2000:] + run.stderr[-2000:])
+            res.append(json.load(open(outfile)))
+        folded, expanded = res
+        # no P1_QxQx_QxQx: the antiquark processes really are folded
+        self.assertFalse(misc.glob('P*_QxQx_QxQx',
+                                   os.path.join(self.out_dir + '_folded',
+                                                'SubProcesses')))
+        for i, (got, ref) in enumerate(zip(folded['sm'], expanded['sm'])):
+            self.assertGreater(ref, 0)
+            self.assertAlmostEqual(got / ref, 1, places=12, msg=i)
+            # a relabelling: the same |M|^2 in every order of a process
+            self.assertAlmostEqual(got / folded['sm'][4 * (i // 4)], 1,
+                                   places=12, msg=i)
+        # the density matrix against smatrixhel through its trace, in every
+        # order: the open leg (POS) moves with its leg when the repair has
+        # to move it, so the expanded output answers too (it used to freeze
+        # it and return a silent 0 for half of these orders)
+        for out in (folded, expanded):
+            for i, dens in enumerate(out['dens']):
+                self.assertFalse(any(math.isnan(x) for z in dens for x in z), i)
+                self.assertAlmostEqual((dens[0][0] + dens[2][0]) /
+                                       out['sm'][i], 1, places=12, msg=i)
+        # py_get_all_inter summed over the final helicities is the density
+        # in every leg order, d u > u d (final legs repaired) included: its
+        # NHEL moves with the legs. It used to give zeros for every order
+        # the table does not hold.
+        for out in (folded, expanded):
+            nonzero = 0
+            for i, dens in enumerate(out['dens12']):
+                scale = max(abs(complex(*z)) for z in dens)
+                self.assertGreater(scale, 0, i)
+                nonzero += 1
+                for k, (re_, im_) in enumerate(dens):
+                    self.assertAlmostEqual(
+                        sum(inter[k][0] for inter in out['inter12'][i]),
+                        re_, delta=1e-12 * scale, msg=i)
+                    self.assertAlmostEqual(
+                        sum(inter[k][1] for inter in out['inter12'][i]),
+                        im_, delta=1e-12 * scale, msg=i)
+            self.assertEqual(nonzero, 12)
+        # folded and expanded: the same numbers, row by row
+        for i in range(12):
+            scale = max(abs(complex(*z)) for z in expanded['dens12'][i])
+            self._assert_same_inter(folded['dens12'][i],
+                                    expanded['dens12'][i], scale)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i],
+                                    max(abs(complex(*z))
+                                        for z in expanded['dens'][i]))
+            for got, ref in zip(folded['inter12'][i], expanded['inter12'][i]):
+                self._assert_same_inter(got, ref, scale)
+        # a PDG branch that matches (81 81 > 81 81) on a flavor combination
+        # no ordering of the table holds: smatrixhel misses like the density
+        # (crossed fallback, then NaN). It used to call SMATRIXHEL with the
+        # 0 flavor index and keep FOUND, answering a silent number.
+        for out in (folded, expanded):
+            self.assertEqual(len(out['unresolved']), 2)
+            for sm, dens in out['unresolved']:
+                self.assertEqual(sm, 'nan')
+                self.assertTrue(all(math.isnan(x) for z in dens for x in z))
+
+    def test_standalone_f2py_crossed_idx_caller_order_nhel(self):
+        """PY_<prefix>GET_ALL_INTER_IDX at a crossed index takes NHEL in the
+        caller's leg order, like P and POS: it must answer what the expanded
+        output's py_get_all_inter does for the same arrays. It used to read
+        NHEL in the base slot order (NHEL(XK) the helicity of caller leg
+        PERM(XK)); an uncrossed index is unaffected."""
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, _ = self._run_crossed_script(folded_dir, 'idx')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        # the first case is uncrossed, the two others carry a crossing
+        (idx0, nflav), (idx1, _), (idx2, _) = folded['idx']
+        self.assertLessEqual(idx0, nflav)
+        self.assertGreater(idx1, nflav)
+        self.assertGreater(idx2, nflav)
+        for i in range(3):
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+
+    def test_madmatrix_density_matches_fortran(self):
+        """The madmatrix density matrices and |M|^2 (madmatrix.density, what
+        MadSpin uses by default) against the Fortran f2py ones MadSpin used
+        before, on the processes MadSpin generates for p p > t t~ with both tops
+        decayed: off-shell ('*') tops, merged quark and lepton flavors, both
+        quark orderings, on- and off-shell momenta. The production folds its
+        crossings as MadSpin's does (u~ u > t* t~* is the beam swap of
+        u u~ > t* t~*, evaluated by its library at an extended flavor index)."""
+        import importlib.util
+        import math
+        import random
+        import numpy as np
+        import madmatrix.density as madmatrix_density
+
+        os.makedirs(self.out_dir)
+        self.do('set apply_flavor_grouping True')
+        self.do('set group_subprocesses False')
+        dirs = {}
+        for name, process in (('prod', 'generate p p > t* t~*'),
+                              ('dec', 'generate t* > b w+, w+ > l+ vl')):
+            self.do(process)
+            dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
+            self.do('output standalone %s -f --noeps=True' % dirs[name][0])
+            self.do('output standalone_fortran %s --prefix=int --density=1 -f' % dirs[name][1])
+
+        libtag = '_acc%d' % os.getpid()
+        fortran, mm = {}, {}
+        for menum, name in ((2, 'prod'), (1, 'dec')):
+            mm_dir, f_dir = dirs[name]
+            misc.compile(madmatrix_density.make_variables(libtag=libtag + name),
+                         cwd=pjoin(mm_dir, 'SubProcesses'), mode='cpp', nb_core=4)
+            mm[name] = madmatrix_density.MadDensityLibrary(mm_dir)
+            mm[name].initialise(pjoin(mm_dir, 'Cards', 'param_card.dat'))
+            misc.compile(cwd=pjoin(f_dir, 'Source'), nb_core=4)
+            misc.compile(['MENUM=%d' % menum, 'all_matrix%dpy.so' % menum],
+                         cwd=pjoin(f_dir, 'SubProcesses'))
+            so = max(misc.glob('all_matrix%dpy*.so' % menum, pjoin(f_dir, 'SubProcesses')),
+                     key=os.path.getsize)
+            spec = importlib.util.spec_from_file_location('all_matrix%dpy' % menum, so)
+            fortran[name] = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(fortran[name])
+            fortran[name].initialise(pjoin(f_dir, 'Cards', 'param_card.dat'))
+        self.assertEqual(mm['prod'].get_idens(), list(fortran['prod'].get_idens()))
+        # u~ u > t* t~* is folded: the u u~ library at an extended flavor index
+        sub, flavor_id, _ = mm['prod'].dispatch([-2, 2, 6, -6])
+        self.assertGreaterEqual(flavor_id, sub.nmaxflavor)
+
+        rng = random.Random(3)
+
+        def boost(p, b):
+            m = math.sqrt(b[0]**2 - b[1]**2 - b[2]**2 - b[3]**2)
+            g, n = b[0] / m, [x / m for x in b[1:]]
+            pb = sum(x * y for x, y in zip(p[1:], n))
+            f = pb / (g + 1) + p[0]
+            return (g * p[0] + pb,) + tuple(x + f * y for x, y in zip(p[1:], n))
+
+        def two_body(M, m1, m2):
+            k = math.sqrt((M**2 - (m1 + m2)**2) * (M**2 - (m1 - m2)**2)) / (2 * M)
+            c, phi = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi)
+            s = math.sqrt(1 - c * c)
+            v = (k * s * math.cos(phi), k * s * math.sin(phi), k * c)
+            return ((math.sqrt(m1**2 + k * k),) + v,
+                    (math.sqrt(m2**2 + k * k),) + tuple(-x for x in v))
+
+        def production(mt1, mt2):
+            shat = rng.uniform(mt1 + mt2 + 10, 1200.)
+            p3, p4 = two_body(shat, mt1, mt2)
+            beta = rng.uniform(-0.5, 0.5)
+            gamma = 1. / math.sqrt(1 - beta**2)
+            b = (gamma, 0., 0., gamma * beta)
+            return [boost(p, b) for p in ((shat / 2, 0, 0, shat / 2),
+                                          (shat / 2, 0, 0, -shat / 2), p3, p4)]
+
+        def decay(mt, mw):
+            w, b = two_body(mt, mw, 4.7)
+            l, v = (boost(q, w) for q in two_body(mw, 0, 0))
+            top = (math.sqrt(mt**2 + 250.**2), 100., -60., math.sqrt(250.**2 - 100.**2 - 60.**2))
+            return [boost(q, top) for q in ((mt, 0, 0, 0), b, l, v)]
+
+        def check(name, pdgs, p, pos, allow):
+            P = np.array(p).T.copy()
+            ref = np.asarray(fortran[name].py_get_density(pdgs=pdgs, procid=-1, p=P, pos=pos,
+                                                          allow_hel=allow, alphas=0.118, scale2=0.))
+            got = mm[name].density(pdgs, p, pos, allow, 0.118)
+            self.assertLess(abs(ref - got).max(), 1e-10 * abs(ref).max(), (name, pdgs, p))
+            ref = fortran[name].smatrixhel(pdgs, 0, P, 0.118, 0., -1)
+            self.assertLess(abs(mm[name].matrix_element(pdgs, p, 0.118) - ref), 1e-10 * ref)
+
+        two = [1, -1]
+        both = [h for a in two for b in two for h in (a, b)]
+        for mt1, mt2 in ((173., 173.), (168.5, 180.)):
+            p = production(mt1, mt2)
+            for pdgs in ([21, 21, 6, -6], [2, -2, 6, -6], [-1, 1, 6, -6], [3, -3, 6, -6],
+                         [-2, 2, 6, -6]):
+                check('prod', pdgs, p, [3, 4], both)
+                check('prod', pdgs, p, [4], two)
+                # an open initial leg: a crossed one takes its own helicity
+                check('prod', pdgs, p, [1], two)
+        for mt, mw in ((173., 80.419), (176., 78.), (165., 84.)):
+            for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+                check('dec', pdgs, decay(mt, mw), [1], two)
+        # a decay at rest boosted by the library (MadSpin's decays) is the decay
+        # boosted beforehand
+        self.assertTrue(mm['dec'].supports_boost)
+        w, b = two_body(171., 79., 4.7)
+        l, v = (boost(q, w) for q in two_body(79., 0, 0))
+        at_rest = [(171., 0., 0., 0.), b, l, v]
+        top = (math.sqrt(171.**2 + 300.**2), 120., -80., math.sqrt(300.**2 - 120.**2 - 80.**2))
+        lab = [boost(q, top) for q in at_rest]
+        for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+            ref = mm['dec'].density(pdgs, lab, [1], two, 0.118)
+            got = mm['dec'].density(pdgs, at_rest, [1], two, 0.118, boost=top)
+            self.assertLess(abs(ref - got).max(), 1e-12 * abs(ref).max())
+        # a batch is the same as the points one by one
+        points = [decay(rng.uniform(165., 180.), rng.uniform(75., 85.)) for _ in range(9)]
+        pdgs = [[6, 5, -11, 12] if k % 2 else [6, 5, -13, 14] for k in range(9)]
+        batch = mm['dec'].density_batch(pdgs, points, [1], two, [0.118] * 9)
+        for k in range(9):
+            np.testing.assert_array_equal(batch[k],
+                                          mm['dec'].density(pdgs[k], points[k], [1], two, 0.118))
+
 
     def test_density_mode_user_interface(self):
         ############################################################################
@@ -4968,90 +5949,120 @@ set boost_choice [6, -6]
                 self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, delta=2e-3, msg=msg)
 
 
-    def test_density_mode_user_interface(self):
-        ############################################################################
-        # This test checks that the python interface of the density mode works properly ie.
-        # it creates a LHE file with a tag <density> which contains the density matrix with the correct number of elements.
-        # We also check that the average density matrix is stable.
-        # To check if the value of the density matrix itself is correct see the other test_density_mode_* tests.
-        ############################################################################
-        
-        text = f"""generate g g > t t~
-output madevent {self.out_dir}_density0
-launch
-reweight=density
-set run_card nevents 50000
-set helicity_direction [6]
-set particle_in_density_matrix [6, -6]
-set boost_choice [6, -6]
-"""
+    @staticmethod
+    def read_average_density_matrix(path):
+        """read a Average_density_matrix_*.txt file and return the square matrix"""
 
-        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
-        command_card = open('/tmp/mg5_cmd.txt','w')
+        rho_avg = []
+        with open(path, 'r') as f:
+            for line in f.readlines()[1:]: #the first line is a title
+                aux = line.strip("\t\n[]").split(",")
+                rho_avg.append([complex(elem.strip(" ()")) for elem in aux])
+        return rho_avg
+
+    def test_density_mode_multicore(self):
+        ############################################################################
+        # When the reweighting is not run in process (force_run False, i.e. from
+        # ./bin/madevent), CommonRunCmd.do_reweight either starts a single job on the
+        # full event file or splits the file and starts one job per chunk of events.
+        # In the second case each job writes the average density matrix of its own
+        # chunk, so the mother interface has to recombine them into the canonical
+        # Average_density_matrix_<event file>.txt. This test checks that this file is
+        # created, that it agrees with the single core one and that the per chunk
+        # files are cleaned up.
+        ############################################################################
+
+        nevents = 3000 # more than nevt_job (2500) so that the file is really split
+
+        text = f"""generate g g > t t~
+output madevent {self.out_dir}_density_mc
+launch
+set run_card nevents {nevents}
+set use_syst False
+"""
+        command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'), 'w')
         command_card.write(text)
         command_card.close()
 
-        
-        logfile = 'test_density_mode_ttbar.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
-                         '/tmp/mg5_cmd.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
+        logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_generation.log')
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'),
+                         pjoin(self.tmpdir, 'mg5_cmd.txt')],
+                        stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
+        me_dir = self.out_dir + '_density_mc'
+        run_dir = pjoin(me_dir, 'Events', 'run_01')
+        events = pjoin(run_dir, 'unweighted_events.lhe.gz')
+        self.assertTrue(os.path.isfile(events), f"File not found {events}")
 
-        
+        # the reweighting rewrites the event file in place: keep a pristine copy so
+        # that both paths reweight exactly the same events.
+        backup = pjoin(self.tmpdir, 'unweighted_events_orig.lhe.gz')
+        shutil.copyfile(events, backup)
 
-        lhe_path = pjoin(self.out_dir + '_density0/Events/run_01/unweighted_events.lhe.gz')
-        rho_mean_path = pjoin(self.out_dir + '_density0/Events/run_01/Average_density_matrix_unweighted_events.txt')
-        
-        self.assertTrue(os.path.isfile(lhe_path), f"File not found {lhe_path}")
-        self.assertTrue(os.path.isfile(rho_mean_path), f"File not found {rho_mean_path}")
+        with open(pjoin(me_dir, 'Cards', 'reweight_card.dat'), 'w') as card:
+            card.write("""change helicity_direction [6]
+change particle_in_density_matrix [6, -6]
+change boost_choice [6, -6]
+change matrix_normalisation True
+""")
 
+        def run_reweight(nb_core):
+            """run 'reweight run_01 --mode=density' the way ./bin/madevent does it
+            (out of process, force_run False) and return the density matrix files
+            present in the run directory afterwards"""
 
-        for event in lhe_parser.EventFile(lhe_path):
-            density_check = event.density
-            break #we only want the first one
-        
-        for elem in density_check:
-            self.assertIsInstance(elem, complex)
-        
-        self.assertEqual(len(density_check), 10, f"The density matrix is not the correct length: {density_check}")
+            #restore the original events and drop any previous density output
+            for path in (events, events[:-3]):
+                if os.path.exists(path):
+                    os.remove(path)
+            shutil.copyfile(backup, events)
+            for name in os.listdir(run_dir):
+                if name.startswith('Average_density_matrix_'):
+                    os.remove(pjoin(run_dir, name))
 
-        # previously PDF was nn23lo1 (lhaid 230000) with this reference matrix
-        # [[0.3670142422790588, 1.7429098337870793e-07-3.933851109770078e-05j, ...],
-        #  ... diag(0.36701424, 0.13298576, 0.13298576, 0.36701424), off-diag 0.11514190 / 0.06344293]
-        rho_avg_ref =  [[(0.3688357054745634+0j), (2.488456321669277e-07+8.149451446891586e-05j), (-2.488456322029901e-07-8.149451420327119e-05j), (0.1177535354898135-0j)],
-                        [(2.488456321669277e-07-8.149451446891586e-05j), (0.13116429452559822+0j), (0.0635907988356563-0j), (-2.488456322029923e-07+8.149451420327103e-05j)],
-                        [(-2.488456322029901e-07+8.149451420327119e-05j), (0.0635907988356563+0j), (0.13116429452559822+0j), (2.488456321669272e-07-8.149451446891567e-05j)],
-                        [(0.1177535354898135+0j), (-2.488456322029923e-07-8.149451420327103e-05j), (2.488456321669272e-07+8.149451446891567e-05j), (0.3688357054745633+0j)]]
+            driver = f"""import sys
+sys.path.insert(0, {MG5DIR!r})
+import madgraph.interface.madevent_interface as me_interface
+cmd = me_interface.MadEventCmd(me_dir={me_dir!r}, force_run=True)
+cmd.use_rawinput = False
+cmd.haspiping = False
+cmd.exec_cmd('set nb_core {nb_core}')
+cmd.exec_cmd('set run_mode 2')
+# force_run True would reweight in process: only with force_run False does
+# do_reweight dispatch the work to single core/multicore child processes.
+cmd.force_run = False
+cmd.exec_cmd('reweight run_01 --mode=density -from_cards')
+"""
+            driver_path = pjoin(self.tmpdir, 'rwgt_driver_%s.py' % nb_core)
+            with open(driver_path, 'w') as fsock:
+                fsock.write(driver)
+            logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_%s.log' % nb_core)
+            subprocess.call([sys.executable, driver_path],
+                            stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
-        #now let's read the average density matrix
-        with open(rho_mean_path, 'r') as f:
-            data = f.readlines()[1:]
-            rho_avg = []
-            for i in range(len(data)):
-                aux = data[i].strip("\t\n[]").split(",")
-                try:
-                    rho_avg.append([complex(aux[i].strip(" ()")) for i in range(len(aux))])
-                except: #if the values are like "np.complex128(value)"
-                    print("aux", aux)
-                    aux2 = [aux[i].strip(" ()[]").strip("'").replace("np.complex128(","").strip(" ()") for i in range(len(aux))]
-                    try:
-                        rho_avg.append([complex(aux2[i]) for i in range(len(aux2))])
-                    except:
-                        print("aux2", aux2)
-                        raise ValueError
-            
+            return sorted(name for name in os.listdir(run_dir)
+                                     if name.startswith('Average_density_matrix_'))
 
-        # On a mismatch print the whole measured matrix, not just the first
-        # element that differs: re-referencing this (a PDF change moves every
-        # entry) otherwise needs one run per element.
-        msg = 'measured rho_avg = %r' % (rho_avg,)
-        for i in range(len(rho_avg)):
-            for j in range(len(rho_avg[0])):
-                # statistical error of a 50k-event average: at most 5e-4 per
-                # element (measured), so 3 digits (+-5e-4) is ~1 sigma and fails for
-                # most changes of the event generation; 2e-3 is 4 sigma
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, delta=2e-3, msg=msg)
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, delta=2e-3, msg=msg)
+        #1) reference: one single job on the full event file
+        single = run_reweight(1)
+        self.assertEqual(single, ['Average_density_matrix_unweighted_events.txt'])
+        rho_single = self.read_average_density_matrix(
+                     pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+        self.assertEqual(len(rho_single), 4)
+
+        #2) one job per chunk of events: same canonical file, no leftover
+        multi = run_reweight(2)
+        self.assertEqual(multi, ['Average_density_matrix_unweighted_events.txt'],
+                         "the multicore density path did not produce the canonical "
+                         "average density matrix (or left per chunk files behind)")
+        rho_multi = self.read_average_density_matrix(
+                    pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+
+        self.assertEqual(len(rho_multi), len(rho_single))
+        for i in range(len(rho_single)):
+            for j in range(len(rho_single[i])):
+                self.assertAlmostEqual(rho_multi[i][j].real, rho_single[i][j].real, places=10)
+                self.assertAlmostEqual(rho_multi[i][j].imag, rho_single[i][j].imag, places=10)
 
 
     def test_density_mode_ttbar(self):
@@ -5292,13 +6303,13 @@ set boost_choice [5, -6]
         # legs it names: it used to count LHE lines, status-2 ones included, so
         # the status-2 top of this decay chain shifted it onto t (the resonance
         # line) + W+ instead of b + t~. The previous numbers were in that frame.
-        # Regenerated when the reweighting (standalone_rw) started to set the
-        # t-channel widths to zero, as madevent did for the input events
-        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
-        density_ref = [(0.002572819258503627+0.0j), (0.00022287625051417933+0.000269373544283043j), (0.034620381554042186-0.0031148240475356633j),
-                       (0.003493349987547038+0.0030943536658021155j), (0.002492794223097223+0.0j), (0.0022714731159374324-0.0025077711911968975j),
-                       (0.03329882105505325-0.001669052089828375j), (0.5122804070927276+0.0j), (0.043564252872336236+0.03090169904947277j),
-                       (0.48265397942567173+0.0j)]
+        # and again by the crossing branch: the internal top propagator loses
+        # its width (it is an external field there, zerowidth_external) and the
+        # canonical NHEL encoder removed a small C-parity asymmetry.
+        density_ref = [(0.002572819258503627+0j), (0.00022287625051417933+0.000269373544283043j), (0.034620381554042186-0.0031148240475356633j),
+                            (0.003493349987547038+0.0030943536658021155j), (0.002492794223097223+0j), (0.0022714731159374324-0.0025077711911968975j),
+                            (0.03329882105505325-0.001669052089828375j), (0.5122804070927276+0j), (0.043564252872336236+0.03090169904947277j),
+                            (0.48265397942567173+0j)]
 
 
         event_of_reference = """<event>
@@ -5393,16 +6404,16 @@ set boost_choice [24, -6]
         # legs it names: it used to count LHE lines, status-2 ones included, so
         # the status-2 top of this decay chain shifted it onto b + W+ instead of
         # W+ + t~. The previous numbers were in that frame.
-        # Regenerated when the reweighting (standalone_rw) started to set the
-        # t-channel widths to zero, as madevent did for the input events
-        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
-        density_ref = [(0.03462856093584298+0.0j), (0.004222692552048597-3.914851804525198e-06j), (-0.09315136922763956-0.06424541106056061j),
-                       (-0.012161343076623666-0.007852907982114157j), (-0.0021548339817954705-0.02299216606257348j), (0.004000989959849888+0.0004271687621753295j),
-                       (0.022124992142446936+0.0j), (-0.004976106543712062-0.007632363502328344j), (-0.05784211938393767-0.041606353301745905j),
-                       (-0.034560622408768275-0.028594347672533223j), (-0.012757048104007053-0.018079926753134273j), (0.374857868204696+0.0j),
-                       (0.029720084211203073-0.012771984245079535j), (0.03485290974186369+0.0484732992793134j), (-0.01064461469034376+0.0037920989793522506j),
-                       (0.2350541853144974+0.0j), (0.14918389804980686+0.014260521941388894j), (0.045994627672498976+0.008149821823945263j),
-                       (0.1306812643391364+0.0j), (0.0037983745012122867+0.02048399076640624j), (0.20265312906338015+0.0j)]
+        # and again by the crossing branch: the internal top propagator loses
+        # its width (it is an external field there, zerowidth_external) and the
+        # canonical NHEL encoder removed a small C-parity asymmetry.
+        density_ref = [(0.03462856093584298+0j), (0.004222692552048597-3.914851804525198e-06j), (-0.09315136922763956-0.06424541106056061j),
+                            (-0.012161343076623666-0.007852907982114157j), (-0.0021548339817954705-0.02299216606257348j), (0.004000989959849888+0.0004271687621753295j),
+                            (0.022124992142446936+0j), (-0.004976106543712062-0.007632363502328344j), (-0.05784211938393767-0.041606353301745905j),
+                            (-0.034560622408768275-0.028594347672533223j), (-0.012757048104007053-0.018079926753134273j), (0.374857868204696+0j),
+                            (0.029720084211203073-0.012771984245079535j), (0.03485290974186369+0.0484732992793134j), (-0.01064461469034376+0.0037920989793522506j),
+                            (0.2350541853144974+0j), (0.14918389804980686+0.014260521941388894j), (0.045994627672498976+0.008149821823945263j),
+                            (0.1306812643391364+0j), (0.0037983745012122867+0.02048399076640624j), (0.20265312906338015+0j)]
 
         
         #1) here we check that the density matrix is computed properly
@@ -5500,13 +6511,7 @@ set boost_choice [6, -6] pt [0, 0]
             density_check = event.density
 
         #reference density matrix
-        # Regenerated when the reweighting (standalone_rw) started to set the
-        # t-channel widths to zero, as madevent did for the input events
-        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
-        density_ref = [(0.4158995551694228+0.0j), (-0.038266416707557815-0.08667282347919017j), (0.018177344236518424+0.06949114218724137j),
-                       (-0.006036326465490495+0.02831843465941133j), (0.08410102856179515+0.0j), (-0.051324023693436596-0.010218495226221291j),
-                       (-0.018178695623423707-0.06949438656775611j), (0.0840990482542204+0.0j), (0.03826126259622656+0.08667076377998419j),
-                       (0.4159003680145617+0.0j)]
+        density_ref = [complex(0.41589996421540293, 0.0), complex(-0.03826383986149076, -0.08667179401359812), complex(0.018178019897460727, 0.06949276501681549), complex(-0.006036326766945857, 0.028318434038759072), complex(0.0841000357845971, 0.0), complex(-0.05132402629630901, -0.010218495717875446), complex(-0.018178019897460686, -0.06949276501681546), complex(0.08410003578459711, 0.0), complex(0.03826383986149076, 0.0866717940135981), complex(0.41589996421540276, 0.0)]
 
         lhe_path = pjoin(self.out_dir + '_density5/Events/run_01/unweighted_events.lhe.gz')
         for event in lhe_parser.EventFile(lhe_path):
@@ -5520,17 +6525,17 @@ set boost_choice [6, -6] pt [0, 0]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the bounds of concurrence is computed properly
-        concurrence_ref = 0.028913877218595573
+        concurrence_ref = 0.02891388250882494
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         # #3) here we check that purity is computed properly
-        purity_ref = 0.4237883009145146
+        purity_ref = 0.4237883055234033
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         # #4) here we check that magic is computed properly
-        magic_ref = 0.4802316159074085
+        magic_ref = 0.48023161639925205
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -5854,10 +6859,10 @@ set boost_choice [6, -6] pt [0, 0]
     def check_aloha_file(self):
         """check the content of aloha file FFV1P0_3.f and FFV2_3.f"""
         
-        ffv1p0 = """C     This File is Automatically generated by ALOHA
-C     The process calculated in this file is:
+        ffv1p0 = """C     This File is Automatically generated by ALOHA 
+C     The process calculated in this file is: 
 C     Gamma(3,2,1)
-C
+C     
       SUBROUTINE FFV1P0_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
@@ -5881,8 +6886,12 @@ C
         V3%W(:) = (0D0,0D0)
         RETURN
       ENDIF
-      DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
-     $ * W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4)+F1
      $  % W(3)*F2 % W(1)+F1 % W(4)*F2 % W(2))
       V3%W(2)= DENOM*(-CI)*(-F1 % W(1)*F2 % W(4)-F1 % W(2)*F2 % W(3)
@@ -5903,10 +6912,10 @@ C
         text = [l.strip() for l in text.strip().split('\n')]
         self.assertEqual(ffv1p0, text)
         
-        ffv2 = """C     This File is Automatically generated by ALOHA
-C     The process calculated in this file is:
+        ffv2 = """C     This File is Automatically generated by ALOHA 
+C     The process calculated in this file is: 
 C     Gamma(3,2,-1)*ProjM(-1,1)
-C
+C     
       SUBROUTINE FFV2_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
@@ -5937,8 +6946,12 @@ C
       TMP2 = (F1 % W(1)*(F2 % W(3)*(P3(0)+P3(3))+F2 % W(4)*(P3(1)+CI
      $ *(P3(2))))+F1 % W(2)*(F2 % W(3)*(P3(1)-CI*(P3(2)))+F2 % W(4)
      $ *(P3(0)-P3(3))))
-      DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
-     $ * W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4)
      $ -P3(0)*OM3*TMP2)
       V3%W(2)= DENOM*(-CI)*(-F1 % W(1)*F2 % W(4)-F1 % W(2)*F2 % W(3)
@@ -5990,8 +7003,12 @@ C
       TMP5 = (F1 % W(3)*(F2 % W(1)*(P3(0)-P3(3))-F2 % W(2)*(P3(1)+CI
      $ *(P3(2))))+F1 % W(4)*(F2 % W(1)*(-P3(1)+CI*(P3(2)))+F2 % W(2)
      $ *(P3(0)+P3(3))))
-      DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI*
-     $  W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-2D0 * CI)*(COUP2*(OM3*-1D0/2D0 * P3(0)*(TMP2
      $ +2D0*(TMP5))+(+1D0/2D0*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4))
      $ +F1 % W(3)*F2 % W(1)+F1 % W(4)*F2 % W(2)))+1D0/2D0*(COUP1*(F1 %

@@ -15,6 +15,7 @@
 #include "SigmaKin.h"
 
 #include "CPPProcess.h" // ProcessData.h, Parameters.h, HelAmps_<model>.h transitively
+#include "CrossingBlend.h" // the crossed externals of the recycled calls
 #include "ProcessTables.h"
 
 #include "MemoryAccessAmplitudes.h"
