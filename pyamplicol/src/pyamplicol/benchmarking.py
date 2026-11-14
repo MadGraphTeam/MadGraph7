@@ -35,6 +35,7 @@ from pyamplicol.reporting import (
     ProgressStart,
     ProgressUpdate,
 )
+from pyamplicol.reporting.resources import PeakMemory, peak_memory
 
 _MAX_SAMPLE_RUNTIME_SECONDS = 0.25
 _MAX_CALIBRATION_BLOCKS = 2
@@ -471,6 +472,9 @@ class BenchmarkBackend:
                     total=None,
                 )
             )
+        # The peak RAM of the profiled region: warm-ups, calibration and the
+        # timed blocks (left on any exit: the measurement only reads).
+        peak = peak_memory().__enter__()
         try:
             if compact_context is not None:
                 cold_warmup_state_before = _on_the_fly_runtime_state_census(
@@ -706,6 +710,7 @@ class BenchmarkBackend:
             if exc is chunk_guard_failure:
                 raise
             raise EvaluationError(f"runtime benchmark failed: {exc}") from exc
+        peak.__exit__(None, None, None)
         if self._progress is not None and not interrupted:
             self._progress.emit(ProgressEnd(task_id))
 
@@ -1022,6 +1027,7 @@ class BenchmarkBackend:
             process_id=process_id,
             process_expression=process_expression,
             timing_breakdown=timing_breakdown,
+            peak_memory=peak.result,
         )
 
     def _runtime(
@@ -2787,6 +2793,10 @@ class VirtualProfileResult:
     # and their reasons, most frequent first.
     best_effort_points: int = 0
     best_effort_reasons: tuple[tuple[str, int], ...] = ()
+    # The peak resident set size of this process over the profiled calls
+    # (warm-up, timed and double-double calls; ``reporting.resources.
+    # peak_memory``).
+    peak_memory: PeakMemory | None = None
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2902,7 +2912,6 @@ def profile_virtual(
     after every warm-up and timed call."""
 
     from pyamplicol.api import Runtime
-    from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
 
     run = config if isinstance(config, RunConfig) else None
     bench = (
@@ -2950,6 +2959,27 @@ def profile_virtual(
             return evaluation.mu_r2
         return [_initial_invariant(point, initial) for point in batch]
 
+    with peak_memory() as peak:
+        profile = _profile_virtual_calls(
+            runtime, batches, bench, options, scales, progress, calls
+        )
+    return replace(profile, peak_memory=peak.result)
+
+
+def _profile_virtual_calls(
+    runtime: Any,
+    batches: Sequence[Momenta],
+    bench: BenchmarkConfig,
+    options: Mapping[str, Any],
+    scales: Callable[[Momenta], Any],
+    progress: Callable[[int, int], None] | None,
+    calls: int,
+) -> VirtualProfileResult:
+    """The binary64 warm-up and timed calls of ``profile_virtual``."""
+
+    from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
+
+    physics = runtime.physics
     for done in range(bench.warmup_runs):
         batch = batches[done]
         runtime.evaluate(batch, mu_r2=scales(batch), **options)

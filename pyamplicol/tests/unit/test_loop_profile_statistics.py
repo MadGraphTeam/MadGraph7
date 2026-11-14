@@ -481,3 +481,29 @@ def test_displayed_stability_estimate_is_smoothed(monkeypatch):
     assert tracker.shown_eta() == pytest.approx(300.0, rel=1e-6)
     monkeypatch.setattr(tracker, "eta", lambda: None)
     assert tracker.shown_eta() is None
+
+
+def test_peak_memory_measures_the_region():
+    """``peak_memory`` over a block that touches 256 MiB: the peak and its
+    increase over the start cover it (Linux: VmHWM reset at the start;
+    elsewhere the lifetime peak, a lower bound of the increase)."""
+
+    import sys
+
+    from pyamplicol.reporting.resources import peak_memory, peak_memory_text
+
+    size = 256 * 1024**2
+    with peak_memory() as before:
+        pass
+    with peak_memory() as peak:
+        block = bytearray(size)
+        block[::4096] = b"\x01" * len(block[::4096])
+        del block
+    result = peak.result
+    assert result is not None and result.peak_rss_bytes is not None
+    assert result.peak_rss_bytes >= result.start_rss_bytes
+    if sys.platform.startswith("linux") and result.scope == "profiled region":
+        assert result.increase_rss_bytes >= 0.9 * size
+        # A block that allocates nothing has (almost) no increase.
+        assert before.result.increase_rss_bytes < 0.1 * size
+    assert "GiB" in peak_memory_text(result)

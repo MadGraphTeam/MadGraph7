@@ -910,6 +910,13 @@ def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
         result.environment["evaluator_total_time_sample_contract"]
         == "accumulated-repeated-warmed-evaluator-total-v1"
     )
+    # The peak RAM of the profiled region, shown in the summary.
+    peak = result.peak_memory
+    assert peak is not None and peak.peak_rss_bytes >= peak.start_rss_bytes > 0
+    assert peak.increase_rss_bytes == peak.peak_rss_bytes - peak.start_rss_bytes
+    from pyamplicol.reporting import render_summary
+
+    assert "peak RAM" in render_summary(result, color=False)
 
 
 def _write_effective_color_config(

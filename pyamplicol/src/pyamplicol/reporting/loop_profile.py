@@ -239,6 +239,9 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             )
         summary.add_row(tuple(cells))
     blocks = [str(summary.get_string())]
+    extra = _runtime_extra_lines(rows, color)
+    if extra:
+        blocks.append("\n".join(extra))
     causes = failure_lines(report.failure_causes, "runtime", color)
     refusals = [
         f"{_backend_label(row.backend, report.default_backend, color)} refused: "
@@ -310,6 +313,23 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         stages.add_row(tuple(cells))
     blocks.append(str(stages.get_string()))
     return blocks
+
+
+def _runtime_extra_lines(rows: Any, color: bool) -> list[str]:
+    """Per profiled backend its peak RAM over the profiled calls."""
+
+    from .resources import peak_memory_text
+
+    lines = []
+    for row in rows:
+        profile = row.profile
+        if profile is None:
+            continue
+        name = _name(row.backend)
+        text = peak_memory_text(getattr(profile, "peak_memory", None))
+        if text is not None:
+            lines.append(f"{name} peak RAM: {text}")
+    return lines
 
 
 def _digits_colour(digits: float, target_digits: float) -> str:
