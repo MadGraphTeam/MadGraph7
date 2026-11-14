@@ -1,6 +1,7 @@
 """Exercise split-shower scripts, collection and cleanup with small analyses."""
 
 import gzip
+import os
 from pathlib import Path
 import shutil
 import tarfile
@@ -12,6 +13,7 @@ from madgraph import MG5DIR
 from madgraph.interface import amcatnlo_run_interface as interface
 from madgraph.various import cluster, histograms
 from madgraph.various.shower_card import ShowerCard
+from madgraph.various import mcatnlo_shower
 
 
 class TestShowerCollection(unittest.TestCase):
@@ -88,6 +90,11 @@ elif mode in ('HWU', 'FXFX'):
         self.cmd.results = mock.Mock()
         self.cmd.do_plot = mock.Mock()
         self.cmd.banner_to_mcatnlo = mock.Mock()
+        self.cmd.ensure_stdhep = mock.Mock()
+        self.cmd.get_matching_contract = lambda evt_file: \
+            mcatnlo_shower.MatchingContract(
+                parton_shower=self.input.read_text().split("' = parton_shower")[0]
+                .rsplit("'", 1)[1])
         self.render = mock.patch.object(interface.common_run, 'render_HwU_plot')
         self.render.start()
         self.addCleanup(self.render.stop)
@@ -169,16 +176,19 @@ elif mode in ('HWU', 'FXFX'):
         config.write_text('#!/bin/sh\nexit 0\n')
         config.chmod(0o755)
         self.cmd.options['pythia8_path'] = str(pythia)
-        self.cmd.run_card['ickkw'] = 3
+        self.cmd.run_card['ickkw'] = 3  # the contract decides
         self.input.write_text(self.input.read_text().replace('HERWIG6', 'PYTHIA8'))
         self.original = self.input.read_text()
-        compiler = self.mcatnlo / 'MCatNLO_MadFKS.inputs'
-        compiler.write_text('#!/bin/sh\ncp analysis_fixture Pythia8.exe\n'
-                            'printf "FXFX\\nRandom:seed = 123\\n" > Pythia8.cmd\n'
-                            'echo "Compiler stdout"\necho "Compiler stderr" >&2\n')
-        with mock.patch.object(interface, 'check_pythia8_fxfx_plugin'), \
-             mock.patch.object(self.cmd, 'get_pythia8_hepmc_setup',
-                               return_value=(3, '')):
+        # Pythia8 is configured in Python: replace the build by the fixture.
+        def prepare(evt_file, contract, log):
+            with open(log, 'a') as stream:
+                stream.write('Compiler stdout\nCompiler stderr\n')
+            return {'exe': str(self.mcatnlo / 'analysis_fixture'),
+                    'cmd': 'FXFX\nRandom:seed = 123\n', 'locked': ''}
+        self.cmd.prepare_pythia8_shower = prepare
+        self.cmd.get_matching_contract = lambda evt_file: \
+            mcatnlo_shower.MatchingContract(parton_shower='PYTHIA8', ickkw=3)
+        with mock.patch.object(interface, 'check_pythia8_fxfx_plugin'):
             self.cmd.run_mcatnlo(str(self.input), {})
         rundir = self.assert_clean(shower='PYTHIA8')
         for index in range(1, 4):
@@ -227,7 +237,255 @@ elif mode in ('HWU', 'FXFX'):
         self.assertTrue(self.input.is_file())
         self.assertTrue((self.events / 'events.lhe_0.lhe').is_file())
 
+    def test_batch_contract_failure_raises_when_submission_returns_normally(self):
+        self.input.write_text(self.input.read_text().replace('HERWIG6', 'PYTHIA8'))
+        self.cmd.options['pythia8_path'] = str(self.root)
+        self.cmd.shower_card['nsplit_jobs'] = 1
+        settings = mcatnlo_shower.Pythia8Settings()
+        settings.internal('main', 'Main:spareMode1', 12)
+        settings.lock('matching', 'PartonShowers:model', 1)
+        self.cmd.prepare_pythia8_shower = mock.Mock(return_value={
+            'exe': str(self.mcatnlo / 'analysis_fixture'), 'cmd': '',
+            'locked': settings.render_locked(), 'settings': settings})
+        mismatch = ('MG5_MCATNLO_CONTRACT mismatch: PartonShowers:model is 2, '
+                    'the MC@NLO subtraction requires 1')
+
+        # Batch backends can return normally after exhausting retries, even
+        # though the executable failed. Its archived log must stop the run.
+        def batch_result(jobs, args, run_type):
+            rundir = Path(next(iter(jobs)))
+            (rundir / 'mcatnlo_run.log').write_text(
+                mismatch + '\nMG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+
+        self.cmd.run_all = mock.Mock(side_effect=batch_result)
+        with self.assertRaisesRegex(interface.aMCatNLOError, mismatch):
+            self.cmd.run_mcatnlo(str(self.input), {})
+        self.assertIn(mismatch,
+                      (self.events / 'mcatnlo_run_PYTHIA8_1.log').read_text())
+        self.assertTrue(self.input.is_file())
+        self.assertNotIn(mock.call('Run complete', level='shower', update_results=True),
+                         self.cmd.update_status.call_args_list)
+
     def test_analysis_with_no_histograms_still_archives_logs_and_cleans_up(self):
         self.run_shower('EMPTY')
         self.assert_clean()
         self.assertTrue((self.events / 'mcatnlo_run_HERWIG6_1.log').is_file())
+
+
+class TestPythia8OutputSetup(unittest.TestCase):
+    def setUp(self):
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.shower_card = ShowerCard()
+        self.cmd.options = {'pythia8_path': '/pythia8'}
+        self.cmd.get_hepmc_paths = mock.Mock(return_value=['/hepmc'])
+
+    def test_analysis_needs_no_hepmc_installation(self):
+        self.cmd.shower_card['analyse'] = 'HwU.o py8an_HwU_rates.o'
+        self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (0, ''))
+        self.cmd.get_hepmc_paths.assert_not_called()
+
+    @mock.patch.object(interface.misc, 'get_pythia8_version', return_value='8.318')
+    def test_explicit_output_format_is_respected(self, version):
+        for major in (2, 3):
+            with self.subTest(major=major), mock.patch.object(
+                    interface.misc, 'get_pythia8_hepmc_flags',
+                    return_value='-lHepMC%d' % major) as flags:
+                self.cmd.shower_card['hepmc_format'] = 'hepmc%d' % major
+                self.assertEqual(self.cmd.get_pythia8_hepmc_setup(),
+                                 (major, '-lHepMC%d' % major))
+                flags.assert_called_once_with('/pythia8', major, ['/hepmc'])
+
+    @mock.patch.object(interface.misc, 'get_pythia8_version', return_value='8.318')
+    def test_auto_uses_downstream_format_requirements(self, version):
+        self.cmd.get_auto_hepmc_version = mock.Mock(return_value=2)
+        with mock.patch.object(interface.misc, 'get_pythia8_hepmc_flags',
+                               return_value='-lHepMC'):
+            self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (2, '-lHepMC'))
+
+    @mock.patch.object(interface.misc, 'get_pythia8_version', return_value='8.318')
+    def test_auto_falls_back_to_the_available_library(self, version):
+        self.cmd.get_auto_hepmc_version = mock.Mock(return_value=3)
+        with mock.patch.object(interface.misc, 'get_pythia8_hepmc_flags',
+                               side_effect=[interface.MadGraph5Error('missing'),
+                                            '-lHepMC']):
+            self.assertEqual(self.cmd.get_pythia8_hepmc_setup(), (2, '-lHepMC'))
+
+    def test_qed_shower_override_is_logged_as_a_warning(self):
+        self.cmd.shower_card['qed_shower'] = False
+        self.cmd.banner = interface.banner_mod.Banner()
+        self.cmd.banner['mgruncard'] = "1 = nevents\n'average' = event_norm\n"
+        self.cmd.banner['montecarlomasses'] = '5 4.8\n'
+        self.cmd.get_shower_pdf = mock.Mock(return_value=('internal', None, False))
+        self.cmd.get_pythia8_hepmc_setup = mock.Mock(return_value=(0, ''))
+        self.cmd.compilation_jobs = mock.Mock(return_value=1)
+        installation = mock.Mock(version='8.318', path='/pythia8')
+        contract = mcatnlo_shower.MatchingContract(
+            parton_shower='PYTHIA8', qed_matching=True)
+        with tempfile.TemporaryDirectory() as root:
+            self.cmd.me_dir = root
+            with mock.patch.object(mcatnlo_shower, 'Pythia8Installation',
+                                   return_value=installation), \
+                 mock.patch.object(mcatnlo_shower, 'build_pythia8_driver',
+                                   return_value='/fake/Pythia8.exe'), \
+                 self.assertLogs(interface.logger, level='WARNING') as output:
+                result = self.cmd.prepare_pythia8_shower('events.lhe', contract, None)
+        self.assertTrue(any('qed_shower = F is ignored' in line for line in output.output))
+        self.assertEqual(result['settings'].get('TimeShower:QEDshowerByQ').value, 'on')
+
+
+class TestPythia8LogValidation(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='mg7_shower_logs_')
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.shower_card = ShowerCard()
+        self.settings = mcatnlo_shower.Pythia8Settings()
+        self.settings.internal('main', 'Main:spareMode1', 2)
+        self.settings.lock('matching', 'PartonShowers:model', 1)
+
+    def log(self, name, content):
+        path = self.root / name
+        path.write_text(content)
+        return str(path)
+
+    def test_a_failed_split_job_stops_the_run_with_mismatch_details(self):
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        good = self.log('shower__1.log', 'MG5_MCATNLO_CONTRACT OK (1 settings verified)\n')
+        mismatch = ('MG5_MCATNLO_CONTRACT mismatch: PartonShowers:model is 2, '
+                    'the MC@NLO subtraction requires 1')
+        bad = self.log('shower__2.log', mismatch + '\n'
+                       'MG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+        with self.assertRaises(interface.aMCatNLOError) as error:
+            self.cmd.check_pythia8_logs([good, bad], self.settings)
+        self.assertIn(bad, str(error.exception))
+        self.assertIn(mismatch, str(error.exception))
+
+    def test_missing_contract_check_is_fatal_with_or_without_event_summary(self):
+        for content in ('', 'MG5_MCATNLO_SUMMARY read=2 showered=2 failed=0\n'):
+            with self.subTest(content=content):
+                log = self.log('shower.log', content)
+                with self.assertRaisesRegex(interface.aMCatNLOError,
+                                            'no MC@NLO matching check was reported'):
+                    self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_missing_job_logs_prevent_claiming_success(self):
+        for logs in ([], [str(self.root / 'missing.log')]):
+            with self.subTest(logs=logs):
+                with self.assertRaises(interface.aMCatNLOError):
+                    self.cmd.check_pythia8_logs(logs, self.settings)
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        log = self.log('shower__1.log', 'MG5_MCATNLO_CONTRACT OK (1 settings verified)\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'Expected 2 Pythia8 shower logs'):
+            self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_explicit_failure_without_mismatches_or_locked_settings_is_fatal(self):
+        self.settings.free('matching', 'PartonShowers:model', 1)
+        log = self.log('shower.log', 'MG5_MCATNLO_CONTRACT FAILED (1 of 1 settings differ)\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'MC@NLO matching check failed'):
+            self.cmd.check_pythia8_logs([log], self.settings)
+
+    def test_successful_split_summaries_are_counted_once(self):
+        self.cmd.shower_card['nsplit_jobs'] = 2
+        content = ('MG5_MCATNLO_CONTRACT OK (1 settings verified)\n'
+                   'MG5_MCATNLO_SUMMARY read=2 showered=2 failed=0\n')
+        logs = [self.log('shower__%d.log' % i, content) for i in (1, 2)]
+        logs.append(self.log('shower.log', content * 2))
+        with self.assertLogs(interface.logger, level='INFO') as output:
+            self.cmd.check_pythia8_logs(logs, self.settings)
+        self.assertIn('(4 events showered)', output.output[-1])
+
+
+class TestShowerPDFSelection(unittest.TestCase):
+    def test_selected_index_is_used_for_generated_and_explicit_pdf_requests(self):
+        with tempfile.TemporaryDirectory(prefix='mg7_shower_pdf_') as directory:
+            root = Path(directory)
+            default = root / 'default'
+            selected = root / 'selected'
+            empty = root / 'empty'
+            for path in (default, selected, empty):
+                path.mkdir()
+            (default / 'pdfsets.index').write_text('400000 DefaultPDF 1\n')
+            (selected / 'pdfsets.index').write_text(
+                '400000 UserPDF 1\n800000 CustomPDF 1\n')
+            for path, name, members in ((default, 'DefaultPDF', 1),
+                                         (selected, 'UserPDF', 3),
+                                         (selected, 'CustomPDF', 2)):
+                (path / name).mkdir()
+                (path / name / (name + '.info')).write_text(
+                    'NumMembers: %d\n' % members)
+            config = root / 'lhapdf-config'
+            config.write_text('#!/bin/sh\necho %s\n' % default)
+            config.chmod(0o755)
+            command = object.__new__(interface.aMCatNLOCmd)
+            command.stop_for_runweb = True
+            command.options = {'lhapdf': str(config)}
+            command.shower_card = ShowerCard()
+            command.get_lhapdf_version = mock.Mock(return_value='6.5.4')
+            command.copy_lhapdf_set = mock.Mock()
+            command.get_init_dict = mock.Mock()
+            cases = ((1, 800000, 'CustomPDF', False),
+                     (-1, 800001, 'CustomPDF/1', True),
+                     (800000, 800000, 'CustomPDF', False),
+                     (-800001, 800001, 'CustomPDF/1', True),
+                     (1, 400000, 'UserPDF', False),
+                     (400001, 400001, 'UserPDF/1', False))
+            with mock.patch.dict(os.environ, {
+                    'LHAPDF_DATA_PATH': str(empty) + ':' + str(selected)}):
+                for pdfcode, lhaid, name, extrapolate in cases:
+                    with self.subTest(pdfcode=pdfcode, lhaid=lhaid):
+                        command.shower_card['pdfcode'] = pdfcode
+                        command.get_init_dict.return_value = {
+                            'pdfsup1': lhaid, 'pdfsup2': lhaid}
+                        self.assertEqual(command.get_shower_pdf('unused.lhe'),
+                                         ('lhapdf6', name, extrapolate))
+                        command.copy_lhapdf_set.assert_called_with([lhaid], str(selected))
+
+
+class TestStdHEPOnDemand(unittest.TestCase):
+    """StdHEP is compiled when a HERWIG6/PYTHIA6 shower first needs it."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='mg5_stdhep_')
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.me_dir = self.root / 'proc'
+        (self.me_dir / 'MCatNLO' / 'lib').mkdir(parents=True)
+        (self.me_dir / 'Source').mkdir()
+        # A fake StdHEP source tree (as MG5_aMC/vendor/StdHEP).
+        self.source = self.root / 'vendor' / 'StdHEP'
+        (self.source / 'mcfio').mkdir(parents=True)
+        (self.source / 'src').mkdir()
+        (self.source / 'src' / 'make_opts').write_text('FC=gfortran\n')
+        (self.source / 'makefile').write_text(
+            'all:\n\tmkdir -p lib\n\ttouch lib/libstdhep.a lib/libFmcfio.a\n')
+        for name in ['libstdhep.a', 'libFmcfio.a']:
+            (self.me_dir / 'MCatNLO' / 'lib' / name).symlink_to(
+                self.source / 'lib' / name)
+        self.cmd = object.__new__(interface.aMCatNLOCmd)
+        self.cmd.stop_for_runweb = True
+        self.cmd.me_dir = str(self.me_dir)
+        self.cmd.options = {'mg5_path': None}
+
+    def test_status_and_compilation(self):
+        self.assertEqual(interface.stdhep_status(str(self.me_dir)),
+                         ('source', str(self.source)))
+        (self.source / 'fail').write_text('old failure')
+        self.cmd.ensure_stdhep('HERWIG6')
+        self.assertEqual(interface.stdhep_status(str(self.me_dir))[0], 'compiled')
+        self.assertFalse((self.source / 'fail').exists())
+        # Nothing to do the second time.
+        (self.source / 'makefile').write_text('all:\n\tfalse\n')
+        self.cmd.ensure_stdhep('HERWIG6')
+
+    def test_failed_and_missing(self):
+        (self.source / 'makefile').write_text('all:\n\tfalse\n')
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'failed to compile'):
+            self.cmd.ensure_stdhep('PYTHIA6Q')
+        import shutil
+        shutil.rmtree(self.source)
+        self.assertEqual(interface.stdhep_status(str(self.me_dir)), ('missing', None))
+        with self.assertRaisesRegex(interface.aMCatNLOError, 'not available'):
+            self.cmd.ensure_stdhep('PYTHIA6Q')

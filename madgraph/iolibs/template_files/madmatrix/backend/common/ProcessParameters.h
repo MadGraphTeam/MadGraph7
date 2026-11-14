@@ -39,6 +39,8 @@ namespace madmatrix
     fptype bwcutoff = 15.;     // window (in widths) of the $-excluded propagators, the run card bw_cutoff
     int nGoodHel = 0;          // the good helicities: goodHel[0..nGoodHel) index the helicity table
     int goodHel[ProcessData::ncomb] = {};
+    int nGoodHelRows = 0;      // the good rows before the C-parity reduction (madmatrix_good_helicity_count)
+    bool csymOk = false;       // cpu/simd: the good helicities are the C-parity representatives, each counted twice
     // --hel_recycling: an amplitude the recycled build skips does not vanish at
     // these parameters, so this instance uses the plain code. Set by
     // sigmaKin_getGoodHel at one of its scans of the good helicities (hr_check_stale

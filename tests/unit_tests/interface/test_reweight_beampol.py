@@ -61,6 +61,7 @@ class _Stub(object):
         self.beampol_legs = None
 
     get_beampol = RI.get_beampol
+    events_beampol = RI.events_beampol
     _is_fermion = RI._is_fermion
     set_event_beampol = RI.set_event_beampol
 
@@ -185,6 +186,33 @@ class TestSetEventBeampol(unittest.TestCase):
         crossed = [p[0], tuple(-x for x in p[3]), (p[1][0] * -1,) + p[1][1:], p[2]]
         self.assertRaises(madgraph.InvalidCmd, self.stub.set_event_beampol,
                           self.module, self.event, crossed, [11, 13, 11, -13], 2)
+
+    def test_folded_crossing_is_refused(self):
+        """a folded crossing (SMATRIXHEL_IDX at an extended flavor index) with
+        a polarised beam would hit the Fortran STOP of the crossing-aware
+        SMATRIX and end the session: refused in Python instead"""
+        self.assertRaises(madgraph.InvalidCmd, self._set, [(11, -11), (-13, 13)],
+                          crossed=True)
+        self.assertEqual(self.module.calls, [])
+
+    def test_folded_crossing_with_unpolarised_legs_runs(self):
+        """only a polarised value reaches the STOP: a crossed event whose
+        incoming legs carry no polarisation (beam 1 is polarised, but its leg
+        is a photon) still runs"""
+        stub = _Stub(_card(30, 0), processes=[((22, 11), (22, 11))])
+        stub.beampol = stub.get_beampol()
+        self.assertEqual(stub.beampol, (1.3, 1.))
+        self.assertEqual(stub.beampol_legs, [False, True])
+        lines = [' 4 1 1.0 100.0 0.0078 0.118',
+                 ' 22 -1 0 0 0 0 0.0 0.0 250.0 250.0 0.0 0. 9',
+                 ' 11 -1 0 0 0 0 0.0 0.0 -50.0 50.0 0.0 0. 9',
+                 ' 22 1 1 2 0 0 30.0 40.0 150.0 160.0 0.0 0. 9',
+                 ' 11 1 1 2 0 0 -30.0 -40.0 50.0 140.0 0.0 0. 9']
+        event = lhe_parser.Event('<event>\n' + '\n'.join(lines) + '\n</event>')
+        order = [(22, 11), (22, 11)]
+        stub.set_event_beampol(self.module, event, event.get_momenta(order),
+                               [22, 11, 22, 11], 2, crossed=True)
+        self.assertEqual(self.module.calls, [(1., 1.)])
 
     def test_loop_library_is_refused(self):
         self.assertRaises(madgraph.InvalidCmd, self._set, [(11, -11), (-13, 13)],

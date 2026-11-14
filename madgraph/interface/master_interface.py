@@ -639,6 +639,9 @@ class Switcher(object):
     def help_set2_gauge(self, *args, **opts):
         return self.cmd.help_set2_gauge(self, *args, **opts)
 
+    def help_set2_auto_gauge(self, *args, **opts):
+        return self.cmd.help_set2_auto_gauge(self, *args, **opts)
+
     def help_set2_group_subprocesses(self, *args, **opts):
         return self.cmd.help_set2_group_subprocesses(self, *args, **opts)
 
@@ -674,6 +677,9 @@ class Switcher(object):
 
     def help_set2_zerowidth_tchannel(self, *args, **opts):
         return self.cmd.help_set2_zerowidth_tchannel(self, *args, **opts)
+    
+    def help_set2_zerowidth_external(self, *args, **opts):
+         return self.cmd.help_set2_zerowidth_external(self, *args, **opts)
 
        
     def help_tutorial(self, *args, **opts):

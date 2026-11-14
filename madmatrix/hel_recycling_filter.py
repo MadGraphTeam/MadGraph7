@@ -92,17 +92,20 @@ def cards_key(cards):
 
 
 def parse_probe_output(output):
-    """The good helicities (1-based rows of cHel) and the (row, amplitude)
-    pairs that vanish, as printed by sigmaKin_setGoodHel under MG_HR_PROBE --
-    the protocol madevent's helicity filter prints."""
-    good, zeros = [], []
+    """The good helicities (1-based rows of cHel), the (row, amplitude) pairs
+    that vanish, as printed by sigmaKin_setGoodHel under MG_HR_PROBE -- the
+    protocol madevent's helicity filter prints -- and the crossings that were
+    scanned on points off shell for them (HEL/OFFSHELL)."""
+    good, zeros, offshell = [], [], []
     for line in output.splitlines():
         if line.startswith('Matrix Element/Good Helicity:'):
             good.append(int(line.split()[-1]))
         elif line.startswith('HEL/ZEROAMP:'):
             _me, hel, amp = line.split()[1:4]
             zeros.append((int(hel), int(amp)))
-    return sorted(set(good)), sorted(set(zeros))
+        elif line.startswith('HEL/OFFSHELL:'):
+            offshell.append(int(line.split()[1]))
+    return sorted(set(good)), sorted(set(zeros)), sorted(set(offshell))
 
 
 def combine(measurements):
@@ -262,16 +265,35 @@ class ProbeTree(object):
         name = os.path.basename(os.path.normpath(pdir))
         shutil.copy(card, pjoin(self.path, 'Cards', 'param_card.dat'))
         target = pjoin(self.path, 'SubProcesses', name)
-        # perf mode: 64 distinct RAMBO events, which the probe's good-helicity
-        # scan samples (matrix mode repeats ONE point)
+        # what the probe records is the good-helicity scan that
+        # umami_initialize runs (goodHelScanEvents: 64 RAMBO points under
+        # MG_HR_PROBE, half of them boosted, per crossing at its own masses)
+        # over every extended flavor id; any perf run triggers it
         env = dict(os.environ, MG_DUMP_GOODHEL='1')
+        env.pop('MG_HR_EXACT_ZERO', None)
+        try:
+            with open(pjoin(pdir, RECIPE)) as fsock:
+                exact_zero = json.load(fsock).get('exact_zero')
+        except (OSError, ValueError):
+            exact_zero = False
+        if exact_zero:
+            # --axial_gauge: the reference-vector zeros are a rounding residual
+            # the collinear limit needs: drop exact zeros only
+            env['MG_HR_EXACT_ZERO'] = '1'
         run = subprocess.run([pjoin(target, 'check_sa.exe'), 'perf', '1', '64', '1'],
                              cwd=target, env=env, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
         output = run.stdout.decode(errors='replace')
         if run.returncode != 0:
             raise RuntimeError('the probe run failed at %s:\n%s' % (card, output[-1500:]))
-        good, zeros = parse_probe_output(output)
+        good, zeros, offshell = parse_probe_output(output)
+        if offshell:
+            # its vanishing amplitudes were measured off shell, and the
+            # recycled build has no fallback for one it dropped (a crossing
+            # with no phase space at all is not scanned)
+            raise RuntimeError('no points at the masses of crossing %s at %s '
+                               '(RAMBO did not converge)'
+                               % (', '.join(str(k) for k in offshell), card))
         if not good:
             raise RuntimeError('the probe found no helicity at %s' % card)
         return good, zeros

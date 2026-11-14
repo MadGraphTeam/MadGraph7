@@ -22,10 +22,17 @@ namespace madmatrix
     // The model parameters, and the parameters the matrix element is evaluated with
     CPPProcess process;
     // The good helicities of process.parameters(), chosen on the first events the
-    // instance evaluates (umami.cc, nlearn): how many of them it has looked at, and
-    // the helicities that contribute to one of them
+    // instance evaluates (umami.cc, nlearn) or set from the cards
+    // (madmatrix_choose_good_helicities, madmatrix_set_helicity_choice): how many of
+    // them it has looked at, and the helicities that contribute to one of them
     std::size_t learned = 0;
     bool good_hel[ProcessData::ncomb] = {};
+    // where RAMBO has no phase space (a decay below threshold), every helicity is
+    // kept: the first events cannot choose (see umami.cc)
+    bool keep_every_helicity = false;
+    // the C-parity verdict of the scans that chose good_hel: a pair that differed at
+    // one of them disables the C-parity dedup for the instance (see csymOk)
+    bool csym_bad = false;
     // parameter interference_helicity_summed (run card [generation]
     // interference_helicity = "summed"): an interference |M|^2 stays the helicity
     // sum even when the caller draws the helicity (see umami_matrix_element)

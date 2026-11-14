@@ -24,6 +24,17 @@ namespace madmatrix
                              fptype* allcouplings, // output: couplings[nevt*ndcoup*2]
                              const int nevt );     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
 
+  // The events sigmaKin_getGoodHel looks at, which umami_initialize makes for it
+  // (choose_good_helicities): one constant, so that the two never disagree.
+  // 16, but at least neppV (otherwise the npagV loop does not even start).
+  // The --hel_recycling warm-up probe (scalar, MG_HR_PROBE) bakes what it finds
+  // with no run-time fallback for a dropped amplitude, so it samples 64.
+#ifndef MG_HR_PROBE
+  constexpr int goodHelScanEvents = ( neppV > 16 ? neppV : 16 );
+#else
+  constexpr int goodHelScanEvents = 64;
+#endif
+
   int // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParameters& params,   // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
@@ -38,6 +49,19 @@ namespace madmatrix
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( ProcessParameters& params, // output: the good helicities of the process
                        const bool* isGoodHel );  // input: isGoodHel[ncomb] - host array
+
+  // A crossing-table row with no phase space at its own masses (a crossed
+  // decay lighter than its products, see scan_points in umami.cc): set before
+  // sigmaKin_getGoodHel, which then leaves it out of the good-helicity scan.
+  void sigmaKin_setNoPhaseSpace( const int cross );
+
+  // The C-parity verdict of the last sigmaKin_getGoodHel scan of this thread (true:
+  // a pair differed), and the verdict the next sigmaKin_setGoodHel of this thread
+  // uses instead of a scan of its own: an instance that chose its good helicities
+  // over several scans (umami.cc, learn_good_helicities) ANDs their verdicts, and
+  // one that is given a choice (madmatrix_set_helicity_choice) takes its verdict.
+  bool sigmaKin_csymScanBad();
+  void sigmaKin_setCsymVerdict( const bool bad );
 
   void
   sigmaKin( const ProcessParameters& params,   // input: parameters of the process
@@ -84,6 +108,10 @@ namespace madmatrix
                    const int ievt00 );               // input: first event number in the event page
   const short* getHelicities();
   int broken_symmetry_factor( const int iflavor );
+  // With crossing (ProcessTables::use_crossing): the identical-final-state
+  // factor of the process crossing-table row cross crosses into, for the
+  // flavor iflavor (the crossed denominator, see sigmaKin)
+  int ident_cross( int cross, int iflavor );
 }
 
 #endif // SIGMAKIN_H

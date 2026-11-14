@@ -109,6 +109,7 @@ import madgraph.models.build_restriction_lib as build_restrict_lib
 
 import aloha.aloha_fct as aloha_fct
 import aloha.create_aloha as create_aloha
+import aloha.aloha_writers as aloha_writers
 import aloha.aloha_lib as aloha_lib
 
 import mg5decay.decay_objects as decay_objects
@@ -196,6 +197,172 @@ def check_amplicol_overlap(procdef, others, what):
             raise madgraph.InvalidCmd(
                 "Duplicate process %s found: it overlaps %s. Please check "
                 "your processes." % (procdef.nice_string(prefix=False), what(other)))
+
+
+def set_process_gauge(procdef, gauge):
+    """The gauge of a process definition and of its decay chains."""
+
+    if not gauge:
+        return
+    procdef.set('gauge', gauge)
+    for chain in procdef.get('decay_chains'):
+        set_process_gauge(chain, gauge)
+
+
+def iter_tree_amplitudes(amplitudes):
+    """The Amplitude objects behind a list of amplitudes: a decay chain is
+    unfolded into its core amplitudes and those of every decay, recursively."""
+
+    for amp in amplitudes:
+        if isinstance(amp, diagram_generation.DecayChainAmplitude):
+            for one in iter_tree_amplitudes(amp.get('amplitudes')):
+                yield one
+            for one in iter_tree_amplitudes(amp.get('decay_chains')):
+                yield one
+        else:
+            yield amp
+
+
+def fd_gauge_criterion(amplitudes):
+    """Whether tree-level amplitudes are better computed in the FD gauge.
+
+    True when a massive vector propagator ends on a vertex that is not a
+    conserved current (rule of the PR #422 review): the q^mu q^nu/M^2 term of
+    the unitary-gauge propagator then grows with the energy and digits are
+    lost in the sum over diagrams, while the FD gauge (arXiv:2203.10440,
+    2405.01256) cancels it diagram by diagram.  A conserved end is a vertex
+    with two massless fermions or SM charged leptons (a quark line that also
+    radiates gluons stays conserved once the gluon insertions are summed); a
+    massive quark (t-b, t-t, a massive b) or a bosonic vertex (HVV, VVV, VVVV)
+    is not.
+    External massive vectors are not looked at; a massive vector of a decay
+    chain is a propagator, ending on its production and its decay vertex.
+    False for loop amplitudes, perturbed processes and particles of spin
+    above one, for which the FD gauge is not validated (_fd_gauge_excluded).
+    """
+
+    if _fd_gauge_excluded(amplitudes):
+        return False
+    return any(_fd_gauge_criterion_node(amp, decay=False) for amp in amplitudes)
+
+
+def amplitudes_prefer_fd_gauge(amplitudes):
+    """Whether the amplitudes of one process line want the FD gauge:
+    fd_gauge_criterion, and no polarised leg (the split of a cross section
+    into polarisations is defined in the unitary gauge)."""
+
+    if not amplitudes:
+        return False    # [amplicol]: no diagram
+    for amp in iter_tree_amplitudes(amplitudes):
+        for leg in amp.get('process').get('legs'):
+            if leg.get('polarization'):
+                return False
+    return fd_gauge_criterion(amplitudes)
+
+
+def _fd_gauge_excluded(amplitudes):
+    """Loop, perturbed or spin above one: the FD gauge is not validated."""
+
+    for amp in iter_tree_amplitudes(amplitudes):
+        if isinstance(amp, loop_diagram_generation.LoopAmplitude):
+            return True
+        process = amp.get('process')
+        if process.get('perturbation_couplings'):
+            return True
+        model = process.get('model')
+        pdgs = set(leg.get('id') for leg in process.get('legs'))
+        for diagram in amp.get('diagrams'):
+            for vertex in diagram.get('vertices'):
+                pdgs.update(leg.get('id') for leg in vertex.get('legs'))
+        for pdg in pdgs:
+            particle = model.get_particle(pdg)
+            if particle and particle.get('spin') > 3:
+                return True
+    return False
+
+
+def _fd_gauge_criterion_node(amp, decay):
+    """fd_gauge_criterion for an amplitude or a decay-chain node; `decay`
+    when its amplitudes are the 1 -> n decays of a particle of the chain."""
+
+    if not isinstance(amp, diagram_generation.DecayChainAmplitude):
+        return _fd_gauge_criterion_one(amp, set(), decay)
+    decayed = set()
+    for chain in amp.get('decay_chains'):
+        decayed.update(one.get('process').get('legs')[0].get('id')
+                       for one in chain.get('amplitudes'))
+    if any(_fd_gauge_criterion_one(core, decayed, decay)
+           for core in amp.get('amplitudes')):
+        return True
+    return any(_fd_gauge_criterion_node(chain, decay=True)
+               for chain in amp.get('decay_chains'))
+
+
+def _fd_gauge_criterion_one(amp, decayed, decay):
+    """fd_gauge_criterion for one Amplitude: its final-state legs with a pdg
+    code in `decayed` decay further, its initial leg is a decaying particle
+    of a chain when `decay`."""
+
+    model = amp.get('process').get('model')
+
+    def massive_vector(pdg):
+        particle = model.get_particle(pdg)
+        return bool(particle) and particle.get('spin') == 3 and \
+               particle.get('mass').lower() != 'zero'
+
+    def conserved(vertex, position):
+        """whether the leg at `position` couples to a conserved current"""
+        if model.get_interaction(vertex.get('id')) is None:
+            return True     # identity vertex: no vertex at this end
+        others = [leg for k, leg in enumerate(vertex.get('legs'))
+                  if k != position]
+        if len(others) != 2:
+            return False
+        for leg in others:
+            particle = model.get_particle(leg.get('id'))
+            if not particle or particle.get('spin') != 2:
+                return False
+            # the masses of the SM charged leptons are negligible against
+            # the W/Z mass: their currents count as conserved
+            if particle.get('mass').lower() != 'zero' and \
+                                abs(particle.get('pdg_code')) not in (11, 13, 15):
+                return False
+        return True
+
+    def attached_end(vertices, number, start):
+        """the first vertex from `start` on taking the line `number` as an
+        input (a non-final vertex outputs its last leg), with its position"""
+        last = len(vertices) - 1
+        for k in range(start, last + 1):
+            legs = vertices[k].get('legs')
+            inputs = legs if k == last else legs[:-1]
+            for position, leg in enumerate(inputs):
+                if leg.get('number') == number:
+                    return vertices[k], position
+        return None, None
+
+    # the external legs that are propagators in a decay chain
+    external = [leg.get('number') for leg in amp.get('process').get('legs')
+                if massive_vector(leg.get('id')) and
+                ((leg.get('state') and leg.get('id') in decayed) or
+                 (not leg.get('state') and decay))]
+
+    for diagram in amp.get('diagrams'):
+        vertices = diagram.get('vertices')
+        for number in external:
+            vertex, position = attached_end(vertices, number, 0)
+            if vertex is not None and not conserved(vertex, position):
+                return True
+        for k, vertex in enumerate(vertices[:-1]):
+            line = vertex.get('legs')[-1]
+            if not massive_vector(line.get('id')):
+                continue
+            if not conserved(vertex, len(vertex.get('legs')) - 1):
+                return True
+            end, position = attached_end(vertices, line.get('number'), k + 1)
+            if end is not None and not conserved(end, position):
+                return True
+    return False
 
 
 def split_backend_line(line):
@@ -842,8 +1009,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent|standalone|mg7] forbids helicity recycling optimization (the plain matrix element)")
-        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
-        logger.info("      --hel_recycling_chunk=<n>: [standalone|mg7] statements per function when the recycled block is cut up (default 200, 0 keeps it in one piece).")
+        logger.info("      --hel_recycling=True: [standalone_fortran|standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default for standalone|mg7, off by default for standalone_fortran). C++: CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
+        logger.info("      --hel_recycling_chunk=<n>: [standalone_fortran|standalone|mg7] statements per function when the recycled block is cut up (default 1500 Fortran, 200 C++; 0 keeps it in one piece).")
         logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
         logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
         logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
@@ -851,7 +1018,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --fermion_reference=False: with --axial_gauge=True, keep the massive fermions in the helicity basis (default:True; always False for a polarised process and with --density).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
-        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran(default:False)|standalone_rw/msP/msF(default:True)] set the t-channel widths to zero as madevent (see option zerowidth_tchannel)")
+        logger.info("      --f2py_per_process=False: [standalone_fortran with --prefix] build the combined all_matrix2py module with only its dispatching entry points (smatrixhel, smatrixhel_idx, py_get_density, ...), without the per-process py_<prefix>* ones: much faster to build for many subprocesses (used by MadSpin).")
+        logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
+        logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none. Only the extended-index entry (smatrixhel_idx) reaches these extra crossings: the Fortran PDG-keyed smatrixhel/density still answer only the generated and folded subprocesses (NaN otherwise).")
+        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran|standalone_rw/msP/msF] drop the width of the spacelike (t-channel) propagators as madevent, for this output (default: the option zerowidth_tchannel)")
         logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
         logger.info("      --density=<i>[,<j>...]: [standalone_fortran, also for loop processes] keep the helicities of the external legs i, j, ... open and write their spin-density matrix (the other legs are summed over helicity). In the madevent, mg7 and NLO outputs it only selects the default me_frame of the run_card, as a polarized particle does.")
         logger.info("   Examples:",'$MG:color:GREEN')
@@ -881,6 +1051,12 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   --axial_gauge=True (column Reference): the massless vectors")
         logger.info("   in the axial gauge of a reference momentum, the massive")
         logger.info("   fermions quantised along it.")
+        logger.info("   A decay chain is accepted here only, e.g.")
+        logger.info("   'check gauge t > w+{0} b, w+ > ta+ vt': it is compared in")
+        logger.info("   the unitary, axial and FD gauges (not Feynman, where the")
+        logger.info("   chain has no Goldstone boson) with every decayed particle")
+        logger.info("   on shell and a width of 1e-9 M. {A}, {S} and {0S} are")
+        logger.info("   gauge dependent and are expected to differ in FD.")
         logger.info("   This check is, for now, not available for loop processes.")
         logger.info("o brs:",'$MG:color:GREEN')
         logger.info("   Check that the Ward identities are satisfied if the ")
@@ -901,6 +1077,20 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Fortran standalone (SA), and C++ standalone (SA) back-ends")
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
+        logger.info("o crossing:",'$MG:color:GREEN')
+        logger.info("   Output the process to a standalone backend twice, with")
+        logger.info("   the crossing symmetry on (--use_crossing=True) and off,")
+        logger.info("   then compare each subprocess evaluated through the")
+        logger.info("   extended flavor-index crossing against its independent")
+        logger.info("   value. --exporter picks the backend (default")
+        logger.info("   standalone_fortran): standalone_fortran (fortran/f2py) or")
+        logger.info("   standalone (madmatrix). Requires gfortran+f2py")
+        logger.info("   (standalone_fortran) or a C++ compiler (standalone).")
+        logger.info("   For standalone, --simd picks the vectorisation width:")
+        logger.info("   auto (default), scalar, simd_128, simd_256, avx512y, simd_512;")
+        logger.info("   and --precision picks the float type: m mixed (default), d double, f float.")
+        logger.info("   Example: check crossing g u > g u",'$MG:color:GREEN')
+        logger.info("   Example: check crossing g u > g u --exporter=standalone --simd=simd_256 --precision=d",'$MG:color:GREEN')
         logger.info("o precision:",'$MG:color:GREEN')
         logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=] [--backend=]")
         logger.info("   Evaluate the madmatrix standalone output built in each of the given")
@@ -1009,6 +1199,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > allowed coupling operator are: \"==\", \"=\", \"<=\" and \">\".")
         logger.info("    \"==\" request exactly that number of coupling while \"=\" is interpreted as \"<=\".")
         logger.info(" > To generate a second process use the \"add process\" command")
+        logger.info(" > Crossing symmetry is used by default: a subprocess that is a crossing of")
+        logger.info("   another one (u g > u g of u u~ > g g) is evaluated with the matrix element")
+        logger.info("   of its base. Append --use_crossing=False to generate every subprocess on")
+        logger.info("   its own (on any line of the definition, it applies to the whole definition).")
         logger.info("Decay chain syntax:",'$MG:BOLD')
         logger.info(" o core process, decay1, (decay2, (decay2', ...)), ...  etc")
         logger.info(" o Example: generate p p > t~ t QED=0, (t~ > W- b~, W- > l- vl~), t > j j b @2",'$MG:color:GREEN')
@@ -1226,6 +1420,12 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
         logger.info(" > '{G}','{H}','{Q}','{W}','{S}' select a piece of the *propagator* of a massive vector")
         logger.info("   and are only valid on a particle that is decayed further (an internal line).")
+        logger.info(" > A polarised propagator (any '{X}' on a massive vector that is decayed further) is a piece")
+        logger.info("   of the propagator numerator: available in the unitary and axial gauges, and in the FD gauge")
+        logger.info("   for {0},{T},{+},{-},{A},{S},{0S} ({T},{+},{-} only for a massless vector); not in the")
+        logger.info("   Feynman gauge, nor in the complex-mass scheme. {T},{+},{-} are the same in every gauge and")
+        logger.info("   {0} on shell; {A},{S},{0S} are gauge-dependent remainders that differ between gauges.")
+        logger.info("   An external polarised particle is supported in every gauge.")
         logger.info(" > At LO, polarized processes work with any 'group_subprocesses' setting. 'me_frame' (run_card)")
         logger.info("   defaults to the rest frame of the massive final-state particles (or their")
         logger.info("   decay products) in p p collisions, [1,2] (the partonic c.m.) in e+ e-.")
@@ -1363,10 +1563,25 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > This option can considerably slow down the loop ME")
         logger.info("   computation time, especially when summing over all color")
         logger.info("   and helicity configuration, hence turned off by default.")        
-        logger.info("gauge unitary|Feynman|axial|FD",'$MG:color:GREEN')
+        logger.info("gauge unitary|Feynman|axial|FD|default",'$MG:color:GREEN')
         logger.info(" > (default unitary) choose the gauge of the non QCD part.")
         logger.info(" > FD is for Feynman Diagram gauge:     2203.10440 ")
         logger.info(" > For loop processes, only Feynman gauge is employable.")
+        logger.info(" > Unless set here, a tree-level process with a W/Z propagator ending")
+        logger.info("   on a current that is not conserved is generated in the FD gauge")
+        logger.info("   (see auto_gauge); '--gauge=X' on a process line sets its own gauge.")
+        logger.info(" > Gauges agree only up to O(width/mass) when an unstable particle")
+        logger.info("   (W, Z, h, t) is EXTERNAL and has a non-zero width, also in the")
+        logger.info("   complex-mass scheme: its momentum is on the real mass shell, not on")
+        logger.info("   the complex one the Ward identities need. The unitary gauge enhances")
+        logger.info("   that piece with the energy, FD does not (w+ w- > w+ w- at 1 TeV:")
+        logger.info("   7% apart). Set the width of the external particles to zero for a")
+        logger.info("   gauge-independent result.")
+        logger.info("auto_gauge True|False",'$MG:color:GREEN')
+        logger.info(" > (default True) pick the FD gauge automatically, per process, when a")
+        logger.info("   W/Z propagator ends on a vertex that is not a conserved current")
+        logger.info("   (HVV, VVV, a massive quark): the unitary gauge loses digits at")
+        logger.info("   high energy for them. 'set gauge X' or '--gauge=X' overrides it.")
         logger.info("complex_mass_scheme True|False",'$MG:color:GREEN')
         logger.info(" > (default False) Set complex mass scheme.")
         logger.info(" > Complex mass scheme is not yet supported for loop processes.")
@@ -1409,7 +1624,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
         logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
         logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
-        logger.info("auto_convert_model <value>",'$MG:color:GREEN')   
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [tree-level output] drop the width of an internal")
+        logger.info(" > propagator whose particle is also an external (initial/final) state")
+        logger.info("auto_convert_model <value>",'$MG:color:GREEN')
         logger.info(" > (default: False) If set on True any python2 UFO model will be automatically converted to pyton3 format")   
         logger.info("nlo_mixed_expansion <value>",'$MG:color:GREEN') 
         logger.info("deactivates mixed expansion support at NLO, goes back to MG5aMCv2 behavior")
@@ -1622,7 +1840,23 @@ class CheckValidForCmd(cmd.CheckCmd):
         if args[0] in ['stability', 'profile'] and os.path.isfile(args[3]):
             param_card = args.pop(3)
         if any([',' in elem for elem in args if not elem.startswith('--')]):
-            raise self.InvalidCmd('Decay chains not allowed in check')
+            if args[0] != 'gauge':
+                raise self.InvalidCmd("Decay chains are only allowed in 'check gauge'")
+            if any('[' in elem or ']' in elem for elem in args):
+                raise self.InvalidCmd("The '[' and ']' syntax cannot be used "
+                                      "with decay chains.")
+            if self.options['complex_mass_scheme']:
+                # the complex masses keep the physical widths: the chain is
+                # then off shell by iM*Gamma, and gauge dependent at that order
+                raise self.InvalidCmd("'check gauge' with a decay chain is "
+                    "not available in the complex-mass scheme: use 'set "
+                    "complex_mass_scheme False'.")
+            if any(elem.startswith('--events') for elem in args):
+                # the events hold the decay products, not the decayed
+                # particles the phase-space point of a chain is built from
+                raise self.InvalidCmd("'check gauge' with a decay chain does "
+                    "not take --events: its point puts the decayed particles "
+                    "on shell.")
         
         user_options = {'--energy':'1000','--split_orders':'-1',
                    '--reduction':'1|3|5|6','--CTModeRun':'-1',
@@ -1631,7 +1865,17 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--collier_internal_stability_test':'False',
                    '--collier_mode':'1',
                    '--events': None,
-                   '--skip_evt':0}
+                   '--skip_evt':0,
+                   # 'check crossing' backend: standalone_fortran (the default,
+                   # fortran/f2py) or standalone (madmatrix).
+                   '--exporter':'standalone_fortran',
+                   # 'check crossing --exporter=standalone' vectorisation (SIMD)
+                   # width: auto (default), scalar, simd_128, simd_256,
+                   # avx512y, simd_512 -- the madmatrix cpu_mode tokens.
+                   '--simd':'auto',
+                   # 'check crossing --exporter=standalone' float precision:
+                   # m mixed (default), d double, f float.
+                   '--precision':'m'}
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
@@ -2368,7 +2612,7 @@ This will take effect only in a NEW terminal
             if not args[1].isdigit():
                 raise self.InvalidCmd('%s values should be an integer' % args[0])
             
-        if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion']:
+        if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion', 'auto_gauge']:
             try:
                 args[1] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
             except Exception:
@@ -3007,7 +3251,8 @@ class CompleteForCmd(cmd.CompleteCmd):
                        misc.plugin_diagram_filter(self.plugin_path, None)
                        for opt in ['--diagram_filter', '--tree_diagram_filter',
                                    '--loop_diagram_filter']]
-            return self.list_completion(text, ['--no_crossing', 
+            return self.list_completion(text, ['--use_crossing=True',
+                                               '--use_crossing=False',
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
                                                '--tree_diagram_filter',
@@ -3147,6 +3392,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                                                   categories=False)}, formatting)
 
         cms_check_mode = len(args) >= 2 and args[1]=='cms'
+        crossing_check_mode = len(args) >= 2 and args[1]=='crossing'
 
         cms_options = ['--name=','--tweak=','--seed=','--offshellness=',
           '--lambdaCMS=','--show_plot=','--report=','--lambda_plot_range=','--recompute_width=',
@@ -3158,6 +3404,25 @@ class CompleteForCmd(cmd.CompleteCmd):
             options.extend(['--nb_event=', '--backend='])
         if cms_options:
             options.extend(cms_options)
+        if crossing_check_mode:
+            # 'check crossing' only understands --energy, --exporter and (for
+            # the madmatrix 'standalone') --simd / --precision; the cms options above do not
+            # apply.
+            crossing_options = ['--energy=', '--exporter=', '--simd=',
+                                '--precision=']
+            # Value completion for the crossing-specific options.
+            if args[-1] == '--exporter=':
+                return self.list_completion(
+                    text, list(process_checks.CROSSING_EXPORTERS))
+            elif args[-1] == '--simd=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_SIMD_CHOICES))
+            elif args[-1] == '--precision=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_PRECISION_CHOICES))
+            # Propose the options themselves once the user starts an option.
+            if text.startswith('-'):
+                return self.list_completion(text, crossing_options)
 
         # Directory continuation
         if args[-1].endswith(os.path.sep):
@@ -3460,7 +3725,8 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False', '--hel_recycling=True', '--hel_recycling_chunk=', '--hel_recycling_max=', '--hel_recycling_jamp=', '--hel_recycling_tables=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=', '--axial_gauge=True', '--fermion_reference=False']):
+                                                 '--mask=False', '--prefix=', '--use_crossing=True', '--use_crossing=False',
+                                                 '--crossing_table=all', '--axial_gauge=True', '--fermion_reference=False']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -3486,7 +3752,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 except Exception as error:
                     print(error)
             if 'standalone_fortran' in args:
-                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--zerowidth_decay=']
+                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--f2py_per_process=False', '--zerowidth_decay=']
 
             # Directory continuation
             if args[-1].endswith(os.path.sep):
@@ -3897,7 +4163,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'checks', 'parameters', 'options', 'coupling_order','variable',
                      'modellist', 'fockstates', 'boundstates']
     _add_opts = ['process', 'model']
-    _save_opts = ['model', 'processes', 'options']
+    # (no 'processes': the amplitudes kept after an output are the base
+    # amplitudes of its matrix elements, which lost the diagrams its --mask
+    # trimmed, so a saved list could not be output with the other --mask)
+    _save_opts = ['model', 'options']
     # commands the running tutorial provides, also accepted as `tutorial X`:
     # people reach for `tutorial hint` as readily as `hint`
     _tutorial_step_cmds = ('hint', 'solution', 'next', 'repeat', 'back', 'skip')
@@ -3912,7 +4181,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
-                   'precision']
+                   'crossing', 'precision']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
@@ -3934,6 +4203,24 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _export_formats = _v4_export_formats + ['aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
                                             'standalone']
+    # Formats that CONSUME the recorded crossings (merge_crossing='record')
+    # instead of needing them expanded back into separate subprocesses: they fold
+    # each crossed subprocess into its base directory and reach it through the
+    # base's crossing-aware SMATRIX/sigmaKin at an extended flavor index.
+    # 'standalone_fortran' is the fortran standalone and 'standalone' the
+    # madmatrix one (the names flipped in PR #64 -- test membership EXACTLY,
+    # 'standalone' is a prefix of every other standalone_* format).
+    # 'standalone_rw' is the reweight's own output: its python driver resolves a
+    # crossed event through the generated GET_PDG_FOR_FLAVOR entry points (see
+    # reweight_interface.ReweightInterface.build_cross_resolve).
+    # 'mg7' (madspace) writes one subprocesses.json entry per crossed
+    # subprocess, pointing at its base's library with the extended flavor id
+    # (export_mg7.OneProcessExporterMG7.get_crossed_subprocess_info); the
+    # crossings it cannot represent, and those recorded inside a decay chain,
+    # are expanded (the exporter's crossing_foldable /
+    # folds_decay_chain_crossings).
+    _crossing_folding_formats = ('standalone_fortran', 'standalone',
+                                 'standalone_rw', 'mg7')
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -3943,10 +4230,12 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'complex_mass_scheme',
                     'include_lepton_initiated_processes',
                     'gauge',
+                    'auto_gauge',
                     'EWscheme',
                     'max_npoint_for_channel',
                     'max_t_for_channel',
                     'zerowidth_tchannel',
+                    'zerowidth_external',
                     'default_unset_couplings',
                     'nlo_mixed_expansion',
                     'color_basis',
@@ -4027,6 +4316,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'complex_mass_scheme': False,
                           'include_lepton_initiated_processes': False,
                           'gauge':'unitary',
+                          'auto_gauge': True,
                           'stdout_level':None,
                           'loop_optimized_output':True,
                           'loop_color_flows':False,
@@ -4034,6 +4324,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'default_unset_couplings': 99, # 99 means infinity
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
+                          'zerowidth_external': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True,
                           'color_basis': 'auto',
@@ -4060,6 +4351,24 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_helas_model = None
     _curr_exporter = None
     _second_exporter = None
+    # UI flag --use_crossing; see do_add. DEFAULT ON: the crossed subprocesses
+    # are recorded on their base at generation and reached through its
+    # crossing-aware matrix element (the fortran/C++ standalone and mg7 fold
+    # them, madevent expands them and shares the base matrix element through
+    # its router; any other output expands them), and --use_crossing=False
+    # gives the complete un-crossed output.
+    _use_crossing = True
+    # Sticky: an explicit --use_crossing=False on ANY line of the current
+    # process definition keeps it off, even if a later line asks for it.
+    _use_crossing_off = False
+    # Same flag on the output line, for the output being written (see do_output).
+    # do_output sets it on every call, so it can never leak to the next output.
+    _output_use_crossing = True
+    # _crossing_fold_signature() of the output _curr_matrix_elements were built
+    # for (None: not built by _export). Recorded crossings come out folded or
+    # expanded depending on it, so an output asking for the other answer must
+    # not reuse them; see generate_matrix_elements in _export.
+    _curr_me_folds_crossings = None
     _done_export = False
     _curr_decaymodel = None
 
@@ -4117,6 +4426,27 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._fockstates = []
         self.options = {}
         self._generate_info = "" # store the first generated process
+        # automatic choice of the gauge (apply_automatic_gauge):
+        # the user typed 'set gauge X' -> the gauge is theirs
+        self._explicit_gauge = False
+        # the FD gauge in use was picked by apply_automatic_gauge
+        self._auto_gauge_active = False
+        # the 'generate'/'add process' lines of the session with the process
+        # number each was given, to generate them again in another gauge
+        self._process_lines = []
+        # the amplitudes of each process line, (start, end) in _curr_amps, and
+        # the lines generated in the FD gauge by the automatic choice
+        self._line_ranges = []
+        self._auto_fd_lines = set()
+        self._auto_gauge_replay = False
+        # models the FD gauge was given up on (import_ufo could not check
+        # their goldstone content): not tried again
+        self._fd_unverified_models = set()
+        # per-process gauge: the model of each other gauge, and the gauge of
+        # the line being generated ('--gauge=X' of generate/add process)
+        self._gauge_models = {}
+        self._line_gauge = ''
+        self._auto_gauge_freeze_logged = False
         self._model_v4_path = None
         self._export_dir = None
         self._export_format = 'madevent'
@@ -4165,6 +4495,41 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         misc.EasterEgg('quit')
         
         
+        return value
+
+    def pop_use_crossing_flag(self, args):
+        """Remove --use_crossing[=True|False] from `args` and return its value.
+
+        Returns None when the flag is absent, so the caller keeps its own
+        default. Shared by do_add (where the flag decides whether the crossed
+        subprocesses are folded onto their base at generation) and by do_output
+        (where it decides whether this output keeps them folded).
+
+        '--no_crossing' (the MG5 3.x flag) is accepted as a deprecated alias of
+        '--use_crossing=False': left in `args` it would reach check_add as a
+        particle name. It means the complete output, never the 3.x behaviour
+        of dropping the crossed subprocesses (see do_add).
+        """
+        value = None
+        for arg in args[:]:
+            if arg == '--no_crossing':
+                logger.warning('--no_crossing is deprecated: use '
+                               '--use_crossing=False instead (treated as such)')
+                value = False
+            elif arg == '--use_crossing':
+                value = True
+            elif arg.startswith('--use_crossing='):
+                given = arg.split('=', 1)[1]
+                if given.lower() in ['true', 't', '1', 'yes', 'on']:
+                    value = True
+                elif given.lower() in ['false', 'f', '0', 'no', 'off']:
+                    value = False
+                else:
+                    raise self.InvalidCmd('--use_crossing expects True or '
+                                          'False, got \'%s\'' % given)
+            else:
+                continue
+            args.remove(arg)
         return value
 
     def extract_diagram_filter(self, args, option='--diagram_filter'):
@@ -4238,7 +4603,13 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # a value matching neither makes the next output redo all of them
         self._quartic_order = 'mixed'
 
+        # as received, to run it again in another gauge (apply_automatic_gauge)
+        raw_line = line
         args = self.split_arg(line)
+
+        line_gauge, args = self.split_gauge_option(args)
+        if line_gauge is not None:
+            return self.add_process_in_gauge(raw_line, args, line_gauge, counter)
 
         
         warning_duplicate = True
@@ -4251,20 +4622,76 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         standalone_only = False
         if '--standalone' in args:
             standalone_only = True
-            merge_crossing = True
-            args.remove('--standalone')            
+            args.remove('--standalone')
 
-        merge_crossing = False
-        if '--no_crossing' in args:
-            merge_crossing = True
-            args.remove('--no_crossing') 
+        # Crossing symmetry is ON by default. --use_crossing (bare) or
+        # --use_crossing=True asks for it, --use_crossing=False turns it off for
+        # the whole definition. --standalone does not affect it.
+        use_crossing = self.pop_use_crossing_flag(args)
+        # The flag has to be popped HERE, before check_add sees `args`, but it
+        # is resolved into self._use_crossing further down -- after check_add.
+        # See the comment there.
 
         # Check the validity of the arguments
         self.check_add(args)
 
         if args[0] == 'model':
             return self.add_model(args[1:])
-        
+
+        # Resolve what THIS line means for the definition as a whole. (With the
+        # default off, an `and` accumulator could never be lifted -- False and
+        # True is False -- so an explicit --use_crossing=True was silently
+        # ignored.) Instead: an explicit True switches it on, an explicit False
+        # switches it off for good (a multi-line definition must not end up
+        # half crossed), and a line with no flag inherits what the definition
+        # already chose -- which starts on.
+        #
+        # AFTER check_add, and that is load-bearing: with no model imported yet
+        # check_generate imports the Standard Model for the user, and do_import
+        # calls clean_process(), which resets exactly these attributes. Setting
+        # them earlier left the LOCAL merge_crossing below enabled while
+        # self._use_crossing went back to False -- so the crossings were folded
+        # onto their base at generation and the exporter, which reads the
+        # attribute, then wrote no decoder for them. `p p > j j
+        # --use_crossing=True` came out as 3 subprocess directories covering 15
+        # of its 65 flavor columns, with the other 50 unreachable and an
+        # extended FLAV_IDX returning 0 in silence -- but only in a script that
+        # had not imported a model of its own first, which is why it survived.
+        if use_crossing is False:
+            self._use_crossing_off = True
+        elif use_crossing is True:
+            self._use_crossing = True
+        if getattr(self, '_use_crossing_off', False):
+            self._use_crossing = False
+        use_crossing = self._use_crossing
+        # Crossed subprocesses are ALWAYS kept (merge_crossing=False, the
+        # historical 3.x default): use_crossing only decides later, at the
+        # exporter stage, whether they collapse into a single extended-FLAV_IDX
+        # matrix element (fortran standalone) or are written out as their own
+        # matrix elements (every other output, incl. madevent). The old
+        # merge_crossing=True / --no_crossing path DROPS the crossed processes
+        # from the amplitude list ("do not generate diagrams"), silently losing
+        # those partonic contributions, so it must not be reachable from
+        # --use_crossing: use_crossing=False has to remain a complete output.
+        #
+        # merge_crossing='record' keeps the partonic contribution: the crossed
+        # process is recorded on the base (not generated on its own) and reached
+        # through the base's crossing-aware SMATRIX. This is the DEFAULT for a
+        # crossing-enabled generation -> the standalone output is one directory
+        # per base ME, and the grouped backends (madevent/mg7) reconstruct the
+        # crossed subprocesses at output time (see do_output). A process that
+        # breaks crossing (s-channel constraint, decay chain, loop, ...) falls
+        # back to full generation per-process inside generate_matrix_elements.
+        # --use_crossing=False keeps the complete unmerged generation, and
+        # MG_MERGE_CROSSING=off is a debug escape hatch to the same.
+        merge_crossing = 'record' if use_crossing else False
+        if os.environ.get('MG_MERGE_CROSSING') == 'off':
+            merge_crossing = False
+
+        # self._use_crossing is the definition-wide choice resolved just above
+        # (and reset per definition by clean_process/do_generate); the exporter
+        # reads that attribute, `merge_crossing` here only drives generation.
+
         # special option for 1->N to avoid generation of kinematically forbidden
         #decay.
         if args[-1].startswith('--optimize'):
@@ -4276,6 +4703,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         if args[0] == 'process':
             # Rejoin line
             line = ' '.join(args[1:])
+            first_amp = len(self._curr_amps)
 
             # the '{...}' syntax selects particle polarizations -> remember it so
             # the polarization paper is cited at output time
@@ -4289,6 +4717,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             # Reset Helas matrix elements
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
+            # the process number: the rank of the line in the history (counter
+            # corrects it when the line is run again in another gauge)
+            nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
+            nb_proc += counter
+
             # Extract process from process definition
             if ',' in line:
                 if ']' in line or '[' in line:
@@ -4299,8 +4732,8 @@ This implies that with decay chains:
   > Loop corrections cannot be considered."""
                     raise MadGraph5Error(error_msg)
                 else:
-                    nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
                     myprocdef, line = self.extract_decay_chain_process(line, proc_number=nb_proc)
+                    set_process_gauge(myprocdef, self.process_gauge_tag())
                     # Redundant with above, but not completely as in the future
                     # one might think of allowing the core process to be 
                     # corrected by loops.
@@ -4317,12 +4750,17 @@ This implies that with decay chains:
                         raise MadGraph5Error("Decay processes cannot include negative"+\
                                                 " coupling orders constraints.")                    
             else:
-                nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
-                nb_proc += counter
                 line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
+                set_process_gauge(myprocdef, self.process_gauge_tag())
                 if backend:
-                    return self.add_backend_process(myprocdef, backend, warning_duplicate)
+                    self.add_backend_process(myprocdef, backend, warning_duplicate)
+                    self._line_ranges.append((first_amp, first_amp, False))
+                    # kept for the replay of an automatic change of gauge
+                    if not self._auto_gauge_replay:
+                        self._process_lines.append((raw_line, nb_proc))
+                        self.apply_automatic_gauge()
+                    return
                 # 'left [treextree] right': hidden order selecting the
                 # interference, minimal orders of the right-hand process
                 diagram_generation.prepare_interference_process(myprocdef)
@@ -4342,10 +4780,24 @@ This implies that with decay chains:
                     and not standalone_only:
                 raise self.InvalidCmd("Can not mix processes with different number of initial states.")
 
+            # A polarised line next to an FD gauge chosen automatically: the
+            # automatic choice keeps it in the unitary gauge (amplitudes_
+            # prefer_fd_gauge), so the session leaves the FD gauge now, before
+            # the diagrams of the line are generated, and the line is run
+            # again there (its braces then validated in that gauge)
+            if self.polarised_line_leaves_automatic_fd(myprocdef):
+                self.leave_automatic_fd_gauge(raw_line.split(None, 1)[-1])
+                return MadGraphCmd.do_add(self, raw_line, counter=counter)
+
             # Check the propagator-only polarization braces: {G},{H},{Q},{W}
             # and {S} name a piece of a propagator numerator and are valid on
             # an internal line only.
             self.validate_propagator_polarization(myprocdef)
+            # and a polarised propagator of a massive vector exists only in
+            # some gauges (all braces in the unitary and axial gauges, some in
+            # FD, none in Feynman): checked in the gauge of this line
+            self.validate_polarized_propagator_gauge(
+                            myprocdef, aloha_gauge=self.line_aloha_gauge())
 
             #Check that we do not have situation like z{T} z
             if not myprocdef.check_polarization():
@@ -4430,12 +4882,536 @@ This implies that with decay chains:
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in myproc.get('amplitudes')])
             
-            logger.info("%i processes with %i diagrams generated in %0.3f s" % \
-                  (nprocs, ndiags, (cpu_time2 - cpu_time1)))
+            logger.info("%i processes with %i diagrams generated in %0.3f s%s" % \
+                  (nprocs, ndiags, (cpu_time2 - cpu_time1),
+                   self._crossing_summary(myproc.get('amplitudes'))))
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in self._curr_amps])
-            logger.info("Total: %i processes with %i diagrams" % \
-                  (len(self._curr_amps), ndiags))        
+            logger.info("Total: %i processes with %i diagrams%s" % \
+                  (len(self._curr_amps), ndiags,
+                   self._crossing_summary(self._curr_amps)))
+
+            self._line_ranges.append((first_amp, len(self._curr_amps),
+                    amplitudes_prefer_fd_gauge(self._curr_amps[first_amp:])))
+            if not self._auto_gauge_replay:
+                self._process_lines.append((raw_line, nb_proc))
+                self.apply_automatic_gauge()
+
+    # ------------------------------------------------------------------
+    # a gauge per process: 'generate|add process ... --gauge=FD'
+    # ------------------------------------------------------------------
+    @staticmethod
+    def split_gauge_option(args):
+        """(gauge, args without it) for a '--gauge=X' among args, (None,
+        args) without one."""
+
+        options = [a for a in args if a.startswith('--gauge=')]
+        if not options:
+            return None, args
+        if len(options) > 1:
+            raise madgraph.InvalidCmd('Only one --gauge= option per process line.')
+        gauge = options[0].split('=', 1)[1]
+        if gauge not in ['unitary', 'FD']:
+            raise madgraph.InvalidCmd('--gauge= takes unitary or FD, not %s' % gauge)
+        return gauge, [a for a in args if a != options[0]]
+
+    def add_process_in_gauge(self, raw_line, args, gauge, counter):
+        """'generate|add process ... --gauge=X': the process generated with
+        the model of that gauge (model_for_gauge), its process definitions
+        tagged with it.  The line keeps the option in the history."""
+
+        if len(args) < 2 or args[0] != 'process':
+            raise self.InvalidCmd('--gauge= is an option of generate and add process.')
+        if any('[' in a for a in args):
+            raise self.InvalidCmd('--gauge= is for tree-level processes without '
+                                  '[...] (loop, NLO, [amplicol], interference).')
+        nb_proc = len([l for l in self.history
+                       if l.startswith(('generate', 'add process'))]) + counter
+        line = ' '.join(args)
+        if gauge == self.options['gauge']:
+            # the line itself is recorded (with its option) below, once
+            with misc.TMP_variable(self, '_auto_gauge_replay', True), \
+                 misc.TMP_variable(self, '_line_gauge', gauge):
+                MadGraphCmd.do_add(self, line, counter=counter)
+        else:
+            if self.postponed_export_pending():
+                raise self.InvalidCmd('An output is waiting for its model '
+                                      '(--postpone_model): --gauge= is not '
+                                      'available until it is written.')
+            model = self.model_for_gauge(gauge)
+            nb_amps = len(self._curr_amps)
+            with misc.TMP_variable(self, '_curr_model', model), \
+                 misc.TMP_variable(self, '_line_gauge', gauge), \
+                 misc.TMP_variable(self, '_auto_gauge_replay', True):
+                MadGraphCmd.do_add(self, line, counter=counter)
+            new = self._curr_amps[nb_amps:]
+            # a polarised propagator is checked against the FD gauge by
+            # do_add itself (validate_polarized_propagator_gauge, in the gauge
+            # of the line), before any diagram is generated
+            if gauge == 'FD' and (_fd_gauge_excluded(new) or
+                                  self.has_onium_amplitude(new)):
+                del self._curr_amps[nb_amps:]
+                self._curr_proc_defs.pop(-1)
+                self._line_ranges.pop(-1)
+                raise self.InvalidCmd('--gauge=FD: the FD gauge is not available '
+                    'for this process (spin above one or bound state).')
+        if not self._auto_gauge_replay:
+            self._process_lines.append((raw_line, nb_proc))
+            self.apply_automatic_gauge()
+
+    def model_for_gauge(self, gauge):
+        """The session model in another gauge, for the processes of a line
+        with '--gauge=X'.  Imported once per session model (import model and
+        set gauge make a new one)."""
+
+        if gauge == self.options['gauge']:
+            return self._curr_model
+        if self.model_edited_since_import():
+            raise self.InvalidCmd('The model was changed after its import (add '
+                'model, customize_model): it cannot be imported again in another '
+                'gauge. Use "set gauge %s" before the import instead.' % gauge)
+        base = self._curr_model
+        cached = self._gauge_models.get(gauge)
+        if cached and cached[0] is base:
+            return cached[1]
+        if gauge == 'FD' and 1 not in base.get('gauge'):
+            raise self.InvalidCmd('The model %s has no FD gauge (no goldstone '
+                                  'bosons).' % base.get('name'))
+        if isinstance(base, loop_base_objects.LoopModel) and \
+                    base.get('perturbation_couplings') not in [[], ['QCD']]:
+            raise self.InvalidCmd('--gauge= is not available for the model %s.'
+                                  % base.get('name'))
+        with aloha.gauge_scope(gauge):
+            twin = import_ufo.import_model(
+                base.get('modelpath+restriction'),
+                prefix=(aloha.aloha_prefix == 'mdl_'),
+                complex_mass_scheme=self.options['complex_mass_scheme'],
+                options={'apply_flavor_grouping':
+                         self.options.get('apply_flavor_grouping', True)})
+        twin._curr_gauge = gauge
+        if 'modelname' not in self.history.get('full_model_line'):
+            twin.pass_particles_name_in_mg_default()
+        if gauge == 'FD' and not self.fd_gauge_supported_by_model(twin):
+            raise self.InvalidCmd('The goldstone content of the model %s could '
+                'not be checked against the FD gauge: --gauge=FD is refused.'
+                % base.get('name'))
+        conflicts = import_ufo.gauge_model_conflicts(base, twin)
+        if conflicts:
+            raise self.InvalidCmd('The model %s defines %s differently in the two '
+                'gauges: one output cannot hold both. Use "set gauge %s".'
+                % (base.get('name'), ', '.join(conflicts[:5]), gauge))
+        self._gauge_models[gauge] = (base, twin)
+        return twin
+
+    # the outputs that write each subprocess in its own gauge
+    MIXED_GAUGE_FORMATS = ['madevent', 'standalone_fortran', 'standalone', 'mg7']
+
+    def single_gauge_for_output(self, args):
+        """Lines put in the FD gauge by the automatic choice, for an output
+        that writes every matrix element into one library: the whole output
+        in the FD gauge when every process can be (it is correct for all of
+        them), else in the unitary gauge."""
+
+        if not self._auto_fd_lines or (
+                self._export_format in self.MIXED_GAUGE_FORMATS and
+                '--postpone_model' not in args):
+            return
+        capable = all(self.line_can_be_fd(k)
+                      for k in range(len(self._process_lines)))
+        gauge = 'FD' if capable else 'unitary'
+        logger.info('The output %s has one gauge for all its processes: the %s '
+                    'gauge (the automatic choice had put only some of them in '
+                    'the FD gauge).' % (self._export_format, gauge))
+        export_format, export_dir = self._export_format, self._export_dir
+        self.switch_gauge_and_regenerate(gauge)
+        self._export_format, self._export_dir = export_format, export_dir
+
+    def line_can_be_fd(self, k):
+        """Whether the processes of the k-th process line can be generated
+        in the FD gauge (diagrams, no exclusion, no polarised leg)."""
+
+        start, end, wants = self._line_ranges[k]
+        amps = self._curr_amps[start:end]
+        if not amps or _fd_gauge_excluded(amps):
+            return False
+        return not any(leg.get('polarization')
+                       for amp in iter_tree_amplitudes(amps)
+                       for leg in amp.get('process').get('legs'))
+
+    def refuse_unsupported_mixed_gauge(self, args):
+        """Refuse an output of processes in two gauges in a format that
+        writes them into one library."""
+
+        if len(self.gauges_in_use()) < 2:
+            return
+        if '--postpone_model' in args or aloha.npwave != [0]:
+            raise self.InvalidCmd('--postpone_model and P-wave onia are not '
+                                  'available for processes in two gauges.')
+        if self._export_format not in self.MIXED_GAUGE_FORMATS:
+            raise self.InvalidCmd('The processes are in two gauges (--gauge=), '
+                'which the output %s does not support (only %s). Use "set gauge" '
+                'for the whole output.' % (self._export_format,
+                ', '.join(self.MIXED_GAUGE_FORMATS) or 'none yet'))
+
+    def set_exporter_gauges(self, exporter):
+        """Tell the exporter of an output in two gauges which HELAS library
+        each gauge gets (gauge_libraries; the writers follow in _export)."""
+
+        other = sorted(self.gauges_in_use() - set([self.options['gauge']]))
+        if not other:
+            return
+        if self._me_curr_exporter:
+            raise self.InvalidCmd('--me_exporter= is not available for processes '
+                                  'in two gauges.')
+        exporter.gauge_libraries = dict((gauge, ('_' + gauge.upper(),
+                                                 '_' + gauge.lower()))
+                                        for gauge in other)
+
+    def writer_in_gauge(self, matrix_element):
+        """(helas writer, aloha.gauge_scope) of a matrix element or group of
+        an output in two gauges; the session writer and no scope otherwise."""
+
+        if getattr(self._curr_exporter, 'gauge_writers', None) or \
+                        getattr(self._curr_exporter, 'gauge_models', None):
+            return self._curr_exporter.export_processes_in_gauge(
+                                    matrix_element, self._curr_helas_model)
+        return self._curr_helas_model, aloha.gauge_scope('')
+
+    def lorentz_of_other_gauges(self, wanted_lorentz):
+        """For an output in two gauges, the Lorentz structures (with their
+        tags) used by each gauge, '' for the session gauge; {} otherwise.
+        The P1N routines of the helicity recycling (added to wanted_lorentz
+        by finalize) go with the gauge of the structure they derive from."""
+
+        if not getattr(self._curr_exporter, 'gauge_libraries', None):
+            return {}
+        by_gauge = {'': []}
+        for me in self._curr_matrix_elements.get_matrix_elements():
+            gauge = me.get('processes')[0].get_gauge()
+            by_gauge.setdefault(gauge, []).extend(me.get_used_lorentz())
+        recycled = [l for l in wanted_lorentz if 'P1N' in l[1]]
+        for gauge, lorentz in by_gauge.items():
+            names = set((name, tuple(t for t in flag if t != 'P1N'))
+                        for name, flag, out in lorentz)
+            lorentz.extend(l for l in recycled if (l[0], tuple(
+                t for t in l[1] if t != 'P1N')) in names)
+            by_gauge[gauge] = misc.make_unique(lorentz)
+        return by_gauge
+
+    def model_edited_since_import(self):
+        """Whether the session model was changed after 'import model' (add
+        model, customize_model): importing it again, in another gauge, would
+        lose that."""
+
+        return any(line.startswith(('add model', 'customize_model'))
+                   for line in self.history)
+
+    def gauges_in_use(self):
+        """The gauges of the generated processes, the session one included."""
+
+        gauges = set()
+        for amp in iter_tree_amplitudes(self._curr_amps):
+            gauges.add(amp.get('process').get_gauge(self.options['gauge']))
+        return gauges
+
+    # ------------------------------------------------------------------
+    # automatic choice of the gauge
+    # ------------------------------------------------------------------
+    # The gauge is a property of the loaded model: the goldstone bosons are
+    # kept, dropped or merged into the vectors when the model is imported, so
+    # 'set gauge' reloads the model and drops the amplitudes.  The automatic
+    # choice below therefore runs once the diagrams of a process are known
+    # (the criterion reads them) and, when it wants another gauge, reloads the
+    # model and generates the processes of the session again -- the loop of
+    # 'check gauge', which evaluates one process in several gauges that way.
+
+    # the lines written into the history (the proc_card of the output) when
+    # the FD gauge is chosen automatically
+    AUTO_GAUGE_COMMENT = '# FD gauge chosen automatically: massive vector ' \
+                         'propagators on non-conserved currents (help set gauge)'
+    AUTO_GAUGE_LINE = 'set gauge FD'
+
+    def apply_automatic_gauge(self):
+        """Choose the gauge of each process line (fd_gauge_criterion on its
+        diagrams): the whole output in the FD gauge when every line needs
+        it ('set gauge FD' in the proc_card), else the unitary gauge with the
+        lines that need it generated with --gauge=FD, as if the user had
+        typed it.  Unless the user chose ('set gauge X', '--gauge=X' on a
+        line) or turned it off ('set auto_gauge False').  Runs at the end of
+        every 'generate' and 'add process'."""
+
+        if self._auto_gauge_replay or not self.automatic_gauge_in_charge():
+            return
+        current = self.options['gauge']
+        target = self.automatic_gauge_target()
+        if target == (current, self._auto_fd_lines):
+            return
+        if self.postponed_export_pending():
+            # an 'output --postpone_model' is waiting for its model: the
+            # processes written in it fix the gauge until the model is written
+            if not self._auto_gauge_freeze_logged:
+                logger.info('An output is waiting for its model (--postpone_model): '
+                            'the gauge of the processes written in it is kept.')
+                self._auto_gauge_freeze_logged = True
+            return
+        gauge, tags = target
+        if gauge == 'FD' or tags:
+            model = self._curr_model
+            if 1 not in model.get('gauge') or \
+                              model.get('name') in self._fd_unverified_models:
+                # no goldstone boson in the model: no FD gauge to switch to
+                return
+        if gauge == 'FD':
+            logger.info('The processes have a massive vector propagator ending on '
+                        'a current that is not conserved: generating them in the '
+                        'FD gauge (Feynman-diagram gauge, arXiv:2203.10440, '
+                        '2405.01256), whose precision does not degrade with the '
+                        'energy as the unitary gauge does. Type "set gauge '
+                        'unitary" (before "generate") to keep the unitary gauge.',
+                        '$MG:BOLD')
+        elif tags - self._auto_fd_lines:
+            names = [self._process_lines[k][0].split(None, 1)[-1]
+                     for k in sorted(tags - self._auto_fd_lines)]
+            logger.info('%s: a massive vector propagator ends on a current that '
+                        'is not conserved, generated in the FD gauge '
+                        '(arXiv:2203.10440, 2405.01256), the other processes in '
+                        'the unitary gauge. Add "--gauge=unitary" to the line, or '
+                        'type "set gauge unitary", to keep the unitary gauge.'
+                        % '; '.join(names), '$MG:BOLD')
+        elif current == 'FD' or self._auto_fd_lines:
+            logger.info('Back to the unitary gauge for the processes that do not '
+                        'need the FD gauge (chosen automatically).')
+        self.switch_gauge_and_regenerate(gauge, tags)
+
+    def automatic_gauge_in_charge(self):
+        """Whether the automatic choice may change the gauge of the session
+        (apply_automatic_gauge): it is on, the user has not chosen a gauge,
+        the model was not edited after its import (a reload into another
+        gauge would lose that), and the gauge in use is the unitary one or
+        an FD gauge it chose itself (Feynman/axial are imposed by the model
+        or by a loop interface, an FD gauge from the configuration file is
+        the user's).  An output waiting for its model is checked apart, see
+        postponed_export_pending."""
+
+        if not self.options.get('auto_gauge', True) or self._explicit_gauge \
+                or self.model_edited_since_import():
+            return False
+        current = self.options['gauge']
+        if current != 'FD':
+            # an FD gauge we had chosen is gone (a model without the Feynman
+            # gauge was imported since): nothing of ours is in use
+            self._auto_gauge_active = False
+        return current == 'unitary' or \
+               (current == 'FD' and self._auto_gauge_active)
+
+    def polarised_line_leaves_automatic_fd(self, procdef):
+        """Whether the session leaves an FD gauge chosen automatically for
+        the process definition of a new line: it has a polarised leg (its
+        decays included), which automatic_gauge_target never puts in the FD
+        gauge, and nothing else holds the FD gauge (the user's '--gauge=FD'
+        on the line, an output waiting for its model)."""
+
+        def polarised(one):
+            return any(leg.get('polarization') for leg in one.get('legs')) or \
+                   any(polarised(decay) for decay in one.get('decay_chains'))
+
+        return not self._auto_gauge_replay and not self._line_gauge and \
+               self.options['gauge'] == 'FD' and \
+               self.automatic_gauge_in_charge() and \
+               not self.postponed_export_pending() and polarised(procdef)
+
+    def leave_automatic_fd_gauge(self, line):
+        """Back to the unitary gauge from an FD gauge chosen automatically
+        for the lines of the session, which keep it with '--gauge=FD' (as
+        apply_automatic_gauge does once a line not wanting it is added),
+        before the polarised process `line` is generated."""
+
+        lines = self._process_lines
+        tags = set(k for k, (_, _, wants) in enumerate(self._line_ranges)
+                   if wants) if len(self._line_ranges) == len(lines) else set()
+        logger.info('%s: polarised, generated in the unitary gauge%s.'
+                    % (line, ', the other processes in the FD gauge chosen '
+                       'automatically for them (--gauge=FD)' if tags else ''),
+                    '$MG:BOLD')
+        self.switch_gauge_and_regenerate('unitary', tags)
+
+    def automatic_gauge_target(self):
+        """(session gauge, lines to generate with --gauge=FD) the automatic
+        choice wants: see apply_automatic_gauge."""
+
+        lines = self._process_lines
+        if not lines or len(self._line_ranges) != len(lines) or \
+                                                   self.has_onium_amplitude():
+            return 'unitary', set()
+        explicit = [self.split_gauge_option(self.split_arg(line))[0]
+                    for line, nb in lines]
+        wants = [gauge == 'FD' if gauge else self._line_ranges[k][2]
+                 for k, gauge in enumerate(explicit)]
+        if all(wants) and not any(explicit):
+            return 'FD', set()
+        return 'unitary', set(k for k, want in enumerate(wants)
+                              if want and not explicit[k])
+
+    def automatic_fd_gauge_in_use(self):
+        """Whether an FD gauge in use was picked by apply_automatic_gauge: for
+        the whole output (a later 'import model' may have left the FD gauge
+        on its own), or for some process lines."""
+
+        return (self._auto_gauge_active and self.options['gauge'] == 'FD') or \
+               bool(self._auto_fd_lines)
+
+    def postponed_export_pending(self):
+        """Whether an 'output --postpone_model' is waiting for its model
+        (finalize keeps what that needs in previous_lorentz).  The processes
+        written in that directory are in the gauge of the session, and the
+        model written at the end has to match them: the gauge is fixed until
+        then (apply_automatic_gauge, refuse_automatic_gauge_change)."""
+
+        return hasattr(self, 'previous_lorentz')
+
+    def refuse_automatic_gauge_change(self, why):
+        """The FD gauge chosen automatically has to step aside (`why` says
+        for what): refused while an 'output --postpone_model' holds processes
+        written in it, since the model written at the end would not match
+        them."""
+
+        if self.automatic_fd_gauge_in_use() and self.postponed_export_pending():
+            raise self.InvalidCmd(
+                'The output waiting for its model (--postpone_model) was '
+                'written in the FD gauge, chosen automatically for a purely '
+                'electroweak process, and %s needs the unitary gauge: start '
+                'again with "set gauge unitary" before the first "generate".'
+                % why)
+
+    def fd_gauge_supported_by_model(self, model):
+        """Whether import_ufo could check the goldstone content of the model
+        (loaded in FD gauge) against what the FD gauge assumes."""
+
+        return import_ufo.FD_GAUGE_UNVERIFIED not in model.get('limitations')
+
+    def switch_gauge_and_regenerate(self, gauge, tags=frozenset()):
+        """Generate the processes of the session again with the session model
+        in `gauge` and the lines `tags` (indices in _process_lines) with
+        --gauge=FD, as 'set gauge' and the 'generate'/'add process' lines of
+        the user would do.
+
+        An FD gauge the model cannot be trusted in (no goldstone boson, or a
+        goldstone phase convention that nothing fixes: import_ufo tags the
+        model) is given up on the spot: the unitary gauge everywhere, and the
+        switch is not tried again for that model."""
+
+        tags = set(tags)
+        lines = list(self._process_lines)
+        generate_info = self._generate_info
+        if gauge == 'unitary' and tags:
+            try:
+                self.model_for_gauge('FD')
+            except self.InvalidCmd:
+                tags = set()
+        if self.options['gauge'] != gauge:
+            self.do_set('gauge %s' % gauge, log=False)
+        if gauge == 'FD' and \
+                        not self.fd_gauge_supported_by_model(self._curr_model):
+            logger.info('The FD gauge is not chosen automatically for the model '
+                        '%s: its goldstone content could not be checked against '
+                        'the convention of the FD gauge (see the warning above). '
+                        'Type "set gauge FD" to use it anyway.',
+                        self._curr_model.get('name'))
+            self._fd_unverified_models.add(self._curr_model.get('name'))
+            gauge = 'unitary'
+            self.do_set('gauge unitary', log=False)
+        # a reload of the model cleans the process state (clean_process)
+        old_tags = self._auto_fd_lines if self._curr_amps else set()
+        self._process_lines = lines
+        self._auto_gauge_active = (gauge == 'FD')
+        self._auto_fd_lines = tags
+        self.record_automatic_gauge(gauge, tags)
+        if self._curr_amps and tags == old_tags:
+            # the model was not reloaded (already in that gauge) and every
+            # line is in its gauge already: the amplitudes are still there
+            return
+
+        if self._curr_amps and tags - old_tags == set([len(lines) - 1]) and \
+                                    old_tags <= tags:
+            # only the last line changes, to the FD gauge: generate it alone
+            start = self._line_ranges[-1][0]
+            del self._curr_amps[start:]
+            del self._line_ranges[-1]
+            self._curr_proc_defs.pop(-1)
+            redo = lines[-1:]
+            first = len(lines) - 1
+        else:
+            self._curr_amps = diagram_generation.AmplitudeList()
+            self._curr_proc_defs = base_objects.ProcessDefinitionList()
+            self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
+            self._line_ranges = []
+            redo = lines
+            first = 0
+        self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        self._done_export = False
+
+        # the process lines again, with the process numbers they had
+        aloha.npwave = [0]
+        nb_history = len([l for l in self.history
+                            if l.startswith(('generate', 'add process'))])
+        with misc.TMP_variable(self, '_auto_gauge_replay', True):
+            for k, (line, nb_proc) in enumerate(redo, first):
+                if k in tags:
+                    line = '%s --gauge=FD' % line
+                MadGraphCmd.do_add(self, line, counter=nb_proc - nb_history)
+        self._process_lines = lines
+        self._generate_info = generate_info
+
+    # appended to the process lines of the history (the proc_card) that the
+    # automatic choice generates in the FD gauge
+    AUTO_LINE_OPTION = ' --gauge=FD'
+    AUTO_LINE_COMMENT = '# --gauge=FD chosen automatically for the processes ' \
+                        'that need it (help set auto_gauge)'
+
+    def record_automatic_gauge(self, gauge, tags=frozenset()):
+        """Write the automatic choice into the history, i.e. into the
+        proc_card of the output, as the user would have typed it: 'set gauge
+        FD' ahead of the process lines for the whole output, '--gauge=FD' on
+        the lines `tags`.  The card then reproduces the same code explicitly,
+        and the tools reading it (reweighting) run in the gauge of the
+        sample.  Dropped again when the choice goes back to unitary."""
+
+        for line in [self.AUTO_GAUGE_COMMENT, self.AUTO_GAUGE_LINE,
+                     self.AUTO_LINE_COMMENT]:
+            while line in self.history:
+                self.history.remove(line)
+        start = self.history_process_start()
+        k = 0
+        for index in range(start, len(self.history)):
+            line = self.history[index]
+            if not line.startswith(('generate', 'add process')):
+                continue
+            if k < len(self._process_lines) and \
+                    self.split_gauge_option(self.split_arg(
+                                    self._process_lines[k][0]))[0] is None:
+                if line.endswith(self.AUTO_LINE_OPTION):
+                    line = line[:-len(self.AUTO_LINE_OPTION)]
+                if k in tags:
+                    line += self.AUTO_LINE_OPTION
+                self.history[index] = line
+            k += 1
+        if gauge == 'FD':
+            self.history.insert(start, self.AUTO_GAUGE_LINE)
+            self.history.insert(start, self.AUTO_GAUGE_COMMENT)
+        elif tags:
+            self.history.insert(start, self.AUTO_LINE_COMMENT)
+
+    def history_process_start(self):
+        """Index in the history of the first process line of the current
+        generation: the last 'generate', else the first 'add process'."""
+
+        for index in range(len(self.history) - 1, -1, -1):
+            if self.history[index].startswith('generate'):
+                return index
+        for index, line in enumerate(self.history):
+            if line.startswith('add process'):
+                return index
+        return len(self.history)
                 
     def add_model(self, args):
         """merge two model"""
@@ -4777,6 +5753,15 @@ This implies that with decay chains:
         elif args[0] == 'processes':
             for amp in self._curr_amps:
                 print(amp.nice_string_processes())
+                # the crossed processes folded into it (--use_crossing) are no
+                # amplitude of their own, but are part of the generation
+                last = None
+                for base, xproc in self._recorded_crossings([amp]):
+                    if base is not last:
+                        print('  Crossed processes evaluated through %s:'
+                              % base.get('process').base_string())
+                        last = base
+                    print(xproc.nice_string(4))
             for procdef in self._curr_amplicol_defs:
                 print('Process: %s [amplicol] (no diagrams)'
                       % procdef.nice_string(prefix=False).strip())
@@ -5562,6 +6547,36 @@ This implies that with decay chains:
                 options['report'] = option[1].lower()
             elif option[0]=='--seed':
                 options['seed'] = int(option[1])
+            elif option[0]=='--exporter':
+                # Backend for 'check crossing': which standalone output to build
+                # and run the crossing self-check against.
+                if option[1] not in process_checks.CROSSING_EXPORTERS:
+                    raise self.InvalidCmd(
+                        "The '--exporter' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.CROSSING_EXPORTERS),
+                            option[1]))
+                options['exporter'] = option[1]
+            elif option[0]=='--simd':
+                # Vectorisation width for 'check crossing --exporter=
+                # standalone' (madmatrix; ignored by the fortran backend).
+                if option[1] not in process_checks.MG7_SIMD_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--simd' option for 'check crossing' must be one "
+                        "of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_SIMD_CHOICES),
+                            option[1]))
+                options['simd'] = option[1]
+            elif option[0]=='--precision':
+                # Floating-point precision for 'check crossing --exporter=
+                # standalone' (madmatrix; ignored by the fortran backend).
+                if option[1] not in process_checks.MG7_PRECISION_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--precision' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_PRECISION_CHOICES),
+                            option[1]))
+                options['precision'] = option[1]
             elif option[0]=='--name':
                 if '.' in option[1]:
                     raise self.InvalidCmd("Do not specify the extension in the"+
@@ -5800,7 +6815,7 @@ This implies that with decay chains:
         proc_line = " ".join(args[1:])
         # Don't try to extract the process if just re-analyzing a saved run
         if not (args[0]=='cms' and options['analyze']!='None'):
-            myprocdef = self.extract_process(proc_line)
+            myprocdef = self.extract_check_process(proc_line, validate_gauge=False)
             if myprocdef and myprocdef.get_interference_mode():
                 raise self.InvalidCmd(
                     "The check command does not support %s interference "
@@ -5824,6 +6839,24 @@ This implies that with decay chains:
         # If the test has to write out on disk, it should do so at the location
         # specified below where the user must be sure to have writing access.
         output_path = os.getcwd()
+
+        # The crossing check does not use the analytic MatrixElementEvaluator /
+        # gauge / CMS machinery: it regenerates the process to fortran
+        # standalone twice (crossing on and off) and compares the compiled
+        # matrix elements. Route it here and return early.
+        if args[0] == 'crossing':
+            options['proc_line'] = proc_line
+            options.setdefault('exporter', 'standalone_fortran')
+            crossing_result = process_checks.check_crossing(
+                myprocdef, param_card=param_card, options=options, cmd=self)
+            text = ('Crossing symmetry check (crossing on vs off, exporter=%s):'
+                    '\n' % options['exporter'])
+            text += process_checks.output_crossing(crossing_result) + '\n'
+            logging.getLogger('madgraph.check_cmd').info(text)
+            process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+            if not options['reuse']:
+                process_checks.clean_up(self._mgme_dir)
+            return
 
         if args[0] in ['timing','stability', 'profile'] and not \
                                         myprocdef.get('perturbation_couplings'):
@@ -5881,6 +6914,8 @@ This implies that with decay chains:
         flavor_result = []
         language_result = []
         precision_result = []
+        # check modes for which no process could be checked at all
+        not_checked = []
 
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
@@ -5975,64 +7010,78 @@ This implies that with decay chains:
                         myprocdef.get('perturbation_couplings') in [[],['QCD']]:
 
             line = " ".join(args[1:])
-            myprocdef = self.extract_process(line)
-            if gauge == 'unitary':
-                myprocdef_unit = myprocdef
-            else:
+            decay_chain = bool(myprocdef.get('decay_chains'))
+            # a decay chain is compared in the unitary, axial and FD gauges at
+            # a point where its decayed particles are on shell (process_checks.
+            # check_unitary_feynman_decay_chains); each gauge validates its
+            # own polarised propagators
+            # the gauge of the session is restored whatever happens: an
+            # extraction or the check may refuse the process after the
+            # gauge was switched
+            try:
                 self.do_set('gauge unitary', log=False)
-                myprocdef_unit = self.extract_process(line)
-            if gauge == 'feynman':
-                myprocdef_feyn = myprocdef
-            else:
-                self.do_set('gauge Feynman', log=False)
-                myprocdef_feyn = self.extract_process(line)
-            if myprocdef.get('perturbation_couplings') == [] and \
-               (args[0] == 'full' or (args[0] == 'gauge')) and \
-               0 in self._curr_model.get('gauge'):
-                if gauge == 'axial':
-                    myprocdef_axial = myprocdef
+                myprocdef_unit = self.extract_check_process(line)
+                if decay_chain:
+                    logger_check.info("Decay chain: the Feynman gauge is not "
+                        "compared (the chain fixes the intermediate vector, "
+                        "without its Goldstone boson); the decayed particles are "
+                        "put on shell, with a width of 1e-9 M.")
+                    myprocdef_feyn = None
                 else:
+                    self.do_set('gauge Feynman', log=False)
+                    myprocdef_feyn = self.extract_check_process(line)
+                if myprocdef.get('perturbation_couplings') == [] and \
+                   (args[0] == 'full' or (args[0] == 'gauge')) and \
+                   0 in self._curr_model.get('gauge'):
                     self.do_set('gauge axial', log=False)
-                    myprocdef_axial = self.extract_process(line)
-            else:
-                myprocdef_axial = None
-            if myprocdef.get('perturbation_couplings') == [] and \
-               (args[0] == 'full' or (args[0] == 'gauge')) and \
-               1 in self._curr_model.get('gauge'):
-                if gauge == 'FD':
-                    myprocdef_fd = myprocdef
+                    myprocdef_axial = self.extract_check_process(line)
                 else:
+                    myprocdef_axial = None
+                if myprocdef.get('perturbation_couplings') == [] and \
+                   (args[0] == 'full' or (args[0] == 'gauge')) and \
+                   1 in self._curr_model.get('gauge'):
                     self.do_set('gauge FD', log=False)
-                    myprocdef_fd = self.extract_process(line)
-            else:
-                myprocdef_fd = None
+                    try:
+                        myprocdef_fd = self.extract_check_process(line)
+                    except self.InvalidCmd as error:
+                        # e.g. a unitary-only propagator piece ({G}, {H}, ...)
+                        logger_check.info("Not compared in the FD gauge: %s" % error)
+                        myprocdef_fd = None
+                else:
+                    myprocdef_fd = None
 
-            nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
-            nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
-            if nb_part_feyn == nb_part_unit:
-                logger_check.error('No Goldstone present for this check!!')
-            # tree level: the external wavefunctions of output
-            # --axial_gauge=True (reference momenta), in the unitary gauge
-            if myprocdef.get('perturbation_couplings') == []:
-                myprocdef_ref = myprocdef_unit
-            else:
-                myprocdef_ref = None
-            gauge_result_no_brs = process_checks.check_unitary_feynman(
-                                                myprocdef_unit, myprocdef_feyn,
-                                                myprocdef_axial,
-                                                myprocdef_fd,
-                                                param_card = param_card,
-                                                options=options,
-                                                cuttools=CT_dir,
-                                                tir=TIR_dir,
-                                                reuse = options['reuse'],
-                                                output_path = output_path,
-                                                cmd = self,
-                                                processes_reference = myprocdef_ref)
-            
-            # restore previous settings
-            self.do_set('gauge %s' % gauge, log=False)
-            nb_processes += len(gauge_result_no_brs)            
+                if myprocdef_feyn is not None:
+                    nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
+                    nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
+                    if nb_part_feyn == nb_part_unit:
+                        logger_check.error('No Goldstone present for this check!!')
+                # tree level: the external wavefunctions of output
+                # --axial_gauge=True (reference momenta), in the unitary
+                # gauge; not for a decay chain, compared on its own path
+                if myprocdef.get('perturbation_couplings') == [] and \
+                                                        not decay_chain:
+                    myprocdef_ref = myprocdef_unit
+                else:
+                    myprocdef_ref = None
+                gauge_result_no_brs = process_checks.check_unitary_feynman(
+                                                    myprocdef_unit, myprocdef_feyn,
+                                                    myprocdef_axial,
+                                                    myprocdef_fd,
+                                                    param_card = param_card,
+                                                    options=options,
+                                                    cuttools=CT_dir,
+                                                    tir=TIR_dir,
+                                                    reuse = options['reuse'],
+                                                    output_path = output_path,
+                                                    cmd = self,
+                                                    processes_reference = myprocdef_ref)
+            finally:
+                # restore previous settings
+                self.do_set('gauge %s' % gauge, log=False)
+            # the first entry is the process definition, not a check
+            nb_processes += len(gauge_result_no_brs) - 1
+            if len(gauge_result_no_brs) <= 1:
+                not_checked.append('gauge')
 
         if args[0] in  ['permutation', 'full']:
             comparisons = process_checks.check_processes(myprocdef,
@@ -6045,6 +7094,8 @@ This implies that with decay chains:
                                             output_path = output_path,
                                             options=options)
             nb_processes += len(comparisons[0])
+            if not comparisons[0]:
+                not_checked.append('permutation')
 
         if args[0] in ['lorentz', 'full']:
             myprocdeff = copy.copy(myprocdef)
@@ -6057,6 +7108,8 @@ This implies that with decay chains:
                                           output_path = output_path,
                                           options=options)
             nb_processes += len(lorentz_result)
+            if not lorentz_result:
+                not_checked.append('lorentz')
 
         _merged_pdgs = myprocdef.get('model').get('merged_particles') if myprocdef else {}
         _proc_has_merged = myprocdef and any(
@@ -6096,6 +7149,10 @@ This implies that with decay chains:
                                           output_path = output_path,
                                           options=options)
             nb_processes += len(gauge_result)
+            # in 'full' mode a process without a massless gauge boson simply
+            # has no Ward identity to check
+            if not gauge_result and args[0] == 'brs':
+                not_checked.append('brs')
 
         # The CMS check is typically more complicated and slower than others
         # so we don't run it automatically with 'full'.
@@ -6167,6 +7224,11 @@ This implies that with decay chains:
         cpu_time2 = time.time()
         logger_check.info("%i check performed in %s"% (nb_processes,
                                   misc.format_time(int(cpu_time2 - cpu_time1))))
+        for mode in not_checked:
+            logger_check.warning("check %s: no process could be checked "
+                "(no diagrams%s, or a vanishing matrix element for every "
+                "flavour combination)." % (mode,
+                ', no massless external gauge boson' if mode == 'brs' else ''))
 
         if args[0] in ['cms']:
                 text = "Note that the complex mass scheme test in principle only\n"
@@ -6213,8 +7275,10 @@ This implies that with decay chains:
         if gauge_result:
             text += 'Gauge results:\n'
             text += process_checks.output_gauge(gauge_result) + '\n'
-        if gauge_result_no_brs:
-            gauge_labels = ['Unitary', 'Feynman']
+        if len(gauge_result_no_brs) > 1:
+            gauge_labels = ['Unitary']
+            if any('value_feynm' in res for res in gauge_result_no_brs[1:]):
+                gauge_labels.append('Feynman')
             if any('value_axial' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('Axial')
             if any('value_fd' in res for res in gauge_result_no_brs[1:]):
@@ -6290,6 +7354,11 @@ This implies that with decay chains:
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._generate_info = ""
+        # the process lines to replay on an automatic change of gauge
+        self._process_lines = []
+        self._line_ranges = []
+        self._auto_fd_lines = set()
+        self._auto_gauge_freeze_logged = False
         # Reset the diagrams kept for an 'auto' merge_quartic_vertices, they
         # describe the amplitudes just dropped
         self._quartic_order = None
@@ -6297,6 +7366,14 @@ This implies that with decay chains:
         # Reset polarization-citation marker (a new process definition starts)
         self._uses_polarization = False
         self._uses_density_matrix = False
+        # Reset the --use_crossing choice (a new process definition starts).
+        # The output-line one is set by every do_output, but the loop/aMC@NLO
+        # interfaces have their own do_output which does not, so give it the
+        # same lifetime as the generate-line flag rather than leaving the last
+        # output's choice behind.
+        self._use_crossing = True
+        self._use_crossing_off = False
+        self._output_use_crossing = True
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir
@@ -6308,7 +7385,8 @@ This implies that with decay chains:
         """Main commands: Generate an amplitude for a given process"""
 
         self.clean_process()
-        self._generate_info = line
+        self._generate_info = ' '.join(a for a in line.split()
+                                       if not a.startswith('--gauge='))
 
         # reset P-wave onia counter for new process
         aloha.npwave = [0]
@@ -6385,6 +7463,163 @@ This implies that with decay chains:
         for decay in procdef.get('decay_chains'):
             self.validate_propagator_polarization(decay)
 
+    # aloha.unitary_gauge: True is the unitary gauge, 2 the axial gauge, False
+    # the Feynman gauge, 3 the FD gauge. In the unitary and axial gauges (the
+    # axial gauge only changes the propagator of the massless vectors) every
+    # polarised propagator is a piece of the unitary numerator -g + qq/M^2
+    # (aloha/create_aloha.py, get_custom_propa). In the FD gauge only the
+    # pieces of the five-component FD numerator exist (FD_POLARIZED_PROPAGATORS
+    # in aloha/aloha_writers.py); which braces they are is read from the table
+    # brace -> tag of helas_objects (VECTOR_PROPAGATOR_TAGS), not repeated here.
+    ALOHA_GAUGE_NAMES = {True: 'unitary', 2: 'axial', False: 'Feynman', 3: 'FD'}
+    UNITARY_PROPAGATOR_GAUGES = (True, 2)
+    FD_GAUGE = 3
+
+    @staticmethod
+    def polarization_brace(polarization):
+        """The brace content of a leg 'polarization' list as the user types
+        it: 'T' for the transverse pair, the letters of the propagator pieces
+        ('A', 'S', 'G', ...), the helicities otherwise."""
+        if sorted(polarization) == [-1, 1]:
+            return 'T'
+        signs = {1: '+', -1: '-'}
+        return ''.join(signs.get(p) or base_objects.polarization_to_string([p])
+                       for p in polarization)
+
+    def line_aloha_gauge(self):
+        """The aloha.unitary_gauge value of the process line being generated:
+        its '--gauge=X' (self._line_gauge), else the gauge of the session."""
+
+        if self._line_gauge:
+            return {'unitary': True, 'FD': self.FD_GAUGE}[self._line_gauge]
+        return aloha.unitary_gauge
+
+    def process_gauge_tag(self):
+        """The 'gauge' of the process definitions of the line being
+        generated: its '--gauge=X' when that is not the session gauge, ''
+        (the session gauge) otherwise."""
+
+        if self._line_gauge == self.options['gauge']:
+            return ''
+        return self._line_gauge
+
+    def validate_polarized_propagator_gauge(self, procdef, aloha_gauge=None):
+        """Refuse a polarised propagator of a vector in a gauge where it does
+        not exist.
+
+        The braces on a vector that is decayed further -- 'w+{0}', 'w+{T}',
+        'w+{A}', 'w+{S}', 'w+{0S}', 'w+{G}', ... in
+        't > w+{0} b, w+ > ta+ vt' -- replace its propagator by one piece of
+        its numerator, over the pole 1/(q^2 - M^2 + iM Gamma):
+          - unitary and axial gauges: every brace, pieces of -g + qq/M^2;
+          - FD gauge: the pieces of the five-component FD numerator, {0},
+            {T}, {+}, {-}, {A}, {S}, {0S} (aloha_writers.
+            FD_POLARIZED_PROPAGATORS); {G}, {H}, {Q}, {W}, pieces of the
+            unitary numerator only, are refused. For a massless vector the
+            FD longitudinal vector vanishes and only {T}, {+}, {-} (gauge
+            independent) are kept. {A}, {S} and {0S} are allowed with a
+            warning: the FD remainder is not the unitary-gauge one;
+          - Feynman gauge: refused for a massive vector. The propagator is
+            -ig/(q^2 - M^2) and the qq/M^2 piece is carried by separate
+            Goldstone diagrams, so a piece of the propagator is not a
+            polarisation (the output used to crash with 'particle with
+            custom propagator can not have polarization').
+        None of them exists for a massive vector in the complex-mass scheme,
+        whose propagator is not the fixed-width one the pieces decompose (the
+        output used to stop with an ALOHA error).
+        An *external* polarised vector is fine in every gauge (its helicity
+        amplitudes are gauge invariant) and is not touched here.
+        `aloha_gauge` is the aloha.unitary_gauge value of the gauge the
+        process is generated in (line_aloha_gauge), the current one if None.
+
+        Raises InvalidCmd; returns None."""
+
+        if procdef is None:
+            return
+        if aloha_gauge is None:
+            aloha_gauge = aloha.unitary_gauge
+        complex_mass = bool(self.options.get('complex_mass_scheme'))
+        if aloha_gauge in self.UNITARY_PROPAGATOR_GAUGES and not complex_mass:
+            return
+        model = procdef.get('model')
+        if not model:
+            return
+        fd_gauge = aloha_gauge == self.FD_GAUGE
+        gauge = self.ALOHA_GAUGE_NAMES.get(aloha_gauge, str(aloha_gauge))
+
+        decayed_ids = set()
+        for decay in procdef.get('decay_chains'):
+            for leg in decay.get('legs'):
+                if not leg.get('state'):
+                    decayed_ids.update(leg.get('ids'))
+
+        for leg in procdef.get('legs'):
+            if not leg.get('polarization'):
+                continue
+            tag = helas_objects.vector_propagator_tag(leg.get('polarization'))
+            for pdg in decayed_ids.intersection(leg.get('ids')):
+                particle = model.get_particle(pdg)
+                if particle is None or particle.get('spin') != 3:
+                    continue
+                massless = particle.get('mass').lower() == 'zero'
+                values = {'name': particle.get_name(),
+                          'pol': self.polarization_brace(leg.get('polarization')),
+                          'gauge': gauge}
+                if complex_mass and not massless:
+                    raise self.InvalidCmd(
+                        "The polarised propagator of a massive vector "
+                        "('%(name)s{%(pol)s}' decayed further) is not "
+                        "available in the complex-mass scheme: its pieces "
+                        "decompose the fixed-width propagator. Use 'set "
+                        "complex_mass_scheme False'." % values)
+                if aloha_gauge in self.UNITARY_PROPAGATOR_GAUGES:
+                    continue
+                if fd_gauge:
+                    supported = aloha_writers.FD_MASSLESS_POLARIZED_PROPAGATORS \
+                        if massless else aloha_writers.FD_POLARIZED_PROPAGATORS
+                    if tag in supported:
+                        if tag in ('1A', '1S', '1LS'):
+                            logger.warning(
+                                "In the FD gauge '%(name)s{%(pol)s}' uses the "
+                                "remainder of the FD propagator, (q^2-M^2) n n/"
+                                "(n.q)^2 (with q^2-M^2+iM*Gamma for {S}): like "
+                                "{A} and {S} in the unitary gauge it vanishes on "
+                                "shell and is gauge dependent, but it is not the "
+                                "unitary-gauge one, so {A}, {S} and {0S} differ "
+                                "between the two gauges." % values)
+                        continue
+                    if massless:
+                        raise self.InvalidCmd(
+                            "The polarised propagator '%(name)s{%(pol)s}' of a "
+                            "massless vector is not available in the FD gauge: "
+                            "its FD longitudinal polarisation vanishes, so "
+                            "only the transverse pieces {T}, {+}, {-} are "
+                            "kept. Use one of those, or 'set gauge unitary'."
+                            % values)
+                    raise self.InvalidCmd(
+                        "The polarised propagator '%(name)s{%(pol)s}' is a "
+                        "piece of the unitary-gauge numerator -g + qq/M^2 and "
+                        "has no counterpart in the %(gauge)s gauge, whose "
+                        "propagator only splits into the helicity pieces {0}, "
+                        "{T}, {+}, {-} and the remainder {A} (or {S}, {0S}). "
+                        "Use one of those, or 'set gauge unitary'." % values)
+                if massless:
+                    # the massless propagator is the same -g in the Feynman
+                    # and unitary gauges
+                    continue
+                raise self.InvalidCmd(
+                    "The polarised propagator of a massive vector "
+                    "('%(name)s{%(pol)s}' decayed further) is not available "
+                    "in the %(gauge)s gauge: there the qq/M^2 part of the "
+                    "propagator is carried by separate Goldstone-boson "
+                    "diagrams, so a piece of the propagator is not a "
+                    "polarisation. Use 'set gauge unitary' (or the axial or FD "
+                    "gauge), or polarise an external particle instead (that "
+                    "is supported in every gauge)." % values)
+
+        for decay in procdef.get('decay_chains'):
+            self.validate_polarized_propagator_gauge(decay, aloha_gauge)
+
     def extract_process(self, line, proc_number = 0, overall_orders = {},
                         avoid_squared_orders=False):
         """Extract a process definition from a string. Returns
@@ -6451,8 +7686,21 @@ This implies that with decay chains:
             line = perturbation_couplings_re.group("proc")+\
                      perturbation_couplings_re.group("rest")
 
+        if LoopOption != 'tree' and self._auto_fd_lines:
+            # FD lines chosen automatically next to a loop process: the loop
+            # outputs have one gauge, the unitary one
+            self.refuse_automatic_gauge_change('a loop process')
+            self.switch_gauge_and_regenerate('unitary')
         if LoopOption != 'tree' and self.options['gauge'] in ['FD','axial']:
-            raise Exception('Gauge %s is only supported/validated for tree level amplitude'% self.options['gauge'])
+            if self.options['gauge'] == 'FD' and self.automatic_fd_gauge_in_use():
+                # ours, for a previous tree-level process: step aside
+                self.refuse_automatic_gauge_change('a loop process')
+                logger.info('Loop process: back to the unitary gauge (the FD '
+                            'gauge, chosen automatically for a previous process, '
+                            'is only supported for tree-level amplitudes).')
+                self.switch_gauge_and_regenerate('unitary')
+            else:
+                raise Exception('Gauge %s is only supported/validated for tree level amplitude'% self.options['gauge'])
 
         ## Now check for orders/squared orders/constrained orders
         order_pattern = re.compile(\
@@ -6669,7 +7917,10 @@ This implies that with decay chains:
                             except KeyError:
                                 continue
                         process += " "+order+order_op+str(order_val)
-                    self.do_add(process)
+                    # a piece of this very line: not a line of its own for
+                    # the automatic choice of the gauge
+                    with misc.TMP_variable(self, '_auto_gauge_replay', True):
+                        self.do_add(process)
                 else:
                     args = [arg.lower() for arg in copy_args]
 
@@ -7106,6 +8357,18 @@ This implies that with decay chains:
                isinstance(forbidden_onsh_schannel_ids[0], list):
                 raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \
                       " which can be used only for required s-channels")
+            # $ removes the window |sqrt(s) - M| < BWCUTOFF * W around the
+            # pole: a massless particle has none (and in the complex-mass
+            # scheme its width, -Im(M^2)/M, is 0/0)
+            massless = [self._curr_model.get_particle(pid).get_name()
+                        for pid in forbidden_onsh_schannel_ids
+                        if self._curr_model.get_particle(pid) and
+                        self._curr_model.get_particle(pid).get('mass').lower() == 'zero']
+            if massless:
+                raise self.InvalidCmd("The $ syntax is not supported for massless "
+                      "particles (%s): there is no on-shell window to exclude. "
+                      "Use / to remove the particle, or $$ to remove its "
+                      "s-channel propagators." % ', '.join(massless))
             if forbidden_schannel_ids and \
                isinstance(forbidden_schannel_ids[0], list):
                 raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \
@@ -7621,6 +8884,22 @@ This implies that with decay chains:
         pdg_list.sort(key = lambda i: \
                       model.get_particle(i).get('mass').lower() != 'zero')
 
+    def extract_check_process(self, line, validate_gauge=True):
+        """The process of a 'check' command: a single process, or (for
+        'check gauge') a decay chain such as 't > w+{0} b, w+ > ta+ vt',
+        whose polarisation braces are validated as by 'generate' (in the
+        current gauge if validate_gauge). check_check has already refused
+        '[...]' (loops, perturbed decays) with a decay chain. Returns a
+        ProcessDefinition."""
+
+        if ',' not in line:
+            return self.extract_process(line)
+        myprocdef, _ = self.extract_decay_chain_process(line)
+        self.validate_propagator_polarization(myprocdef)
+        if validate_gauge:
+            self.validate_polarized_propagator_gauge(myprocdef)
+        return myprocdef
+
     def extract_decay_chain_process(self, line, level_down=False, proc_number=0):
         """Recursively extract a decay chain process definition from a
         string. Returns a ProcessDefinition."""
@@ -7791,11 +9070,15 @@ This implies that with decay chains:
                 else:
                     if 1 not in self._curr_model.get('gauge') :
                         logger_stderr.warning('Change the gauge to unitary since the'+\
-                          ' model does not allow Feynman gauge.'+\
-                                                  ' Please re-import the model')
+                          ' model does not allow Feynman gauge.')
                         self._curr_model = None
                         self.do_set('gauge unitary', log= False)
-                        return
+                        # the model again, in the unitary gauge (an FD gauge
+                        # chosen automatically for a previous process is a
+                        # common way to get here), without the interface
+                        # switching of the master command
+                        return MadGraphCmd.do_import(self, line, force=force,
+                                                     options=options)
             if self._curr_model:
                 self._curr_model._curr_gauge = self.options['gauge']
 
@@ -8156,10 +9439,11 @@ This implies that with decay chains:
 
                 logger.info(f"Defined boundstate {boundstate_label} = {bound_state}")
 
-    def has_onium_amplitude(self):
-        """True if one of the generated processes has a bound state."""
+    def has_onium_amplitude(self, amplitudes=None):
+        """True if one of the generated processes (or of `amplitudes`) has a
+        bound state."""
 
-        for amp in self._curr_amps or []:
+        for amp in (self._curr_amps if amplitudes is None else amplitudes) or []:
             try:
                 amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
                 for one_amp in amps:
@@ -9719,6 +11003,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.warning("Option %s from config file not understood" \
                                    % key)
                 else:
+                    if key == 'gauge' and self.options[key] == 'unitary':
+                        # the default, not a choice: once run again from the
+                        # proc_card, 'set gauge unitary' would count as the
+                        # user's choice (set2_gauge) and keep the automatic
+                        # FD gauge out; a gauge picked for a process is
+                        # recorded as 'set gauge FD' (record_automatic_gauge)
+                        continue
+                    if key == 'auto_gauge' and self.options[key]:
+                        # the default as well: MadSpin and the reweighting
+                        # run the 'set' lines of the proc_card with their
+                        # own auto_gauge False
+                        continue
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
 
@@ -9872,10 +11168,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
-                # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')
-                               and not cmd.is_question_answer(l)]
-                for line in config_line:
+                # transfer interactive configuration (without the
+                # generation-time options the run interface rejects)
+                for line in cmd.set_lines_for_run(self.history):
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
                 return stop
@@ -9963,32 +11258,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 raise self.RWError('Could not load model from file %s' \
                                       % args[1])
-        elif args[0] == 'processes':
-            amps,proc_defs = save_load_object.load_from_file(args[1])
-            if isinstance(amps, diagram_generation.AmplitudeList):
-                cpu_time2 = time.time()
-                logger.info("Loaded processes from file in %0.3f s" % \
-                      (cpu_time2 - cpu_time1))
-                if amps:
-                    model = amps[0].get('process').get('model')
-                    if not model.get('parameters'):
-                        # This is a v4 model.  Look for path.
-                        self._model_v4_path = import_v4.find_model_path(\
-                                   model.get('name').replace("_v4", ""),
-                                   self._mgme_dir)
-                    else:
-                        self._model_v4_path = None
-                    # If not exceptions from previous steps, set
-                    # _curr_amps and _curr_model
-                    self._curr_amps = amps
-                    self._curr_model = model
-                    self._curr_proc_defs = proc_defs
-                    logger.info("Model set from process.")
-                    # Do post-processing of model
-                    self.process_model()
-                self._done_export = None
-            else:
-                raise self.RWError('Could not load processes from file %s' % args[1])
 
 
     def post_install_RunningCoupling(self):
@@ -11154,13 +12423,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.info('Saved model to file %s' % args[1])
             else:
                 raise self.InvalidCmd('No model to save!')
-        elif args[0] == 'processes':
-            if self._curr_amps:
-                if save_load_object.save_to_file(args[1], (self._curr_amps,self._curr_proc_defs) ):
-                    logger.info('Saved processes to file %s' % args[1])
-            else:
-                raise self.InvalidCmd('No processes to save!')
-
         elif args[0] == 'options':
             partial_save = False
             to_define = {}
@@ -11384,8 +12646,44 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > axial is also named the parton-shower gauge (for massless particles only).")
         logger.info(" > FD is for Feynman Diagram gauge: (see 2203.10440 and 2405.01256). This is the extension of the axial gauge to massive particles.")
         logger.info(" > For loop processes, only Feynman gauge is employable.")
+        logger.info(" > Unless the gauge is set here, a tree-level process whose W/Z")
+        logger.info("   propagator ends on a current that is not conserved (VBF, VBS,")
+        logger.info("   p p > w+ w-, t t~ with W decays, ...) is generated in the FD gauge,")
+        logger.info("   where the precision does not degrade with the energy (see 'set")
+        logger.info("   auto_gauge'). 'set gauge default' restores that.")
+        logger.info(" > 'generate|add process ... --gauge=FD|unitary' sets the gauge of one")
+        logger.info("   process line: the outputs madevent, standalone_fortran, standalone")
+        logger.info("   and mg7 hold subprocesses in both gauges.")
 
-        
+    def help_set2_auto_gauge(self):
+        """Help for set auto_gauge command"""
+        logger.info("auto_gauge True|False",'$MG:color:GREEN')
+        logger.info(" > (default True) choose the FD gauge automatically for each process line")
+        logger.info("   whose diagrams have a W/Z propagator ending on a vertex that is not a")
+        logger.info("   conserved current: a bosonic vertex (HVV, VVV) or a massive quark")
+        logger.info("   (t-b). Two massless fermions or SM leptons are conserved, external W/Z")
+        logger.info("   looked at. In the unitary gauge the diagrams of such a process grow")
+        logger.info("   with the energy and digits are lost in their sum; the FD gauge")
+        logger.info("   cancels that diagram by diagram. When every line needs it the whole")
+        logger.info("   output is FD ('set gauge FD' in the proc_card), else only those")
+        logger.info("   lines ('--gauge=FD' on them). 'set gauge X' and '--gauge=X' win.")
+
+    def set2_auto_gauge(self, args, log=True):
+        """Set whether the gauge is chosen automatically, see
+        apply_automatic_gauge."""
+
+        args = ['auto_gauge'] + args
+        self.check_set(args)
+        if not args[1] and self.automatic_fd_gauge_in_use():
+            self.refuse_automatic_gauge_change('"set auto_gauge False"')
+        self.options['auto_gauge'] = args[1]
+        if not args[1] and self.automatic_fd_gauge_in_use():
+            # the FD gauge in use was ours: back to the default
+            if log:
+                logger.info('Back to the unitary gauge (the FD gauge had been '
+                            'chosen automatically): the processes have to be '
+                            'generated again.')
+            self.switch_gauge_and_regenerate('unitary')
 
     def set2_gauge(self, args, log=True):
         """Set the gauge to be used in the model. Options are:
@@ -11394,8 +12692,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
               axial: Parton-shower gauge
               FD: Four-Dimensional gauge (see 2203.10440 and 2405.01256)
         """
+        # 'set gauge default' hands the choice back to the automatic selection
+        restore_automatic = bool(args) and args[0] == 'default'
         args = ['gauge'] + args
         self.check_set(args)
+        if log:
+            # typed by the user (the internal callers, 'check gauge' and the
+            # automatic choice, pass log=False): the gauge is theirs from now
+            # on, see apply_automatic_gauge
+            self._explicit_gauge = not restore_automatic
+            self._auto_gauge_active = False
+            if restore_automatic:
+                self.record_automatic_gauge('unitary')
 
         # Treat the case where they are no model loaded
         if not self._curr_model:
@@ -11429,7 +12737,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 if log: logger.warning('Note that parton-shower gauge is not allowed for your current model %s' \
                                         % self._curr_model.get('name'))
         elif args[1] == 'FD':
-            logger.warning("WARNING: NOT ALL MODEL ARE SUPPORTING THIS GAUGE. PLEASE CHECK/CITE 2203.10440 and 2405.01256")
+            if log:
+                logger.warning("WARNING: NOT ALL MODEL ARE SUPPORTING THIS GAUGE. PLEASE CHECK/CITE 2203.10440 and 2405.01256")
             if 1 in self._curr_model.get('gauge'):
                 aloha.unitary_gauge = 3
             else:
@@ -11449,6 +12758,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             return
         
         
+        if log and self.postponed_export_pending():
+            # the processes written in that output are in the gauge left now:
+            # the model written at the end could not serve them
+            logger.warning('The output waiting for its model (--postpone_model) '
+                           'was written in the %s gauge: generate and output its '
+                           'processes again in the %s gauge.'
+                           % (self.options['gauge'], args[1]))
+            del self.previous_lorentz
+            del self.previous_couplings
         self.options[args[0]] = args[1]
 
         if able_to_mod and log and args[0] == 'gauge' and \
@@ -11460,6 +12778,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
 
+        # the multiparticles of the user survive the reload of the model (the
+        # particles are the same in every gauge): add_default_multiparticles
+        # drops the ones of 'define V z|a', whose entries are lists, and edits
+        # the lists of p and j in place for the flavour scheme of the model
+        multiparticles = copy.deepcopy(self._multiparticles)
         #re-init all variable
         model_name = self._curr_model.get('modelpath+restriction')
         self._curr_model = None
@@ -11481,6 +12804,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 opts=''
             MadGraphCmd.do_import(self,'model %s %s' % (model_name, opts), force=True)
+            self._multiparticles.update(multiparticles)
         elif log:
             logger.info('Note that you have to reload the model')
 
@@ -12075,19 +13399,46 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
     def help_set2_zerowidth_tchannel(self):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
-        logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
-        logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator for spacelike (t-channel,")
+        logger.info(" > P^2<0) momenta. Done inside the ALOHA routine (runtime sign of P^2), so it")
+        logger.info(" > applies to every tree-level output. No impact in complex-mass-scheme mode.")
         
 
 
     def set2_zerowidth_tchannel(self, args, log=True):
         """Set whether the code should use zero-width for t-channel propagators.
         Default is set to True. (since v2.8.0)
-        Example: set zerowidth_tchannel False 
-        """ 
+        The treatment is now performed inside the ALOHA propagator routine (it
+        drops the width for spacelike, P^2<0, momenta); this flag is therefore an
+        output-time (code-generation) option and propagates to aloha here.
+        Example: set zerowidth_tchannel False
+        """
         args = ['zerowidth_tchannel'] + args
         self.check_set(args)
-        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
+        aloha.t_channel_width = not self.options[args[0]]
+
+    def help_set2_zerowidth_external(self):
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator of any internal propagator")
+        logger.info(" > whose particle also appears as an external (initial/final) state -- an")
+        logger.info(" > external particle is an on-shell asymptotic state, so its internal")
+        logger.info(" > propagator (e.g. the s/u-channel top in t a > t a) must not carry the")
+        logger.info(" > i*M*Gamma resonance term. In the complex-mass scheme the real mass is")
+        logger.info(" > used there too. External legs themselves have no width argument.")
+
+    def set2_zerowidth_external(self, args, log=True):
+        """Set whether the width should be dropped for internal propagators whose
+        particle is also an external state. Default True. Applied at output time
+        per matrix element (HelasMatrixElement.set_onshell_particles_width_to_zero),
+        so it is a code-generation option like zerowidth_tchannel.
+        Example: set zerowidth_external False
+        """
+        args = ['zerowidth_external'] + args
+        self.check_set(args)
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
 
     def help_set2_merge_quartic_vertices(self):
         logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
@@ -12641,6 +13992,17 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """Main commands: Initialize a new Template or reinitialize one"""
 
         args = self.split_arg(line)
+
+        # --use_crossing=False on the output line: write THIS output without the
+        # crossing machinery, whatever the generation chose. The exporters read
+        # it through _use_crossing (see Export{V4,CPP}Factory) and the crossings
+        # folded onto their base at generation are expanded back into explicit
+        # subprocesses (_output_folds_crossings), so the output stays complete --
+        # it is exactly the generate --use_crossing=False output. Set on every
+        # do_output, so it never leaks to the next one.
+        output_use_crossing = self.pop_use_crossing_flag(args)
+        self._output_use_crossing = output_use_crossing is not False
+
         # Check Argument validity
         self._export_plugin = None
         self.check_output(args)
@@ -12688,6 +14050,27 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         line_options = dict( (arg[2:].split('=')  if "=" in arg else (arg[2:], True))
                              for arg in args if arg.startswith('--'))
 #        line_options = dict(arg[2:].split('=') for arg in args if arg.startswith('--') and '=' not in arg)
+
+        # --axial_gauge=True builds the polarisation of the massless vectors in
+        # the axial gauge of another leg, which the FD gauge (fixing the gauge
+        # of the massless vectors itself) has no room for: an FD gauge chosen
+        # automatically steps aside; one asked for with 'set gauge' is kept
+        # and the option is dropped with a warning (helas_call_writers)
+        self.single_gauge_for_output(args)
+        self.refuse_unsupported_mixed_gauge(args)
+        if self.automatic_fd_gauge_in_use() and \
+                str(line_options.get('axial_gauge', False)).strip().lower() \
+                                          in ('true', 't', '1', 'yes', 'on'):
+            self.refuse_automatic_gauge_change('--axial_gauge=True')
+            logger.info('--axial_gauge=True: back to the unitary gauge (the FD '
+                        'gauge had been chosen automatically), the processes '
+                        'are generated again.')
+            # the reload of the model cleans the process state, this output
+            # command included (clean_process)
+            export_format, export_dir = self._export_format, self._export_dir
+            self.switch_gauge_and_regenerate('unitary')
+            self._export_format, self._export_dir = export_format, export_dir
+
         # helicity recycling is on by default for the madmatrix outputs: 'auto'
         # recycles like True but stays quiet where a directory cannot be
         # recycled. A cuda/hip build of the output is the plain matrix element
@@ -12783,6 +14166,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             options['me_exporter']['name'] = me_exporter
         else:
             options['me_exporter'] = {}
+
+        # A loop-induced process is exported by this tree-level do_output (see
+        # create_loop_induced), but only the madevent formats have a
+        # loop-induced exporter to route it to. Refuse the others here, ahead
+        # of the directory cleaning just below, so that a guaranteed refusal
+        # never deletes an existing output directory first. The exporter
+        # factories carry the same check as a backstop.  Kept first in this
+        # block so a refusal costs nothing: everything below it configures a
+        # build that is not going to happen.
+        if self._export_format not in export_v4.LOOP_INDUCED_FORMATS and \
+           self._curr_amps and isinstance(self._curr_amps[0],
+                                    loop_diagram_generation.LoopAmplitude):
+            raise self.InvalidCmd(export_v4.loop_induced_not_supported_msg(
+                        self._export_format, self._curr_amps[0].get('process')))
 
         # now that the backend getting the matrix elements is known, an 'auto'
         # merge_quartic_vertices can be resolved -- before anything is built
@@ -12919,6 +14316,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self._curr_exporter.pass_information_from_cmd(self)
         if self._me_curr_exporter:
             self._me_curr_exporter.pass_information_from_cmd(self)
+        self.set_exporter_gauges(self._curr_exporter)
         
         if options['output'] == 'Template':
             self._curr_exporter.copy_template(self._curr_model)
@@ -12950,6 +14348,296 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         # Reset _export_dir, so we don't overwrite by mistake later
         self._export_dir = None
+
+    def output_uses_crossing(self):
+        """Whether the output being written gets the crossing machinery: the
+        generation asked for it (--use_crossing of generate / add process,
+        sticky off, see do_add) and the output line did not refuse it. This is
+        the use_crossing option the exporter factories (ExportV4Factory,
+        ExportCPPFactory) hand the exporters."""
+        return bool(getattr(self, '_use_crossing', True) and
+                    getattr(self, '_output_use_crossing', True))
+
+    def _output_folds_crossings(self, decay_chains=False):
+        """True if the output being written consumes the recorded crossings.
+
+        Only the folding-capable backends do, and only when this output gets
+        the crossing machinery (output_uses_crossing): --use_crossing=False on
+        the output line, or on any line of the generation, drops it, so the
+        crossings have to come back as explicit subprocesses just like for a
+        non-folding backend. Asking the output line alone left the crossings
+        recorded by an earlier `generate ... --use_crossing=True` neither
+        expanded nor written once a later `add process ... --use_crossing=False`
+        turned the machinery off.
+
+        With `decay_chains`, the question is asked for the crossings recorded
+        inside a decay chain, which a folding backend may still not read (the
+        mg7 one: folds_decay_chain_crossings on the exporter).
+        """
+        folds = self._export_format in self._crossing_folding_formats and \
+            self.output_uses_crossing()
+        if folds and decay_chains:
+            folds = getattr(self._curr_exporter,
+                            'folds_decay_chain_crossings', True)
+        return folds
+
+    def _crossing_foldable(self, amp, record):
+        """Whether the folding output being written can fold the recorded
+        crossing `record` of `amp` into its base: the exporter decides
+        (crossing_foldable), a crossing it refuses is expanded instead."""
+        check = getattr(self._curr_exporter, 'crossing_foldable', None)
+        return True if check is None else bool(check(amp, record))
+
+    def _crossing_fold_signature(self):
+        """What the matrix elements built for this output depend on, as far
+        as the recorded crossings go: folded or expanded, the decay chains'
+        answer, and -- since which crossings fold is the exporter's call --
+        the format."""
+        folds = self._output_folds_crossings()
+        return (folds, self._output_folds_crossings(decay_chains=True),
+                self._export_format if folds else None)
+
+    def _crossing_needs_expansion(self, amps):
+        """True if `amps` carry folded crossings the current output cannot read.
+
+        Only the folding-capable standalone backends consume the recorded
+        crossings directly (they reach them through the base's crossing-aware
+        SMATRIX/sigmaKin). Every other output needs them back as explicit
+        subprocesses, and expanding is always safe: it just reproduces the
+        complete unmerged (--use_crossing=False) output.
+
+        This used to carve out squared-order processes as well: their matrix
+        element is written from matrix_standalone_splitOrders_v4.inc, which had
+        no crossing machinery, so folding into it dropped the crossed
+        subprocesses outright. That template folds now
+        (fill_crossing_replace_dict_so), so the carve-out is gone and the
+        answer is the format again. The other two folding formats never needed
+        it: standalone_rw writes the same fortran template, and the
+        mg7/cudacpp exporter has no split-orders variant at all.
+        """
+        crossed = [amp for amp in amps if 'crossed_processes' in amp
+                   and amp.get('crossed_processes')]
+        if not crossed:
+            return False
+        if not self._output_folds_crossings():
+            return True
+        # a folding output may still refuse some of them (crossing_foldable)
+        return any(not self._crossing_foldable(amp, record)
+                   for amp in crossed for record in amp.get('crossed_processes'))
+
+    def _expand_recorded_crossings(self, amps):
+        """Expand each amplitude's recorded crossings back into separate
+        (mirror-folded) amplitudes, reproducing a merge_crossing=False
+        generation. The crossed diagrams are reused (cross_amplitude), not
+        regenerated. Record mode stores a crossing and its beam-swap as two
+        separate entries (neither is in the amplitude list when the other is
+        met, so the generator's mirror check never fires); the beam-swap is
+        folded back into has_mirror_process here, exactly as
+        generate_matrix_elements would.
+
+        Shared by the grouped and the ungrouped paths so that an output which
+        cannot read folded crossings gets them expanded automatically, without
+        the user having to pass --use_crossing=False.
+
+        `amps` is left untouched: the bases come back as shallow copies (same
+        process and diagrams, their own crossed_processes and
+        has_mirror_process -- the mirror fold can mark a base that recorded
+        nothing, so every one is copied). They are self._curr_amps' own
+        amplitudes, and emptying their crossed_processes or marking their
+        mirror in place made every later output depend on this one -- a
+        standalone_fortran written after a madevent one, from the same
+        generation, folded nothing.
+
+        A folding output expands only the crossings its exporter refuses to
+        fold (crossing_foldable); the others stay recorded on the base copy.
+        """
+        if self.options['group_subprocesses'] == 'Auto':
+            collect_mirror = True
+        else:
+            collect_mirror = self.options['group_subprocesses']
+
+        def _fastproc(amp):
+            return tuple(l.get('id') for l in amp.get('process').get('legs'))
+
+        folds = self._output_folds_crossings()
+        originals = []
+        for amp in amps:
+            crossed = amp.get('crossed_processes') \
+                if 'crossed_processes' in amp else []
+            kept = [record for record in crossed
+                    if folds and self._crossing_foldable(amp, record)]
+            originals.append((amp, [record for record in crossed
+                                    if not any(record is k for k in kept)],
+                              kept))
+        # Each subprocess goes back where the merge_crossing=False generation
+        # lists it (generation_rank, see MultiProcess), crossings between
+        # the bases instead of after all of them. Sorted by number of
+        # diagrams afterwards, as the caller does, the madevent P directories
+        # then come in the --use_crossing=False order, and so get the same
+        # iproc.dat, hence random seeds. Without every rank, the bases keep
+        # their order and the crossings follow.
+        entries = [(amp.get('process'), amp, None, kept)
+                   for amp, _crossed, kept in originals] + \
+                  [(record[0], amp, record, None)
+                   for amp, crossed, _kept in originals for record in crossed]
+        ranks = [getattr(entry[0], 'generation_rank', None)
+                 for entry in entries]
+        if None not in ranks:
+            entries = [entry for _rank, _i, entry in
+                       sorted(zip(ranks, range(len(entries)), entries))]
+
+        expanded = diagram_generation.AmplitudeList()
+        seen = {}   # fast_proc -> amplitude, for mirror fold
+        for proc, amp, record, kept in entries:
+            if record is None:
+                # a base, with the crossings it still folds
+                amp = copy.copy(amp)
+                if 'crossed_processes' in amp:
+                    amp.set('crossed_processes', kept)
+                expanded.append(amp)
+                seen[_fastproc(amp)] = amp
+                continue
+            _proc, base_perm, cross_perm = record
+            xamp = diagram_generation.MultiProcess.\
+                cross_amplitude(amp, proc, base_perm, cross_perm)
+            xamp.set('crossed_processes', [])
+            fp = _fastproc(xamp)
+            mirror = (fp[1], fp[0]) + fp[2:]
+            if collect_mirror and mirror in seen and \
+                    proc.get_ninitial() == 2:
+                seen[mirror].set('has_mirror_process', True)
+                continue
+            xamp.set('has_mirror_process', False)
+            expanded.append(xamp)
+            seen[fp] = xamp
+        return expanded
+
+    @staticmethod
+    def _recorded_crossings(amps):
+        """The crossed processes recorded on `amps` at generation
+        (merge_crossing='record'), as (amplitude, crossed Process) pairs: a plain
+        amplitude's own `crossed_processes`, a decay chain's inner amplitudes'.
+        A crossing and its beam swap are recorded apart; the swap is left out
+        here, as the mirror of a generated process is (has_mirror_process)."""
+        pairs = []
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            for a in inner:
+                if 'crossed_processes' not in a:
+                    continue
+                seen = set()
+                for record in a.get('crossed_processes'):
+                    xproc = record[0]
+                    initial = xproc.get_initial_ids()
+                    if len(initial) == 2:
+                        key = (tuple(sorted(initial)), tuple(xproc.get_final_ids()))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    pairs.append((a, xproc))
+        return pairs
+
+    @classmethod
+    def _crossing_summary(cls, amps):
+        """What the generation summary adds for the crossed processes folded
+        into `amps`: they have no amplitude, hence are not in its counts."""
+        ncross = len(cls._recorded_crossings(amps))
+        if not ncross:
+            return ''
+        return (' (and %i crossed process%s evaluated through them, see '
+                '"display processes")' % (ncross, '' if ncross == 1 else 'es'))
+
+    @staticmethod
+    def _has_recorded_crossings(amps):
+        """True if any amplitude of `amps` folds crossings recorded at
+        generation (merge_crossing='record'): a plain amplitude on its own
+        `crossed_processes`, a decay chain on its inner amplitudes'."""
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            if any(a.get('crossed_processes') for a in inner
+                   if 'crossed_processes' in a):
+                return True
+        return False
+
+    @staticmethod
+    def _copy_decay_chain(dc_amp):
+        """A copy of the DecayChainAmplitude `dc_amp` that the matrix-element
+        builders may consume.
+
+        HelasDecayChainProcess pops the decay chains off the amplitude it is
+        built from, recursively, to save memory, so building straight from
+        self._curr_amps empties the generation's own chains. The end-of-export
+        replacement of self._curr_amps used to hide that; a generation with
+        recorded crossings keeps its amplitudes (see _export), and a later
+        output rebuilt from an emptied chain wrote the core process with its
+        resonance left undecayed -- p p > z j, z > e+ e- came out as P1_gQ_zQ,
+        without an error. Only the lists are copied: the amplitudes and their
+        diagrams are shared.
+        """
+        new = copy.copy(dc_amp)
+        new.set('amplitudes',
+                diagram_generation.AmplitudeList(dc_amp.get('amplitudes')))
+        new.set('decay_chains', diagram_generation.DecayChainAmplitudeList(
+            [MadGraphCmd._copy_decay_chain(dc)
+             for dc in dc_amp.get('decay_chains')]))
+        return new
+
+    def _expand_crossings_for_ungrouped_output(self):
+        """The amplitudes an ungrouped output builds its matrix elements from:
+        self._curr_amps, with the folded crossings put back if the output
+        cannot read them.
+
+        Counterpart of the grouped path's expansion, for the ungrouped one. A
+        plain amplitude carries its crossings in `crossed_processes` and is
+        expanded (on copies); a decay chain records them on its inner
+        amplitudes instead, and its grouping does not survive a partial
+        expansion, so the affected chains are regenerated whole with
+        merge_crossing=False (the base diagrams are still reused by
+        cross_amplitude). Either way the result is exactly the complete
+        unmerged output.
+
+        Returned rather than stored: self._curr_amps is the generation, and an
+        output must not rewrite it. It used to be replaced by the expanded list,
+        so any later output rebuilt from it -- a folding one included -- came
+        out unfolded.
+        """
+        dc_amps = [amp for amp in self._curr_amps
+                   if isinstance(amp, diagram_generation.DecayChainAmplitude)]
+        non_dc_amps = diagram_generation.AmplitudeList(
+            [amp for amp in self._curr_amps
+             if not isinstance(amp, diagram_generation.DecayChainAmplitude)])
+
+        dc_crossed = not self._output_folds_crossings(decay_chains=True) and \
+            self._has_recorded_crossings(dc_amps)
+        expand_non_dc = self._crossing_needs_expansion(non_dc_amps)
+        if not dc_crossed and not expand_non_dc:
+            return self._curr_amps
+
+        if expand_non_dc:
+            non_dc_amps = self._expand_recorded_crossings(non_dc_amps)
+
+        if dc_crossed:
+            ign6 = self.options.get('ignore_six_quark_processes', []) or []
+            if self.options['group_subprocesses'] == 'Auto':
+                collect_mirror = True
+            else:
+                collect_mirror = self.options['group_subprocesses']
+            dc_amps = [diagram_generation.DecayChainAmplitude(
+                           procdef, collect_mirror, ign6, merge_crossing=False)
+                       for procdef in self._curr_proc_defs
+                       if procdef.get('decay_chains')]
+
+        new_amps = diagram_generation.AmplitudeList()
+        new_amps.extend(non_dc_amps)
+        new_amps.extend(dc_amps)
+        new_amps.sort(key=lambda x: x.get_number_of_diagrams(), reverse=True)
+        return new_amps
 
     # Export a matrix element
     def set_color_basis_mode(self, *exporters):
@@ -12994,24 +14682,62 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """Export a generated amplitude to file, with the color basis already
         selected."""
 
+        # T-channel width treatment is now baked into ALOHA (the propagator
+        # routine drops the width i*M*Gamma for spacelike, P^2<0, momenta -- the
+        # correct tree-level treatment outside the complex-mass scheme). Propagate
+        # the zerowidth_tchannel option to the aloha flag it now controls, so the
+        # generated propagator routines carry the runtime sign check. A 1->N decay
+        # has no t-channel, so keep every width there (as the legacy code did).
+        zerowidth_tchannel = self.options['zerowidth_tchannel']
+        if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
+            zerowidth_tchannel = False
+        # The output option --zerowidth_tchannel=True|False of the standalone
+        # Fortran outputs overrides it for that output (MadSpin passes True).
+        # Without it the option decides for every output alike -- standalone
+        # (Fortran and C++), the reweighting (standalone_rw) and MadSpin
+        # (standalone_msP/msF) all drop the width of a spacelike propagator, as
+        # madevent: the runtime check is right for every crossing of a matrix
+        # element too, where the generation-time t-channel tag is not. The
+        # loop exporters (MadLoop, aMC@NLO, loop-induced madevent) are not
+        # concerned.
+        output_options = getattr(self._curr_exporter, 'opt', {}) or {}
+        output_options = output_options.get('output_options') or {}
+        if isinstance(self._curr_exporter, export_v4.ProcessExporterFortranSA) \
+           and not isinstance(self._curr_exporter,
+                              loop_exporters.LoopExporterFortran) \
+           and 'zerowidth_tchannel' in output_options \
+           and not (self._curr_amps and self._curr_amps[0].get_ninitial() == 1):
+            zerowidth_tchannel = banner_module.ConfigFile.format_variable(
+                output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
+        aloha.t_channel_width = not zerowidth_tchannel
+
         # Define the helas call  writer
         if hasattr(self._curr_exporter, 'helas_exporter') and self._curr_exporter.helas_exporter:
             self._curr_helas_model = self._curr_exporter.helas_exporter(self._curr_model, options=self.options)
-        elif self._curr_exporter.exporter == 'cpp':       
+        elif self._curr_exporter.exporter == 'cpp':
             self._curr_helas_model = helas_call_writers.CPPUFOHelasCallWriter(self._curr_model)
-        elif self._curr_exporter.exporter == 'gpu':       
+        elif self._curr_exporter.exporter == 'gpu':
             self._curr_helas_model = helas_call_writers.GPUFOHelasCallWriter(self._curr_model)
         elif self._curr_exporter.exporter == 'v4':
             if self._model_v4_path:
                 self._curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
             else:
-                options = {'zerowidth_tchannel': self.options['zerowidth_tchannel']}
-                if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
-                    options['zerowidth_tchannel'] = False
-                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                      options=options)
+                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
         else:
             raise Exception('unable to associate an helas format')
+
+        if getattr(self._curr_exporter, 'gauge_libraries', None):
+            # an output in two gauges: a writer per gauge for Fortran, one
+            # writer used in both gauges for C++ (its coupling indices)
+            if self._curr_exporter.exporter == 'v4':
+                self._curr_exporter.gauge_writers = dict(
+                    (gauge, helas_call_writers.FortranUFOHelasCallWriter(
+                                    self.model_for_gauge(gauge)))
+                    for gauge in self._curr_exporter.gauge_libraries)
+            else:
+                self._curr_exporter.gauge_models = dict(
+                    (gauge, self.model_for_gauge(gauge))
+                    for gauge in self._curr_exporter.gauge_libraries)
 
         # Define the helas call  writer if a second exporter is needed
         self._me_curr_helas_model = False
@@ -13029,8 +14755,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     assert self._me_curr_exporter.exporter == 'v4'
                     self._me_curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
                 else:                    
-                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                             options=options)
+                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
 
         version = [arg[10:] for arg in args if arg.startswith('--version=')]
         if version:
@@ -13055,13 +14780,32 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # to get most efficient multichannel output
             self._curr_amps.sort(key=lambda x: x.get_number_of_diagrams(),reverse=True)
 
+            # The matrix elements of the previous output are reused as they
+            # are, but with recorded crossings they are not the same for every
+            # output: folded into their base for a folding standalone backend,
+            # expanded into explicit subprocesses for anything else. Reusing
+            # them across that line made the output depend on the one written
+            # before it -- a madevent output after a standalone_fortran one
+            # dropped every crossed subprocess, a standalone_fortran after a
+            # madevent one folded nothing. Rebuild them instead.
+            folds_crossings = self._crossing_fold_signature()
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    self._curr_me_folds_crossings != folds_crossings and \
+                    self._has_recorded_crossings(self._curr_amps):
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+
             cpu_time1 = time.time()
             ndiags = 0
             if not self._curr_matrix_elements.get_matrix_elements():
+                self._curr_me_folds_crossings = folds_crossings
                 if group_processes:
                     cpu_time1 = time.time()
+                    # Copies: building the matrix elements empties a decay
+                    # chain, and self._curr_amps must keep its own for the next
+                    # output (see _copy_decay_chain).
                     dc_amps = diagram_generation.DecayChainAmplitudeList(\
-                        [amp for amp in self._curr_amps if isinstance(amp, \
+                        [self._copy_decay_chain(amp) for amp in self._curr_amps
+                         if isinstance(amp, \
                                         diagram_generation.DecayChainAmplitude)])
                     non_dc_amps = diagram_generation.AmplitudeList(\
                              [amp for amp in self._curr_amps if not \
@@ -13074,6 +14818,90 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     grouping_criteria = self._curr_exporter.grouped_mode
                     if grouping_criteria == 'gpu':
                         grouping_criteria = 'madevent'
+
+                    # merge_crossing='record' skipped generating the crossed
+                    # subprocesses so the standalone output collapses to one
+                    # directory per base. The grouped (madevent) backends need
+                    # them back as integration units -- each crossing is its own
+                    # partonic channel with its own PDF/phase-space -- so expand
+                    # the recorded metadata into crossed amplitudes here, reusing
+                    # the base's diagrams via cross_amplitude (no diagram
+                    # regeneration). The normal grouping + crossing routing then
+                    # handles them exactly as an unmerged (merge_crossing=False)
+                    # generation would.
+                    # The standalone exporters ('standalone_fortran' and the
+                    # madmatrix 'standalone') consume the crossed_processes
+                    # metadata directly -- they fold the crossings into the base
+                    # directory and reach them through the base's crossing-aware
+                    # SMATRIX/sigmaKin (extended flavor id), so they must NOT
+                    # reconstruct. Every other (summation / event-generation)
+                    # backend needs the crossings back as integration units, and
+                    # reconstructing is also the safe default for any format that
+                    # does not implement folding (it just reproduces the complete
+                    # unmerged output) -- or for a folding backend told to write
+                    # this output without the machinery (--use_crossing=False).
+                    # DecayAmplitude / DecayChainAmplitude are Amplitude
+                    # subclasses that override default_setup with their own
+                    # key set and do NOT carry crossed_processes (e.g. the
+                    # compute_widths and MadSpin decay paths reach here), so
+                    # guard on the dict key rather than the amplitude type
+                    # (_crossing_needs_expansion does that).
+                    # Asked OUTSIDE the format gate below, because the format
+                    # is not the whole answer: a folding backend still cannot
+                    # fold a process carrying a squared order, whose matrix
+                    # element is written from a template with no decoder. See
+                    # _crossing_needs_expansion.
+                    if self._crossing_needs_expansion(non_dc_amps):
+                        non_dc_amps = \
+                            self._expand_recorded_crossings(non_dc_amps)
+                        # sorted as self._curr_amps above, which decides the
+                        # P directory order (and iproc.dat)
+                        non_dc_amps.sort(
+                            key=lambda x: x.get_number_of_diagrams(),
+                            reverse=True)
+
+                    if not self._output_folds_crossings(decay_chains=True):
+                        # Decay chains: the crossing dedup (folding the crossed
+                        # decay-chain subprocesses into the base's crossing-aware
+                        # SMATRIX) is implemented for the standalone backends only.
+                        # For the summation backends each crossed decay-chain
+                        # subprocess must stay its own integration unit; rather
+                        # than reconstruct-and-route them (whose grouping does not
+                        # reproduce the historical layout), regenerate the affected
+                        # decay chains fully (merge_crossing=False), giving exactly
+                        # the pre-dedup output. cross_amplitude reuse still avoids
+                        # regenerating the diagrams of the base subprocess.
+                        # The chains are regenerated into a list of their own:
+                        # self._curr_amps keeps the recorded ones for the next
+                        # output.
+                        if self._has_recorded_crossings(dc_amps):
+                            ign6 = self.options.get(
+                                'ignore_six_quark_processes', []) or []
+                            if self.options['group_subprocesses'] == 'Auto':
+                                collect_mirror = True
+                            else:
+                                collect_mirror = \
+                                    self.options['group_subprocesses']
+                            regenerated = \
+                                diagram_generation.DecayChainAmplitudeList()
+                            for procdef in self._curr_proc_defs:
+                                if not procdef.get('decay_chains'):
+                                    continue
+                                regenerated.append(
+                                    diagram_generation.DecayChainAmplitude(
+                                        procdef, collect_mirror, ign6,
+                                        merge_crossing=False))
+                            # Regenerating walks _curr_proc_defs, so the
+                            # diagram-count ordering _curr_amps was sorted into
+                            # above is lost -- and that ordering decides the
+                            # subprocess group numbering (P1_/P2_...). Restore it
+                            # so the output is named exactly as an uncrossed
+                            # generation would name it.
+                            regenerated.sort(
+                                key=lambda x: x.get_number_of_diagrams(),
+                                reverse=True)
+                            dc_amps = regenerated
+
                     if non_dc_amps:
                         subproc_groups.extend(\
                           group_subprocs.SubProcessGroup.group_amplitudes(\
@@ -13110,14 +14938,31 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if uid == 0 and last_error:
                         raise last_error
                 else: # Not grouped subprocesses
+                    # Same automatic expansion as the grouped path above: an
+                    # ungrouped output (e.g. the ungrouped madevent) cannot read
+                    # the folded crossings, so put them back as explicit
+                    # subprocesses instead of forcing the user to regenerate with
+                    # --use_crossing=False. Without this the crossings would be
+                    # silently missing from the output. For this output only:
+                    # self._curr_amps keeps the recorded crossings.
+                    amps = self._expand_crossings_for_ungrouped_output()
+                    # And the decay chains as copies, which the matrix elements
+                    # may empty (see _copy_decay_chain).
+                    if any(isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                           for amp in amps):
+                        amps = diagram_generation.AmplitudeList(
+                            [self._copy_decay_chain(amp) if isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                             else amp for amp in amps])
                     mode = {}
-                    if self._export_format in [ 'standalone_msP' , 
+                    if self._export_format in [ 'standalone_msP' ,
                                              'standalone_msF', 'standalone_rw']:
                         mode['mode'] = 'MadSpin'
                     # The conditional statement tests whether we are dealing
                     # with a loop induced process.
                     # (an output with only [amplicol] processes has no amplitudes)
-                    if self._curr_amps and isinstance(self._curr_amps[0], 
+                    if amps and isinstance(amps[0],
                                          loop_diagram_generation.LoopAmplitude):
                         mode['optimized_output']=self.options['loop_optimized_output']
                         HelasMultiProcessClass = loop_helas_objects.LoopHelasProcess
@@ -13127,7 +14972,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         compute_loop_nc = False
                     
                     self._curr_matrix_elements = HelasMultiProcessClass(
-                      self._curr_amps, compute_loop_nc=compute_loop_nc,
+                      amps, compute_loop_nc=compute_loop_nc,
                                                        matrix_element_opts=mode)
                     
                     ndiags = sum([len(me.get('diagrams')) for \
@@ -13157,10 +15002,61 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # the flavor machinery to enumerate all combinations: permutation-
         # duplicate diagrams then keep a valid flavor and are not trimmed, while
         # genuinely unphysical diagrams (no flavor at all) are still removed.
-        helas_objects.HelasMatrixElement.enumerate_all_flavors = \
-            not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        enumerate_all = not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        # An output replaces self._curr_amps by the base amplitudes of its
+        # matrix elements (end of export), which only have the diagrams that
+        # output kept: with merged flavors, those its --mask trimmed are gone,
+        # and the other --mask needs them (the orderings --mask=False adds:
+        # q q > w+ w- q q QCD=0, q = u d, 183 diagrams of 294 and 3 of its 6
+        # flavors wrong). self._trimmed_amps keeps, for an output that
+        # trimmed, [those base amplitudes, the amplitudes they were made
+        # from, the --mask of its matrix elements]. Matrix elements kept from
+        # an output with the other --mask are made again (`output
+        # standalone_fortran A` then `output standalone B --mask=False` used
+        # to write B from A's flavors and diagrams), and whenever they are
+        # made, from the amplitudes as generated (the base amplitudes of that
+        # output may sit in self._curr_amps with processes added since).
+        trimmed = getattr(self, '_trimmed_amps', None)
+        if trimmed is not None:
+            base_amps, generated_amps, trimmed_all = trimmed
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    trimmed_all != enumerate_all:
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+            if not self._curr_matrix_elements.get_matrix_elements() and base_amps:
+                base_ids = set(id(amp) for amp in base_amps)
+                kept = [amp for amp in self._curr_amps if id(amp) not in base_ids]
+                if len(kept) + len(base_amps) == len(self._curr_amps):
+                    self._curr_amps = diagram_generation.AmplitudeList(
+                                                    list(generated_amps) + kept)
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = enumerate_all
 
+        made = not self._curr_matrix_elements.get_matrix_elements()
+        generated_amps = self._curr_amps
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
+        if made:
+            self._trimmed_amps = None
+            if any(getattr(me, '_flavor_allow_trimming', False) for me in
+                   self._curr_matrix_elements.get_matrix_elements()):
+                # the base amplitudes are known at the end of export
+                self._trimmed_amps = [None, generated_amps, enumerate_all]
+
+        # zerowidth_external: an external (initial/final) particle is an on-shell
+        # asymptotic state, so an internal propagator of the same field must not
+        # carry the i*M*Gamma resonance term (e.g. the s/u-channel top in
+        # t a > t a). Drop that width per matrix element before any backend
+        # writes the propagator calls (all UFO backends read the wavefunction
+        # width). Tree-level only; complex-mass scheme then uses the real mass.
+        if self.options.get('zerowidth_external', True) and \
+                self._curr_matrix_elements.get_matrix_elements():
+            n_dropped = 0
+            for me in self._curr_matrix_elements.get_matrix_elements():
+                if me.set_onshell_particles_width_to_zero():
+                    n_dropped += 1
+            if n_dropped:
+                logger.info("Some on-shell (external) particle widths have been "
+                            "set to zero in their internal propagators [new]\n if "
+                            "you want to keep them set \"zerowidth_external\" to "
+                            "False", '$MG:BOLD')
 
         calls = 0
 
@@ -13282,15 +15178,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 matrix_elements = self._curr_matrix_elements.get_matrix_elements()
 
             for me_number, me in enumerate(self._curr_matrix_elements):
-                calls = calls + \
-                    self._curr_exporter.generate_subprocess_directory(\
-                        me, self._curr_helas_model, me_number)               
+                writer, scope = self.writer_in_gauge(me)
+                with scope:
+                    calls = calls + \
+                        self._curr_exporter.generate_subprocess_directory(\
+                            me, writer, me_number)
         
         # ungroup mode
         else:
             for nb,me in enumerate(matrix_elements[:]):
-                new_calls = self._curr_exporter.generate_subprocess_directory(\
-                            me, self._curr_helas_model, nb)
+                writer, scope = self.writer_in_gauge(me)
+                with scope:
+                    new_calls = self._curr_exporter.generate_subprocess_directory(\
+                                me, writer, nb)
                 if  isinstance(new_calls, int):
                     if new_calls ==0:
                         matrix_elements.remove(me)
@@ -13332,11 +15232,23 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         # Replace the amplitudes with the actual amplitudes from the
         # matrix elements, which allows proper diagram drawing also of
-        # decay chain processes
-        matrix_elements = self._curr_matrix_elements.get_matrix_elements()
-        self._curr_amps = diagram_generation.AmplitudeList(\
-               [me.get('base_amplitude') for me in \
-                matrix_elements])
+        # decay chain processes.
+        # Not when the generation recorded crossings: the amplitudes rebuilt
+        # from the matrix elements carry none (get_base_amplitude keeps only the
+        # process and the diagrams), and they are this output's -- folded, or
+        # expanded into explicit subprocesses -- not the generation's. The next
+        # output would inherit that choice: after a standalone_fortran one, a
+        # madevent output rebuilt from them misses every crossed subprocess.
+        if not self._has_recorded_crossings(self._curr_amps):
+            matrix_elements = self._curr_matrix_elements.get_matrix_elements()
+            self._curr_amps = diagram_generation.AmplitudeList(\
+                   [me.get('base_amplitude') for me in \
+                    matrix_elements])
+            # These lost the diagrams this output's --mask trimmed: record
+            # them, so that the next regeneration starts again from the
+            # amplitudes as generated (see the --mask above).
+            if getattr(self, '_trimmed_amps', None) is not None:
+                self._trimmed_amps[0] = list(self._curr_amps)
 
     def finalize(self, nojpeg, online = False, flaglist=[]):
         """Make the html output, write proc_card_mg5.dat and create
@@ -13360,8 +15272,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
             # the P1N (amplitude split) routines: madevent's helicity recycling,
-            # and the C++ one of a madmatrix output (--hel_recycling, on by
-            # default: 'auto')
+            # the Fortran standalone --hel_recycling (same machinery, off by
+            # default) and the C++ one of a madmatrix output (--hel_recycling,
+            # on by default: 'auto')
+            sa_hel_recycling = str(getattr(self._curr_exporter, 'cmd_options', {}).get(
+                    'hel_recycling', False)).lower() in ('true', '1', 'yes')
             exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
                                                        'output_options') or {}
             cpp_recycling = hasattr(getattr(self._curr_exporter,
@@ -13369,7 +15284,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                     'write_recycled') and \
                 str(exporter_opts.get('hel_recycling', False)).lower() in \
                                                ('true', '1', 'yes', 'auto')
-            if (self._export_format == 'madevent' or cpp_recycling) and \
+            if (self._export_format == 'madevent' or sa_hel_recycling or
+                    cpp_recycling) and \
                 not 'no_helrecycling' in flaglist and \
                 not (self._curr_amps and isinstance(
                     self._curr_amps[0], loop_diagram_generation.LoopAmplitude)):
@@ -13389,6 +15305,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 self.previous_lorentz = wanted_lorentz
                 self.previous_couplings = wanted_couplings
             else:
+                # an output in two gauges: the routines of the other one go
+                # to their own library (gauge_libraries)
+                other_lorentz = self.lorentz_of_other_gauges(wanted_lorentz)
+                if other_lorentz:
+                    wanted_lorentz = other_lorentz.pop('')
                 for npwave in aloha.npwave:
                     aloha.dual_mode = npwave
                     self._curr_exporter.convert_model(self._curr_model,
@@ -13396,6 +15317,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                                    wanted_couplings,
                                                    npwave=npwave)
                 aloha.dual_mode = 0
+                for gauge, lorentz in sorted(other_lorentz.items()):
+                    with aloha.gauge_scope(gauge):
+                        self._curr_exporter.write_aloha_library(
+                            self.model_for_gauge(gauge), lorentz, gauge=gauge)
                 if hasattr(self, '_me_curr_exporter') and self._me_curr_exporter:
                     self._me_curr_exporter.convert_model(self._curr_model, 
                                                wanted_lorentz,
@@ -13485,8 +15410,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # cited too.
 
         # optional generation choices: gauge, polarization, TauDecay
+        gauge = str(self.options.get('gauge', 'unitary'))
+        if hasattr(self, 'gauges_in_use') and 'FD' in self.gauges_in_use():
+            gauge = 'FD'    # some processes in the FD gauge (--gauge=FD)
         pairs += citation.optional_generation_pairs(
-            gauge=str(self.options.get('gauge', 'unitary')),
+            gauge=gauge,
             polarization=getattr(self, '_uses_polarization', False),
             taudecay=getattr(self, '_uses_taudecay', False))
 
@@ -13786,7 +15714,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger_mg.info('More info in temporary files:\n    %s/index.html' % (decay_dir))
             with misc.MuteLogger(['madgraph','ALOHA','cmdprint','madevent'], [40,40,40,40]):
                 self.exec_cmd('output madevent %s -f' % decay_dir,child=False)
-                
+
                 #modify some parameter of the default run_card
                 run_card = banner_module.RunCard(pjoin(decay_dir,'Cards','run_card.dat'))
                 if run_card['ickkw']:

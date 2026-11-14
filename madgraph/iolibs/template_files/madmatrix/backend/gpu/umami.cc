@@ -7,11 +7,13 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "GpuRuntime.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
+#include "rambo.h" // rambo::has_phase_space (keep_every_helicity)
 
 #include <algorithm>
 #include <cfloat>
@@ -108,6 +110,9 @@ namespace
     helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_in + offset] : 0.5;
     color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
     g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
+    // With crossing, an extended id K*nmaxflavor + flav (K a row of the crossing
+    // table) is evaluated as that crossing by sigmaKin; one past the table gets a
+    // zero |M|^2, as on cpu.
     flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
     if( helicity_in )
     {
@@ -177,10 +182,12 @@ namespace
     // The device the instance was created on (the current one in umami_initialize)
     int device = 0;
     // The good helicities of process.parameters(), chosen on the first events the
-    // instance evaluates (nlearn): how many of them it has looked at, and the
-    // helicities that contribute to one of them
+    // instance evaluates (nlearn) or set from the cards (madmatrix_set_helicity_choice):
+    // how many of them it has looked at, and the helicities that contribute to one of them
     std::size_t learned = 0;
     bool good_hel[ProcessData::ncomb] = {};
+    // where RAMBO has no phase space (a decay below threshold), every helicity is kept
+    bool keep_every_helicity = false;
     // parameter interference_helicity_summed (run card [generation]
     // interference_helicity = "summed"): an interference |M|^2 stays the helicity
     // sum even when the caller draws the helicity (see umami_matrix_element)
@@ -222,8 +229,31 @@ namespace
   // initialization on RAMBO points at 1.5 TeV, the all-plus helicities of g g > h g
   // in the heft model were dropped, 42% of |M|^2 at 130 GeV), and a first call of
   // special points (one forward u u~ > e+ e- event) is one of nlearn events only.
-  // sigmaKin_getGoodHel samples the first 16 events of a call.
-  constexpr std::size_t nlearn = 16;
+  // With crossing, the scan evaluates every row of the crossing table on these
+  // events, into the one list they share. sigmaKin_getGoodHel samples the first
+  // goodHelScanEvents (16) events of a call. Where there is no phase space (a decay
+  // below threshold), every helicity is kept (InterfaceInstance::keep_every_helicity,
+  // see the cpu backend). An mg7 run gives every instance the choice a CPU build
+  // makes from the cards instead (madmatrix_set_helicity_choice).
+  constexpr std::size_t nlearn = goodHelScanEvents;
+
+  // Where the base process has no phase space at the masses of the instance
+  bool no_phase_space( InterfaceInstance* instance )
+  {
+    const std::vector<fptype>& instanceMasses = instance->process.getMasses();
+    const std::vector<double> masses( instanceMasses.begin(), instanceMasses.end() );
+    return !rambo::has_phase_space( ProcessData::npari, masses );
+  }
+
+  // Keep every helicity of an instance (InterfaceInstance::keep_every_helicity)
+  void keep_all_helicities( InterfaceInstance* instance )
+  {
+    for( bool& good : instance->good_hel ) good = true;
+    instance->learned = nlearn;
+    ProcessParameters& params = instance->process.parameters();
+    sigmaKin_setGoodHel( params, instance->good_hel );
+    instance->deviceParams.update( params );
+  }
 
   // Add the helicities that contribute to the first events of a call to those of
   // the instance. Returns the number of events of the call it looked at.
@@ -257,6 +287,8 @@ namespace
   {
     instance->learned = 0;
     for( bool& good : instance->good_hel ) good = false;
+    instance->keep_every_helicity = no_phase_space( instance );
+  }
   }
 
 }
@@ -339,6 +371,7 @@ extern "C"
 
     const std::vector<fptype>& masses = instance->process.getMasses();
     g_externalMasses.assign( masses.begin(), masses.end() );
+    reset_good_helicities( instance.get() ); // keep_every_helicity
 
     *handle = instance.release();
     return UMAMI_SUCCESS;
@@ -404,6 +437,20 @@ extern "C"
 #endif
   }
 
+  // Numbering of the outputs of a crossed call (crossing on, flavor index
+  // K*nmaxflavor + flavor: row K of the crossing table in ProcessTables.h).
+  // - UMAMI_OUT_HELICITY_INDEX is the crossed process's own helicity code,
+  //   the one its --use_crossing=False output reports (selected_hel_code);
+  //   UMAMI_IN_HELICITY_INDEX takes the same code (base_row_of_code).
+  // - UMAMI_OUT_COLOR_INDEX, UMAMI_OUT_DIAGRAM_INDEX and UMAMI_OUT_DIAGRAM_AMP2
+  //   number the colour flows and diagrams of the BASE subprocess (this P
+  //   directory's). To read a flow on the crossed legs, input slot k is base
+  //   leg xpinv_tab[K*npar+k], with colour and anticolour exchanged when
+  //   xsgni_tab is -1 (the leg changed side). This is not the numbering of the
+  //   --use_crossing=False output: two rows can serve the same flavours with
+  //   different leg assignments, so one base flow is a different flow of the
+  //   crossed process under each. `output mg7` decodes through the base this
+  //   way (export_mg7.py, get_crossed_subprocess_info).
   UmamiStatus umami_matrix_element(
     UmamiHandle handle,
     size_t count,
@@ -589,10 +636,19 @@ extern "C"
       gpuStreamSynchronize( gpu_stream );
       // the jamp scratch of the helicity filtering (one helicity, njampso jamps, a few
       // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
-      const std::size_t scanned = learn_good_helicities(
-        instance, momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
-      // the events among them, not the padding (copies of the first event, at the end)
-      instance->learned += std::min( scanned, count );
+      if( instance->keep_every_helicity )
+        keep_all_helicities( instance );
+      else
+      {
+        const std::size_t scanned = learn_good_helicities(
+          instance, momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
+        // the events among them, not the padding (copies of the first event, at the end)
+        instance->learned += std::min( scanned, count );
+      }
+      // the good helicities reach dcGoodHel/dcNGoodHel through copies from pageable host
+      // memory, which may return before the device holds them: wait for them before the
+      // kernels of sigmaKin, on a stream that does not synchronise with the default one
+      checkGpu( gpuDeviceSynchronize() );
     }
 
     sigmaKin(
@@ -658,19 +714,19 @@ extern "C"
     return UMAMI_SUCCESS;
   }
 
-  // A madmatrix extension, not part of UMAMI: the number of helicity combinations
-  // the good-helicity filter of an instance keeps (see nlearn): 0 before its first
-  // umami_matrix_element call, and while it is still choosing, the helicities that
-  // contribute to the events it has looked at so far.
+  // A madmatrix extension, not part of UMAMI: the number of rows in the one
+  // good-helicity list of an instance, shared by every flavor and crossing (see
+  // nlearn): 0 before its first umami_matrix_element call, and while it is still
+  // choosing, the rows that contribute to the events it has looked at so far.
   int madmatrix_good_helicity_count( UmamiHandle handle )
   {
-    return static_cast<InterfaceInstance*>( handle )->process.parameters().nGoodHel;
+    return static_cast<InterfaceInstance*>( handle )->process.parameters().nGoodHelRows;
   }
 
   // A madmatrix extension, not part of UMAMI: the good helicities an instance has
   // chosen, as madmatrix_set_helicity_choice takes them (see the cpu backend):
-  // choice[0], the --hel_recycling flag of the CPU builds (0 here), then the rows of
-  // the helicity table that are kept. Returns the size of the choice, written if it
+  // choice[0], the flags of the CPU builds (--hel_recycling, C-parity dedup: neither
+  // here, 0), then the rows of the helicity table that are kept. Returns the size of the choice, written if it
   // is at most `capacity`, or -1 while the instance is still choosing.
   int madmatrix_get_helicity_choice( UmamiHandle handle, int* choice, int capacity )
   {
@@ -693,8 +749,9 @@ extern "C"
   // the same parameters: mg7 chooses them from its cards on a CPU build
   // (madmatrix_choose_good_helicities, which the GPU builds do not have), so that a
   // run on a GPU evaluates the helicities of a run on a CPU. They are kept until
-  // umami_set_parameter changes a parameter. UMAMI_ERROR, and nothing changes, if
-  // the choice does not fit the helicities of this process.
+  // umami_set_parameter changes a parameter. The flags of choice[0] are not used
+  // here. UMAMI_ERROR, and nothing changes, if the choice does not fit the
+  // helicities of this process.
   UmamiStatus madmatrix_set_helicity_choice( UmamiHandle handle, const int* choice, int size )
   {
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
@@ -708,6 +765,9 @@ extern "C"
     ProcessParameters& params = instance->process.parameters();
     sigmaKin_setGoodHel( params, instance->good_hel );
     instance->deviceParams.update( params );
+    // a copy from pageable host memory may return before the device holds it (see
+    // umami_matrix_element): the kernels of a non-blocking stream must see it
+    checkGpu( gpuDeviceSynchronize() );
     return UMAMI_SUCCESS;
   }
 }

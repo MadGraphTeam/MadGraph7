@@ -731,11 +731,11 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER VECSIZE_USED
 
       INTEGER IVEC
+
       INTEGER          IPSEL
       COMMON /SUBPROC/ IPSEL
       INTEGER IMIRROR, IPROC
       COMMON/TO_MIRROR/ IMIRROR, IPROC
-
 
 
 
@@ -762,38 +762,39 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       END
 
       INTEGER FUNCTION GET_NHEL1(HEL, IPART)
-C     if hel>0 return the helicity of particule ipart for the selected
-C      helicity configuration
-C     if hel=0 return the number of helicity state possible for that
-C      particle 
+C     if hel>0 return the helicity of particule ipart for the
+C     selected helicity configuration
+C     if hel=0 return the number of helicity state possible for
+C     that particle
       IMPLICIT NONE
-      INTEGER HEL,I, IPART
+      INTEGER HEL, I, IPART
       INCLUDE 'nexternal.inc'
-      INTEGER ONE_NHEL(NEXTERNAL)
-      INTEGER                 NCOMB
-      PARAMETER (             NCOMB=16)
-      INTEGER NHEL(NEXTERNAL,0:NCOMB)
-      DATA (NHEL(I,0),I=1,4) / 2, 2, 2, 2/
-      DATA (NHEL(I,   1),I=1,4) / 1,-1,-1, 1/
-      DATA (NHEL(I,   2),I=1,4) / 1,-1,-1,-1/
-      DATA (NHEL(I,   3),I=1,4) / 1,-1, 1, 1/
-      DATA (NHEL(I,   4),I=1,4) / 1,-1, 1,-1/
-      DATA (NHEL(I,   5),I=1,4) / 1, 1,-1, 1/
-      DATA (NHEL(I,   6),I=1,4) / 1, 1,-1,-1/
-      DATA (NHEL(I,   7),I=1,4) / 1, 1, 1, 1/
-      DATA (NHEL(I,   8),I=1,4) / 1, 1, 1,-1/
-      DATA (NHEL(I,   9),I=1,4) /-1,-1,-1, 1/
-      DATA (NHEL(I,  10),I=1,4) /-1,-1,-1,-1/
-      DATA (NHEL(I,  11),I=1,4) /-1,-1, 1, 1/
-      DATA (NHEL(I,  12),I=1,4) /-1,-1, 1,-1/
-      DATA (NHEL(I,  13),I=1,4) /-1, 1,-1, 1/
-      DATA (NHEL(I,  14),I=1,4) /-1, 1,-1,-1/
-      DATA (NHEL(I,  15),I=1,4) /-1, 1, 1, 1/
-      DATA (NHEL(I,  16),I=1,4) /-1, 1, 1,-1/
-
-      GET_NHEL1 = NHEL(IPART, IABS(HEL))
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=2)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+      DATA NHSTATE /2,2,2,2/
+      DATA (STATES(I,1),I=1,2) /1,-1/
+      DATA (STATES(I,2),I=1,2) /-1,1/
+      DATA (STATES(I,3),I=1,2) /-1,1/
+      DATA (STATES(I,4),I=1,2) /1,-1/
+      INTEGER XGW, XGD, XGK
+      IF (HEL.EQ.0) THEN
+C       Number of helicity states for particle ipart.
+        GET_NHEL1 = NHSTATE(IPART)
+      ELSE
+C       Decode the canonical mixed-radix helicity code into
+C       particle ipart's helicity value (last external leg =
+C       least-significant digit).
+        XGW = 1
+        DO XGK = IPART+1, NEXTERNAL
+          XGW = XGW * NHSTATE(XGK)
+        ENDDO
+        XGD = MOD((IABS(HEL)-1)/XGW, NHSTATE(IPART))
+        GET_NHEL1 = STATES(XGD+1, IPART)
+      ENDIF
       RETURN
       END
+
 
 
 
