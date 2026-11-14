@@ -2792,6 +2792,49 @@ class TestRunCardMG7(unittest.TestCase):
         card.set('beam.mlm_shower_start', 'collider_energy')
         self.assertEqual(card['beam']['mlm_shower_start'], 'collider_energy')
 
+    def test_set_mlm_modes(self):
+        """set mlm madevent: MLM merging with every clustering option at
+        madevent's choice; set mlm mg7: back to mg7's defaults"""
+        default = bannermod.RunCardMG7()
+        rc = bannermod.RunCardMG7()
+        changes, warnings = rc.set_lo_param('mlm', 'madevent')
+        self.assertEqual(warnings, [])
+        self.assertTrue(rc.is_mlm_merged())
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(rc['phasespace']['xqcut'], rc.default_mlm_xqcut)
+        for key, val in rc._MLM_MODES['madevent'].items():
+            self.assertEqual(rc[key], val, key)
+            self.assertEqual(changes[key], val, key)
+        # the mg7 mode is exactly the card's defaults, and covers every option
+        # the madevent mode moves
+        self.assertLessEqual(set(rc._MLM_MODES['madevent']),
+                             set(rc._MLM_MODES['mg7']))
+        rc.set('phasespace.xqcut', 20.0)
+        rc.set_lo_param('mlm', 'mg7')
+        for key in rc._MLM_MODES['mg7']:
+            self.assertEqual(rc[key], default[key], key)
+        # a merging cut already set is kept
+        self.assertEqual(rc['phasespace']['xqcut'], 20.0)
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'mlm', 'ckkw')
+
+    def test_set_mlm_on_lepton_beams_warns(self):
+        rc = bannermod.RunCardMG7()
+        rc.set('beam.leptonic', True)
+        changes, warnings = rc.set_lo_param('mlm', 'madevent')
+        self.assertEqual(len(warnings), 1)
+        self.assertFalse(rc.is_mlm_merged())
+
+    def test_from_LO_jet_radius(self):
+        """madevent's hidden d is the D of the MLM clustering: beam.jet_radius,
+        which the shower also reports as JetMatching:coneRadius"""
+        lo = bannermod.RunCardLO()
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['jet_radius'], 1.0)
+        lo['d'] = 0.7
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['jet_radius'], 0.7)
+        self.assertEqual(mg7['d'], 0.7)
+
     def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
         rc = bannermod.RunCardMG7()
         rc.set_lo_param('maxjetflavor', '5')

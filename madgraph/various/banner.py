@@ -7918,7 +7918,7 @@ class RunCardMG7(RunCard):
         # MLM run (dynamical_scale_choice = "mlm" with xqcut > 0) reports
         # ickkw = 1 and its xqcut, so that the shower does the jet matching.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
-        'dparameter', 'lhaid', 'iseed', 'python_seed',
+        'd', 'dparameter', 'lhaid', 'iseed', 'python_seed',
         # read by MadSpin (check_launch, do_import) and by Banner.write for
         # the <LesHouchesEvents version=...> of the files it rewrites
         'lhe_version', 'bwcutoff',
@@ -8029,6 +8029,9 @@ class RunCardMG7(RunCard):
             if self.is_mlm_merged():
                 return int(beam['max_jet_flavor'])
             return 5
+        if key == 'd':
+            # JetMatching:coneRadius: the D of the clustering's kt measure
+            return float(beam['jet_radius'])
         if key == 'dparameter':
             return 0.4           # only used by the (unused) CKKW-L machinery
         # --- run / seed bookkeeping ---
@@ -8545,6 +8548,24 @@ class RunCardMG7(RunCard):
             # the MLM clustering's jet flavours, which madevent's maxjetflavor
             # also sets
             put('beam.max_jet_flavor', flavours)
+
+        elif name == 'mlm':
+            # "set mlm madevent": MLM merging with every clustering option
+            # at madevent's choice; "set mlm mg7": with mg7's defaults
+            mode = text.lower()
+            if mode not in self._MLM_MODES:
+                raise InvalidCmd("set mlm %s: the mode is 'madevent' (the MLM "
+                                 "clustering as madevent does it) or 'mg7' "
+                                 "(mg7's defaults)" % text)
+            put('beam.dynamical_scale_choice', 'mlm')
+            for key, val in self._MLM_MODES[mode].items():
+                put(key, val)
+            # no merging cut, no merged sample: take madevent's default
+            if float(self['phasespace']['xqcut']) <= 0:
+                put('phasespace.xqcut', self.default_mlm_xqcut)
+            if beam['leptonic']:
+                warnings.append('set mlm: the beams are not hadronic, so the '
+                                'events are clustered but not MLM merged')
 
         else:
             # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
@@ -9459,6 +9480,32 @@ class RunCardMG7(RunCard):
         'bwcutoff': 'phasespace.bw_cutoff',
         'cut_decays': 'phasespace.cut_decays',
         'use_syst': 'systematics.enable',
+        # D of the MLM clustering's kt measure (hidden in both cards)
+        'd': 'beam.jet_radius',
+    }
+    # "set mlm <mode>": the MLM clustering options as madevent chooses them,
+    # or back to mg7's defaults. Both also select dynamical_scale_choice
+    # "mlm" (see set_lo_param).
+    _MLM_MODES = {
+        'madevent': collections.OrderedDict([
+            ('beam.scale_scheme', 'madevent'),
+            ('beam.clustering_measure', 'madevent'),
+            ('beam.clustering_history', 'madevent'),
+            ('beam.jet_scale_scheme', 'production'),
+            ('beam.parton_line_scheme', 'goodjet'),
+            ('beam.alphas_reweighting', 'per_vertex'),
+            ('beam.pdf_reweighting', True),
+        ]),
+        'mg7': collections.OrderedDict([
+            ('beam.scale_scheme', 'clustering_mean'),
+            ('beam.clustering_measure', 'fxfx'),
+            ('beam.clustering_history', 'all_diagrams'),
+            ('beam.jet_scale_scheme', 'production'),
+            ('beam.parton_line_scheme', 'goodjet'),
+            ('beam.alphas_reweighting', 'per_vertex'),
+            ('beam.pdf_reweighting', True),
+            ('beam.clustering_mean_pdf_ladder', True),
+        ]),
     }
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
@@ -9530,9 +9577,11 @@ class RunCardMG7(RunCard):
     }
     # LO parameters that "set" translates with set_lo_param: not a plain
     # rename (_LO_SCALAR_MAP) nor a cut (_LO_CUT_MAP) nor a beam setting
-    # (lo_beam_params). A set literal: set() is the method of this class here.
+    # (lo_beam_params), plus the mg7 shortcut "set mlm madevent|mg7".
+    # A set literal: set() is the method of this class here.
     _LO_SET_PARAMS = {'fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2',
                       'dynamical_scale_choice', 'sde_strategy', 'maxjetflavor',
+                      'mlm',
                       'mxx_min_pdg', 'mxx_only_part_antipart', *_LO_PDG_CUT_MAP}
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
