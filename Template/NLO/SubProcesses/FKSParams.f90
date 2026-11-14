@@ -26,6 +26,9 @@ module FKSParams
   logical, private :: FxFxPythia8Matching=.false.
   integer :: FKSFinalRecoil=0
   integer :: FKSISRMapping=0
+  ! Tiled S-event integral: learned sector radiation tile maps.
+  logical :: FKSSectorLearning=.false.
+  real*8 :: FKSSectorLearningBudget=0.20d0
   real*8 :: Pythia8MMaxGamma=10d0
 
 contains
@@ -38,7 +41,7 @@ contains
     character(*) :: filename
     CHARACTER(len=64) :: buff
     include "orders.inc"
-    integer :: i,j
+    integer :: i,j,ios
     couldRead=.False.
     if (HasReadOnce.and..not.force) then
        goto 901
@@ -105,6 +108,18 @@ contains
              if (.not.(Pythia8MMaxGamma.ge.0.001d0.and. &
                        Pythia8MMaxGamma.le.5000d0)) then
                 write(*,*) 'Pythia8MMaxGamma must be between 0.001 and 5000 GeV.'
+                stop 1
+             endif
+          else if (buff .eq. '#FKSSectorLearning') then
+             read(68,*,end=999,iostat=ios) FKSSectorLearning
+             if(ios.ne.0)then
+                write(*,*) 'FKSSectorLearning must be .true. or .false.'
+                stop 1
+             endif
+          else if (buff .eq. '#FKSSectorLearningBudget') then
+             read(68,*,end=999) FKSSectorLearningBudget
+             if(.not.(FKSSectorLearningBudget.gt.0d0.and.FKSSectorLearningBudget.le.1d0))then
+                write(*,*) 'FKSSectorLearningBudget must be in (0,1].'
                 stop 1
              endif
           else if (buff .eq. '#MCExplicitKLSum') then
@@ -186,6 +201,10 @@ contains
        endif
     enddo
 999 continue
+    if(FKSSectorLearning.and.(.not.FKSExplicitSum.or..not.MCSubtractionAtFixedFlow))then
+       write(*,*) 'FKSSectorLearning requires FKSExplicitSum and MCSubtractionAtFixedFlow.'
+       stop 1
+    endif
     couldRead=.True.
     goto 998      
 
@@ -253,6 +272,8 @@ contains
        write(*,*) ' > FKSFinalRecoil            = ',FKSFinalRecoil
        write(*,*) ' > FKSISRMapping             = ',FKSISRMapping
        write(*,*) ' > Pythia8MMaxGamma           = ',Pythia8MMaxGamma
+       write(*,*) ' > FKSSectorLearning         = ',FKSSectorLearning
+       if(FKSSectorLearning)write(*,*) ' > FKSSectorLearningBudget   = ',FKSSectorLearningBudget
        write(*,*) ' > MCExplicitKLSum           = ',MCExplicitKLSum
        write(*,*) ' > MCSubtractionAtFixedFlow  = ',MCSubtractionAtFixedFlow
        write(*,*) ' > FKSExplicitSum            = ',FKSExplicitSum
@@ -283,6 +304,8 @@ contains
     VirtTrickSurrogate=2
     FKSFinalRecoil=0
     FKSISRMapping=0
+    FKSSectorLearning=.false.
+    FKSSectorLearningBudget=0.20d0
     Pythia8MMaxGamma=10d0
     MCExplicitKLSum=.false.
     MCSubtractionAtFixedFlow=.true.

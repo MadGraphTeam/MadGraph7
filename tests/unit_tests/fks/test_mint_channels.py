@@ -102,6 +102,8 @@ SUPPORT = '''
 module FKSParams
 logical :: use_poly_virtual=.false.
 integer :: VirtTrickSurrogate=0
+logical :: FKSSectorLearning=.false.
+double precision :: FKSSectorLearningBudget=.20d0
 double precision :: virt_fraction=1d0,min_virt_fraction=.005d0
 end module
 

@@ -18,6 +18,8 @@ def mint_support(work, real_weight_lines=False, real_fks_params=False):
         ('' if real_fks_params else 'module FKSParams\n'
         'logical :: use_poly_virtual=.false.\n'
         'integer :: VirtTrickSurrogate=2\n'
+        'logical :: FKSSectorLearning=.false.\n'
+        'double precision :: FKSSectorLearningBudget=.20d0\n'
         'double precision :: virt_fraction=1d0,min_virt_fraction=0.01d0\n'
         'end module\n') +
         'module mc_native_context\n'

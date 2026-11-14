@@ -82,6 +82,8 @@ c
 c     Read general MadFKS parameters
 c
       call FKSParamReader(paramFileName,.TRUE.,.FALSE.)
+c Learned sector maps reshape MC@NLO S events only.
+      FKSSectorLearning=.false.
       min_virt_fraction_mint=min_virt_fraction
       do kchan=1,maxchannels
          do i=0,n_ave_virt

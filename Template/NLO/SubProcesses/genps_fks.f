@@ -149,7 +149,7 @@ c sampling a plain Born point, whose measure contains no radiation.
       include 'timing_variables.inc'
       integer ndim,iconfig
       double precision wgt,x(99)
-      type(fks_phase_space_point),intent(out) :: point
+      type(fks_phase_space_point),intent(inout) :: point
 
       if(timing_sampled)call timing_enter(timing_phase_space)
       call initialize_fks_phase_space(iconfig)

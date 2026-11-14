@@ -33,7 +33,8 @@ class TestBornFlowRejection(unittest.TestCase):
         (work / 'routines.f').write_text(
             fortran_routine(TEMPLATE / 'fks_singular.f', 'get_born_flow') +
             fortran_routine(TEMPLATE / 'fks_singular.f', 'get_born_flow_weights') +
-            fortran_routine(TEMPLATE / 'driver_mintMC.f', 'sigintF'))
+            fortran_routine(TEMPLATE / 'driver_mintMC.f', 'sigintF') +
+            fortran_routine(TEMPLATE / 'driver_mintMC.f', 'get_event_coordinates'))
         # These operations do not participate in the rejection protocol. The
         # fixture below supplies the Born proposals and contribution records.
         noops = ('find_iproc_map', 'setup_event_attributes', 'update_fks_dir',
@@ -42,9 +43,9 @@ class TestBornFlowRejection(unittest.TestCase):
                  'set_alphaS', 'include_multichannel_enhance', 'compute_ewsudakov',
                  'compute_shower_scale_nbody', 'save_shower_scale_nbody',
                  'Bornonly_shower_scale', 'compute_shower_scale_n1body',
-                 'compute_prefactors_nbody', 'compute_prefactors_n1body',
+                 'compute_prefactors_nbody',
                  'special_check_SoftSing', 'mc_set_history',
-                 'vs_begin_point', 'virt_surrogate_fit_point',
+                 'vs_begin_point', 'reset_folded_virtual',
                  'include_bias_wgt', 'sum_identical_contributions',
                  'apply_born_spread_weight')
         (work / 'noops.f90').write_text('\n'.join(
@@ -69,6 +70,15 @@ class TestBornFlowRejection(unittest.TestCase):
 
     def test_nonfinite_and_zero_colour_weights(self):
         self.check_mode('selection')
+
+    def test_learned_sector_radiation_jacobian_and_selected_event_replay(self):
+        self.check_mode('sector')
+
+    def test_learning_rejects_radiation_dependent_born_coordinates(self):
+        result = subprocess.run([str(self.executable), 'no_projection'],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Sector learning requires event projection', result.stdout)
 
     def test_calibration_uses_s_weights_and_restores_production(self):
         self.check_mode('calibration')

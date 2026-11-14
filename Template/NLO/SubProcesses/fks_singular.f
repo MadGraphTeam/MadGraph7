@@ -3529,6 +3529,12 @@ c will be updated later
             do j=1,niproc(i_soft)
                do jj=1,iproc_save(nFKS(i))
                   if (eto(jj,nFKS(i)).eq.j) then
+c Record the final routed signed scalar BEFORE grouping or ABS. The
+c contribution's stored fold and outer-owner tag survive native histories;
+c j is precisely the canonical flavour used by the existing S route.
+                     if(sector_learning_collect.and.itype(i).ne.14)
+     $                    call sector_learning_add_contribution(i,
+     $                    ifold_cnt(i),j,parton_iproc(jj,i))
 c When computing upper bounding envelope (imode.eq.1) do not include the
 c virtual corrections. Exception: when computing only the virtual, do
 c include it here!
@@ -6534,6 +6540,20 @@ c
       
 
 
+      subroutine reset_folded_virtual
+c The driver starts a fresh complete folded point before any radiation
+c trial. A skipped first soft endpoint must not expose the prior point's
+c cached virtual to a later supported fold.
+      implicit none
+      logical virtual_fold_ready,eikonal_point_ready
+      common /c_folded_virtual/ virtual_fold_ready
+      common /c_folded_eikonal/ eikonal_point_ready
+      virtual_fold_ready=.false.
+      eikonal_point_ready=.false.
+      return
+      end
+
+
       subroutine bornsoftvirtual(p,bsv_wgt,virt_wgt,born_wgt)
       use fks_phase_space_data, only: sqrtshat,shat,p_born
       use extra_weights
@@ -6612,6 +6632,8 @@ c timing statistics
 c For the MINT folding
       integer fold,ifold_counter
       common /cfl/fold,ifold_counter
+      logical virtual_fold_ready,first_virtual_evaluation
+      common /c_folded_virtual/ virtual_fold_ready
       double precision virt_wgt_save
       save virt_wgt_save
 
@@ -6669,6 +6691,13 @@ c Surrogate/Born ratios fixed for all folds of this point.
       double precision ave_ratio(0:amp_split_size)
 
       include "pmass.inc"
+
+c The first radiation trial need not have a soft endpoint. Initialize
+c the virtual on the first fold that actually reaches this routine,
+c after the driver has reset the complete point, not by its fold index.
+c Fixed-order callers retain their ordinary fold-zero initialization.
+      if (fold.eq.0) call reset_folded_virtual
+      first_virtual_evaluation=.not.virtual_fold_ready
       
       if (firsttime) then
 C check if any real emission need cahrge/color links
@@ -6833,9 +6862,10 @@ C end of the external particle loop
 c     If doing MC over helicities, must sum over the two
 c     helicity contributions for the Q-terms of collinear limit.
  547  continue
-      collect_surrogate=VirtTrickSurrogate.ge.1.and.fold.eq.0
+      collect_surrogate=VirtTrickSurrogate.ge.1.and.
+     $     first_virtual_evaluation
      $     .and.born_spread_phase.ne.1.and.born_spread_phase.ne.2
-      if (fold.eq.0) call vs_clear_links
+      if (first_virtual_evaluation) call vs_clear_links
 c Separate virtual events need only the colour links from this loop.
       if (abrv.eq.'virt'.and.(.not.collect_surrogate.or.
      $     .not.need_color_links_used)) goto 548
@@ -6877,7 +6907,12 @@ C wgt includes the gs/w^2
                      if (collect_surrogate.and.iord.eq.qcd_pos)
      $                    call vs_add_link(p_born,QES2,i_fks,m,n,wgt)
                      if (abrv.eq.'virt') cycle
-                     call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
+                     if (product(ifold(1:ndim)).gt.1) then
+                        call cached_eikonal_Ireg(p,m,n,xicut_used,
+     $                       eikIreg)
+                     else
+                        call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
+                     endif
                      contr=contr+wgt*eikIreg
                      do k=1,amp_split_size
                         amp_split_bsv(k) = amp_split_bsv(k) - 2d0 *
@@ -6933,9 +6968,9 @@ c per-order grid/polynomial and clear any current-point fit state.
       use_surrogate=use_surrogate.and.
      $     vs_single_born_order(amp_split_born_for_virt,born_wgt)
 
-c Choose the fitted surrogate at the first fold, retaining the grid or
+c Choose the fitted surrogate at the first supported fold, retaining the grid or
 c polynomial when the channel's fit has not been selected.
-      if (fold.eq.0) then
+      if (first_virtual_evaluation) then
          vs_ratio_set=.false.
          if (use_surrogate) then
             call vs_features(p_born,born_wgt,QES2,VirtTrickSurrogate)
@@ -6950,14 +6985,16 @@ c polynomial when the channel's fit has not been selected.
          ave_ratio=average_virtual(0:amp_split_size,ichan)
       endif
 
-      if (fold.eq.0) then
+      if (first_virtual_evaluation) then
          vs_vcomp=.false.
          vs_born=born_wgt
          vs_fvirt=virtual_fraction(ichan)
          if (abrv.eq.'virt') vs_fvirt=1d0
          ! Training and validation keep the Born-based approximate
          ! virtual below, but exclude the one-loop residual from the fit.
-         if (born_spread_phase.ne.1.and.born_spread_phase.ne.2) then
+         ! Sector-learning probes do not record it either (type 14).
+         if (born_spread_phase.ne.1.and.born_spread_phase.ne.2.and.
+     $        .not.sector_learning_collect) then
           if ((ran2().le.virtual_fraction(ichan) .and.
      $         abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
             if(timing_sampled)call timing_enter(timing_virtual)
@@ -7001,7 +7038,8 @@ c even when different amplitude orders cancel in the summed residual.
          virt_wgt_save=virt_wgt
          amp_split_virt_save(1:amp_split_size)=
      $        amp_split_virt(1:amp_split_size)
-      elseif(fold.eq.1) then
+         virtual_fold_ready=.true.
+      else
          virt_wgt=virt_wgt_save
          amp_split_virt(1:amp_split_size)=
      $        amp_split_virt_save(1:amp_split_size)
@@ -7163,6 +7201,63 @@ c         stop
       return
       end
 
+
+
+      subroutine cached_eikonal_Ireg(p,m,n,xicut_used,eikIreg)
+c I(reg) is a scalar function of the physical Born state. Sector
+c learning probes cache its link table across their radiation folds; the
+c driver resets the table for every complete point. Native contexts can
+c replace active state, so also compare every input read by the scalar
+c kernel on each call.
+      use fks_phase_space_data, only: shat
+      use FKSParams, only: FKSSectorLearning
+      implicit none
+      include 'nexternal.inc'
+      include 'q_es.inc'
+      double precision p(0:3,nexternal),xicut_used,eikIreg,
+     $     pmass(nexternal)
+      integer m,n
+      character*4 abrv
+      common /to_abrv/ abrv
+      logical eikonal_point_ready
+      common /c_folded_eikonal/ eikonal_point_ready
+      logical link_ready(nexternal,nexternal)
+      double precision cached_p(0:3,nexternal),cached_mass(nexternal),
+     $     cached_shat,cached_qes2,cached_xicut,
+     $     link_value(nexternal,nexternal)
+      character*4 cached_abrv
+      save link_ready,link_value,cached_p,cached_mass,cached_shat,
+     $     cached_qes2,cached_xicut,cached_abrv
+
+      include 'pmass.inc'
+
+      if (.not.FKSSectorLearning) then
+         call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
+         return
+      endif
+      if (eikonal_point_ready) then
+         if (any(cached_p.ne.p).or.any(cached_mass.ne.pmass).or.
+     $       cached_shat.ne.shat.or.cached_qes2.ne.QES2.or.
+     $       cached_xicut.ne.xicut_used.or.cached_abrv.ne.abrv)
+     $       eikonal_point_ready=.false.
+      endif
+      if (.not.eikonal_point_ready) then
+         link_ready=.false.
+         cached_p=p
+         cached_mass=pmass
+         cached_shat=shat
+         cached_qes2=QES2
+         cached_xicut=xicut_used
+         cached_abrv=abrv
+         eikonal_point_ready=.true.
+      endif
+      if (.not.link_ready(m,n)) then
+         call eikonal_Ireg(p,m,n,xicut_used,link_value(m,n))
+         link_ready(m,n)=.true.
+      endif
+      eikIreg=link_value(m,n)
+      return
+      end
 
 
       subroutine eikonal_Ireg(p,m,n,xicut_used,eikIreg)

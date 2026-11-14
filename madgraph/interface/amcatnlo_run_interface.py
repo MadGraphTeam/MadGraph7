@@ -127,6 +127,21 @@ def stdhep_status(me_dir, mg5_path=None):
     return 'missing', None
 
 
+def sector_learning_card_error(fks_params, run_card):
+    """Why the cards cannot train FKSSectorLearning maps, or None. MINT0
+    always runs at folding 1 1 1, so the Fortran sees the run-card folding
+    only after the training step has been spent."""
+    value = mcatnlo_shower.read_fks_param(fks_params, 'FKSSectorLearning', '.false.')
+    # Fortran list-directed logical input: an optional '.', then T or F.
+    if str(value).lstrip('.')[:1].lower() != 't':
+        return None
+    if list(run_card['folding']) != [1, 1, 1] or \
+            ('born_spreading' in run_card and run_card['born_spreading']):
+        return ('FKSSectorLearning (Cards/FKS_params.dat) requires folding = 1, 1, 1 '
+                'and born_spreading = False in the run_card.')
+    return None
+
+
 def derive_shower_seed(iseed, job=1):
     """Reproducible shower seed in Pythia8's range [1, 900000000]."""
     return (abs(int(iseed)) * 69069 + 1013904223 + int(job) - 1) % 900000000 + 1
@@ -2019,6 +2034,12 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                 raise aMCatNLOError('%s is not a valid parton shower. '\
                                     'Please use one of the following: %s' \
                                     % (shower, ', '.join(shower_list)))
+
+            if mode_dict[mode] == 'all':
+                error = sector_learning_card_error(
+                    pjoin(self.me_dir, 'Cards', 'FKS_params.dat'), self.run_card)
+                if error:
+                    raise aMCatNLOError(error)
 
             if mode in ['aMC@NLO', 'aMC@LO']:
                 logger.info('Doing %s matched to parton shower' % mode[4:])

@@ -688,7 +688,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             gfortran --version
-            ./tests/test_manager.py TestRealChannelExport TestBornGscale test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_born_spreading test_fks_explicit_sum test_mc_flow_sum test_born_flow_rejection test_tau_cut_cache test_mint_channels test_mint_uncertainty test_virtual_surrogate test_virtual_surrogate_mixed test_real_channels_auto -t0
+            ./tests/test_manager.py TestRealChannelExport TestBornGscale test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_born_spreading test_fks_explicit_sum test_mc_flow_sum test_born_flow_rejection test_tau_cut_cache test_mint_channels test_mint_uncertainty test_virtual_surrogate test_virtual_surrogate_mixed test_learning_probe_virtual test_learning_probe_born_cache test_learning_probe_ireg_cache test_sector_learning_capture test_epoch_replay_reference test_epoch_replay_fortran test_epoch_replay_iteration test_real_channels_auto -t0
 
 
   unittest_write_model:
