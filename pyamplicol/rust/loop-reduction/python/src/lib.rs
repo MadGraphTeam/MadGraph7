@@ -349,6 +349,8 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(kinematics::kinematics_off_record, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::kinematics_notes, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::improve_kinematics, module)?)?;
+    module.add_function(wrap_pyfunction!(kinematics::flat_phase_space, module)?)?;
+    module.add_function(wrap_pyfunction!(kinematics::flat_phase_space_f64, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;
