@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""hipcc of the host emulation of HIP (see ../include/hip/hip_runtime.h).
+
+With this directory first on the PATH, 'make BACKEND=hip' in a madmatrix output
+builds the GPU templates (backend/gpu) as host C++: a source is preprocessed,
+its kernel launches kernel<<<...>>>( args ) are rewritten into calls of
+host_hip::Launch, and the result is compiled by the host compiler ($CXX, else
+c++). The GPU-only options of madmatrix.mk (--offload-arch, -target, -x hip) are
+dropped. Only for checking the GPU code without a GPU toolchain.
+"""
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LAUNCH = re.compile(r'([A-Za-z_][\w:]*(?:<[^<>;]*>)?)\s*<<<(.*?)>>>', re.S)
+
+
+def main(argv):
+    args, sources, out, compile_only = [], [], None, False
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg.startswith('--offload-arch') or arg.startswith('-fgpu-rdc'):
+            pass
+        elif arg in ('-target', '-x'):
+            i += 1  # the language is C++ once the launches are rewritten
+        elif arg == '--shared':
+            args.append('-shared')
+        elif (sys.platform == 'darwin' and arg == '-Xlinker' and i + 3 < len(argv)
+              and argv[i + 1] == '-soname'):
+            args.append('-Wl,-install_name,@rpath/' + argv[i + 3])
+            i += 3
+        elif arg == '-o':
+            out = argv[i + 1]
+            i += 1
+        elif arg == '-c':
+            compile_only = True
+        elif not arg.startswith('-') and re.search(r'\.(cc|cpp|cu)$', arg):
+            sources.append(arg)
+        else:
+            args.append(arg)
+        i += 1
+    cxx = os.environ.get('CXX') or 'c++'
+    base = ['-D__HIPCC__', '-D__HIP_PLATFORM_AMD__', '-DMGONGPU_HAS_NO_HIPRAND',
+            '-I' + os.path.join(ROOT, 'include')]
+    if not compile_only:
+        return subprocess.call([cxx] + base + args + sources + (['-o', out] if out else []))
+    (source,) = sources
+    pre = subprocess.run([cxx, '-E', '-x', 'c++'] + base + args + [source],
+                         stdout=subprocess.PIPE, universal_newlines=True)
+    if pre.returncode:
+        return pre.returncode
+    text = LAUNCH.sub(r'host_hip::Launch(\2)(\1)', pre.stdout)
+    fd, expanded = tempfile.mkstemp(suffix='.ii')
+    try:
+        with os.fdopen(fd, 'w') as fsock:
+            fsock.write(text)
+        return subprocess.call([cxx, '-c', '-x', 'c++-cpp-output'] + base + args +
+                               [expanded, '-o', out])
+    finally:
+        os.unlink(expanded)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
