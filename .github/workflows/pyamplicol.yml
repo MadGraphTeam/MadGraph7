@@ -70,10 +70,14 @@ jobs:
             pull_request) base="$PR_BASE" ;;
             *) base="" ;;
           esac
+          # The file list is read into a variable first: piped into `grep -q`,
+          # a long list (pull requests) made git exit on SIGPIPE once grep had
+          # matched, and pipefail then turned the match into "false".
           if [[ -z "$base" || "$base" =~ ^0+$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             changed=true
-          elif git diff --name-only "$base" HEAD \
-              | grep -qE '^(pyamplicol/|\.github/workflows/pyamplicol|\.github/actions/(pyamplicol|build_pyamplicol|install_pyamplicol)|madspace/include/madspace/umami\.h$|madgraph/mg7/bootstrap\.py$|VERSION$)'; then
+          elif files=$(git diff --name-only "$base" HEAD) && grep -qE \
+              '^(pyamplicol/|\.github/workflows/pyamplicol|\.github/actions/(pyamplicol|build_pyamplicol|install_pyamplicol)|madspace/include/madspace/umami\.h$|madgraph/mg7/bootstrap\.py$|VERSION$)' \
+              <<< "$files"; then
             changed=true
           else
             changed=false
