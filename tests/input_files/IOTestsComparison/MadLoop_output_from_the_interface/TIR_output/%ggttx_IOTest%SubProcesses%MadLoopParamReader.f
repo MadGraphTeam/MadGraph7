@@ -3,7 +3,7 @@
       implicit none
 
       CHARACTER(512) fileName, buff, buff2, mode
-      CHARACTER*20 MLReductionLib_str,MLReductionLib_str_save
+      CHARACTER*512 MLReductionLib_str,MLReductionLib_str_save
       CHARACTER*2  MLReductionLib_char
       INTEGER MLRed,i,j,k
 
@@ -38,6 +38,21 @@
              if (LoopPoleMode.lt.-1.or.LoopPoleMode.gt.3) then
                write(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
                stop 1
+             endif
+
+           else if (buff .eq. '#TIRustComputeFinite') then
+             read(666,*,end=999) TIRustComputeFinite
+           else if (buff .eq. '#UseQPIntegrandForTIRust') then
+             read(666,*,end=999) UseQPIntegrandForTIRust
+           else if (buff .eq. '#TIRustGlobalCache') then
+             read(666,*,end=999) TIRustGlobalCache
+             if (TIRustGlobalCache.lt.-1) then
+               stop 'TIRustGlobalCache must be >= -1'
+             endif
+           else if (buff .eq. '#TIRustCacheMaxBytes') then
+             read(666,*,end=999) TIRustCacheMaxBytes
+             if (TIRustCacheMaxBytes.lt.0) then
+               stop 'TIRustCacheMaxBytes must be nonnegative'
              endif
 
            else if (buff .eq. '#COLLIERGlobalCache') then
@@ -165,7 +180,7 @@
 
           else if (buff .eq. '#MLReductionLib') then
              read(666,*,end=999) MLReductionLib_str
-             MLReductionLib(1:9)=0
+             MLReductionLib(1:10)=0
              MLReductionLib_str_save=MLReductionLib_str
              j=0
              DO
@@ -178,7 +193,9 @@
                 IF(MLReductionLib_char.EQ.'1 ')THEN
                    MLRed=1
                 ELSEIF(MLReductionLib_char.EQ.'2 ')THEN
-                   MLRed=2
+                   WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+                   WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+                   STOP 1
                 ELSEIF(MLReductionLib_char.EQ.'3 ')THEN
                    MLRed=3
                 ELSEIF(MLReductionLib_char.EQ.'4 ')THEN
@@ -191,6 +208,8 @@
                    MLRed=7
                 ELSEIF(MLReductionLib_char.EQ.'8 ')THEN
                    MLRed=8
+                ELSEIF(MLReductionLib_char.EQ.'9 ')THEN
+                   MLRed=9
                 ELSE
                    PRINT *, 'MLReductionLib is wrong: '//
      $                  TRIM(MLReductionLib_str_save)
@@ -257,7 +276,7 @@ C     a non existing or malformed parameter file
 C     A partial card may omit MLReductionLib. Print the effective list rather
 C     than the uninitialized local string used only while parsing that entry.
       MLReductionLib_str_save=''
-      DO i=1,9
+      DO i=1,10
         IF(MLReductionLib(i).EQ.0) EXIT
         WRITE(MLReductionLib_char,'(I1)') MLReductionLib(i)
         IF(i.EQ.1) THEN
@@ -281,6 +300,11 @@ C     than the uninitialized local string used only while parsing that entry.
      $     //TRIM(MLReductionLib_str_save)
       write(*,*) ' > CTModeRun                 = ',CTModeRun
       write(*,*) ' > LoopPoleMode              = ',LoopPoleMode
+      write(*,*) ' > TIRustComputeFinite       = ',TIRustComputeFinite
+      write(*,*) ' > UseQPIntegrandForTIRust    = ',
+     &UseQPIntegrandForTIRust
+      write(*,*) ' > TIRustGlobalCache         = ',TIRustGlobalCache
+      write(*,*) ' > TIRustCacheMaxBytes       = ',TIRustCacheMaxBytes
       write(*,*) ' > MLStabThres               = ',MLStabThres
       write(*,*) ' > NRotations_DP             = ',NRotations_DP
       write(*,*) ' > NRotations_QP             = ',NRotations_QP
@@ -336,8 +360,12 @@ C     than the uninitialized local string used only while parsing that entry.
       MLReductionLib(1)=6
       MLReductionLib(2)=7
       MLReductionLib(3)=1
-      MLReductionLib(4:9)=0
+      MLReductionLib(4:10)=0
       LoopPoleMode=-1
+      TIRustComputeFinite=.True.
+      UseQPIntegrandForTIRust=.True.
+      TIRustGlobalCache=-1
+      TIRustCacheMaxBytes=268435456_8
       IREGIMODE=2
       IREGIRECY=.TRUE.
       COLLIERComputeIRpoles = .TRUE.
@@ -430,14 +458,45 @@ C     combined poles after a UV-only or IR-only reduction fails.
         WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
         STOP 1
       ENDIF
-      IF(LoopPoleMode.LE.0) RETURN
+      IF(.NOT.TIRustComputeFinite) THEN
+        IF(LoopPoleMode.EQ.3) THEN
+          WRITE(*,*) 'TIRust poles-only mode requires at least one pole.'
+          STOP 1
+        ENDIF
+        IF(MLReductionLib(1).NE.9.OR.MLReductionLib(2).NE.0) THEN
+          WRITE(*,*) 'TIRust poles-only diagnostics require MLReductionLib=9.'
+          STOP 1
+        ENDIF
+      ENDIF
+C     Also validate direct runtime changes to the reduction list, before
+C     initialization can discard an unavailable backend or reuse a cache.
       DO I=1,9
         IF(MLReductionLib(I).EQ.0) EXIT
-        IF(MLReductionLib(I).NE.7.AND.MLReductionLib(I).NE.8) THEN
-          WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires NinjaRS/COLLIER.'
-          WRITE(*,*) 'Set MLReductionLib to 8, 7 or 8|7, including',
+        IF(MLReductionLib(I).EQ.2) THEN
+          WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+          WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+          STOP 1
+        ENDIF
+      ENDDO
+      IF(LoopPoleMode.LE.0) RETURN
+      DO I=1,10
+        IF(MLReductionLib(I).EQ.0) EXIT
+        IF(MLReductionLib(I).NE.7.AND.MLReductionLib(I).NE.8
+     &     .AND.MLReductionLib(I).NE.9) THEN
+          WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires TIRust/NinjaRS/COLLIER.'
+          WRITE(*,*) 'Select only IDs 7, 8, 9, including',
      &               ' only supported rescue backends.'
           STOP 1
         ENDIF
       ENDDO
+      END
+
+      BLOCK DATA ML_TIRUST_DEFAULTS
+C     Old cards predate these controls. Do not interpret absent new options
+C     as a request for partial tensors or replace caller-selected old values.
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      DATA TIRustComputeFinite,UseQPIntegrandForTIRust/.TRUE.,.TRUE./
+      DATA TIRustGlobalCache/-1/
+      DATA TIRustCacheMaxBytes/268435456_8/
       END
