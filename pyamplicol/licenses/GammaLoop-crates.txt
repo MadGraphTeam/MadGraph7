@@ -1,8 +1,11 @@
 GammaLoop Rust crates linked into pyAmpliCol's native libraries
 
-Source: https://github.com/alphal00p/gammaloop, revision
-d1904bf2bd5bf4f26969a73b415095e941a55610 (the FeynKit revision pinned in
-rust/loop-reduction/Cargo.toml and Cargo.lock). Licenses as declared by each
+Source: https://github.com/ValentinHirschi/gammaloop (branch
+pyamplicol-community), revision ea3faaae063b1400570c15cf7e055f48312e9329 (the
+FeynKit revision pinned in rust/loop-reduction/Cargo.toml and Cargo.lock):
+https://github.com/alphal00p/gammaloop d1904bf2bd5bf4f26969a73b415095e941a55610
+plus one commit moving Spenso's Complex::conj into Numerica 3.1's numeric
+trait. Licenses as declared by each
 crate's manifest at that revision:
 
 - feynkit-amplitude, feynkit-generator, feynkit-graph, feynkit-kinematics,

@@ -166,8 +166,9 @@ pub mod __private {
     #[cfg(feature = "symbolica-runtime")]
     pub use crate::row_evaluator::RowEvaluator;
 
-    /// A Python `Evaluator.save()` in its canonical stored form (only the
-    /// Symbolica state its evaluator references, numbered canonically);
+    /// A Python `Evaluator.save()` in its canonical stored form (an empty
+    /// Symbolica state for an evaluator without symbolic data, else only the
+    /// state its evaluator references, numbered canonically);
     /// `None` when it already is in it (the generation writers' form,
     /// `pyamplicol.evaluators.symbolica_helpers.saved_evaluator`).
     #[cfg(feature = "symbolica-runtime")]

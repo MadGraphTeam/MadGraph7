@@ -47,8 +47,8 @@ LINKED_PACKAGES = (
 )
 # Linked git repositories -> the notice file under licenses/ covering their crates.
 REPOSITORY_NOTICES = {
-    "ValentinHirschi/symbolica": "Symbolica.txt",
-    "alphal00p/gammaloop": "GammaLoop-crates.txt",
+    "symbolica-dev/symbolica": "Symbolica.txt",
+    "ValentinHirschi/gammaloop": "GammaLoop-crates.txt",
     "alphal00p/ninjars": "NinjaRS.txt",
     "alphal00p/oneloopmaster": "oneloopmaster.txt",
     "huashengshao/TIRust": "TIRust.txt",

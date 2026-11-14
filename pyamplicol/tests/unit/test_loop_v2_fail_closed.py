@@ -436,6 +436,15 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # their sizes: their state sections number the referenced symbols by name
 # instead of by the producer's registry. Every member is the same with the
 # Community 20a9da94 and the PyPI 3.0.3 producer; ``FOURIER_FREE`` likewise.
+# Re-pinned by the community move (Symbolica community 0e2ad04c, whose
+# Evaluator.save() stores no state for an evaluator without symbolic data):
+# the native digests only. Exactly the saved exact evaluators without symbolic
+# data (``kernel-*.bin``, ``scaleless-parameters.bin``) change: the same
+# payload behind an empty partial-state section instead of the referenced
+# built-in records (47 or 111 bytes smaller; per-member comparison on
+# u u~ > d d~ g lc and u u~ > u u~ g full, 167 members); ``parameters.bin``
+# (scalar predicates), the plans, SymJIT applications and every other member
+# keep their bytes.
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -448,39 +457,39 @@ CONTROL_BYTES = {
     "uux_ddxg_lc": (
         "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
         "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
-        "b0c4d606d32f530d5d90b4a8662f499dbb86f29bb3d99476802e0dcdaa4e8625",
+        "4c24acfb639cd1cb365fbc34d95e9bf1f3ef73bf829e1d4fb25f917ee634c4b6",
     ),
     "uux_ddxg_nlc": (
         "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
         "f27586cffefed6fd94ceaef0155a11590ccba22e423f7014efe0f49457ddb249",
-        "408794c40d2711e22a53ddfc8f6b0df286e73fd1027207e25e2b556cf0ea1a79",
+        "b5e7c248b920541fc3c0f107182c807ccad8f05750b50972f8a2c578328ca5fd",
     ),
     "uux_ddxssx_lc": (
         "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "a8adc008e8dc02d8f556146ca62198e3878bb702a4ca7710b9ab74747f06dac5",
+        "a8ccdba072a1440ab57da1d8650a2a4e0ba234a4f58fecf7b11f347c3838499e",
     ),
     "uux_ddxssx_nlc": (
         "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "bd7cbc70c06eaf403b98dca49cfd5f4b4e10931bc255b794f315e15cf00334fb",
+        "8a5c00e04119227acb601d1b34e52accad99740a815e8d14dc03328486c89886",
     ),
     "uux_uuxg_full": (
         "a80ff312a2155ddbbc9f02f352b90335427eb9e19b560702e21b5431450cf28e",
         "f3f96c6e2a657899cef204358546e9e6e2d865093ab7a2cda27706af315c6ad5",
-        "15a939961b4356c6c2b69dc507c7ad0b4d7e89154af32f2e698656543a12581b",
+        "0e663637ecf746f8d965a80adfcd7f1f74fc71926168f51df225e04b5b13711f",
     ),
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "caf4c1d0a51ecbdfade73e5fa4f9fbb2f8fca23018c41520aaf411ff0625df5e",
+        "cfcbe0fee44679281eb488f187be0d8a72551c8ef5456935d2e604d260df5b6f",
     ),
 }
 # The native digests of the controls without their seed Fourier record (the
 # pins before mq-fft; re-pinned by lp-colour for PR #34 as above).
 FOURIER_FREE = {
     "gg_uuxuux_full": (
-        "7f99de849f2954f357706f6b96f41f6b2ef954df67a4e9245d82d02f21766c43"
+        "87e7d8914e140fd0aeee47ec2c531c839af0f36e0c3b49bda43a8c2ab25c8932"
     ),
 }
 

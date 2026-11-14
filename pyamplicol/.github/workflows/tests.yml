@@ -435,12 +435,13 @@ jobs:
       # HC NLO UFO downloads and the MadGraph source (MG5_aMC v3.7.0 runs),
       # all public and pinnable, and the saved PACBIN controls (workspace
       # only); the UFOmodeldb copies (patched and unpatched) and loop_sm come
-      # from the reference step above. 9 fail under PyPI symbolica 3.0.3 and pass
-      # with the Community build dfe6bd97 (symbolica-dev/symbolica#163): the
-      # 6 sdk_extras ids differ at ~1e-30 relative, and the 3 stored-process
-      # ids are an identity check (the same call gives other bits in a fresh
-      # process, ~5e-29 relative), a release-lane defect; drop all 9 with a
-      # Symbolica release that carries #163.
+      # from the reference step above. 9 fail under PyPI symbolica 3.0.3: the
+      # 6 sdk_extras ids differ at ~1e-30 relative (they pass with the
+      # Community build of symbolica-dev community 0e2ad04c), and the 3
+      # stored-process ids are an identity check (the same call gives other
+      # bits in a fresh process, ~5e-29 relative; also with the Community
+      # build 0e2ad04c, which the fork dfe6bd97 passed), a release-lane
+      # defect; drop the 6 with a Symbolica release that carries 0e2ad04c.
       - name: Run the loop default tier (shard ${{ matrix.shard }}, 30 GiB RSS limit)
         if: needs.licence.outputs.licensed == 'true'
         env:

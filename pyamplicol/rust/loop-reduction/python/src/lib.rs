@@ -81,8 +81,9 @@ impl CoefficientEvaluator {
     }
 }
 
-/// `saved` (a Python `Evaluator.save()`) in its canonical stored form: only
-/// the Symbolica state its evaluator references, numbered canonically;
+/// `saved` (a Python `Evaluator.save()`) in its canonical stored form: an
+/// empty Symbolica state for an evaluator without symbolic data, else only the
+/// state its evaluator references, numbered canonically;
 /// `saved` itself when it already is in it
 /// (`rusticol_core::__private::canonical_saved_evaluator`).
 #[pyfunction]

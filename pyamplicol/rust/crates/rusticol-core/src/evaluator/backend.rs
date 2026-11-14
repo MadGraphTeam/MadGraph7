@@ -2621,14 +2621,6 @@ fn load_evaluator_state_bytes(
     bytes: &[u8],
     display_name: &str,
 ) -> RusticolResult<LoadedEvaluatorState> {
-    type SavedEvaluator = (
-        bool,
-        JITCompilationSettings,
-        ExpressionEvaluator<Complex<Rational>>,
-        Option<JITCompiledEvaluator<f64>>,
-        Option<JITCompiledEvaluator<Complex<f64>>>,
-    );
-
     let incompatible = |error: &dyn std::fmt::Display| {
         RusticolError::compatibility(format!(
             "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
@@ -2636,39 +2628,40 @@ fn load_evaluator_state_bytes(
             crate::SYMBOLICA_SERIALIZATION_ABI
         ))
     };
-    // Python's `Evaluator.save()` envelope: a versioned magic, whether the
-    // producer had native code generation (the JIT members below), the
-    // Symbolica state the evaluator references, then the bincode payload
-    // whose symbols that state maps onto this process's symbols.
-    let Some((&native_code_generation, mut payload)) = bytes
-        .strip_prefix(SAVED_EVALUATOR_MAGIC)
-        .and_then(|rest| rest.split_first())
-    else {
-        return Err(incompatible(&"no saved-evaluator envelope"));
-    };
-    if native_code_generation != 1 {
+    // Python's `Evaluator.save()` envelope (`saved_evaluator_envelope`):
+    // whether the producer had native code generation (the JIT members
+    // below), then, when the evaluator refers to symbolic data, the Symbolica
+    // state it references, then the bincode payload whose symbols that state
+    // maps onto this process's symbols.
+    let envelope = saved_evaluator_envelope(bytes).map_err(|error| incompatible(&error))?;
+    if envelope.native_code_generation != 1 {
         return Err(incompatible(
             &"saved without native code generation (no JIT members)",
         ));
     }
+    let mut payload = envelope.rest;
     // Importing the state registers its symbols: pyAmpliCol's library key.
     // A producer symbol defined with other attributes than this process's
     // (Python Community modules of another FeynKit/Spenso revision than the
-    // native's; Symbolica 3.0.3's saves carry the producer's whole state) is
+    // native's; a Python save carries the producer's whole state) is
     // imported under a fresh name instead of failing the load: the payload's
     // references follow the state map, and evaluation reads no symbol
     // attributes. A symbol that conflicts again under that name is refused.
     let _unlock = crate::licence::unlock();
-    let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        symbolica::state::State::import(
-            &mut payload,
-            Some(Box::new(|name: &str| import_conflict_name(name).into())),
-        )
-    }))
-    .map_err(|_| {
-        incompatible(&"a symbol conflicts with this process's also under its import name")
-    })?
-    .map_err(|error| incompatible(&error))?;
+    let state_map = if envelope.has_state {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            symbolica::state::State::import(
+                &mut payload,
+                Some(Box::new(|name: &str| import_conflict_name(name).into())),
+            )
+        }))
+        .map_err(|_| {
+            incompatible(&"a symbol conflicts with this process's also under its import name")
+        })?
+        .map_err(|error| incompatible(&error))?
+    } else {
+        symbolica::state::StateMap::default()
+    };
     let ((_, settings, evaluator, _, jit_complex), consumed) =
         bincode::decode_from_slice_with_context::<_, SavedEvaluator, _>(
             payload,
@@ -2680,10 +2673,82 @@ fn load_evaluator_state_bytes(
     Ok((settings, evaluator, jit_complex))
 }
 
-/// The leading bytes of Python Symbolica's `Evaluator.save()` (state-aware
-/// envelope, version 1; its final byte is the envelope version).
+/// The leading bytes of Python Symbolica's `Evaluator.save()`; the envelope
+/// version follows.
 #[cfg(feature = "symbolica-runtime")]
-const SAVED_EVALUATOR_MAGIC: &[u8] = b"\xffSYMEVAL\x01";
+const SAVED_EVALUATOR_MAGIC: &[u8] = b"\xffSYMEVAL";
+
+/// Envelope version 1 (Symbolica 3.0.3, pyAmpliCol's stored form): the
+/// native-code flag, then always a state section, then the payload.
+#[cfg(feature = "symbolica-runtime")]
+const SAVED_EVALUATOR_V1: u8 = 1;
+
+/// Envelope version 2 (Symbolica c9406581 "Omit state from saved evaluators
+/// without symbolic data"): the native-code flag, whether a state section
+/// follows (0 or 1), then the payload. Read, and stored as version 1, which
+/// every Python Symbolica since 3.0.3 loads (PyPI 3.0.3 does not read
+/// version 2).
+#[cfg(feature = "symbolica-runtime")]
+const SAVED_EVALUATOR_V2: u8 = 2;
+
+/// A saved evaluator's envelope fields: `rest` is the state section and the
+/// payload (`has_state`) or the payload alone.
+#[cfg(feature = "symbolica-runtime")]
+struct SavedEvaluatorEnvelope<'a> {
+    native_code_generation: u8,
+    has_state: bool,
+    rest: &'a [u8],
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn saved_evaluator_envelope(bytes: &[u8]) -> Result<SavedEvaluatorEnvelope<'_>, String> {
+    let Some(header) = bytes.strip_prefix(SAVED_EVALUATOR_MAGIC) else {
+        return Err("no saved-evaluator envelope".into());
+    };
+    match header {
+        [SAVED_EVALUATOR_V1, native_code_generation, rest @ ..] => Ok(SavedEvaluatorEnvelope {
+            native_code_generation: *native_code_generation,
+            has_state: true,
+            rest,
+        }),
+        [
+            SAVED_EVALUATOR_V2,
+            native_code_generation,
+            flag @ (0 | 1),
+            rest @ ..,
+        ] => Ok(SavedEvaluatorEnvelope {
+            native_code_generation: *native_code_generation,
+            has_state: *flag == 1,
+            rest,
+        }),
+        [SAVED_EVALUATOR_V2, ..] => {
+            Err("invalid state flag in the saved-evaluator envelope".into())
+        }
+        [version, ..] => Err(format!(
+            "unsupported saved-evaluator envelope version {version}"
+        )),
+        [] => Err("truncated saved-evaluator envelope".into()),
+    }
+}
+
+/// The envelope header of pyAmpliCol's stored form (version 1).
+#[cfg(feature = "symbolica-runtime")]
+fn stored_envelope(native_code_generation: u8) -> Vec<u8> {
+    let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
+    bytes.extend([SAVED_EVALUATOR_V1, native_code_generation]);
+    bytes
+}
+
+/// A saved evaluator's bincode payload: the native-code flag, the JIT
+/// settings, the exact evaluator and the JIT members.
+#[cfg(feature = "symbolica-runtime")]
+type SavedEvaluator = (
+    bool,
+    JITCompilationSettings,
+    ExpressionEvaluator<Complex<Rational>>,
+    Option<JITCompiledEvaluator<f64>>,
+    Option<JITCompiledEvaluator<Complex<f64>>>,
+);
 
 /// Suffix of a saved evaluator's symbol imported under a fresh name.
 #[cfg(feature = "symbolica-runtime")]
@@ -2704,30 +2769,31 @@ fn import_conflict_name(name: &str) -> String {
     format!("{base}{IMPORT_CONFLICT_SUFFIX}{}", &name[base.len()..])
 }
 
-/// The leading members of a saved evaluator's bincode payload (the native-code
-/// flag, the JIT settings and the exact evaluator); the JIT members follow.
-#[cfg(feature = "symbolica-runtime")]
-type SavedEvaluatorHead = (
-    bool,
-    JITCompilationSettings,
-    ExpressionEvaluator<Complex<Rational>>,
-);
-
 /// A Python `Evaluator.save()` in its canonical stored form, or `None` when it
 /// already is in it.
 ///
 /// The canonical form depends on the evaluator alone: neither on the Python
 /// Symbolica that produced it nor on the symbols the producing process (or
-/// this one) created before.
-/// - A Python Symbolica release without symbolica-dev#163 (PyPI 3.0.3) writes
-///   the producer's whole Symbolica state into every save: after a model
-///   compile, tens of MB per evaluator, all of it imported again by each
-///   load. Such a save keeps only the symbols its evaluator references
-///   (`State::export_symbols`, the partial-state form #163's save writes).
-/// - The symbol records of the partial-state section are ordered by name and
-///   numbered 0, 1, ... (`canonically_numbered_section`). A producer numbers
-///   them by its registry, which depends on every namespace and symbol the
-///   process created first.
+/// this one) created before. It is Symbolica's envelope version 1
+/// (`SAVED_EVALUATOR_V1`), which every Python Symbolica since 3.0.3 loads
+/// (the version 2 Symbolica c9406581 writes is not read by PyPI 3.0.3):
+/// - An evaluator that refers to no symbolic data (Symbolica's
+///   `uses_symbolic_state`: only fixed built-in functions and constants, no
+///   tags, in its instructions, function bodies, hot start and JIT members;
+///   the payload must decode without any state to the same evaluator) keeps
+///   an empty partial-state section: Symbolica's version 2 stores no state
+///   for it at all.
+/// - Otherwise the save keeps only the symbols its evaluator references
+///   (`export_referenced_symbols`): Symbolica's save writes the producer's
+///   whole state, after a model compile tens of MB per evaluator, all of it
+///   imported again by each load. The symbol records of that partial-state
+///   section are ordered by name and numbered 0, 1, ...
+///   (`canonically_numbered_section`); a producer numbers them by its
+///   registry, which depends on every namespace and symbol the process
+///   created first. These bytes are those of pyAmpliCol 1.0.x.
+///
+/// Version 2 saves are rewritten the same way; one without a state (an
+/// evaluator without symbolic data) gets the empty section.
 ///
 /// The bincode payload is kept byte for byte. Renumbering is exact because
 /// the identifiers only map stored expressions onto symbols and the payload
@@ -2765,13 +2831,13 @@ pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<V
         .map_err(|error| incompatible(&error))?;
         Ok::<_, RusticolError>((section.len() - rest.len(), state_map))
     };
-    let decode_head = |payload: &[u8], state_map: &StateMap| {
-        bincode::decode_from_slice_with_context::<_, SavedEvaluatorHead, _>(
+    let decode = |payload: &[u8], state_map: &StateMap| {
+        bincode::decode_from_slice_with_context::<_, SavedEvaluator, _>(
             payload,
             bincode::config::standard(),
             BorrowedStateMap(state_map),
         )
-        .map(|((_, _, evaluator), _)| evaluator)
+        .map(|(saved, _)| saved)
         .map_err(|error| incompatible(&error))
     };
     let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
@@ -2779,12 +2845,19 @@ pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<V
             .map_err(|error| incompatible(&error))
     };
 
-    let Some((&native_code_generation, state)) = bytes
-        .strip_prefix(SAVED_EVALUATOR_MAGIC)
-        .and_then(|rest| rest.split_first())
-    else {
-        return Err(incompatible(&"no saved-evaluator envelope"));
-    };
+    let envelope = saved_evaluator_envelope(bytes).map_err(|error| incompatible(&error))?;
+    let native_code_generation = envelope.native_code_generation;
+    if !envelope.has_state {
+        // Symbolica stores no state only for an evaluator without symbolic
+        // data: the payload decodes without any.
+        let mut canonical = stored_envelope(native_code_generation);
+        canonical.extend_from_slice(&empty_partial_state()?);
+        canonical.extend_from_slice(envelope.rest);
+        let _unlock = crate::licence::unlock();
+        decode(envelope.rest, &StateMap::default())?;
+        return Ok(Some(canonical));
+    }
+    let state = envelope.rest;
     // The state header: Symbolica's magic (u32), its export format (u16), then
     // whether the whole state follows (1) or only listed symbols.
     let Some(header) = state.get(..STATE_HEADER_LEN) else {
@@ -2793,7 +2866,7 @@ pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<V
     let whole = header[STATE_HEADER_LEN - 1] == WHOLE_STATE_EXPORT;
     let _unlock = crate::licence::unlock();
     crate::source_scalar::register_scalar_primitives();
-    let (section_len, evaluator) = if whole {
+    let (section_len, saved) = if whole {
         // A producer's consecutive saves mostly carry the same state (one
         // import of a 30 MB loop_sm state takes about 0.5 s): the last
         // imported section and its map are kept. The section is
@@ -2834,45 +2907,65 @@ pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<V
             }
         };
         let len = section.len();
-        let evaluator = decode_head(&state[len..], &state_map);
-        if let Ok(evaluator) = &evaluator {
+        let saved = decode(&state[len..], &state_map);
+        if let Ok((_, _, evaluator, _, _)) = &saved {
             warn_on_referenced_producer_functions(evaluator, &producer_functions);
         }
         *last = Some((section, state_map, producer_functions));
-        (len, evaluator?)
+        (len, saved?)
     } else {
         let (len, state_map) = import(state)?;
-        (len, decode_head(&state[len..], &state_map)?)
+        (len, decode(&state[len..], &state_map)?)
     };
     let payload = &state[section_len..];
+    let (_, _, evaluator, jit_real, jit_complex) = &saved;
+    let original = encoded(evaluator)?;
+
+    // Without symbolic data the payload decodes without any state (as
+    // Symbolica's own load of such a save does): stored with an empty section.
+    let uses_symbolic_state = evaluator.uses_symbolic_state()
+        || jit_real
+            .as_ref()
+            .is_some_and(JITCompiledEvaluator::uses_symbolic_state)
+        || jit_complex
+            .as_ref()
+            .is_some_and(JITCompiledEvaluator::uses_symbolic_state);
+    if !uses_symbolic_state
+        && decode(payload, &StateMap::default())
+            .and_then(|(_, _, stateless, _, _)| encoded(&stateless))
+            .is_ok_and(|stateless| stateless == original)
+    {
+        let mut canonical = stored_envelope(native_code_generation);
+        canonical.extend_from_slice(&empty_partial_state()?);
+        canonical.extend_from_slice(payload);
+        return Ok((canonical != bytes).then_some(canonical));
+    }
+
     // A whole state, or a partial one in another export format than this
     // build's, is written again with only the referenced symbols.
-    let minimal: Cow<[u8]> =
-        if whole || header[4..STATE_HEADER_LEN - 1] != native_export_format()?[..] {
-            let mut symbols = Default::default();
-            referenced(&evaluator.export_instructions(), &mut symbols);
-            let mut section = Vec::new();
-            State::export_symbols(&mut section, symbols).map_err(|error| incompatible(&error))?;
-            Cow::Owned(section)
-        } else {
-            Cow::Borrowed(&state[..section_len])
-        };
+    let minimal: Cow<[u8]> = if whole
+        || header[..STATE_HEADER_LEN - 1] != partial_state_header()?[..STATE_HEADER_LEN - 1]
+    {
+        let mut symbols = Vec::new();
+        referenced(&evaluator.export_instructions(), &mut symbols);
+        Cow::Owned(export_referenced_symbols(symbols).map_err(|error| incompatible(&error))?)
+    } else {
+        Cow::Borrowed(&state[..section_len])
+    };
     let section =
         match canonically_numbered_section(&minimal).map_err(|error| incompatible(&error))? {
             Some(numbered) => numbered,
             None => minimal.into_owned(),
         };
-    if section[..] == state[..section_len] {
-        return Ok(None);
-    }
-    let mut canonical = SAVED_EVALUATOR_MAGIC.to_vec();
-    canonical.push(native_code_generation);
+    let mut canonical = stored_envelope(native_code_generation);
     canonical.extend_from_slice(&section);
     canonical.extend_from_slice(payload);
+    if canonical == bytes {
+        return Ok(None);
+    }
 
     let (len, state_map) = import(&section)?;
-    if len != section.len() || encoded(&decode_head(payload, &state_map)?)? != encoded(&evaluator)?
-    {
+    if len != section.len() || encoded(&decode(payload, &state_map)?.2)? != original {
         return Err(incompatible(
             &"its payload depends on state identifiers beyond the referenced symbols",
         ));
@@ -2885,17 +2978,78 @@ pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<V
 #[cfg(feature = "symbolica-runtime")]
 const STATE_HEADER_LEN: usize = 7;
 
-/// This build's state export format (`State::export_symbols` of no symbol).
+/// This build's partial-state header (magic, export format, partial flag), as
+/// `State::export_partial` writes it.
 #[cfg(feature = "symbolica-runtime")]
-fn native_export_format() -> RusticolResult<[u8; 2]> {
-    static FORMAT: std::sync::OnceLock<[u8; 2]> = std::sync::OnceLock::new();
-    if let Some(format) = FORMAT.get() {
-        return Ok(*format);
+fn partial_state_header() -> RusticolResult<[u8; STATE_HEADER_LEN]> {
+    static HEADER: std::sync::OnceLock<[u8; STATE_HEADER_LEN]> = std::sync::OnceLock::new();
+    if let Some(header) = HEADER.get() {
+        return Ok(*header);
     }
     let mut empty = Vec::new();
-    symbolica::state::State::export_symbols(&mut empty, Default::default())
+    symbolica::state::State::export_partial(&mut empty, Default::default())
         .map_err(|error| RusticolError::compatibility(error.to_string()))?;
-    Ok(*FORMAT.get_or_init(|| [empty[4], empty[5]]))
+    let header = empty
+        .get(..STATE_HEADER_LEN)
+        .and_then(|header| <[u8; STATE_HEADER_LEN]>::try_from(header).ok())
+        .ok_or_else(|| RusticolError::compatibility("truncated partial-state export"))?;
+    Ok(*HEADER.get_or_init(|| header))
+}
+
+/// The partial-state section of no symbol (no finite fields, no variable
+/// lists): the state of an evaluator without symbolic data.
+#[cfg(feature = "symbolica-runtime")]
+fn empty_partial_state() -> RusticolResult<Vec<u8>> {
+    let mut section = partial_state_header()?.to_vec();
+    section.extend_from_slice(&[0; 24]);
+    Ok(section)
+}
+
+/// A partial-state section of `symbols` and the symbols their data depends
+/// on, without finite fields or variable lists: unlike
+/// `State::export_partial`, its content depends only on these symbols, not
+/// on the unrelated symbols, finite fields and variable lists the process
+/// registered before. The records are numbered by their position in the
+/// registry, as Symbolica's partial export numbers them.
+#[cfg(feature = "symbolica-runtime")]
+fn export_referenced_symbols(
+    symbols: impl IntoIterator<Item = symbolica::atom::Symbol>,
+) -> std::io::Result<Vec<u8>> {
+    use std::io::{Error, ErrorKind};
+    use symbolica::state::State;
+
+    let mut closure = std::collections::HashSet::new();
+    let mut pending: Vec<_> = symbols.into_iter().collect();
+    while let Some(symbol) = pending.pop() {
+        if closure.insert(symbol) {
+            let mut data = Default::default();
+            symbol.get_data().get_symbols(&mut data);
+            pending.extend(data);
+        }
+    }
+    let header = partial_state_header()
+        .map_err(|error| Error::new(ErrorKind::InvalidData, error.to_string()))?;
+    let mut section = header.to_vec();
+    section.extend_from_slice(&(closure.len() as u64).to_le_bytes());
+    let mut written = 0;
+    for (index, (symbol, _)) in State::symbol_iter().enumerate() {
+        if closure.contains(&symbol) {
+            let index =
+                u32::try_from(index).map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+            section.extend_from_slice(&index.to_le_bytes());
+            symbol.export(&mut section)?;
+            written += 1;
+        }
+    }
+    if written != closure.len() {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "a referenced symbol is not in the registry",
+        ));
+    }
+    // No finite fields and no variable lists.
+    section.extend_from_slice(&[0; 16]);
+    Ok(section)
 }
 
 /// A partial-state section of this build's export format with its symbol
@@ -3016,8 +3170,8 @@ static LAST_WHOLE_STATE: std::sync::Mutex<
 /// `canonical_saved_evaluator` imports it, and the full names of the
 /// producer's symbols defined with user-defined functions.
 ///
-/// A Python Symbolica without symbolica-dev#163 (PyPI 3.0.3) saves the
-/// producer's whole state, including the symbols its Community modules
+/// Python Symbolica saves the producer's whole state (version 1 always,
+/// version 2 for an evaluator with symbolic data), including the symbols its Community modules
 /// (symbolica_integrate, hyperbolica, gammaloop, ...) define with
 /// user-defined functions, which are not exportable. Importing such a record
 /// into a process that lacks the symbol creates it without functions, and
@@ -3033,8 +3187,6 @@ static LAST_WHOLE_STATE: std::sync::Mutex<
 /// serialization ABI `crate::SYMBOLICA_SERIALIZATION_ABI` (3.0.x). None when
 /// the state does not parse as that layout (a short read, or an exportable
 /// byte other than 0 or 1): the caller then imports the unpatched state.
-/// Symbolica with symbolica-dev#163 saves only the referenced symbols, which
-/// makes this copy unnecessary (it then finds nothing to patch).
 #[cfg(feature = "symbolica-runtime")]
 fn whole_state_for_import(state: &[u8]) -> Option<(Vec<u8>, std::collections::HashSet<String>)> {
     parse_whole_state(state).ok().flatten()
@@ -3269,16 +3421,20 @@ sys.stdout.buffer.write(evaluator.save())
             |r| r.to_multi_prec_float(256),
             Float::with_val(256, 1e-60),
         );
-        // The stored (canonical) form of the installed Python Symbolica's save,
-        // whole-state (PyPI 3.0.3) or state-minimal (the pinned Community
-        // build), decodes to the same evaluator.
+        // The stored (canonical) form of the installed Python Symbolica's save
+        // (version 1 with the whole state, PyPI 3.0.3; version 2 without state
+        // for this evaluator without symbolic data, the pinned Community
+        // build) decodes to the same evaluator.
         let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
             bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
         };
         let stored = canonical_saved_evaluator(&producer.stdout)
             .unwrap()
             .unwrap_or_else(|| producer.stdout.clone());
-        assert!(stored.len() <= producer.stdout.len());
+        // At most the empty partial state (31 bytes) more than a version 2
+        // save without state.
+        assert!(stored.len() <= producer.stdout.len() + STATE_HEADER_LEN + 24);
+        assert!(stored.starts_with(b"\xffSYMEVAL\x01"));
         let (_, reloaded, _) = load_evaluator_state_bytes(&stored, "canonical").unwrap();
         assert_eq!(encoded(&reloaded), encoded(&exact));
         assert_eq!(canonical_saved_evaluator(&stored).unwrap(), None);
@@ -3341,10 +3497,20 @@ mod canonical_save_tests {
     use super::*;
     use symbolica::{atom::AtomCore, parse, state::State, symbol};
 
-    fn envelope(section: &[u8], payload: &[u8]) -> Vec<u8> {
+    /// Envelope version 1 (Symbolica 3.0.3, pyAmpliCol 1.0.x artifacts).
+    fn v1_envelope(section: &[u8], payload: &[u8]) -> Vec<u8> {
         let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
-        bytes.push(1);
+        bytes.extend([SAVED_EVALUATOR_V1, 1]);
         bytes.extend_from_slice(section);
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    /// Envelope version 2 (Symbolica c9406581 and later).
+    fn v2_envelope(section: Option<&[u8]>, payload: &[u8]) -> Vec<u8> {
+        let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
+        bytes.extend([SAVED_EVALUATOR_V2, 1, u8::from(section.is_some())]);
+        bytes.extend_from_slice(section.unwrap_or_default());
         bytes.extend_from_slice(payload);
         bytes
     }
@@ -3363,34 +3529,41 @@ mod canonical_save_tests {
         .unwrap()
     }
 
-    /// The save of a Python Symbolica without symbolica-dev#163 (PyPI 3.0.3):
-    /// the envelope, the producer's whole state, then the payload.
-    fn whole_state_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+    fn whole_state() -> Vec<u8> {
         let mut section = Vec::new();
         State::export(&mut section).unwrap();
-        envelope(&section, &payload(evaluator))
+        section
     }
 
-    /// The save of the pinned Community build (#163): the referenced symbols
-    /// numbered by the producer's registry.
+    /// The save of Python Symbolica 3.0.3: the version 1 envelope, the
+    /// producer's whole state, then the payload.
+    fn whole_state_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        v1_envelope(&whole_state(), &payload(evaluator))
+    }
+
+    /// The save of the current Python Symbolica for an evaluator with
+    /// symbolic data: the version 2 envelope and the whole state.
+    fn community_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        v2_envelope(Some(&whole_state()), &payload(evaluator))
+    }
+
+    /// A version 1 save with the referenced symbols numbered by the
+    /// producer's registry (the former fork's Community build).
     fn registry_numbered_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
         let mut symbols = Vec::new();
-        for instruction in &evaluator.export_instructions().instructions {
-            if let symbolica::evaluate::Instruction::Fun(_, call, _) = instruction {
-                symbols.push(call.0);
-            }
-        }
-        for constant in &evaluator.export_instructions().constant_functions {
-            symbols.push(constant.symbol);
-        }
-        let mut section = Vec::new();
-        State::export_symbols(&mut section, symbols.into_iter().collect()).unwrap();
-        envelope(&section, &payload(evaluator))
+        referenced(&evaluator.export_instructions(), &mut symbols);
+        v1_envelope(
+            &export_referenced_symbols(symbols).unwrap(),
+            &payload(evaluator),
+        )
     }
 
     /// The indices of a canonical save's symbol records and the section.
     fn indices_and_section(saved: &[u8]) -> (Vec<u32>, &[u8], Vec<(&[u8], &[u8], &[u8])>) {
-        let state = &saved[SAVED_EVALUATOR_MAGIC.len() + 1..];
+        assert!(saved.starts_with(&[SAVED_EVALUATOR_MAGIC, &[SAVED_EVALUATOR_V1]].concat()));
+        let envelope = saved_evaluator_envelope(saved).unwrap();
+        assert!(envelope.has_state);
+        let state = envelope.rest;
         let mut rest = state;
         State::import(&mut rest, None).unwrap();
         let section = &state[..state.len() - rest.len()];
@@ -3404,6 +3577,7 @@ mod canonical_save_tests {
         (indices, section, records)
     }
 
+    /// Built-in functions and constants only: no symbolic data.
     fn evaluator() -> ExpressionEvaluator<Complex<Rational>> {
         parse!("pyamplicol_canonical::x^2 + pi + cos(pyamplicol_canonical::y)/3 + sqrt(pyamplicol_canonical::x) + log(pyamplicol_canonical::y)")
             .evaluator(&[
@@ -3412,6 +3586,30 @@ mod canonical_save_tests {
             ])
             .build()
             .unwrap()
+    }
+
+    /// With one of pyAmpliCol's scalar primitives, a registered function
+    /// that is not a Symbolica built-in: symbolic data.
+    fn symbolic_evaluator() -> ExpressionEvaluator<Complex<Rational>> {
+        crate::source_scalar::register_scalar_primitives();
+        parse!("pyamplicol_canonical::x^2 + pi + cos(pyamplicol_canonical::y)/3 + pyamplicol_scalar_v1::real_part(pyamplicol_canonical::x)")
+            .evaluator(&[
+                parse!("pyamplicol_canonical::x"),
+                parse!("pyamplicol_canonical::y"),
+            ])
+            .build()
+            .unwrap()
+    }
+
+    fn values(loaded: ExpressionEvaluator<Complex<Rational>>) -> f64 {
+        let mut values = loaded.map_coeff(&|c| Complex::new(c.re.to_f64(), c.im.to_f64()));
+        let mut output = [Complex::new(0.0, 0.0)];
+        values.evaluate(
+            &[Complex::new(2.0, 0.0), Complex::new(0.5, 0.0)],
+            &mut output,
+        );
+        assert_eq!(output[0].im, 0.0);
+        output[0].re
     }
 
     /// A whole-state save (PyPI Symbolica 3.0.3) carries the producer's
@@ -3428,9 +3626,9 @@ mod canonical_save_tests {
         .build()
         .unwrap();
         assert!(!f.is_exportable());
-        let evaluator = evaluator();
+        let evaluator = symbolic_evaluator();
         let whole = whole_state_save(&evaluator);
-        let state = &whole[SAVED_EVALUATOR_MAGIC.len() + 1..];
+        let state = saved_evaluator_envelope(&whole).unwrap().rest;
         let (patched, functions) = whole_state_for_import(state).unwrap();
         assert!(functions.contains("pyamplicol_function_bearing::f"));
         assert_eq!(patched.len(), state.len());
@@ -3460,13 +3658,77 @@ mod canonical_save_tests {
         assert!(whole_state_for_import(&drifted).is_none());
     }
 
+    /// An evaluator without symbolic data is stored with an empty state
+    /// section (Symbolica's own version 2 save stores none), whichever
+    /// envelope produced it.
+    #[test]
+    fn saves_without_symbolic_data_are_stored_without_state() {
+        let _unlock = crate::licence::unlock();
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        let evaluator = evaluator();
+        assert!(!evaluator.uses_symbolic_state());
+        // Version 1 (every Python Symbolica since 3.0.3 loads it) with the
+        // partial state of no symbol.
+        let mut canonical = v1_envelope(&empty_partial_state().unwrap(), &payload(&evaluator));
+        assert_eq!(canonical_saved_evaluator(&canonical).unwrap(), None);
+        assert_eq!(
+            canonical.len(),
+            SAVED_EVALUATOR_MAGIC.len() + 2 + STATE_HEADER_LEN + 24 + payload(&evaluator).len()
+        );
+        for save in [
+            v2_envelope(None, &payload(&evaluator)),
+            whole_state_save(&evaluator),
+            community_save(&evaluator),
+            registry_numbered_save(&evaluator),
+        ] {
+            assert_eq!(
+                canonical_saved_evaluator(&save).unwrap(),
+                Some(canonical.clone())
+            );
+        }
+        let (_, loaded, _) = load_evaluator_state_bytes(&canonical, "stateless save").unwrap();
+        assert_eq!(encoded(&loaded), encoded(&evaluator));
+        // Symbolica's own version 2 form loads too.
+        let (_, loaded_v2, _) =
+            load_evaluator_state_bytes(&v2_envelope(None, &payload(&evaluator)), "v2").unwrap();
+        assert_eq!(encoded(&loaded_v2), encoded(&evaluator));
+        canonical.push(0);
+        assert!(load_evaluator_state_bytes(&canonical, "trailing byte").is_err());
+        assert_eq!(encoded(&loaded), encoded(&evaluator));
+        let expected =
+            4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0 + 2.0f64.sqrt() + 0.5f64.ln();
+        assert!((values(loaded) - expected).abs() < 1e-14);
+        // Envelope errors are typed compatibility errors.
+        for bad in [
+            &b"\xffSYMEVAL"[..],
+            b"\xffSYMEVAL\x02\x01\x07",
+            b"\xffSYMEVAL\x03\x01\x00",
+            b"no envelope",
+        ] {
+            assert_eq!(
+                canonical_saved_evaluator(bad).unwrap_err().kind(),
+                crate::RusticolErrorKind::Compatibility
+            );
+            assert_eq!(
+                load_evaluator_state_bytes(bad, "bad envelope")
+                    .err()
+                    .unwrap()
+                    .kind(),
+                crate::RusticolErrorKind::Compatibility
+            );
+        }
+    }
+
     #[test]
     fn stored_saves_depend_only_on_their_evaluator() {
         let _unlock = crate::licence::unlock();
         let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
             bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
         };
-        let evaluator = evaluator();
+        let evaluator = symbolic_evaluator();
+        assert!(evaluator.uses_symbolic_state());
         let whole = whole_state_save(&evaluator);
         let canonical = canonical_saved_evaluator(&whole)
             .unwrap()
@@ -3483,19 +3745,23 @@ mod canonical_save_tests {
         assert_eq!(
             names,
             [
+                "pyamplicol_scalar_v1::real_part",
                 "symbolica::cos",
-                "symbolica::log",
-                "symbolica::sqrt",
                 "symbolica::𝜋"
             ]
         );
         assert!(canonical.len() < 2048, "{} bytes", canonical.len());
         assert!(canonical.ends_with(&payload(&evaluator)));
-        // The same bytes from a state-minimal save numbered by the producer's
-        // registry (the Community form), from one numbered by any other
-        // registry (another process history: other identifiers, another
-        // order), from the kept whole state, and after unrelated symbols in
-        // new namespaces.
+        // The same bytes from the current Python Symbolica's save (version 2,
+        // whole state), from a state-minimal version 1 save numbered by the
+        // producer's registry (the former fork's Community form, pyAmpliCol
+        // 1.0.x artifacts), from one numbered by any other registry (another
+        // process history: other identifiers, another order), from the kept
+        // whole state, and after unrelated symbols in new namespaces.
+        assert_eq!(
+            canonical_saved_evaluator(&community_save(&evaluator)).unwrap(),
+            Some(canonical.clone())
+        );
         let registry = registry_numbered_save(&evaluator);
         assert_ne!(registry, canonical);
         assert_eq!(
@@ -3509,7 +3775,7 @@ mod canonical_save_tests {
             foreign.extend_from_slice(record);
         }
         foreign.extend_from_slice(&[0; 16]);
-        let foreign = envelope(&foreign, &payload(&evaluator));
+        let foreign = v1_envelope(&foreign, &payload(&evaluator));
         assert_eq!(
             canonical_saved_evaluator(&foreign).unwrap(),
             Some(canonical.clone())
@@ -3534,17 +3800,9 @@ mod canonical_save_tests {
         // The canonical form loads to the same evaluator and values.
         let (_, loaded, _) = load_evaluator_state_bytes(&canonical, "canonical save").unwrap();
         assert_eq!(encoded(&loaded), encoded(&evaluator));
-        let mut values = loaded.map_coeff(&|c| Complex::new(c.re.to_f64(), c.im.to_f64()));
-        let mut output = [Complex::new(0.0, 0.0)];
-        values.evaluate(
-            &[Complex::new(2.0, 0.0), Complex::new(0.5, 0.0)],
-            &mut output,
-        );
-        let expected =
-            4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0 + 2.0f64.sqrt() + 0.5f64.ln();
-        assert!((output[0].re - expected).abs() < 1e-14 && output[0].im == 0.0);
+        let expected = 4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0 + 2.0;
+        assert!((values(loaded) - expected).abs() < 1e-14);
         assert_eq!(canonical_saved_evaluator(&canonical).unwrap(), None);
-        assert!(canonical_saved_evaluator(b"\xffSYMEVAL").is_err());
     }
 
     /// A symbol whose data embeds an expression keeps the section's numbering:
@@ -3558,15 +3816,20 @@ mod canonical_save_tests {
             data = symbolica::atom::UserData::Atom(parse!("pyamplicol_canonical::z"))
         );
         let section = |symbols: &[symbolica::atom::Symbol]| {
-            let mut section = Vec::new();
-            State::export_symbols(&mut section, symbols.iter().copied().collect()).unwrap();
-            section
+            export_referenced_symbols(symbols.iter().copied()).unwrap()
         };
         assert!(
             canonically_numbered_section(&section(&[plain]))
                 .unwrap()
                 .is_some()
         );
+        // The symbol `z` in `datum`'s data is exported with it.
+        let with_datum = section(&[datum]);
+        let count = &with_datum[STATE_HEADER_LEN..STATE_HEADER_LEN + 8];
+        assert_eq!(u64::from_le_bytes(count.try_into().unwrap()), 2);
+        let mut rest = &with_datum[..];
+        State::import(&mut rest, None).unwrap();
+        assert!(rest.is_empty());
         assert_eq!(
             canonically_numbered_section(&section(&[plain, datum])).unwrap(),
             None
