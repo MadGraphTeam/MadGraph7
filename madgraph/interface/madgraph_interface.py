@@ -13700,7 +13700,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > auto:  ddm for the output formats which support it (madevent, mg7,")
         logger.info("          standalone and standalone_fortran; the trace basis is still")
         logger.info("          used next to it for the color flow of each event), trace")
-        logger.info("          otherwise (NLO, pythia8, matchbox, ...)")
+        logger.info("          otherwise (NLO, matchbox, ...)")
+        logger.info("   The matchbox outputs keep the trace basis even with 'ddm'.")
 
     def set2_color_basis(self, args, log=True):
         """Set the color basis used for fully adjoint (multi-gluon) processes.
@@ -14066,12 +14067,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if self._export_format in ('standalone', 'mg7', 'mg7_v5') and \
                                             'hel_recycling' not in line_options:
             line_options['hel_recycling'] = 'auto'
-        main_file_name = ""
-        try:
-            main_file_name = args[args.index('-name') + 1]
-        except Exception:
-            pass
-
 
         ################
         # ALOHA OUTPUT #
@@ -14205,17 +14200,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         % (format, ', '.join(
                                diagram_generation.TREE_INTERFERENCE_FORMATS)))
 
-        # check
+        # check: never write into the current directory itself (e.g. 'output
+        # matrix auto', for the formats without an automatic directory name),
+        # but into a new PROC_<format>_<i> directory in it
         if os.path.realpath(self._export_dir) == os.getcwd():
             if len(args) == 0:
                 i=0
                 while 1:
-                    if os.path.exists('Pythia8_proc_%i' %i):
+                    if os.path.exists('PROC_%s_%i' % (self._export_format, i)):
                         i+=1
                     else:
                         break
-                os.mkdir('Pythia8_proc_%i' %i) 
-                self._export_dir = pjoin(self._export_dir, 'Pythia8_proc_%i' %i)
+                new_dir = 'PROC_%s_%i' % (self._export_format, i)
+                os.mkdir(new_dir)
+                self._export_dir = pjoin(self._export_dir, new_dir)
                 logger.info('Create output in %s' % self._export_dir)
             elif not args[0] in ['.', '-f']:
                 raise self.InvalidCmd('Wrong path directory to create in local directory use \'.\'')
@@ -14323,7 +14321,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             base_objects.Vertex.max_tpropa = int(self.options['max_t_for_channel'])   
 
         # Perform export and finalize right away
-        self.export(nojpeg, main_file_name, group_processes, args)
+        self.export(nojpeg, group_processes, args)
 
         # Automatically run finalize
         self.finalize(nojpeg, flaglist=flaglist)
@@ -14668,7 +14666,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             return
         reasons = collections.OrderedDict()
         for process, reason in color_amp.ddm_fallbacks:
-            reasons.setdefault(reason.split(' (')[0], []).append(process)
+            reasons.setdefault(reason, []).append(process)
         for reason, processes in reasons.items():
             shown = ', '.join(processes[:5])
             if len(processes) > 5:
@@ -14676,13 +14674,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.info('color_basis ddm: trace color basis kept for %s: %s',
                         shown, reason)
 
-    def export(self, nojpeg = False, main_file_name = "", group_processes=True,
-                                                                       args=[]):
+    def export(self, nojpeg=False, group_processes=True, args=[]):
         """Export a generated amplitude to file."""
 
         self.set_color_basis_mode(self._curr_exporter, self._me_curr_exporter)
         try:
-            out = self._export(nojpeg, main_file_name, group_processes, args)
+            out = self._export(nojpeg, group_processes, args)
             self.report_ddm_fallbacks()
             return out
         finally:
@@ -14690,8 +14687,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # next command
             color_amp.set_ddm_basis(False)
 
-    def _export(self, nojpeg = False, main_file_name = "", group_processes=True,
-                                                                       args=[]):
+    def _export(self, nojpeg=False, group_processes=True, args=[]):
         """Export a generated amplitude to file, with the color basis already
         selected."""
 

@@ -478,11 +478,6 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         noclean = '-noclean' in args
         force = '-f' in args 
         nojpeg = '-nojpeg' in args
-        main_file_name = ""
-        try:
-            main_file_name = args[args.index('-name') + 1]
-        except Exception:
-            pass
         line_options = dict(arg[2:].split('=') for arg in args if arg.startswith('--') and '=' in arg)
 
         # Whatever the format we always output the quadruple precision routines
@@ -534,7 +529,7 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         self._done_export = False
 
         # Perform export and finalize right away
-        self.ML5export(nojpeg, main_file_name)
+        self.ML5export(nojpeg)
 
         # Automatically run finalize
         self.ML5finalize(nojpeg)
@@ -647,7 +642,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
         
     
     # Export a matrix element
-    def ML5export(self, nojpeg = False, main_file_name = ""):
+    def ML5export(self, nojpeg=False):
         """Export a generated amplitude to file"""
 
         # Always use a new writer: the one of a previous output caches calls

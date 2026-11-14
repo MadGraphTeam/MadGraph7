@@ -1387,6 +1387,68 @@ class DDMColorSingletTest(unittest.TestCase):
                           color_amp.ddm_fallbacks],
                          ['not all the colored legs are gluons'])
 
+    def test_contract_adjoint_deltas_fast_path_and_coefficient(self):
+        """Without a delta the string itself is returned, with no copy, and
+        a contraction keeps an exact Fraction coefficient, also from an int"""
+
+        col_str = color.ColorString([color.f(1, 2, -1), color.f(-1, 3, 4)])
+        self.assertIs(color_amp.contract_adjoint_deltas(col_str), col_str)
+        # an external-external delta is kept, so no copy either
+        col_str = color.ColorString([color.Tr(1, 2), color.f(3, 4, 5)])
+        self.assertIs(color_amp.contract_adjoint_deltas(col_str), col_str)
+
+        col_str = color.ColorString([color.Tr(-1, 3), color.f(1, 2, -1)])
+        col_str.coeff = 1
+        res = color_amp.contract_adjoint_deltas(col_str)
+        self.assertIsInstance(res.coeff, fractions.Fraction)
+        self.assertEqual(res.coeff, fractions.Fraction(1, 2))
+
+    def test_find_ddm_ends_reasons(self):
+        """Each structure which cannot go on the DDM basis is reported with a
+        fixed reason (the specific object only in the detail)"""
+
+        def reason(*objs):
+            col_basis = color_amp.ColorBasis()
+            col_basis._list_color_dict = [{(0,): color.ColorString(list(objs))}]
+            try:
+                col_basis.find_ddm_ends()
+            except color_amp.DDMError as error:
+                return error.reason
+            self.fail('no DDMError for %s' % [str(o) for o in objs])
+
+        # a repeated external index is reported, not taken for a process
+        # with fewer than three colored legs
+        self.assertEqual(reason(color.f(1, 1, 2)), 'repeated external index')
+        # a fundamental trace over gluons only (e.g. from a quark loop) is
+        # not a quark leg
+        self.assertEqual(reason(color.Tr(1, 2, 4)),
+                         'not a product of f objects')
+        self.assertEqual(reason(color.d(1, 2, 4)),
+                         'not a product of f objects')
+        self.assertEqual(reason(color.T(4, 1, 2)),
+                         'not all the colored legs are gluons')
+        self.assertEqual(reason(color.Tr(1, 2), color.Tr(4, 5)),
+                         'color structure not connected')
+
+        error = color_amp.DDMError('closed adjoint delta', 'Tr(-1,-1)')
+        self.assertEqual(str(error), 'closed adjoint delta (Tr(-1,-1))')
+        self.assertEqual(str(color_amp.DDMError('empty color string')),
+                         'empty color string')
+
+    def test_ddm_fall_back_records_the_fixed_reason(self):
+        """ddm_fallbacks holds (process, reason) with the fixed reason only,
+        so a process failing twice in the same way is listed once"""
+
+        col_basis = color_amp.ColorBasis()
+        col_basis._process_name = 'g g > h g g'
+        for index in (-1, -2):
+            col_basis.ddm_fall_back(color_amp.DDMError(
+                'summed index of an adjoint delta not contracted with anything',
+                'index %i' % index))
+        self.assertEqual(color_amp.ddm_fallbacks,
+            [('g g > h g g',
+              'summed index of an adjoint delta not contracted with anything')])
+
 
 class LoopNcMemoTest(unittest.TestCase):
     """The process-wide canonical color memo must not leak loop_Nc_power."""

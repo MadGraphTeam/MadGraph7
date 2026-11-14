@@ -19,11 +19,13 @@ ANNOUNCEMENT:
        says how to use Pythia 8 instead: shower the events of a madevent, mg7 or NLO
        output (shower=Pythia8 at the launch question). The help no longer advertises
        it, and 'output <format> auto' no longer writes into the Pythia 8 directory for
-       the formats without an automatic directory name (it used pythia8_path). The code
-       that wrote Pythia 8 process and model code is removed (the Pythia 8 exporters of
-       export_cpp.py, template_files/pythia8, and 'launch' on a Pythia 8 directory, which
-       now says that this is no longer supported, from the LO, MadLoop and aMC@NLO
-       interfaces alike).
+       the formats without an automatic directory name (it used pythia8_path): it now
+       writes into a new PROC_<format>_<i> directory (e.g. 'output matrix auto' gives
+       PROC_matrix_0), which replaces the Pythia8_proc_<i> one. The code that wrote
+       Pythia 8 process and model code is removed (the Pythia 8 exporters of
+       export_cpp.py, template_files/pythia8, the unused '-name' output option, and
+       'launch' on a Pythia 8 directory, which now says that this is no longer
+       supported, from the LO, MadLoop and aMC@NLO interfaces alike).
    OM: standalone/mg7 with --mask=False (no flavour guard) gave wrong |M|^2 for some flavours
        of merged electroweak processes (p p > w+ w- j j QCD=0: 24 of 54, d d~ > w+ w- u u~
        x55). This was also the root cause of the --hel_recycling bug of 0.3.0: the C++ flavoured

@@ -72,8 +72,8 @@ ddm_basis = False
 # Kleiss-Kuijf relations.
 ddm_flow_basis = False
 # The processes for which the DDM basis was requested (ddm_basis on) but which
-# kept the trace basis, as (process, reason) pairs, so that the interface can
-# tell the user. Emptied by set_ddm_basis.
+# kept the trace basis, as (process, DDMError.reason) pairs, so that the
+# interface can tell the user. Emptied by set_ddm_basis.
 ddm_fallbacks = []
 
 
@@ -88,12 +88,33 @@ def set_ddm_basis(value, with_flow=False):
 
 class DDMError(Exception):
     """Raised when a color string cannot be mapped onto the DDM basis. Always
-    caught by ColorBasis.build, which then falls back on the trace basis."""
+    caught by ColorBasis.build, which then falls back on the trace basis.
+
+    'reason' is a fixed sentence, the same for every process failing in the
+    same way (the interface groups the processes by it), and 'detail' the
+    specific color object or index, which is only shown in the debug log."""
+
+    def __init__(self, reason, detail=None):
+        self.reason = reason
+        self.detail = detail
+        Exception.__init__(self, reason if detail is None else \
+                                 '%s (%s)' % (reason, detail))
+
+
+def _is_adjoint_delta(col_obj):
+    """True for an adjoint Kronecker delta touching a summed index, i.e. a
+    Tr(a,b) with a or b < 0, which contract_adjoint_deltas removes."""
+
+    return type(col_obj) is color_algebra.Tr and len(col_obj) == 2 and \
+           (col_obj[0] < 0 or col_obj[1] < 0)
 
 
 def contract_adjoint_deltas(col_str):
-    """Return a copy of the ColorString col_str where every adjoint Kronecker
-    delta touching a summed index has been contracted.
+    """Return the ColorString col_str where every adjoint Kronecker delta
+    touching a summed index has been contracted. col_str itself is returned,
+    without any copy, when it has no such delta (e.g. for pure multi-gluon
+    processes); otherwise a new ColorString is returned and col_str is left
+    unchanged.
 
     An adjoint delta^ab enters the color strings as 2 Tr(a,b), e.g. from the
     Identity(1,2) of the effective g g H vertex (Tr(a,b) = delta^ab/2). When a
@@ -102,29 +123,33 @@ def contract_adjoint_deltas(col_str):
     1/2 on the coefficient). A delta between two external legs cannot be
     contracted and is kept. Raise DDMError for a closed delta (delta^aa)."""
 
+    if not any(_is_adjoint_delta(col_obj) for col_obj in col_str):
+        return col_str
+
     objs = [col_obj.create_copy() for col_obj in col_str]
     coeff = col_str.coeff
 
     while True:
         for pos, col_obj in enumerate(objs):
-            if type(col_obj) is color_algebra.Tr and len(col_obj) == 2 and \
-               (col_obj[0] < 0 or col_obj[1] < 0):
+            if _is_adjoint_delta(col_obj):
                 break
         else:
             break
 
         first, second = objs.pop(pos)
         if first == second:
-            raise DDMError("closed adjoint delta Tr(%i,%i)" % (first, second))
+            raise DDMError("closed adjoint delta",
+                           "Tr(%i,%i)" % (first, second))
         old, new = (first, second) if first < 0 else (second, first)
         for other in objs:
             if old in other:
                 other.replace_indices({old: new})
                 break
         else:
-            raise DDMError("summed index %i of an adjoint delta is not "
-                           "contracted with anything" % old)
-        coeff = coeff / 2
+            raise DDMError("summed index of an adjoint delta not contracted "
+                           "with anything", "index %i" % old)
+        # Fraction, also when coeff is an int
+        coeff = coeff * fractions.Fraction(1, 2)
 
     return color_algebra.ColorString(objs, coeff, col_str.is_imaginary,
                                      col_str.Nc_power, col_str.loop_Nc_power)
@@ -176,7 +201,7 @@ class _ColorTree(object):
             if col_obj.__class__.__name__ == 'ColorOne':
                 continue
             if type(col_obj) is not color_algebra.f:
-                raise DDMError("%s is not an f object" % str(col_obj))
+                raise DDMError("not a product of f objects", str(col_obj))
             self.nodes.append(tuple(col_obj))
 
         if not self.nodes:
@@ -187,7 +212,7 @@ class _ColorTree(object):
         self.where = collections.defaultdict(list)
         for i, node in enumerate(self.nodes):
             if node[0] == node[1] or node[1] == node[2] or node[0] == node[2]:
-                raise DDMError("f object %s has repeated indices" % str(node))
+                raise DDMError("f object with repeated indices", str(node))
             for index in node:
                 self.where[index].append(i)
 
@@ -196,12 +221,14 @@ class _ColorTree(object):
         for index, nodes in self.where.items():
             if index > 0:
                 if len(nodes) != 1:
-                    raise DDMError("external index %i appears %i times" % \
+                    raise DDMError("external index repeated",
+                                   "index %i appears %i times" % \
                                                         (index, len(nodes)))
                 self.externals.append(index)
             else:
                 if len(nodes) != 2:
-                    raise DDMError("summed index %i appears %i times" % \
+                    raise DDMError("summed index not appearing twice",
+                                   "index %i appears %i times" % \
                                                         (index, len(nodes)))
                 nb_internal += 1
 
@@ -220,8 +247,8 @@ class _ColorTree(object):
         leaf 'last'."""
 
         if first not in self.externals or last not in self.externals:
-            raise DDMError("legs %s and %s are not both external here" % \
-                                                              (first, last))
+            raise DDMError("DDM end legs not both external",
+                           "legs %s and %s" % (first, last))
         start = self.where[first][0]
         end = self.where[last][0]
 
@@ -632,27 +659,39 @@ class ColorBasis(dict):
         for colorize_dict in self._list_color_dict:
             for col_str in colorize_dict.values():
                 externals = []
-                not_f = None
+                # the objects which are not f's: those over adjoint indices
+                # only (Tr, d) and the others (T, K6, epsilon, ...)
+                adjoint_not_f = []
+                other_not_f = []
                 for col_obj in contract_adjoint_deltas(col_str):
                     if col_obj.__class__.__name__ == 'ColorOne':
                         continue
-                    if type(col_obj) is not color_algebra.f:
-                        not_f = col_obj
+                    if type(col_obj) in (color_algebra.Tr, color_algebra.d):
+                        adjoint_not_f.append(col_obj)
+                    elif type(col_obj) is not color_algebra.f:
+                        other_not_f.append(col_obj)
                     externals.extend([i for i in col_obj if i > 0])
                 externals = sorted(externals)
                 if legs is None:
                     legs = externals
-                    if len(set(legs)) < 3:
+                    # counted with their multiplicity, so that a repeated
+                    # index is reported below rather than taken for a
+                    # process with too few colored legs
+                    if len(legs) < 3:
                         return None
-                if not_f is not None:
-                    if type(not_f) is color_algebra.Tr and len(not_f) == 2:
-                        raise DDMError("color structure not connected (%s)" \
-                                       % str(col_str))
-                    raise DDMError("not all the colored legs are gluons "
-                                   "(color object %s)" % str(not_f))
+                if other_not_f:
+                    raise DDMError("not all the colored legs are gluons",
+                                   "color object %s" % str(other_not_f[0]))
+                for col_obj in adjoint_not_f:
+                    if type(col_obj) is color_algebra.Tr and len(col_obj) == 2:
+                        # a delta between two external legs
+                        raise DDMError("color structure not connected",
+                                       str(col_str))
+                if adjoint_not_f:
+                    raise DDMError("not a product of f objects",
+                                   "color object %s" % str(adjoint_not_f[0]))
                 if len(externals) != len(set(externals)):
-                    raise DDMError("repeated external index (%s)" % \
-                                   str(col_str))
+                    raise DDMError("repeated external index", str(col_str))
                 if legs != externals:
                     raise DDMError("color structures over different legs")
 
@@ -943,8 +982,11 @@ class ColorBasis(dict):
 
         logger.debug('Falling back on the trace color basis for %s: %s',
                      self._process_name, error)
-        if (self._process_name, str(error)) not in ddm_fallbacks:
-            ddm_fallbacks.append((self._process_name, str(error)))
+        # Only the fixed reason, not the detail, so that a process is listed
+        # once per reason, and the processes failing alike are grouped
+        entry = (self._process_name, getattr(error, 'reason', str(error)))
+        if entry not in ddm_fallbacks:
+            ddm_fallbacks.append(entry)
         self._ddm_ends = None
         self._flow_basis = None
 
