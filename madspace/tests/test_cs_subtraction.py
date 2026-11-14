@@ -147,8 +147,29 @@ def test_subtraction_block():
 
 
 def test_decays():
-    with pytest.raises(NotImplementedError):
-        cs_dipoles([6, 5, 24, 21], borns([6, 5, 24]), TOP, nincoming=1)
+    """A colored decaying particle is the spectator of the final-state quarks
+    (fd), a colorless one of none, and a final-state gluon with a colored
+    decaying particle is not covered."""
+    masses = {6: 173.0, 5: 4.7}
+    dipoles = cs_dipoles([6, 5, 24, 21], borns([6, 5, 24]), masses, nincoming=1)
+    assert [
+        (d["family"], d["i"], d["j"], d["k"], d["kernel"], d["born_order"])
+        for d in dipoles
+    ] == [("fd", 3, 1, 0, "qg", [0, 1, 2])]
+    assert dipoles[0]["symmetry"] == 1.0
+    # t > b e+ ve: the leptons are the recoil system
+    dipoles = cs_dipoles(
+        [6, 5, -11, 12, 21], borns([6, 5, -11, 12]), masses, nincoming=1
+    )
+    assert [(d["family"], d["j"], d["k"]) for d in dipoles] == [("fd", 1, 0)]
+    # t > b u d~: the quarks of the W are each other's spectators besides t
+    dipoles = cs_dipoles([6, 5, 2, -1, 21], borns([6, 5, 2, -1]), masses, nincoming=1)
+    assert families(dipoles) == {("ff", "qg"): 6, ("fd", "qg"): 3}
+    # a colorless decaying particle: H > b b~
+    dipoles = cs_dipoles([25, 5, -5, 21], borns([25, 5, -5]), masses, nincoming=1)
+    assert families(dipoles) == {("ff", "qg"): 2}
+    with pytest.raises(NotImplementedError, match="gluon"):
+        cs_dipoles([6, 5, 24, 21, 21], borns([6, 5, 24, 21]), masses, nincoming=1)
 
 
 @pytest.mark.skipif(not OUTPUTS, reason="MADSPACE_FKS_OUTPUTS names no aMC@NLO outputs")

@@ -42,7 +42,14 @@ CSMapping::Family family_of(
         );
     }
     bool initial_emitter = emitter < incoming, initial_spectator = spectator < incoming;
-    if ((initial_emitter || initial_spectator) && fixed_fractions(born)) {
+    if (born.is_decay() && initial_emitter) {
+        throw std::invalid_argument(
+            "CSMapping: the decaying particle cannot be the emitter"
+        );
+    }
+    bool decay_spectator = born.is_decay() && initial_spectator;
+    if ((initial_emitter || initial_spectator) && fixed_fractions(born) &&
+        !decay_spectator) {
         throw std::invalid_argument(
             "CSMapping: an incoming emitter or spectator needs the momentum "
             "fractions of hadron beams"
@@ -64,6 +71,15 @@ CSMapping::Family family_of(
             "real emission and the subtraction terms (except a floor on "
             "sqrt(s_hat) for a final-state emitter and spectator)"
         );
+    }
+    if (decay_spectator) {
+        if (born.particle_count() < 3) {
+            throw std::invalid_argument(
+                "CSMapping: a decaying spectator needs a recoil system, a second "
+                "final-state particle of the Born"
+            );
+        }
+        return CSMapping::final_decay;
     }
     if (initial_emitter) {
         return initial_spectator
@@ -128,10 +144,11 @@ CSMapping::CSMapping(
         throw std::invalid_argument("CSMapping: the cutoff has to be in [0, 1)");
     }
     // the masses of emitter and spectator, the same in every permutation of
-    // the Born mapping, and massless incoming partons
+    // the Born mapping, and massless incoming partons (but a decaying one)
     for (auto real : {emitter, spectator}) {
         double mass = _born_masses.at(born_position(real));
-        if (mass < 0. || (real < _incoming && mass != 0.)) {
+        bool massless = real < _incoming && _family != final_decay;
+        if (mass < 0. || (massless && mass != 0.)) {
             throw std::invalid_argument(
                 "CSMapping: the emitter and the spectator need the same mass in "
                 "every permutation of the Born mapping, zero if incoming"
@@ -197,6 +214,29 @@ Mapping::Result CSMapping::build_forward_impl(
         real.at(_emitted) = p_i;
         real.at(f_real) = p_f;
         x.at(a) = fb.div(x.at(a), x_cs);
+        det = det_cs;
+    } else if (_family == final_decay) {
+        // the other final-state particles of the Born, in their order
+        auto j = born_position(_emitter);
+        ValueVec others;
+        for (std::size_t n = _incoming; n < p.size(); ++n) {
+            if (n != j) {
+                others.push_back(p.at(n));
+            }
+        }
+        auto [p_i, p_j, p_out, y, z, det_cs] = fb.cs_final_decay_radiate(
+            r_1, r_2, r_phi, p.at(j), fb.stack(others), _born_masses.at(j), _cutoff
+        );
+        auto recoil = fb.unstack(p_out);
+        ValueVec born_real(p);
+        for (std::size_t n = _incoming, o = 0; n < p.size(); ++n) {
+            if (n != j) {
+                born_real.at(n) = recoil.at(o++);
+            }
+        }
+        born_real.at(j) = p_j;
+        real = born_real;
+        real.insert(real.begin() + _emitted, p_i);
         det = det_cs;
     } else {
         auto a = _emitter, b = _spectator;
@@ -276,6 +316,32 @@ NamedVector<Value> CSMapping::build_projection(
             {"r_2", r_2},
             {"r_phi", r_phi},
             {"x", x_cs},
+            {"z", z},
+            {"det", det}
+        };
+    } else if (_family == final_decay) {
+        auto j = born_position(_emitter);
+        ValueVec others;
+        for (std::size_t n = _incoming; n < born.size(); ++n) {
+            if (n != j) {
+                others.push_back(born.at(n));
+            }
+        }
+        auto [p_ij, p_out, r_1, r_2, r_phi, y, z, det] = fb.cs_final_decay_project(
+            p_i, p.at(_emitter), fb.stack(others), _born_masses.at(j), _cutoff
+        );
+        auto recoil = fb.unstack(p_out);
+        for (std::size_t n = _incoming, o = 0; n < born.size(); ++n) {
+            if (n != j) {
+                born.at(n) = recoil.at(o++);
+            }
+        }
+        born.at(j) = p_ij;
+        outputs = {
+            {"r_1", r_1},
+            {"r_2", r_2},
+            {"r_phi", r_phi},
+            {"y", y},
             {"z", z},
             {"det", det}
         };
@@ -360,11 +426,17 @@ const std::vector<CSMapping>& checked_dipoles(
 }
 
 double kernel_index(CSMapping::Family family, const std::string& kernel) {
-    bool final_emitter =
-        family == CSMapping::final_final || family == CSMapping::final_initial;
+    bool final_emitter = family == CSMapping::final_final ||
+        family == CSMapping::final_initial || family == CSMapping::final_decay;
     std::vector<std::string> names{"qg", "gg", "gq"};
     if (!final_emitter) {
         names = {"qg", "gg", "qq", "gq"};
+    }
+    if (family == CSMapping::final_decay && kernel != "qg") {
+        throw std::invalid_argument(
+            "CSDipoles: a decaying spectator has the dipoles of a quark emitter "
+            "only (qg)"
+        );
     }
     for (std::size_t k = 0; k < names.size(); ++k) {
         if (names[k] == kernel) {
@@ -452,8 +524,12 @@ NamedVector<Value> CSDipoles::build_function_impl(
         auto bj = j < i ? j : j - 1, bk = k < i ? k : k - 1;
         const auto& masses = mapping.real_masses();
         auto family = mapping.family();
+        // the dipoles of a decaying spectator take the alpha of the final-final
+        // family
+        double alpha =
+            _alpha[family == CSMapping::final_decay ? CSMapping::final_final : family];
         std::vector<double> options{
-            _kernels[d], _alpha[family], _kappa, masses.at(j), masses.at(k)
+            _kernels[d], alpha, _kappa, masses.at(j), masses.at(k)
         };
         std::array<Value, 3> weights;
         if (family == CSMapping::final_final) {
@@ -467,6 +543,10 @@ NamedVector<Value> CSDipoles::build_function_impl(
         } else if (family == CSMapping::initial_final) {
             weights = fb.cs_initial_final_dipole(
                 p.at(j), p.at(i), p.at(k), born.at(bj), born.at(bk), Value(options)
+            );
+        } else if (family == CSMapping::final_decay) {
+            weights = fb.cs_final_decay_dipole(
+                p.at(i), p.at(j), p.at(k), born.at(bj), born.at(bk), Value(options)
             );
         } else {
             weights =

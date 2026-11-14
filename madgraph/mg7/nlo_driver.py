@@ -779,6 +779,10 @@ class NLORun:
             self.context,
         )
         n_f, n_l = light_flavors(self.output)
+        # setcuts.f of MadFKS raises maxjetflavor to the light flavors of the
+        # model, so that a massless b is a jet
+        if integer(self.run_card["maxjetflavor"]) < int(n_f):
+            self.run_card["maxjetflavor"] = int(n_f)
         root = os.path.join(self.output, "SubProcesses")
         names = sorted(
             d

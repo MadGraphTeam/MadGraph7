@@ -2104,6 +2104,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"final_initial", CSMapping::final_initial},
             {"initial_final", CSMapping::initial_final},
             {"initial_initial", CSMapping::initial_initial},
+            {"final_decay", CSMapping::final_decay},
         }
     );
     cs_mapping
@@ -2175,13 +2176,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 double,
                 double,
-                double>(),
+                double,
+                std::size_t>(),
             py::arg("pdgs"),
             py::arg("masses"),
             py::arg("born_orders") = 1,
             py::arg("kappa") = 2. / 3.,
             py::arg("alpha_ff") = 1.,
             py::arg("n_f") = 5.,
+            py::arg("incoming") = 2,
             pydoc::doc("CSInsertion::CSInsertion")
         )
         .def(

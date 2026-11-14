@@ -16,13 +16,17 @@ NamedVector<Type> insertion_arg_types(
     const std::vector<int>& pdgs,
     const std::vector<double>& masses,
     std::size_t orders,
-    const std::string& name = "CSInsertion"
+    const std::string& name = "CSInsertion",
+    std::size_t incoming = 2
 ) {
+    if (incoming != 1 && incoming != 2) {
+        throw std::invalid_argument(name + ": one or two incoming particles");
+    }
     if (pdgs.size() != masses.size() || pdgs.size() < 3) {
         throw std::invalid_argument(
             name +
-            ": the Born needs two incoming particles, an outgoing one and a mass for "
-            "each"
+            ": the Born needs its incoming particles, two outgoing ones for a decay "
+            "and one else, and a mass for each"
         );
     }
     if (orders == 0) {
@@ -47,7 +51,8 @@ void color_factors(
     const std::string& name,
     std::vector<double>& casimir,
     std::vector<double>& gamma,
-    std::vector<double>& k_constant
+    std::vector<double>& k_constant,
+    std::size_t incoming = 2
 ) {
     if (!(n_f >= 0.)) {
         throw std::invalid_argument(name + ": n_f must not be negative");
@@ -61,8 +66,11 @@ void color_factors(
         if (masses[j] < 0. || (gluon && masses[j] != 0.)) {
             throw std::invalid_argument(name + ": invalid mass");
         }
-        if (j < 2 && (quark || gluon) && masses[j] != 0.) {
+        if (incoming == 2 && j < 2 && (quark || gluon) && masses[j] != 0.) {
             throw std::invalid_argument(name + ": incoming partons are massless");
+        }
+        if (incoming == 1 && j == 0 && gluon) {
+            throw std::invalid_argument(name + ": a gluon does not decay");
         }
         casimir.push_back(quark ? CF : gluon ? CA : 0.);
         gamma.push_back(quark ? gamma_q : gluon ? gamma_g : 0.);
@@ -78,11 +86,12 @@ CSInsertion::CSInsertion(
     std::size_t born_orders,
     double kappa,
     double alpha_ff,
-    double n_f
+    double n_f,
+    std::size_t incoming
 ) :
     FunctionGenerator(
         "CSInsertion",
-        insertion_arg_types(pdgs, masses, born_orders),
+        insertion_arg_types(pdgs, masses, born_orders, "CSInsertion", incoming),
         {{"insertion", batch_float_array(static_cast<int>(born_orders))},
          {"poles",
           Type{DataType::dt_float64, batch_size, {static_cast<int>(born_orders), 2}}}}
@@ -91,11 +100,24 @@ CSInsertion::CSInsertion(
     _masses(masses),
     _kappa(kappa),
     _alpha_ff(alpha_ff),
-    _n_f(n_f) {
+    _n_f(n_f),
+    _incoming(incoming) {
     if (!(alpha_ff > 0. && alpha_ff <= 1.)) {
         throw std::invalid_argument("CSInsertion: alpha_ff has to be in (0, 1]");
     }
-    color_factors(pdgs, masses, n_f, "CSInsertion", _casimir, _gamma, _k_constant);
+    color_factors(
+        pdgs, masses, n_f, "CSInsertion", _casimir, _gamma, _k_constant, incoming
+    );
+    if (incoming == 1 && _casimir[0] != 0.) {
+        for (std::size_t j = 1; j < pdgs.size(); ++j) {
+            if (_casimir[j] == CA) {
+                throw std::invalid_argument(
+                    "CSInsertion: no dipoles of a final-state gluon with a colored "
+                    "decaying particle"
+                );
+            }
+        }
+    }
 }
 
 CSCollinear::CSCollinear(
@@ -176,7 +198,7 @@ NamedVector<Value> CSInsertion::build_function_impl(
         _k_constant,
         _masses,
         std::vector<double>{_kappa, _alpha_ff, _n_f},
-        static_cast<me_int_t>(2)
+        static_cast<me_int_t>(_incoming)
     );
     return {{"insertion", insertion}, {"poles", poles}};
 }

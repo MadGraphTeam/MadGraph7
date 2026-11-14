@@ -6,7 +6,10 @@ Trocsanyi, arXiv:hep-ph/0201036). A dipole has an emitted parton i, an
 emitter j and a spectator k, all colored, with the positions of the real
 process (0-based). i is massless and emitted in the final state. The family
 is ff, fi, if or ii by whether the emitter and the spectator are in the
-final (f) or the initial (i) state. The kernel names the splitting by the
+final (f) or the initial (i) state, and fd for a final-state emitter with
+the decaying particle of a decay as the spectator (Basso, Dittmaier, Huss,
+Oggero, arXiv:1507.04676), whose soft terms its dipoles take, as the decaying
+particle emits no collinear parton. The kernel names the splitting by the
 Born parton of the emitter and the emitted parton, q for a quark or an
 antiquark and g for a gluon:
 
@@ -47,7 +50,7 @@ import json
 import math
 import os
 
-FAMILIES = ("ff", "fi", "if", "ii")
+FAMILIES = ("ff", "fi", "if", "ii", "fd")
 FINAL_KERNELS = ("qg", "gg", "gq")
 INITIAL_KERNELS = ("qg", "gg", "qq", "gq")
 
@@ -146,8 +149,13 @@ def cs_dipoles(real_pdgs, borns, masses=None, nincoming=2):
     emitters, each with its spectators: dicts with born (an index of borns),
     family, i, j, k, kernel, born_order and symmetry (see the module). borns
     are dicts with pdgs and flavors, the masses {pdg: mass} (zero by default).
-    A decay (nincoming 1) whose decaying particle is colored needs the
-    dipoles with it as the spectator, which are not there yet."""
+    In a decay (nincoming 1) a colored decaying particle is the spectator of
+    the final-state emitters (fd), which have to be quarks.
+
+    Raises:
+        NotImplementedError: for a gluon emitter with a colored decaying
+            particle as the spectator.
+    """
     pdgs = list(real_pdgs)
     m = mass_list(pdgs, masses)
     count = len(pdgs)
@@ -177,10 +185,16 @@ def cs_dipoles(real_pdgs, borns, masses=None, nincoming=2):
             if k in (i, j) or not is_colored(pdgs[k]):
                 continue
             if nincoming == 1 and k == 0:
-                raise NotImplementedError(
-                    "dipoles with a decaying particle as the spectator"
+                if kernel != "qg":
+                    raise NotImplementedError(
+                        "dipoles of a final-state gluon with a decaying particle "
+                        "as the spectator"
+                    )
+                family = "fd"
+            else:
+                family = ("i" if j < nincoming else "f") + (
+                    "i" if k < nincoming else "f"
                 )
-            family = ("i" if j < nincoming else "f") + ("i" if k < nincoming else "f")
             dipoles.append(
                 dict(
                     born=b,

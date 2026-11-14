@@ -17,11 +17,13 @@ the initial state (p p > t t~) and in the final state (e+ e- > j j j, with
 the splittings of a final-state gluon into g g and q q~). The NLO cross
 sections are those of MG5aMC within PULL combined errors and do not depend
 on alpha, also for p p > e+ e- j, whose jet radiates against the incoming
-partons and the incoming partons against it. MADSPACE_FKS_POINTS sets the
-number of points per channel of an iteration, POINTS by default, with which
-the tests take about four minutes on one core, most of it for the real
-streams of p p > t t~ (108 channels) and e+ e- > j j j (192). p p > e+ e- j
-(1072 channels, seven minutes a run there) runs only with MADSPACE_FKS_SLOW=1.
+partons and the incoming partons against it, and for the decays t > b w+
+with a massive and a massless b, whose b radiates against the top.
+MADSPACE_FKS_POINTS sets the number of points per channel of an iteration,
+POINTS by default, with which the tests take about four minutes on one
+core, most of it for the real streams of p p > t t~ (108 channels) and e+
+e- > j j j (192). p p > e+ e- j (1072 channels, seven minutes a run there)
+runs only with MADSPACE_FKS_SLOW=1.
 """
 
 import functools
@@ -149,7 +151,17 @@ def test_epem_jj_real(alpha):
 
 @needs_outputs
 @pytest.mark.parametrize(
-    "name", ["epem_jj", "epem_jj_antikt", "pp_epem", "pp_ttx", "epem_jjj", "pp_epemj"]
+    "name",
+    [
+        "epem_jj",
+        "epem_jj_antikt",
+        "pp_epem",
+        "pp_ttx",
+        "epem_jjj",
+        "pp_epemj",
+        "t_bw",
+        "t_bw_mb0",
+    ],
 )
 def test_against_mg5amc(name):
     """The LO and NLO cross sections of the CS driver and those of MG5aMC,
@@ -164,7 +176,9 @@ def test_against_mg5amc(name):
 
 
 @needs_outputs
-@pytest.mark.parametrize("name", ["epem_jj", "pp_epem", "epem_jjj", "pp_epemj"])
+@pytest.mark.parametrize(
+    "name", ["epem_jj", "pp_epem", "epem_jjj", "pp_epemj", "t_bw", "t_bw_mb0"]
+)
 def test_alpha_independence(name):
     """The NLO cross section does not depend on alpha (1 and 0.1 for all
     families), within PULL combined errors."""
@@ -340,6 +354,40 @@ def test_real_limits(real_stream, name, reference, rtol):
         ratios = [r for _, r in sorted(values, reverse=True)]
         assert ratios[-1] < max(ratios[-2] / 3, 1e-6), (key, ratios)
         assert ratios[-1] < 1e-2, (key, ratios)
+
+
+@needs_outputs
+@pytest.mark.parametrize("name", ["t_bw", "t_bw_mb0"])
+def test_decay_limits(real_stream, name):
+    """The real stream of t > b w+ g, its dipole of the b with the top as the
+    spectator, along rays into the limits (the random numbers of y, and of
+    z_i for the soft limit of a massless b, times lambda): |R - D| / R falls
+    by a factor 3 from lambda = 0.1 to 0.03 and 0.01, to below 1e-2. y alone
+    is the soft limit of a massive b, whose range of z_i shrinks with y, and
+    the collinear limit of a massless one. (z_i at the lower end of its range
+    for a massive b is a gluon against the b, where the eikonal of the pair
+    vanishes.)"""
+    run = real_stream(name, 0.0)
+    (integrand,) = [i for i in run.integrands if hasattr(i, "dipoles")]
+    assert [d.entry["family"] for d in integrand.dipoles] == ["fd"]
+    base = np.random.default_rng(5).uniform(
+        0.2, 0.8, (16, integrand.channel_dimension(0))
+    )
+    rays = [False] if name == "t_bw" else [False, True]
+    for both in rays:
+        ratios = []
+        for lam in (0.1, 0.03, 0.01):
+            x = base.copy()
+            x[:, -3] *= lam
+            if both:
+                x[:, -2] *= lam
+            out = integrand.evaluate(0, x, None, None, None, None)
+            assert (out["real_weight"] != 0).all()
+            ratio = np.abs(out["real_weight"] + out["dipole_weights"].sum(1))
+            ratios.append(ratio / np.abs(out["real_weight"]))
+        assert (ratios[1] < ratios[0] / 3).all(), (both, ratios)
+        assert (ratios[2] < ratios[1] / 3).all(), (both, ratios)
+        assert (ratios[2] < 1e-2).all(), (both, ratios)
 
 
 @needs_outputs

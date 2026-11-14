@@ -21,16 +21,21 @@ namespace madspace {
  *   final spectator (`cs_initial_final_radiate`, the same map for both), in
  *   @f$x@f$ and @f$z@f$ (@f$z_i@f$ and @f$u_i@f$ of [2]);
  * - incoming emitter and spectator (`cs_initial_initial_radiate`), in
- *   @f$x_{i,ab}@f$ and @f$v_i@f$, with the final state Lorentz transformed.
+ *   @f$x_{i,ab}@f$ and @f$v_i@f$, with the final state Lorentz transformed;
+ * - final emitter and the decaying particle of a decay as the spectator
+ *   (`cs_final_decay_radiate`, Basso, Dittmaier, Huss, Oggero [4]), the
+ *   final-final map with the other final-state particles as the spectator,
+ *   in @f$y@f$ and @f$z_i@f$, with those particles Lorentz transformed and
+ *   the momentum of the decaying particle fixed.
  *
  * The emitter keeps its mass (@f$m_{ij} = m_j@f$, so not the splitting of a
  * gluon into massive quarks), the spectator may be massive, and incoming
- * partons are massless. The Born mapping gives the Born momenta in the lab
- * frame, they are boosted along the beam axis into the center-of-mass frame of
- * the Born, where the emission adds @f$i@f$, and the real emission is boosted
- * back with the same boost (the instruction `fks_beam_boost`). With an
- * incoming emitter or spectator @f$a@f$ the momentum fraction of @f$a@f$ is
- * that of the Born over @f$x@f$, from the Born fraction (the lower end of
+ * partons are massless (but the decaying particle of a decay). The Born mapping gives
+ * the Born momenta in the lab frame, they are boosted along the beam axis into the
+ * center-of-mass frame of the Born, where the emission adds @f$i@f$, and the real
+ * emission is boosted back with the same boost (the instruction `fks_beam_boost`). With
+ * an incoming emitter or spectator @f$a@f$ the momentum fraction of @f$a@f$ is that of
+ * the Born over @f$x@f$, from the Born fraction (the lower end of
  * @f$x@f$) to one, and the other beam keeps its fraction. The inverse projects
  * the real emission onto the Born in its own center-of-mass frame. The maps
  * are covariant and the azimuth of @f$i@f$ is defined in a frame built from the
@@ -89,11 +94,20 @@ namespace madspace {
  * - [3] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi, "The dipole
  *   formalism for next-to-leading order QCD calculations with massive
  *   partons", https://arxiv.org/abs/hep-ph/0201036 (Sec. 5)
+ * - [4] L. Basso, S. Dittmaier, A. Huss, L. Oggero, "Techniques for the
+ *   treatment of IR divergences in decay processes at NLO and application to
+ *   the top-quark decay", https://arxiv.org/abs/1507.04676 (Sec. 3.2)
  */
 class CSMapping : public Mapping {
 public:
     /// The family of a dipole by the emitter and the spectator.
-    enum Family { final_final, final_initial, initial_final, initial_initial };
+    enum Family {
+        final_final,
+        final_initial,
+        initial_final,
+        initial_initial,
+        final_decay
+    };
 
     /// @param born       Mapping of the Born process, without cuts (but a
     ///                   floor on sqrt(s_hat) for a final-state emitter and
@@ -103,7 +117,8 @@ public:
     /// @param emitter    Position of the emitter j in the real process. The
     ///                   Born has the emitter ij there (one before it if it
     ///                   comes after i), with the mass of j.
-    /// @param spectator  Position of the spectator k in the real process.
+    /// @param spectator  Position of the spectator k in the real process, 0
+    ///                   for the decaying particle of a decay.
     /// @param cutoff     Lower end of the two variables of the dipole, in
     ///                   [0, 1).
     CSMapping(
@@ -142,9 +157,9 @@ public:
      * - `born_momenta`, `born_x1`, `born_x2`: the Born of the dipole in the lab
      *   frame and its momentum fractions;
      * - `r_1`, `r_2`, `r_phi`: the random numbers of the emission;
-     * - the two variables of the dipole, `y` and `z` for final_final, `x` and
-     *   `z` for final_initial and initial_final, `x` and `v` for
-     *   initial_initial (see the instructions of the families);
+     * - the two variables of the dipole, `y` and `z` for final_final and
+     *   final_decay, `x` and `z` for final_initial and initial_final, `x` and
+     *   `v` for initial_initial (see the instructions of the families);
      * - `det`: the Jacobian of the emission, that of the inverse map over the
      *   one of the Born mapping.
      */
@@ -186,7 +201,8 @@ private:
  * dipole the Born it projects onto (@ref CSMapping::build_projection) and the
  * weights by which the dipole takes the Born blocks (the instructions
  * `cs_final_final_dipole`, `cs_final_initial_dipole`,
- * `cs_initial_final_dipole` and `cs_initial_initial_dipole`),
+ * `cs_initial_final_dipole`, `cs_initial_initial_dipole` and
+ * `cs_final_decay_dipole`),
  *
  * @f[ D = -g_s^2\,S \left[ c\,\langle T_j \cdot T_k \rangle
  *     + s\,\langle T_j \cdot T_k \rangle(k_t) \right], @f]
@@ -197,7 +213,9 @@ private:
  * the dipole (the identical particles of its Born over those of the real).
  * A dipole vanishes outside the alpha of its family, @f$y < \alpha y_+@f$
  * (ff), @f$1 - x < \alpha@f$ (fi), @f$u < \alpha@f$ (if), @f$v < \alpha@f$
- * (ii).
+ * (ii). The dipoles of a final-state quark with the decaying particle of a
+ * decay as the spectator take @f$y < \alpha_{ff} y_+@f$ of their final-final
+ * map, and the soft terms of the decaying particle (`cs_final_decay_dipole`).
  *
  * `batch` is the leading batch dimension, `d` the number of dipoles and `n`
  * the number of particles of their Borns.
@@ -222,6 +240,8 @@ private:
  * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi,
  *   https://arxiv.org/abs/hep-ph/0201036
  * - [3] Z. Nagy, https://arxiv.org/abs/hep-ph/0307268 (the alpha parameters)
+ * - [4] L. Basso, S. Dittmaier, A. Huss, L. Oggero,
+ *   https://arxiv.org/abs/1507.04676 (decays)
  */
 class CSDipoles : public FunctionGenerator {
 public:
@@ -230,7 +250,8 @@ public:
     ///                  beams and conditions.
     /// @param kernels   The kernel of each dipole: qg, gg or gq for a
     ///                  final-state emitter, qg, gg, qq or gq for an
-    ///                  incoming one (see madspace.cs).
+    ///                  incoming one (see madspace.cs), qg with a decaying
+    ///                  spectator.
     /// @param symmetry  The symmetry factor of each dipole.
     /// @param alpha_ff, alpha_fi, alpha_if, alpha_ii  The alpha of each
     ///                  family, in (0, 1].

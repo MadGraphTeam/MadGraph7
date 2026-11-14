@@ -4631,6 +4631,94 @@ cs_initial_initial_project:
       desc: "Jacobian of the inverse map"
   desc: "Inverse of @ref cs_initial_initial_radiate, the momenta of the dipole V^ai,b (CS eqs. 5.137-5.143). The Born momentum fraction x_min is x x_real."
 
+cs_final_decay_radiate:
+  inputs:
+    - name: r_y
+      type: [float]
+      desc: "random number for y, as for @ref cs_final_final_radiate"
+    - name: r_z
+      type: [float]
+      desc: "random number for z, as for @ref cs_final_final_radiate"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: p_ij
+      type: [float, 4]
+      desc: "Born emitter, of mass m_j"
+    - name: p
+      type: [float, n, 4]
+      desc: "the other final-state momenta of the Born, the recoil system K~ = p_a - p_ij"
+    - name: m_j
+      type: [float]
+      desc: "mass of the emitter"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of y and z, above which the map stays (det = 0 where their range is empty)"
+  outputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_j
+      type: [float, 4]
+      desc: "emitter after the emission"
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the other final-state momenta of the real emission, Lambda(K~, K) p (K itself for one particle)"
+    - name: y
+      type: [float]
+      desc: "y_ij,K = p_i.p_j / (p_i.p_j + p_i.K + p_j.K)"
+    - name: z
+      type: [float]
+      desc: "z_i = p_i.K / (p_i.K + p_j.K)"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the map to the phase space of the real emission in units of the Born one"
+  desc: "Catani-Seymour emission off a final-state emitter with the decaying particle a as the spectator (arXiv:1507.04676, Sec. 3.2): the map of @ref cs_final_final_radiate with the recoil system K~ = p_a - p_ij of the other final-state particles as the spectator, of mass sqrt(K~^2), and p_a fixed. K~ goes to K = p_a - p_i - p_j of the same mass, each of its particles with the Lorentz transformation Lambda(K~, K) of CS eq. 5.143, or to K itself if it is alone. See @ref CSMapping."
+
+cs_final_decay_project:
+  inputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_j
+      type: [float, 4]
+      desc: "emitter, of mass m_j"
+    - name: p
+      type: [float, n, 4]
+      desc: "the other final-state momenta, the recoil system K = p_a - p_i - p_j"
+    - name: m_j
+      type: [float]
+      desc: "mass of the emitter"
+    - name: cutoff
+      type: [float]
+      desc: "lower end of y and z of the forward map, det = 0 below it"
+  outputs:
+    - name: p_ij
+      type: [float, 4]
+      desc: "Born emitter"
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the other final-state momenta of the Born, Lambda(K, K~) p (K~ itself for one particle)"
+    - name: r_y
+      type: [float]
+      desc: "random number for y"
+    - name: r_z
+      type: [float]
+      desc: "random number for z"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: y
+      type: [float]
+      desc: "y_ij,K"
+    - name: z
+      type: [float]
+      desc: "z_i"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the inverse map"
+  desc: "Inverse of @ref cs_final_decay_radiate, the final-final projection of CDST eq. 5.8 with the recoil system K as the spectator."
+
 cs_final_final_dipole:
   inputs:
     - name: p_i
@@ -4753,6 +4841,38 @@ cs_initial_initial_dipole:
       desc: "k_t, the vector that replaces the polarization of the Born emitter"
   desc: "Catani-Seymour dipole with an incoming emitter and spectator, CS eqs. 5.145-5.148, with the kernels of @ref cs_initial_final_dipole. It vanishes for v >= alpha, over the invariant x p_a.p_i. k_t is p_i without its parts along p_a and p_b, the same in the frames of the real emission and of its Born. The dipole is -g_s^2 (color_weight <T_j . T_k> + spin_weight <T_j . T_k>(k_t)) with the color-correlated Born of the Born emitter j and spectator k, and <T_j . T_k>(k_t) the same with the real vector k_t in place of the polarization vector of the Born emitter, a gluon. k_t is the vector k~ of the tensor part k~^mu k~^nu of the kernel without its part along the Born emitter (by the Born spectator), which the gauge invariance of the Born leaves out. The weights are the kernel, over the invariant of the dipole and normalized to the Casimir of the Born emitter, zero outside alpha. The momenta are in one frame. See @ref CSDipoles."
 
+cs_final_decay_dipole:
+  inputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "emitted massless parton"
+    - name: p_j
+      type: [float, 4]
+      desc: "final-state emitter, a quark"
+    - name: p_a
+      type: [float, 4]
+      desc: "the decaying particle, the spectator"
+    - name: born_ij
+      type: [float, 4]
+      desc: "Born emitter, from @ref cs_final_decay_project"
+    - name: born_a
+      type: [float, 4]
+      desc: "the decaying particle of the Born"
+    - name: options
+      type: [float, single, 5]
+      desc: "the kernel (0, q -> q g), alpha of the final-final family, kappa of CDST, the masses of the emitter and of the decaying particle"
+  outputs:
+    - name: color_weight
+      type: [float]
+      desc: "the weight of the color-correlated Born <T_j . T_a>, zero outside alpha"
+    - name: spin_weight
+      type: [float]
+      desc: "zero"
+    - name: spin_vector
+      type: [float, 4]
+      desc: "k_t of the kernel, unused by a quark emitter"
+  desc: "Catani-Seymour dipole of a final-state quark j with the decaying particle a as the spectator, q -> q g: the kernel of @ref cs_final_final_dipole with the recoil system K = p_a - p_i - p_j of mass sqrt(K^2) as the spectator, plus the soft terms of the decaying particle 2 m_j^2 / (p_a.p_i p_i.p_j) - m_a^2 / (p_a.p_i)^2, so that the soft limit is the eikonal of the pair j, a with both mass terms (the decaying particle emits no collinear parton, the dipoles of arXiv:1507.04676 combine its terms with those of j as well). It vanishes for y >= alpha y_+ (with alpha of the final-final family), over the invariant p_i.p_j. See @ref CSDipoles."
+
 cs_insertion:
   inputs:
     - name: momenta
@@ -4784,7 +4904,7 @@ cs_insertion:
       desc: "kappa of CDST, alpha of the final-final dipoles and n_f"
     - name: incoming
       type: [int, single]
-      desc: "number of incoming particles, the first of the momenta"
+      desc: "number of incoming particles, two or one for a decay (the first of the momenta)"
   outputs:
     - name: insertion
       type: [float, b]
@@ -4793,7 +4913,7 @@ cs_insertion:
       type: [float, b, 2]
       desc: "the coefficients of eps^-2 and eps^-1 of <I> per Born order"
   vectorized: False
-  desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). See @ref CSInsertion."
+  desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). In a decay (incoming = 1) the decaying particle a is no emitter, and the pair of a final-state quark j with a as the spectator is the integral of the dipole of @ref cs_final_decay_dipole: the pair term above with the recoil system K~ = p_a - p_j as the spectator (s_jK = 2 p_j.K~ and the mass of K~), plus (s_jK / 2 + 2 m_j^2) H_j - (s_jK / 2) H_K - I_a per unit <T_j . T_a> B, with H_x the integral of 1 / (p_a.q p_x.q) over the gluon q and I_a that of m_a^2 / (p_a.q)^2, in closed form (see cs_decay_soft of cs_integrated.hpp): the pair term has the mean of the integrals of the eikonal terms s_jK / (p_a.q p_j.q) and s_jK / (p_a.q p_K.q) of both orderings, the dipole that of its own, and the soft terms of a. For alpha < 1 it loses the integral of the dipole over alpha y_+ < y < y_+. See @ref CSInsertion."
 
 cs_collinear:
   inputs:

@@ -50,8 +50,15 @@ double precision away from the soft limit, towards which it loses digits as
 1 / xi^2 (by 1e-4 to 1e-3 at an energy fraction xi = 5e-7 of the soft gluon
 of g g > t t~ g, depending on the angle).
 
-Not covered yet: decays, PDF schemes other than MSbar, user scales and the
-photon cuts.
+A decay has the CSMapping of a final-state emitter with the decaying
+particle as the spectator (fd, Basso, Dittmaier, Huss, Oggero,
+arXiv:1507.04676): the final-final map with the other final-state particles
+as the spectator, the decaying particle at rest. Its dipoles take the soft
+terms of the decaying particle and alpha_ff, and CSInsertion their integral.
+A decay has the flux 1 / (2 M) and gives a width in GeV, as the FKS driver.
+
+Not covered yet: a final-state gluon with a colored decaying particle, PDF
+schemes other than MSbar, user scales and the photon cuts.
 """
 
 import argparse
@@ -92,16 +99,22 @@ def minkowski(a, b):
 
 def dipole_variables(momenta, entry):
     """The two variables of the CSMapping of a dipole (an entry of the cs
-    block) at real emissions (batch, n + 1, 4): y and z_i (ff), 1 - x and z
-    (fi, if), v and 1 - x - v (ii), the lower ends of which its cutoff
-    raises."""
+    block) at real emissions (batch, n + 1, 4): y and z_i (ff, and fd with the
+    recoil system K = p_a - p_i - p_j as the spectator), 1 - x and z (fi, if),
+    v and 1 - x - v (ii), the lower ends of which its cutoff raises."""
     i, j, k = entry["i"], entry["j"], entry["k"]
 
     def product(a, b):
         return minkowski(momenta[:, a], momenta[:, b])
 
-    if entry["family"] == "ff":
-        pipj, pipk, pjpk = product(i, j), product(i, k), product(j, k)
+    if entry["family"] in ("ff", "fd"):
+        pipj = product(i, j)
+        if entry["family"] == "ff":
+            pipk, pjpk = product(i, k), product(j, k)
+        else:
+            recoil = momenta[:, k] - momenta[:, i] - momenta[:, j]
+            pipk = minkowski(momenta[:, i], recoil)
+            pjpk = minkowski(momenta[:, j], recoil)
         return pipj / (pipj + pipk + pjpk), pipk / (pipk + pjpk)
     if entry["family"] in ("fi", "if"):
         a, f = (k, j) if entry["family"] == "fi" else (j, k)
@@ -197,14 +210,18 @@ class CSBornIntegrand:
         self.provider = FortranProvider(directory)
         self.configurations = self.provider.fks_configurations
         self.incoming = self.configurations["nincoming"]
-        if self.incoming != 2:
-            raise NotImplementedError("cs_driver: no decays yet")
         self.born_pdgs = list(self.configurations["born_pdgs"])
         self.masses = [
             float(param_card["mass"].get(str(abs(pdg)), 0.0)) for pdg in self.born_pdgs
         ]
-        self.energy = 2 * math.sqrt(real(run_card["ebeam1"]) * real(run_card["ebeam2"]))
-        leptonic = integer(run_card["lpp1"]) == 0
+        if self.incoming == 1:
+            # a decay at rest, without beams
+            self.energy, leptonic = self.masses[0], True
+        else:
+            self.energy = 2 * math.sqrt(
+                real(run_card["ebeam1"]) * real(run_card["ebeam2"])
+            )
+            leptonic = integer(run_card["lpp1"]) == 0
         self.beams = (
             (0, 0)
             if leptonic
@@ -254,6 +271,7 @@ class CSBornIntegrand:
                 self.masses,
                 kappa=kappa,
                 alpha_ff=alpha["ff"],
+                incoming=self.incoming,
                 **options,
             ),
             context,
@@ -289,6 +307,16 @@ class CSBornIntegrand:
 
     def choice_count(self, index):
         return 1
+
+    def flux(self, x1, x2):
+        """The flux factor of the events with the momentum fractions x1, x2
+        and the conversion to pb, 1 / (2 M) for a decay (a width in GeV)."""
+        if self.incoming == 1:
+            return np.full(len(x1), 1 / (2 * self.energy))
+        s_hat = x1 * x2 * self.energy**2
+        return np.divide(
+            INV_GEV2_TO_PB, 2 * s_hat, out=np.zeros(len(s_hat)), where=s_hat > 0
+        )
 
     def soft_momenta(self, momenta):
         """The Born momenta (batch, n, 4) with a parton of zero momentum at
@@ -355,7 +383,9 @@ class CSBornIntegrand:
         evaluated = valid & (rng.random(count) < trick.fraction)
         points = np.flatnonzero(valid)
         if len(points):
-            cm = boost_z(momenta[points], -partonic_rapidity(momenta[points], 2))
+            cm = boost_z(
+                momenta[points], -partonic_rapidity(momenta[points], self.incoming)
+            )
             per_position, _, amp2[points] = self.provider.born(cm, fks_index[points])
             born[points] = self.provider.born_orders_of(per_position)
             colors[points] = self.provider.color_correlated(cm)
@@ -388,8 +418,7 @@ class CSBornIntegrand:
             x1, x2, scales["fact_scale1"], scales["fact_scale2"], z
         )
         g_s = np.sqrt(4 * math.pi * alpha_s)
-        s_hat = x1 * x2 * self.energy**2
-        norm = np.where(valid, INV_GEV2_TO_PB * det * channel_weight / (2 * s_hat), 0.0)
+        norm = np.where(valid, det * channel_weight * self.flux(x1, x2), 0.0)
 
         def weight(virtual_part):
             total, lo = np.zeros(count), np.zeros(count)
@@ -547,7 +576,9 @@ class CSRealIntegrand:
             dipole = CSDipole(d, born)
             line_masses = list(np.delete(self.masses, d["i"]))
             for b, channel in enumerate(born.channels):
-                topology = born_topology(line_masses, 2, channel, dipole.order)
+                topology = born_topology(
+                    line_masses, self.incoming, channel, dipole.order
+                )
                 born_mapping = ms.PhaseSpaceMapping(
                     topology, self.energy, leptonic=leptonic
                 )
@@ -660,9 +691,8 @@ class CSRealIntegrand:
         valid = (det != 0) & np.isfinite(det)
         valid &= np.isfinite(momenta).all(axis=(1, 2))
         momenta = np.where(valid[:, None, None], momenta, 0.0)
-        incoming = momenta[:, 0] + momenta[:, 1]
-        s_hat = minkowski(incoming, incoming)
-        valid &= s_hat > 0
+        incoming = momenta[:, : self.incoming].sum(1)
+        valid &= minkowski(incoming, incoming) > 0
         if covered is None:
             covered = self.covered(index, momenta)
         keep = valid & covered
@@ -685,7 +715,9 @@ class CSRealIntegrand:
         points = np.flatnonzero(keep & passes)
         real_weight = np.zeros(count)
         if len(points):
-            cm = boost_z(momenta[points], -partonic_rapidity(momenta[points], 2))
+            cm = boost_z(
+                momenta[points], -partonic_rapidity(momenta[points], self.incoming)
+            )
             matrix_element = self.source.provider.real_orders(cm, fks_index[points])
             alpha_s = self.alpha_s(scales["ren_scale"][points])["alpha_s"]
             g_s = np.sqrt(4 * math.pi * alpha_s)
@@ -720,7 +752,7 @@ class CSRealIntegrand:
             points = np.flatnonzero(needed)
             if not len(points):
                 continue
-            y = -partonic_rapidity(me[points], 2)
+            y = -partonic_rapidity(me[points], self.incoming)
             cm = boost_z(me[points], y)
             evaluated = born.provider.born(
                 cm, np.full(len(points), dipole.configuration)
@@ -764,11 +796,7 @@ class CSRealIntegrand:
             dipole_weights[points, m] = lum * weight
         norm = np.where(
             keep,
-            INV_GEV2_TO_PB
-            * det
-            * channel_weight
-            * amplitude_weight
-            / (2 * np.where(keep, s_hat, 1.0)),
+            det * channel_weight * amplitude_weight * self.source.flux(x1, x2),
             0.0,
         )
         real_weight *= norm
@@ -821,13 +849,20 @@ class CSRealHistograms:
             )
             runtime = Runtime(ms.FKSJets(entries, born, **jets), self.context)
             pids = tuple(runtime.function.pids())
+            incoming = subprocess.incoming
             if pids not in self.observables:
                 self.observables[pids] = []
                 for histogram in histograms:
                     options = dict(histogram["observable"])
                     options.setdefault("name", histogram.get("name", ""))
+                    layout_pids = list(pids)
+                    if incoming != 2:
+                        # as fks_histograms: a decay selects over all momenta,
+                        # its incoming particle in no group
+                        layout_pids = [0] * incoming + layout_pids[incoming:]
+                        options["ignore_incoming"] = False
                     self.observables[pids].append(
-                        Runtime(ms.Observable(list(pids), **options), self.context)
+                        Runtime(ms.Observable(layout_pids, **options), self.context)
                     )
             return runtime, pids
 

@@ -117,21 +117,86 @@ KERNELSPEC FVal<T> cs_log_over(FVal<T> u0, FVal<T> u1, FVal<T> c) {
     return cs_log_over_primitive<T>(u1, c) - cs_log_over_primitive<T>(u0, c);
 }
 
+// The integrals over alpha y_+ < y < y_+ of the final-final dipoles of a
+// massless emitted parton (CDST eqs. 5.11-5.14 with m_i = 0, m_ij = m_j), from
+// the masses mu_n^2 = m_n^2 / Q^2: J = int dy (2 / y) log R(y) with R = (y +
+// z_+ (1 - y)) / (y + z_- (1 - y)), which the z integral of the eikonal terms
+// leaves, and S = int dy D (1 - y) v(y) / y. With D = 1 - mu_j^2 - mu_k^2 and
+// v^2 = 1 - 4 mu_k^2 y / (D (1 - y)^2) the velocity of the dipole, (1 - y) D
+// + 2 mu_k^2 = mu_k (t + 1 / t) makes v rational for a massive spectator: R =
+// (t - mu_k) / (t (1 - mu_k t)), D (1 - y) v = mu_k (t - 1 / t) and y = -mu_k
+// (t - t_+) (t - t_-) / (D t) with t_+- = (1 - mu_j^2 + mu_k^2 +- sqrt(lambda(1,
+// mu_j^2, mu_k^2))) / (2 mu_k), and y from alpha y_+ to y_+ is t from t_alpha
+// to 1. int dy / y log R then is a sum of int dt log|t - a| / (t - b), of
+// logarithms and dilogarithms, and S = mu_k int dt (t^2 - 1)^2 / (t^2 (t -
+// t_+) (t - t_-)) one of logarithms.
+template <typename T>
+struct CSAlphaIntegrals {
+    FVal<T> j_log, s_over_y;
+};
+
+template <typename T>
+KERNELSPEC CSAlphaIntegrals<T>
+cs_alpha_integrals(FVal<T> muj2, FVal<T> muk2, FVal<T> alpha) {
+    FVal<T> muk = sqrt(muk2);
+    FVal<T> av = 1. - muj2 - muk2;
+    FVal<T> lam = sqrt(max(av * av - 4. * muj2 * muk2, 0.));
+    FVal<T> omy_plus = 2. * muk * (1. - muk) / av, y_plus = 1. - omy_plus;
+    FVal<T> y_alpha = alpha * y_plus;
+    FVal<T> l_alpha = log(alpha);
+    if (muk2 == 0.) {
+        // R = 1 / (mu_j^2 + D y), v = 1 and y_+ = 1
+        FVal<T> j_log = muj2 == 0.
+            ? l_alpha * l_alpha
+            : -2. * (-log(av) * l_alpha + cs_log_over<T>(y_alpha, y_plus, muj2 / av));
+        return {j_log, av * (-l_alpha - y_plus * (1. - alpha))};
+    }
+    FVal<T> b_one = 1. - muj2 + muk2, b_alpha = b_one - y_alpha * av;
+    FVal<T> s_alpha = sqrt(max(b_alpha * b_alpha - 4. * muk2, 0.));
+    FVal<T> t_plus = (b_one + lam) / (2. * muk), t_minus = 1. / t_plus;
+    FVal<T> t_alpha = (b_alpha + s_alpha) / (2. * muk);
+    // t_+ - t_alpha, t_+ - 1 / mu_k and t_- - mu_k without cancellations
+    FVal<T> delta =
+        y_alpha * av * (1. + (b_one + b_alpha) / (lam + s_alpha)) / (2. * muk);
+    FVal<T> c_plus = -2. * muj2 / (muk * (lam + 1. + muj2 - muk2));
+    FVal<T> c_minus = 2. * muj2 * muk / (av + lam);
+    // log R = log(t - mu_k) - log t - log(1 / mu_k - t) - log mu_k and
+    // d log y / dt = 1 / (t - t_+) + 1 / (t - t_-) - 1 / t
+    FVal<T> logs[3] = {muk, 0., 1. / muk};
+    double log_signs[3] = {1., -1., -1.};
+    FVal<T> poles[3] = {t_plus, t_minus, 0.};
+    double pole_signs[3] = {1., 1., -1.};
+    FVal<T> u_alpha[3] = {-delta, t_alpha - t_minus, t_alpha};
+    FVal<T> u_one[3] = {1. - t_plus, 1. - t_minus, 1.};
+    FVal<T> j_log = log(muk) * l_alpha;
+    for (int b = 0; b < 3; ++b) {
+        for (int a = 0; a < 3; ++a) {
+            FVal<T> c = b == 0 && a == 2 ? c_plus
+                : b == 1 && a == 0
+                ? c_minus
+                : poles[b] - logs[a];
+            j_log = j_log +
+                log_signs[a] * pole_signs[b] * cs_log_over<T>(u_alpha[b], u_one[b], c);
+        }
+    }
+    // (t^2 - 1)^2 / (t^2 (t - t_+) (t - t_-)) = 1 + (t_+ + t_-) / t + 1 / t^2 +
+    // (t_+ - t_-) (1 / (t - t_+) - 1 / (t - t_-))
+    FVal<T> t_plus_one = (b_one + lam - 2. * muk) / (2. * muk);
+    FVal<T> s_t = (1. - t_alpha) * (1. + 1. / t_alpha) -
+        (t_plus + t_minus) * log(t_alpha) +
+        (t_plus - t_minus) *
+            (log(t_plus_one / delta) - log(t_plus_one / t_plus / (t_alpha - t_minus)));
+    return {2. * j_log, muk * s_t};
+}
+
 // What the gate y < alpha y_+ of the final-final dipoles of the emitter j
 // with the spectator k removes from their integral at alpha = 1: the
 // dipoles over alpha y_+ < y < y_+ in four dimensions, per unit <T_j . T_k> /
 // T_j^2 and alpha_s / (2 pi), of q -> q g for a quark j and of g -> g g (with
 // the symmetry factor 1/2) and n_f g -> q q~ for a gluon j, in closed form.
-// With the masses mu_n^2 = m_n^2 / Q^2, D = 1 - mu_j^2 - mu_k^2 and the
-// velocity v of the dipole (CDST eqs. 5.12-5.14), the z integral of the
-// kernels leaves (2 / y) log R(y) with R = (y + z_+ (1 - y)) / (y + z_- (1 - y))
-// for both emitters, and rational functions of y and of v^2 = 1 - 4 mu_k^2 y /
-// (D (1 - y)^2). With a massive spectator, (1 - y) D + 2 mu_k^2 = mu_k (t + 1 /
-// t) makes v rational: R = (t - mu_k) / (t (1 - mu_k t)) and y = -mu_k (t -
-// t_+) (t - t_-) / (D t) with t_+- = (1 - mu_j^2 + mu_k^2 +- sqrt(lambda(1,
-// mu_j^2, mu_k^2))) / (2 mu_k), and y from alpha y_+ to y_+ is t from t_alpha
-// to 1. int dy / y log R then is a sum of int dt log|t - a| / (t - b), of
-// logarithms and dilogarithms.
+// The z integral of the kernels leaves (2 / y) log R(y) for both emitters
+// (J of cs_alpha_integrals), and rational functions of y and of v^2 = 1 -
+// 4 mu_k^2 y / (D (1 - y)^2).
 template <typename T>
 KERNELSPEC FVal<T> cs_removed_final_final(
     bool gluon,
@@ -154,45 +219,7 @@ KERNELSPEC FVal<T> cs_removed_final_final(
     FVal<T> omy_plus = 2. * muk * (1. - muk) / av, y_plus = 1. - omy_plus;
     FVal<T> y_alpha = alpha * y_plus;
     FVal<T> l_alpha = log(alpha);
-    // J = int dy (2 / y) log R(y)
-    FVal<T> j_log;
-    if (mk == 0.) {
-        // R = 1 / (mu_j^2 + D y) and y_+ = 1
-        j_log = mj == 0.
-            ? l_alpha * l_alpha
-            : -2. * (-log(av) * l_alpha + cs_log_over<T>(y_alpha, y_plus, muj2 / av));
-    } else {
-        FVal<T> b_one = 1. - muj2 + muk2, b_alpha = b_one - y_alpha * av;
-        FVal<T> s_alpha = sqrt(max(b_alpha * b_alpha - 4. * muk2, 0.));
-        FVal<T> t_plus = (b_one + lam) / (2. * muk), t_minus = 1. / t_plus;
-        FVal<T> t_alpha = (b_alpha + s_alpha) / (2. * muk);
-        // t_+ - t_alpha, t_+ - 1 / mu_k and t_- - mu_k without cancellations
-        FVal<T> delta =
-            y_alpha * av * (1. + (b_one + b_alpha) / (lam + s_alpha)) / (2. * muk);
-        FVal<T> c_plus = -2. * muj2 / (muk * (lam + 1. + muj2 - muk2));
-        FVal<T> c_minus = 2. * muj2 * muk / (av + lam);
-        // log R = log(t - mu_k) - log t - log(1 / mu_k - t) - log mu_k and
-        // d log y / dt = 1 / (t - t_+) + 1 / (t - t_-) - 1 / t
-        FVal<T> logs[3] = {muk, 0., 1. / muk};
-        double log_signs[3] = {1., -1., -1.};
-        FVal<T> poles[3] = {t_plus, t_minus, 0.};
-        double pole_signs[3] = {1., 1., -1.};
-        FVal<T> u_alpha[3] = {-delta, t_alpha - t_minus, t_alpha};
-        FVal<T> u_one[3] = {1. - t_plus, 1. - t_minus, 1.};
-        j_log = log(muk) * l_alpha;
-        for (int b = 0; b < 3; ++b) {
-            for (int a = 0; a < 3; ++a) {
-                FVal<T> c = b == 0 && a == 2 ? c_plus
-                    : b == 1 && a == 0
-                    ? c_minus
-                    : poles[b] - logs[a];
-                j_log = j_log +
-                    log_signs[a] * pole_signs[b] *
-                        cs_log_over<T>(u_alpha[b], u_one[b], c);
-            }
-        }
-        j_log = 2. * j_log;
-    }
+    FVal<T> j_log = cs_alpha_integrals<T>(muj2, muk2, alpha).j_log;
     // int dy (1 - y) / y
     FVal<T> a_0 = -l_alpha - y_plus * (1. - alpha);
     if (gluon) {
@@ -212,6 +239,178 @@ KERNELSPEC FVal<T> cs_removed_final_final(
          e * muj2 * (1. / u_plus - 1. / u_alpha)) /
         (2. * av);
     return CS_CF * (j_log / vel_born - 2. * a_0 + z_1);
+}
+
+// The integral of the dipole of a final-state quark j with the decaying
+// particle a (mass m_a) as the spectator (cs_final_decay_dipole), over the
+// emission at fixed Born in d = 4 - 2 eps dimensions, relative to the pair term
+// of CDST with the recoil system K (mass m_k) as the spectator. Per alpha_s /
+// (2 pi) (4 pi)^eps / Gamma(1 - eps) (mu^2 / s)^eps with s = m_a^2 - m_j^2 -
+// m_k^2 it is
+//
+//   (s / 2 + 2 m_j^2) H_j - (s / 2) H_k - I_a,
+//
+// with H_x the integral of 1 / (p_a.q p_x.q) for the emitted gluon q and I_a
+// that of m_a^2 / (p_a.q)^2. The eikonal term of the final-final kernel is
+// exactly s / (p_a.q p_j.q), and the pair term of CDST (V^(S) of its eq. 6.20)
+// has the mean of its integral and of that of s / (p_a.q p_k.q) of the other
+// ordering, which only the sum over both orderings of the I operator takes:
+// for one ordering the integral differs by s (H_j - H_k) / 2 (checked against
+// the integral of the dipole in d dimensions over its variables). The soft
+// terms of a add 2 m_j^2 H_j - I_a. All are integrals of functions of the
+// invariants, so over the phase space of a -> q j K over that of a -> j K. In
+// the rest frame of a, at the energy E of q, j and K share s' = m_a^2 - 2 m_a E
+// isotropically in their rest frame, and each is an integral over E of E^(-1 -
+// 2 eps) times the ratio rho(E) of the phase spaces of j K at s' and at m_a^2,
+// times sqrt(s') / m_a^2 <1 / (E'_x - |p'_x| c)> for H_x, with the average over
+// the angle in d - 1 dimensions. With X = s / (4 E_max^2), E_max = (m_a^2 - (m_j
+// + m_k)^2) / (2 m_a),
+//
+//   I_a = -1 / eps - log X - 2 + 2 J_a,
+//   H_x = (l_x / sqrt(lambda)) (-1 / eps - log X - 2 - eta_x) + 2 T_x /
+//         sqrt(lambda)                                  (m_x > 0),
+//   s H_x = 1 / eps^2 + log X / eps + log^2 X / 2 - 5 pi^2 / 6 + 2 Li2(1 -
+//         m_y^2 / m_a^2)                                (m_x = 0),
+//
+// with l_x = log((1 + beta_x) / (1 - beta_x)) of the velocity beta_x of x in
+// the rest frame of a, eta_x the term of order eps of the average of 1 / (1 -
+// beta_x c) over its value, J_a = int_0^E_max dE (rho(E) - 1) / E and T_x the
+// same for H_x over its value at E = 0 in four dimensions (m_y the mass of the
+// other one). In s' = m_x^2 + m_y^2 + m_x m_y (x + 1 / x) the square root of
+// lambda(s', m_x^2, m_y^2) = m_x m_y (1 / x - x) is rational, dE / E = (-1 / x +
+// 1 / (x - x_a) + 1 / (x - 1 / x_a)) dx from x_a (s' = m_a^2) to 1, and J_a and
+// T_x are logarithms and dilogarithms, here in forms that keep their digits
+// for light masses. A massless x averages 1 / (1 - c) to -(1 - 2 eps) / (2 eps)
+// at every E.
+template <typename T>
+KERNELSPEC FVal<T> cs_decay_eta(FVal<T> beta) {
+    if (beta < 0.1) {
+        constexpr double c[8] = {
+            2. / 9.,
+            94. / 675.,
+            10154. / 99225.,
+            120926. / 1488375.,
+            36490618. / 540280125.,
+            554974302418. / 9587270818125.,
+            1458381727046. / 28761812454375.,
+            511730469371542. / 11334768817246875.,
+        };
+        FVal<T> b2 = beta * beta, out = 0.;
+        for (int n = 7; n >= 0; --n) {
+            out = (out + c[n]) * b2;
+        }
+        return out;
+    }
+    FVal<T> l = log((1. + beta) / (1. - beta));
+    return 2. * log(2.) - 2. - log((1. - beta) * (1. + beta)) - 0.5 * l +
+        (CS_PI2 / 3. - 2. * fks_dilog<T>((1. - beta) / (1. + beta))) / l +
+        2. * log(beta);
+}
+
+// int_0^{1 - x_a} du log(1 + u / c) / (u + q) for q != 0 and c - q = c_q > 0
+template <typename T>
+KERNELSPEC FVal<T> cs_decay_log_over(FVal<T> xa, FVal<T> c, FVal<T> q, FVal<T> c_q) {
+    FVal<T> u1 = 1. - xa;
+    return log1p(-q / c) * log1p(u1 / q) - fks_dilog<T>(-(u1 + q) / c_q) +
+        fks_dilog<T>(-q / c_q);
+}
+
+// (eps^-2, eps^-1, eps^0) of s H_x for the emitter x of mass m_x and the other
+// particle of mass m_y (see above)
+template <typename T>
+KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
+cs_decay_eikonal(FVal<T> ma, FVal<T> mx, FVal<T> my) {
+    FVal<T> ma2 = ma * ma, mx2 = mx * mx, my2 = my * my;
+    FVal<T> s = ma2 - mx2 - my2;
+    FVal<T> rl = sqrt(max(s * s - 4. * mx2 * my2, 0.));
+    FVal<T> e_max = (ma - mx - my) * (ma + mx + my) / (2. * ma);
+    FVal<T> l_x = log(s / (4. * e_max * e_max));
+    if (mx == 0.) {
+        return {
+            1.,
+            l_x,
+            0.5 * l_x * l_x - 5. * CS_PI2 / 6. + 2. * fks_dilog<T>(1. - my2 / ma2)
+        };
+    }
+    FVal<T> beta = rl / (ma2 + mx2 - my2);
+    FVal<T> l_beta = log((1. + beta) / (1. - beta));
+    // T_x with the logs of x + 1 / rho, x and x + rho (rho = m_x / m_y) and the
+    // poles of dE / E, each log taken relative to its value at x_a
+    FVal<T> t;
+    if (my == 0.) {
+        t = -fks_dilog<T>(1. - mx2 / ma2);
+    } else {
+        FVal<T> xa = 2. * mx * my / (s + rl);
+        FVal<T> rho = mx / my, u1 = 1. - xa;
+        FVal<T> q_b = -(1. - xa) * (1. + xa) / xa;
+        FVal<T> cs[3] = {xa + 1. / rho, xa, xa + rho};
+        double signs[3] = {1., -1., -1.};
+        t = 0.;
+        for (int n = 0; n < 3; ++n) {
+            FVal<T> c = cs[n], r = xa - c;
+            FVal<T> f_0 =
+                n == 1 ? 0.5 * log(xa) * log(xa) : cs_decay_log_over<T>(xa, c, xa, -r);
+            FVal<T> f_a = -fks_dilog<T>(-u1 / c);
+            FVal<T> f_b = cs_decay_log_over<T>(xa, c, q_b, 1. / xa - r);
+            t = t + signs[n] * (-f_0 + f_a + f_b);
+        }
+    }
+    FVal<T> ratio = s / rl;
+    return {
+        0.,
+        -ratio * l_beta,
+        ratio * (l_beta * (-l_x - 2. - cs_decay_eta<T>(beta)) + 2. * t)
+    };
+}
+
+// (eps^-2, eps^-1, eps^0) of the integral of the decay dipole of the quark j
+// relative to the pair term of CDST, (s / 2 + 2 m_j^2) H_j - (s / 2) H_k - I_a
+template <typename T>
+KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
+cs_decay_soft(FVal<T> ma, FVal<T> mj, FVal<T> mk) {
+    FVal<T> ma2 = ma * ma, mj2 = mj * mj, mk2 = mk * mk;
+    FVal<T> s = ma2 - mj2 - mk2;
+    FVal<T> rl = sqrt(max(s * s - 4. * mj2 * mk2, 0.));
+    FVal<T> w = s + rl;
+    FVal<T> e_max = (ma - mj - mk) * (ma + mj + mk) / (2. * ma);
+    // J_a
+    FVal<T> xa = 2. * mj * mk / w;
+    FVal<T> kk = 4. * ma2 * mk2 / (ma2 - mj2 + mk2 + rl);
+    FVal<T> kj = 4. * ma2 * mj2 / (ma2 + mj2 - mk2 + rl);
+    FVal<T> t = (mj2 - mk2) * log((w + 2. * mk2) / (w + 2. * mj2));
+    if (mk > 0.) {
+        t = t + 0.5 * kk * log(2. * mk2 / w);
+    }
+    if (mj > 0.) {
+        t = t + 0.5 * kj * log(2. * mj2 / w);
+    }
+    FVal<T> i_a = -log(s / (4. * e_max * e_max)) - 2. + 2. * (2. * log1p(xa) + t / rl);
+    auto h_j = cs_decay_eikonal<T>(ma, mj, mk);
+    auto h_k = cs_decay_eikonal<T>(ma, mk, mj);
+    FVal<T> c_j = 0.5 + 2. * mj2 / s;
+    return {
+        c_j * h_j.first - 0.5 * h_k.first,
+        c_j * h_j.second - 0.5 * h_k.second + 1.,
+        c_j * h_j.third - 0.5 * h_k.third - i_a
+    };
+}
+
+// What the gate y < alpha y_+ removes from the soft terms of the decaying
+// particle in the dipole of the quark j (cs_decay_soft), in four dimensions per
+// unit <T_j . T_a> and alpha_s / (2 pi): 2 / sqrt(lambda(1, mu_j^2, mu_k^2))
+// (mu_j^2 J - S) with J and S of cs_alpha_integrals
+template <typename T>
+KERNELSPEC FVal<T>
+cs_removed_decay_soft(FVal<T> s, FVal<T> mj, FVal<T> mk, FVal<T> alpha) {
+    if (alpha >= 1.) {
+        return 0.;
+    }
+    FVal<T> q2 = s + mj * mj + mk * mk;
+    FVal<T> muj2 = mj * mj / q2, muk2 = mk * mk / q2;
+    FVal<T> av = 1. - muj2 - muk2;
+    FVal<T> lam = sqrt(max(av * av - 4. * muj2 * muk2, 0.));
+    auto integrals = cs_alpha_integrals<T>(muj2, muk2, alpha);
+    return 2. / lam * (muj2 * integrals.j_log - integrals.s_over_y);
 }
 
 template <typename T>
@@ -238,7 +437,10 @@ KERNELSPEC void kernel_cs_insertion(
         poles[b][0] = 0.;
         poles[b][1] = 0.;
     }
-    for (std::size_t j = 0; j < momenta.size(); ++j) {
+    // a decaying particle emits no collinear parton, its soft terms belong to
+    // the dipoles of the final-state partons with it as the spectator
+    bool decay = n_in == 1;
+    for (std::size_t j = decay ? 1 : 0; j < momenta.size(); ++j) {
         FVal<T> t2 = casimir[j];
         if (t2 == 0.) {
             continue;
@@ -255,7 +457,18 @@ KERNELSPEC void kernel_cs_insertion(
                 continue;
             }
             FVal<T> mk = masses[m];
-            FVal<T> s = 2. * ldot<T>(p_j, load_mom<T>(momenta[m]));
+            FVal<T> s;
+            bool spectator_decay = decay && m == 0;
+            if (spectator_decay) {
+                // the final-final dipole with the recoil system K~ = p_a - p_j
+                // of the other final-state particles as the spectator
+                FVal<T> pjpa = ldot<T>(p_j, load_mom<T>(momenta[0]));
+                FVal<T> ma = masses[0];
+                s = 2. * (pjpa - mj * mj);
+                mk = sqrt(max(ma * ma - 2. * pjpa + mj * mj, 0.));
+            } else {
+                s = 2. * ldot<T>(p_j, load_mom<T>(momenta[m]));
+            }
             FVal<T> l = log(mu2 / s);
             FVal<T> v_s[3];
             cs_v_singular<T>(s, mj, mk, v_s);
@@ -263,7 +476,7 @@ KERNELSPEC void kernel_cs_insertion(
             FVal<T> v_ns = cs_v_nonsingular<T>(
                 gluon, s, mj, mk, g / t2, j < n_in ? FVal<T>(2. / 3.) : kappa, n_f
             );
-            FVal<T> removed = j >= n_in && m >= n_in
+            FVal<T> removed = (j >= n_in && m >= n_in) || spectator_decay
                 ? cs_removed_final_final<T>(gluon, s, mj, mk, alpha_ff, kappa, n_f)
                 : FVal<T>(0.);
             FVal<T> double_pole = -v_s[0];
@@ -271,6 +484,16 @@ KERNELSPEC void kernel_cs_insertion(
             FVal<T> finite =
                 -(v_s[2] + v_s[1] * l + 0.5 * v_s[0] * l * l + v_ns - CS_PI2 / 3.) -
                 (gamma_0 + g * l + g + k - removed) / t2;
+            if (spectator_decay) {
+                // the rest of the integral of the decay dipole, per unit
+                // <T_j . T_a>, with (mu^2 / s)^eps expanded
+                auto rest = cs_decay_soft<T>(FVal<T>(masses[0]), mj, mk);
+                double_pole = double_pole - rest.first;
+                single_pole = single_pole - rest.second - rest.first * l;
+                finite = finite - rest.third - rest.second * l -
+                    0.5 * rest.first * l * l +
+                    cs_removed_decay_soft<T>(s, mj, mk, alpha_ff);
+            }
             for (std::size_t b = 0; b < insertion.size(); ++b) {
                 FVal<T> cc = color_correlated[b][j][m];
                 insertion[b] = insertion[b] + a * cc * finite;

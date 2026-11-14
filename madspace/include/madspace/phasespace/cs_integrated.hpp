@@ -32,12 +32,23 @@ namespace madspace {
  * @f$\alpha_{ff} y_+ < y < y_+@f$, the four-dimensional alpha term of Nagy
  * [3].
  *
+ * In a decay the decaying particle @f$a@f$ is no emitter. A final-state quark
+ * @f$j@f$ has it as the spectator with the dipole of @ref CSDipoles (the
+ * final-final dipole with the recoil system @f$K@f$ of the other final-state
+ * particles as the spectator, and the soft terms of @f$a@f$). Its integral is
+ * the pair term above with @f$s_{jK} = m_a^2 - m_j^2 - m_K^2@f$ and the mass
+ * @f$m_K@f$ of the recoil system of the Born, plus the rest in closed form
+ * (see the instruction `cs_insertion`): the pair term of CDST has the mean of
+ * the integrals of the eikonal terms of both orderings of the pair, which
+ * only their sum needs, the dipole of one ordering its own. A final-state
+ * gluon with a colored decaying particle is not covered.
+ *
  * `batch` is the leading batch dimension, `n` the number of particles of the
  * Born, incoming included, and `b` the number of Born orders.
  *
  * **Arguments**
  * - `momenta` – `float`, shape `(batch, n, 4)` – momenta of the Born, in any
- *   frame.
+ *   frame (the rest frame of the decaying particle for a decay).
  * - `color_correlated` – `float`, shape `(batch, b, n, n)` – the
  *   color-correlated Borns @f$\langle T_j \cdot T_k \rangle B@f$ per Born
  *   order, as for @ref FKSSoftVirtual.
@@ -57,26 +68,30 @@ namespace madspace {
  * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi,
  *   https://arxiv.org/abs/hep-ph/0201036 (Sec. 6)
  * - [3] Z. Nagy, https://arxiv.org/abs/hep-ph/0307268
+ * - [4] L. Basso, S. Dittmaier, A. Huss, L. Oggero,
+ *   https://arxiv.org/abs/1507.04676 (decays)
  */
 class CSInsertion : public FunctionGenerator {
 public:
     /// @param pdgs         PDG codes of the Born, two incoming partons or
-    ///                     leptons first. Quarks (1 to 6) and gluons are
-    ///                     colored.
+    ///                     leptons first, or the decaying particle. Quarks (1
+    ///                     to 6) and gluons are colored.
     /// @param masses       Masses of the Born particles. Incoming partons are
-    ///                     massless.
+    ///                     massless (but a decaying one).
     /// @param born_orders  Number of Born orders.
     /// @param kappa        kappa of the final-state gluon dipoles with a
     ///                     massive spectator, as for @ref CSDipoles.
     /// @param alpha_ff     The alpha of the final-final dipoles, in (0, 1].
     /// @param n_f          Number of light quark flavors.
+    /// @param incoming     Number of incoming particles, 1 for a decay.
     CSInsertion(
         const std::vector<int>& pdgs,
         const std::vector<double>& masses,
         std::size_t born_orders = 1,
         double kappa = 2. / 3.,
         double alpha_ff = 1.,
-        double n_f = 5.
+        double n_f = 5.,
+        std::size_t incoming = 2
     );
     /// Number of particles of the Born, incoming included.
     std::size_t particle_count() const { return _masses.size(); }
@@ -91,6 +106,7 @@ private:
     std::size_t _born_orders;
     std::vector<double> _casimir, _gamma, _k_constant, _masses;
     double _kappa, _alpha_ff, _n_f;
+    std::size_t _incoming;
 };
 
 /**

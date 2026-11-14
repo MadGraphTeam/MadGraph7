@@ -6,7 +6,10 @@ alpha terms against the integral of the dipoles of CSDipoles over what their
 gate removes, the kappa terms against the integral of the difference of the
 dipoles at two kappa (both finite and in four dimensions), and the poles
 against those of the virtual of MadLoop on the provider outputs
-(MADSPACE_FKS_OUTPUTS, as for test_fks_fortran_provider.py).
+(MADSPACE_FKS_OUTPUTS, as for test_fks_fortran_provider.py). In a decay the
+alpha terms of the dipole of a final-state quark with the decaying particle
+as the spectator are checked in the same way, and the poles on the decays of
+a top into a massive and a massless b.
 """
 
 import math
@@ -322,6 +325,123 @@ def test_kappa(case):
         assert abs(difference) < 1e-14
 
 
+W_MASS = 80.419
+
+
+def decay_born(bottom):
+    """The mapping of t > b w+ at rest."""
+    diagram = ms.Diagram([TOP], [bottom, W_MASS], [], [["i0", "o0", "o1"]])
+    return ms.PhaseSpaceMapping(ms.Topology(diagram), TOP, leptonic=True)
+
+
+class DecayDipole(Dipole):
+    """The dipole of the b of t > b w+ with the top as the spectator at a
+    fixed Born, its emission on Gauss-Legendre nodes."""
+
+    def __init__(self, bottom):
+        self.born = decay_born(bottom)
+        self.mapping = ms.CSMapping(self.born, 3, 1, 0)
+        self.kernel = "qg"
+        self.r_born = np.array([0.3, 0.7])
+
+    def integral(self, r1_low, nodes, alpha_ff, kappa):
+        """int det D / det_Born over r_1 in (r1_low, 1) at unit color."""
+        x, w = np.polynomial.legendre.leggauss(nodes)
+        t = (x + 1) / 2
+        r1 = 1 - (1 - r1_low) * t * t
+        w1 = (1 - r1_low) * 2 * t * w / 2
+        ends = [0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 0.5, 0.9, 0.99, 1.0]
+        x2, v2 = np.polynomial.legendre.leggauss(16)
+        r2 = np.concatenate(
+            [a + (b - a) * (x2 + 1) / 2 for a, b in zip(ends[:-1], ends[1:])]
+        )
+        w2 = np.concatenate([(b - a) * v2 / 2 for a, b in zip(ends[:-1], ends[1:])])
+        g1, g2 = np.meshgrid(r1, r2, indexing="ij")
+        weight = (w1[:, None] * w2[None, :]).ravel()
+        r = np.concatenate(
+            [
+                np.tile(self.r_born, (weight.size, 1)),
+                np.stack([g1.ravel(), g2.ravel(), np.full(weight.size, 0.3)], -1),
+            ],
+            -1,
+        )
+        momenta, x1, x2, det = self.mapping.map_forward([to_torch(r)], [])
+        *_, det_born = self.born.map_forward([to_torch(self.r_born[None])], [])
+        batch = weight.size
+        broadcast = lambda t: np.broadcast_to(to_numpy(t), (batch,)).copy()
+        generator = ms.CSDipoles(
+            [self.mapping], [self.kernel], [1.0], alpha_ff=alpha_ff, kappa=kappa
+        )
+        out = evaluate(generator, to_numpy(momenta), broadcast(x1), broadcast(x2))
+        dipole = -4 * math.pi * ALPHA_S * out["color_weight"][:, 0]
+        return np.sum(weight * to_numpy(det) / to_numpy(det_born)[0] * dipole)
+
+
+@pytest.mark.parametrize("bottom", [4.7, 0.0])
+@pytest.mark.parametrize("alpha_ff", [0.3, 0.03, 1e-4])
+def test_alpha_decay(bottom, alpha_ff):
+    """What alpha_ff removes from <I> of t > b w+ is the integral of the dipole
+    of the b with the top as the spectator over alpha_ff y_+ < y < y_+, the
+    final-final part with the W as the spectator and the soft terms of the
+    top."""
+    dipole = DecayDipole(bottom)
+    removed = dipole.integral(math.sqrt(alpha_ff), 96, 1.0, 2.0 / 3.0)
+    removed -= dipole.integral(math.sqrt(alpha_ff), 96, alpha_ff, 2.0 / 3.0)
+    momenta = dipole.born_momenta()
+    colors = pair_colors(3, 1, 0)
+    pdgs, masses = [6, 5, 24], [TOP, bottom, W_MASS]
+    finite, _ = insertion(pdgs, masses, momenta, colors, 100.0, incoming=1)
+    finite_alpha, _ = insertion(
+        pdgs, masses, momenta, colors, 100.0, alpha_ff=alpha_ff, incoming=1
+    )
+    rtol = 1e-11 if alpha_ff > 1e-3 else 1e-9
+    np.testing.assert_allclose(finite_alpha - finite, -removed, rtol=rtol)
+
+
+def test_decay_pairs():
+    """In a decay the decaying particle is no emitter: <I> of t > b w+ has the
+    pair of the b with the top as the spectator alone, and that of a colorless
+    decaying particle is that of its final state."""
+    momenta = DecayDipole(4.7).born_momenta()
+    pdgs, masses = [6, 5, 24], [TOP, 4.7, W_MASS]
+    both, _ = insertion(pdgs, masses, momenta, pair_colors(3, 1, 0), 100.0, incoming=1)
+    reverse, poles = insertion(
+        pdgs, masses, momenta, pair_colors(3, 0, 1), 100.0, incoming=1
+    )
+    assert both[0, 0] != 0.0
+    np.testing.assert_array_equal(reverse, 0.0)
+    np.testing.assert_array_equal(poles, 0.0)
+    # H > b b~ at rest as a decay and e+ e- > b b~ with the same b b~
+    energy = 62.5
+    momentum = math.sqrt(energy**2 - 4.7**2)
+    b_pair = np.array([[energy, 0.0, 0.0, momentum], [energy, 0.0, 0.0, -momentum]])
+    higgs = np.concatenate([[[2 * energy, 0.0, 0.0, 0.0]], b_pair])[None]
+    leptons = np.array([[energy, 0.0, 0.0, energy], [energy, 0.0, 0.0, -energy]])
+    pair = np.concatenate([leptons, b_pair])[None]
+    colors = np.zeros((1, 1, 4, 4))
+    colors[0, 0, 2, 3] = colors[0, 0, 3, 2] = -CF
+    for alpha_ff in (1.0, 0.1):
+        decay = insertion(
+            [25, 5, -5],
+            [2 * energy, 4.7, 4.7],
+            higgs,
+            colors[:, :, 1:, 1:],
+            100.0,
+            alpha_ff=alpha_ff,
+            incoming=1,
+        )
+        scattering = insertion(
+            [-11, 11, 5, -5],
+            [0.0, 0.0, 4.7, 4.7],
+            pair,
+            colors,
+            100.0,
+            alpha_ff=alpha_ff,
+        )
+        for ours, theirs in zip(decay, scattering):
+            np.testing.assert_allclose(ours, theirs, rtol=1e-14)
+
+
 def provider_points(name):
     """The number of light flavors of the output, and per subprocess the
     provider, the masses of its Born and the Born kinematics of the
@@ -343,40 +463,77 @@ def provider_points(name):
     return data["n_f"], out
 
 
+def assert_poles(provider, masses, momenta, n_f, rtol=1e-10):
+    """The poles of <I> with the color-correlated Borns of the provider cancel
+    those of its virtual at the momenta."""
+    with provider:
+        configurations = provider.fks_configurations
+        pdgs = configurations["born_pdgs"]
+        colors = provider.color_correlated(momenta)
+        for mu in (91.188, 500.0):
+            generator = ms.CSInsertion(
+                pdgs,
+                masses,
+                born_orders=colors.shape[1],
+                alpha_ff=0.5,
+                n_f=n_f,
+                incoming=configurations["nincoming"],
+            )
+            out = evaluate(
+                generator,
+                momenta,
+                colors,
+                np.full(len(momenta), 1 / (4 * math.pi)),
+                np.full(len(momenta), mu),
+            )
+            values, codes = provider.virtual(momenta, mu)
+            positions = [provider.position(o) for o in provider.orders["nlo"]]
+            for pole, key in ((0, "double"), (1, "single")):
+                theirs = values[key][:, positions]
+                np.testing.assert_allclose(
+                    out["poles"][..., pole],
+                    -theirs,
+                    rtol=rtol,
+                    atol=1e-12 * np.abs(theirs).max(),
+                )
+
+
 @pytest.mark.skipif(not OUTPUTS, reason="MADSPACE_FKS_OUTPUTS names no aMC@NLO outputs")
-@pytest.mark.parametrize("name", ["epem_jj", "pp_epem", "pp_ttx"])
+@pytest.mark.parametrize("name", ["epem_jj", "pp_epem", "pp_ttx", "t_bw"])
 def test_poles(name):
     """The poles of <I> with the color-correlated Borns of the Fortran
     provider cancel those of the virtual of MadLoop, at g_s = 1 per Born order
     and its NLO order, for massless and massive partons, with the n_f light
-    flavors of the output (4 here, with a massive b)."""
+    flavors of the output (4 here, with a massive b), and for the decay of a
+    top into a massive b."""
     n_f, providers = provider_points(name)
     for provider, masses, momenta in providers:
-        with provider:
-            pdgs = provider.fks_configurations["born_pdgs"]
-            colors = provider.color_correlated(momenta)
-            for mu in (91.188, 500.0):
-                generator = ms.CSInsertion(
-                    pdgs, masses, born_orders=colors.shape[1], alpha_ff=0.5, n_f=n_f
-                )
-                out = evaluate(
-                    generator,
-                    momenta,
-                    colors,
-                    np.full(len(momenta), 1 / (4 * math.pi)),
-                    np.full(len(momenta), mu),
-                )
-                values, codes = provider.virtual(momenta, mu)
-                positions = [provider.position(o) for o in provider.orders["nlo"]]
-                for pole, key in ((0, "double"), (1, "single")):
-                    theirs = values[key][:, positions]
-                    np.testing.assert_allclose(
-                        out["poles"][..., pole],
-                        -theirs,
-                        rtol=1e-10,
-                        atol=1e-12 * np.abs(theirs).max(),
-                    )
+        assert_poles(provider, masses, momenta, n_f)
         assert len(momenta)
+
+
+@pytest.mark.skipif(not OUTPUTS, reason="MADSPACE_FKS_OUTPUTS names no aMC@NLO outputs")
+def test_poles_massless_decay():
+    """The poles of <I> of t > b w+ with a massless b (the output t_bw_mb0 of
+    make_fks_cross_section_reference.py) at Born points of the decay at
+    rest, with the W mass of MadGraph (from M_Z, G_F and alpha)."""
+    from madgraph.mg7.fks_provider import FortranProvider
+
+    root = os.path.join(OUTPUTS, "t_bw_mb0", "SubProcesses")
+    (name,) = [d for d in os.listdir(root) if d.startswith("P")]
+    directory = os.path.join(root, name)
+    provider = FortranProvider(
+        directory, rebuild=not os.path.isfile(os.path.join(directory, "fks_provider"))
+    )
+    # the masses in the order of the Born of the output (t > w+ b)
+    pdg_masses = {6: TOP, 5: 0.0, 24: 80.4190024}
+    masses = [pdg_masses[pdg] for pdg in provider.fks_configurations["born_pdgs"]]
+    diagram = ms.Diagram(masses[:1], masses[1:], [], [["i0", "o0", "o1"]])
+    born = ms.PhaseSpaceMapping(ms.Topology(diagram), TOP, leptonic=True)
+    r = np.random.default_rng(3).random((8, born.random_dim()))
+    momenta, *_ = born.map_forward([to_torch(r)], [])
+    # MadLoop to 3e-10 at these points
+    assert_poles(provider, masses, to_numpy(momenta), 5.0, rtol=1e-9)
 
 
 def test_invalid():
@@ -390,3 +547,11 @@ def test_invalid():
         ms.CSInsertion([21, 21, 21, 21], [0.0, 0.0, 10.0, 0.0])
     with pytest.raises(ValueError):
         ms.CSInsertion([21, 21, 6, -6], [0.0, 0.0, TOP, TOP], born_orders=0)
+    # decays: one or two incoming particles, no decaying gluon, no final-state
+    # gluon with a colored decaying particle
+    with pytest.raises(ValueError):
+        ms.CSInsertion([6, 5, 24], [TOP, 4.7, W_MASS], incoming=3)
+    with pytest.raises(ValueError):
+        ms.CSInsertion([21, 1, -1], [10.0, 0.0, 0.0], incoming=1)
+    with pytest.raises(ValueError, match="gluon"):
+        ms.CSInsertion([6, 5, 24, 21], [TOP, 4.7, W_MASS, 0.0], incoming=1)

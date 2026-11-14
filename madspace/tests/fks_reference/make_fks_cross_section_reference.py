@@ -52,16 +52,19 @@ SETUPS = {
     "t_bw": ("t_bw", {}),
     "epem_jjj": ("epem_jjj", {}),
     "pp_epemj": ("pp_epemj", {}),
+    "t_bw_mb0": ("t_bw_mb0", {}),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
-# against the incoming partons and incoming partons that radiate against it.
+# against the incoming partons and incoming partons that radiate against it,
+# t > b w+ with a massless b the collinear limits of a decay.
 OUTPUTS = {
     "pp_epemj": (
         "p p > e+ e- j [QCD]",
         dict(mfir.HADRONIC, mll_sf=30, ptj=30, jetalgo=-1, jetradius=0.4),
         None,
     ),
+    "t_bw_mb0": ("t > b w+ QED=1 [QCD]", {}, "loop_sm-no_b_mass"),
 }
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4

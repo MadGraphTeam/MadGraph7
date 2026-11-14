@@ -3,8 +3,10 @@ Catani-Seymour dipole, in the lab frame.
 
 The real emission has to project back onto its Born with the momentum maps of
 Catani and Seymour (hep-ph/9605323) and of Catani, Dittmaier, Seymour and
-Trocsanyi (hep-ph/0201036), written out here with numpy. The tests cover the
-four families of dipoles with massless and massive emitters and spectators:
+Trocsanyi (hep-ph/0201036), written out here with numpy, and with the decaying
+particle of a decay as the spectator (arXiv:1507.04676), the final-final map
+with the other final-state particles as the spectator. The tests cover the
+five families of dipoles with massless and massive emitters and spectators:
 the round trip through the mapping and its inverse, the incoming momenta of
 the real emission, its soft limit, the mirror of the beams, that every
 dipole covers the phase space of the real process once, momentum fractions
@@ -509,6 +511,190 @@ def test_born_channel_and_permutation(index):
     np.testing.assert_allclose(det * det_inv, 1.0, rtol=1e-8)
 
 
+TOP, BOTTOM, W_MASS = 173.0, 4.7, 80.419
+
+
+def decay_mapping(masses):
+    """The mapping of the decay of masses[0] at rest into the others, through
+    a W propagator into the last two for three of them."""
+    final = list(masses[1:])
+    if len(final) == 2:
+        propagators, vertices = [], [["i0", "o0", "o1"]]
+    else:
+        propagators = [ms.Propagator(mass=W_MASS, width=2.0)]
+        vertices = [["p0", "o1", "o2"], ["i0", "o0", "p0"]]
+    diagram = ms.Diagram([masses[0]], final, propagators, vertices)
+    return ms.PhaseSpaceMapping(ms.Topology(diagram), masses[0], leptonic=True)
+
+
+def decay_variables(momenta, masses, i, j):
+    """y and z_i of the dipole of the emitter j with the decaying particle as
+    the spectator, with the recoil system K = p_a - p_i - p_j."""
+    p = momenta
+    big_k = p[:, 0] - p[:, i] - p[:, j]
+    pipj = lc_dot(p[:, j], masses[j], p[:, i])
+    pipk = dot(p[:, i], big_k)
+    pjpk = dot(p[:, j], big_k)
+    return pipj / (pipj + pipk + pjpk), pipk / (pipk + pjpk)
+
+
+def project_decay(momenta, masses, i, j):
+    """The Born of the dipole of the emitter j with the decaying particle as
+    the spectator: CDST eq. 5.8 with the recoil system K of the other
+    final-state particles as the spectator, each of them Lorentz transformed
+    with Lambda(K, K~) (K~ itself if alone)."""
+    p = momenta
+    others = [n for n in range(1, p.shape[1]) if n not in (i, j)]
+    big_k = p[:, others].sum(1)
+    q = p[:, 0]
+    q2, m_k2, m_j = dot(q, q), dot(big_k, big_k), masses[j]
+    s_ij = m_j**2 + 2 * lc_dot(p[:, j], m_j, p[:, i])
+    scale = np.sqrt(kallen(q2, m_j**2, m_k2) / kallen(q2, s_ij, m_k2))
+    big_kt = (
+        scale[:, None] * (big_k - (dot(q, big_k) / q2)[:, None] * q)
+        + ((q2 + m_k2 - m_j**2) / (2 * q2))[:, None] * q
+    )
+    born = np.delete(p, i, axis=1)
+    born[:, j - (j > i)] = q - big_kt
+    for n in others:
+        born[:, n - (n > i)] = (
+            big_kt if len(others) == 1 else lorentz(p[:, n], big_k, big_kt)
+        )
+    return born
+
+
+# (masses of the decay, emitted, emitter): t > b w+ with a massive and a
+# massless b, with i or the recoil system before the emitter, and t > b e+ ve
+# with two particles in the recoil system
+DECAYS = [
+    ([TOP, BOTTOM, W_MASS], 3, 1),
+    ([TOP, 0.0, W_MASS], 3, 1),
+    ([TOP, W_MASS, BOTTOM], 3, 2),
+    ([TOP, BOTTOM, W_MASS], 1, 2),
+    ([TOP, BOTTOM, 0.0, 0.0], 4, 1),
+]
+DECAY_IDS = ["t-bw", "t-bw-massless", "t-wb", "t-gbw", "t-benu"]
+
+
+@pytest.mark.parametrize("masses,emitted,emitter", DECAYS, ids=DECAY_IDS)
+def test_decay_round_trip(masses, emitted, emitter):
+    """The emission off a final-state emitter with the decaying particle as
+    the spectator: the decaying particle at rest, momentum conservation, mass
+    shells, the projection onto the Born of the Born mapping, and the round
+    trip."""
+    batch = 2000
+    born = decay_mapping(masses)
+    mapping = ms.CSMapping(born, emitted, emitter, 0)
+    assert mapping.family() == ms.CSMapping.Family.final_decay
+    m = np.insert(np.array(masses), emitted, 0.0)
+    r = random_numbers(mapping, batch, seed=80 + emitted + emitter, low=0.02, high=0.98)
+    momenta, x1, x2, det = forward(mapping, r)
+    assert momenta.shape == (batch, len(masses) + 1, 4)
+    assert (det > 0).all()
+    np.testing.assert_array_equal(x1, 1.0)
+    rest = np.tile([1.0, 0.0, 0.0, 0.0], (batch, 1))
+    np.testing.assert_allclose(momenta[:, 0] / TOP, rest, atol=1e-15)
+    violation = np.abs(momenta[:, 1:].sum(1) - momenta[:, 0]).max(1)
+    assert (violation <= 1e-13 * TOP).all()
+    m2 = momenta[..., 0] ** 2 - (momenta[..., 1:] ** 2).sum(-1)
+    np.testing.assert_allclose((m2 - m**2) / TOP**2, 0.0, atol=1e-12)
+    # the projection of numpy, with the recoil system from the sum of its
+    # momenta, to 1e-11 of the mass of the top
+    born_momenta, *_ = forward(born, r[:, :-3])
+    np.testing.assert_allclose(
+        project_decay(momenta, m, emitted, emitter) / TOP,
+        born_momenta / TOP,
+        rtol=0,
+        atol=1e-11,
+    )
+    # the azimuth of i about the recoil system loses digits where it is close
+    # to the x axis, from which its frame takes its first axis (5e-10 for one
+    # of the events of t > w+ b, its W 3 mrad from the axis)
+    r_inv, det_inv = inverse(mapping, momenta, x1, x2)
+    np.testing.assert_allclose(r_inv[:, :-3], r[:, :-3], rtol=0, atol=1e-9)
+    np.testing.assert_allclose(r_inv[:, -3:-1], r[:, -3:-1], rtol=0, atol=1e-11)
+    np.testing.assert_allclose(r_inv[:, -1], r[:, -1], rtol=0, atol=1e-9)
+    np.testing.assert_allclose(det * det_inv, 1.0, rtol=1e-9)
+
+
+@pytest.mark.parametrize("masses,emitted,emitter", DECAYS, ids=DECAY_IDS)
+def test_decay_soft_limit(masses, emitted, emitter):
+    """At r = 0 for both variables i is soft and the decay is its Born."""
+    born = decay_mapping(masses)
+    mapping = ms.CSMapping(born, emitted, emitter, 0)
+    r = random_numbers(mapping, 500, seed=90)
+    r[:, -3:-1] = 0.0
+    momenta, *_, det = forward(mapping, r)
+    born_momenta, *_ = forward(born, r[:, :-3])
+    np.testing.assert_allclose(momenta[:, emitted] / TOP, 0.0, atol=1e-14)
+    np.testing.assert_allclose(
+        np.delete(momenta, emitted, axis=1) / TOP, born_momenta / TOP, atol=1e-13
+    )
+    np.testing.assert_array_equal(det, 0.0)
+
+
+@pytest.mark.parametrize("masses,emitted,emitter", DECAYS, ids=DECAY_IDS)
+def test_decay_cutoff(masses, emitted, emitter):
+    """The cutoff on y and z_i of a decaying spectator, as in test_cutoff."""
+    batch = 200000
+    seed = 100 + emitted + emitter
+    born = decay_mapping(masses)
+    mapping = ms.CSMapping(born, emitted, emitter, 0, cutoff=CUTOFF)
+    plain = ms.CSMapping(born, emitted, emitter, 0)
+    m = np.insert(np.array(masses), emitted, 0.0)
+    r = random_numbers(mapping, 2000, seed=seed, low=0.02, high=0.98)
+    r[:200, -3:-1] = 0.0
+    momenta, x1, x2, det = forward(mapping, r)
+    y, z = decay_variables(momenta, m, emitted, emitter)
+    np.testing.assert_array_equal(det[:200], 0.0)
+    assert (np.minimum(y, z) >= CUTOFF * (1 - 1e-9)).all()
+    trip = det > 0
+    trip[:200] = False
+    r_inv, det_inv = inverse(mapping, momenta[trip], x1[trip], x2[trip])
+    np.testing.assert_allclose(r_inv[:, -3:], r[trip, -3:], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(det[trip] * det_inv, 1.0, rtol=1e-9)
+    *_, det = forward(mapping, random_numbers(mapping, batch, seed=seed + 1))
+    momenta, x1, x2, det_plain = forward(
+        plain, random_numbers(plain, batch, seed=seed + 2)
+    )
+    y, z = decay_variables(momenta, m, emitted, emitter)
+    below = np.minimum(y, z) < CUTOFF
+    assert 0 < below.mean() < 0.9
+    _, det_inv = inverse(mapping, momenta[below], x1[below], x2[below])
+    np.testing.assert_array_equal(det_inv, 0.0)
+    assert_same_mean(det, np.where(below, 0.0, det_plain))
+
+
+def two_body(s, m1, m2):
+    """The two-body phase space at s, sqrt(lambda) / (8 pi s)."""
+    return np.sqrt(np.maximum(kallen(s, m1**2, m2**2), 0.0)) / (8 * math.pi * s)
+
+
+@pytest.mark.parametrize("bottom", [BOTTOM, 0.0])
+def test_decay_volume(bottom):
+    """The dipole covers the phase space of t > b w+ g once: int dr det is
+    int ds / (2 pi) Phi_2(m_t^2; sqrt(s), m_W) Phi_2(s; m_b, 0) over the mass
+    s of b g, as the Born mapping covers Phi_2(m_t^2; m_b, m_W)."""
+    batch = 400000
+    born = decay_mapping([TOP, bottom, W_MASS])
+    mapping = ms.CSMapping(born, 3, 1, 0)
+    *_, det = forward(mapping, random_numbers(mapping, batch, seed=110))
+    *_, det_born = forward(born, random_numbers(born, 10, seed=111))
+    np.testing.assert_allclose(det_born, two_body(TOP**2, bottom, W_MASS), rtol=1e-12)
+    x, w = np.polynomial.legendre.leggauss(200)
+    low, high = bottom**2, (TOP - W_MASS) ** 2
+    # s = low + (high - low) t^2 smooths the square root at the upper end
+    t = (x + 1) / 2
+    s = high - (high - low) * t * t
+    jac = (high - low) * 2 * t * w / 2
+    volume = np.sum(
+        jac * two_body(TOP**2, np.sqrt(s), W_MASS) * two_body(s, bottom, 0.0)
+    ) / (2 * math.pi)
+    mean, err = det.mean(), det.std() / math.sqrt(batch)
+    assert abs(mean - volume) < 5 * err
+    assert err < 2e-3 * volume
+
+
 def test_invalid_dipoles():
     born = born_mapping([0.0, 0.0], False)
     for emitted, emitter, spectator in [
@@ -544,3 +730,6 @@ def test_invalid_dipoles():
             2,
             3,
         )
+    # the decaying particle emits no parton
+    with pytest.raises(ValueError, match="decaying"):
+        ms.CSMapping(decay_mapping([TOP, BOTTOM, W_MASS]), 3, 0, 1)

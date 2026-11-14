@@ -190,26 +190,31 @@ KERNELSPEC Quartuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>> cs_final_final_ranges(
     return {y_max, z0 * (1. - v), z0 * (1. + v), norm};
 }
 
+// the final-final emission and its inverse: the momenta and the variables of
+// the real emission, the random numbers of the inverse and the Jacobian
 template <typename T>
-KERNELSPEC void kernel_cs_final_final_radiate(
-    FIn<T, 0> r_y,
-    FIn<T, 0> r_z,
-    FIn<T, 0> r_phi,
-    FIn<T, 1> p_ij,
-    FIn<T, 1> p_k,
-    FIn<T, 0> m_j,
-    FIn<T, 0> m_k,
-    FIn<T, 0> cutoff,
-    FOut<T, 1> p_i,
-    FOut<T, 1> p_j,
-    FOut<T, 1> p_k_out,
-    FOut<T, 0> y,
-    FOut<T, 0> z,
-    FOut<T, 0> det
+struct CSFinalEmission {
+    FourMom<T> p_i, p_j, p_k;
+    FVal<T> y, z, det;
+};
+
+template <typename T>
+struct CSFinalProjection {
+    FourMom<T> p_ij, p_k;
+    FVal<T> r_y, r_z, r_phi, y, z, det;
+};
+
+template <typename T>
+KERNELSPEC CSFinalEmission<T> cs_final_final_emit(
+    FVal<T> ry,
+    FVal<T> rz,
+    FVal<T> rphi,
+    FourMom<T> pij,
+    FourMom<T> pk,
+    FVal<T> mj,
+    FVal<T> mk,
+    FVal<T> c
 ) {
-    FVal<T> ry = r_y, rz = r_z, rphi = r_phi, mj = m_j, mk = m_k, c = cutoff;
-    auto pij = load_mom<T>(p_ij);
-    auto pk = load_mom<T>(p_k);
     FourMom<T> q;
     for (int k = 0; k < 4; ++k) {
         q[k] = pij[k] + pk[k];
@@ -258,35 +263,55 @@ KERNELSPEC void kernel_cs_final_final_radiate(
     for (int k = 0; k < 4; ++k) {
         pj[k] = q[k] - pi[k] - pk_out[k];
     }
-    store_mom<T>(p_i, pi);
-    store_mom<T>(p_j, pj);
-    store_mom<T>(p_k_out, pk_out);
-    y = yv;
-    z = zv;
-    det = ranges.fourth * (1. - yv) * 2. * y_span * ry * 2. * z_span * rz;
+    return {
+        pi,
+        pj,
+        pk_out,
+        yv,
+        zv,
+        ranges.fourth * (1. - yv) * 2. * y_span * ry * 2. * z_span * rz
+    };
 }
 
 template <typename T>
-KERNELSPEC void kernel_cs_final_final_project(
-    FIn<T, 1> p_i,
-    FIn<T, 1> p_j,
+KERNELSPEC void kernel_cs_final_final_radiate(
+    FIn<T, 0> r_y,
+    FIn<T, 0> r_z,
+    FIn<T, 0> r_phi,
+    FIn<T, 1> p_ij,
     FIn<T, 1> p_k,
     FIn<T, 0> m_j,
     FIn<T, 0> m_k,
     FIn<T, 0> cutoff,
-    FOut<T, 1> p_ij,
+    FOut<T, 1> p_i,
+    FOut<T, 1> p_j,
     FOut<T, 1> p_k_out,
-    FOut<T, 0> r_y,
-    FOut<T, 0> r_z,
-    FOut<T, 0> r_phi,
     FOut<T, 0> y,
     FOut<T, 0> z,
     FOut<T, 0> det
 ) {
-    FVal<T> mj = m_j, mk = m_k, c = cutoff;
-    auto pi = load_mom<T>(p_i);
-    auto pj = load_mom<T>(p_j);
-    auto pk = load_mom<T>(p_k);
+    auto e = cs_final_final_emit<T>(
+        FVal<T>(r_y),
+        FVal<T>(r_z),
+        FVal<T>(r_phi),
+        load_mom<T>(p_ij),
+        load_mom<T>(p_k),
+        FVal<T>(m_j),
+        FVal<T>(m_k),
+        FVal<T>(cutoff)
+    );
+    store_mom<T>(p_i, e.p_i);
+    store_mom<T>(p_j, e.p_j);
+    store_mom<T>(p_k_out, e.p_k);
+    y = e.y;
+    z = e.z;
+    det = e.det;
+}
+
+template <typename T>
+KERNELSPEC CSFinalProjection<T> cs_final_final_unemit(
+    FourMom<T> pi, FourMom<T> pj, FourMom<T> pk, FVal<T> mj, FVal<T> mk, FVal<T> c
+) {
     auto mk2 = mk * mk;
     auto pipj = cs_lc_dot<T>(pj, mj, pi);
     auto pipk = cs_lc_dot<T>(pk, mk, pi);
@@ -325,19 +350,48 @@ KERNELSPEC void kernel_cs_final_final_project(
     auto ry = sqrt(max((yv - c) / max(y_span, EPS2), 0.));
     auto rz = sqrt(max((zv - z_low) / max(z_span, EPS2), 0.));
     auto frame = cs_frame<T>(pij, mj, pk_out, mk, 0.5 * two_born);
-    store_mom<T>(p_ij, pij);
-    store_mom<T>(p_k_out, pk_out);
-    r_y = ry;
-    r_z = rz;
-    r_phi = cs_azimuth<T>(pi, frame);
-    y = yv;
-    z = zv;
     // none below the cutoff, where the map does not reach
-    det = where(
+    auto det = where(
         (yv < c) | (zv < c),
         FVal<T>(0.),
         1. / max(ranges.fourth * (1. - yv) * 2. * y_span * ry * 2. * z_span * rz, EPS2)
     );
+    return {pij, pk_out, ry, rz, cs_azimuth<T>(pi, frame), yv, zv, det};
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_final_final_project(
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_j,
+    FIn<T, 1> p_k,
+    FIn<T, 0> m_j,
+    FIn<T, 0> m_k,
+    FIn<T, 0> cutoff,
+    FOut<T, 1> p_ij,
+    FOut<T, 1> p_k_out,
+    FOut<T, 0> r_y,
+    FOut<T, 0> r_z,
+    FOut<T, 0> r_phi,
+    FOut<T, 0> y,
+    FOut<T, 0> z,
+    FOut<T, 0> det
+) {
+    auto u = cs_final_final_unemit<T>(
+        load_mom<T>(p_i),
+        load_mom<T>(p_j),
+        load_mom<T>(p_k),
+        FVal<T>(m_j),
+        FVal<T>(m_k),
+        FVal<T>(cutoff)
+    );
+    store_mom<T>(p_ij, u.p_ij);
+    store_mom<T>(p_k_out, u.p_k);
+    r_y = u.r_y;
+    r_z = u.r_z;
+    r_phi = u.r_phi;
+    y = u.y;
+    z = u.z;
+    det = u.det;
 }
 
 // the factor of the initial-final phase space (CS eqs. 5.48, 5.72 and CDST eqs.
@@ -634,6 +688,104 @@ KERNELSPEC void kernel_cs_initial_initial_project(
     );
 }
 
+// The emission off a final-state emitter j with the decaying particle a as the
+// spectator (Basso, Dittmaier, Huss, Oggero, arXiv:1507.04676): the
+// final-final map of CDST with the spectator K = p_a - p_i - p_j, the other
+// final-state particles together, of mass sqrt(K^2), and the momentum of a
+// fixed. The Born K~ = p_a - p_ij goes to K, each of the other particles with
+// the Lorentz transformation Lambda(K~, K) of CS eq. 5.143 (K^2 = K~^2), or as
+// K itself if it is alone.
+template <typename T>
+KERNELSPEC FourMom<T> cs_sum(FIn<T, 2> p) {
+    FourMom<T> sum{0., 0., 0., 0.};
+    for (std::size_t n = 0; n < p.size(); ++n) {
+        auto pn = load_mom<T>(p[n]);
+        for (int k = 0; k < 4; ++k) {
+            sum[k] = sum[k] + pn[k];
+        }
+    }
+    return sum;
+}
+
+template <typename T>
+KERNELSPEC void
+cs_recoil(FIn<T, 2> p, FourMom<T> from, FourMom<T> to, FOut<T, 2> p_out) {
+    if (p.size() == 1) {
+        store_mom<T>(p_out[0], to);
+        return;
+    }
+    for (std::size_t n = 0; n < p.size(); ++n) {
+        store_mom<T>(p_out[n], cs_lorentz<T>(load_mom<T>(p[n]), from, to));
+    }
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_final_decay_radiate(
+    FIn<T, 0> r_y,
+    FIn<T, 0> r_z,
+    FIn<T, 0> r_phi,
+    FIn<T, 1> p_ij,
+    FIn<T, 2> p,
+    FIn<T, 0> m_j,
+    FIn<T, 0> cutoff,
+    FOut<T, 1> p_i,
+    FOut<T, 1> p_j,
+    FOut<T, 2> p_out,
+    FOut<T, 0> y,
+    FOut<T, 0> z,
+    FOut<T, 0> det
+) {
+    auto kk = cs_sum<T>(p);
+    auto mk = sqrt(max(ldot<T>(kk, kk), 0.));
+    auto e = cs_final_final_emit<T>(
+        FVal<T>(r_y),
+        FVal<T>(r_z),
+        FVal<T>(r_phi),
+        load_mom<T>(p_ij),
+        kk,
+        FVal<T>(m_j),
+        mk,
+        FVal<T>(cutoff)
+    );
+    cs_recoil<T>(p, kk, e.p_k, p_out);
+    store_mom<T>(p_i, e.p_i);
+    store_mom<T>(p_j, e.p_j);
+    y = e.y;
+    z = e.z;
+    det = e.det;
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_final_decay_project(
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_j,
+    FIn<T, 2> p,
+    FIn<T, 0> m_j,
+    FIn<T, 0> cutoff,
+    FOut<T, 1> p_ij,
+    FOut<T, 2> p_out,
+    FOut<T, 0> r_y,
+    FOut<T, 0> r_z,
+    FOut<T, 0> r_phi,
+    FOut<T, 0> y,
+    FOut<T, 0> z,
+    FOut<T, 0> det
+) {
+    auto k = cs_sum<T>(p);
+    auto mk = sqrt(max(ldot<T>(k, k), 0.));
+    auto u = cs_final_final_unemit<T>(
+        load_mom<T>(p_i), load_mom<T>(p_j), k, FVal<T>(m_j), mk, FVal<T>(cutoff)
+    );
+    cs_recoil<T>(p, k, u.p_k, p_out);
+    store_mom<T>(p_ij, u.p_ij);
+    r_y = u.r_y;
+    r_z = u.r_z;
+    r_phi = u.r_phi;
+    y = u.y;
+    z = u.z;
+    det = u.det;
+}
+
 // Catani-Seymour dipoles (arXiv:hep-ph/9605323, Sec. 5 and 10; masses:
 // arXiv:hep-ph/0201036, Sec. 5). A dipole is
 //
@@ -686,23 +838,27 @@ KERNELSPEC void cs_store_dipole(
     store_mom<T>(spin_vector, k_t);
 }
 
+// The final-final kernels of CDST eqs. 5.16-5.18 at a real emission (q -> q
+// g, g -> g g, g -> q q~): the weights a and b of the color-correlated Born
+// and of the tensor k~^mu k~^nu, both times p_i.p_j, the vector k~, p_i.p_j and
+// the gate y < alpha y_+
 template <typename T>
-KERNELSPEC void kernel_cs_final_final_dipole(
-    FIn<T, 1> p_i,
-    FIn<T, 1> p_j,
-    FIn<T, 1> p_k,
-    FIn<T, 1> born_ij,
-    FIn<T, 1> born_k,
-    FSIn<T, 1> options,
-    FOut<T, 0> color_weight,
-    FOut<T, 0> spin_weight,
-    FOut<T, 1> spin_vector
+struct CSFinalKernel {
+    FVal<T> a, b, pipj, gate;
+    FourMom<T> kk;
+};
+
+template <typename T>
+KERNELSPEC CSFinalKernel<T> cs_final_final_kernel(
+    FourMom<T> pi,
+    FourMom<T> pj,
+    FourMom<T> pk,
+    FVal<T> mj,
+    FVal<T> mk,
+    FVal<T> kernel,
+    FVal<T> alpha,
+    FVal<T> kappa
 ) {
-    FVal<T> kernel = options[0], alpha = options[1], kappa = options[2];
-    FVal<T> mj = options[3], mk = options[4];
-    auto pi = load_mom<T>(p_i);
-    auto pj = load_mom<T>(p_j);
-    auto pk = load_mom<T>(p_k);
     auto pipj = cs_lc_dot<T>(pj, mj, pi);
     auto pipk = cs_lc_dot<T>(pk, mk, pi);
     auto pjpk = where(
@@ -723,7 +879,6 @@ KERNELSPEC void kernel_cs_final_final_dipole(
     auto vel =
         sqrt(max((2. * mk2 + omy) * (2. * mk2 + omy) - 4. * mk2, 0.)) / max(omy, EPS2);
     auto vel_born = sqrt(max(av * av - 4. * mj2 * mk2, 0.)) / av;
-    auto zz = (zi - 0.5 * (1. - vel)) * (zj - 0.5 * (1. - vel));
     auto zpm = 0.25 * (1. - vel * vel);
     // CDST eqs. 5.16-5.18: q -> q g, g -> g g, g -> q q~, with 1 - z_j (1 -
     // y) = z_i + y z_j and 1 - z_i (1 - y) = z_j + y z_i, which keep their
@@ -740,16 +895,76 @@ KERNELSPEC void kernel_cs_final_final_dipole(
     for (int n = 0; n < 4; ++n) {
         kk[n] = (zi - 0.5 * (1. - vel)) * pi[n] - (zj - 0.5 * (1. - vel)) * pj[n];
     }
-    auto k_t = cs_without_along<T>(kk, load_mom<T>(born_ij), load_mom<T>(born_k));
+    auto gate = where(yv < alpha * y_plus, FVal<T>(1.), FVal<T>(0.));
+    return {a, b, pipj, gate, kk};
+}
+
+template <typename T>
+KERNELSPEC void kernel_cs_final_final_dipole(
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_j,
+    FIn<T, 1> p_k,
+    FIn<T, 1> born_ij,
+    FIn<T, 1> born_k,
+    FSIn<T, 1> options,
+    FOut<T, 0> color_weight,
+    FOut<T, 0> spin_weight,
+    FOut<T, 1> spin_vector
+) {
+    FVal<T> kernel = options[0], alpha = options[1], kappa = options[2];
+    FVal<T> mj = options[3], mk = options[4];
+    auto f = cs_final_final_kernel<T>(
+        load_mom<T>(p_i),
+        load_mom<T>(p_j),
+        load_mom<T>(p_k),
+        mj,
+        mk,
+        kernel,
+        alpha,
+        kappa
+    );
+    auto k_t = cs_without_along<T>(f.kk, load_mom<T>(born_ij), load_mom<T>(born_k));
     cs_store_dipole<T>(
-        where(yv < alpha * y_plus, FVal<T>(1.), FVal<T>(0.)),
-        pipj,
-        a,
-        b,
-        k_t,
-        color_weight,
-        spin_weight,
-        spin_vector
+        f.gate, f.pipj, f.a, f.b, k_t, color_weight, spin_weight, spin_vector
+    );
+}
+
+// The dipole of a final-state quark j with the decaying particle a as the
+// spectator, q -> q g: the final-final kernel of CDST with the spectator K =
+// p_a - p_i - p_j of mass sqrt(K^2) (that of cs_final_decay_radiate), and the
+// soft terms of the decaying particle, 2 m_j^2 / (p_a.p_i p_i.p_j) - m_a^2 /
+// (p_a.p_i)^2, so that its soft limit is the eikonal of the pair j, a with
+// the mass terms of both (the partial fraction of the eikonal of a, which
+// emits no collinear parton, belongs to it, as in the dipoles of
+// arXiv:1507.04676)
+template <typename T>
+KERNELSPEC void kernel_cs_final_decay_dipole(
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_j,
+    FIn<T, 1> p_a,
+    FIn<T, 1> born_ij,
+    FIn<T, 1> born_a,
+    FSIn<T, 1> options,
+    FOut<T, 0> color_weight,
+    FOut<T, 0> spin_weight,
+    FOut<T, 1> spin_vector
+) {
+    FVal<T> alpha = options[1], kappa = options[2];
+    FVal<T> mj = options[3], ma = options[4];
+    auto pi = load_mom<T>(p_i);
+    auto pj = load_mom<T>(p_j);
+    auto pa = load_mom<T>(p_a);
+    FourMom<T> k;
+    for (int n = 0; n < 4; ++n) {
+        k[n] = pa[n] - pi[n] - pj[n];
+    }
+    auto mk = sqrt(max(ldot<T>(k, k), 0.));
+    auto f = cs_final_final_kernel<T>(pi, pj, k, mj, mk, FVal<T>(0.), alpha, kappa);
+    auto pipa = max(cs_lc_dot<T>(pa, ma, pi), EPS2);
+    auto a = f.a + 2. * mj * mj / pipa - ma * ma * f.pipj / (pipa * pipa);
+    auto k_t = cs_without_along<T>(f.kk, load_mom<T>(born_ij), load_mom<T>(born_a));
+    cs_store_dipole<T>(
+        f.gate, f.pipj, a, f.b, k_t, color_weight, spin_weight, spin_vector
     );
 }
 
