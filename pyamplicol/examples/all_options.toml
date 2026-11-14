@@ -489,7 +489,7 @@ reduction_direction = false
 rescaled = false
 
 [evaluation.phase_space]
-# Flat (RAMBO) phase-space points that evaluate and profile draw when
+# Flat (RAMBO on diet) phase-space points that evaluate and profile draw when
 # evaluation.momenta is not set, with the external masses of the artifact's
 # validation point; mu_r2 then defaults to s per point.
 # evaluation.phase_space.points: Number of points. Default 2.
@@ -526,7 +526,7 @@ runtime = false
 # and the accuracy of the default rotation estimate) over flat points.
 # Default false.
 stability = false
-# benchmark.stability_points: Positive count of flat (RAMBO) phase-space
+# benchmark.stability_points: Positive count of flat (RAMBO on diet) phase-space
 # points of the stability statistics (drawn with evaluation.phase_space's
 # seed and sqrt_s). Default 1000.
 stability_points = 1000

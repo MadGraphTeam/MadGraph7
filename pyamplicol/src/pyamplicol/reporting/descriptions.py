@@ -124,7 +124,7 @@ def _profile(report: Any) -> list[Block]:
                 [
                     (
                         None,
-                        "Each flat (RAMBO) phase-space point is evaluated in "
+                        "Each flat (RAMBO on diet) phase-space point is evaluated in "
                         "binary64 and again in double-double on the same backend. "
                         "stable digits = -log10 of the relative difference between "
                         "the binary64 and the double-double finite part, capped to "

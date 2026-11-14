@@ -40,7 +40,7 @@ output = "artifacts/loop_generate"
 [evaluation]
 # check / evaluate / profile read this artifact (or --output).
 artifact = "artifacts/loop_generate"
-# No momenta file: flat (RAMBO) phase-space points, mu_r^2 = s per point.
+# No momenta file: flat (RAMBO on diet) phase-space points, mu_r^2 = s per point.
 poles = "all"
 
 [evaluation.phase_space]

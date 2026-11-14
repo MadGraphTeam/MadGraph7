@@ -19,6 +19,7 @@ from pyamplicol.config import (
 from pyamplicol.loops.orders import canonical_order, squared_order
 from pyamplicol.loops.physical_orders import BornSquaredSector
 from pyamplicol.models.base import CouplingOrders
+from pyamplicol.reporting.resources import PeakMemory
 
 from .requests import ProcessRequest, ProcessSet
 
@@ -1204,6 +1205,10 @@ class BenchmarkResult:
     timing_breakdown: BenchmarkTimingBreakdown | None = None
     interrupted: bool = False
     evaluator_total_time_per_point: float | None = None
+    # The peak resident set size of this process over the profiled region
+    # (warm-ups, calibration and timed blocks; ``reporting.resources.
+    # peak_memory``), None where it is not measured.
+    peak_memory: PeakMemory | None = None
 
     def __post_init__(self) -> None:
         if (

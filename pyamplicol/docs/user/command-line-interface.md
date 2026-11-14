@@ -495,8 +495,13 @@ in [Runtime and Selectors](runtime-and-selectors.md).
 ### Evaluate without a momenta file
 
 Without `--momenta` (`evaluation.momenta`), `evaluate` and `profile` draw flat
-phase-space points (RAMBO, the product's flat generator) set by
-`[evaluation.phase_space]`: `points` points (default 2), point i from seed
+phase-space points set by `[evaluation.phase_space]` (the product's flat
+generator, RAMBO on diet, S. Plätzer, arXiv:1308.2922: uniform in
+Lorentz-invariant phase space, beams along +-z; massive final states through
+the paper's mass mapping, whose weight is not applied to the drawn points;
+a continuous distribution, so no planar or otherwise special configuration
+is drawn; reproducible bit for bit in the seed; 1.0.3 and earlier drew classic
+RAMBO points, so the same seed now gives other points): `points` points (default 2), point i from seed
 `seed + i` (default seed 1), at the centre-of-mass energy `sqrt_s` of a 2 -> n
 scattering (default: the energy of the artifact's own validation point, so
 any process the artifact holds is above threshold). A 1 -> n decay is drawn in
@@ -727,8 +732,8 @@ pyamplicol profile artifacts/loop_uux_ttxgg --runtime --stability \
 ```
 
 Both parts use the flat phase-space points of
-[`[evaluation.phase_space]`](#evaluate-without-a-momenta-file) (RAMBO, the
-product's flat generator: beams along +-z in the centre-of-mass frame, the
+[`[evaluation.phase_space]`](#evaluate-without-a-momenta-file) (RAMBO on
+diet, the product's flat generator: beams along +-z in the centre-of-mass frame, the
 external masses of the artifact's validation point; point i from seed + i;
 `--seed` and `--sqrt-s` set `evaluation.phase_space.seed` and `sqrt_s`)
 unless `--momenta` gives the timed points; the runtime and the stability
@@ -764,6 +769,29 @@ native executor's always-on stage reports of the same timed calls, with each
 backend's share (and a bar per group) and the ratio between the two backends.
 `--mu-r2` sets the scale (default: per point the squared invariant mass of
 its initial state).
+
+Under the runtime table, per backend, `peak RAM` gives the peak resident set
+size of the process over that backend's profiled calls and its increase over
+the value at their start, with the scope and method: on Linux the kernel's
+high-water mark (`VmHWM` of `/proc/self/status`), reset to the current
+resident size at the start by writing `5` to `/proc/self/clear_refs`, so the
+peak is that of the profiled calls ("profiled region"); where the reset is
+refused, and on macOS and the BSDs (`getrusage` `ru_maxrss`), it is the
+process lifetime's peak ("process lifetime": the peak may predate the
+profile, and the increase is then a lower bound). The stability pool's
+worker processes are not included. With `--arithmetic double-double`
+(`evaluation.arithmetic = "double-double"`) the same batches are also timed
+in double-double after the binary64 timing (the same warm-up and timed
+calls; the binary64 timing is unchanged and nothing extra runs without it):
+a `double-double` line per backend gives its time per point (median call),
+the fastest and slowest call, the timed points, the ratio to binary64 and the
+points without an accepted value. `--stability` evaluates in double-double
+anyway (the reference): under its second table a `time / point` line per
+backend gives the cost per point of its binary64 calls (with their stability
+checks) and of its double-double calls, with their point counts and ratio
+(the workers' batch walls per point, each worker's first-call cost left out
+as the progress estimate does). A tree artifact's profile reports the same
+`peak RAM` row (its runtime profile is binary64 only).
 
 **Stability.** Over N flat points (`benchmark.stability_points` /
 `--stability-points`, default 1000, drawn with `evaluation.phase_space`'s
@@ -839,9 +867,13 @@ Colours follow `--color auto|always|never`; `--json` carries every number
 uncoloured (`loop_profile.LoopProfileReport`: `runtime` per backend with its
 `benchmarking.VirtualProfileResult` profile (`seconds_per_point`, `low`,
 `high`, `stages`, `reduction`, `unchecked`, `batch`, `samples`,
-`failed_points`, `failure_reasons`), `ratio`, `requested` and `refusal`;
+`failed_points`, `failure_reasons`, `peak_memory` with `peak_rss_bytes`,
+`start_rss_bytes`, `increase_rss_bytes`, `scope` and `method`, and
+`double_double`: null, or its `seconds_per_point`, `low`, `high`, `points`,
+`samples` and `failed_points`), `ratio`, `requested` and `refusal`;
 `stability` per backend with the per-point `true_digits` and
-`estimated_digits` of the measured points, `per_point` (every flat point's
+`estimated_digits` of the measured points, `precision_timing` (per
+precision `points` and `seconds_per_point`), `per_point` (every flat point's
 `index`, `status` measured / binary64-failed / reference-failed, digits and
 failure `reason`), the `percentiles` rows, the flag counts and the failures;
 `stability_setup`).

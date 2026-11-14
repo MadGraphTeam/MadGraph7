@@ -231,11 +231,155 @@ class ResourceUsageMonitor:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class PeakMemory:
+    """The peak resident set size of this process over a profiled region
+    (``peak_memory``): ``peak_rss_bytes`` the highest resident set size,
+    ``start_rss_bytes`` the value at the start of the region,
+    ``increase_rss_bytes`` the peak less the start (the memory the region
+    added at its peak), in bytes. ``scope`` says what the peak covers:
+    "profiled region" (the kernel's high-water mark reset at the start of
+    the region) or "process lifetime" (the high-water mark could not be
+    reset: the peak may predate the region, so the increase is that of the
+    lifetime peak, a lower bound of the region's); ``method`` names the
+    source. None fields: not measurable on this platform."""
+
+    peak_rss_bytes: int | None
+    start_rss_bytes: int | None
+    increase_rss_bytes: int | None
+    scope: str
+    method: str
+
+
+_PROC_STATUS = Path("/proc/self/status")
+_PROC_CLEAR_REFS = Path("/proc/self/clear_refs")
+
+
+def _proc_status_kib(field: str) -> int | None:
+    try:
+        text = _PROC_STATUS.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith(field + ":"):
+            fields = line.split()
+            if len(fields) == 3 and fields[2].lower() == "kb":
+                return int(fields[1]) * 1024
+    return None
+
+
+def _rusage_peak_bytes() -> int | None:
+    """getrusage's ru_maxrss of this process in bytes (kibibytes on Linux
+    and the BSDs, bytes on macOS), None without the resource module."""
+
+    try:
+        import resource
+    except ImportError:
+        return None
+    peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    return peak if platform.system() == "Darwin" else peak * 1024
+
+
+def _current_rss_bytes() -> int | None:
+    """The current resident set size: /proc/self/status VmRSS (Linux), else
+    ``ps`` of this process (macOS and the BSDs)."""
+
+    rss = _proc_status_kib("VmRSS")
+    if rss is not None:
+        return rss
+    try:
+        record = _ps_snapshot().get(os.getpid())
+    except ResourceProbeError:
+        return None
+    return None if record is None else record.rss_bytes
+
+
+class peak_memory:
+    """Measure the peak resident set size of this process over a ``with``
+    block (``PeakMemory`` in ``result`` once it exits).
+
+    Linux: the kernel's high-water mark VmHWM of /proc/self/status, reset
+    to the current resident set size at the start of the block by writing
+    "5" to /proc/self/clear_refs (the peak resident set size only: page
+    reference bits are untouched), so the peak is the block's exactly
+    (every page the kernel accounted, sampled by no timer); where the reset
+    is refused (an old kernel, a restricted /proc) VmHWM is the process
+    lifetime's peak. Elsewhere getrusage's ru_maxrss (process lifetime;
+    bytes on macOS) with ``ps`` for the start value. The measurement adds
+    two small file reads (or one ``ps`` call) outside the block's work."""
+
+    def __init__(self) -> None:
+        self.result: PeakMemory | None = None
+        self._start: int | None = None
+        self._start_method = "VmRSS"
+        self._region = False
+
+    def __enter__(self) -> peak_memory:
+        self._start = _proc_status_kib("VmRSS")
+        self._start_method = "VmRSS"
+        if self._start is None:
+            self._start = _current_rss_bytes()
+            self._start_method = "ps"
+        self._region = False
+        if _proc_status_kib("VmHWM") is not None:
+            try:
+                _PROC_CLEAR_REFS.write_text("5")
+                self._region = True
+            except OSError:
+                self._region = False
+        if self._start is None:
+            # No current resident set size: the lifetime peak before the
+            # block (its increase is what the block can be credited with).
+            self._start = _rusage_peak_bytes()
+            self._start_method = "ru_maxrss"
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        hwm = _proc_status_kib("VmHWM")
+        if hwm is not None:
+            peak = hwm
+            method = "VmHWM after clear_refs" if self._region else "VmHWM"
+        else:
+            peak = _rusage_peak_bytes()
+            method = f"ru_maxrss, start from {self._start_method}"
+        start = self._start
+        if peak is not None and start is not None:
+            peak = max(peak, start)
+        self.result = PeakMemory(
+            peak_rss_bytes=peak,
+            start_rss_bytes=start,
+            increase_rss_bytes=(
+                None if peak is None or start is None else max(peak - start, 0)
+            ),
+            scope="profiled region" if self._region else "process lifetime",
+            method=method if peak is not None else "unavailable",
+        )
+
+
+def peak_memory_text(peak: PeakMemory | None) -> str | None:
+    """The peak's report text, "1.234 GiB, +0.456 GiB over start (profiled
+    region, <method>)", None when nothing was measured."""
+
+    if peak is None or peak.peak_rss_bytes is None:
+        return None
+    gib = 1024.0**3
+    increase = (
+        ""
+        if peak.increase_rss_bytes is None
+        else f", +{peak.increase_rss_bytes / gib:.3f} GiB over start"
+    )
+    scope = f"({peak.scope}, {peak.method})"
+    return f"{peak.peak_rss_bytes / gib:.3f} GiB{increase} {scope}"
+
+
 __all__ = [
+    "PeakMemory",
     "ProcessInfo",
     "ProcessTreeSampler",
     "ResourceProbeError",
     "ResourceUsage",
     "ResourceUsageMonitor",
+    "peak_memory",
+    "peak_memory_text",
     "process_snapshot",
 ]

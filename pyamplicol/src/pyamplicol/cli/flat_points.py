@@ -2,11 +2,13 @@
 """Flat phase-space points for ``evaluate`` and ``profile`` without a
 momenta file (``[evaluation.phase_space]``).
 
-The points are RAMBO-flat (``generation.phase_space``, the product's flat
-generator): a 2 -> n scattering in its centre-of-mass frame with the beams
-along +-z, a 1 -> n decay in the rest frame of the decaying particle, a
-2 -> 1 process at its single point. Point i is drawn from seed + i, so a
-point does not depend on how many are drawn.
+The points are flat in phase space (``generation.phase_space.
+flat_final_state``, the product's flat generator: RAMBO on diet, arXiv:
+1308.2922; a massive final state's weight is not applied): a 2 -> n
+scattering in its centre-of-mass frame with the beams along +-z, a 1 -> n
+decay in the rest frame of the decaying particle, a 2 -> 1 process at its
+single point. Point i is drawn from seed + i, so a point does not depend on
+how many are drawn.
 
 Nothing is read from the model: the external masses are those of the
 artifact's own validation point (``processes/<id>/validation-momenta.json``,
@@ -152,7 +154,7 @@ def draw_flat_points(
     at ``sqrt_s`` (None: the validation point's energy; a decay or a 2 -> 1
     process takes its mass and refuses another value)."""
 
-    from pyamplicol.generation.phase_space import massive_rambo_final_state
+    from pyamplicol.generation.phase_space import flat_final_states
 
     process_id = _process_id(artifact, process)
     validation = _validation_point(artifact, process_id)
@@ -188,6 +190,15 @@ def draw_flat_points(
             f"evaluation.phase_space.sqrt_s = {energy} is below the threshold "
             f"of the final state (sum of masses {sum(masses[initial:])})"
         )
+    finals = (
+        flat_final_states(
+            masses[initial:],
+            sqrt_s=energy,
+            seeds=[seed + index for index in range(points)],
+        )
+        if final > 1
+        else ()
+    )
     drawn = []
     for index in range(points):
         if initial == 1:
@@ -201,14 +212,7 @@ def draw_flat_points(
         if final == 1:
             legs.append((energy, 0.0, 0.0, 0.0))
         else:
-            legs.extend(
-                massive_rambo_final_state(
-                    final,
-                    sqrt_s=energy,
-                    masses=masses[initial:],
-                    seed=seed + index,
-                )
-            )
+            legs.extend(finals[index].momenta)
         drawn.append(tuple(tuple(float(x) for x in leg) for leg in legs))
     return FlatPoints(
         tuple(drawn), float(energy), int(seed), masses, initial, process_id

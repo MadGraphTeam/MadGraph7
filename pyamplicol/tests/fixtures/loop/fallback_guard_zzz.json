@@ -1,5 +1,10 @@
 {
  "provenance": "g g > z z z (li_gg_zzz) stream points 44/57 as binary64 texts (streams.binary64) with the TIRust-256 truth of lit-tirust-default calib/out/li_gg_zzz.json; point 44 tilted out of its plane by eps about the in-plane transverse axis, rounded to binary64 texts, with the TIRust-78 truth on the same texts (ninjars-dd-zzz C/tilt.py, records C/out/tilt.json; planar rows: C/planar_rows.py)",
+ "intended_limits": {
+  "/stream/44/point": "intended limit: the exactly planar g g > z z z rows of the former li_gg_zzz stream (points 44, 57; the stream itself now holds flat points there) and the untilted point of the tilt scan, the fallback guard's near-planar pentagon-family stress points; expected: a typed refusal of the binary64 backends or, where served, a value within the target of the stored truth (tests/unit/test_loop_v2_fallback_guard.py)",
+  "/stream/57/point": "intended limit: the exactly planar g g > z z z rows of the former li_gg_zzz stream (points 44, 57; the stream itself now holds flat points there) and the untilted point of the tilt scan, the fallback guard's near-planar pentagon-family stress points; expected: a typed refusal of the binary64 backends or, where served, a value within the target of the stored truth (tests/unit/test_loop_v2_fallback_guard.py)",
+  "/tilt/0/point": "intended limit: the exactly planar g g > z z z rows of the former li_gg_zzz stream (points 44, 57; the stream itself now holds flat points there) and the untilted point of the tilt scan, the fallback guard's near-planar pentagon-family stress points; expected: a typed refusal of the binary64 backends or, where served, a value within the target of the stored truth (tests/unit/test_loop_v2_fallback_guard.py)"
+ },
  "process": "g g > z z z",
  "fixture": "li_gg_zzz",
  "stream": {

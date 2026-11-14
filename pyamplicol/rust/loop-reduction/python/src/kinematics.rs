@@ -202,3 +202,75 @@ pub fn improve_kinematics(
         })
         .unzip())
 }
+
+/// Flat phase-space final states (`rusticol_core::phase_space`, RAMBO on
+/// diet): one per seed of `seeds`, `masses.len()` particles at total
+/// momentum (`sqrt_s`, 0, 0, 0), drawn natively in `arithmetic` ("double",
+/// "double-double", or "arbitrary" at `digits` decimal digits) from exact
+/// mass and energy texts (decimal or fraction). Per point the momenta and
+/// the weight as exact fraction texts of the carrier values.
+#[pyfunction]
+#[pyo3(signature = (masses, sqrt_s, seeds, arithmetic, digits=None))]
+pub fn flat_phase_space(
+    py: Python<'_>,
+    masses: Vec<String>,
+    sqrt_s: String,
+    seeds: Vec<u64>,
+    arithmetic: &str,
+    digits: Option<u32>,
+) -> PyResult<Vec<(Point, String)>> {
+    let _unlock = pyamplicol::unlock();
+    let arithmetic = arithmetic_of(arithmetic, digits)?;
+    let masses: Vec<Rational> = masses
+        .iter()
+        .map(|m| parse_rational(m).map_err(error))
+        .collect::<PyResult<_>>()?;
+    let sqrt_s = parse_rational(&sqrt_s).map_err(error)?;
+    let points = py.detach(|| {
+        seeds
+            .iter()
+            .map(|seed| {
+                rusticol_core::phase_space::flat_final_state_exact(
+                    &masses, &sqrt_s, *seed, arithmetic,
+                )
+            })
+            .collect::<Result<Vec<_>, String>>()
+    });
+    Ok(points
+        .map_err(error)?
+        .into_iter()
+        .map(|(legs, weight)| {
+            (
+                legs.iter()
+                    .map(|leg| leg.each_ref().map(ToString::to_string))
+                    .collect(),
+                weight.to_string(),
+            )
+        })
+        .collect())
+}
+
+/// [`flat_phase_space`] in binary64 from binary64 masses and energy, the
+/// momenta and weights as floats (the same generator and stream: equal to
+/// `flat_phase_space(..., "double")` of the same values).
+#[pyfunction]
+pub fn flat_phase_space_f64(
+    py: Python<'_>,
+    masses: Vec<f64>,
+    sqrt_s: f64,
+    seeds: Vec<u64>,
+) -> PyResult<Vec<(Vec<[f64; 4]>, f64)>> {
+    let _unlock = pyamplicol::unlock();
+    use rusticol_core::phase_space::{flat_final_state, stream};
+    let points = py.detach(|| {
+        seeds
+            .iter()
+            .map(|seed| flat_final_state(&masses, &sqrt_s, &mut stream(*seed)))
+            .collect::<Result<Vec<_>, String>>()
+    });
+    Ok(points
+        .map_err(error)?
+        .into_iter()
+        .map(|point| (point.momenta, point.weight))
+        .collect())
+}

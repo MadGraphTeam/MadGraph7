@@ -35,6 +35,7 @@ from pyamplicol.reporting import (
     ProgressStart,
     ProgressUpdate,
 )
+from pyamplicol.reporting.resources import PeakMemory, peak_memory
 
 _MAX_SAMPLE_RUNTIME_SECONDS = 0.25
 _MAX_CALIBRATION_BLOCKS = 2
@@ -471,6 +472,9 @@ class BenchmarkBackend:
                     total=None,
                 )
             )
+        # The peak RAM of the profiled region: warm-ups, calibration and the
+        # timed blocks (left on any exit: the measurement only reads).
+        peak = peak_memory().__enter__()
         try:
             if compact_context is not None:
                 cold_warmup_state_before = _on_the_fly_runtime_state_census(
@@ -706,6 +710,7 @@ class BenchmarkBackend:
             if exc is chunk_guard_failure:
                 raise
             raise EvaluationError(f"runtime benchmark failed: {exc}") from exc
+        peak.__exit__(None, None, None)
         if self._progress is not None and not interrupted:
             self._progress.emit(ProgressEnd(task_id))
 
@@ -1022,6 +1027,7 @@ class BenchmarkBackend:
             process_id=process_id,
             process_expression=process_expression,
             timing_breakdown=timing_breakdown,
+            peak_memory=peak.result,
         )
 
     def _runtime(
@@ -2787,6 +2793,34 @@ class VirtualProfileResult:
     # and their reasons, most frequent first.
     best_effort_points: int = 0
     best_effort_reasons: tuple[tuple[str, int], ...] = ()
+    # The peak resident set size of this process over the profiled calls
+    # (warm-up, timed and double-double calls; ``reporting.resources.
+    # peak_memory``).
+    peak_memory: PeakMemory | None = None
+    # The same timed batches in double-double when the profiled
+    # configuration requests it (``evaluation.arithmetic = "double-double"``),
+    # timed after the binary64 calls; None otherwise (nothing extra runs).
+    double_double: PrecisionTiming | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PrecisionTiming:
+    """The timed calls of a profile in one carrier (``VirtualProfileResult.
+    double_double``): ``samples`` calls of ``batch`` points after ``warmup``
+    warm-up calls, the same batches as the binary64 timing;
+    ``seconds_per_point`` the median call's wall time per point, ``low`` and
+    ``high`` the fastest and slowest call's; ``points`` the timed points;
+    ``failed_points`` those without an accepted value."""
+
+    arithmetic: str
+    batch: int
+    samples: int
+    warmup: int
+    points: int
+    seconds_per_point: float
+    low: float
+    high: float
+    failed_points: int
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2841,7 +2875,7 @@ def profile_points(
     config: RunConfig | BenchmarkConfig | None,
 ) -> Momenta:
     """The timed points of a loop runtime profile (``profile_virtual``): one
-    distinct flat (RAMBO) point per point of every warm-up and timed call,
+    distinct flat (RAMBO on diet) point per point of every warm-up and timed call,
     ``batch_size x (warmup_runs + max(minimum_samples, 1))`` of them, drawn
     by ``cli.flat_points`` with ``evaluation.phase_space``'s seed and energy
     (point i from seed + i; without a RunConfig: its defaults, seed 1 at the
@@ -2902,7 +2936,6 @@ def profile_virtual(
     after every warm-up and timed call."""
 
     from pyamplicol.api import Runtime
-    from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
 
     run = config if isinstance(config, RunConfig) else None
     bench = (
@@ -2950,6 +2983,69 @@ def profile_virtual(
             return evaluation.mu_r2
         return [_initial_invariant(point, initial) for point in batch]
 
+    double_double = evaluation is not None and evaluation.arithmetic == "double-double"
+    with peak_memory() as peak:
+        profile = _profile_virtual_calls(
+            runtime, batches, bench, options, scales, progress, calls
+        )
+        dd_timing = (
+            _precision_timing(runtime, batches, bench, options, scales, "double-double")
+            if double_double
+            else None
+        )
+    return replace(profile, peak_memory=peak.result, double_double=dd_timing)
+
+
+def _precision_timing(
+    runtime: Any,
+    batches: Sequence[Momenta],
+    bench: BenchmarkConfig,
+    options: Mapping[str, Any],
+    scales: Callable[[Momenta], Any],
+    arithmetic: str,
+) -> PrecisionTiming:
+    """The profile's batches timed in ``arithmetic`` with the binary64
+    protocol (the same warm-up calls, then the same timed batches)."""
+
+    carrier = {**options, "arithmetic": arithmetic}
+    for batch in batches[: bench.warmup_runs]:
+        runtime.evaluate(batch, mu_r2=scales(batch), **carrier)
+    walls: list[float] = []
+    failed = 0
+    for batch in batches[bench.warmup_runs :]:
+        mu_r2 = scales(batch)
+        begin = time.perf_counter()
+        result = runtime.evaluate(batch, mu_r2=mu_r2, **carrier)
+        walls.append(time.perf_counter() - begin)
+        failed += sum(1 for valid in result.valid if not valid)
+    size = bench.batch_size
+    return PrecisionTiming(
+        arithmetic,
+        size,
+        len(walls),
+        bench.warmup_runs,
+        size * len(walls),
+        statistics.median(walls) / size,
+        min(walls) / size,
+        max(walls) / size,
+        failed,
+    )
+
+
+def _profile_virtual_calls(
+    runtime: Any,
+    batches: Sequence[Momenta],
+    bench: BenchmarkConfig,
+    options: Mapping[str, Any],
+    scales: Callable[[Momenta], Any],
+    progress: Callable[[int, int], None] | None,
+    calls: int,
+) -> VirtualProfileResult:
+    """The binary64 warm-up and timed calls of ``profile_virtual``."""
+
+    from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
+
+    physics = runtime.physics
     for done in range(bench.warmup_runs):
         batch = batches[done]
         runtime.evaluate(batch, mu_r2=scales(batch), **options)
@@ -3090,6 +3186,7 @@ def create_benchmark_backend(
 
 __all__ = [
     "BenchmarkBackend",
+    "PrecisionTiming",
     "VirtualProfileResult",
     "create_benchmark_backend",
     "is_virtual_target",
