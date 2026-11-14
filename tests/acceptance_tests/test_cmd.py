@@ -4279,8 +4279,11 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
 
     def _sm_with_mixing_heavy_quark(self):
         """A copy of the sm UFO with the heavy quark xq of _XQ_* (its
-        restriction card extended with xq's parameters); returns its path."""
-        path = pjoin(self.tmpdir, 'sm_xq')
+        restriction card extended with xq's parameters); returns its path.
+        The name is the test's: a model is imported as a Python module of
+        its directory name, and a second test run in the same process could
+        not import its own copy under the first one's name."""
+        path = pjoin(self.tmpdir, 'sm_xq_%s' % self._testMethodName)
         if os.path.isdir(path):
             shutil.rmtree(path)
         shutil.copytree(pjoin(MG5DIR, 'models', 'sm'), path,

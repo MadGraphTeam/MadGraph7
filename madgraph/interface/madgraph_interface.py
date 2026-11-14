@@ -14368,7 +14368,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         non-folding backend. Asking the output line alone left the crossings
         recorded by an earlier `generate ... --use_crossing=True` neither
         expanded nor written once a later `add process ... --use_crossing=False`
-        (or a `load processes` in a new session) turned the machinery off.
+        turned the machinery off.
 
         With `decay_chains`, the question is asked for the crossings recorded
         inside a decay chain, which a folding backend may still not read (the
