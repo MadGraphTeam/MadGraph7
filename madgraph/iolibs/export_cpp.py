@@ -4377,9 +4377,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except (KeyError, TypeError):
             processes = None
         amplicol_procs = self.amplicol_processes()
-        amplicol = bool(amplicol_procs)
-        if amplicol:
-            processes = (processes or []) + [amplicol_procs]
+        if amplicol_procs:
+            # one group per process, as the amplitudes: their multiplicities
+            # decide whether the sample is MLM merged
+            processes = (processes or []) + [[proc] for proc in amplicol_procs]
 
         if processes:
             # the crossed subprocesses folded into a base (merge_crossing=
@@ -4388,8 +4389,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                          for procs, me in zip(processes, self.me_list(
                              matrix_elements))]
             run_card.create_default_for_process(self.proc_characteristic,
-                                                history, processes,
-                                                amplicol=amplicol)
+                                                history, processes)
             # persist the model so the runtime can reload it: to compute the
             # widths set to 'auto' in the param_card (and recompute them at
             # each scan point) and to reset the parameters the model derives
@@ -4448,6 +4448,13 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if procs:
             pc['nexternal'] = max(pc['nexternal'], amplicol_nexternal)
             pc['ninitial'] = 2
+            try:
+                import madgraph.iolibs.export_amplicol as export_amplicol
+                pc['max_n_matched_jets'] = max(
+                    pc['max_n_matched_jets'], export_amplicol.max_matched_jets(
+                        self.amplicol_defs, self.amplicol_model))
+            except Exception as error:
+                logger.debug('could not count the [amplicol] matched jets: %s', error)
         for me in me_list:
             if not me.get('processes'):
                 continue

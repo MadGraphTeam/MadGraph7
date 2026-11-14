@@ -45,6 +45,7 @@ import madgraph
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.master_interface as mgcmd
 from madgraph.mg7 import bootstrap as mg7_bootstrap
+import madgraph.various.banner as bannermod
 
 LAUNCH_MODULE = 'madgraph.mg7.launch'
 _MG_ROOT = str(mg7_bootstrap.MG_ROOT)
@@ -2156,6 +2157,111 @@ class MG7ObservablePidsTest(unittest.TestCase):
         with self.assertRaises(ValueError) as error:
             self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass'))
         self.assertIn('apply_flavor_grouping', str(error.exception))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7CkkwlMergingCutTest(unittest.TestCase):
+    """The CKKW-L merging cut (ktdurham / ptlund) built per subprocess: its
+    merging legs, flavours and beams, as madevent's setcuts.f picks them."""
+
+    def setUp(self):
+        from madgraph.mg7 import launch as mg7_launch
+        import madspace as ms
+        self.launch = mg7_launch
+        self.ms = ms
+
+    def run_card(self, **phasespace):
+        card = bannermod.RunCardMG7()
+        for key, value in phasespace.items():
+            card.set('phasespace.' + key, value)
+        return card
+
+    def process(self, card, leptonic=False):
+        process = types.SimpleNamespace(is_decay=False, run_card=card,
+                                        leptonic=leptonic)
+        self.launch.MadgraphProcess.init_merging_cut(process)
+        return process
+
+    @staticmethod
+    def meta(incoming, outgoing, options, on_shell=()):
+        # p p > z j j, z > e+ e- when on_shell = [1]
+        return {
+            'incoming': incoming,
+            'outgoing': outgoing,
+            'flavors': [{'index': 0, 'options': [list(o) for o in options],
+                         'mirror': False}],
+            'channels': [{
+                'vertices': [['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                             ['o2', 'o3', 'p2'], ['p0', 'p2', 'p1']],
+                'on_shell_propagators': list(on_shell),
+                'diagrams': [{'diagram': 1,
+                              'permutation': list(range(len(incoming) + len(outgoing)))}],
+            }],
+        }
+
+    def build(self, process, meta):
+        subprocess = types.SimpleNamespace(
+            meta=meta, unmerged_meta=None, process=process,
+            flavor_pids=lambda: [meta['flavors'][0]['options'][0]])
+        return self.launch.MadgraphSubprocess.build_merging_cut(subprocess)
+
+    def test_no_merging_cut_without_ktdurham_or_ptlund(self):
+        self.assertIsNone(self.process(self.run_card()).merging_cut)
+
+    def test_ktdurham_merging_legs_skip_leptons_and_decay_products(self):
+        process = self.process(self.run_card(ktdurham=30.0))
+        measure, value, pdgs = process.merging_cut
+        self.assertEqual(measure, self.ms.MergingScale.Measure.kt_durham)
+        self.assertEqual(value, 30.0)
+        self.assertIn(21, pdgs)
+        options = [[2, -2, -11, 11, 21, 21]]
+        cut = self.build(process, self.meta([81, -81], [-82, 82, 21, 21], options))
+        self.assertEqual(cut.min, 30.0)
+        self.assertEqual(cut.scale.merging_leg_indices(), [4, 5])
+        self.assertTrue(cut.scale.bounds_pt())
+        # the jets of p p > z, z > j j are decay products: nothing to merge
+        cut = self.build(process, self.meta(
+            [81, -81], [21, 21, -82, 82], [[2, -2, 21, 21, -11, 11]], on_shell=[1]))
+        self.assertIsNone(cut)
+
+    def test_merging_pdgs_restricts_the_legs(self):
+        process = self.process(self.run_card(ptlund=20.0, merging_pdgs=[21]))
+        self.assertEqual(process.merging_cut[0],
+                         self.ms.MergingScale.Measure.pt_lund)
+        cut = self.build(process, self.meta(
+            [21, 21], [21, 21, 81, -81], [[21, 21, 21, 21, 1, -1]]))
+        self.assertEqual(cut.scale.merging_leg_indices(), [2, 3])
+        self.assertFalse(cut.scale.bounds_pt())
+
+    def test_flavours_treated_differently_are_refused(self):
+        process = self.process(self.run_card(ktdurham=30.0, merging_pdgs=[21, 1, 2]))
+        meta = self.meta([21, 21], [21, 21, 81, -81],
+                         [[21, 21, 21, 21, 1, -1], [21, 21, 21, 21, 3, -3]])
+        with self.assertRaises(ValueError) as error:
+            self.build(process, meta)
+        self.assertIn('apply_flavor_grouping', str(error.exception))
+
+    def test_a_lepton_collider_has_no_beam_pt_term(self):
+        process = self.process(self.run_card(ktdurham=10.0), leptonic=True)
+        cut = self.build(process, self.meta(
+            [-11, 11], [21, 21, 81, -81], [[-11, 11, 21, 21, 1, -1]]))
+        self.assertFalse(cut.scale.bounds_pt())
+
+    def test_ckkwl_scale_has_no_alpha_s_or_pdf_ladder(self):
+        card = bannermod.RunCardMG7()
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        self.assertTrue(self.launch.mlm_pdf_ladder(card, True))
+        card.set('beam.dynamical_scale_choice', 'ckkwl')
+        self.assertFalse(self.launch.mlm_pdf_ladder(card, True))
+
+    def test_ckkwl_scale_clusters_over_all_diagrams(self):
+        card = bannermod.RunCardMG7()
+        card.set('beam.clustering_history', 'diagram')
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        self.assertEqual(self.launch.mlm_clustering_history(card), 'diagram')
+        card.set('beam.dynamical_scale_choice', 'ckkwl')
+        self.assertEqual(self.launch.mlm_clustering_history(card), 'all_diagrams')
 
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),

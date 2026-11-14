@@ -10,14 +10,24 @@ cannot go on shell with the param card masses and widths are dropped at launch.
 A second pass re- or
 unweights the events to full colour with the ratio of the full-colour to the
 leading-colour matrix element summed over all colour orderings, at the
-helicity of the event.
+helicity of the event. MLM and CKKW-L scales cluster each event along the planar
+diagrams of its leading-colour flow (amplicol_clustering).
 """
 
 from __future__ import annotations
 
+import json
+import os
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from madgraph.mg7.common import lhe_helicities, ms
+from madgraph.mg7.amplicol_clustering import (
+    CLUSTERING_MODEL,
+    VertexTable,
+    madspace_lines,
+    planar_diagrams,
+)
+from madgraph.mg7.common import lhe_helicities, logger, mlm_clustering_history, ms
 from madgraph.mg7.observables import clean_pids
 from madgraph.mg7.subprocess_madmatrix import (
     Channel,
@@ -255,14 +265,59 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
     )
 
 
+def file_key(path: str) -> tuple:
+    """The cache key of a file: a new output into the same directory changes it."""
+    stat = os.stat(path)
+    return path, stat.st_mtime_ns, stat.st_size
+
+
+@lru_cache(maxsize=None)
+def _vertex_table(key: tuple) -> VertexTable:
+    table = VertexTable.load(key[0])
+    if table.contact_vertices:
+        logger.warning(
+            "the MLM clustering of [amplicol] events leaves out the diagrams of "
+            "the contact vertices %s", table.contact_vertices
+        )
+    return table
+
+
+def vertex_table(path: str) -> VertexTable:
+    return _vertex_table(file_key(path))
+
+
+@lru_cache(maxsize=None)
+def _max_coupling_orders(key: tuple) -> tuple:
+    with open(key[0]) as stream:
+        return tuple(sorted(json.load(stream)["max_coupling_orders"].items()))
+
+
+def max_coupling_orders(path: str) -> tuple:
+    return _max_coupling_orders(file_key(path))
+
+
+@lru_cache(maxsize=None)
+def _clustering_diagrams(table_key, pdgs, n_in, flow, orders) -> list:
+    return planar_diagrams(
+        _vertex_table(table_key), list(pdgs), n_in,
+        None if flow is None else [list(tags) for tags in flow], dict(orders),
+    )
+
+
+def clustering_diagrams(table_path, pdgs, n_in, flow, orders) -> list:
+    """planar_diagrams, shared by the subprocesses with these arguments (flow
+    and orders as tuples)."""
+    return _clustering_diagrams(file_key(table_path), pdgs, n_in, flow, orders)
+
+
 class AmplicolSubprocess(MadgraphSubprocess):
     def __init__(self, process, meta, subproc_id, unmerged_meta=None):
-        if process.mlm_clustering:
-            # the clustering needs Feynman-diagram topologies, which AmpliCol lacks
+        if process.mlm_clustering and \
+                mlm_clustering_history(process.run_card) != "all_diagrams":
+            # there is no single-diagram weight to pick a diagram by
             raise RuntimeError(
-                "dynamical_scale_choice = mlm is not supported for [amplicol] "
-                f"subprocesses ({meta['incoming']} > {meta['outgoing']}): "
-                "use a closed-form scale choice"
+                "the MLM clustering of [amplicol] subprocesses needs "
+                "clustering_history = all_diagrams"
             )
         super().__init__(process, meta, subproc_id, unmerged_meta)
         self.meta = active_resonances(self.meta, process.get_mass, process.get_width)
@@ -284,6 +339,88 @@ class AmplicolSubprocess(MadgraphSubprocess):
                         f"the same particles in all flavours of the [amplicol] "
                         f"subprocess {self.meta['incoming']} > {self.meta['outgoing']}"
                     )
+
+    def build_mlm_clustering(self, options: dict):
+        """The clustering along the planar diagrams of the colour flow of each
+        flavour, one clustering class per flavour and flow."""
+        # absolute: the caches outlive the run directory
+        table_path = os.path.abspath(os.path.join("SubProcesses", CLUSTERING_MODEL))
+        process_path = os.path.abspath(os.path.join(self.meta["path"], "process.json"))
+        if not os.path.exists(table_path):
+            raise RuntimeError(
+                "the output has no vertices for the MLM clustering of its "
+                "[amplicol] processes: regenerate it"
+            )
+        table = vertex_table(table_path)
+        orders = max_coupling_orders(process_path)
+        n_in = len(self.meta["incoming"])
+        n_ext = n_in + len(self.meta["outgoing"])
+
+        def value(pdg, kind, get):
+            name = table.particles[pdg][kind]
+            return 0.0 if name == "ZERO" else float(get(abs(pdg)))
+
+        classes, keys, flavor_classes = [], {}, []
+        for flavor in self.meta["flavors"]:
+            pdgs = tuple(flavor["options"][0])
+            flow = None
+            if self.meta["color_flows"]:
+                flow = tuple(map(tuple, self.meta["color_flows"][flavor["color_index"]]))
+            key = (pdgs, flow)
+            if key not in keys:
+                diagrams = clustering_diagrams(table_path, pdgs, n_in, flow, orders)
+                if not diagrams:
+                    contact = (
+                        "; it may come only from a contact vertex of the "
+                        f"model ({table.contact_vertices}), which the "
+                        "clustering does not support"
+                        if table.contact_vertices else ""
+                    )
+                    raise RuntimeError(
+                        f"no diagram of 3-point vertices of {pdgs} has the colour "
+                        f"flow {flow} of its [amplicol] events, which the MLM "
+                        f"clustering needs{contact}"
+                    )
+                keys[key] = len(classes)
+                classes.append(ms.ClusteringClass(
+                    [abs(pdg) for pdg in pdgs],
+                    [
+                        [
+                            ms.ClusteringLine(
+                                mask, pdg,
+                                value(pdg, "mass", self.process.get_mass),
+                                value(pdg, "width", self.process.get_width),
+                            )
+                            for mask, pdg in madspace_lines(diagram, n_ext, table.anti)
+                        ]
+                        for diagram in diagrams
+                    ],
+                ))
+            flavor_classes.append(keys[key])
+        return ms.MLMClustering(
+            classes,
+            flavor_classes,
+            self.incoming_masses + self.outgoing_masses,
+            pdg_color_types=table.color_types(),
+            **options,
+        )
+
+    def build_merging_cut(self):
+        """As for madmatrix, but ptlund takes the flavours of the first flavour
+        for all, which only holds when no flavour changes its splittings."""
+        merging_cut = getattr(self.process, "merging_cut", None)
+        if merging_cut is not None and merging_cut[0] == ms.MergingScale.Measure.pt_lund:
+            def splittings(pdgs):
+                return tuple(0 if abs(pdg) in (1, 2, 3) else abs(pdg) for pdg in pdgs)
+            if len({splittings(pdgs) for flavor in self.meta["flavors"]
+                    for pdgs in flavor["options"]}) > 1:
+                raise RuntimeError(
+                    "the ptlund merging cut depends on the flavours of the event, "
+                    "which the [amplicol] subprocess "
+                    f"{self.meta['incoming']} > {self.meta['outgoing']} groups: "
+                    "use ktdurham"
+                )
+        return super().build_merging_cut()
 
     def load_matrix_elements(self, api_path_formats, member_metas):
         run_args = self.process.run_card["run"]

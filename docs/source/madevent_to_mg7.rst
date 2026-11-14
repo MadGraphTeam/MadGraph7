@@ -95,8 +95,9 @@ Scales
       - Applies to the dynamical scale only.
 
 The MadEvent default ``dynamical_scale_choice = -1`` follows the clustering of the diagram,
-as needed for MLM merging. In MG7 this is the choice ``"mlm"``, see `MLM merging`_. Otherwise
-the MG7 default is ``half_transverse_mass``.
+as needed for MLM merging. In MG7 this is the choice ``"mlm"``, see `MLM merging`_. A card
+with a ``ktdurham`` or ``ptlund`` cut is translated to MG7's ``"ckkwl"`` clustering scale
+instead. Otherwise the MG7 default is ``half_transverse_mass``.
 
 Generation and phase space
 --------------------------
@@ -434,10 +435,10 @@ Not supported yet
 
 The following MadEvent features have no MG7 equivalent. Settings for them are ignored.
 
-* Matching and merging other than MLM: ``ickkw = 2``, and the CKKW-L cuts ``ktdurham``,
-  ``ptlund`` and ``dparameter``. The MLM settings ``highestmult``, ``ktscheme``,
-  ``alpsfact``, ``chcluster``, ``asrwgtflavor``, ``clusinfo`` and
-  ``pdgs_for_merging_cut`` have no counterpart either.
+* Matching and merging settings other than MLM (``ickkw = 1``, ``xqcut``,
+  ``auto_ptj_mjj``) and CKKW-L (``ktdurham``, ``ptlund``, ``dparameter``,
+  ``pdgs_for_merging_cut``): ``highestmult``, ``ktscheme``, ``alpsfact``, ``chcluster``,
+  ``pdfwgt``, ``asrwgtflavor``, ``clusinfo``.
 * Biasing: ``bias_module`` and ``bias_parameters``.
 * Beam polarization and heavy-ion or equivalent-photon beams: ``polbeam1``, ``polbeam2``,
   ``nb_proton1``, ``nb_proton2``, ``nb_neutron1``, ``nb_neutron2``, ``mass_ion1``,

@@ -2918,3 +2918,167 @@ def test_a_two_to_one_process_takes_its_scales_from_shat(scale_scheme, history):
     assert np.all(diagram == 0)
     # nothing was emitted, so nothing can fail the merging cut
     assert np.all(xqcut_weight == 1.0)
+
+
+# --------------------------------------------------------------------------
+# clustering classes: diagrams given line by line, one class per flavour
+# --------------------------------------------------------------------------
+
+
+def fixture_lines(diagram, permutation):
+    """The internal lines of a topology fixture as ms.ClusteringLine: the legs
+    away from beam 1, and both sides of a t-channel line."""
+    n_ext = len(diagram["outgoing_masses"]) + 2
+    full = (1 << n_ext) - 1
+    leg_of_slot = {slot: leg for leg, slot in enumerate(permutation)}
+
+    def leg(name):
+        if name[0] == "i":
+            return int(name[1:])
+        return leg_of_slot[int(name[1:]) + 2]
+
+    vertices = diagram["vertices"]
+
+    def side(vertex, via):
+        """The legs reachable from a vertex without crossing the propagator via."""
+        mask, stack, seen = 0, [(vertex, via)], set()
+        while stack:
+            index, came = stack.pop()
+            if index in seen:
+                continue
+            seen.add(index)
+            for name in vertices[index]:
+                if name == came:
+                    continue
+                if name[0] == "p":
+                    stack += [
+                        (j, name)
+                        for j, v in enumerate(vertices)
+                        if j != index and name in v
+                    ]
+                else:
+                    mask |= 1 << leg(name)
+        return mask
+
+    lines = []
+    for k, propagator in enumerate(diagram["propagators"]):
+        # the fixtures list Propagator arguments: mass, width, ..., pdg_id (6th)
+        mass, width = propagator[:2]
+        pdg = propagator[5] if len(propagator) > 5 else 0
+        name = f"p{k}"
+        first = next(j for j, v in enumerate(vertices) if name in v)
+        mask = side(first, name)
+        if mask & 1:
+            mask = full ^ mask
+        lines.append(ms.ClusteringLine(mask, pdg, mass, width))
+        if mask & 2:
+            lines.append(ms.ClusteringLine(full ^ mask, pdg, mass, 0.0))
+    return lines
+
+
+def fixture_class(diagrams, pdg_ids):
+    return ms.ClusteringClass(
+        pdg_ids,
+        [fixture_lines(d, p) for d in diagrams for p in d["permutations"]],
+    )
+
+
+def fixture_masses(diagrams):
+    d = diagrams[0]
+    permutation = d["permutations"][0]
+    return d["incoming_masses"] + [
+        d["outgoing_masses"][permutation[leg] - 2] for leg in range(2, len(permutation))
+    ]
+
+
+def class_clustering(classes, flavor_classes, masses, **kwargs):
+    return ms.MLMClustering(
+        classes, flavor_classes, masses, cm_energy=CM_ENERGY, **kwargs
+    )
+
+
+def test_a_class_compiles_the_state_machine_of_its_topologies(process):
+    """Lines read off the topologies, in their order, give the very state
+    machine the topology constructor compiles."""
+    _, diagrams, pdg_ids = process
+    reference = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = class_clustering(
+        [fixture_class(diagrams, pdg_ids)], [0], fixture_masses(diagrams)
+    )
+    assert list(clustering.cluster_state_machine) == list(
+        reference.cluster_state_machine
+    )
+    assert list(clustering.class_start_states) == [0]
+    momenta = sample_momenta(diagrams)
+    for ref, out in zip(run(reference, momenta)[:4], run(clustering, momenta)[:4]):
+        np.testing.assert_array_equal(ref, out)
+
+
+def test_identical_classes_share_one_state_machine(process):
+    _, diagrams, pdg_ids = process
+    masses = fixture_masses(diagrams)
+    single = class_clustering([fixture_class(diagrams, pdg_ids)], [0], masses)
+    double = class_clustering(
+        [fixture_class(diagrams, pdg_ids), fixture_class(diagrams, pdg_ids)],
+        [0, 1],
+        masses,
+    )
+    assert list(double.class_start_states) == [0, 0]
+    assert len(double.cluster_state_machine) == len(single.cluster_state_machine)
+
+
+def test_each_flavour_is_clustered_along_its_own_class():
+    """g g > g g g and g g > q q~ g in one clustering, picked per event by the
+    flavour index, give the scales of each class on its own: the quark legs
+    change which clusterings are QCD jets and how the lines are traced."""
+    diagrams = load_diagrams(PROCESSES["ttggg"][0])
+    masses = fixture_masses(diagrams)
+    massless = [0.0] * len(masses)
+    momenta = sample_momenta(diagrams)
+    # the same diagrams, with the tops as light quarks in one class
+    gluons = [21] * 7
+    quarks = [21, 21, 1, -1, 21, 21, 21]
+    classes = [fixture_class(diagrams, gluons), fixture_class(diagrams, quarks)]
+    combined = class_clustering(classes, [1, 0, 1], massless)
+    alone = [class_clustering([c], [0], massless) for c in classes]
+    for flavor, cls in ((0, 1), (1, 0), (2, 1)):
+        expected = with_flavors(alone[cls], [], momenta, 0)
+        out = with_flavors(combined, [], momenta, flavor)
+        for index in (0, 1, 2, 3):
+            np.testing.assert_array_equal(expected[index], out[index])
+    # without a flavour, the class of the first one
+    for ref, out in zip(run(alone[1], momenta)[:4], run(combined, momenta)[:4]):
+        np.testing.assert_array_equal(ref, out)
+    assert combined.class_start_states[0] != combined.class_start_states[1]
+
+
+def test_class_arguments_are_checked():
+    diagrams, pdg_ids = load_diagrams("ttgg.json"), PROCESSES["ttgg"][1]
+    masses = fixture_masses(diagrams)
+    good = fixture_class(diagrams, pdg_ids)
+    with pytest.raises(ValueError):
+        class_clustering([good], [1], masses)
+    with pytest.raises(ValueError):
+        class_clustering([ms.ClusteringClass(pdg_ids[:-1], good.diagrams)], [0], masses)
+    with pytest.raises(ValueError):
+        bad_line = ms.ClusteringLine(3, 21, 0.0, 0.0)
+        class_clustering([ms.ClusteringClass(pdg_ids, [[bad_line]])], [0], masses)
+
+
+def test_the_state_machine_can_be_a_context_global(process):
+    """Read from a context global, the state machine gives the same scales as
+    the copy each function otherwise holds, and is left out of the function."""
+    name, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    reference = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering.global_name = f"test_mlm_state_machine_{name}"
+    clustering.initialize_globals(ms.default_context())
+    # set up again in the same context
+    clustering.initialize_globals(ms.default_context())
+    for ref, out in zip(run(reference, momenta)[:4], run(clustering, momenta)[:4]):
+        np.testing.assert_array_equal(ref, out)
+    machine_size = len(clustering.cluster_state_machine)
+    assert f"int32[1, {machine_size}] = {clustering.global_name}" in str(
+        clustering.function()
+    )
