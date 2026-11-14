@@ -68,8 +68,11 @@ def actions(n):
             add(f"qp-mode{mode}-finite{finite}-hit", 4, mode, finite, expectation="qp_hit")
     add("qp-full-after-poles", 4, expectation="qp_hit")
     add("dp-cache-survives-qp", 1, expectation="dp_hit")
+    # The check pass has its own QP cache: it never reads the primary entries
+    # above, so its first request is a miss, and its repeat a hit.
     for finite in (1, 0):
-        add(f"qp-check-pass-finite{finite}", 5, finite=finite, expectation="bypass")
+        add(f"qp-check-pass-finite{finite}-cold", 5, finite=finite, expectation="qp_miss")
+        add(f"qp-check-pass-finite{finite}-hit", 5, finite=finite, expectation="qp_hit")
     add("qp-cache-disabled", 4, cache=0, expectation="bypass")
     add("qp-topology-excluded", 4, cache=n-1, expectation="bypass")
     add("qp-cache-survives-bypass", 4, expectation="qp_hit")
@@ -184,7 +187,7 @@ def parse_results(text, fixture, records):
             if expectation == "bypass":
                 expected_qd = [0,0,0,0,0,1] if record["ctmode"] >= 4 else [0]*6
                 if any(delta[:9]) or qd != expected_qd:
-                    failures.append("disabled/topology/check-pass call changed retained cache")
+                    failures.append("disabled/topology/DP-check-pass call changed retained cache")
             elif expectation == "dp_hit":
                 if sum(delta[i] for i in (0,2,4)) <= 0 or delta[6] != 0:
                     failures.append("repeated DP call did not reuse retained entries")

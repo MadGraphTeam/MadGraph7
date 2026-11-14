@@ -39,8 +39,10 @@ int32_t ml_tirust_cache_statistics(ml_tirust_context *context, uint64_t *counts,
  * Hits/misses count tensor requests; a miss may subsequently fail reduction.
  * Bytes account for retained payloads and estimated entry metadata, excluding
  * plans/workspaces. These are not process resident-memory measurements.
- * check_pass and cache_enabled=0 bypass this cache without changing hits or
- * misses. Full/poles-only requests and pole selectors have distinct keys. */
+ * Summed over the primary and check-pass caches, which never share an entry
+ * and share one byte budget. cache_enabled=0 bypasses both without changing
+ * hits or misses. Full/poles-only requests and pole selectors have distinct
+ * keys. */
 int32_t ml_tirust_qp_cache_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
 
 /* Optional cumulative full-DP diagnostics, since context creation. count=20.

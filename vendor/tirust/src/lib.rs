@@ -62,6 +62,12 @@ struct State {
     check_store: TensorStore,
     dp_cache: DpCache,
     qp_cache: QpCache,
+    /// Complete QP tensors of MadLoop's independent direction checks. Like
+    /// `check_store` it never shares an entry with the primary pass, so a
+    /// check computes every tensor it compares; only its own repeats (one
+    /// per helicity in loop-induced processes) reuse them. It shares the QP
+    /// byte budget with `qp_cache`.
+    qp_check_cache: QpCache,
     dp_routes: [u64; DP_ROUTE_STATS_COUNT],
     last_dp_route: Option<usize>,
     #[cfg(feature = "poles-only")]
@@ -81,6 +87,7 @@ impl State {
             dp: HashMap::new(),
             mp: HashMap::new(),
             qp_cache: QpCache::new(DEFAULT_BUDGET / 2),
+            qp_check_cache: QpCache::new(DEFAULT_BUDGET / 2),
             dp_routes: [0; DP_ROUTE_STATS_COUNT],
             last_dp_route: None,
             store: TensorStore::with_options(TensorStoreOptions {
@@ -287,13 +294,16 @@ impl State {
     }
 
     fn mp_records(&mut self, key: Key, records: [&[u8]; 4], mode: Mode) -> Result<(i32, Vec<u8>)> {
-        let cache_key = if mode.cache && !mode.check {
+        // Each pass reads only its own results: the check pass still computes
+        // every tensor it compares, and its repeats reuse that computation.
+        let cache_key = if mode.cache {
             let key_bytes = qp_cache_key(key, records, mode);
-            if let Some(values) = self.qp_cache.entries.get(&key_bytes) {
-                self.qp_cache.hits += 1;
+            let cache = if mode.check { &mut self.qp_check_cache } else { &mut self.qp_cache };
+            if let Some(values) = cache.entries.get(&key_bytes) {
+                cache.hits += 1;
                 return Ok((SUCCESS, values.to_vec()));
             }
-            self.qp_cache.misses += 1;
+            cache.misses += 1;
             Some(key_bytes)
         } else {
             self.qp_cache.bypassed += 1;
@@ -303,10 +313,23 @@ impl State {
         let (status, values) = self.mp(key, batch, mode)?;
         if status == SUCCESS {
             if let Some(cache_key) = cache_key {
-                self.qp_cache.insert(cache_key, &values);
+                if mode.check {
+                    let held = self.qp_cache.bytes;
+                    self.qp_check_cache.insert(cache_key, &values, held);
+                } else {
+                    let held = self.qp_check_cache.bytes;
+                    self.qp_cache.insert(cache_key, &values, held);
+                }
             }
         }
         Ok((status, values))
+    }
+
+    /// QP whole-tensor counters summed over both passes; `bypassed` counts
+    /// calls with caching disabled.
+    fn qp_statistics(&self) -> [u64; 6] {
+        let (p, c) = (self.qp_cache.statistics(), self.qp_check_cache.statistics());
+        std::array::from_fn(|i| p[i] + c[i])
     }
 
     #[cfg(feature = "poles-only")]
@@ -395,7 +418,8 @@ fn budgets(total: u64) -> Budgets {
 /// Exact full-tensor QP results, including the original decimal records.
 /// This is separate from upstream's binary64 subintegral cache. Full and
 /// truncated tensors have different keys, as do every pole selection and
-/// precision. Failed and independent-check results are never retained.
+/// precision. Failed results are never retained. The primary pass and the
+/// independent check each have their own cache; the two share one budget.
 struct QpCache {
     entries: HashMap<Vec<u8>, Box<[u8]>>,
     budget: u64,
@@ -420,11 +444,12 @@ impl QpCache {
     fn clear(&mut self) {
         *self = Self::new(self.budget);
     }
-    fn insert(&mut self, key: Vec<u8>, values: &[u8]) {
+    /// `held` is the bytes the other pass's cache holds under the same budget.
+    fn insert(&mut self, key: Vec<u8>, values: &[u8], held: u64) {
         // Account for owned payloads plus a conservative allowance for the
         // hash table and entry metadata. No eviction makes timing predictable.
         let cost = (key.capacity() + values.len() + 256) as u64;
-        if cost > self.budget.saturating_sub(self.bytes) {
+        if cost > self.budget.saturating_sub(self.bytes + held) {
             self.not_stored += 1;
             return;
         }
@@ -832,6 +857,7 @@ pub unsafe extern "C" fn ml_tirust_clear_cache(handle: *mut Context) -> i32 {
         state.check_store.clear();
         state.dp_cache.clear();
         state.qp_cache.clear();
+        state.qp_check_cache.clear();
         #[cfg(feature = "poles-only")]
         state.pole_store.clear();
         Ok(SUCCESS)
@@ -858,6 +884,7 @@ pub unsafe extern "C" fn ml_tirust_set_cache_budget(handle: *mut Context, bytes:
             state.check_store.set_byte_budget(Some(budget.check));
             state.dp_cache = DpCache::new(budget.results);
             state.qp_cache = QpCache::new(bytes / 2);
+            state.qp_check_cache = QpCache::new(bytes / 2);
             #[cfg(feature = "poles-only")]
             {
                 state.pole_store.clear();
@@ -903,11 +930,12 @@ pub unsafe extern "C" fn ml_tirust_cache_statistics(
         ]) {
             *a += b;
         }
-        counts[4] += state.qp_cache.hits + state.dp_cache.hits;
-        counts[5] += state.qp_cache.misses + state.dp_cache.misses;
-        counts[6] += (state.qp_cache.entries.len() + state.dp_cache.entries.len()) as u64;
-        counts[7] += state.qp_cache.bytes + state.dp_cache.bytes;
-        counts[8] += state.qp_cache.not_stored + state.dp_cache.not_stored;
+        let qp = state.qp_statistics();
+        counts[4] += qp[0] + state.dp_cache.hits;
+        counts[5] += qp[1] + state.dp_cache.misses;
+        counts[6] += qp[2] + state.dp_cache.entries.len() as u64;
+        counts[7] += qp[3] + state.dp_cache.bytes;
+        counts[8] += qp[4] + state.dp_cache.not_stored;
         #[cfg(feature = "poles-only")]
         {
             let p = state.pole_store.statistics();
@@ -949,7 +977,7 @@ pub unsafe extern "C" fn ml_tirust_qp_cache_statistics(
             .lock()
             .map_err(|_| "TIRust context poisoned")?;
         unsafe {
-            write(out, &state.qp_cache.statistics());
+            write(out, &state.qp_statistics());
         }
         Ok(SUCCESS)
     })
@@ -1204,23 +1232,26 @@ mod tests {
         assert_eq!(qp_counts(c)[..3], [0, 1, 1]);
         assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
         assert_eq!(qp_counts(c)[..3], [1, 1, 1]);
+        // The independent check misses in its own cache; caching disabled
+        // bypasses both.
         assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
         assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 0), original);
-        assert_eq!(qp_counts(c)[..3], [1, 1, 1]);
-        assert_eq!(qp_counts(c)[5], 2);
+        assert_eq!(qp_counts(c)[..3], [1, 2, 2]);
+        assert_eq!(qp_counts(c)[5], 1);
         let changed = qp_tadpole(c, "9", 0, 1, 0, 1);
         assert_ne!(changed, original);
         let ir = qp_tadpole(c, "4", 2, 1, 0, 1);
         assert_ne!(ir, original);
         assert_eq!(parse_records(&ir).unwrap()[0], Float::new(MP_BITS));
-        assert_eq!(qp_counts(c)[..3], [1, 3, 3]);
+        assert_eq!(qp_counts(c)[..3], [1, 4, 4]);
         assert_eq!(
             unsafe { ml_tirust_set_cache_budget(c, DEFAULT_BUDGET as i64) },
             SUCCESS
         );
-        assert_eq!(qp_counts(c)[..3], [1, 3, 3]);
+        assert_eq!(qp_counts(c)[..3], [1, 4, 4]);
         // Neither the independent check nor cache-disabled path can consume
-        // retained values, even when a deliberately corrupted test entry exists.
+        // retained primary values, even when a deliberately corrupted test
+        // entry exists.
         {
             let mut state = unsafe { context(c).unwrap() }.state.lock().unwrap();
             for value in state.qp_cache.entries.values_mut() {
@@ -1237,6 +1268,46 @@ mod tests {
         assert_eq!(unsafe { ml_tirust_set_cache_budget(c, 0) }, SUCCESS);
         assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
         assert_eq!(qp_counts(c), [0, 1, 0, 0, 1, 0]);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn qp_check_pass_reuses_only_check_results_within_the_shared_budget() {
+        let c = handle();
+        let original = qp_tadpole(c, "4", 0, 1, 0, 1);
+        // The check computes its tensor although the primary pass holds it.
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        let counts = qp_counts(c);
+        assert_eq!((counts[0], counts[1], counts[2], counts[4], counts[5]), (0, 2, 2, 0, 0));
+        let entry = counts[3] / 2;
+        // Mark each pass's entry: a repeat is answered from its own pass only.
+        {
+            let mut state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+            for value in state.qp_cache.entries.values_mut() {
+                value.fill(b'p');
+            }
+            for value in state.qp_check_cache.entries.values_mut() {
+                value.fill(b'c');
+            }
+        }
+        let primary = qp_tadpole(c, "4", 0, 1, 0, 1);
+        let check = qp_tadpole(c, "4", 0, 1, 1, 1);
+        assert!(primary.contains(&b'p') && !primary.contains(&b'c'));
+        assert!(check.contains(&b'c') && !check.contains(&b'p'));
+        assert_eq!(qp_counts(c)[..3], [2, 2, 2]);
+        // Both passes draw on one QP budget (half the total). With room for
+        // one entry, the pass that stores first keeps it; the other pass
+        // recomputes every request, with unchanged values.
+        assert_eq!(unsafe { ml_tirust_set_cache_budget(c, (2 * entry) as i64) }, SUCCESS);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_counts(c), [0, 3, 1, entry, 2, 0]);
+        assert_eq!(unsafe { ml_tirust_clear_cache(c) }, SUCCESS);
+        assert_eq!(qp_counts(c), [0; 6]);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
+        assert_eq!(qp_counts(c), [1, 2, 1, entry, 1, 0]);
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
     }
     #[cfg(feature = "poles-only")]

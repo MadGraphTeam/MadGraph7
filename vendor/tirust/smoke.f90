@@ -100,8 +100,18 @@ program smoke
   if (any(abs(qr-qreference)>0.0_KI_QTIR)) stop 39
   call tirust_qp_cache_statistics(qp_counts,status)
   call require_success('independent QP cache statistics')
-  if (any(qp_counts(1:5)/=qp_before(1:5))) stop 40
-  if (qp_counts(6)/=qp_before(6)+1_c_int64_t) stop 41
+  ! The check pass has its own QP cache: its first request misses there (never
+  ! a hit on the primary entry), is stored, and bypasses nothing.
+  if (qp_counts(1)/=qp_before(1) .or. qp_counts(2)/=qp_before(2)+1_c_int64_t) stop 40
+  if (qp_counts(3)/=qp_before(3)+1_c_int64_t .or. qp_counts(4)<=qp_before(4)) stop 41
+  if (qp_counts(5)/=qp_before(5) .or. qp_counts(6)/=qp_before(6)) stop 46
+  qp_before = qp_counts
+  call tirust_tensor_evaluate(1,0,qp,qs,qm,mass_qp,qr,status,check_pass=.true.)
+  call require_success('repeated binary128 check pass')
+  if (any(abs(qr-qreference)>0.0_KI_QTIR)) stop 47
+  call tirust_qp_cache_statistics(qp_counts,status)
+  call require_success('repeated check QP cache statistics')
+  if (qp_counts(1)/=qp_before(1)+1_c_int64_t .or. any(qp_counts(2:6)/=qp_before(2:6))) stop 48
 
   ! A lightlike scaleless bubble has UV=+1 and IR=-1 separately.
   bp = 0
