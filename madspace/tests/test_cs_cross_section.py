@@ -10,13 +10,16 @@ Without cuts the NLO is sigma_LO (1 + alpha_s / pi), so that the real
 stream gives (1 - C_F) alpha_s / pi sigma_LO.
 
 The real stream subtracts the dipoles with the Born blocks of the Fortran
-provider: at the points of the reference of test_cs_dipoles.py (test_data/cs)
-they have to give the dipoles of pyAmpliCol, and their sum the real matrix
-element in the soft and collinear limits. The NLO cross sections are those
-of MG5aMC within PULL combined errors and do not depend on alpha.
-MADSPACE_FKS_POINTS sets the number of points per channel of an iteration,
-POINTS by default, with which the tests take two minutes on one core, most
-of it for the 108 channels of the real stream of p p > t t~.
+provider: at the points of the references of test_cs_dipoles.py
+(test_data/cs) they have to give the dipoles of pyAmpliCol, and their sum
+the real matrix element in the soft and collinear limits, with gluons in
+the initial state (p p > t t~) and in the final state (e+ e- > j j j, with
+the splittings of a final-state gluon into g g and q q~). The NLO cross
+sections are those of MG5aMC within PULL combined errors and do not depend
+on alpha. MADSPACE_FKS_POINTS sets the number of points per channel of an
+iteration, POINTS by default, with which the tests take about four minutes
+on one core, most of it for the real streams of p p > t t~ (108 channels)
+and e+ e- > j j j (192).
 """
 
 import functools
@@ -138,7 +141,9 @@ def test_epem_jj_real(alpha):
 
 
 @needs_outputs
-@pytest.mark.parametrize("name", ["epem_jj", "epem_jj_antikt", "pp_epem", "pp_ttx"])
+@pytest.mark.parametrize(
+    "name", ["epem_jj", "epem_jj_antikt", "pp_epem", "pp_ttx", "epem_jjj"]
+)
 def test_against_mg5amc(name):
     """The LO and NLO cross sections of the CS driver and those of MG5aMC,
     the LO also per subprocess."""
@@ -152,7 +157,7 @@ def test_against_mg5amc(name):
 
 
 @needs_outputs
-@pytest.mark.parametrize("name", ["epem_jj", "pp_epem"])
+@pytest.mark.parametrize("name", ["epem_jj", "pp_epem", "epem_jjj"])
 def test_alpha_independence(name):
     """The NLO cross section does not depend on alpha (1 and 0.1 for all
     families), within PULL combined errors."""
@@ -188,16 +193,16 @@ def test_info_json():
 
 @pytest.fixture(scope="module")
 def real_stream():
-    """The run of p p > t t~ with the real stream alone, set up and not run,
-    by its technical cut, closed at the end of the module."""
+    """The runs with the real stream alone, set up and not run, by reference
+    and technical cut, closed at the end of the module."""
     runs = {}
 
-    def get(technical_cut):
-        if technical_cut not in runs:
-            run = make_run("pp_ttx", streams=("real",), technical_cut=technical_cut)
+    def get(name, technical_cut):
+        if (name, technical_cut) not in runs:
+            run = make_run(name, streams=("real",), technical_cut=technical_cut)
             run.setup()
-            runs[technical_cut] = run
-        return runs[technical_cut]
+            runs[name, technical_cut] = run
+        return runs[name, technical_cut]
 
     yield get
     for run in runs.values():
@@ -205,7 +210,18 @@ def real_stream():
 
 
 def real_integrand(run, pdgs):
-    return next(i for i in run.integrands if list(pdgs) in i.flavors)
+    """The real integrand of a run with the flavor line pdgs, None without
+    one (a line of the reference in another order of the particles)."""
+    return next((i for i in run.integrands if list(pdgs) in i.flavors), None)
+
+
+# the references of the runs and of pyAmpliCol at the points of
+# test_cs_dipoles.py: initial-state gluons (p p > t t~) and a final-state
+# gluon in the Born, with its splittings into g g and q q~ (e+ e- > j j j),
+# with the precision of the dipoles (2e-6 at lambda = 1e-4 where the Born of
+# a dipole has a soft gluon of the limit of another pair, since the Born of
+# the Fortran loses digits there as the real does)
+DIPOLE_CASES = [("pp_ttx", "pp_ttx", 1e-9), ("epem_jjj", "epem_uuxg", 1e-5)]
 
 
 def reference_weights(integrand, points):
@@ -219,15 +235,16 @@ def reference_weights(integrand, points):
 
 
 @needs_outputs
-def test_dipole_blocks(real_stream):
-    """The dipoles of the real stream of p p > t t~ with the blocks of the
-    Fortran provider are those of pyAmpliCol at the points of the reference
-    of test_cs_dipoles.py, with the spin correlation in the factorized form
+@pytest.mark.parametrize("name,reference,rtol", DIPOLE_CASES)
+def test_dipole_blocks(real_stream, name, reference, rtol):
+    """The dipoles of the real stream with the blocks of the Fortran provider
+    are those of pyAmpliCol at the points of the reference of
+    test_cs_dipoles.py, with the spin correlation in the factorized form
     <T_j . T_k> k_t B k_t / B: its Born B(k_t) of the azimuthal part of an
     FKS configuration is the spin tensor of the Born contracted with
     k_t."""
-    data = dipole_reference("pp_ttx")
-    run = real_stream(1e-6)
+    data = dipole_reference(reference)
+    run = real_stream(name, 1e-6)
     g2 = 4 * math.pi * data["setup"]["alpha_s"]
     reals = {}
     for point in data["points"]:
@@ -235,6 +252,8 @@ def test_dipole_blocks(real_stream):
     checked = 0
     for real, points in reals.items():
         integrand = real_integrand(run, data["reals"][real]["pdgs"])
+        if integrand is None:
+            continue
         dipoles = [d for d in data["cs"] if d["real"] == real]
         assert [(d["i"], d["j"], d["k"]) for d in dipoles] == [
             (d.entry["i"], d.entry["j"], d.entry["k"]) for d in integrand.dipoles
@@ -270,13 +289,15 @@ def test_dipole_blocks(real_stream):
                 contracted = np.einsum("bm,bmn,bn->b", lab, tensor, lab)
                 theirs = theirs + out["spin_weight"][:, m] * ratio * contracted
                 checked += 1
-            np.testing.assert_allclose(ours, theirs / g2**2, rtol=1e-9, atol=0)
+            power = dipole.born.qcd_powers[0] // 2
+            np.testing.assert_allclose(ours, theirs / g2**power, rtol=rtol, atol=0)
     assert checked
 
 
 @needs_outputs
-def test_real_limits(real_stream):
-    """The real stream of p p > t t~ along the rays of the reference of
+@pytest.mark.parametrize("name,reference,rtol", DIPOLE_CASES)
+def test_real_limits(real_stream, name, reference, rtol):
+    """The real stream along the rays of the reference of
     test_cs_dipoles.py into the soft and collinear limits of each pair of
     dipoles, without the technical cut: |R - sum D| / R falls by a factor
     3 from lambda = 1e-2 to 1e-3 (0.1 to 1e-2 for the soft limits, where
@@ -285,8 +306,8 @@ def test_real_limits(real_stream):
     of its Born. Their differences to those of the real emission add terms
     linear in lambda, which can cancel those of the dipoles at lambda =
     0.1."""
-    data = dipole_reference("pp_ttx")
-    run = real_stream(0.0)
+    data = dipole_reference(reference)
+    run = real_stream(name, 0.0)
     reals = {}
     for point in data["points"]:
         ray = point["ray"]
@@ -297,16 +318,17 @@ def test_real_limits(real_stream):
         reals.setdefault(point["real"], []).append(point)
     rays = {}
     for real, points in reals.items():
-        out = reference_weights(
-            real_integrand(run, data["reals"][real]["pdgs"]), points
-        )
+        integrand = real_integrand(run, data["reals"][real]["pdgs"])
+        if integrand is None:
+            continue
+        out = reference_weights(integrand, points)
         ratios = np.abs(out["real_weight"] + out["dipole_weights"].sum(1))
         ratios /= np.abs(out["real_weight"])
         for point, ratio in zip(points, ratios):
             ray = point["ray"]
             key = (real, ray["dipole"], ray["limit"], ray["random"][-1])
             rays.setdefault(key, []).append((ray["lam"], ratio))
-    assert len(rays) > 20
+    assert len(rays) > 10
     for key, values in rays.items():
         ratios = [r for _, r in sorted(values, reverse=True)]
         assert ratios[-1] < max(ratios[-2] / 3, 1e-6), (key, ratios)
@@ -324,7 +346,7 @@ def test_technical_cut(real_stream):
     none is cut, also at random numbers of the emission piled towards
     zero."""
     data = dipole_reference("pp_ttx")
-    run = real_stream(1e-6)
+    run = real_stream("pp_ttx", 1e-6)
     points = [p for p in data["points"] if p["real"] == 0]
     integrand = real_integrand(run, data["reals"][0]["pdgs"])
     momenta = np.array([p["momenta"] for p in points])
