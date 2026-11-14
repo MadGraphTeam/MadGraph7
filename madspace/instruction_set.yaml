@@ -817,6 +817,55 @@ x1x2_to_r_window:
       desc: "Jacobian of the mapping"
   desc: "Inverse of `r_to_x1x2_window`. See @ref PhaseSpaceMapping."
 
+lepton_x_sample:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: x_min
+      type: [float]
+      desc: "lower end of the momentum fraction"
+    - name: power
+      type: [float, single]
+      desc: "exponent p of the sampling, x distributed as (1 - x)^(-p)"
+    - name: jacobian_power
+      type: [float, single]
+      desc: "power of 1 - x in the Jacobian, p for a full density and 0 for a reduced one"
+  outputs:
+    - name: x
+      type: [float]
+      desc: "momentum fraction of the beam"
+    - name: one_minus_x
+      type: [float]
+      desc: "1 - x, exact close to x = 1"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Maps a random number to the momentum fraction of a lepton beam as generate_x_ee of genps_fks.f, 1 - x = (1 - x_min) r^(1 / (1 - p)), with the Jacobian a (1 - x_min)^(1 - p) (1 - x)^jacobian_power. See @ref LeptonLuminosity."
+
+lepton_x_sample_inverse:
+  inputs:
+    - name: one_minus_x
+      type: [float]
+      desc: "1 - x of the momentum fraction of the beam"
+    - name: x_min
+      type: [float]
+      desc: "lower end of the momentum fraction"
+    - name: power
+      type: [float, single]
+      desc: "exponent p of the sampling, x distributed as (1 - x)^(-p)"
+    - name: jacobian_power
+      type: [float, single]
+      desc: "power of 1 - x in the Jacobian of the forward map"
+  outputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of lepton_x_sample, with the reciprocal of its Jacobian. See @ref LeptonLuminosity."
+
 diff_cross_section:
   inputs:
     - name: x1
