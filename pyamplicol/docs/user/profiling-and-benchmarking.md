@@ -70,6 +70,17 @@ The main rows mean:
 | `Native input pack` | Native-side input preparation after caller conversion |
 | engine-specific runtime rows | Exclusive or explicitly labeled lane attribution |
 | `Other Rusticol core` | Residual work closing the exclusive component sum against profile wall |
+| `peak RAM` | Peak resident set size of the process over the profiled region (warm-ups, calibration, timed blocks) and its increase over the start, with scope and method (`BenchmarkResult.peak_memory`) |
+
+`peak RAM` reads the kernel's high-water mark on Linux (`VmHWM`), reset to the
+current resident size at the start of the profiled region through
+`/proc/self/clear_refs`, so it is the region's own peak ("profiled region").
+Where that reset is refused, and on macOS and the BSDs (`getrusage`
+`ru_maxrss`), it is the process lifetime's peak ("process lifetime"), so it may
+predate the profile and its increase is a lower bound. The tree runtime profile
+is binary64 only; a loop artifact's profile also reports double-double timing
+when `--arithmetic double-double` is given or `--stability` runs (see
+[Profile](command-line-interface.md#profile)).
 
 For compiled Direct-Arena, the row otherwise represented by an orchestration
 counter is labeled **Direct-Arena runtime envelope**. It includes arena setup,
