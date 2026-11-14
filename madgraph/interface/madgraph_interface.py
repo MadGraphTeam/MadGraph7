@@ -11018,6 +11018,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
 
+        # Check for the minimal required compiler version (C++20 with
+        # std::format, needed by madspace): gcc 13, LLVM clang 17,
+        # Apple clang 15
+        for warnings in [misc.check_gcc_version('13'),
+                         misc.check_clang_version('17', '15')]:
+            if warnings:
+                logger.warning(warnings)
+
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
         # Configure the way to compress a file:
