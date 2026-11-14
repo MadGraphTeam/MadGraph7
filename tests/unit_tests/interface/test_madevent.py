@@ -540,3 +540,62 @@ class TestPythia8MergingPlugin(unittest.TestCase):
         # main164 does not merge an MLM shower
         card = self.setup_card(py8, 'MLM', ickkw=1, xqcut=30.0)
         self.assertEqual(card.init_plugins, [])
+
+
+class TestPythia8MLMConeRadius(unittest.TestCase):
+    """The MLM jet matching clusters the showered event with the D the events
+    were clustered with at generation: JetMatching:coneRadius follows the
+    hidden run_card d of madevent and beam.jet_radius of mg7. A value set in
+    the pythia8 card is kept; it used to stop the shower setup with "You can
+    not change it"."""
+
+    def setUp(self):
+        import madgraph.various.banner as banner_mod
+        self.banner_mod = banner_mod
+        self.tmpdir = tempfile.mkdtemp(prefix='mg5_py8_coneradius')
+        self.template = open(pjoin(madgraph.MG5DIR, 'Template', 'LO', 'Cards',
+                                   'pythia8_card_default.dat')).read()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def setup_card(self, run_card, user_lines=''):
+        """the card of an MLM shower, as do_pythia8 sets it up"""
+        class FakeCmd(object):
+            pass
+        cmd = FakeCmd()
+        cmd.run_tag, cmd.run_name, cmd.me_dir = 'tag_1', 'run_01', self.tmpdir
+        cmd.to_store = []
+        cmd.options = {'run_mode': 2, 'pythia8_path': self.tmpdir}
+        cmd.proc_characteristic = {'max_n_matched_jets': 2}
+        cmd.run_card = run_card
+        card = self.banner_mod.PY8Card(self.template)
+        card.read(self.template + user_lines, setter='user')
+        mecmd.MadEventCmd.setup_Pythia8RunAndCard(cmd, card, 'MLM')
+        return card
+
+    def madevent_run_card(self):
+        run_card = self.banner_mod.RunCardLO()
+        run_card['ickkw'] = 1
+        run_card['xqcut'] = 30.0
+        return run_card
+
+    def test_madevent_d(self):
+        run_card = self.madevent_run_card()
+        self.assertEqual(self.setup_card(run_card)['JetMatching:coneRadius'], 1.0)
+        run_card['d'] = 0.7
+        self.assertEqual(self.setup_card(run_card)['JetMatching:coneRadius'], 0.7)
+
+    def test_mg7_jet_radius(self):
+        run_card = self.banner_mod.RunCardMG7()
+        run_card.set('beam.dynamical_scale_choice', 'mlm')
+        run_card.set('phasespace.xqcut', 30.0)
+        self.assertEqual(self.setup_card(run_card)['JetMatching:coneRadius'], 1.0)
+        run_card.set('beam.jet_radius', 0.7)
+        self.assertEqual(run_card['d'], 0.7)
+        self.assertEqual(self.setup_card(run_card)['JetMatching:coneRadius'], 0.7)
+
+    def test_pythia8_card_value_is_kept(self):
+        card = self.setup_card(self.madevent_run_card(),
+                               'JetMatching:coneRadius = 0.4\n')
+        self.assertEqual(card['JetMatching:coneRadius'], 0.4)

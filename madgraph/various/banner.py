@@ -7918,7 +7918,7 @@ class RunCardMG7(RunCard):
         # MLM run (dynamical_scale_choice = "mlm" with xqcut > 0) reports
         # ickkw = 1 and its xqcut, so that the shower does the jet matching.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
-        'dparameter', 'lhaid', 'iseed', 'python_seed',
+        'd', 'dparameter', 'lhaid', 'iseed', 'python_seed',
         # read by MadSpin (check_launch, do_import) and by Banner.write for
         # the <LesHouchesEvents version=...> of the files it rewrites
         'lhe_version', 'bwcutoff',
@@ -8029,6 +8029,9 @@ class RunCardMG7(RunCard):
             if self.is_mlm_merged():
                 return int(beam['max_jet_flavor'])
             return 5
+        if key == 'd':
+            # JetMatching:coneRadius: the D of the clustering's kt measure
+            return float(beam['jet_radius'])
         if key == 'dparameter':
             return 0.4           # only used by the (unused) CKKW-L machinery
         # --- run / seed bookkeeping ---

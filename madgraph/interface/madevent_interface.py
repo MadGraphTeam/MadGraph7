@@ -4715,8 +4715,18 @@ already exists and is not a fifo file."""%fifo_path)
             # Use the parameter maxjetflavor for JetMatching:nQmatch which specifies
             # up to which parton must be matched.Merging:nQuarksMerge
             PY8_Card.MadGraphSet('JetMatching:nQmatch',self.run_card['maxjetflavor'])
-            # For MLM, a cone radius of 1.0 is to be preferred.
-            PY8_Card.MadGraphSet('JetMatching:coneRadius',1.0)
+            # The matching clusters the showered event with the D the events
+            # were clustered with at generation (the hidden run_card d of
+            # madevent, beam.jet_radius of mg7; 1.0 by default in both),
+            # unless the pythia8 card sets JetMatching:coneRadius itself.
+            jet_radius = float(self.run_card['d'])
+            if 'jetmatching:coneradius' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('JetMatching:coneRadius', jet_radius)
+            elif PY8_Card['JetMatching:coneRadius'] != jet_radius:
+                logger.warning(
+                    'JetMatching:coneRadius = %s in the pythia8 card differs from '
+                    'the jet radius D = %s the events were clustered with.' %
+                    (PY8_Card['JetMatching:coneRadius'], jet_radius))
             # And the value of etaj_max is already infinity by default.
             # PY8_Card.MadGraphSet('JetMatching:etaJetMax',1000.0)
             if not hasattr(self,'proc_characteristic'):
