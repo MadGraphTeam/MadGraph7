@@ -152,8 +152,16 @@ MLM merging
 As MadEvent, MG7 sets up MLM merging by itself when the process has several jet
 multiplicities (for example ``p p > w+`` with ``add process p p > w+ j``): the scale choice
 ``"mlm"``, a merging cut ``xqcut = 30`` GeV and no jet ``delta_r`` cuts. The shower then does
-the jet matching (``ickkw = 1``, ``JetMatching:qCut = 1.5 xqcut``). It is not set up for an
-output with ``[amplicol]`` subprocesses.
+the jet matching (``ickkw = 1``, ``JetMatching:qCut = 1.5 xqcut``, and
+``JetMatching:coneRadius`` equal to ``beam.jet_radius``). It is not set up for an output
+with ``[amplicol]`` subprocesses.
+
+By default MG7 reads the scales off the clustering in its own way. To cluster the events as
+MadEvent does, type ``set mlm madevent`` in the launch question. It turns MLM merging on and
+sets every hidden clustering option to MadEvent's choice: ``scale_scheme``,
+``clustering_measure`` and ``clustering_history`` become ``"madevent"``, and the others keep
+the values they share with MadEvent. A merging cut of 30 GeV is added if ``xqcut`` is 0.
+``set mlm mg7`` puts MG7's defaults back.
 
 .. list-table::
     :header-rows: 1
@@ -178,6 +186,10 @@ output with ``[amplicol]`` subprocesses.
     * - ``pdfwgt``
       - ``beam.pdf_reweighting``
       - Hidden in both.
+    * - ``d``
+      - ``beam.jet_radius``
+      - The jet radius :math:`D` of the clustering measure, 1 by default. Hidden in both.
+        The shower matches the jets with the same value.
     * - ``sys_alpsfact``
       - ``systematics.alps``
       -
