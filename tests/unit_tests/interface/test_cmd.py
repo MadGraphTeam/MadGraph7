@@ -164,6 +164,24 @@ class TestValidCmd(unittest.TestCase):
         goal = [l.strip() for l in  goal.split('\n')]
         self.assertEqual(self.cmd.history, goal)
     
+    def test_save_and_load_processes_are_refused(self):
+        """`save processes` / `load processes` are gone: after an output the
+        amplitudes kept are the base amplitudes of its matrix elements, which
+        lost the diagrams its --mask trimmed, and a saved list could not be
+        output with the other --mask. `save model` / `load model` remain."""
+
+        master = cmd.MasterCmd()
+        master.no_notification()
+        target = pjoin(self.path, 'processes.pkl')
+        self.assertRaises(master.InvalidCmd, master.do_save,
+                          'processes %s' % target)
+        self.assertRaises(master.InvalidCmd, master.do_load,
+                          'processes %s' % target)
+        self.assertFalse(os.path.exists(target))
+        import madgraph.interface.madgraph_interface as mg_interface
+        self.assertNotIn('processes', mg_interface.MadGraphCmd._save_opts)
+        self.assertIn('model', mg_interface.MadGraphCmd._save_opts)
+
     def test_InvalidCmd(self):
         """test that the Invalid Command are dealt with correctly"""
         

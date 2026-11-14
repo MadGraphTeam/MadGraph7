@@ -888,6 +888,30 @@ class MG7LeptonDensityShippingTest(unittest.TestCase):
         self.assertEqual(os.listdir(target), [])
 
 
+class TestFlavorTableGuard(unittest.TestCase):
+    """The C++ output refuses a flavored coupling whose table cannot hold its
+    keys (FLV_Coupling.assert_table_representable), fixed or running: it
+    would lose all its keys but one, with no error."""
+
+    def test_a_coupling_the_table_cannot_hold_is_refused(self):
+        import madgraph.core.base_objects as base_objects
+        from madgraph import InvalidCmd
+        FLV = base_objects.FLV_Coupling
+        # one heavy quark coupled to two merged quarks sitting second
+        lossy = FLV(name='FLV_TEST', flavors={(0, 1, 0): 'GC_XD',
+                                               (0, 3, 0): 'GC_XS'})
+        # through the guard of the fixed couplings (write_flv_couplings)
+        converter = export_cpp.UFOModelConverterCPP.__new__(
+                                            export_cpp.UFOModelConverterCPP)
+        self.assertRaises(InvalidCmd,
+                          converter._assert_flv_couplings_supported, [lossy])
+        # the tables that can be written pass, the merged leg first included
+        for flavors in ({(2, 1, 0): 'GC_100', (4, 3, 0): 'GC_100'},
+                        {(1, 0, 0): 'GC_XD', (3, 0, 0): 'GC_XS'},
+                        {(0, 2, 0): 'GC_1'}):
+            converter._assert_flv_couplings_supported([FLV(flavors=flavors)])
+
+
 #===============================================================================
 # MG7MergedChannelsTest
 #===============================================================================

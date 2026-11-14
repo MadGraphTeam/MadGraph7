@@ -24,6 +24,26 @@ ANNOUNCEMENT:
        export_cpp.py, template_files/pythia8, and 'launch' on a Pythia 8 directory, which
        now says that this is no longer supported, from the LO, MadLoop and aMC@NLO
        interfaces alike).
+   OM: standalone/mg7 with --mask=False (no flavour guard) gave wrong |M|^2 for some flavours
+       of merged electroweak processes (p p > w+ w- j j QCD=0: 24 of 54, d d~ > w+ w- u u~
+       x55). This was also the root cause of the --hel_recycling bug of 0.3.0: the C++ flavoured
+       routines accepted a fermion pair in both orientations of its coupling table, which for
+       a W coupling is the W of the opposite charge. They now read it in one orientation, as
+       the Fortran routines do (Fortran --mask=False was right). Also:
+       - an output whose --mask differs from an earlier output of the same processes, or
+         that follows an add process, no longer reuses that output's matrix elements and
+         trimmed diagrams;
+       - a subprocess of more than 64 flavour groups (p p > j j j j QCD=0) keeps its flavour
+         guards;
+       - every output (Fortran and C++) refuses a flavoured coupling its flavour tables
+         cannot hold: an unmerged fermion coupled, as the first fermion of the vertex, to
+         several flavours of a merged one (e.g. a heavy quark xq mixing into d and s; none
+         in the bundled models). The tables kept one of them without a word: the Fortran
+         standalone gave |M|^2 = 0 for g d~ > xq~ z. Use "set apply_flavor_grouping False"
+         and explicit flavours for such a model;
+       - "save processes" / "load processes" are removed (the amplitudes kept after an
+         output have lost the diagrams its --mask trimmed). "save model", "load model" and
+         "save options" remain.
    OM: flavour grouping: a process in which a merged quark is built from unmerged particles
        only, through a flavoured coupling with several flavours (a heavy quark xq mixing into
        d and s through the Z: p p > xq z j, xq xq~ > z z; none in the bundled models), crashed

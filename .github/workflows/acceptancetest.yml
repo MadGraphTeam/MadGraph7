@@ -209,10 +209,11 @@ jobs:
     #   acceptancetest_density_LI_f2py acceptancetest_bundle_3 acceptancetest_bundle_5
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -255,6 +256,12 @@ jobs:
             # MadSpin's density matrices and |M|^2 from madmatrix against the f2py ones
             ./tests/test_manager.py test_madmatrix_density_matches_fortran -pA -t0 -l INFO
             ./tests/test_manager.py test_standalone_cpp_perf_alpha_s_from_param_card -pA -t0 -l INFO
+
+      - name: "acceptancetest_32: test test_madmatrix_heft_ggh_vs_analytic (g g > h g, good helicities chosen at run time)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_heft_ggh_vs_analytic -pA -t0 -l INFO
 
       # ---- acceptancetest_33 ----
       - name: "acceptancetest_33"
@@ -419,6 +426,10 @@ jobs:
             echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_all -pA -t0 -l DEBUG --debug
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
   acceptancetest_bundle_4:
     # former jobs, run one after the other: acceptancetest_30
     #   acceptancetest_ewsudakov acceptancetest_density_LI_convolution
@@ -527,10 +538,11 @@ jobs:
     #   acceptancetest_fks_standalone_limits_pp_ttx acceptancetest_80
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -604,6 +616,10 @@ jobs:
             echo "set acknowledged_v3.1_syntax True --global" > cmd
             ./bin/madgraph cmd
             ./tests/test_manager.py test_amcatnlo_from_file -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_bundle_8:
     # former jobs, run one after the other: acceptancetest_74 acceptancetest_93
@@ -794,10 +810,11 @@ jobs:
     # former jobs, run one after the other: acceptancetest_emela4
     #   acceptancetest_improve_ps_at_rest
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
@@ -818,6 +835,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_improve_ps_keeps_a_leg_at_rest -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_105:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue
@@ -1013,16 +1034,19 @@ jobs:
     # and test_nlo_output2 (@bypass_for_py3, never run), test_contur_from_file
     # (disabled in acceptancetest_madevent.yml), test_madspace_example_gpu (GPU).
     # Each step runs even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
       - uses: ./.github/actions/restore-pip-cache
       # StdHEP (the hw6/py6 stdhep tests) needs the rpc headers, as in parralel.yml
       - name: Install libtirpc-dev
+        # preinstalled (libtirpc-devel) on the self-hosted alma10 runners
+        if: runner.environment != 'self-hosted'
         run: sudo apt-get -o Acquire::Retries=5 install -y libtirpc-dev
 
       - name: "standalone and madmatrix outputs"
@@ -1042,6 +1066,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_gen_evt_onlygen test_generate_events_lo_hw6_stdhep test_generate_events_lo_py6_stdhep -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_82_helicities:
     runs-on: ubuntu-24.04

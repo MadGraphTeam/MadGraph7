@@ -477,15 +477,20 @@ class UFOModelConverterCPP(object):
         couplings. Single-merged-leg vertices (one merged fermion + an unmerged
         partner, e.g. the electroweak MSSM squark-quark-neutralino vertices) are
         serialized like the Fortran side (the unmerged partner is given flavor
-        index 1) and gated by the merged leg (see get_coupling_def). Dependent
+        index 1, on the side of the vertex it sits on, see
+        FLV_Coupling.get_partner_indices), and the routines read every table
+        in that one F1 -> F2 orientation (see get_coupling_def). Dependent
         flavored couplings (e.g. the SUSY-QCD MSSM gluino-squark-quark vertices)
         are gathered event-by-event into cDPF_* / flvCOUPs_dep (Step 3).
 
         Not yet supported (raises):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
+            The Fortran 'madevent'/'standalone_fortran' output supports it.
+          * a coupling whose table cannot hold its keys (several keys
+            needing one slot, see FLV_Coupling.get_shared_partner_slot). The
+            Fortran output refuses it too.
 
-        The Fortran 'madevent'/'standalone_fortran' output supports the remaining cases.
         See docs/mg7_merged_flavor_mssm_design.md.
         """
         for coupl in params:
@@ -500,6 +505,7 @@ class UFOModelConverterCPP(object):
                     "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
+            coupl.assert_table_representable()
 
     def write_flv_couplings(self, params):
         """Write out the lines of independent parameters"""
