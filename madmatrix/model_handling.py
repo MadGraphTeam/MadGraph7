@@ -371,8 +371,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     # written in terms of model parameters (e.g. the width corrections dWT, dWZ,
     # dWW and dWH of SMEFTsim). aloha_writers.ALOHAWriterForCPP reads them from
     # the Parameters of the process being evaluated (Parameters::current, set by
-    # calculate_jamps); that is host-only code, so on GPUs the value has to be a
-    # compile-time constant, i.e. HRDCOD=1 is required there.
+    # calculate_jamps); that is host-only code, so it is not available on GPUs.
     def get_model_parameter_txt(self, name):
         """Define a model parameter which the routine body uses"""
         # ALOHA sees the UFO name ('dWT'), the generated Parameters class uses
@@ -385,13 +384,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 'The C++/CUDA backend can only read alphaS-independent parameters inside '
                 'a HelAmps routine, so this process can only be generated with '
                 '"output madevent" or "output standalone_fortran".' % (self.name, mdlname))
-        return ('#ifdef MGONGPU_HARDCODE_PARAM\n'
-                '    constexpr auto %(var)s = Parameters::%(mdl)s;\n'
-                '#elif !defined MGONGPUCPP_GPUIMPL\n'
+        return ('#ifndef MGONGPUCPP_GPUIMPL\n'
                 '    const auto %(var)s = Parameters::current->%(mdl)s;\n'
                 '#else\n'
                 '#error Model parameter %(mdl)s is used inside a HelAmps routine '
-                '(custom propagator) and is not available in device code: rebuild with HRDCOD=1\n'
+                '(custom propagator) and is not available in device code\n'
                 '#endif\n') % { 'var': name, 'mdl': mdlname }
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
@@ -1568,7 +1565,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         return res
 
     # AV - new method (merging write_parameters and write_set_parameters)
-    def write_hardcoded_parameters(self, params, deviceparams=dict()):
+    def write_hardcoded_parameters(self, params):
         majorana_widths = []
         for particle in self.model.get('particles'):
             if particle.is_fermion() and particle.get('self_antipart') and \
@@ -1613,8 +1610,6 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 ###print(len(pardef_lines), par) # for debugging
                 if par in majorana_widths:
                     pardef_lines[par] = ( 'constexpr ' + type + ' ' + par + "_abs" )
-                elif par in deviceparams:
-                    pardef_lines[par] = ( '__device__ constexpr ' + type + ' ' + par )
                 else:
                     pardef_lines[par] = ( 'constexpr ' + type + ' ' + par )
         ###misc.sprint( 'pardef_lines size =', len(pardef_lines), ', keys size =', len(pardef_lines.keys()) )
@@ -1664,24 +1659,17 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         return res
 
     # AV - replace export_cpp.UFOModelConverterCPP method (eventually split writing of parameters and fixes for Majorana particles #622)
-    def super_write_set_parameters_onlyfixMajorana(self, hardcoded): # FIXME! split hardcoded (constexpr) and not-hardcoded code
+    def super_write_set_parameters_onlyfixMajorana(self):
         """Write out the lines of independent parameters"""
-        print( 'super_write_set_parameters_onlyfixMajorana (hardcoded=%s)'%hardcoded )
         res_strings = []
-        # Correct width sign for Majorana particles (where the width and mass need to have the same sign)        
-        prefix = "  " if hardcoded else "" # hardcoded code goes into Parameters.h and needs two extra leading spaces due to a namespace...
+        # Correct width sign for Majorana particles (where the width and mass need to have the same sign)
         for particle in self.model.get('particles'):
             if particle.is_fermion() and particle.get('self_antipart') and \
                    particle.get('width').lower() != 'zero':
-                if hardcoded:
-                    res_strings.append( prefix+"  constexpr int %s_sign = ( %s < 0 ? -1 : +1 );" % ( particle.get('width'), particle.get('mass') ) )
-                    res_strings.append( prefix+"  constexpr double %(W)s = %(W)s_sign * %(W)s_abs;" % { 'W' : particle.get('width') } )
-                else:
-                    res_strings.append( prefix+"  if( %s < 0 )" % particle.get('mass'))
-                    res_strings.append( prefix+"    %(width)s = -std::abs( %(width)s );" % {"width": particle.get('width')})
-        if len( res_strings ) != 0 : res_strings = [ prefix + "  // Fixes for Majorana particles" ] + res_strings
-        if not hardcoded: return '\n' + '\n'.join(res_strings) if res_strings else ''
-        else: return '\n' + '\n'.join(res_strings) + '\n' if res_strings else '\n'
+                res_strings.append( "  if( %s < 0 )" % particle.get('mass'))
+                res_strings.append( "    %(width)s = -std::abs( %(width)s );" % {"width": particle.get('width')})
+        if len( res_strings ) != 0 : res_strings = [ "  // Fixes for Majorana particles" ] + res_strings
+        return '\n' + '\n'.join(res_strings) if res_strings else ''
 
     # AV - replace export_cpp.UFOModelConverterCPP method (add hardcoded parameters and couplings)
     def used_dependent_parameters(self):
@@ -1762,7 +1750,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                              if line.startswith( '  aS =' ) else
                              line for line in self.write_set_parameters(self.params_indep).split('\n') ]
         replace_dict['set_independent_parameters'] = '\n'.join( set_params_indep )
-        replace_dict['set_independent_parameters'] += self.super_write_set_parameters_onlyfixMajorana( hardcoded=False ) # add fixes for Majorana particles only in the aS-indep parameters #622
+        replace_dict['set_independent_parameters'] += self.super_write_set_parameters_onlyfixMajorana() # add fixes for Majorana particles only in the aS-indep parameters #622
         replace_dict['set_independent_parameters'] += '\n  // BSM parameters that do not depend on alphaS but are needed in the computation of alphaS-dependent couplings;' # NB this is now done also for 'sm' processes (no check on model name, see PR #824)
         # Only the independent flavored couplings are serialized via the FLV_COUPLING
         # value[] pointer mechanism in setIndependentCouplings: a dependent (running-alphas)
@@ -1817,17 +1805,6 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             replace_dict['include_prefix'] = ''
         assert super().write_parameters([]) == '', 'super().write_parameters([]) is not empty' # AV sanity check (#622)
         assert self.super_write_set_parameters_donotfixMajorana([]) == '', 'super_write_set_parameters_donotfixMajorana([]) is not empty' # AV sanity check (#622)
-        ###misc.sprint(self.params_indep) # for debugging
-        hrd_params_indep = [ line.replace('constexpr','//constexpr') + ' // now retrieved event-by-event (as G) from Fortran (running alphas #373)' if 'aS =' in line else line for line in self.write_hardcoded_parameters(self.params_indep, {**bsmparam_indep_real_used, **bsmparam_indep_complex_used}).split('\n') if line != '' ] # use bsmparam_indep_real_used + bsmparam_indep_complex_used as deviceparams (dictionary merge as in https://stackoverflow.com/a/26853961)
-        replace_dict['hardcoded_independent_parameters'] = '\n'.join( hrd_params_indep ) + self.super_write_set_parameters_onlyfixMajorana( hardcoded=True ) # add fixes for Majorana particles only in the aS-indep parameters #622
-        ###misc.sprint(self.coups_indep) # for debugging
-        replace_dict['hardcoded_independent_couplings'] = self.write_hardcoded_parameters(self.coups_indep).replace('cxsmpl<double>', 'cxtype')
-        ###misc.sprint(self.params_dep) # for debugging
-        hrd_params_dep = [ line.replace('constexpr ','//constexpr ') + ' // now computed event-by-event (running alphas #373)' if line != '' else line for line in self.write_hardcoded_parameters(self.params_dep).split('\n') ]
-        replace_dict['hardcoded_dependent_parameters'] = '\n'.join( hrd_params_dep )
-        ###misc.sprint(self.coups_dep) # for debugging
-        hrd_coups_dep = [ line.replace('constexpr','//constexpr') + ' // now computed event-by-event (running alphas #373)' if line != '' else line for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).replace('cxsmpl<double>', 'cxtype').split('\n') ]
-        replace_dict['hardcoded_dependent_couplings'] = '\n'.join( hrd_coups_dep )
         replace_dict['nicoup'] = len( self.coups_indep )
         if len( self.coups_indep ) > 0 :
             iicoup = [ '    //constexpr size_t ixcoup_%s = %d + Parameters_dependentCouplings::ndcoup; // out of ndcoup+nicoup' % (par.name, id) for (id, par) in enumerate(self.coups_indep) ]
@@ -1918,22 +1895,16 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             replace_dict['dcoupsetdpar2'] = '        // (none)'
             replace_dict['dcoupsetdcoup2'] = '      // (none)'
             replace_dict['dcoupoutdcoup2'] = ''
-        # Require HRDCOD=1 in EFT and special handling in EFT for fptype=float using SIMD
+        # Special handling in EFT for fptype=float using SIMD
         nbsmparam_indep_all_used = len( bsmparam_indep_real_used ) + 2 * len( bsmparam_indep_complex_used )
         replace_dict['max_flavor'] = max((len(ids) for ids in self.model['merged_particles'].values()), default=1)
         replace_dict['bsmdefine'] = '#define MGONGPUCPP_NBSMINDEPPARAM_GT_0 1' if nbsmparam_indep_all_used > 0 else '#undef MGONGPUCPP_NBSMINDEPPARAM_GT_0'
         replace_dict['nbsmip'] = nbsmparam_indep_all_used # NB this is now done also for 'sm' processes (no check on model name, see PR #824)
         replace_dict['hasbsmip'] = '' if nbsmparam_indep_all_used > 0 else '//'
-        replace_dict['bsmip'] = ', '.join( list(bsmparam_indep_real_used) + [ '%s.real(), %s.imag()'%(par,par) for par in bsmparam_indep_complex_used] ) if nbsmparam_indep_all_used > 0 else '(none)'
-        replace_dict['eftwarn0'] = ''
-        replace_dict['eftwarn1'] = ''
-        ###if 'eft' in self.model_name.lower():
-        ###    replace_dict['eftwarn0'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=0 builds (#439 and PR #625)'
-        ###    replace_dict['eftwarn1'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=1 builds (#439 and PR #625)'
         # BSM params for aS-dependent couplings as fptype/cxtype
         replace_dict['eftspecial0'] = ''
         if len( bsmparam_indep_real_used ) + len( bsmparam_indep_complex_used ) == 0:
-            replace_dict['eftspecial0'] = '\n      // No special handling of non-hardcoded parameters (no additional BSM parameters needed in constant memory)'
+            replace_dict['eftspecial0'] = '\n      // No special handling of BSM parameters (no additional BSM parameters needed in constant memory)'
         for ipar, par in enumerate( bsmparam_indep_real_used ):
             replace_dict['eftspecial0'] += '\n      const fptype %s = bsmIndepParamPtr[%i];' % ( par, ipar )
         for ipar, par in enumerate( bsmparam_indep_complex_used ):
@@ -2206,7 +2177,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_process_function_definitions(self, write=True):
         """The complete class definition for the process"""
         replace_dict = super().get_process_function_definitions(write=False) # defines replace_dict['initProc_lines']
-        replace_dict['hardcoded_initProc_lines'] = self.get_hardcoded_initProc_lines(self.matrix_elements[0])
         # Cached for edit_processtables(): calculate_jamps' jampTmp_sv shared
         # sub-expression scratch is backend-owned storage now, sized from this
         # process-specific count (ProcessTables::nb_tmp_jamp) rather than
@@ -2252,12 +2222,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                            '    cxtype tIPC[nIPC];\n'
                                            '    gatherCxtype( m_pars, cIPC_members, tIPC );\n'
                                            '    setIndependentCouplings( tIPC );')
-            coup_str_hrd = 'const cxtype tIPC[nIPC] = { cxmake( Parameters::%s ) };\n    setIndependentCouplings( tIPC );'\
-                                         % ( ' ), cxmake( Parameters::'.join(coupling_indep) )
-            replace_dict['cipchrdassign'] = coup_str_hrd
         else:
             replace_dict['cipcassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
-            replace_dict['cipchrdassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
 
         if any(p.endswith(IMAG_SLOT) for p in params):
             # complex-mass scheme: a complex mass fills two slots of the real
@@ -2280,11 +2246,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                            '    fptype tIPD[nIPD];\n'
                                            '    gatherFptype( m_pars, cIPD_members, tIPD );\n'
                                            '    setIndependentParams( tIPD );')
-            replace_dict['cipdhrdassign'] = 'const fptype tIPD[nIPD] = { (fptype)Parameters::%s };\n    setIndependentParams( tIPD );'\
-                                         %( ', (fptype)Parameters::'.join(params) )
         else:
             replace_dict['cipdassign'] = '//const fptype tIPD[0] = { ... }; // nIPD=0'
-            replace_dict['cipdhrdassign'] = '//const fptype tIPD[0] = { ... }; // nIPD=0'
 
         # flavor couplings
         for flv_coup, pos in self.couporderflv.items():
@@ -2303,19 +2266,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         tIPF_value[i * nMF + j] = tFLV[i].value[j] ? *tFLV[i].value[j] : cxtype{}; // guard from null pointers
     }
     setFlavorCouplings( tIPF_partner1, tIPF_partner2, tIPF_value );""" % ( ', m_pars->'.join(flv_couplings) )
-            # Hardcoded variant: same shape, values come from Parameters:: instead of m_pars->
-            hrd_lines = ['int tIPF_partner1[nMF * nIPF];', '    int tIPF_partner2[nMF * nIPF];', '    cxtype tIPF_value[nMF * nIPF];']
-            for i, flv_coup in enumerate(flv_couplings):
-                base = 'Parameters_%s::%s' % (self.model_name, flv_coup)
-                for j in range(nMF):
-                    hrd_lines.append('    tIPF_partner1[%d] = %s.param1[%d];' % (i * nMF + j, base, j))
-                    hrd_lines.append('    tIPF_partner2[%d] = %s.param2[%d];' % (i * nMF + j, base, j))
-                    hrd_lines.append('    tIPF_value[%d] = %s.value[%d] ? *%s.value[%d] : cxtype{};' % (i * nMF + j, base, j, base, j))
-            hrd_lines.append('    setFlavorCouplings( tIPF_partner1, tIPF_partner2, tIPF_value );')
-            replace_dict['cipfhrdassign'] = '\n    '.join(hrd_lines)
         else:
             replace_dict['cipfassign'] = ''
-            replace_dict['cipfhrdassign'] = ''
 
         # mdl_bsmIndepParam only exists as a symbol at all when the model has
         # BSM params (see MGONGPUCPP_NBSMINDEPPARAM_GT_0, PR #625) - this is a
@@ -2323,9 +2275,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # check) since the symbol itself may not exist to name-lookup.
         replace_dict['bsmassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( m_pars->mdl_bsmIndepParam, Parameters::nBsmIndepParam );
-#endif'''
-        replace_dict['bsmhrdassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
-    if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( Parameters::mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
 
         # Crossed CPPProcess::flavorPDG (the plain table lookup when crossing
@@ -3513,7 +3462,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (improve formatting)
     def get_initProc_lines(self, matrix_element, color_amplitudes):
-        """initProc_lines for CPPProcess::initProc (non-hardcoded branch): a generated pointer-to-member table read by gatherFptype() (see Parameters.h)."""
+        """initProc_lines for CPPProcess::initProc: a generated pointer-to-member table read by gatherFptype() (see Parameters.h)."""
         masses = [part.get('mass') for part in matrix_element.get_external_wavefunctions()]
         return ('// Set external particle masses for this matrix element\n'
                 '    static constexpr double Parameters::* const massMembers[npar] = {\n'
@@ -3522,13 +3471,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '    fptype tMasses[npar];\n'
                 '    gatherFptype( m_pars, massMembers, tMasses );\n'
                 '    m_masses.assign( tMasses, tMasses + npar );')
-
-    def get_hardcoded_initProc_lines(self, matrix_element):
-        """initProc_lines for CPPProcess::initProc, MGONGPU_HARDCODE_PARAM branch: Parameters has no instance here, so this stays imperative."""
-        initProc_lines = ['// Set external particle masses for this matrix element']
-        for part in matrix_element.get_external_wavefunctions():
-            initProc_lines.append('    m_masses.push_back( Parameters::%s );' % part.get('mass'))
-        return '\n'.join(initProc_lines)
 
     # Companion to get_initProc_lines: the same external-mass list, but pushed into an
     # arbitrary "masses" vector instead of m_masses, for CPPProcess::refreshExternalMasses()

@@ -457,7 +457,7 @@ extern "C"
     UmamiHandle handle,
     char const* name,
     double parameter_real,
-    [[maybe_unused]] double parameter_imag )
+    double parameter_imag )
   {
     UmamiInstance* instance = static_cast<UmamiInstance*>( handle );
     // The run card bw_cutoff (the $-excluded propagator window). Per instance, like
@@ -477,10 +477,6 @@ extern "C"
       return UMAMI_SUCCESS;
     }
     // The model parameters are the instance's own (those of its CPPProcess)
-#ifdef MGONGPU_HARDCODE_PARAM
-    // Hardcoded parameters are compile-time constants: there is nothing to set.
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !instance->process.modelParameters().setParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     // sigmaKin() and friends read copies of the independent parameters/couplings
@@ -495,22 +491,17 @@ extern "C"
     choose_good_helicities_for_probe( instance );
 #endif
     return UMAMI_SUCCESS;
-#endif
   }
 
   UmamiStatus umami_get_parameter(
-    [[maybe_unused]] UmamiHandle handle,
-    [[maybe_unused]] char const* name,
-    [[maybe_unused]] double* parameter_real,
-    [[maybe_unused]] double* parameter_imag )
+    UmamiHandle handle,
+    char const* name,
+    double* parameter_real,
+    double* parameter_imag )
   {
-#ifdef MGONGPU_HARDCODE_PARAM
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !static_cast<UmamiInstance*>( handle )->process.modelParameters().getParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     return UMAMI_SUCCESS;
-#endif
   }
 
   // Numbering of the outputs of a crossed call (crossing on, flavor index

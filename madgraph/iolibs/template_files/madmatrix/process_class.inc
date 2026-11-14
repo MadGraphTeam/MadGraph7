@@ -25,7 +25,6 @@
     // Initialize process (read model parameters from file)
     virtual void initProc( const std::string& param_card_name );
 
-#ifndef MGONGPU_HARDCODE_PARAM
     // Re-synchronize the independent parameters/couplings (cIPD/cIPC/cIPF), the
     // BSM-independent-parameter buffer (bsmIndepParam) and the external masses with the
     // current values in the model parameters of this process. sigmaKin() and friends read
@@ -36,7 +35,6 @@
 
     // The model parameters of this process (not shared with any other CPPProcess)
     Parameters& modelParameters() { return *m_pars; }
-#endif
 
     // The parameters the matrix element of this process is evaluated with: the kernels
     // (sigmaKin and friends) take them as an argument. The good helicities in there are
@@ -86,20 +84,16 @@
     void setIndependentCouplings( const cxtype* tIPC );
     void setFlavorCouplings( const int* tIPF_partner1, const int* tIPF_partner2, const cxtype* tIPF_value );
     void setBsmIndepParam( const double* values, int n );
-#ifndef MGONGPU_HARDCODE_PARAM
     // Re-populate a mass vector from the model parameters, as initProc() does for m_masses
     void refreshExternalMasses( std::vector<fptype>& masses );
-#endif
 
     // Command line arguments (constructor)
     bool m_verbose;
     bool m_debug;
 
     // Physics model parameters to be read from file (initProc function), owned by this process
-#ifndef MGONGPU_HARDCODE_PARAM
     std::unique_ptr<Parameters> m_ownedPars;
     Parameters* m_pars;
-#endif
     std::vector<fptype> m_masses; // external particle masses
     ProcessParameters m_params{}; // see parameters()
 

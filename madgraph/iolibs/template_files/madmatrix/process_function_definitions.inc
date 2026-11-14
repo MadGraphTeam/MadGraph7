@@ -30,9 +30,7 @@ namespace madmatrix
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
     , m_pars( 0 )
-#endif
     , m_masses()
   {
     // Enable SIGFPE traps for Floating Point Exceptions
@@ -94,7 +92,6 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HARDCODE_PARAM
   // Initialize process (with parameters read from user cards)
   void
   CPPProcess::initProc( const std::string& param_card_name )
@@ -140,26 +137,6 @@ namespace madmatrix
     masses.clear();
 %(refreshExternalMasses_lines)s
   }
-#else
-  // Initialize process (with hardcoded parameters)
-  void
-  CPPProcess::initProc( const std::string& /*param_card_name*/ )
-  {
-    // Use hardcoded physics parameters
-    if( m_verbose )
-    {
-      Parameters::printIndependentParameters();
-      Parameters::printIndependentCouplings();
-      //Parameters::printDependentParameters(); // now computed event-by-event (running alphas #373)
-      //Parameters::printDependentCouplings(); // now computed event-by-event (running alphas #373)
-    }
-    %(hardcoded_initProc_lines)s
-    %(cipdhrdassign)s
-    %(cipchrdassign)s
-    %(cipfhrdassign)s
-    %(bsmhrdassign)s
-  }
-#endif
 
   //--------------------------------------------------------------------------
 } // end namespace

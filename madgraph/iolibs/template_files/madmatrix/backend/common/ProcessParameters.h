@@ -47,11 +47,9 @@ namespace madmatrix
     // in backend/{cpu,simd}/SigmaKin.cc), hence mutable, and cleared when they are
     // chosen again (reset_good_helicities, backend/{cpu,simd}/umami.cc).
     mutable bool hrStale = false;
-#ifndef MGONGPU_HARDCODE_PARAM
     // The model parameters these were taken from (host memory), for the HelAmps routines
     // that read a model parameter on CPUs (see Parameters::current)
     const Parameters* model = nullptr;
-#endif
   };
 }
 
