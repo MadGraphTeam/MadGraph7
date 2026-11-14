@@ -4390,9 +4390,12 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if processes:
             # the crossed subprocesses folded into a base (merge_crossing=
             # 'record') are processes of this output as well
-            processes = [list(procs) + self.folded_crossed_processes(me)
-                         for procs, me in zip(processes, self.me_list(
-                             matrix_elements))]
+            # (the [amplicol] entry appended last has no matrix element
+            # here: keep it instead of letting zip drop it)
+            mes = self.me_list(matrix_elements)
+            processes = [list(procs) + (self.folded_crossed_processes(mes[i])
+                                        if i < len(mes) else [])
+                         for i, procs in enumerate(processes)]
             run_card.create_default_for_process(self.proc_characteristic,
                                                 history, processes,
                                                 amplicol=amplicol)
