@@ -43,6 +43,7 @@ UPSTREAM_SHA=$(git rev-parse HEAD)
 #   tools/loop_reference/levi_civita_aloha.py
 #   tools/loop_reference/model_compatibility.py
 #   tools/loop_reference/njet/njet_fixture.py
+#   tools/loop_reference/supplied_points.py (test_flat_phase_space)
 #   tools/loop_reference/ufo_source_oracle.py
 #
 # The Rust toolchain pin is MadGraph7's (1.99.1), upstream's is 1.97.1; keep
