@@ -268,6 +268,14 @@ C     Check that the FilePath set is correct
 
       END
 
+      INTEGER FUNCTION ML_GET_RETURN_CODE_VERSION()
+C     Standalone/BLHA consumers can query the public HTU
+C      interpretation.
+C     Version 2 retires PJFry and assigns U=2 exclusively to NinjaRS.
+      IMPLICIT NONE
+      ML_GET_RETURN_CODE_VERSION=2
+      END
+
       INTEGER FUNCTION SET_RET_CODE_U(MLRED,DOING_QP,STABLE)
 C     
 C     This functions returns the value of U
@@ -278,7 +286,8 @@ C     Not stable.
 C     U == 1
 C     Stable with CutTools in double precision.
 C     U == 2
-C     Stable with PJFry++.
+C     Stable with NinjaRS. T records whether quadruple precision was
+C      used.
 C     U == 3
 C     Stable with IREGI.
 C     U == 4
@@ -312,6 +321,14 @@ C
 C     
 C     BEGIN CODE
 C     
+C     Return-code format 2 retires PJFry's backend and assigns U=2 to
+C     NinjaRS in both precisions. MLReductionLib=8 selects NinjaRS.
+      IF(MLRED.EQ.2) THEN
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another'
+     $   //' supported backend.'
+        STOP 1
+      ENDIF
       IF(.NOT.STABLE)THEN
         SET_RET_CODE_U=0
         RETURN
@@ -323,15 +340,21 @@ C
         ELSEIF(MLRED.EQ.6)THEN
           SET_RET_CODE_U=8
           RETURN
+        ELSEIF(MLRED.EQ.8)THEN
+          SET_RET_CODE_U=2
+          RETURN
         ELSE
-          STOP 'Only CutTools and Ninja can use quardruple precision'
+          STOP 'Only CutTools, Ninja and NinjaRS can use quadruple'
+     $     //' precision'
         ENDIF
       ENDIF
-      IF(MLRED.GE.1.AND.MLRED.LE.7)THEN
+      IF(MLRED.EQ.8)THEN
+        SET_RET_CODE_U=2
+      ELSEIF(MLRED.GE.1.AND.MLRED.LE.7)THEN
         SET_RET_CODE_U=MLRED
       ELSE
-        STOP 'Only CutTools, PJFry++, IREGI, Golem95, Samurai, Ninja'
-     $   //' and COLLIER are available'
+        STOP 'Unknown MadLoop reduction library; supported IDs are 1'
+     $   //' and 3 through 8'
       ENDIF
       END
 
@@ -365,8 +388,12 @@ C       CutTools
         CALL DETECT_CUTTOOLS(NLOOPLINE,RANK,COMPLEX_MASS
      $   ,HAS_HEFT_VERTEX,MAX_SPIN_CONNECTED_TO_LOOP,LPASS)
       ELSEIF(LIBNUM.EQ.2)THEN
-C       PJFry++
-        CALL DETECT_PJFRY(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
+C       PJFry's reduction ID is retired; it is not an alias for
+C        NinjaRS.
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another'
+     $   //' supported backend.'
+        STOP 1
       ELSEIF(LIBNUM.EQ.3)THEN
 C       IREGI
         CALL DETECT_IREGI(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
@@ -382,9 +409,12 @@ C       Ninja
       ELSEIF(LIBNUM.EQ.7)THEN
 C       Collier 
         CALL DETECT_COLLIER(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
+      ELSEIF(LIBNUM.EQ.8)THEN
+C       NinjaRS
+        CALL DETECT_NINJARS(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
       ELSE
-        STOP 'Only CutTools, PJFry++, IREGI, Golem95, Samurai, Ninja'
-     $   //' and COLLIER are available'
+        STOP 'Unknown MadLoop reduction library; supported IDs are 1'
+     $   //' and 3 through 8'
       ENDIF
       RETURN
       END
@@ -496,6 +526,16 @@ C     It can easily be increased if necessary.
         LPASS=.FALSE.
       ENDIF
       RETURN
+      END
+
+      SUBROUTINE DETECT_NINJARS(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
+C     NinjaRS tensor reduction supports rank at most n+2 in both
+C      precisions.
+      IMPLICIT NONE
+      INTEGER NLOOPLINE,RANK
+      LOGICAL COMPLEX_MASS,LPASS
+      LPASS=NLOOPLINE.GE.1.AND.RANK.GE.0.AND.
+     &      RANK.LE.NLOOPLINE+2
       END
 
       SUBROUTINE DETECT_COLLIER(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)

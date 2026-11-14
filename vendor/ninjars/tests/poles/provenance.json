@@ -1,0 +1,53 @@
+{
+  "library_sha256": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "driver_sha256": "0265012288259ff01f208416ccd72fce9807eb2baefee7571e7bc00b26c1881e",
+  "inputs_sha256": "60b0f6965326aff14c31c03ad166798d42d1b8e26ffa4d9e710457f01e458488",
+  "cases_sha256": "16decf75a9ecc460406ddd87b1ee492f4e48bc6d6f73ec8b9afca5fd3b9bae0f",
+  "raw_output_sha256": "ded7eb478c4852cb99cadc3f5f7f6733668c54784bd921d82eccc676721023fd",
+  "reference_sha256": "18f6694dd5af873d847e39bd299957454c698aeb31f3bf4b2389593bc44d3970",
+  "command": [
+    "gfortran",
+    "-O2",
+    "-I<COLLIER>/include",
+    "collier_poles.f90",
+    "-L<COLLIER>",
+    "-lcollier",
+    "-Wl,-rpath,<COLLIER>",
+    "-o",
+    "<WORK>/collier_poles"
+  ],
+  "collier_version": "1.2.9",
+  "collier_branch": "COLI",
+  "generator_source": "NinjaRS aa6a6307dd081dc3714f9accebc0df9e5561ae73 validation/rank-n2/harness/collier_tensor_driver.f90 (adapted)",
+  "files": {
+    "collier_reference.json": "18f6694dd5af873d847e39bd299957454c698aeb31f3bf4b2389593bc44d3970",
+    "collier_poles.f90": "0265012288259ff01f208416ccd72fce9807eb2baefee7571e7bc00b26c1881e",
+    "collier_jobs.in": "60b0f6965326aff14c31c03ad166798d42d1b8e26ffa4d9e710457f01e458488",
+    "tensor_cases.json": "16decf75a9ecc460406ddd87b1ee492f4e48bc6d6f73ec8b9afca5fd3b9bae0f"
+  },
+  "reference_status": {
+    "cases": 8,
+    "tensor_components": 455,
+    "error_flags": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "accuracy_flags": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+}

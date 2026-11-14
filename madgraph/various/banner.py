@@ -9852,17 +9852,45 @@ class MadLoopParam(ConfigFile):
     """
     
     _ID_reduction_tool_map = {1:'CutTools',
-                             2:'PJFry++',
+                             2:'PJFry++ (retired)',
                              3:'IREGI',
                              4:'Golem95',
                              5:'Samurai',
                              6:'Ninja',
-                             7:'COLLIER'}
+                             7:'COLLIER',
+                             8:'NinjaRS'}
+
+    @staticmethod
+    def _reject_retired_reduction(value):
+        """PJFry's retired backend ID must never silently select NinjaRS."""
+        if isinstance(value, (list, tuple)):
+            for backend in value:
+                MadLoopParam._reject_retired_reduction(backend)
+            return
+        retired = isinstance(value, numbers.Number) and value == 2
+        if isinstance(value, str):
+            # Check the same representation ConfigFile assigns: quoted values
+            # and an optional leading '=' are supported by the card editor.
+            value = ConfigFile.format_variable(value, str, name='MLReductionLib')
+            retired = any(re.fullmatch(r'\+?0*2', token.strip())
+                          for token in value.split('|'))
+        if retired:
+            raise MadGraph5Error(
+                "PJFry++ (MLReductionLib=2) has been retired. "
+                "Select NinjaRS with MLReductionLib=8 or Ninja with "
+                "MLReductionLib=6; reduction backend ID 2 is not an alias for 8.")
+
+    def __setitem__(self, name, value, change_userdefine=False, raiseerror=False):
+        if name.strip().lower() == 'mlreductionlib':
+            self._reject_retired_reduction(value)
+        return super(MadLoopParam, self).__setitem__(
+            name, value, change_userdefine=change_userdefine, raiseerror=raiseerror)
     
     def default_setup(self):
         """initialize the directory to the default value"""
         
         self.add_param("MLReductionLib", "6|7|1")
+        self.add_param("LoopPoleMode", -1, allowed=[-1, 0, 1, 2, 3])
         self.add_param("IREGIMODE", 2)
         self.add_param("IREGIRECY", True)
         self.add_param("CTModeRun", -1)
@@ -9884,6 +9912,7 @@ class MadLoopParam(ConfigFile):
         self.add_param("LoopInitStartOver", False)
         self.add_param("HelInitStartOver", False)
         self.add_param("UseQPIntegrandForNinja", True)        
+        self.add_param("UseQPIntegrandForNinjaRS", True)
         self.add_param("UseQPIntegrandForCutTools", True)
         self.add_param("COLLIERMode", 1)
         self.add_param("COLLIERComputeUVpoles", True)
@@ -9917,7 +9946,10 @@ class MadLoopParam(ConfigFile):
         
     
     def write(self, outputpath, template=None,commentdefault=False):
-        
+        # dict.update/copy can bypass __setitem__; validate again before any
+        # output is written, so programmatic card construction cannot emit 2.
+        self._reject_retired_reduction(self['MLReductionLib'])
+
         if not template:
             if not MADEVENT:
                 template = pjoin(MG5DIR, 'Template', 'loop_material', 'StandAlone', 

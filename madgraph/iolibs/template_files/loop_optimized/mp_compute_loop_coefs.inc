@@ -206,7 +206,7 @@ C BEGIN CODE
 C ----------
 
 C Decide whether to really compute the integrand in quadruple precision or to fake it and copy the double precision computation in the quadruple precision variables.
-COMPUTE_INTEGRAND_IN_QP = ((MLREDUCTIONLIB(LIBINDEX).eq.6.AND.UseQPIntegrandForNinja) .OR. (MLREDUCTIONLIB(LIBINDEX).eq.1.AND.UseQPIntegrandForCutTools))
+COMPUTE_INTEGRAND_IN_QP = ((MLREDUCTIONLIB(LIBINDEX).eq.6.AND.UseQPIntegrandForNinja) .OR. (MLREDUCTIONLIB(LIBINDEX).eq.1.AND.UseQPIntegrandForCutTools) .OR. (MLREDUCTIONLIB(LIBINDEX).eq.8.AND.UseQPIntegrandForNinjaRS))
 
 C To be on the safe side, we always update the MP params here.
 C It can be redundant as this routine can be called a couple of times for the same PS point during the stability checks.

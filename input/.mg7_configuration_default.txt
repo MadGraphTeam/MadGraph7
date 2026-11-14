@@ -236,6 +236,11 @@
 #! if ninja=/PATH/TO/ninja/lib: use that specific installation path for ninja 
 # ninja = ./HEPTools/lib
 
+#! NinjaRS reduction library (MLReductionLib = 8).
+#! Install with 'install ninjars'; set to None to disable.
+#! The directory must contain libninjars.a and ninjars-config.json.
+# ninjars = None
+
 #! Set the COLLIER directory containing COLLIER's library
 #! if '' or None: disabling COLLIER 
 #! if ninja=/PATH/TO/ninja/lib: use that specific installation path for COLLIER

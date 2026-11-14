@@ -3617,23 +3617,34 @@ RESTART = %(mint_mode)s
              r"Unknown return code \(100\)\:\s+(?P<n100>\d+).*"+\
              r"Unknown return code \(10\)\:\s+(?P<n10>\d+).*",re.DOTALL)
     
-        unit_code_meaning = { 0 : 'Not identified (CTModeRun != -1)',
-                              1 : 'CutTools (double precision)',
-                              2 : 'PJFry++',
-                              3 : 'IREGI',
-                              4 : 'Golem95',
-                              5 : 'Samurai',
-                              6 : 'Ninja (double precision)',
-                              7 : 'COLLIER',
-                              8 : 'Ninja (quadruple precision)',
-                              9 : 'CutTools (quadruple precision)'}
         RetUnit_finder =re.compile(
                            r"#Unit\s*(?P<unit>\d+)\s*=\s*(?P<n_occurences>\d+)")
+        ninjars_finder = re.compile(r"#NinjaRS\s+(DP|QP)\s*=\s*(\d+)")
+        version_finder = re.compile(r"#ReturnCodeVersion\s*=\s*(\S+)")
+        backend_usage = {}
     #Unit
     
         for gv_log in log_GV_files:
             channel_name = '/'.join(gv_log.split('/')[-5:-1])
-            log=open(gv_log,'r').read()                
+            with open(gv_log, 'r') as stream:
+                log = stream.read()
+            ninjars_usage = {'DP': 0, 'QP': 0}
+            for precision, count in ninjars_finder.findall(log):
+                ninjars_usage[precision] += int(count)
+            try:
+                versions = {int(value) for value in version_finder.findall(log)}
+            except ValueError:
+                raise MadGraph5Error('Invalid MadLoop return-code format in %s.' % gv_log)
+            if len(versions) > 1:
+                raise MadGraph5Error('Mixed MadLoop return-code formats in %s.' % gv_log)
+            version = next(iter(versions)) if versions else 1
+            unit_counts = [0] * 10
+            for match in RetUnit_finder.finditer(log):
+                unit_counts[int(match.group('unit'))] += int(match.group('n_occurences'))
+            for backend, count in sum_html.decode_madloop_backend_usage(
+                    unit_counts, ninjars_usage['DP'], ninjars_usage['QP'],
+                    version).items():
+                backend_usage[backend] = backend_usage.get(backend, 0) + count
             UPS_stats = re.search(UPS_stat_finder,log)
             for retunit_stats in re.finditer(RetUnit_finder, log):
                 if channel_name not in list(stats['UPS'].keys()):
@@ -3671,8 +3682,6 @@ RESTART = %(mint_mode)s
             nTotini = sum([chan[7] for chan in stats['UPS'].values()],0)
             nTot100 = sum([chan[8] for chan in stats['UPS'].values()],0)
             nTot10  = sum([chan[9] for chan in stats['UPS'].values()],0)
-            nTot1  = [sum([chan[10][i] for chan in stats['UPS'].values()],0) \
-                                                             for i in range(10)]
             UPSfracs = [(chan[0] , 0.0 if chan[1][0]==0 else \
               safe_float(chan[1][4]*100)/chan[1][0]) for chan in stats['UPS'].items()]
             maxUPS = max(UPSfracs, key = lambda w: w[1])
@@ -3687,19 +3696,15 @@ RESTART = %(mint_mode)s
             tmpStr += '\n    Quadruple precision used:            %d'%nTotqdp
             tmpStr += '\n    Initialization phase-space points:   %d'%nTotini
             tmpStr += '\n    Reduction methods used:'
-            red_methods = [(unit_code_meaning[i],nTot1[i]) for i in \
-                                         unit_code_meaning.keys() if nTot1[i]>0]
+            red_methods = [(sum_html.MADLOOP_BACKEND_LABELS[backend], count)
+                           for backend, count in backend_usage.items()
+                           if count > 0]
             for method, n in sorted(red_methods, key= lambda l: l[1], reverse=True):
                 tmpStr += '\n      > %s%s%s'%(method,' '*(33-len(method)),n)                
             if nTot100 != 0:
                 debug_msg += '\n  Unknown return code (100):             %d'%nTot100
             if nTot10 != 0:
                 debug_msg += '\n  Unknown return code (10):              %d'%nTot10
-            nUnknownUnit = sum(nTot1[u] for u in range(10) if u \
-                                                not in list(unit_code_meaning.keys()))
-            if nUnknownUnit != 0:
-                debug_msg += '\n  Unknown return code (1):               %d'\
-                                                                   %nUnknownUnit
 
             if maxUPS[1]>0.001:
                 message += tmpStr
