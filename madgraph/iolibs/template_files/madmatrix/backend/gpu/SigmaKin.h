@@ -71,7 +71,7 @@ namespace madmatrix
   // (choose_good_helicities): one constant, so that the two never disagree
   constexpr int goodHelScanEvents = 16;
 
-  void
+  int // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParametersArg params,  // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]

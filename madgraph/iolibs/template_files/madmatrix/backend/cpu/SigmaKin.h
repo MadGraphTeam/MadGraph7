@@ -34,7 +34,7 @@ namespace madmatrix
   constexpr int goodHelScanEvents = 64;
 #endif
 
-  void
+  int // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParameters& params,   // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
@@ -53,6 +53,14 @@ namespace madmatrix
   // decay lighter than its products, see scan_points in umami.cc): set before
   // sigmaKin_getGoodHel, which then leaves it out of the good-helicity scan.
   void sigmaKin_setNoPhaseSpace( const int cross );
+
+  // The C-parity verdict of the last sigmaKin_getGoodHel scan of this thread (true:
+  // a pair differed), and the verdict the next sigmaKin_setGoodHel of this thread
+  // uses instead of a scan of its own: an instance that chose its good helicities
+  // over several scans (umami.cc, learn_good_helicities) ANDs their verdicts, and
+  // one that is given a choice (madmatrix_set_helicity_choice) takes its verdict.
+  bool sigmaKin_csymScanBad();
+  void sigmaKin_setCsymVerdict( const bool bad );
 
   void
   sigmaKin( const ProcessParameters& params,   // input: parameters of the process
