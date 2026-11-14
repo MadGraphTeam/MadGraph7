@@ -6,11 +6,11 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [dependencies]
-oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "bd703d09a78f7849a6b86a07096e6f222fc01193", default-features = false, features = ["rust-codegen"] }
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "2e7afabb5903814196d7ab39c695ed9cac777aa4", default-features = false, features = ["rust-codegen"] }
 symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "tracing_max_level_info"] }
 
 [dev-dependencies]
-oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "bd703d09a78f7849a6b86a07096e6f222fc01193", default-features = false, features = ["generated-evaluators", "rust-codegen"] }
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "2e7afabb5903814196d7ab39c695ed9cac777aa4", default-features = false, features = ["generated-evaluators", "rust-codegen"] }
 
 [[example]]
 name = "generate_poles"
