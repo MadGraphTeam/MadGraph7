@@ -770,6 +770,8 @@ def _benchmark_summary(
                 result.evaluator_uncertainty,
                 sample_count=evaluator_sample_count,
             )
+    from .resources import peak_memory_text
+
     evaluator_total_text = "N/A"
     if result.evaluator_total_time_per_point is not None:
         evaluator_total_text = (
@@ -1034,6 +1036,12 @@ def _benchmark_summary(
             None,
         ),
         ("precision", str(result.effective_config.precision), None),
+        *(
+            (("peak RAM", peak_text, None),)
+            if (peak_text := peak_memory_text(getattr(result, "peak_memory", None)))
+            is not None
+            else ()
+        ),
         (
             "timing sources",
             (

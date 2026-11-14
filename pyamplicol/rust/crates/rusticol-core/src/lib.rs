@@ -37,6 +37,8 @@ mod metadata;
 pub mod model_proofs;
 pub mod narrow;
 pub mod pacbin;
+#[cfg(feature = "symbolica-runtime")]
+pub mod phase_space;
 pub mod recurrence;
 #[cfg(feature = "symbolica-runtime")]
 mod row_evaluator;

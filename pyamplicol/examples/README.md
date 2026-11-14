@@ -430,7 +430,7 @@ Steering:
 * **Any setting** (`--set PATH=VALUE`, repeatable), for example
   `--set loop.model.scheme.mass_scheme=real-on-shell`,
   `--set evaluation.reduction=ninjars` or `--set check.points=4`.
-* **Points**: `evaluate` and `profile` draw flat (RAMBO) phase-space points
+* **Points**: `evaluate` and `profile` draw flat (RAMBO on diet) phase-space points
   when no momenta file is given: `[evaluation.phase_space] points` (2),
   `seed` (1; point i from seed + i) and `sqrt_s` (default: the artifact's
   validation-point energy), with mu_r^2 = s per point; `--momenta FILE`
