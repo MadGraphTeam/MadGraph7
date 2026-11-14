@@ -38,6 +38,8 @@ pub mod model_proofs;
 pub mod narrow;
 pub mod pacbin;
 pub mod recurrence;
+#[cfg(feature = "symbolica-runtime")]
+mod row_evaluator;
 pub mod scalar_primitives;
 #[cfg(feature = "symbolica-runtime")]
 pub mod source_bindings;
@@ -159,6 +161,10 @@ pub mod __private {
     > {
         crate::engine::decode_exact_evaluator_state(bytes)
     }
+
+    /// Symbolica's scalar evaluator over row-major batches, one row at a time.
+    #[cfg(feature = "symbolica-runtime")]
+    pub use crate::row_evaluator::RowEvaluator;
 
     /// A Python `Evaluator.save()` in its canonical stored form (only the
     /// Symbolica state its evaluator references, numbered canonically);

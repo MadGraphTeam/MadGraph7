@@ -158,7 +158,7 @@ numerical transport:
   takes `precision` in decimal digits). Decimal strings are needed only at
   external ingress/egress. Failed lanes carry no value.
 - `CoefficientEvaluator`: a saved exact evaluator mapped to the chosen carrier
-  through Symbolica's instruction-batched evaluator (GIL released).
+  through Symbolica's evaluator, run row by row (GIL released).
 - Engine v2 (`docs/development/loop_v2/DESIGN.md` §11-§12): `V2Reducer`,
   `V2Executor`, `V2Program`, `V2PlanModel`, `V2Dag`, `V2Generation`,
   `SeedBuilder`, `V2SeedFourier`, `NativeCellEngine`/`NativeCellTable`, the
