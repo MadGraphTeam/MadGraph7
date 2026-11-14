@@ -4141,6 +4141,116 @@ print(json.dumps(out))
                         'all matrix elements vanished for p p > n1 n1')
         self._assert_me_lists_close(mg7, standalone, rtol=1e-4)
 
+    # a heavy down-type quark xq (pdg 6000001) coupling to d and s through
+    # the Z, with two couplings: merged, [xq~, q, Z] and [q~, xq, Z] each
+    # become ONE flavored coupling with two keys
+    _XQ_PARTICLES = """
+xq = Particle(pdg_code = 6000001, name = 'xq', antiname = 'xq~', spin = 2,
+              color = 3, mass = Param.MXQ, width = Param.WXQ, texname = 'xq',
+              antitexname = 'xq~', charge = -1/3, GhostNumber = 0,
+              LeptonNumber = 0, Y = 0)
+xq__tilde__ = xq.anti()
+"""
+    _XQ_PARAMETERS = """
+MXQ = Parameter(name = 'MXQ', nature = 'external', type = 'real', value = 1000.,
+                texname = 'MXQ', lhablock = 'MASS', lhacode = [ 6000001 ])
+WXQ = Parameter(name = 'WXQ', nature = 'external', type = 'real', value = 10.,
+                texname = 'WXQ', lhablock = 'DECAY', lhacode = [ 6000001 ])
+KXD = Parameter(name = 'KXD', nature = 'external', type = 'real', value = 0.3,
+                texname = 'KXD', lhablock = 'XQMIX', lhacode = [ 1 ])
+KXS = Parameter(name = 'KXS', nature = 'external', type = 'real', value = 0.5,
+                texname = 'KXS', lhablock = 'XQMIX', lhacode = [ 2 ])
+"""
+    _XQ_COUPLINGS = """
+GC_XD = Coupling(name = 'GC_XD', value = 'ee*complex(0,1)*KXD', order = {'QED':1})
+GC_XS = Coupling(name = 'GC_XS', value = 'ee*complex(0,1)*KXS', order = {'QED':1})
+"""
+    _XQ_VERTICES = """
+V_XQ1 = Vertex(name = 'V_XQ1', particles = [ P.xq__tilde__, P.d, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ2 = Vertex(name = 'V_XQ2', particles = [ P.xq__tilde__, P.s, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ3 = Vertex(name = 'V_XQ3', particles = [ P.d__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ4 = Vertex(name = 'V_XQ4', particles = [ P.s__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
+               color = [ 'T(3,2,1)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_11})
+"""
+
+    def _sm_with_mixing_heavy_quark(self):
+        """A copy of the sm UFO with the heavy quark xq of _XQ_* (its
+        restriction card extended with xq's parameters); returns its path."""
+        path = pjoin(self.tmpdir, 'sm_xq')
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        shutil.copytree(pjoin(MG5DIR, 'models', 'sm'), path,
+                        ignore=shutil.ignore_patterns('*.pkl', '*.log', 'restrict_*'))
+        shutil.copy(pjoin(MG5DIR, 'models', 'sm', 'restrict_default.dat'), path)
+        for name, text in (('particles.py', self._XQ_PARTICLES),
+                           ('parameters.py', self._XQ_PARAMETERS),
+                           ('couplings.py', self._XQ_COUPLINGS),
+                           ('vertices.py', self._XQ_VERTICES)):
+            with open(pjoin(path, name), 'a') as fsock:
+                fsock.write(text)
+        card = open(pjoin(path, 'restrict_default.dat')).read()
+        card = card.replace('   25 1.250000e+02 # MH \n',
+                            '   25 1.250000e+02 # MH \n 6000001 1.000000e+03 # MXQ \n', 1)
+        card += ('\nDECAY 6000001 1.000000e+01\n'
+                 'Block XQMIX \n    1 3.000000e-01 # KXD \n    2 5.000000e-01 # KXS \n')
+        with open(pjoin(path, 'restrict_default.dat'), 'w') as fsock:
+            fsock.write(card)
+        return path
+
+    def test_flavor_merged_from_unmerged_refused(self):
+        """A merged quark built from unmerged particles only, through a
+        flavored coupling with several flavors, is refused by every output
+        with an InvalidCmd naming the coupling and the way out.
+
+        The heavy quark xq couples to d and s through the Z (_XQ_*). In
+        g g > xq z q~ (p p > xq z j) the quark of the diagrams with the Z
+        on the xq line is built from xq and z alone, and its flavor, d or
+        s, is fixed by the other end of the line; in xq xq~ > z z (no merged
+        leg) it is summed over. The outputs give a merged wavefunction the
+        one flavor its mothers fix, so they can do neither: p p > xq z j
+        crashed with a FlavorTagError (and MG's 'report this bug'), xq xq~ >
+        z z only when writing check_sa.f. Without flavor grouping, the way
+        out the message gives, both are generated; p p > xq z, which builds
+        no quark from xq alone, is still written merged.
+        """
+        model = self._sm_with_mixing_heavy_quark()
+        self.do('import model %s' % model)
+        for process in ('p p > xq z j', 'xq xq~ > z z'):
+            self.do('generate %s' % process)
+            for output in ('standalone_fortran', 'madevent', 'standalone'):
+                with self.assertRaises(InvalidCmd) as context:
+                    self.do('output %s %s -f' % (output, self.out_dir))
+                message = str(context.exception)
+                for text in ('GC_XD', 'GC_XS', "'set apply_flavor_grouping False'"):
+                    self.assertIn(text, message, '%s, %s' % (process, output))
+                self.assertEqual(glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*')),
+                                 [], '%s, %s' % (process, output))
+        self.assertIn('xq xq~ > z z', message)
+
+        self.do('generate p p > xq z')
+        self.do('output standalone_fortran %s -f' % self.out_dir)
+        self.assertEqual([os.path.basename(p).split('_', 1)[1] for p in
+                          glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))],
+                         ['gQ_xqz'])
+
+        self.do('set apply_flavor_grouping False')
+        self.do('import model %s' % model)
+        for process in ('p p > xq z j', 'xq xq~ > z z'):
+            self.do('generate %s' % process)
+            self.do('output standalone_fortran %s -f' % self.out_dir)
+            self.assertTrue(glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*')),
+                            process)
+
     def test_madmatrix_mssm_gogo(self):
         """Dependent (event-by-event, running-alphas) flavored couplings must
         give the same per-flavor |M|^2 in standalone (madmatrix) as in the

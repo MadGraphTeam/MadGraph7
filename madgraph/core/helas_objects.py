@@ -611,6 +611,15 @@ class HelasWavefunction(base_objects.PhysicsObject):
         """No flavor tag can be assigned to this wavefunction (raised by
         tag_external_flavor and propagate_flavor_tag)."""
 
+    class AmbiguousFlavorError(FlavorTagError, InvalidCmd):
+        """A merged particle built from unmerged particles only, through a
+        flavored coupling with several flavors (a heavy quark mixing into
+        several merged light quarks): its flavor is fixed by the other end
+        of its fermion line (p p > xq z j), or summed over when no merged
+        leg fixes it (xq xq~ > z z), and the outputs give each wavefunction
+        the one flavor its mothers fix. An InvalidCmd: the process needs the
+        model without flavor grouping."""
+
     @staticmethod
     def spin_to_size(spin):
         """ Returns the size of a wavefunction (i.e. number of element) carrying
@@ -1741,7 +1750,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     # for this example, we need to find the flavor of the neutrino
                     # A single flavor should be valid from the coupling.
                     if len(coup.get('flavors')) != 1:
-                        raise self.FlavorTagError('Flavor propagation for merged particle with no merged input is ambiguous')
+                        raise self.AmbiguousFlavorError(
+                            self.ambiguous_flavor_message(model, vertex, coup))
                     flv_coup = next(iter(coup.get('flavors').keys()))
                     flav_output = [ f for f in flv_coup if f != 0]
                     if len(flav_output) != 1:
@@ -1788,7 +1798,61 @@ class HelasWavefunction(base_objects.PhysicsObject):
             return return_fct(self, True, model, tag_name)
         
         raise Exception
-        
+
+    def ambiguous_flavor_error(self, model):
+        """The AmbiguousFlavorError propagate_flavor_tag raises for this
+        wavefunction whatever the external flavors (a merged particle built
+        from unmerged mothers only, through a flavored coupling with several
+        flavors), None if it raises none."""
+
+        merged = model.get('merged_particles')
+        if not self.get('mothers') or abs(self.get('pdg_code')) not in merged or \
+                any(abs(w.get_pdg_code()) in merged for w in self.get('mothers')):
+            return None
+        vertex = model.get('interaction_dict')[self.get('interaction_id')]
+        coup = next(iter(vertex.get('couplings').values()))
+        if isinstance(coup, str) or len(coup.get('flavors')) == 1:
+            return None
+        return self.AmbiguousFlavorError(
+            self.ambiguous_flavor_message(model, vertex, coup))
+
+    def ambiguous_flavor_message(self, model, vertex, coup):
+        """The message of the AmbiguousFlavorError of propagate_flavor_tag:
+        this wavefunction, of a merged particle, is built from unmerged
+        mothers only through the flavored coupling coup of vertex, which has
+        one key per flavor it can take. Names its flavors, its mothers and
+        the vertex of each key with the real particles of the merged ones."""
+
+        merged = model.get('merged_particles')
+
+        def real_name(pdg, index):
+            sign = 1 if pdg > 0 else -1
+            return model.get_particle(sign * merged[abs(pdg)][index - 1]).get_name()
+
+        pdg_out = self.get('pdg_code')
+        pdg_order = [p.get_pdg_code() for p in vertex.get('particles')]
+        if -pdg_out in pdg_order:
+            pos_output = pdg_order.index(-pdg_out)
+        else:
+            pos_output = [i for i, pdg in enumerate(pdg_order) if abs(pdg) in merged][0]
+        built, vertices = [], []
+        for key in sorted(coup.get('flavors')):
+            built.append(real_name(pdg_out, key[pos_output]))
+            names = [real_name(pdg, k) if abs(pdg) in merged
+                     else model.get_particle(pdg).get_name()
+                     for pdg, k in zip(pdg_order, key)]
+            vertices.append('%s (%s)' % (' '.join(names), coup.get('flavors')[key]))
+        mothers = [model.get_particle(w.get_pdg_code()).get_name()
+                   for w in self.get('mothers')]
+        return ("flavor grouping cannot build a %s from %s alone: the flavored "
+                "coupling %s of the vertices %s gives it %d flavors, and a merged "
+                "particle takes its one flavor from its inputs: no output can "
+                "take it from the other end of its fermion line or sum over "
+                "it. Generate this process "
+                "without flavor grouping: 'set apply_flavor_grouping False', "
+                "import the model again and generate the process again."
+                % ('/'.join(built), ' '.join(mothers), coup.get('name'),
+                   ', '.join(vertices), len(built)))
 
     def get_coupling_for_flavor(self, model, tag_name='flavortag'):
         """Return the coupling for the given flavor"""
@@ -6190,6 +6254,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # common case for models without flavor grouping.
         if not self._flavor_allow_trimming and \
                 not any(abs(pdg) in to_map for pdg in pdgs):
+            # except for a merged particle built from unmerged ones through a
+            # flavored coupling with several flavors (xq xq~ > z z with a
+            # heavy quark xq mixing into d and s): its flavors must be summed
+            # over, which the outputs cannot do (they only find it when
+            # writing the couplings, see get_coupling_for_flv)
+            for wf in self.get_all_wavefunctions():
+                error = wf.ambiguous_flavor_error(model)
+                if error:
+                    raise self.flavor_error_with_process(error)
             identity = tuple([1] * len(pdgs))
             identity_pdg = [abs(pdg) * sign
                             for pdg, sign in zip(pdgs, pdg_signs)]
@@ -6469,12 +6542,24 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 pass
         any_valid = False
         for i, diag in enumerate(self.get('diagrams')):
-            if diag.check_flavor(real_pdgs, model, debug=debug, clear_flavor_tag=False):
+            try:
+                valid = diag.check_flavor(real_pdgs, model, debug=debug,
+                                          clear_flavor_tag=False)
+            except HelasWavefunction.AmbiguousFlavorError as error:
+                raise self.flavor_error_with_process(error)
+            if valid:
                 any_valid = True
                 if debug: misc.sprint('diag', i, 'is ok')
             else:
                 if debug: misc.sprint('diag', i, 'not ok')
         return any_valid
+
+    def flavor_error_with_process(self, error):
+        """The AmbiguousFlavorError error with the process of this matrix
+        element in front: the output command builds all of them."""
+        return HelasWavefunction.AmbiguousFlavorError('%s: %s' % (
+            self.get('processes')[0].nice_string(print_weighted=False)
+            .replace('Process: ', ''), error))
 
     def remove_diagrams_without_flavor(self):
         """remove all diagrams whose flavor store ('valid_flavors') is empty,
