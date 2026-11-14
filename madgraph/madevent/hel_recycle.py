@@ -403,13 +403,16 @@ class CppDialect(Dialect):
 
         A P1N current knows only the flavour x of its fermion input and has to
         give its output ONE flavour, which the member amplitudes then compare
-        with their peeled leg. The full vertex (_0) is non-zero for the partner
-        y of x whenever k1=x, k2=y or k1=y, k2=x is in the table -- either
-        orientation, since the call can put the table's first fermion second.
-        So every x must have at most one partner over both orientations. With
-        several couplings (one vertex, several Lorentz structures) the _0
-        routine needs partner1[x] == partner2[x] == y, which the P1N current
-        follows only for a symmetric table.'''
+        with their peeled leg. The full vertex (_0) is non-zero for the pair
+        (x, y) of its F1 and F2 when k1=x, k2=y is in the table (the routines
+        read it in that one orientation, as it is filled). A current with an
+        F1 input reads the partner in partner1, which keeps one k2 per k1, one
+        with an F2 input in partner2, which keeps one k1 per k2: a flavour
+        with two partners would lose one of them. So every x must have at
+        most one partner, checked over both orientations together (a little
+        stricter than needed). With several couplings (one vertex, several
+        Lorentz structures) the _0 routine needs partner1[x] == partner2[x]
+        == y, which the P1N current follows only for a symmetric table.'''
         partners = {}
         forward, backward = {}, {}
         for k1, k2 in pairs:
@@ -565,9 +568,37 @@ class CppDialect(Dialect):
 
     _AMP_TAG = re.compile(r'//\s*HRAMP\s+(\d+)(?:\s+(\d+(?:,\d+)*))?'
                           r'(?:\s+flv=(0x[0-9a-fA-F]+))?')
-    # the runtime test of a grouped flavour mask, as the exporter writes it in
-    # the plain calls (MadMatrixUFOHelasCallWriter.FLAVOUR_GUARD)
+    # the runtime test of a grouped flavour mask of one 64-bit word
     FLAVOUR_GUARD = 'if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {'
+
+    @classmethod
+    def flavour_guard(cls, mask, nwords=1):
+        '''The opening `if( ... ) {` of the runtime test of bit iflavor of a
+        grouped flavour mask, as the exporter writes it in the plain calls
+        (MadMatrixUFOHelasCallWriter) and the recycler around every copy of a
+        masked amplitude. A subprocess of more than 64 flavour groups has a
+        mask of nwords 64-bit words, and the word of iflavor is picked by a
+        chain of conditionals: a 64-bit word shifted by 64 or more is
+        undefined. (iflavor is the grouped flavour index of the page,
+        constant across a SIMD vector.)'''
+        if nwords <= 1:
+            return cls.FLAVOUR_GUARD % mask
+        words = [(mask >> (64 * i)) & 0xFFFFFFFFFFFFFFFF for i in range(nwords)]
+        expr = '( 0x%xULL >> ( iflavor - %d ) )' % (words[-1], 64 * (nwords - 1))
+        for i in reversed(range(nwords - 1)):
+            shift = 'iflavor' if i == 0 else '( iflavor - %d )' % (64 * i)
+            expr = 'iflavor < %d ? ( 0x%xULL >> %s ) : %s' % (64 * (i + 1),
+                                                             words[i], shift, expr)
+        return 'if( ( %s ) & 0x1ULL ) {' % expr
+
+    @staticmethod
+    def flavour_mask_text(mask, nwords=1):
+        '''A grouped flavour mask as the flv= of an //HRAMP tag: its hex
+        digits, padded to 16 per word when it has more than one word, which is
+        how amplitude_flavour_words reads the number of words back.'''
+        if nwords <= 1:
+            return '0x%x' % mask
+        return '0x%0*x' % (16 * nwords, mask)
 
     def amplitude_diagram(self, line, args):
         # the scratch every amplitude writes to cannot say which diagram it is,
@@ -590,6 +621,14 @@ class CppDialect(Dialect):
         if not match or not match.group(3):
             return None
         return int(match.group(3), 16)
+
+    def amplitude_flavour_words(self, line):
+        '''The number of 64-bit words of the flavour mask on an amplitude's
+        tag (see flavour_mask_text): 1 unless it is padded beyond 16 digits.'''
+        match = self._AMP_TAG.search(line)
+        if not match or not match.group(3):
+            return 1
+        return max(1, (len(match.group(3)) - 2 + 15) // 16)
 
     # -- line shape ----------------------------------------------------------
     def is_continuation(self, line):
@@ -924,9 +963,8 @@ class CppDialect(Dialect):
 
         An amplitude of a flavour-merged process that only some flavours have
         (flv= on its tag) is guarded with their mask, every copy, P1N groups
-        and folds alike, as the plain calls guard it: it is not always zero at
-        the other flavours (see MadMatrixUFOHelasCallWriter
-        .super_get_matrix_element_calls).'''
+        and folds alike, as the plain calls guard it (see
+        MadMatrixUFOHelasCallWriter.super_get_matrix_element_calls).'''
         plan = plan_amp_split(new_amps, self.is_wavefunction) if amp_splt else None
         out = []
         if plan is None:
@@ -945,7 +983,8 @@ class CppDialect(Dialect):
         mask = self.amplitude_flavour_mask(line)
         if mask is not None and out:
             indent = re.match(r'\s*', out[0]).group(0)
-            out = ['%s%s' % (indent, self.FLAVOUR_GUARD % mask)] + \
+            guard = self.flavour_guard(mask, self.amplitude_flavour_words(line))
+            out = ['%s%s' % (indent, guard)] + \
                   ['  ' + text for text in out] + ['%s}' % indent]
         return '\n'.join(out) + '\n'
 

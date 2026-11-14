@@ -4163,7 +4163,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'checks', 'parameters', 'options', 'coupling_order','variable',
                      'modellist', 'fockstates', 'boundstates']
     _add_opts = ['process', 'model']
-    _save_opts = ['model', 'processes', 'options']
+    # (no 'processes': the amplitudes kept after an output are the base
+    # amplitudes of its matrix elements, which lost the diagrams its --mask
+    # trimmed, so a saved list could not be output with the other --mask)
+    _save_opts = ['model', 'options']
     # commands the running tutorial provides, also accepted as `tutorial X`:
     # people reach for `tutorial hint` as readily as `hint`
     _tutorial_step_cmds = ('hint', 'solution', 'next', 'repeat', 'back', 'skip')
@@ -11255,32 +11258,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 raise self.RWError('Could not load model from file %s' \
                                       % args[1])
-        elif args[0] == 'processes':
-            amps,proc_defs = save_load_object.load_from_file(args[1])
-            if isinstance(amps, diagram_generation.AmplitudeList):
-                cpu_time2 = time.time()
-                logger.info("Loaded processes from file in %0.3f s" % \
-                      (cpu_time2 - cpu_time1))
-                if amps:
-                    model = amps[0].get('process').get('model')
-                    if not model.get('parameters'):
-                        # This is a v4 model.  Look for path.
-                        self._model_v4_path = import_v4.find_model_path(\
-                                   model.get('name').replace("_v4", ""),
-                                   self._mgme_dir)
-                    else:
-                        self._model_v4_path = None
-                    # If not exceptions from previous steps, set
-                    # _curr_amps and _curr_model
-                    self._curr_amps = amps
-                    self._curr_model = model
-                    self._curr_proc_defs = proc_defs
-                    logger.info("Model set from process.")
-                    # Do post-processing of model
-                    self.process_model()
-                self._done_export = None
-            else:
-                raise self.RWError('Could not load processes from file %s' % args[1])
 
 
     def post_install_RunningCoupling(self):
@@ -12446,13 +12423,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.info('Saved model to file %s' % args[1])
             else:
                 raise self.InvalidCmd('No model to save!')
-        elif args[0] == 'processes':
-            if self._curr_amps:
-                if save_load_object.save_to_file(args[1], (self._curr_amps,self._curr_proc_defs) ):
-                    logger.info('Saved processes to file %s' % args[1])
-            else:
-                raise self.InvalidCmd('No processes to save!')
-
         elif args[0] == 'options':
             partial_save = False
             to_define = {}
@@ -14398,7 +14368,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         non-folding backend. Asking the output line alone left the crossings
         recorded by an earlier `generate ... --use_crossing=True` neither
         expanded nor written once a later `add process ... --use_crossing=False`
-        (or a `load processes` in a new session) turned the machinery off.
+        turned the machinery off.
 
         With `decay_chains`, the question is asked for the crossings recorded
         inside a decay chain, which a folding backend may still not read (the
@@ -15032,10 +15002,43 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # the flavor machinery to enumerate all combinations: permutation-
         # duplicate diagrams then keep a valid flavor and are not trimmed, while
         # genuinely unphysical diagrams (no flavor at all) are still removed.
-        helas_objects.HelasMatrixElement.enumerate_all_flavors = \
-            not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        enumerate_all = not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        # An output replaces self._curr_amps by the base amplitudes of its
+        # matrix elements (end of export), which only have the diagrams that
+        # output kept: with merged flavors, those its --mask trimmed are gone,
+        # and the other --mask needs them (the orderings --mask=False adds:
+        # q q > w+ w- q q QCD=0, q = u d, 183 diagrams of 294 and 3 of its 6
+        # flavors wrong). self._trimmed_amps keeps, for an output that
+        # trimmed, [those base amplitudes, the amplitudes they were made
+        # from, the --mask of its matrix elements]. Matrix elements kept from
+        # an output with the other --mask are made again (`output
+        # standalone_fortran A` then `output standalone B --mask=False` used
+        # to write B from A's flavors and diagrams), and whenever they are
+        # made, from the amplitudes as generated (the base amplitudes of that
+        # output may sit in self._curr_amps with processes added since).
+        trimmed = getattr(self, '_trimmed_amps', None)
+        if trimmed is not None:
+            base_amps, generated_amps, trimmed_all = trimmed
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    trimmed_all != enumerate_all:
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+            if not self._curr_matrix_elements.get_matrix_elements() and base_amps:
+                base_ids = set(id(amp) for amp in base_amps)
+                kept = [amp for amp in self._curr_amps if id(amp) not in base_ids]
+                if len(kept) + len(base_amps) == len(self._curr_amps):
+                    self._curr_amps = diagram_generation.AmplitudeList(
+                                                    list(generated_amps) + kept)
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = enumerate_all
 
+        made = not self._curr_matrix_elements.get_matrix_elements()
+        generated_amps = self._curr_amps
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
+        if made:
+            self._trimmed_amps = None
+            if any(getattr(me, '_flavor_allow_trimming', False) for me in
+                   self._curr_matrix_elements.get_matrix_elements()):
+                # the base amplitudes are known at the end of export
+                self._trimmed_amps = [None, generated_amps, enumerate_all]
 
         # zerowidth_external: an external (initial/final) particle is an on-shell
         # asymptotic state, so an internal propagator of the same field must not
@@ -15241,6 +15244,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             self._curr_amps = diagram_generation.AmplitudeList(\
                    [me.get('base_amplitude') for me in \
                     matrix_elements])
+            # These lost the diagrams this output's --mask trimmed: record
+            # them, so that the next regeneration starts again from the
+            # amplitudes as generated (see the --mask above).
+            if getattr(self, '_trimmed_amps', None) is not None:
+                self._trimmed_amps[0] = list(self._curr_amps)
 
     def finalize(self, nojpeg, online = False, flaglist=[]):
         """Make the html output, write proc_card_mg5.dat and create

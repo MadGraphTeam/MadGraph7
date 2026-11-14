@@ -318,6 +318,19 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries test_madmatrix_hel_recycling_every_flavour test_madmatrix_hel_recycling_launch_parameters test_madmatrix_hel_recycling_flavour_masks_crossed -pA -t0 -l INFO
 
+      # merged flavours, against the Fortran standalone at every flavour: the
+      # recycled build with its flavour masks, --mask=False (no guard, every
+      # flavour ordering, after a masked output and after an add process), the
+      # FD-gauge vector+Goldstone couplings summed in one routine; and the
+      # flavoured couplings no output can write (refused by every output: an
+      # unmerged quark mixing into several merged ones, and a merged quark
+      # built from unmerged particles alone)
+      - name: "acceptancetest_mg7_flavour_tables: merged flavours vs Fortran, refused couplings"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_hel_recycling_flavour_masks_vs_fortran test_madmatrix_mask_false_vs_fortran test_madmatrix_fd_flavor_grouping_goldstone test_flavor_coupling_shared_table_slot test_flavor_merged_from_unmerged_refused -pA -t0 -l INFO
+
       # --hel_recycling through the mg7 launch: a param_card scan (ymb = 0, 4.7,
       # 0) whose points need different recycled builds gives the plain cross
       # section at each, in one process (each build has a library name of its own)

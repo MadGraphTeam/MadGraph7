@@ -16366,6 +16366,10 @@ class UFO_model_to_mg4(object):
         flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
         deps = [c.name for c in self.coups_dep]
         for one_flv in flavor_couplings:
+            # PARTNER / PARTNER2 / VAL of flavor_couplings.f hold one entry
+            # per flavor: refuse a coupling they cannot hold rather than
+            # write one that silently drops flavors
+            one_flv.assert_table_representable()
             one_coupling = one_flv.get_one_coupling()
             if one_coupling in deps:
                 self.coups_flv_dep.append( one_flv)

@@ -392,7 +392,6 @@ class TestCmdShell2(unittest.TestCase,
         self.cmd.do_import('model sm', force=True)
         self.do('set group_subprocesses False')
         self.do('generate e+ e- > e+ e-')
-#        self.do('load processes %s' % self.join_path(_pickle_path,'e+e-_e+e-.pkl'))
         self.do('output madevent %s -nojpeg' % self.out_dir)
 
         self.assertTrue(os.path.exists(self.out_dir))
@@ -3462,11 +3461,13 @@ print(json.dumps(out))
         subprocess: |M|^2 of every flavour, against the Fortran standalone.
 
         In a merged subprocess an amplitude that only some flavours have is
-        guarded with their mask (if( ( 0x...ULL >> iflavor ) & 0x1ULL )), and
-        the guard is not only an optimisation: a diagram closed by a bosonic
-        vertex (VVV1_0 of a W and two fermion currents that follow the
-        partner tables) is not zero at the other flavours. The recycled build
-        left the guards out of the calls it unfolds, and with them 4 of the 6
+        guarded with their mask (if( ( 0x...ULL >> iflavor ) & 0x1ULL )). The
+        recycled build left the guards out of the calls it unfolds, and as
+        the flavoured routines then also accepted the opposite orientation of
+        a coupling table (the W of the opposite charge, fixed since, see
+        test_madmatrix_mask_false_vs_fortran), a diagram closed by a bosonic
+        vertex (VVV1_0 of a W and two fermion currents) was not zero at the
+        other flavours: 4 of the 6
         flavours of q qx > w+ w- q qx QCD=0 (q = u d) were wrong: d d~ > w+
         w- u u~ x55, u u~ > w+ w- d d~ x14, d u~ > w+ w- d u~ and u d~ > w+
         w- u d~ x4.8 (8 of 18 for the p p > w+ w- j j QCD=0 of a MadSpace run,
@@ -3558,6 +3559,152 @@ print(json.dumps(out))
             if name == 'chunked':
                 self.assertTrue(glob.glob(pjoin(proc_dir, 'HelRecyclingChunks_*.cc')),
                                 'the recycled block was not cut into chunks')
+
+    def test_madmatrix_mask_false_vs_fortran(self):
+        """--mask=False (no flavour guard) must give the |M|^2 of every
+        flavour of a flavour-merged subprocess, against the Fortran
+        standalone, for the plain and the recycled build.
+
+        Without the guards an amplitude is evaluated at every flavour, and
+        must vanish at those it does not have: the flavoured routines check
+        each fermion pair against the coupling's table. The C++ ones also
+        accepted the opposite orientation of the table (partner1[flv2] ==
+        flv1, there for the single-merged-leg tables of the running
+        couplings, which were filled with the merged leg first), which for
+        the two merged quarks of a W coupling is the W of the opposite
+        charge: a diagram closed by a VVV vertex fed by two such currents
+        was non-zero at flavours it does not have. q qx > w+ w- q qx and q q
+        > w+ w- q q QCD=0 (q = u d) had 8 of their 12 --mask=False flavours
+        wrong: d d~ > w+ w- u u~ x55, u d > w+ w- u d x25, d u > w+ w- u d
+        x21, u u~ > w+ w- d d~ x14, u d > w+ w- d u x9.5, d u~ > w+ w- d u~
+        and u d~ > w+ w- u d~ x4.8, d u > w+ w- d u x2.8 (p p > w+ w- j j
+        QCD=0: 24 of 54). The routines now read the table in one orientation,
+        as the Fortran ones, and the running couplings' tables are filled F1
+        -> F2, as the others.
+
+        --mask=False also lists every ordering of the merged flavours (12
+        against 9: d u > w+ w- u d, u d > w+ w- d u and u d > w+ w- u d next
+        to d u > w+ w- d u), and keeps the diagrams that only those orderings
+        have: the outputs here follow a masked one in the same session, which
+        used to hand them the matrix elements made for the masked output (its
+        9 flavours only), and must agree with those of a fresh generation
+        (made again from the amplitudes as generated: after an output the
+        session's amplitudes only have the diagrams that output kept, 183 of
+        the 294 of q q > w+ w- q q). So must a --mask=False output of a
+        process added after a masked output (`add process` keeps the
+        session's amplitudes and drops its matrix elements: q q > w+ w- q q
+        was made from its 183 diagrams, 3 of its 6 flavours wrong).
+        """
+        import glob
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_nomask'
+        dirs = {'fortran': root + '_fortran',
+                'fortran_nomask': root + '_fortran_nomask',
+                'fortran_fresh': root + '_fortran_fresh',
+                'fortran_first': root + '_fortran_first',
+                'fortran_added': root + '_fortran_added',
+                'plain': root + '_plain',
+                'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define q = u d')
+        self.do('define qx = u~ d~')
+
+        def generate():
+            self.do('generate q qx > w+ w- q qx QCD=0')
+            self.do('add process q q > w+ w- q q QCD=0')
+        # the masked output first: the others must not reuse its matrix
+        # elements, nor its diagrams
+        generate()
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_nomask'])
+        self.do('output standalone %s -f --hel_recycling=False --mask=False' % dirs['plain'])
+        self.do('output standalone %s -f --mask=False' % dirs['recycled'])
+        generate()
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_fresh'])
+        # a process added after a masked output of the first
+        self.do('generate q q > w+ w- q q QCD=0')
+        self.do('output standalone_fortran %s -f' % dirs['fortran_first'])
+        self.do('add process q qx > w+ w- q qx QCD=0')
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_added'])
+
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            # {pdg: |M|^2} of every subprocess (the two do not share a pdg)
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(pjoin(proc_root, d) for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 2, 'two subprocesses expected in %s' % path)
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix']
+            out = {}
+            for proc_dir in found:
+                self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir),
+                                 'the build of %s failed' % proc_dir)
+                log = pjoin(proc_dir, 'check_flavours.log')
+                subprocess.call(run, stdout=open(log, 'w'),
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+                one = dict((tuple(int(p) for p in pdg.split()),
+                            float(me.replace('D', 'E').replace('d', 'e')))
+                           for pdg, me in entry_re.findall(open(log).read()))
+                self.assertTrue(one, 'no matrix element in %s' % log)
+                out.update(one)
+            return found, out
+
+        def text(path):
+            with open(path) as fsock:
+                return fsock.read()
+
+        def assert_close(test, ref, name):
+            wrong = ['%s: %r, fortran %r' % (pdg, test[pdg], me)
+                     for pdg, me in sorted(ref.items())
+                     if abs(test[pdg] - me) > 1e-10 * me]
+            self.assertFalse(wrong, '%s: %d of %d flavours wrong\n%s'
+                             % (name, len(wrong), len(ref), '\n'.join(wrong)))
+
+        _, fortran = values(dirs['fortran'], True)
+        _, fresh = values(dirs['fortran_fresh'], True)
+        _, nomask = values(dirs['fortran_nomask'], True)
+        self.assertEqual(sorted(nomask), sorted(fresh))
+        assert_close(nomask, fresh, 'fortran --mask=False after a masked output')
+        _, added = values(dirs['fortran_added'], True)
+        self.assertEqual(sorted(added), sorted(fresh))
+        assert_close(added, fresh, 'fortran --mask=False after add process')
+        # the flavours of the masked output, and with --mask=False every
+        # ordering of the two merged final-state quarks of q q > w+ w- q q,
+        # all non-zero
+        self.assertEqual(len(fortran), 9, sorted(fortran))
+        self.assertEqual(len(nomask), 12, sorted(nomask))
+        self.assertTrue(set(fortran) < set(nomask))
+        self.assertTrue(all(me > 0 for me in nomask.values()), nomask)
+        assert_close(nomask, fortran, 'fortran --mask=False')
+
+        guard = '>> iflavor ) & 0x1ULL ) {'
+        for name in ('plain', 'recycled'):
+            proc_dirs, madmatrix = values(dirs[name], False)
+            self.assertEqual(sorted(madmatrix), sorted(fresh), name)
+            assert_close(madmatrix, fresh, name)
+            # what was compared: code without a flavour guard, recycled or not
+            for proc_dir in proc_dirs:
+                recycled = glob.glob(pjoin(proc_dir, 'HelRecycling*.inc'))
+                self.assertNotIn(guard, text(pjoin(proc_dir, 'EvaluateDiagrams.inc')))
+                self.assertNotIn(guard, ''.join(text(f) for f in recycled))
+                if name == 'plain':
+                    self.assertFalse(recycled, '--hel_recycling=False still recycled')
+                else:
+                    self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                    'the --hel_recycling warm-up did not produce '
+                                    'the recycled build of %s' % proc_dir)
 
     def test_madmatrix_hel_recycling_flavour_masks_crossed(self):
         """--hel_recycling rows mode keeps the flavour masks of the crossed
@@ -4088,6 +4235,148 @@ print(json.dumps(out))
         mg7 = get_values('standalone', './check_sa.exe')
         self._assert_me_lists_close(mg7, fortran)
 
+    # a heavy down-type quark xq (pdg 6000001) coupling to d and s through
+    # the Z, with two couplings: merged, [xq~, q, Z] and [q~, xq, Z] each
+    # become ONE flavored coupling with two keys
+    _XQ_PARTICLES = """
+xq = Particle(pdg_code = 6000001, name = 'xq', antiname = 'xq~', spin = 2,
+              color = 3, mass = Param.MXQ, width = Param.WXQ, texname = 'xq',
+              antitexname = 'xq~', charge = -1/3, GhostNumber = 0,
+              LeptonNumber = 0, Y = 0)
+xq__tilde__ = xq.anti()
+"""
+    _XQ_PARAMETERS = """
+MXQ = Parameter(name = 'MXQ', nature = 'external', type = 'real', value = 1000.,
+                texname = 'MXQ', lhablock = 'MASS', lhacode = [ 6000001 ])
+WXQ = Parameter(name = 'WXQ', nature = 'external', type = 'real', value = 10.,
+                texname = 'WXQ', lhablock = 'DECAY', lhacode = [ 6000001 ])
+KXD = Parameter(name = 'KXD', nature = 'external', type = 'real', value = 0.3,
+                texname = 'KXD', lhablock = 'XQMIX', lhacode = [ 1 ])
+KXS = Parameter(name = 'KXS', nature = 'external', type = 'real', value = 0.5,
+                texname = 'KXS', lhablock = 'XQMIX', lhacode = [ 2 ])
+"""
+    _XQ_COUPLINGS = """
+GC_XD = Coupling(name = 'GC_XD', value = 'ee*complex(0,1)*KXD', order = {'QED':1})
+GC_XS = Coupling(name = 'GC_XS', value = 'ee*complex(0,1)*KXS', order = {'QED':1})
+"""
+    _XQ_VERTICES = """
+V_XQ1 = Vertex(name = 'V_XQ1', particles = [ P.xq__tilde__, P.d, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ2 = Vertex(name = 'V_XQ2', particles = [ P.xq__tilde__, P.s, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ3 = Vertex(name = 'V_XQ3', particles = [ P.d__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ4 = Vertex(name = 'V_XQ4', particles = [ P.s__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
+               color = [ 'T(3,2,1)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_11})
+"""
+
+    def _sm_with_mixing_heavy_quark(self):
+        """A copy of the sm UFO with the heavy quark xq of _XQ_* (its
+        restriction card extended with xq's parameters); returns its path.
+        The name is the test's: a model is imported as a Python module of
+        its directory name, and a second test run in the same process could
+        not import its own copy under the first one's name."""
+        path = pjoin(self.tmpdir, 'sm_xq_%s' % self._testMethodName)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        shutil.copytree(pjoin(MG5DIR, 'models', 'sm'), path,
+                        ignore=shutil.ignore_patterns('*.pkl', '*.log', 'restrict_*'))
+        shutil.copy(pjoin(MG5DIR, 'models', 'sm', 'restrict_default.dat'), path)
+        for name, text in (('particles.py', self._XQ_PARTICLES),
+                           ('parameters.py', self._XQ_PARAMETERS),
+                           ('couplings.py', self._XQ_COUPLINGS),
+                           ('vertices.py', self._XQ_VERTICES)):
+            with open(pjoin(path, name), 'a') as fsock:
+                fsock.write(text)
+        card = open(pjoin(path, 'restrict_default.dat')).read()
+        card = card.replace('   25 1.250000e+02 # MH \n',
+                            '   25 1.250000e+02 # MH \n 6000001 1.000000e+03 # MXQ \n', 1)
+        card += ('\nDECAY 6000001 1.000000e+01\n'
+                 'Block XQMIX \n    1 3.000000e-01 # KXD \n    2 5.000000e-01 # KXS \n')
+        with open(pjoin(path, 'restrict_default.dat'), 'w') as fsock:
+            fsock.write(card)
+        return path
+
+    def test_flavor_coupling_shared_table_slot(self):
+        """A flavored coupling whose table cannot hold its keys is refused by
+        every output, and one that can is written right by both backends.
+
+        The heavy quark xq couples to d and s through the Z. Merged, xq~ q Z
+        is one coupling with keys (0,1,0), (0,3,0): both need PARTNER(1) and
+        VAL(1) of the first fermion, xq, and the table keeps only the s key.
+        The Fortran standalone wrote p p > xq~ z without a word and gave
+        |M|^2 = 0 for g d~ > xq~ z (0.0512 unmerged); the C++ one the same
+        through its own tables. Both refuse it now. q~ xq Z, the merged leg
+        first, shares only PARTNER2(1), which no call reads (generation
+        refuses to build a merged quark from xq alone): p p > xq z is
+        written, and its flavors agree with the unmerged g d > xq z and g s
+        > xq z.
+        """
+        devnull = open(os.devnull, 'w')
+        model = self._sm_with_mixing_heavy_quark()
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            proc_root = pjoin(path, 'SubProcesses')
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check', '3000']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix', '3000']
+            out = {}
+            for proc_dir in sorted(glob.glob(pjoin(proc_root, 'P*'))):
+                self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir),
+                                 'the build of %s failed' % proc_dir)
+                log = pjoin(proc_dir, 'check_flavours.log')
+                subprocess.call(run, stdout=open(log, 'w'),
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+                out.update((tuple(int(p) for p in pdg.split()),
+                            float(me.replace('D', 'E').replace('d', 'e')))
+                           for pdg, me in entry_re.findall(open(log).read()))
+            self.assertTrue(out, 'no matrix element in %s' % path)
+            return out
+
+        dirs = dict((name, '%s_xq_%s' % (self.out_dir, name))
+                    for name in ('refused', 'fortran', 'cpp', 'reference'))
+        self.do('import model %s' % model)
+        self.do('generate p p > xq~ z')
+        for output in ('standalone_fortran', 'madevent', 'standalone'):
+            self.assertRaises(InvalidCmd, self.do,
+                              'output %s %s -f' % (output, dirs['refused']))
+        self.do('generate p p > xq z')
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['cpp'])
+        self.do('set apply_flavor_grouping False')
+        self.do('import model %s' % model)
+        self.do('generate g d > xq z')
+        self.do('add process g s > xq z')
+        self.do('output standalone_fortran %s -f' % dirs['reference'])
+
+        reference = values(dirs['reference'], True)
+        self.assertEqual(sorted(reference),
+                         [(21, 1, 6000001, 23), (21, 3, 6000001, 23)])
+        # the two couplings of the model, squared: g d at 0.36 of g s
+        self.assertAlmostEqual(reference[(21, 1, 6000001, 23)] /
+                               reference[(21, 3, 6000001, 23)], 0.36, places=6)
+        for name, fortran in (('fortran', True), ('cpp', False)):
+            merged = values(dirs[name], fortran)
+            self.assertEqual(sorted(merged), sorted(reference), name)
+            for pdg, me in reference.items():
+                self.assertLessEqual(abs(merged[pdg] - me), 1e-10 * me,
+                                     '%s, flavour %s: %r, unmerged %r'
+                                     % (name, pdg, merged[pdg], me))
+
     def test_madmatrix_mssm_single_leg(self):
         """Single-merged-leg flavored couplings must give the same per-flavor
         |M|^2 in standalone (madmatrix) as in the Fortran standalone.
@@ -4140,72 +4429,6 @@ print(json.dumps(out))
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for p p > n1 n1')
         self._assert_me_lists_close(mg7, standalone, rtol=1e-4)
-
-    # a heavy down-type quark xq (pdg 6000001) coupling to d and s through
-    # the Z, with two couplings: merged, [xq~, q, Z] and [q~, xq, Z] each
-    # become ONE flavored coupling with two keys
-    _XQ_PARTICLES = """
-xq = Particle(pdg_code = 6000001, name = 'xq', antiname = 'xq~', spin = 2,
-              color = 3, mass = Param.MXQ, width = Param.WXQ, texname = 'xq',
-              antitexname = 'xq~', charge = -1/3, GhostNumber = 0,
-              LeptonNumber = 0, Y = 0)
-xq__tilde__ = xq.anti()
-"""
-    _XQ_PARAMETERS = """
-MXQ = Parameter(name = 'MXQ', nature = 'external', type = 'real', value = 1000.,
-                texname = 'MXQ', lhablock = 'MASS', lhacode = [ 6000001 ])
-WXQ = Parameter(name = 'WXQ', nature = 'external', type = 'real', value = 10.,
-                texname = 'WXQ', lhablock = 'DECAY', lhacode = [ 6000001 ])
-KXD = Parameter(name = 'KXD', nature = 'external', type = 'real', value = 0.3,
-                texname = 'KXD', lhablock = 'XQMIX', lhacode = [ 1 ])
-KXS = Parameter(name = 'KXS', nature = 'external', type = 'real', value = 0.5,
-                texname = 'KXS', lhablock = 'XQMIX', lhacode = [ 2 ])
-"""
-    _XQ_COUPLINGS = """
-GC_XD = Coupling(name = 'GC_XD', value = 'ee*complex(0,1)*KXD', order = {'QED':1})
-GC_XS = Coupling(name = 'GC_XS', value = 'ee*complex(0,1)*KXS', order = {'QED':1})
-"""
-    _XQ_VERTICES = """
-V_XQ1 = Vertex(name = 'V_XQ1', particles = [ P.xq__tilde__, P.d, P.Z ],
-               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
-               couplings = {(0,0):C.GC_XD})
-V_XQ2 = Vertex(name = 'V_XQ2', particles = [ P.xq__tilde__, P.s, P.Z ],
-               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
-               couplings = {(0,0):C.GC_XS})
-V_XQ3 = Vertex(name = 'V_XQ3', particles = [ P.d__tilde__, P.xq, P.Z ],
-               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
-               couplings = {(0,0):C.GC_XD})
-V_XQ4 = Vertex(name = 'V_XQ4', particles = [ P.s__tilde__, P.xq, P.Z ],
-               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
-               couplings = {(0,0):C.GC_XS})
-V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
-               color = [ 'T(3,2,1)' ], lorentz = [ L.FFV1 ],
-               couplings = {(0,0):C.GC_11})
-"""
-
-    def _sm_with_mixing_heavy_quark(self):
-        """A copy of the sm UFO with the heavy quark xq of _XQ_* (its
-        restriction card extended with xq's parameters); returns its path."""
-        path = pjoin(self.tmpdir, 'sm_xq')
-        if os.path.isdir(path):
-            shutil.rmtree(path)
-        shutil.copytree(pjoin(MG5DIR, 'models', 'sm'), path,
-                        ignore=shutil.ignore_patterns('*.pkl', '*.log', 'restrict_*'))
-        shutil.copy(pjoin(MG5DIR, 'models', 'sm', 'restrict_default.dat'), path)
-        for name, text in (('particles.py', self._XQ_PARTICLES),
-                           ('parameters.py', self._XQ_PARAMETERS),
-                           ('couplings.py', self._XQ_COUPLINGS),
-                           ('vertices.py', self._XQ_VERTICES)):
-            with open(pjoin(path, name), 'a') as fsock:
-                fsock.write(text)
-        card = open(pjoin(path, 'restrict_default.dat')).read()
-        card = card.replace('   25 1.250000e+02 # MH \n',
-                            '   25 1.250000e+02 # MH \n 6000001 1.000000e+03 # MXQ \n', 1)
-        card += ('\nDECAY 6000001 1.000000e+01\n'
-                 'Block XQMIX \n    1 3.000000e-01 # KXD \n    2 5.000000e-01 # KXS \n')
-        with open(pjoin(path, 'restrict_default.dat'), 'w') as fsock:
-            fsock.write(card)
-        return path
 
     def test_flavor_merged_from_unmerged_refused(self):
         """A merged quark built from unmerged particles only, through a
@@ -8353,11 +8576,6 @@ P1_qq_wp_wp_lvl
 
 
         #self.assertEqual(self.cmd._curr_amps[0].nice_string().split('\n'), nicestring.split('\n'))
-        #self.do('save processes /tmp/model.pkl')
-        #self.do('generate e+ e- > e+ e-')
-        #self.do('load processes /tmp/model.pkl')
-        #self.assertEqual(len(self.cmd._curr_amps), 1)
-        #self.assertEqual(self.cmd._curr_amps[0].nice_string(), nicestring)
         
         #os.remove('/tmp/model.pkl')
         
